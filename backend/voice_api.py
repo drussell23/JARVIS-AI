@@ -87,6 +87,11 @@ class VoiceAPI:
         # WebSocket for real-time voice
         self.router.add_api_websocket_route("/voice/stream", self.voice_stream_endpoint)
         
+        # Audio processing endpoints
+        self.router.add_api_route("/voice/audio/calibrate", self.calibrate_noise, methods=["POST"])
+        self.router.add_api_route("/voice/audio/metrics", self.get_audio_metrics, methods=["GET"])
+        self.router.add_api_route("/voice/audio/feedback", self.test_feedback, methods=["POST"])
+        
     async def synthesize_speech(self, request: TTSRequest) -> Response:
         """Synthesize speech from text"""
         try:
@@ -98,9 +103,9 @@ class VoiceAPI:
             temp_config = VoiceConfig(
                 tts_engine=engine,
                 voice_name=request.voice,
-                speech_rate=request.speech_rate,
-                pitch=request.pitch,
-                volume=request.volume
+                speech_rate=request.speech_rate if request.speech_rate is not None else self.voice_config.speech_rate,
+                pitch=request.pitch if request.pitch is not None else self.voice_config.pitch,
+                volume=request.volume if request.volume is not None else self.voice_config.volume
             )
             
             # Create TTS with temp config
@@ -399,3 +404,61 @@ class VoiceAPI:
                 "message": str(e)
             })
             self.websocket_clients.remove(websocket)
+    
+    async def calibrate_noise(self) -> Dict:
+        """Calibrate noise profile for better speech detection"""
+        try:
+            # Calibrate noise
+            self.voice_assistant.calibrate_noise(duration=1.5)
+            
+            return {
+                "status": "success",
+                "message": "Noise calibration complete",
+                "noise_threshold": self.voice_config.noise_threshold
+            }
+            
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+            
+    async def get_audio_metrics(self) -> Dict:
+        """Get current audio processing metrics"""
+        try:
+            # Get latest metrics from audio processor
+            metrics = {
+                "noise_reduction_enabled": self.voice_assistant.audio_processor.config.noise_reduction,
+                "vad_enabled": self.voice_assistant.audio_processor.config.vad_enabled,
+                "vad_threshold": self.voice_assistant.audio_processor.config.vad_threshold,
+                "sample_rate": self.voice_config.sample_rate,
+                "is_active": self.voice_assistant.is_active
+            }
+            
+            # Add calibration status
+            if self.voice_assistant.audio_processor.noise_profile:
+                metrics["noise_calibrated"] = True
+                metrics["noise_profile_rms"] = self.voice_assistant.audio_processor.noise_profile.get("rms", 0)
+            else:
+                metrics["noise_calibrated"] = False
+                
+            return metrics
+            
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+            
+    async def test_feedback(self) -> Dict:
+        """Test audio feedback sounds"""
+        try:
+            # Play all feedback sounds
+            feedback_types = ["beep", "double_beep", "success", "error", "listening", "processing"]
+            
+            for feedback_type in feedback_types:
+                self.voice_assistant._play_feedback(feedback_type)
+                await asyncio.sleep(0.5)
+                
+            return {
+                "status": "success",
+                "message": "Played all feedback sounds",
+                "feedback_types": feedback_types
+            }
+            
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))

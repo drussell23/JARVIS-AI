@@ -2,21 +2,18 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStream
 import torch
 from typing import List, Dict, Optional, AsyncGenerator
 from datetime import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from threading import Thread
 import asyncio
 from nlp_engine import NLPEngine, ConversationFlow, TaskPlanner, ResponseQualityEnhancer, NLPAnalysis
+from automation_engine import AutomationEngine
 
 
 @dataclass
 class ConversationTurn:
     role: str  # "user" or "assistant"
     content: str
-    timestamp: datetime = None
-    
-    def __post_init__(self):
-        if self.timestamp is None:
-            self.timestamp = datetime.now()
+    timestamp: datetime = field(default_factory=datetime.now)
 
 
 class Chatbot:
@@ -70,6 +67,9 @@ class Chatbot:
         self.conversation_flow = ConversationFlow()
         self.task_planner = TaskPlanner()
         self.response_enhancer = ResponseQualityEnhancer()
+        
+        # Initialize automation engine
+        self.automation_engine = AutomationEngine()
         
     def _get_model_config(self, model_name: str) -> Dict:
         """Get model-specific generation parameters."""
@@ -165,7 +165,46 @@ class Chatbot:
         
         return "\n".join(prompt_parts)
     
-    def _build_enhanced_prompt(self, user_input: str, nlp_result: NLPAnalysis) -> str:
+    def _is_automation_command(self, user_input: str, nlp_result: NLPAnalysis) -> bool:
+        """Check if input is an automation command"""
+        automation_keywords = [
+            "schedule", "calendar", "meeting", "appointment",
+            "weather", "forecast", "temperature",
+            "news", "stock", "crypto",
+            "lights", "turn on", "turn off", "home",
+            "reminder", "alarm", "timer"
+        ]
+        
+        user_input_lower = user_input.lower()
+        
+        # Check keywords
+        if any(keyword in user_input_lower for keyword in automation_keywords):
+            return True
+            
+        # Check intents
+        automation_intents = ["request_action", "task_planning"]
+        if nlp_result.intent.intent.value in automation_intents:
+            # Check if it's about automation topics
+            if nlp_result.topic in ["technology", "task", "business"]:
+                return True
+                
+        return False
+        
+    async def _handle_automation(self, user_input: str, nlp_result: NLPAnalysis) -> Dict:
+        """Handle automation commands"""
+        # Build context from NLP analysis
+        context = {
+            "entities": [{"text": e.text, "type": e.type} for e in nlp_result.entities],
+            "keywords": nlp_result.keywords,
+            "intent": nlp_result.intent.intent.value
+        }
+        
+        # Process with automation engine
+        result = await self.automation_engine.process_command(user_input, context)
+        
+        return result
+    
+    def _build_enhanced_prompt(self, user_input: str, nlp_result: NLPAnalysis, automation_response: Optional[Dict] = None) -> str:
         """Build an enhanced prompt with NLP insights"""
         prompt_parts = []
         
@@ -179,6 +218,13 @@ class Chatbot:
             enhanced_system += " Provide clear, step-by-step guidance when users need help."
         
         prompt_parts.append(f"System: {enhanced_system}\n")
+        
+        # Add automation context if available
+        if automation_response:
+            automation_context = f"Automation Result: {automation_response.get('message', 'Action completed')}"
+            if automation_response.get('data'):
+                automation_context += f"\nData: {str(automation_response['data'])[:200]}"
+            prompt_parts.append(automation_context)
         
         # Add context about detected entities if relevant
         if nlp_result.entities:
@@ -236,11 +282,16 @@ class Chatbot:
         # Perform NLP analysis
         nlp_result = self.nlp_engine.analyze(user_input)
         
+        # Check for automation commands
+        automation_response = None
+        if self._is_automation_command(user_input, nlp_result):
+            automation_response = asyncio.run(self._handle_automation(user_input, nlp_result))
+        
         # Add user input to history
         self.add_to_history("user", user_input)
         
         # Build enhanced prompt based on NLP analysis
-        prompt = self._build_enhanced_prompt(user_input, nlp_result)
+        prompt = self._build_enhanced_prompt(user_input, nlp_result, automation_response)
         
         # Encode the prompt
         inputs = self.tokenizer.encode(prompt, return_tensors="pt", truncation=True)
