@@ -1,6 +1,8 @@
-# AI-Powered-Chatbot
+# JARVIS AI Assistant
 
-An intelligent chatbot application built with Python backend and React frontend, featuring advanced natural language processing capabilities.
+**JARVIS: Just A Rather Very Intelligent System**
+
+An AI-powered conversational interface inspired by Iron Man's AI assistant, built with Python backend and React frontend, featuring advanced natural language processing capabilities.
 
 ## 🚀 Features
 
