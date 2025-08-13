@@ -1,12 +1,12 @@
 # main.py
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from chatbot import Chatbot  # Import the Chatbot class
 import asyncio
 import json
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from voice_api import VoiceAPI
 from automation_api import AutomationAPI
 
@@ -18,6 +18,20 @@ class ChatConfig(BaseModel):
     model_name: Optional[str] = "gpt2"
     system_prompt: Optional[str] = None
     stream: Optional[bool] = False
+
+class KnowledgeRequest(BaseModel):
+    content: str
+    metadata: Optional[Dict[str, Any]] = {}
+    
+class SearchRequest(BaseModel):
+    query: str
+    k: Optional[int] = 5
+    strategy: Optional[str] = "hybrid"  # semantic, keyword, hybrid
+    
+class FeedbackRequest(BaseModel):
+    query: str
+    response: str
+    score: float  # 0.0 to 1.0
 
 class ChatbotAPI:
     def __init__(self):
@@ -34,6 +48,14 @@ class ChatbotAPI:
         self.router.add_api_route("/chat/config", self.update_config, methods=["POST"])
         self.router.add_api_route("/chat/analyze", self.analyze_text, methods=["POST"])
         self.router.add_api_route("/chat/plan", self.create_task_plan, methods=["POST"])
+        
+        # RAG endpoints
+        self.router.add_api_route("/knowledge/add", self.add_knowledge, methods=["POST"])
+        self.router.add_api_route("/knowledge/add-file", self.add_knowledge_file, methods=["POST"])
+        self.router.add_api_route("/knowledge/search", self.search_knowledge, methods=["POST"])
+        self.router.add_api_route("/knowledge/feedback", self.provide_feedback, methods=["POST"])
+        self.router.add_api_route("/knowledge/insights", self.get_learning_insights, methods=["GET"])
+        self.router.add_api_route("/knowledge/summarize", self.summarize_conversation, methods=["POST"])
     
     async def chat_get(self):
         """GET endpoint for informational purposes."""
@@ -47,7 +69,10 @@ class ChatbotAPI:
                 "/chat/history": "Get conversation history (GET) or clear it (DELETE)",
                 "/chat/config": "Update chatbot configuration (model, system prompt)",
                 "/chat/analyze": "Analyze text for intent, entities, sentiment without generating response",
-                "/chat/plan": "Create a task plan from user input"
+                "/chat/plan": "Create a task plan from user input",
+                "/knowledge/add": "Add documents to the knowledge base",
+                "/knowledge/search": "Search the knowledge base",
+                "/knowledge/feedback": "Provide feedback for learning"
             },
             "nlp_features": {
                 "intent_recognition": "Identifies user intent (greeting, question, request, etc.)",
@@ -161,6 +186,121 @@ class ChatbotAPI:
                 "keywords": nlp_result.keywords[:5]
             }
         }
+    
+    # RAG endpoints
+    async def add_knowledge(self, request: KnowledgeRequest):
+        """Add a document to the knowledge base."""
+        try:
+            document = await self.bot.rag_engine.add_knowledge(
+                request.content, 
+                request.metadata
+            )
+            return {
+                "message": "Knowledge added successfully",
+                "document_id": document.id,
+                "chunks": len(document.chunks)
+            }
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    
+    async def add_knowledge_file(self, file: UploadFile = File(...)):
+        """Add a file to the knowledge base."""
+        try:
+            content = await file.read()
+            text_content = content.decode('utf-8')
+            
+            metadata = {
+                "filename": file.filename,
+                "content_type": file.content_type,
+                "source": "uploaded_file"
+            }
+            
+            document = await self.bot.rag_engine.add_knowledge(text_content, metadata)
+            
+            return {
+                "message": f"File '{file.filename}' added to knowledge base",
+                "document_id": document.id,
+                "chunks": len(document.chunks)
+            }
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    
+    async def search_knowledge(self, request: SearchRequest):
+        """Search the knowledge base."""
+        try:
+            results = await self.bot.rag_engine.knowledge_base.search(
+                request.query,
+                k=request.k,
+                strategy=request.strategy
+            )
+            
+            return {
+                "query": request.query,
+                "results": [
+                    {
+                        "content": result.chunk.content,
+                        "score": result.score,
+                        "metadata": result.chunk.metadata,
+                        "document_id": result.chunk.document_id
+                    }
+                    for result in results
+                ],
+                "count": len(results)
+            }
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    
+    async def provide_feedback(self, request: FeedbackRequest):
+        """Provide feedback for learning."""
+        try:
+            await self.bot.rag_engine.provide_feedback(
+                request.query,
+                request.response,
+                request.score
+            )
+            
+            return {
+                "message": "Feedback recorded successfully",
+                "query": request.query,
+                "score": request.score
+            }
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    
+    async def get_learning_insights(self):
+        """Get insights from the learning engine."""
+        try:
+            insights = self.bot.rag_engine.get_learning_insights()
+            return insights
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    
+    async def summarize_conversation(self):
+        """Summarize the current conversation."""
+        try:
+            # Get conversation history
+            history = self.bot.get_conversation_history()
+            
+            if not history:
+                return {"message": "No conversation to summarize"}
+            
+            # Convert to format expected by summarizer
+            messages = [
+                {"role": turn["role"], "content": turn["content"]}
+                for turn in history
+            ]
+            
+            summary = await self.bot.rag_engine.summarize_conversation(messages)
+            
+            return {
+                "summary": summary.summary,
+                "key_points": summary.key_points,
+                "entities": summary.entities,
+                "topics": summary.topics,
+                "sentiment": summary.sentiment
+            }
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
 # Create FastAPI app
 app = FastAPI()
@@ -190,19 +330,22 @@ app.include_router(automation_api.router, prefix="/automation")
 @app.get("/")
 async def root():
     return {
-        "message": "AI-Powered Chatbot with Voice, NLP & Automation",
-        "version": "4.0",
+        "message": "AI-Powered Chatbot with Voice, NLP, Automation & RAG",
+        "version": "5.0",
         "features": {
             "chat": "Advanced conversational AI with NLP",
             "voice": "Speech recognition and synthesis",
             "nlp": "Intent recognition, entity extraction, sentiment analysis",
-            "automation": "Calendar, weather, information services, task automation"
+            "automation": "Calendar, weather, information services, task automation",
+            "rag": "Retrieval-Augmented Generation with knowledge base",
+            "learning": "Adaptive learning and personalization"
         },
         "api_docs": "/docs",
         "endpoints": {
             "chat": "/chat/*",
             "voice": "/voice/*",
-            "automation": "/automation/*"
+            "automation": "/automation/*",
+            "knowledge": "/knowledge/*"
         }
     }
 

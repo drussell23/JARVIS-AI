@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG System Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #00d4ff;
+            font-size: 2.5em;
+            margin-bottom: 30px;
+            text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 15px;
+            padding: 25px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 212, 255, 0.3);
+            border-color: rgba(0, 212, 255, 0.5);
+        }
+        
+        .card h2 {
+            color: #00d4ff;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .icon {
+            font-size: 1.5em;
+        }
+        
+        textarea, input {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 8px;
+            color: #e0e0e0;
+            font-size: 14px;
+            font-family: inherit;
+            transition: all 0.3s;
+        }
+        
+        textarea {
+            min-height: 150px;
+            resize: vertical;
+        }
+        
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #00d4ff;
+            box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+        }
+        
+        button {
+            background: linear-gradient(45deg, #00a8cc, #00d4ff);
+            color: #000;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s;
+            margin: 5px;
+        }
+        
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(0, 212, 255, 0.4);
+        }
+        
+        button:active {
+            transform: scale(0.98);
+        }
+        
+        .result {
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        
+        .search-result {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border-left: 3px solid #00d4ff;
+        }
+        
+        .search-result h4 {
+            color: #00d4ff;
+            margin-bottom: 8px;
+        }
+        
+        .score {
+            display: inline-block;
+            background: rgba(0, 212, 255, 0.2);
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .chat-container {
+            height: 500px;
+            overflow-y: auto;
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background: rgba(0, 0, 0, 0.2);
+        }
+        
+        .message {
+            margin: 15px 0;
+            padding: 12px 18px;
+            border-radius: 18px;
+            max-width: 80%;
+        }
+        
+        .user-message {
+            background: linear-gradient(45deg, #00a8cc, #00d4ff);
+            color: #000;
+            margin-left: auto;
+            text-align: right;
+        }
+        
+        .assistant-message {
+            background: rgba(255, 255, 255, 0.1);
+            color: #e0e0e0;
+        }
+        
+        .metadata {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-top: 5px;
+        }
+        
+        .insights-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .insight-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        
+        .insight-value {
+            font-size: 24px;
+            color: #00d4ff;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+        
+        .upload-area {
+            border: 2px dashed rgba(0, 212, 255, 0.5);
+            border-radius: 10px;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .upload-area:hover {
+            border-color: #00d4ff;
+            background: rgba(0, 212, 255, 0.05);
+        }
+        
+        .upload-area.dragover {
+            border-color: #00d4ff;
+            background: rgba(0, 212, 255, 0.1);
+        }
+        
+        #fileInput {
+            display: none;
+        }
+        
+        .feedback-slider {
+            width: 100%;
+            margin: 15px 0;
+        }
+        
+        .feedback-value {
+            text-align: center;
+            font-size: 18px;
+            color: #00d4ff;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧠 RAG System Demo - Knowledge-Enhanced AI</h1>
+        
+        <div class="grid">
+            <!-- Knowledge Management -->
+            <div class="card">
+                <h2><span class="icon">📚</span> Knowledge Management</h2>
+                
+                <h3>Add Knowledge</h3>
+                <textarea id="knowledgeContent" placeholder="Enter knowledge content here..."></textarea>
+                <input type="text" id="knowledgeTitle" placeholder="Title/Topic (optional)">
+                <button onclick="addKnowledge()">Add to Knowledge Base</button>
+                
+                <h3 style="margin-top: 20px;">Upload File</h3>
+                <div class="upload-area" id="uploadArea">
+                    <p>📁 Click or drag file here to upload</p>
+                    <p style="font-size: 12px; margin-top: 10px;">Supported: .txt, .md, .json</p>
+                </div>
+                <input type="file" id="fileInput" accept=".txt,.md,.json">
+                
+                <div class="result" id="knowledgeResult"></div>
+            </div>
+            
+            <!-- Knowledge Search -->
+            <div class="card">
+                <h2><span class="icon">🔍</span> Knowledge Search</h2>
+                
+                <input type="text" id="searchQuery" placeholder="Search knowledge base...">
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <label>Strategy:</label>
+                    <select id="searchStrategy" style="flex: 1; padding: 12px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(0, 212, 255, 0.3); border-radius: 8px; color: #e0e0e0;">
+                        <option value="hybrid">Hybrid (Recommended)</option>
+                        <option value="semantic">Semantic Only</option>
+                        <option value="keyword">Keyword Only</option>
+                    </select>
+                    <input type="number" id="searchCount" value="5" min="1" max="20" style="width: 80px;" placeholder="Results">
+                </div>
+                <button onclick="searchKnowledge()">Search</button>
+                
+                <div class="result" id="searchResults"></div>
+            </div>
+        </div>
+        
+        <!-- RAG-Enhanced Chat -->
+        <div class="card">
+            <h2><span class="icon">💬</span> RAG-Enhanced Chat</h2>
+            
+            <div class="chat-container" id="chatContainer"></div>
+            
+            <div style="display: flex; gap: 10px;">
+                <input type="text" id="chatInput" placeholder="Ask me anything... RAG will enhance my responses with knowledge!" style="flex: 1;">
+                <button onclick="sendMessage()">Send</button>
+                <button onclick="clearChat()">Clear</button>
+            </div>
+            
+            <div id="chatMetadata" class="metadata" style="margin-top: 10px;"></div>
+        </div>
+        
+        <div class="grid" style="margin-top: 20px;">
+            <!-- Learning & Feedback -->
+            <div class="card">
+                <h2><span class="icon">🎯</span> Learning & Feedback</h2>
+                
+                <p>Rate the last response:</p>
+                <input type="range" class="feedback-slider" id="feedbackScore" min="0" max="100" value="80">
+                <div class="feedback-value" id="feedbackValue">80%</div>
+                <button onclick="submitFeedback()">Submit Feedback</button>
+                
+                <h3 style="margin-top: 20px;">Conversation Summary</h3>
+                <button onclick="summarizeConversation()">Generate Summary</button>
+                <div class="result" id="summaryResult"></div>
+            </div>
+            
+            <!-- Learning Insights -->
+            <div class="card">
+                <h2><span class="icon">📊</span> Learning Insights</h2>
+                
+                <button onclick="getInsights()">Refresh Insights</button>
+                
+                <div class="insights-grid" id="insightsGrid"></div>
+                
+                <div class="result" id="insightsDetails" style="margin-top: 15px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        let lastQuery = '';
+        let lastResponse = '';
+        
+        // File upload handling
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        
+        uploadArea.addEventListener('click', () => fileInput.click());
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            const file = e.dataTransfer.files[0];
+            if (file) {
+                uploadFile(file);
+            }
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                uploadFile(file);
+            }
+        });
+        
+        // Feedback slider
+        const feedbackSlider = document.getElementById('feedbackScore');
+        const feedbackValue = document.getElementById('feedbackValue');
+        
+        feedbackSlider.addEventListener('input', (e) => {
+            feedbackValue.textContent = e.target.value + '%';
+        });
+        
+        // Knowledge Management Functions
+        async function addKnowledge() {
+            const content = document.getElementById('knowledgeContent').value;
+            const title = document.getElementById('knowledgeTitle').value;
+            
+            if (!content) {
+                alert('Please enter knowledge content');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/knowledge/add`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        content: content,
+                        metadata: {
+                            title: title || 'Untitled',
+                            source: 'manual_entry',
+                            timestamp: new Date().toISOString()
+                        }
+                    })
+                });
+                
+                const data = await response.json();
+                updateResult('knowledgeResult', JSON.stringify(data, null, 2));
+                
+                // Clear inputs
+                document.getElementById('knowledgeContent').value = '';
+                document.getElementById('knowledgeTitle').value = '';
+                
+            } catch (error) {
+                updateResult('knowledgeResult', 'Error: ' + error.message);
+            }
+        }
+        
+        async function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                updateResult('knowledgeResult', 'Uploading file...');
+                
+                const response = await fetch(`${API_BASE}/knowledge/add-file`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                updateResult('knowledgeResult', JSON.stringify(data, null, 2));
+                
+            } catch (error) {
+                updateResult('knowledgeResult', 'Error: ' + error.message);
+            }
+        }
+        
+        async function searchKnowledge() {
+            const query = document.getElementById('searchQuery').value;
+            const strategy = document.getElementById('searchStrategy').value;
+            const k = parseInt(document.getElementById('searchCount').value);
+            
+            if (!query) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/knowledge/search`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        query: query,
+                        strategy: strategy,
+                        k: k
+                    })
+                });
+                
+                const data = await response.json();
+                displaySearchResults(data);
+                
+            } catch (error) {
+                updateResult('searchResults', 'Error: ' + error.message);
+            }
+        }
+        
+        function displaySearchResults(data) {
+            const container = document.getElementById('searchResults');
+            container.innerHTML = '';
+            
+            if (data.results.length === 0) {
+                container.innerHTML = '<p>No results found</p>';
+                return;
+            }
+            
+            data.results.forEach((result, index) => {
+                const div = document.createElement('div');
+                div.className = 'search-result';
+                div.innerHTML = `
+                    <h4>Result ${index + 1} <span class="score">Score: ${result.score.toFixed(3)}</span></h4>
+                    <p>${result.content}</p>
+                    ${result.metadata.title ? `<p class="metadata">Title: ${result.metadata.title}</p>` : ''}
+                    ${result.metadata.source ? `<p class="metadata">Source: ${result.metadata.source}</p>` : ''}
+                `;
+                container.appendChild(div);
+            });
+        }
+        
+        // Chat Functions
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            // Store for feedback
+            lastQuery = message;
+            
+            // Add user message to chat
+            addChatMessage('user', message);
+            input.value = '';
+            
+            try {
+                // Show typing indicator
+                const typingId = addChatMessage('assistant', '...', true);
+                
+                const response = await fetch(`${API_BASE}/chat`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({user_input: message})
+                });
+                
+                const data = await response.json();
+                
+                // Remove typing indicator
+                document.getElementById(typingId)?.remove();
+                
+                // Add assistant response
+                addChatMessage('assistant', data.response);
+                lastResponse = data.response;
+                
+                // Show metadata
+                const metadata = document.getElementById('chatMetadata');
+                metadata.innerHTML = `
+                    Intent: ${data.nlp_analysis.intent} | 
+                    Sentiment: ${Object.entries(data.nlp_analysis.sentiment).map(([k,v]) => `${k}: ${(v*100).toFixed(0)}%`).join(', ')} |
+                    Topic: ${data.nlp_analysis.topic}
+                `;
+                
+            } catch (error) {
+                document.getElementById(typingId)?.remove();
+                addChatMessage('assistant', 'Error: ' + error.message);
+            }
+        }
+        
+        function addChatMessage(role, content, isTyping = false) {
+            const container = document.getElementById('chatContainer');
+            const message = document.createElement('div');
+            const id = 'msg-' + Date.now();
+            message.id = id;
+            message.className = `message ${role}-message`;
+            message.textContent = content;
+            container.appendChild(message);
+            container.scrollTop = container.scrollHeight;
+            return id;
+        }
+        
+        function clearChat() {
+            document.getElementById('chatContainer').innerHTML = '';
+            document.getElementById('chatMetadata').innerHTML = '';
+            lastQuery = '';
+            lastResponse = '';
+        }
+        
+        // Feedback Functions
+        async function submitFeedback() {
+            if (!lastQuery || !lastResponse) {
+                alert('No recent conversation to provide feedback for');
+                return;
+            }
+            
+            const score = parseInt(document.getElementById('feedbackScore').value) / 100;
+            
+            try {
+                const response = await fetch(`${API_BASE}/knowledge/feedback`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        query: lastQuery,
+                        response: lastResponse,
+                        score: score
+                    })
+                });
+                
+                const data = await response.json();
+                alert('Feedback submitted successfully!');
+                
+            } catch (error) {
+                alert('Error submitting feedback: ' + error.message);
+            }
+        }
+        
+        async function summarizeConversation() {
+            try {
+                updateResult('summaryResult', 'Generating summary...');
+                
+                const response = await fetch(`${API_BASE}/knowledge/summarize`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (data.summary) {
+                    const summaryHtml = `
+                        <h4>Summary</h4>
+                        <p>${data.summary}</p>
+                        
+                        <h4>Key Points</h4>
+                        <ul>${data.key_points.map(p => `<li>${p}</li>`).join('')}</ul>
+                        
+                        <h4>Topics</h4>
+                        <p>${data.topics.join(', ')}</p>
+                        
+                        <h4>Entities</h4>
+                        ${data.entities.map(e => `<p><strong>${e.type}:</strong> ${e.values.join(', ')}</p>`).join('')}
+                    `;
+                    document.getElementById('summaryResult').innerHTML = summaryHtml;
+                } else {
+                    updateResult('summaryResult', data.message || 'No conversation to summarize');
+                }
+                
+            } catch (error) {
+                updateResult('summaryResult', 'Error: ' + error.message);
+            }
+        }
+        
+        async function getInsights() {
+            try {
+                const response = await fetch(`${API_BASE}/knowledge/insights`);
+                const data = await response.json();
+                
+                // Display key metrics
+                const grid = document.getElementById('insightsGrid');
+                grid.innerHTML = `
+                    <div class="insight-card">
+                        <div>Total Interactions</div>
+                        <div class="insight-value">${data.total_interactions || 0}</div>
+                    </div>
+                    <div class="insight-card">
+                        <div>Avg Feedback</div>
+                        <div class="insight-value">${data.average_feedback ? (data.average_feedback * 100).toFixed(0) + '%' : 'N/A'}</div>
+                    </div>
+                    <div class="insight-card">
+                        <div>Learned Patterns</div>
+                        <div class="insight-value">${Object.keys(data.learned_patterns || {}).length}</div>
+                    </div>
+                `;
+                
+                // Display detailed preferences
+                const details = document.getElementById('insightsDetails');
+                details.innerHTML = `
+                    <h4>User Preferences</h4>
+                    <pre>${JSON.stringify(data.user_preferences, null, 2)}</pre>
+                    
+                    <h4>Learned Patterns</h4>
+                    <pre>${JSON.stringify(data.learned_patterns, null, 2)}</pre>
+                `;
+                
+            } catch (error) {
+                updateResult('insightsDetails', 'Error: ' + error.message);
+            }
+        }
+        
+        // Utility Functions
+        function updateResult(elementId, content) {
+            document.getElementById(elementId).textContent = content;
+        }
+        
+        // Handle Enter key in chat input
+        document.getElementById('chatInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+        
+        // Initialize
+        window.onload = () => {
+            getInsights();
+        };
+    </script>
+</body>
+</html>

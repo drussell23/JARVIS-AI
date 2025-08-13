@@ -13,6 +13,7 @@ from nlp_engine import (
     NLPAnalysis,
 )
 from automation_engine import AutomationEngine
+from rag_engine import RAGEngine
 
 
 @dataclass
@@ -76,6 +77,9 @@ class Chatbot:
 
         # Initialize automation engine
         self.automation_engine = AutomationEngine()
+        
+        # Initialize RAG engine
+        self.rag_engine = RAGEngine(base_model_name=model_name)
 
     def _get_model_config(self, model_name: str) -> Dict:
         """Get model-specific generation parameters."""
@@ -226,11 +230,36 @@ class Chatbot:
 
         return result
 
+    def _should_use_rag(self, user_input: str, nlp_result: NLPAnalysis) -> bool:
+        """Determine if RAG should be used for this query"""
+        # Use RAG for knowledge-seeking queries
+        knowledge_intents = ["question", "ask_information", "help"]
+        if nlp_result.intent.intent.value in knowledge_intents:
+            return True
+            
+        # Use RAG if the query contains knowledge-seeking keywords
+        knowledge_keywords = [
+            "what is", "how does", "explain", "tell me about",
+            "why", "when", "where", "who", "define",
+            "describe", "help me understand"
+        ]
+        
+        user_input_lower = user_input.lower()
+        if any(keyword in user_input_lower for keyword in knowledge_keywords):
+            return True
+            
+        # Use RAG for technical topics
+        if nlp_result.topic in ["technology", "science", "education"]:
+            return True
+            
+        return False
+
     def _build_enhanced_prompt(
         self,
         user_input: str,
         nlp_result: NLPAnalysis,
         automation_response: Optional[Dict] = None,
+        rag_result: Optional[Dict] = None,
     ) -> str:
         """Build an enhanced prompt with NLP insights"""
         prompt_parts = []
@@ -256,6 +285,21 @@ class Chatbot:
                     f"\nData: {str(automation_response['data'])[:200]}"
                 )
             prompt_parts.append(automation_context)
+            
+        # Add RAG context if available
+        if rag_result:
+            rag_context = f"\nRelevant Knowledge:\n{rag_result.get('context_used', '')[:1000]}"
+            prompt_parts.append(rag_context)
+            
+            # Add personalization from learning engine
+            if rag_result.get('adapted_parameters'):
+                params = rag_result['adapted_parameters']
+                if params.get('formal'):
+                    enhanced_system += " Use formal language."
+                if params.get('detail_level') == 'high':
+                    enhanced_system += " Provide detailed explanations."
+                elif params.get('detail_level') == 'low':
+                    enhanced_system += " Keep responses concise."
 
         # Add context about detected entities if relevant
         if nlp_result.entities:
@@ -322,12 +366,22 @@ class Chatbot:
                 self._handle_automation(user_input, nlp_result)
             )
 
+        # Use RAG for knowledge retrieval
+        rag_result = None
+        if self._should_use_rag(user_input, nlp_result):
+            rag_result = asyncio.run(
+                self.rag_engine.generate_with_retrieval(
+                    user_input,
+                    self.get_conversation_history()
+                )
+            )
+
         # Add user input to history
         self.add_to_history("user", user_input)
 
         # Build enhanced prompt based on NLP analysis
         prompt = self._build_enhanced_prompt(
-            user_input, nlp_result, automation_response
+            user_input, nlp_result, automation_response, rag_result
         )
 
         # Encode the prompt
