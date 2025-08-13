@@ -7,3 +7,18 @@ sentencepiece==0.1.99
 protobuf==4.25.2
 pydantic==2.5.3
 python-multipart==0.0.6
+spacy==3.7.2
+en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
+
+# Voice dependencies
+openai-whisper==20231117
+sounddevice==0.4.6
+soundfile==0.12.1
+pydub==0.25.1
+pyaudio==0.2.14
+gtts==2.5.0
+pyttsx3==2.90
+edge-tts==6.1.9
+websockets==12.0
+numpy==1.24.3
+scipy==1.11.4

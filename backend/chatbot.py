@@ -5,6 +5,7 @@ from datetime import datetime
 from dataclasses import dataclass
 from threading import Thread
 import asyncio
+from nlp_engine import NLPEngine, ConversationFlow, TaskPlanner, ResponseQualityEnhancer, NLPAnalysis
 
 
 @dataclass
@@ -63,6 +64,12 @@ class Chatbot:
         
         # Model-specific settings
         self.model_config = self._get_model_config(model_name)
+        
+        # Initialize NLP components
+        self.nlp_engine = NLPEngine()
+        self.conversation_flow = ConversationFlow()
+        self.task_planner = TaskPlanner()
+        self.response_enhancer = ResponseQualityEnhancer()
         
     def _get_model_config(self, model_name: str) -> Dict:
         """Get model-specific generation parameters."""
@@ -158,9 +165,67 @@ class Chatbot:
         
         return "\n".join(prompt_parts)
     
+    def _build_enhanced_prompt(self, user_input: str, nlp_result: NLPAnalysis) -> str:
+        """Build an enhanced prompt with NLP insights"""
+        prompt_parts = []
+        
+        # Add system prompt with intent-specific guidance
+        enhanced_system = self.system_prompt
+        if nlp_result.intent.intent.value == "question":
+            enhanced_system += " When answering questions, be direct and informative."
+        elif nlp_result.intent.intent.value == "task_planning":
+            enhanced_system += " When helping with tasks, break them down into clear, actionable steps."
+        elif nlp_result.intent.intent.value == "help":
+            enhanced_system += " Provide clear, step-by-step guidance when users need help."
+        
+        prompt_parts.append(f"System: {enhanced_system}\n")
+        
+        # Add context about detected entities if relevant
+        if nlp_result.entities:
+            entity_context = "Context: User mentioned " + ", ".join([f"{e.type}: {e.text}" for e in nlp_result.entities[:3]])
+            prompt_parts.append(entity_context)
+        
+        # Add conversation history
+        for turn in self.conversation_history[-self.max_history_length:]:
+            if turn.role == "user":
+                prompt_parts.append(f"User: {turn.content}")
+            else:
+                prompt_parts.append(f"Assistant: {turn.content}")
+        
+        # Add current user input with intent hint
+        prompt_parts.append(f"User: {user_input}")
+        prompt_parts.append("Assistant:")
+        
+        return "\n".join(prompt_parts)
+    
+    def _adjust_generation_config(self, nlp_result: NLPAnalysis) -> Dict:
+        """Adjust generation parameters based on NLP analysis"""
+        config = self.model_config.copy()
+        
+        # Adjust based on intent
+        if nlp_result.intent.intent.value == "question":
+            # More focused responses for questions
+            config["temperature"] = max(0.5, config.get("temperature", 0.7) - 0.2)
+            config["max_new_tokens"] = 200
+        elif nlp_result.intent.intent.value == "task_planning":
+            # Longer, more structured responses for planning
+            config["max_new_tokens"] = 300
+            config["temperature"] = 0.6
+        elif nlp_result.intent.intent.value == "greeting":
+            # Shorter, warmer responses for greetings
+            config["max_new_tokens"] = 50
+            config["temperature"] = 0.8
+        
+        # Adjust based on sentiment
+        if nlp_result.sentiment.get("negative", 0) > 0.7:
+            # More empathetic responses for negative sentiment
+            config["temperature"] = min(0.9, config.get("temperature", 0.7) + 0.1)
+        
+        return config
+    
     def generate_response(self, user_input: str) -> str:
         """
-        Generate a response to user input with conversation context.
+        Generate a response to user input with conversation context and NLP enhancements.
         
         Args:
             user_input: The user's message
@@ -168,23 +233,29 @@ class Chatbot:
         Returns:
             The model's response
         """
+        # Perform NLP analysis
+        nlp_result = self.nlp_engine.analyze(user_input)
+        
         # Add user input to history
         self.add_to_history("user", user_input)
         
-        # Build the full prompt
-        prompt = self._build_prompt(user_input)
+        # Build enhanced prompt based on NLP analysis
+        prompt = self._build_enhanced_prompt(user_input, nlp_result)
         
         # Encode the prompt
         inputs = self.tokenizer.encode(prompt, return_tensors="pt", truncation=True)
+        
+        # Adjust generation parameters based on intent
+        generation_config = self._adjust_generation_config(nlp_result)
         
         # Generate response
         with torch.no_grad():
             outputs = self.model.generate(
                 inputs,
-                max_new_tokens=150,  # Generate up to 150 new tokens
+                max_new_tokens=generation_config.get("max_new_tokens", 150),
                 pad_token_id=self.tokenizer.pad_token_id,
                 eos_token_id=self.tokenizer.eos_token_id,
-                **self.model_config
+                **generation_config
             )
         
         # Decode only the generated part
@@ -200,6 +271,13 @@ class Chatbot:
             if delimiter in response:
                 response = response.split(delimiter)[0].strip()
         
+        # Enhance response quality
+        context = self.conversation_flow.get_context_summary()
+        response = self.response_enhancer.enhance_response(response, nlp_result, context)
+        
+        # Update conversation flow
+        self.conversation_flow.update_flow(nlp_result, response)
+        
         # Add response to history
         self.add_to_history("assistant", response)
         
@@ -207,16 +285,19 @@ class Chatbot:
     
     def generate_response_with_context(self, user_input: str, context: Optional[Dict] = None) -> Dict:
         """
-        Generate a response with additional context information.
+        Generate a response with additional context information and NLP analysis.
         
         Args:
             user_input: The user's message
             context: Optional context dictionary with additional information
             
         Returns:
-            Dictionary containing response and metadata
+            Dictionary containing response, metadata, and NLP insights
         """
         start_time = datetime.now()
+        
+        # Perform NLP analysis
+        nlp_result = self.nlp_engine.analyze(user_input)
         
         # Generate the response
         response = self.generate_response(user_input)
@@ -224,13 +305,30 @@ class Chatbot:
         # Calculate generation time
         generation_time = (datetime.now() - start_time).total_seconds()
         
+        # Create task plan if requested
+        task_plan = None
+        if nlp_result.intent.intent.value == "task_planning":
+            task_plan = self.task_planner.create_task_plan(user_input, nlp_result)
+        
         return {
             "response": response,
             "generation_time": generation_time,
             "model_used": self.model.config.name_or_path,
             "conversation_id": id(self),
             "turn_number": len(self.conversation_history) // 2,
-            "context": context
+            "context": context,
+            "nlp_analysis": {
+                "intent": nlp_result.intent.intent.value,
+                "intent_confidence": nlp_result.intent.confidence,
+                "entities": [{"text": e.text, "type": e.type} for e in nlp_result.entities],
+                "sentiment": nlp_result.sentiment,
+                "is_question": nlp_result.is_question,
+                "requires_action": nlp_result.requires_action,
+                "topic": nlp_result.topic,
+                "keywords": nlp_result.keywords[:5]
+            },
+            "conversation_flow": self.conversation_flow.get_context_summary(),
+            "task_plan": task_plan
         }
     
     async def generate_response_stream(self, user_input: str) -> AsyncGenerator[str, None]:

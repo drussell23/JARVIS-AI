@@ -7,6 +7,7 @@ from chatbot import Chatbot  # Import the Chatbot class
 import asyncio
 import json
 from typing import Optional
+from voice_api import VoiceAPI
 
 # Define request models
 class Message(BaseModel):
@@ -30,17 +31,30 @@ class ChatbotAPI:
         self.router.add_api_route("/chat/history", self.get_history, methods=["GET"])
         self.router.add_api_route("/chat/history", self.clear_history, methods=["DELETE"])
         self.router.add_api_route("/chat/config", self.update_config, methods=["POST"])
+        self.router.add_api_route("/chat/analyze", self.analyze_text, methods=["POST"])
+        self.router.add_api_route("/chat/plan", self.create_task_plan, methods=["POST"])
     
     async def chat_get(self):
         """GET endpoint for informational purposes."""
         return {
-            "message": "This endpoint accepts POST requests with a JSON payload: {'user_input': 'your message'}.",
+            "message": "AI-Powered Chatbot API with Advanced NLP Features",
+            "version": "2.0",
             "available_models": list(Chatbot.SUPPORTED_MODELS.keys()),
             "endpoints": {
-                "/chat": "Standard chat endpoint",
-                "/chat/stream": "Streaming chat endpoint",
-                "/chat/history": "Get conversation history",
-                "/chat/config": "Update chatbot configuration"
+                "/chat": "Standard chat endpoint with NLP enhancements",
+                "/chat/stream": "Streaming chat endpoint for real-time responses",
+                "/chat/history": "Get conversation history (GET) or clear it (DELETE)",
+                "/chat/config": "Update chatbot configuration (model, system prompt)",
+                "/chat/analyze": "Analyze text for intent, entities, sentiment without generating response",
+                "/chat/plan": "Create a task plan from user input"
+            },
+            "nlp_features": {
+                "intent_recognition": "Identifies user intent (greeting, question, request, etc.)",
+                "entity_extraction": "Extracts entities (dates, times, names, etc.)",
+                "sentiment_analysis": "Analyzes emotional tone of messages",
+                "conversation_flow": "Manages conversation context and state",
+                "task_planning": "Creates structured plans for tasks",
+                "response_quality": "Enhances response clarity and completeness"
             }
         }
     
@@ -108,6 +122,44 @@ class ChatbotAPI:
             "updates": updates,
             "current_model": self.bot.model.config.name_or_path
         }
+    
+    async def analyze_text(self, message: Message):
+        """Analyze text for NLP insights without generating a response."""
+        nlp_result = self.bot.nlp_engine.analyze(message.user_input)
+        
+        return {
+            "intent": {
+                "primary": nlp_result.intent.intent.value,
+                "confidence": nlp_result.intent.confidence,
+                "sub_intents": [
+                    {"intent": i.value, "confidence": c} 
+                    for i, c in (nlp_result.intent.sub_intents or [])
+                ]
+            },
+            "entities": [
+                {"text": e.text, "type": e.type, "start": e.start, "end": e.end}
+                for e in nlp_result.entities
+            ],
+            "sentiment": nlp_result.sentiment,
+            "is_question": nlp_result.is_question,
+            "requires_action": nlp_result.requires_action,
+            "topic": nlp_result.topic,
+            "keywords": nlp_result.keywords
+        }
+    
+    async def create_task_plan(self, message: Message):
+        """Create a task plan based on user input."""
+        nlp_result = self.bot.nlp_engine.analyze(message.user_input)
+        task_plan = self.bot.task_planner.create_task_plan(message.user_input, nlp_result)
+        
+        return {
+            "task_plan": task_plan,
+            "nlp_insights": {
+                "intent": nlp_result.intent.intent.value,
+                "entities": [{"text": e.text, "type": e.type} for e in nlp_result.entities],
+                "keywords": nlp_result.keywords[:5]
+            }
+        }
 
 # Create FastAPI app
 app = FastAPI()
@@ -124,6 +176,28 @@ app.add_middleware(
 # Instantiate and include our Chatbot API router
 chatbot_api = ChatbotAPI()
 app.include_router(chatbot_api.router)
+
+# Include Voice API routes
+voice_api = VoiceAPI(chatbot_api.bot)
+app.include_router(voice_api.router, prefix="/voice")
+
+# Update root endpoint
+@app.get("/")
+async def root():
+    return {
+        "message": "AI-Powered Chatbot with Voice & NLP Capabilities",
+        "version": "3.0",
+        "features": {
+            "chat": "Advanced conversational AI with NLP",
+            "voice": "Speech recognition and synthesis",
+            "nlp": "Intent recognition, entity extraction, sentiment analysis"
+        },
+        "api_docs": "/docs",
+        "endpoints": {
+            "chat": "/chat/*",
+            "voice": "/voice/*"
+        }
+    }
 
 if __name__ == "__main__":
     import uvicorn

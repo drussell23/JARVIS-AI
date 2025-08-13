@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Voice Assistant Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .voice-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            background: #e9ecef;
+        }
+        .transcript {
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            margin: 10px 0;
+            min-height: 50px;
+        }
+        .response {
+            padding: 15px;
+            background: #e8f5e9;
+            border-radius: 5px;
+            margin: 10px 0;
+            min-height: 50px;
+        }
+        .error {
+            background: #ffebee;
+            color: #c62828;
+        }
+        .success {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .voice-indicator {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #ddd;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+        .voice-indicator.active {
+            background: #4caf50;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        select, input {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .feature-card {
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 AI Voice Assistant Demo</h1>
+        
+        <!-- Voice Recording Section -->
+        <div class="voice-section">
+            <h2>Voice Commands</h2>
+            <button id="recordBtn" onclick="toggleRecording()">
+                🎤 Start Recording
+            </button>
+            <button id="wakeWordBtn" onclick="toggleWakeWord()">
+                👂 Enable Wake Word
+            </button>
+            <span class="voice-indicator" id="voiceIndicator"></span>
+            
+            <div class="status" id="recordStatus">
+                Ready to record. Click "Start Recording" or say "Hey JARVIS"
+            </div>
+            
+            <div class="transcript" id="transcript">
+                <em>Your speech will appear here...</em>
+            </div>
+            
+            <div class="response" id="response">
+                <em>AI response will appear here...</em>
+            </div>
+        </div>
+
+        <!-- Text-to-Speech Section -->
+        <div class="voice-section">
+            <h2>Text-to-Speech</h2>
+            <input type="text" id="ttsInput" placeholder="Enter text to speak..." style="width: 60%;">
+            <button onclick="speakText()">🔊 Speak</button>
+            
+            <div style="margin-top: 10px;">
+                <label>Voice Engine:</label>
+                <select id="ttsEngine" onchange="updateVoices()">
+                    <option value="edge_tts">Microsoft Edge (High Quality)</option>
+                    <option value="gtts">Google TTS</option>
+                    <option value="pyttsx3">System Voice (Offline)</option>
+                </select>
+                
+                <label>Voice:</label>
+                <select id="voiceSelect">
+                    <option value="">Default</option>
+                </select>
+                
+                <label>Speed:</label>
+                <input type="range" id="speechRate" min="0.5" max="2" value="1" step="0.1">
+                <span id="rateValue">1.0x</span>
+            </div>
+        </div>
+
+        <!-- Configuration Section -->
+        <div class="voice-section">
+            <h2>Configuration</h2>
+            <div>
+                <label>Wake Word:</label>
+                <input type="text" id="wakeWord" value="hey jarvis" placeholder="Wake word...">
+                <button onclick="updateConfig()">Update</button>
+            </div>
+            <div>
+                <label>Language:</label>
+                <select id="language">
+                    <option value="en">English</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Features Overview -->
+        <div class="voice-section">
+            <h2>Features</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>🎯 Intent Recognition</h3>
+                    <p>Understands what you mean</p>
+                </div>
+                <div class="feature-card">
+                    <h3>🏷️ Entity Extraction</h3>
+                    <p>Identifies dates, names, etc.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>😊 Sentiment Analysis</h3>
+                    <p>Detects emotional tone</p>
+                </div>
+                <div class="feature-card">
+                    <h3>📋 Task Planning</h3>
+                    <p>Creates action plans</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        let isRecording = false;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let wakeWordActive = false;
+
+        // Update speech rate display
+        document.getElementById('speechRate').addEventListener('input', (e) => {
+            document.getElementById('rateValue').textContent = e.target.value + 'x';
+        });
+
+        async function toggleRecording() {
+            if (!isRecording) {
+                startRecording();
+            } else {
+                stopRecording();
+            }
+        }
+
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    await processAudio(audioBlob);
+                };
+
+                mediaRecorder.start();
+                isRecording = true;
+                
+                document.getElementById('recordBtn').textContent = '⏹️ Stop Recording';
+                document.getElementById('recordStatus').textContent = 'Recording... Speak now!';
+                document.getElementById('voiceIndicator').classList.add('active');
+            } catch (error) {
+                console.error('Error accessing microphone:', error);
+                updateStatus('Error: Could not access microphone', 'error');
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && isRecording) {
+                mediaRecorder.stop();
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                isRecording = false;
+                
+                document.getElementById('recordBtn').textContent = '🎤 Start Recording';
+                document.getElementById('recordStatus').textContent = 'Processing...';
+                document.getElementById('voiceIndicator').classList.remove('active');
+            }
+        }
+
+        async function processAudio(audioBlob) {
+            try {
+                // Convert to base64
+                const reader = new FileReader();
+                reader.readAsDataURL(audioBlob);
+                reader.onloadend = async () => {
+                    const base64Audio = reader.result.split(',')[1];
+                    
+                    // Send to API
+                    const response = await fetch(`${API_BASE}/voice/command`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            audio_data: base64Audio,
+                            format: 'wav',
+                            language: document.getElementById('language').value
+                        })
+                    });
+
+                    const data = await response.json();
+                    
+                    // Display results
+                    document.getElementById('transcript').innerHTML = 
+                        `<strong>You said:</strong> ${data.transcription.text}`;
+                    
+                    document.getElementById('response').innerHTML = 
+                        `<strong>AI:</strong> ${data.response.response}`;
+                    
+                    // Play audio response
+                    if (data.audio_response) {
+                        playAudioResponse(data.audio_response.data, data.audio_response.format);
+                    }
+                    
+                    updateStatus('Ready to record', 'success');
+                };
+            } catch (error) {
+                console.error('Error processing audio:', error);
+                updateStatus('Error processing audio', 'error');
+            }
+        }
+
+        async function speakText() {
+            const text = document.getElementById('ttsInput').value;
+            if (!text) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/voice/tts`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        text: text,
+                        engine: document.getElementById('ttsEngine').value,
+                        voice: document.getElementById('voiceSelect').value,
+                        speech_rate: parseFloat(document.getElementById('speechRate').value)
+                    })
+                });
+
+                if (response.ok) {
+                    const audioBlob = await response.blob();
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    const audio = new Audio(audioUrl);
+                    audio.play();
+                    updateStatus('Playing speech...', 'success');
+                }
+            } catch (error) {
+                console.error('Error with TTS:', error);
+                updateStatus('Error generating speech', 'error');
+            }
+        }
+
+        async function toggleWakeWord() {
+            const btn = document.getElementById('wakeWordBtn');
+            
+            if (!wakeWordActive) {
+                const response = await fetch(`${API_BASE}/voice/wake/start`, {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    wakeWordActive = true;
+                    btn.textContent = '🔴 Disable Wake Word';
+                    updateStatus('Wake word detection active. Say "Hey JARVIS"', 'success');
+                    
+                    // Start polling for wake word status
+                    startWakeWordPolling();
+                }
+            } else {
+                const response = await fetch(`${API_BASE}/voice/wake/stop`, {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    wakeWordActive = false;
+                    btn.textContent = '👂 Enable Wake Word';
+                    updateStatus('Wake word detection disabled', 'success');
+                }
+            }
+        }
+
+        async function updateConfig() {
+            const wakeWord = document.getElementById('wakeWord').value;
+            const language = document.getElementById('language').value;
+
+            try {
+                const response = await fetch(`${API_BASE}/voice/config`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        wake_word: wakeWord,
+                        language: language
+                    })
+                });
+
+                if (response.ok) {
+                    updateStatus('Configuration updated', 'success');
+                }
+            } catch (error) {
+                console.error('Error updating config:', error);
+                updateStatus('Error updating configuration', 'error');
+            }
+        }
+
+        async function updateVoices() {
+            const engine = document.getElementById('ttsEngine').value;
+            const voiceSelect = document.getElementById('voiceSelect');
+            
+            // Clear current options
+            voiceSelect.innerHTML = '<option value="">Loading voices...</option>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/voice/tts/voices`);
+                const data = await response.json();
+                
+                voiceSelect.innerHTML = '<option value="">Default</option>';
+                
+                if (engine === 'edge_tts' && data.engines.edge_tts) {
+                    // Add Edge TTS voices
+                    const englishVoices = data.engines.edge_tts.voices['en-US'] || [];
+                    englishVoices.forEach(voice => {
+                        const option = document.createElement('option');
+                        option.value = voice.name;
+                        option.textContent = `${voice.display_name} (${voice.gender})`;
+                        voiceSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading voices:', error);
+                voiceSelect.innerHTML = '<option value="">Default</option>';
+            }
+        }
+
+        function updateStatus(message, type = '') {
+            const status = document.getElementById('recordStatus');
+            status.textContent = message;
+            status.className = 'status ' + type;
+        }
+
+        function playAudioResponse(base64Audio, format) {
+            const audio = new Audio(`data:audio/${format};base64,${base64Audio}`);
+            audio.play();
+        }
+
+        let wakeWordPollInterval = null;
+
+        function startWakeWordPolling() {
+            // Poll for wake word detection status
+            wakeWordPollInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`${API_BASE}/voice/wake/status`);
+                    const data = await response.json();
+                    
+                    if (!data.is_active && wakeWordActive) {
+                        // Wake word was detected and processed
+                        updateStatus('Wake word detected! Processing command...', 'success');
+                        
+                        // The backend should automatically start listening for the command
+                        // We might want to show visual feedback here
+                    }
+                } catch (error) {
+                    console.error('Error polling wake word status:', error);
+                }
+            }, 1000);
+        }
+
+        // Initialize voices on load
+        window.onload = () => {
+            updateVoices();
+        };
+    </script>
+</body>
+</html>
