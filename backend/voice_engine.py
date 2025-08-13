@@ -22,6 +22,10 @@ from gtts import gTTS
 import pyttsx3
 import edge_tts
 from transformers import pipeline
+from audio_processor import (
+    AudioStreamProcessor, VoiceActivityDetector, AudioFeedbackGenerator,
+    AudioConfig, AudioMetrics, StreamingAudioProcessor
+)
 
 
 class AudioFormat(Enum):
@@ -564,9 +568,25 @@ class VoiceAssistant:
         self.wake_word_detector = WakeWordDetector(self.config)
         self.command_processor = VoiceCommandProcessor(self.stt, self.tts, self.config)
         
+        # Initialize audio processing
+        audio_config = AudioConfig(
+            sample_rate=self.config.sample_rate,
+            chunk_size=self.config.chunk_size,
+            noise_reduction=True,
+            vad_enabled=True,
+            vad_threshold=self.config.noise_threshold / 32768.0  # Convert to float32 range
+        )
+        self.audio_processor = AudioStreamProcessor(audio_config)
+        self.vad = VoiceActivityDetector(audio_config)
+        self.audio_feedback = AudioFeedbackGenerator(self.config.sample_rate)
+        
         # State
         self.is_active = False
         self.command_callback = None
+        
+        # Set up VAD callbacks
+        self.vad.on_speech_start = self._on_speech_detected
+        self.vad.on_speech_end = self._on_speech_end
         
     def set_command_callback(self, callback):
         """Set callback for processing commands"""
@@ -576,6 +596,15 @@ class VoiceAssistant:
         """Start the voice assistant"""
         self.is_active = True
         
+        # Start audio processor
+        self.audio_processor.start()
+        
+        # Calibrate noise
+        print("Calibrating noise level...")
+        self._play_feedback("beep")
+        self.audio_processor.calibrate_noise(duration=1.0)
+        self._play_feedback("success")
+        
         # Start wake word detection
         self.wake_word_detector.start_listening(self._on_wake_word_detected)
         
@@ -584,6 +613,7 @@ class VoiceAssistant:
     def stop(self):
         """Stop the voice assistant"""
         self.is_active = False
+        self.audio_processor.stop()
         self.wake_word_detector.stop_listening()
         print("Voice assistant stopped.")
         
@@ -626,6 +656,60 @@ class VoiceAssistant:
     def transcribe_audio_file(self, file_path: str) -> TranscriptionResult:
         """Transcribe an audio file"""
         return self.stt.transcribe(file_path)
+    
+    def _on_speech_detected(self):
+        """Called when speech is detected"""
+        print("Speech detected...")
+        self._play_feedback("listening")
+        
+    def _on_speech_end(self, speech_audio: np.ndarray):
+        """Called when speech ends"""
+        print("Processing speech...")
+        self._play_feedback("processing")
+        
+        # Process the speech
+        if self.command_callback:
+            # Transcribe
+            result = self.stt.transcribe(speech_audio)
+            
+            # Process command
+            asyncio.create_task(self._process_speech_command(result.text))
+            
+    async def _process_speech_command(self, text: str):
+        """Process transcribed speech command"""
+        if self.command_callback:
+            response = await self.command_callback(text)
+            await self.speak(response)
+            self._play_feedback("success")
+            
+    def _play_feedback(self, feedback_type: str):
+        """Play audio feedback"""
+        feedback_audio = self.audio_feedback.get_feedback(feedback_type)
+        if feedback_audio is not None:
+            # Convert to int16 for playback
+            audio_int16 = (feedback_audio * 32767).astype(np.int16)
+            
+            # Play using PyAudio
+            p = pyaudio.PyAudio()
+            stream = p.open(
+                format=pyaudio.paInt16,
+                channels=1,
+                rate=self.config.sample_rate,
+                output=True
+            )
+            
+            stream.write(audio_int16.tobytes())
+            stream.stop_stream()
+            stream.close()
+            p.terminate()
+            
+    def calibrate_noise(self, duration: float = 1.0):
+        """Calibrate noise profile"""
+        self._play_feedback("beep")
+        print(f"Calibrating noise for {duration} seconds. Please remain quiet...")
+        self.audio_processor.calibrate_noise(duration)
+        self._play_feedback("double_beep")
+        print("Noise calibration complete.")
 
 
 # Example usage and testing

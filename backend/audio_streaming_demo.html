@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Audio Processing Demo</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        .container {
+            background: #2a2a2a;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+        h1 {
+            color: #4fc3f7;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .audio-visualizer {
+            background: #1a1a1a;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            height: 200px;
+            position: relative;
+            overflow: hidden;
+        }
+        .waveform {
+            width: 100%;
+            height: 100%;
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .metric-card {
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #333;
+        }
+        .metric-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4fc3f7;
+            margin: 5px 0;
+        }
+        .metric-label {
+            font-size: 12px;
+            color: #888;
+            text-transform: uppercase;
+        }
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 20px 0;
+            justify-content: center;
+        }
+        button {
+            background: #4fc3f7;
+            color: #1a1a1a;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: #29b6f6;
+            transform: translateY(-2px);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        button:disabled {
+            background: #555;
+            color: #999;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 8px;
+            background: #1a1a1a;
+            border-left: 4px solid #4fc3f7;
+        }
+        .vad-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #555;
+            margin-left: 10px;
+            transition: all 0.3s;
+        }
+        .vad-indicator.speaking {
+            background: #4caf50;
+            box-shadow: 0 0 10px #4caf50;
+        }
+        .noise-indicator {
+            background: #ff9800;
+        }
+        .audio-controls {
+            background: #1a1a1a;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        .slider-container {
+            margin: 15px 0;
+        }
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            background: #555;
+            border-radius: 3px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #4fc3f7;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .feedback-buttons {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .feedback-button {
+            background: #333;
+            border: 1px solid #555;
+            color: #e0e0e0;
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .feedback-button:hover {
+            background: #444;
+            border-color: #4fc3f7;
+        }
+        .log-container {
+            background: #1a1a1a;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            margin: 2px 0;
+            padding: 2px 0;
+        }
+        .log-info { color: #4fc3f7; }
+        .log-success { color: #4caf50; }
+        .log-warning { color: #ff9800; }
+        .log-error { color: #f44336; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎙️ Advanced Audio Processing Demo</h1>
+        
+        <!-- Audio Visualizer -->
+        <div class="audio-visualizer">
+            <canvas id="waveform" class="waveform"></canvas>
+        </div>
+        
+        <!-- Real-time Metrics -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-label">RMS Level</div>
+                <div class="metric-value" id="rmsLevel">0.00</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Peak Level</div>
+                <div class="metric-value" id="peakLevel">0.00</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">SNR (dB)</div>
+                <div class="metric-value" id="snr">0</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">VAD State</div>
+                <div class="metric-value" id="vadState">
+                    Silence <span class="vad-indicator" id="vadIndicator"></span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Main Controls -->
+        <div class="controls">
+            <button id="startBtn" onclick="toggleStreaming()">
+                🎤 Start Streaming
+            </button>
+            <button id="calibrateBtn" onclick="calibrateNoise()">
+                🔧 Calibrate Noise
+            </button>
+            <button id="testFeedbackBtn" onclick="testFeedback()">
+                🔊 Test Feedback
+            </button>
+            <button onclick="connectWebSocket()">
+                🔌 Connect WebSocket
+            </button>
+        </div>
+        
+        <!-- Audio Processing Controls -->
+        <div class="audio-controls">
+            <h3>Audio Processing Settings</h3>
+            
+            <div class="slider-container">
+                <div class="slider-label">
+                    <span>Noise Reduction</span>
+                    <span id="noiseReductionValue">On</span>
+                </div>
+                <input type="checkbox" id="noiseReduction" checked onchange="updateProcessingSettings()">
+            </div>
+            
+            <div class="slider-container">
+                <div class="slider-label">
+                    <span>VAD Threshold</span>
+                    <span id="vadThresholdValue">0.01</span>
+                </div>
+                <input type="range" id="vadThreshold" min="0" max="0.1" step="0.005" value="0.01" 
+                       oninput="updateVADThreshold(this.value)">
+            </div>
+            
+            <div class="slider-container">
+                <div class="slider-label">
+                    <span>Audio Gain</span>
+                    <span id="gainValue">1.0x</span>
+                </div>
+                <input type="range" id="audioGain" min="0.5" max="3" step="0.1" value="1" 
+                       oninput="updateGain(this.value)">
+            </div>
+        </div>
+        
+        <!-- Feedback Sound Test -->
+        <div class="audio-controls">
+            <h3>Audio Feedback Sounds</h3>
+            <div class="feedback-buttons">
+                <button class="feedback-button" onclick="playFeedback('beep')">Beep</button>
+                <button class="feedback-button" onclick="playFeedback('double_beep')">Double Beep</button>
+                <button class="feedback-button" onclick="playFeedback('success')">Success</button>
+                <button class="feedback-button" onclick="playFeedback('error')">Error</button>
+                <button class="feedback-button" onclick="playFeedback('listening')">Listening</button>
+                <button class="feedback-button" onclick="playFeedback('processing')">Processing</button>
+            </div>
+        </div>
+        
+        <!-- Status Display -->
+        <div class="status" id="status">
+            Ready to start audio streaming
+        </div>
+        
+        <!-- Debug Log -->
+        <div class="log-container" id="logContainer">
+            <div class="log-entry log-info">Audio processing demo initialized</div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        let audioContext = null;
+        let mediaStream = null;
+        let audioProcessor = null;
+        let ws = null;
+        let isStreaming = false;
+        let audioGain = 1.0;
+        
+        // Initialize audio context
+        function initAudioContext() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                sampleRate: 16000
+            });
+            log('Audio context initialized', 'info');
+        }
+        
+        // Connect to WebSocket
+        async function connectWebSocket() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                log('WebSocket already connected', 'warning');
+                return;
+            }
+            
+            ws = new WebSocket('ws://localhost:8765');
+            
+            ws.onopen = () => {
+                log('WebSocket connected', 'success');
+                updateStatus('Connected to audio processing server');
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleWebSocketMessage(data);
+            };
+            
+            ws.onerror = (error) => {
+                log('WebSocket error: ' + error, 'error');
+                updateStatus('WebSocket connection error', 'error');
+            };
+            
+            ws.onclose = () => {
+                log('WebSocket disconnected', 'warning');
+                updateStatus('Disconnected from server');
+            };
+        }
+        
+        // Handle WebSocket messages
+        function handleWebSocketMessage(data) {
+            switch (data.type) {
+                case 'metrics':
+                    updateMetrics(data.data);
+                    break;
+                case 'audio':
+                    if (data.audio_type === 'feedback') {
+                        playReceivedAudio(data.data, data.sample_rate);
+                    }
+                    break;
+                case 'speech_segment':
+                    log(`Speech segment detected: ${data.duration.toFixed(2)}s`, 'success');
+                    break;
+                case 'calibration_complete':
+                    log('Noise calibration complete', 'success');
+                    updateStatus('Noise calibration complete');
+                    break;
+                default:
+                    log(`Received: ${data.type}`, 'info');
+            }
+        }
+        
+        // Update real-time metrics
+        function updateMetrics(metrics) {
+            document.getElementById('rmsLevel').textContent = metrics.rms.toFixed(3);
+            document.getElementById('peakLevel').textContent = metrics.peak.toFixed(3);
+            document.getElementById('snr').textContent = metrics.snr.toFixed(1);
+            
+            const vadIndicator = document.getElementById('vadIndicator');
+            const vadState = document.getElementById('vadState');
+            
+            if (metrics.is_speech) {
+                vadIndicator.classList.add('speaking');
+                vadState.innerHTML = 'Speaking <span class="vad-indicator speaking" id="vadIndicator"></span>';
+            } else {
+                vadIndicator.classList.remove('speaking');
+                vadState.innerHTML = metrics.vad_state + ' <span class="vad-indicator" id="vadIndicator"></span>';
+            }
+        }
+        
+        // Toggle audio streaming
+        async function toggleStreaming() {
+            if (!isStreaming) {
+                await startStreaming();
+            } else {
+                stopStreaming();
+            }
+        }
+        
+        // Start audio streaming
+        async function startStreaming() {
+            try {
+                if (!audioContext) {
+                    initAudioContext();
+                }
+                
+                // Get microphone access
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        channelCount: 1,
+                        sampleRate: 16000,
+                        echoCancellation: true,
+                        noiseSuppression: false, // We'll do our own
+                        autoGainControl: false
+                    }
+                });
+                
+                // Create audio processing pipeline
+                const source = audioContext.createMediaStreamSource(mediaStream);
+                audioProcessor = audioContext.createScriptProcessor(1024, 1, 1);
+                
+                audioProcessor.onaudioprocess = (e) => {
+                    if (isStreaming && ws && ws.readyState === WebSocket.OPEN) {
+                        const inputData = e.inputBuffer.getChannelData(0);
+                        
+                        // Apply gain
+                        const processedData = new Float32Array(inputData.length);
+                        for (let i = 0; i < inputData.length; i++) {
+                            processedData[i] = inputData[i] * audioGain;
+                        }
+                        
+                        // Convert to int16 and send
+                        const int16Data = new Int16Array(processedData.length);
+                        for (let i = 0; i < processedData.length; i++) {
+                            int16Data[i] = Math.max(-32768, Math.min(32767, processedData[i] * 32768));
+                        }
+                        
+                        ws.send(int16Data.buffer);
+                        
+                        // Update waveform
+                        updateWaveform(processedData);
+                    }
+                };
+                
+                source.connect(audioProcessor);
+                audioProcessor.connect(audioContext.destination);
+                
+                isStreaming = true;
+                document.getElementById('startBtn').textContent = '⏹️ Stop Streaming';
+                updateStatus('Audio streaming started');
+                log('Started audio streaming', 'success');
+                
+                // Initialize visualizer
+                initVisualizer();
+                
+            } catch (error) {
+                log('Error starting stream: ' + error, 'error');
+                updateStatus('Failed to start audio streaming', 'error');
+            }
+        }
+        
+        // Stop audio streaming
+        function stopStreaming() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+            }
+            
+            if (audioProcessor) {
+                audioProcessor.disconnect();
+            }
+            
+            isStreaming = false;
+            document.getElementById('startBtn').textContent = '🎤 Start Streaming';
+            updateStatus('Audio streaming stopped');
+            log('Stopped audio streaming', 'info');
+        }
+        
+        // Initialize waveform visualizer
+        function initVisualizer() {
+            const canvas = document.getElementById('waveform');
+            const ctx = canvas.getContext('2d');
+            
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        
+        // Update waveform display
+        function updateWaveform(data) {
+            const canvas = document.getElementById('waveform');
+            const ctx = canvas.getContext('2d');
+            
+            // Shift existing image left
+            const imageData = ctx.getImageData(1, 0, canvas.width - 1, canvas.height);
+            ctx.putImageData(imageData, 0, 0);
+            
+            // Clear rightmost column
+            ctx.fillStyle = '#1a1a1a';
+            ctx.fillRect(canvas.width - 1, 0, 1, canvas.height);
+            
+            // Calculate average amplitude
+            let sum = 0;
+            for (let i = 0; i < data.length; i++) {
+                sum += Math.abs(data[i]);
+            }
+            const average = sum / data.length;
+            
+            // Draw new sample
+            const height = average * canvas.height * 2;
+            const y = (canvas.height - height) / 2;
+            
+            ctx.fillStyle = '#4fc3f7';
+            ctx.fillRect(canvas.width - 1, y, 1, height);
+        }
+        
+        // Calibrate noise
+        async function calibrateNoise() {
+            try {
+                updateStatus('Calibrating noise... Please remain quiet');
+                log('Starting noise calibration', 'info');
+                
+                const response = await fetch(`${API_BASE}/voice/audio/calibrate`, {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    updateStatus('Noise calibration complete');
+                    log('Noise calibration successful', 'success');
+                }
+            } catch (error) {
+                log('Calibration error: ' + error, 'error');
+                updateStatus('Calibration failed', 'error');
+            }
+        }
+        
+        // Test feedback sounds
+        async function testFeedback() {
+            try {
+                updateStatus('Playing feedback sounds...');
+                log('Testing feedback sounds', 'info');
+                
+                const response = await fetch(`${API_BASE}/voice/audio/feedback`, {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    updateStatus('Feedback test complete');
+                    log('Played all feedback sounds', 'success');
+                }
+            } catch (error) {
+                log('Feedback test error: ' + error, 'error');
+                updateStatus('Feedback test failed', 'error');
+            }
+        }
+        
+        // Play specific feedback sound
+        function playFeedback(type) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'command',
+                    command: 'play_feedback',
+                    feedback_type: type
+                }));
+                log(`Requested feedback: ${type}`, 'info');
+            }
+        }
+        
+        // Play received audio
+        function playReceivedAudio(base64Data, sampleRate) {
+            const audioData = base64ToArrayBuffer(base64Data);
+            const float32Data = new Float32Array(audioData.byteLength / 2);
+            
+            const dataView = new DataView(audioData);
+            for (let i = 0; i < float32Data.length; i++) {
+                float32Data[i] = dataView.getInt16(i * 2, true) / 32768;
+            }
+            
+            const buffer = audioContext.createBuffer(1, float32Data.length, sampleRate);
+            buffer.getChannelData(0).set(float32Data);
+            
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioContext.destination);
+            source.start();
+        }
+        
+        // Update processing settings
+        function updateProcessingSettings() {
+            const noiseReduction = document.getElementById('noiseReduction').checked;
+            
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'config',
+                    config: {
+                        noise_reduction: noiseReduction
+                    }
+                }));
+            }
+            
+            document.getElementById('noiseReductionValue').textContent = noiseReduction ? 'On' : 'Off';
+            log(`Noise reduction: ${noiseReduction ? 'enabled' : 'disabled'}`, 'info');
+        }
+        
+        // Update VAD threshold
+        function updateVADThreshold(value) {
+            document.getElementById('vadThresholdValue').textContent = value;
+            
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'config',
+                    config: {
+                        vad_threshold: parseFloat(value)
+                    }
+                }));
+            }
+        }
+        
+        // Update audio gain
+        function updateGain(value) {
+            audioGain = parseFloat(value);
+            document.getElementById('gainValue').textContent = value + 'x';
+        }
+        
+        // Utility functions
+        function base64ToArrayBuffer(base64) {
+            const binaryString = window.atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+        
+        function updateStatus(message, type = '') {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status ' + type;
+        }
+        
+        function log(message, type = 'info') {
+            const logContainer = document.getElementById('logContainer');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+        
+        // Initialize
+        window.onload = () => {
+            initAudioContext();
+            log('Audio processing demo ready', 'success');
+        };
+        
+        // Cleanup
+        window.onbeforeunload = () => {
+            if (ws) {
+                ws.close();
+            }
+            if (isStreaming) {
+                stopStreaming();
+            }
+        };
+    </script>
+</body>
+</html>

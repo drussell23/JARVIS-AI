@@ -22,3 +22,17 @@ edge-tts==6.1.9
 websockets==12.0
 numpy==1.24.3
 scipy==1.11.4
+
+# Audio processing dependencies
+noisereduce==3.0.0
+librosa==0.10.1
+numba==0.58.1  # Required by librosa
+audioread==3.0.1
+resampy==0.4.2
+
+# Automation dependencies
+icalendar==5.0.11
+pytz==2023.3
+apscheduler==3.10.4
+aiohttp==3.9.1
+requests==2.31.0

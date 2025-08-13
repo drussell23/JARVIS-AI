@@ -8,6 +8,7 @@ import asyncio
 import json
 from typing import Optional
 from voice_api import VoiceAPI
+from automation_api import AutomationAPI
 
 # Define request models
 class Message(BaseModel):
@@ -181,21 +182,27 @@ app.include_router(chatbot_api.router)
 voice_api = VoiceAPI(chatbot_api.bot)
 app.include_router(voice_api.router, prefix="/voice")
 
+# Include Automation API routes
+automation_api = AutomationAPI(chatbot_api.bot.automation_engine)
+app.include_router(automation_api.router, prefix="/automation")
+
 # Update root endpoint
 @app.get("/")
 async def root():
     return {
-        "message": "AI-Powered Chatbot with Voice & NLP Capabilities",
-        "version": "3.0",
+        "message": "AI-Powered Chatbot with Voice, NLP & Automation",
+        "version": "4.0",
         "features": {
             "chat": "Advanced conversational AI with NLP",
             "voice": "Speech recognition and synthesis",
-            "nlp": "Intent recognition, entity extraction, sentiment analysis"
+            "nlp": "Intent recognition, entity extraction, sentiment analysis",
+            "automation": "Calendar, weather, information services, task automation"
         },
         "api_docs": "/docs",
         "endpoints": {
             "chat": "/chat/*",
-            "voice": "/voice/*"
+            "voice": "/voice/*",
+            "automation": "/automation/*"
         }
     }
 

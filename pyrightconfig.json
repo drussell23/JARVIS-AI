@@ -1,0 +1,6 @@
+{
+  "venvPath": "./backend",
+  "venv": "venv",
+  "exclude": ["**/venv/**", "**/.venv/**", "**/__pycache__/**"],
+  "typeCheckingMode": "basic"
+}
