@@ -75,6 +75,12 @@ sudo apt-get install portaudio19-dev python3-pyaudio ffmpeg
 - Download PyAudio wheel from [here](https://www.lfd.uci.edu/~gohlke/pythonlibs/#pyaudio)
 - Install FFmpeg from [here](https://ffmpeg.org/download.html)
 
+### Editor Setup (VS Code / Pyright)
+
+- Select interpreter: Command Palette → "Python: Select Interpreter" → choose `backend/venv`.
+- The repo includes a root `pyrightconfig.json` pointing to `./backend/venv`.
+- If import squiggles persist: Command Palette → "Based Pyright: Restart Server".
+
 ## Usage
 
 ### Starting the Server
@@ -103,14 +109,54 @@ Open `voice_demo.html` in your browser for a complete voice interaction demo.
 - `POST /chat` - Send message and get response
 - `POST /chat/stream` - Streaming responses
 - `GET /chat/history` - Get conversation history
+- `DELETE /chat/history` - Clear conversation history
+- `POST /chat/config` - Update model and system prompt
 - `POST /chat/analyze` - Analyze text for NLP insights
 - `POST /chat/plan` - Create task plans
 
 ### Voice Endpoints
 - `POST /voice/tts` - Text-to-speech
-- `POST /voice/stt` - Speech-to-text
-- `POST /voice/command` - Process voice command
-- `WebSocket /voice/stream` - Real-time voice streaming
+- `GET /voice/tts/voices` - List available TTS voices
+- `POST /voice/stt` - Speech-to-text (base64 audio)
+- `POST /voice/stt/file` - Speech-to-text (file upload)
+- `POST /voice/voice/command` - Process voice command
+- `POST /voice/voice/config` - Update voice config
+- `GET /voice/voice/config` - Get voice config
+- `POST /voice/voice/wake/start` - Start wake word detection
+- `POST /voice/voice/wake/stop` - Stop wake word detection
+- `GET /voice/voice/wake/status` - Wake word status
+- `POST /voice/voice/audio/calibrate` - Calibrate noise profile
+- `GET /voice/voice/audio/metrics` - Audio processing metrics
+- `POST /voice/voice/audio/feedback` - Play feedback tones
+- `WebSocket /voice/voice/stream` - Real-time voice streaming
+
+Note: The voice router is mounted at `/voice`, and some internal routes are also prefixed with `/voice`, resulting in paths like `/voice/voice/...`.
+
+### Automation Endpoints
+- `POST /automation/calendar/events` - Create calendar event
+- `POST /automation/calendar/events/natural` - Natural language event
+- `GET /automation/calendar/events` - List events
+- `DELETE /automation/calendar/events/{event_id}` - Delete event
+- `GET /automation/calendar/today` - Today’s events
+- `GET /automation/calendar/upcoming` - Upcoming events
+- `GET /automation/calendar/export` - Export iCal
+- `POST /automation/weather/current` - Current weather
+- `POST /automation/weather/forecast` - Forecast
+- `POST /automation/info/query` - Information query
+- `GET /automation/info/news` - News
+- `GET /automation/info/stock/{symbol}` - Stock info
+- `GET /automation/info/crypto/{symbol}` - Crypto info
+- `GET /automation/home/devices` - List devices
+- `POST /automation/home/devices/control` - Control device(s)
+- `POST /automation/home/scenes` - Create scene
+- `POST /automation/home/scenes/{scene_name}` - Activate scene
+- `POST /automation/tasks` - Create task
+- `GET /automation/tasks` - List tasks
+- `GET /automation/tasks/{task_id}` - Get task
+- `POST /automation/tasks/{task_id}/execute` - Execute task
+- `POST /automation/tasks/{task_id}/cancel` - Cancel task
+- `POST /automation/tasks/plan` - Create task plan
+- `POST /automation/command` - Process natural automation command
 
 ## Configuration
 
@@ -199,10 +245,21 @@ If you see import errors, ensure you've activated the virtual environment:
 source venv/bin/activate
 ```
 
+If your editor still shows missing imports:
+- Ensure VS Code is using the `backend/venv` Python interpreter
+- Restart Pyright and/or the Python language server
+- Check that `pyrightconfig.json` exists at repo root and points to `./backend/venv`
+
 ### Audio Issues
 - **macOS**: Grant microphone permissions in System Preferences
 - **Linux**: Add user to `audio` group: `sudo usermod -a -G audio $USER`
 - **Windows**: Run as administrator if microphone access is denied
+
+If PyAudio fails to build on macOS:
+```bash
+brew install portaudio
+pip install pyaudio
+```
 
 ### Model Download Issues
 Some models require authentication:
