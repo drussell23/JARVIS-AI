@@ -1,0 +1,41 @@
+.App {
+  max-width: 600px;
+  margin: 2rem auto;
+  font-family: Arial, sans-serif;
+  padding: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}
+
+.chat-window {
+  height: 400px;
+  overflow-y: auto;
+  padding: 1rem;
+  background: #f9f9f9;
+  margin-bottom: 1rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.chat-entry {
+  margin-bottom: 1rem;
+}
+
+.chat-entry.user {
+  text-align: right;
+}
+
+.chat-input {
+  display: flex;
+}
+
+.chat-input input {
+  flex: 1;
+  padding: 0.5rem;
+  font-size: 1rem;
+}
+
+.chat-input button {
+  padding: 0.5rem 1rem;
+  font-size: 1rem;
+}
