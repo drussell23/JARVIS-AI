@@ -45,3 +45,10 @@ tiktoken==0.5.2
 scikit-learn==1.3.2
 nltk==3.8.1
 aiofiles==23.2.1
+
+# Model training dependencies
+wandb==0.16.2
+tensorboard==2.15.1
+datasets==2.16.1
+evaluate==0.4.1
+rouge-score==0.1.2

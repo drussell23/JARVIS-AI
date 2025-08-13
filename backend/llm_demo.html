@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Custom LLM Development Studio</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a0f1c 0%, #1a1f2e 50%, #2a2f3e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #00d4ff;
+            font-size: 2.5em;
+            margin-bottom: 30px;
+            text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 2px solid rgba(0, 212, 255, 0.3);
+            padding-bottom: 10px;
+        }
+        
+        .tab {
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 8px 8px 0 0;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .tab:hover {
+            background: rgba(0, 212, 255, 0.1);
+        }
+        
+        .tab.active {
+            background: rgba(0, 212, 255, 0.2);
+            border-color: #00d4ff;
+            border-bottom: 2px solid #0a0f1c;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 15px;
+            padding: 25px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 212, 255, 0.3);
+            border-color: rgba(0, 212, 255, 0.5);
+        }
+        
+        .card h2 {
+            color: #00d4ff;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .icon {
+            font-size: 1.5em;
+        }
+        
+        input, select, textarea {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 8px;
+            color: #e0e0e0;
+            font-size: 14px;
+            font-family: inherit;
+            transition: all 0.3s;
+        }
+        
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #00d4ff;
+            box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+        }
+        
+        button {
+            background: linear-gradient(45deg, #00a8cc, #00d4ff);
+            color: #000;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s;
+            margin: 5px;
+        }
+        
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(0, 212, 255, 0.4);
+        }
+        
+        button:active {
+            transform: scale(0.98);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .result {
+            background: rgba(0, 212, 255, 0.1);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00a8cc, #00d4ff);
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: #000;
+            font-weight: bold;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin: 5px;
+        }
+        
+        .status-badge.pending {
+            background: rgba(255, 193, 7, 0.2);
+            color: #ffc107;
+            border: 1px solid #ffc107;
+        }
+        
+        .status-badge.running {
+            background: rgba(0, 123, 255, 0.2);
+            color: #007bff;
+            border: 1px solid #007bff;
+        }
+        
+        .status-badge.completed {
+            background: rgba(40, 167, 69, 0.2);
+            color: #28a745;
+            border: 1px solid #28a745;
+        }
+        
+        .status-badge.failed {
+            background: rgba(220, 53, 69, 0.2);
+            color: #dc3545;
+            border: 1px solid #dc3545;
+        }
+        
+        .model-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 10px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .model-info h4 {
+            color: #00d4ff;
+            margin-bottom: 5px;
+        }
+        
+        .model-info p {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .metric-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+        }
+        
+        .metric-value {
+            font-size: 24px;
+            color: #00d4ff;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+        
+        .metric-label {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .form-group {
+            margin: 15px 0;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #00d4ff;
+            font-size: 14px;
+        }
+        
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .slider {
+            flex: 1;
+        }
+        
+        .slider-value {
+            min-width: 60px;
+            text-align: center;
+            background: rgba(0, 212, 255, 0.1);
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        
+        .upload-area {
+            border: 2px dashed rgba(0, 212, 255, 0.5);
+            border-radius: 10px;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 15px 0;
+        }
+        
+        .upload-area:hover {
+            border-color: #00d4ff;
+            background: rgba(0, 212, 255, 0.05);
+        }
+        
+        .upload-area.dragover {
+            border-color: #00d4ff;
+            background: rgba(0, 212, 255, 0.1);
+        }
+        
+        #fileInput {
+            display: none;
+        }
+        
+        .job-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin: 15px 0;
+        }
+        
+        .job-item {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .job-info h4 {
+            color: #00d4ff;
+            margin-bottom: 5px;
+        }
+        
+        .job-info p {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0, 212, 255, 0.3);
+            border-top-color: #00d4ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧠 Custom LLM Development Studio</h1>
+        
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('training')">🎯 Model Training</div>
+            <div class="tab" onclick="switchTab('finetuning')">🔧 Fine-Tuning</div>
+            <div class="tab" onclick="switchTab('evaluation')">📊 Evaluation</div>
+            <div class="tab" onclick="switchTab('domain')">📚 Domain Knowledge</div>
+            <div class="tab" onclick="switchTab('models')">🤖 Model Library</div>
+        </div>
+        
+        <!-- Training Tab -->
+        <div id="training" class="tab-content active">
+            <div class="grid">
+                <div class="card">
+                    <h2><span class="icon">🚀</span> Start New Training</h2>
+                    
+                    <div class="form-group">
+                        <label>Model Size</label>
+                        <select id="modelSize">
+                            <option value="small">Small (124M parameters)</option>
+                            <option value="base" selected>Base (355M parameters)</option>
+                            <option value="large">Large (774M parameters)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Number of Epochs</label>
+                        <div class="slider-container">
+                            <input type="range" id="numEpochs" class="slider" min="1" max="10" value="3">
+                            <span class="slider-value" id="numEpochsValue">3</span>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Batch Size</label>
+                        <div class="slider-container">
+                            <input type="range" id="batchSize" class="slider" min="1" max="32" value="8" step="1">
+                            <span class="slider-value" id="batchSizeValue">8</span>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Learning Rate</label>
+                        <input type="number" id="learningRate" value="0.00005" step="0.00001" min="0.000001" max="0.001">
+                    </div>
+                    
+                    <div class="form-group">
+                        <input type="checkbox" id="curriculumLearning" checked>
+                        <label for="curriculumLearning" style="display: inline;">Use Curriculum Learning</label>
+                    </div>
+                    
+                    <div class="form-group">
+                        <input type="checkbox" id="dataAugmentation" checked>
+                        <label for="dataAugmentation" style="display: inline;">Use Data Augmentation</label>
+                    </div>
+                    
+                    <button onclick="startTraining()">Start Training</button>
+                    
+                    <div class="result" id="trainingResult"></div>
+                </div>
+                
+                <div class="card">
+                    <h2><span class="icon">📊</span> Training Jobs</h2>
+                    
+                    <button onclick="refreshJobs()">Refresh</button>
+                    
+                    <div class="job-list" id="jobList"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Fine-Tuning Tab -->
+        <div id="finetuning" class="tab-content">
+            <div class="grid">
+                <div class="card">
+                    <h2><span class="icon">🎨</span> Fine-Tune Model</h2>
+                    
+                    <div class="form-group">
+                        <label>Base Model</label>
+                        <select id="baseModel">
+                            <option value="gpt2">GPT-2</option>
+                            <option value="./models/custom_chatbot">Custom Trained Model</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Domain (Optional)</label>
+                        <select id="fineTuneDomain">
+                            <option value="">General</option>
+                            <option value="medical">Medical</option>
+                            <option value="technical">Technical Support</option>
+                            <option value="customer_service">Customer Service</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Fine-Tuning Strategy</label>
+                        <div>
+                            <input type="checkbox" id="useLora" checked>
+                            <label for="useLora" style="display: inline;">Use LoRA (Efficient)</label>
+                        </div>
+                        <div>
+                            <input type="checkbox" id="useAdapters" checked>
+                            <label for="useAdapters" style="display: inline;">Use Adapters</label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>LoRA Rank</label>
+                        <div class="slider-container">
+                            <input type="range" id="loraRank" class="slider" min="1" max="32" value="8">
+                            <span class="slider-value" id="loraRankValue">8</span>
+                        </div>
+                    </div>
+                    
+                    <button onclick="startFineTuning()">Start Fine-Tuning</button>
+                    
+                    <div class="result" id="fineTuneResult"></div>
+                </div>
+                
+                <div class="card">
+                    <h2><span class="icon">📁</span> Upload Training Data</h2>
+                    
+                    <div class="upload-area" id="uploadArea">
+                        <p>📤 Click or drag file here to upload</p>
+                        <p style="font-size: 12px; margin-top: 10px;">Supported: .jsonl format</p>
+                    </div>
+                    <input type="file" id="fileInput" accept=".jsonl,.json">
+                    
+                    <button onclick="generateSyntheticData()">Generate Synthetic Data</button>
+                    
+                    <div class="result" id="uploadResult"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Evaluation Tab -->
+        <div id="evaluation" class="tab-content">
+            <div class="card">
+                <h2><span class="icon">🔬</span> Model Evaluation</h2>
+                
+                <div class="form-group">
+                    <label>Model to Evaluate</label>
+                    <select id="evalModel">
+                        <option value="">Select a model...</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Evaluation Dataset</label>
+                    <input type="text" id="evalDataPath" placeholder="./data/eval.jsonl" value="./data/eval.jsonl">
+                </div>
+                
+                <div class="form-group">
+                    <input type="checkbox" id="computeGenMetrics" checked>
+                    <label for="computeGenMetrics" style="display: inline;">Compute Generation Metrics</label>
+                </div>
+                
+                <button onclick="evaluateModel()">Run Evaluation</button>
+                
+                <div class="metric-grid" id="evaluationMetrics"></div>
+                
+                <div class="result" id="evaluationResult"></div>
+            </div>
+        </div>
+        
+        <!-- Domain Knowledge Tab -->
+        <div id="domain" class="tab-content">
+            <div class="grid">
+                <div class="card">
+                    <h2><span class="icon">📖</span> Add Domain Knowledge</h2>
+                    
+                    <div class="form-group">
+                        <label>Domain Name</label>
+                        <input type="text" id="domainName" placeholder="e.g., medical, technical">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Facts (one per line)</label>
+                        <textarea id="domainFacts" placeholder="Enter domain facts..."></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Examples (JSON format)</label>
+                        <textarea id="domainExamples" placeholder='[{"input": "...", "response": "...", "intent": "..."}]'></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Terminology (JSON format)</label>
+                        <textarea id="domainTerminology" placeholder='{"term1": "definition1", "term2": "definition2"}'></textarea>
+                    </div>
+                    
+                    <button onclick="addDomainKnowledge()">Add Domain Knowledge</button>
+                    
+                    <div class="result" id="domainResult"></div>
+                </div>
+                
+                <div class="card">
+                    <h2><span class="icon">📚</span> Available Domains</h2>
+                    
+                    <button onclick="loadDomains()">Refresh</button>
+                    
+                    <div id="domainList"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Models Tab -->
+        <div id="models" class="tab-content">
+            <div class="card">
+                <h2><span class="icon">🤖</span> Model Library</h2>
+                
+                <button onclick="refreshModels()">Refresh</button>
+                
+                <div id="modelLibrary"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8001/training';
+        let activeJobs = {};
+        
+        // Tab switching
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Update content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(tabName).classList.add('active');
+            
+            // Load data for the tab
+            if (tabName === 'models') {
+                refreshModels();
+            } else if (tabName === 'domain') {
+                loadDomains();
+            } else if (tabName === 'evaluation') {
+                loadEvalModels();
+            }
+        }
+        
+        // Slider updates
+        document.getElementById('numEpochs').addEventListener('input', (e) => {
+            document.getElementById('numEpochsValue').textContent = e.target.value;
+        });
+        
+        document.getElementById('batchSize').addEventListener('input', (e) => {
+            document.getElementById('batchSizeValue').textContent = e.target.value;
+        });
+        
+        document.getElementById('loraRank').addEventListener('input', (e) => {
+            document.getElementById('loraRankValue').textContent = e.target.value;
+        });
+        
+        // File upload
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        
+        uploadArea.addEventListener('click', () => fileInput.click());
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            const file = e.dataTransfer.files[0];
+            if (file) {
+                uploadFile(file);
+            }
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                uploadFile(file);
+            }
+        });
+        
+        // Training functions
+        async function startTraining() {
+            const config = {
+                model_size: document.getElementById('modelSize').value,
+                num_epochs: parseInt(document.getElementById('numEpochs').value),
+                batch_size: parseInt(document.getElementById('batchSize').value),
+                learning_rate: parseFloat(document.getElementById('learningRate').value),
+                use_curriculum_learning: document.getElementById('curriculumLearning').checked,
+                use_data_augmentation: document.getElementById('dataAugmentation').checked
+            };
+            
+            try {
+                updateResult('trainingResult', 'Starting training...');
+                
+                const response = await fetch(`${API_BASE}/train`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(config)
+                });
+                
+                const data = await response.json();
+                activeJobs[data.job_id] = data;
+                
+                updateResult('trainingResult', `Training job started: ${data.job_id}`);
+                refreshJobs();
+                
+                // Start monitoring
+                monitorJob(data.job_id);
+                
+            } catch (error) {
+                updateResult('trainingResult', 'Error: ' + error.message);
+            }
+        }
+        
+        async function monitorJob(jobId) {
+            const interval = setInterval(async () => {
+                try {
+                    const response = await fetch(`${API_BASE}/train/${jobId}/status`);
+                    const status = await response.json();
+                    
+                    activeJobs[jobId] = status;
+                    updateJobDisplay(jobId, status);
+                    
+                    if (status.status === 'completed' || status.status === 'failed') {
+                        clearInterval(interval);
+                        refreshModels();
+                    }
+                } catch (error) {
+                    console.error('Error monitoring job:', error);
+                }
+            }, 2000);
+        }
+        
+        function updateJobDisplay(jobId, status) {
+            const jobElement = document.getElementById(`job-${jobId}`);
+            if (!jobElement) return;
+            
+            const progressBar = jobElement.querySelector('.progress-fill');
+            if (progressBar) {
+                progressBar.style.width = `${status.progress * 100}%`;
+                progressBar.textContent = `${Math.round(status.progress * 100)}%`;
+            }
+            
+            const statusBadge = jobElement.querySelector('.status-badge');
+            if (statusBadge) {
+                statusBadge.className = `status-badge ${status.status}`;
+                statusBadge.textContent = status.status.toUpperCase();
+            }
+            
+            const jobInfo = jobElement.querySelector('.job-info p');
+            if (jobInfo && status.current_loss) {
+                jobInfo.textContent = `Epoch ${status.current_epoch || 0} | Loss: ${status.current_loss.toFixed(4)}`;
+            }
+        }
+        
+        async function refreshJobs() {
+            const jobList = document.getElementById('jobList');
+            jobList.innerHTML = '';
+            
+            for (const [jobId, status] of Object.entries(activeJobs)) {
+                const jobItem = document.createElement('div');
+                jobItem.className = 'job-item';
+                jobItem.id = `job-${jobId}`;
+                
+                jobItem.innerHTML = `
+                    <div class="job-info">
+                        <h4>${jobId}</h4>
+                        <p>${status.message || ''}</p>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${status.progress * 100}%">
+                                ${Math.round(status.progress * 100)}%
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <span class="status-badge ${status.status}">${status.status.toUpperCase()}</span>
+                        ${status.status === 'running' ? '<span class="loading"></span>' : ''}
+                    </div>
+                `;
+                
+                jobList.appendChild(jobItem);
+            }
+        }
+        
+        // Fine-tuning functions
+        async function startFineTuning() {
+            const config = {
+                base_model_path: document.getElementById('baseModel').value,
+                domain: document.getElementById('fineTuneDomain').value || null,
+                use_lora: document.getElementById('useLora').checked,
+                lora_rank: parseInt(document.getElementById('loraRank').value),
+                use_adapters: document.getElementById('useAdapters').checked
+            };
+            
+            try {
+                updateResult('fineTuneResult', 'Starting fine-tuning...');
+                
+                const response = await fetch(`${API_BASE}/fine-tune`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(config)
+                });
+                
+                const data = await response.json();
+                activeJobs[data.job_id] = data;
+                
+                updateResult('fineTuneResult', `Fine-tuning job started: ${data.job_id}`);
+                monitorJob(data.job_id);
+                
+            } catch (error) {
+                updateResult('fineTuneResult', 'Error: ' + error.message);
+            }
+        }
+        
+        async function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                updateResult('uploadResult', 'Uploading file...');
+                
+                const response = await fetch(`${API_BASE}/data/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                updateResult('uploadResult', JSON.stringify(data, null, 2));
+                
+            } catch (error) {
+                updateResult('uploadResult', 'Error: ' + error.message);
+            }
+        }
+        
+        async function generateSyntheticData() {
+            try {
+                updateResult('uploadResult', 'Generating synthetic data...');
+                
+                const response = await fetch(`${API_BASE}/data/generate?num_examples=1000`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                updateResult('uploadResult', JSON.stringify(data, null, 2));
+                
+            } catch (error) {
+                updateResult('uploadResult', 'Error: ' + error.message);
+            }
+        }
+        
+        // Evaluation functions
+        async function loadEvalModels() {
+            const select = document.getElementById('evalModel');
+            select.innerHTML = '<option value="">Select a model...</option>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/models`);
+                const models = await response.json();
+                
+                models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model.path;
+                    option.textContent = model.name;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading models:', error);
+            }
+        }
+        
+        async function evaluateModel() {
+            const config = {
+                model_path: document.getElementById('evalModel').value,
+                eval_data_path: document.getElementById('evalDataPath').value,
+                compute_generation_metrics: document.getElementById('computeGenMetrics').checked
+            };
+            
+            if (!config.model_path) {
+                alert('Please select a model to evaluate');
+                return;
+            }
+            
+            try {
+                updateResult('evaluationResult', 'Running evaluation...');
+                
+                const response = await fetch(`${API_BASE}/evaluate`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(config)
+                });
+                
+                const results = await response.json();
+                
+                // Display metrics
+                displayEvaluationMetrics(results);
+                updateResult('evaluationResult', JSON.stringify(results, null, 2));
+                
+            } catch (error) {
+                updateResult('evaluationResult', 'Error: ' + error.message);
+            }
+        }
+        
+        function displayEvaluationMetrics(results) {
+            const metricsGrid = document.getElementById('evaluationMetrics');
+            metricsGrid.innerHTML = '';
+            
+            const metrics = [
+                {label: 'Perplexity', value: results.perplexity?.toFixed(2) || 'N/A'},
+                {label: 'Loss', value: results.loss?.toFixed(4) || 'N/A'},
+                {label: 'BLEU Score', value: results.bleu_score?.toFixed(3) || 'N/A'},
+                {label: 'ROUGE-1', value: results.rouge_scores?.['rouge-1']?.toFixed(3) || 'N/A'},
+                {label: 'Distinct-1', value: results.distinct_1?.toFixed(3) || 'N/A'},
+                {label: 'Distinct-2', value: results.distinct_2?.toFixed(3) || 'N/A'}
+            ];
+            
+            metrics.forEach(metric => {
+                const card = document.createElement('div');
+                card.className = 'metric-card';
+                card.innerHTML = `
+                    <div class="metric-label">${metric.label}</div>
+                    <div class="metric-value">${metric.value}</div>
+                `;
+                metricsGrid.appendChild(card);
+            });
+        }
+        
+        // Domain knowledge functions
+        async function addDomainKnowledge() {
+            const domainName = document.getElementById('domainName').value;
+            if (!domainName) {
+                alert('Please enter a domain name');
+                return;
+            }
+            
+            const facts = document.getElementById('domainFacts').value.split('\n').filter(f => f.trim());
+            let examples = [];
+            let terminology = {};
+            
+            try {
+                const examplesText = document.getElementById('domainExamples').value;
+                if (examplesText) {
+                    examples = JSON.parse(examplesText);
+                }
+                
+                const terminologyText = document.getElementById('domainTerminology').value;
+                if (terminologyText) {
+                    terminology = JSON.parse(terminologyText);
+                }
+            } catch (error) {
+                alert('Invalid JSON format');
+                return;
+            }
+            
+            const data = {
+                domain: domainName,
+                facts: facts,
+                examples: examples,
+                terminology: terminology,
+                rules: [],
+                constraints: []
+            };
+            
+            try {
+                updateResult('domainResult', 'Adding domain knowledge...');
+                
+                const response = await fetch(`${API_BASE}/domains`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                updateResult('domainResult', JSON.stringify(result, null, 2));
+                
+                // Clear form
+                document.getElementById('domainName').value = '';
+                document.getElementById('domainFacts').value = '';
+                document.getElementById('domainExamples').value = '';
+                document.getElementById('domainTerminology').value = '';
+                
+                loadDomains();
+                
+            } catch (error) {
+                updateResult('domainResult', 'Error: ' + error.message);
+            }
+        }
+        
+        async function loadDomains() {
+            try {
+                const response = await fetch(`${API_BASE}/domains`);
+                const domains = await response.json();
+                
+                const domainList = document.getElementById('domainList');
+                domainList.innerHTML = '';
+                
+                for (const domain of domains) {
+                    const domainCard = document.createElement('div');
+                    domainCard.className = 'model-card';
+                    domainCard.innerHTML = `
+                        <div class="model-info">
+                            <h4>${domain}</h4>
+                            <p>Domain knowledge available</p>
+                        </div>
+                        <button onclick="viewDomain('${domain}')">View Details</button>
+                    `;
+                    domainList.appendChild(domainCard);
+                }
+                
+            } catch (error) {
+                console.error('Error loading domains:', error);
+            }
+        }
+        
+        async function viewDomain(domain) {
+            try {
+                const response = await fetch(`${API_BASE}/domains/${domain}`);
+                const data = await response.json();
+                
+                alert(`Domain: ${domain}\nFacts: ${data.facts_count}\nExamples: ${data.examples?.length || 0}`);
+                
+            } catch (error) {
+                alert('Error loading domain: ' + error.message);
+            }
+        }
+        
+        // Model library functions
+        async function refreshModels() {
+            try {
+                const response = await fetch(`${API_BASE}/models`);
+                const models = await response.json();
+                
+                const library = document.getElementById('modelLibrary');
+                library.innerHTML = '';
+                
+                models.forEach(model => {
+                    const modelCard = document.createElement('div');
+                    modelCard.className = 'model-card';
+                    modelCard.innerHTML = `
+                        <div class="model-info">
+                            <h4>${model.name}</h4>
+                            <p>Type: ${model.type || 'custom'} | Created: ${new Date(model.created).toLocaleDateString()}</p>
+                        </div>
+                        <div>
+                            <button onclick="viewModelInfo('${model.name}')">Info</button>
+                            <button onclick="exportModel('${model.name}')">Export</button>
+                        </div>
+                    `;
+                    library.appendChild(modelCard);
+                });
+                
+                // Also update eval model dropdown
+                loadEvalModels();
+                
+            } catch (error) {
+                console.error('Error loading models:', error);
+            }
+        }
+        
+        async function viewModelInfo(modelName) {
+            try {
+                const response = await fetch(`${API_BASE}/models/${modelName}/info`);
+                const info = await response.json();
+                
+                alert(JSON.stringify(info, null, 2));
+                
+            } catch (error) {
+                alert('Error loading model info: ' + error.message);
+            }
+        }
+        
+        async function exportModel(modelName) {
+            try {
+                const response = await fetch(`${API_BASE}/models/${modelName}/export`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                alert(`Model exported to: ${result.path}`);
+                
+            } catch (error) {
+                alert('Error exporting model: ' + error.message);
+            }
+        }
+        
+        // Utility functions
+        function updateResult(elementId, content) {
+            document.getElementById(elementId).textContent = content;
+        }
+        
+        // Initialize
+        window.onload = () => {
+            refreshJobs();
+            refreshModels();
+            loadDomains();
+        };
+    </script>
+</body>
+</html>
