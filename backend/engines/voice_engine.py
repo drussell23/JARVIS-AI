@@ -22,7 +22,7 @@ from gtts import gTTS
 import pyttsx3
 import edge_tts
 from transformers import pipeline
-from audio_processor import (
+from utils.audio_processor import (
     AudioStreamProcessor, VoiceActivityDetector, AudioFeedbackGenerator,
     AudioConfig, AudioMetrics, StreamingAudioProcessor
 )

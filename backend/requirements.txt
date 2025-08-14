@@ -52,3 +52,8 @@ tensorboard==2.15.1
 datasets==2.16.1
 evaluate==0.4.1
 rouge-score==0.1.2
+
+# Memory management dependencies
+psutil==5.9.8
+objgraph==3.6.1
+pympler==1.0.1

@@ -10,11 +10,11 @@ import shutil
 import torch
 from dataclasses import asdict
 
-from custom_model import CustomChatbotModel, CustomChatbotConfig, ModelBuilder
-from training_pipeline import TrainingConfig, ModelTrainer
-from fine_tuning import FineTuneConfig, FineTuner, DomainSpecificFineTuner
-from evaluation_metrics import ModelEvaluator, EvaluationResult
-from domain_knowledge import DomainKnowledgeBank, DomainKnowledge
+from models.custom_model import CustomChatbotModel, CustomChatbotConfig, ModelBuilder
+from models.training_pipeline import TrainingConfig, ModelTrainer
+from models.fine_tuning import FineTuneConfig, FineTuner, DomainSpecificFineTuner
+from utils.evaluation_metrics import ModelEvaluator, EvaluationResult
+from utils.domain_knowledge import DomainKnowledgeBank, DomainKnowledge
 
 
 class TrainingRequest(BaseModel):
@@ -320,7 +320,7 @@ class TrainingInterface:
             evaluator = ModelEvaluator(tokenizer)
             
             # Load evaluation data
-            from training_pipeline import ConversationDataset
+            from models.training_pipeline import ConversationDataset
             from torch.utils.data import DataLoader
             
             eval_dataset = ConversationDataset(

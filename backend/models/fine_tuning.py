@@ -19,8 +19,8 @@ from tqdm import tqdm
 import logging
 from datetime import datetime
 
-from custom_model import CustomChatbotModel, CustomChatbotConfig
-from domain_knowledge import DomainKnowledgeBank, DomainAdapter
+from models.custom_model import CustomChatbotModel, CustomChatbotConfig
+from utils.domain_knowledge import DomainKnowledgeBank, DomainAdapter
 
 
 @dataclass
@@ -404,7 +404,7 @@ class FineTuner:
             
     def prepare_dataset(self, data_path: str) -> Dataset:
         """Prepare dataset for fine-tuning"""
-        from training_pipeline import ConversationDataset
+        from models.training_pipeline import ConversationDataset
         
         dataset = ConversationDataset(
             data_path,

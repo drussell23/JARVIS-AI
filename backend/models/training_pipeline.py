@@ -24,7 +24,7 @@ import shutil
 from collections import defaultdict
 import random
 
-from custom_model import CustomChatbotModel, CustomChatbotConfig
+from models.custom_model import CustomChatbotModel, CustomChatbotConfig
 
 
 @dataclass
@@ -290,13 +290,13 @@ class ModelTrainer:
     def _create_model(self) -> CustomChatbotModel:
         """Create model based on config"""
         if self.config.model_size == "small":
-            from custom_model import ModelBuilder
+            from models.custom_model import ModelBuilder
             return ModelBuilder.create_small_model()
         elif self.config.model_size == "base":
-            from custom_model import ModelBuilder
+            from models.custom_model import ModelBuilder
             return ModelBuilder.create_base_model()
         elif self.config.model_size == "large":
-            from custom_model import ModelBuilder
+            from models.custom_model import ModelBuilder
             return ModelBuilder.create_large_model()
         else:
             raise ValueError(f"Unknown model size: {self.config.model_size}")

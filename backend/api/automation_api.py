@@ -4,7 +4,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 import uuid
 
-from automation_engine import (
+from engines.automation_engine import (
     AutomationEngine, ScheduledEvent, AutomationTask, 
     TaskStatus, TaskPriority, CalendarManager
 )

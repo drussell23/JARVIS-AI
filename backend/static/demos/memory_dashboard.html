@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JARVIS Memory Management Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #0a0a0a;
+            color: #e0e0e0;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 20px;
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            font-size: 2.5em;
+            font-weight: 300;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            background: linear-gradient(45deg, #00dbde, #fc00ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            margin-top: 10px;
+            color: #b0b0b0;
+            font-size: 1.1em;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: #1a1a1a;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.5);
+            border: 1px solid #333;
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .card-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #00dbde;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #4CAF50;
+            box-shadow: 0 0 10px currentColor;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.warning {
+            background-color: #ff9800;
+        }
+
+        .status-indicator.critical {
+            background-color: #f44336;
+        }
+
+        .status-indicator.emergency {
+            background-color: #ff0000;
+            animation: pulse 0.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.7;
+                transform: scale(1.1);
+            }
+
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .memory-bar {
+            background: #333;
+            height: 30px;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 10px;
+            position: relative;
+        }
+
+        .memory-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #8BC34A);
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #000;
+            font-weight: bold;
+        }
+
+        .memory-fill.warning {
+            background: linear-gradient(90deg, #ff9800, #ffb74d);
+        }
+
+        .memory-fill.critical {
+            background: linear-gradient(90deg, #f44336, #ef5350);
+        }
+
+        .memory-fill.emergency {
+            background: linear-gradient(90deg, #d32f2f, #ff0000);
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .stat {
+            background: #2a2a2a;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+        }
+
+        .stat-label {
+            color: #888;
+            font-size: 0.9em;
+        }
+
+        .stat-value {
+            color: #00dbde;
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+
+        .component-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .component-item {
+            background: #2a2a2a;
+            margin-bottom: 10px;
+            padding: 15px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.3s ease;
+        }
+
+        .component-item:hover {
+            background: #333;
+        }
+
+        .component-name {
+            font-weight: 500;
+            color: #e0e0e0;
+        }
+
+        .component-info {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .component-priority {
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .priority-CRITICAL {
+            background: #f44336;
+            color: white;
+        }
+
+        .priority-HIGH {
+            background: #ff9800;
+            color: white;
+        }
+
+        .priority-MEDIUM {
+            background: #2196F3;
+            color: white;
+        }
+
+        .priority-LOW {
+            background: #607D8B;
+            color: white;
+        }
+
+        .component-memory {
+            color: #888;
+            font-size: 0.9em;
+        }
+
+        .component-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4CAF50;
+        }
+
+        .component-status.unloaded {
+            background: #666;
+        }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #00dbde, #00a8b5);
+            color: white;
+        }
+
+        .btn-warning {
+            background: linear-gradient(45deg, #ff9800, #f57c00);
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(45deg, #f44336, #d32f2f);
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .alert {
+            background: #d32f2f;
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .alert.show {
+            display: block;
+            animation: slideIn 0.5s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(-20px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+
+        .spinner {
+            border: 3px solid #333;
+            border-top-color: #00dbde;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        #lastUpdate {
+            text-align: center;
+            color: #666;
+            margin-top: 20px;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>JARVIS Memory Management</h1>
+            <div class="subtitle">M1-Optimized Memory Dashboard</div>
+        </header>
+
+        <div id="alert" class="alert"></div>
+
+        <div class="dashboard">
+            <!-- Memory Overview Card -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Memory Overview</h3>
+                    <div id="statusIndicator" class="status-indicator"></div>
+                </div>
+                <div id="memoryBar" class="memory-bar">
+                    <div id="memoryFill" class="memory-fill">0%</div>
+                </div>
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-label">Used</div>
+                        <div id="usedMemory" class="stat-value">0 GB</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Available</div>
+                        <div id="availableMemory" class="stat-value">0 GB</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Total</div>
+                        <div id="totalMemory" class="stat-value">0 GB</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">State</div>
+                        <div id="memoryState" class="stat-value">Unknown</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Components Card -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Components</h3>
+                </div>
+                <ul id="componentList" class="component-list">
+                    <li class="loading">
+                        <div class="spinner"></div>
+                        <p>Loading components...</p>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Actions Card -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Memory Management Actions</h3>
+            </div>
+            <div class="actions">
+                <button class="btn btn-primary" onclick="optimizeMemory()">Optimize Memory</button>
+                <button class="btn btn-warning" onclick="forceCleanup()">Force Cleanup</button>
+                <button class="btn btn-danger" onclick="emergencyShutdown()">Emergency Shutdown</button>
+            </div>
+        </div>
+
+        <div id="lastUpdate">Last updated: Never</div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        let updateInterval;
+
+        async function fetchMemoryStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/memory/status`);
+                const data = await response.json();
+                updateMemoryDisplay(data);
+            } catch (error) {
+                console.error('Error fetching memory status:', error);
+                showAlert('Failed to fetch memory status');
+            }
+        }
+
+        async function fetchComponents() {
+            try {
+                const response = await fetch(`${API_BASE}/memory/components`);
+                const components = await response.json();
+                updateComponentsList(components);
+            } catch (error) {
+                console.error('Error fetching components:', error);
+            }
+        }
+
+        function updateMemoryDisplay(data) {
+            // Update memory bar
+            const memoryFill = document.getElementById('memoryFill');
+            const memoryBar = document.getElementById('memoryBar');
+            const statusIndicator = document.getElementById('statusIndicator');
+
+            memoryFill.style.width = `${data.percent_used}%`;
+            memoryFill.textContent = `${data.percent_used.toFixed(1)}%`;
+
+            // Update colors based on state
+            memoryFill.className = `memory-fill ${data.state}`;
+            statusIndicator.className = `status-indicator ${data.state}`;
+
+            // Update stats
+            document.getElementById('usedMemory').textContent = `${data.used_mb.toFixed(1)} MB`;
+            document.getElementById('availableMemory').textContent = `${data.available_mb.toFixed(1)} MB`;
+            document.getElementById('totalMemory').textContent = `${(data.total_mb / 1024).toFixed(1)} GB`;
+            document.getElementById('memoryState').textContent = data.state.toUpperCase();
+
+            // Update last update time
+            document.getElementById('lastUpdate').textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+
+            // Show alert if critical or emergency
+            if (data.state === 'critical' || data.state === 'emergency') {
+                showAlert(`Memory ${data.state.toUpperCase()}: ${data.percent_used.toFixed(1)}% used!`);
+            }
+        }
+
+        function updateComponentsList(components) {
+            const list = document.getElementById('componentList');
+            list.innerHTML = '';
+
+            components.forEach(component => {
+                const li = document.createElement('li');
+                li.className = 'component-item';
+
+                const statusClass = component.is_loaded ? '' : 'unloaded';
+                const memoryText = component.actual_mb ?
+                    `${component.actual_mb.toFixed(0)} MB` :
+                    `Est: ${component.estimated_mb.toFixed(0)} MB`;
+
+                li.innerHTML = `
+                    <div>
+                        <div class="component-name">${component.name}</div>
+                        <div class="component-memory">${memoryText}</div>
+                    </div>
+                    <div class="component-info">
+                        <span class="component-priority priority-${component.priority}">${component.priority}</span>
+                        <div class="component-status ${statusClass}"></div>
+                    </div>
+                `;
+
+                list.appendChild(li);
+            });
+        }
+
+        function showAlert(message) {
+            const alert = document.getElementById('alert');
+            alert.textContent = message;
+            alert.classList.add('show');
+            setTimeout(() => {
+                alert.classList.remove('show');
+            }, 5000);
+        }
+
+        async function optimizeMemory() {
+            try {
+                const response = await fetch(`${API_BASE}/memory/optimize`, { method: 'POST' });
+                const result = await response.json();
+                showAlert(`Memory optimized! Freed ${result.freed_mb.toFixed(1)} MB`);
+                await updateDashboard();
+            } catch (error) {
+                showAlert('Failed to optimize memory');
+            }
+        }
+
+        async function forceCleanup() {
+            if (!confirm('This will unload non-critical components. Continue?')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/memory/optimize`, { method: 'POST' });
+                const result = await response.json();
+                showAlert('Cleanup completed');
+                await updateDashboard();
+            } catch (error) {
+                showAlert('Failed to perform cleanup');
+            }
+        }
+
+        async function emergencyShutdown() {
+            if (!confirm('This will unload ALL non-critical components! Continue?')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/memory/emergency-cleanup`, { method: 'POST' });
+                const result = await response.json();
+                showAlert(`Emergency shutdown complete. Unloaded: ${result.unloaded_components.join(', ')}`);
+                await updateDashboard();
+            } catch (error) {
+                showAlert('Failed to perform emergency shutdown');
+            }
+        }
+
+        async function updateDashboard() {
+            await fetchMemoryStatus();
+            await fetchComponents();
+        }
+
+        // Initialize dashboard
+        updateDashboard();
+
+        // Update every 2 seconds
+        updateInterval = setInterval(updateDashboard, 2000);
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            clearInterval(updateInterval);
+        });
+    </script>
+</body>
+
+</html>

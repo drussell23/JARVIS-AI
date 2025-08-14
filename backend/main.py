@@ -2,8 +2,12 @@
 from fastapi import FastAPI, APIRouter, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from simple_chatbot import SimpleChatbot  # Import the SimpleChatbot class
+from chatbots.simple_chatbot import SimpleChatbot  # Import the SimpleChatbot class
+from chatbots.intelligent_chatbot import (
+    IntelligentChatbot,
+)  # Import the IntelligentChatbot class
 import asyncio
 import json
 from typing import Optional, List, Dict, Any
@@ -14,9 +18,16 @@ import os
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Import memory manager first - it's critical
+from memory.memory_manager import M1MemoryManager, ComponentPriority
+from memory.memory_api import MemoryAPI, create_memory_alert_callback
+
+# Create global memory manager instance
+memory_manager = M1MemoryManager()
+
 # Import optional components with error handling
 try:
-    from voice_api import VoiceAPI
+    from api.voice_api import VoiceAPI
 
     VOICE_API_AVAILABLE = True
 except ImportError as e:
@@ -24,7 +35,7 @@ except ImportError as e:
     VOICE_API_AVAILABLE = False
 
 try:
-    from automation_api import AutomationAPI
+    from api.automation_api import AutomationAPI
 
     AUTOMATION_API_AVAILABLE = True
 except ImportError as e:
@@ -42,6 +53,10 @@ class ChatConfig(BaseModel):
     system_prompt: Optional[str] = None
     stream: Optional[bool] = False
     device: Optional[str] = "auto"  # Device selection for M1
+    
+    model_config = {
+        'protected_namespaces': ()
+    }
 
 
 class KnowledgeRequest(BaseModel):
@@ -63,8 +78,28 @@ class FeedbackRequest(BaseModel):
 
 class ChatbotAPI:
     def __init__(self):
+        # Register core components with memory manager
+        memory_manager.register_component(
+            "simple_chatbot", ComponentPriority.CRITICAL, 100
+        )
+        memory_manager.register_component("nlp_engine", ComponentPriority.HIGH, 1500)
+        memory_manager.register_component("rag_engine", ComponentPriority.MEDIUM, 3000)
+        memory_manager.register_component(
+            "voice_engine", ComponentPriority.MEDIUM, 2000
+        )
+        memory_manager.register_component(
+            "automation_engine", ComponentPriority.LOW, 500
+        )
+
         # Create an instance of the Chatbot with M1 optimizations
         try:
+            # Check if we can load the chatbot
+            can_load, reason = asyncio.run(
+                memory_manager.can_load_component("simple_chatbot")
+            )
+            if not can_load:
+                raise RuntimeError(f"Cannot load chatbot: {reason}")
+
             # Detect if running on M1 Mac
             import platform
 
@@ -80,10 +115,8 @@ class ChatbotAPI:
                     llama_health_url = "http://127.0.0.1:8080/health"
                     response = requests.get(llama_health_url, timeout=3)
                     if response.status_code == 200:
-                        logger.info("Using Simple Chatbot for immediate responses")
-                        from simple_chatbot import SimpleChatbot
-
-                        self.bot = SimpleChatbot()
+                        logger.info("Using Intelligent Chatbot with memory management")
+                        self.bot = IntelligentChatbot(memory_manager)
                     else:
                         raise RuntimeError("llama.cpp server not responding")
                 except Exception as e:
@@ -94,14 +127,16 @@ class ChatbotAPI:
                         )
                         raise
                     logger.warning(
-                        "llama.cpp server not available, using SimpleChatbot"
+                        "llama.cpp server not available, using IntelligentChatbot"
                     )
-                    self.bot = SimpleChatbot()
+                    self.bot = IntelligentChatbot(memory_manager)
             else:
-                # Non-M1 systems use SimpleChatbot too
-                self.bot = SimpleChatbot()
+                # Non-M1 systems use IntelligentChatbot too
+                self.bot = IntelligentChatbot(memory_manager)
 
-            logger.info("Chatbot initialized successfully")
+            # Register the loaded chatbot with memory manager
+            asyncio.run(memory_manager.load_component("simple_chatbot", self.bot))
+            logger.info("Chatbot initialized successfully with memory management")
         except Exception as e:
             logger.error(f"Failed to initialize chatbot: {e}")
             raise
@@ -118,6 +153,9 @@ class ChatbotAPI:
         self.router.add_api_route("/chat/config", self.update_config, methods=["POST"])
         self.router.add_api_route("/chat/analyze", self.analyze_text, methods=["POST"])
         self.router.add_api_route("/chat/plan", self.create_task_plan, methods=["POST"])
+        self.router.add_api_route(
+            "/chat/capabilities", self.get_capabilities, methods=["GET"]
+        )
 
         # RAG endpoints
         self.router.add_api_route(
@@ -226,10 +264,7 @@ class ChatbotAPI:
         """Update chatbot configuration."""
         updates = []
 
-        if (
-            config.model_name
-            and config.model_name != self.bot.model.config.name_or_path
-        ):
+        if config.model_name and config.model_name != self.bot.model_name:
             # Currently only SimpleChatbot is supported
             updates.append("Model configuration noted (using simple-chat)")
 
@@ -240,7 +275,7 @@ class ChatbotAPI:
         return {
             "message": "Configuration updated",
             "updates": updates,
-            "current_model": self.bot.model.config.name_or_path,
+            "current_model": self.bot.model_name,
         }
 
     async def analyze_text(self, message: Message):
@@ -273,6 +308,20 @@ class ChatbotAPI:
             "keywords": nlp_result.keywords,
         }
 
+    async def get_capabilities(self):
+        """Get current AI capabilities based on loaded components"""
+        if hasattr(self.bot, "get_capabilities"):
+            return self.bot.get_capabilities()
+        else:
+            # Fallback for SimpleChatbot
+            return {
+                "basic_chat": True,
+                "nlp_analysis": False,
+                "knowledge_search": False,
+                "voice_processing": False,
+                "memory_status": {"components_loaded": 0, "total_components": 0},
+            }
+
     async def create_task_plan(self, message: Message):
         """Create a task plan based on user input."""
         if not self.bot.nlp_engine or not self.bot.task_planner:
@@ -300,17 +349,24 @@ class ChatbotAPI:
     # RAG endpoints
     async def add_knowledge(self, request: KnowledgeRequest):
         """Add a document to the knowledge base."""
-        try:
-            document = await self.bot.rag_engine.add_knowledge(
-                request.content, request.metadata
+        if hasattr(self.bot, "add_knowledge"):
+            result = await self.bot.add_knowledge(request.content, request.metadata)
+            if result.get("success"):
+                return {
+                    "message": "Knowledge added successfully",
+                    "document_id": result.get("document_id"),
+                    "chunks": result.get("chunks"),
+                }
+            else:
+                raise HTTPException(
+                    status_code=503,
+                    detail=result.get("error", "Failed to add knowledge"),
+                )
+        else:
+            raise HTTPException(
+                status_code=501,
+                detail="Knowledge base not available in current configuration",
             )
-            return {
-                "message": "Knowledge added successfully",
-                "document_id": document.id,
-                "chunks": len(document.chunks),
-            }
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=str(e))
 
     async def add_knowledge_file(self, file: UploadFile = File(...)):
         """Add a file to the knowledge base."""
@@ -324,7 +380,11 @@ class ChatbotAPI:
                 "source": "uploaded_file",
             }
 
-            document = await self.bot.rag_engine.add_knowledge(text_content, metadata)
+            # RAG not yet integrated
+            raise HTTPException(
+                status_code=501,
+                detail="RAG engine not yet integrated. Memory management must be stable first.",
+            )
 
             return {
                 "message": f"File '{file.filename}' added to knowledge base",
@@ -337,8 +397,10 @@ class ChatbotAPI:
     async def search_knowledge(self, request: SearchRequest):
         """Search the knowledge base."""
         try:
-            results = await self.bot.rag_engine.knowledge_base.search(
-                request.query, k=request.k, strategy=request.strategy
+            # RAG not yet integrated
+            raise HTTPException(
+                status_code=501,
+                detail="RAG engine not yet integrated. Memory management must be stable first.",
             )
 
             return {
@@ -360,8 +422,10 @@ class ChatbotAPI:
     async def provide_feedback(self, request: FeedbackRequest):
         """Provide feedback for learning."""
         try:
-            await self.bot.rag_engine.provide_feedback(
-                request.query, request.response, request.score
+            # RAG not yet integrated
+            raise HTTPException(
+                status_code=501,
+                detail="RAG engine not yet integrated. Memory management must be stable first.",
             )
 
             return {
@@ -375,8 +439,11 @@ class ChatbotAPI:
     async def get_learning_insights(self):
         """Get insights from the learning engine."""
         try:
-            insights = self.bot.rag_engine.get_learning_insights()
-            return insights
+            # RAG not yet integrated
+            raise HTTPException(
+                status_code=501,
+                detail="RAG engine not yet integrated. Memory management must be stable first.",
+            )
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -384,7 +451,7 @@ class ChatbotAPI:
         """Summarize the current conversation."""
         try:
             # Get conversation history
-            history = self.bot.get_conversation_history()
+            history = await self.bot.get_conversation_history()
 
             if not history:
                 return {"message": "No conversation to summarize"}
@@ -394,7 +461,11 @@ class ChatbotAPI:
                 {"role": turn["role"], "content": turn["content"]} for turn in history
             ]
 
-            summary = await self.bot.rag_engine.summarize_conversation(messages)
+            # RAG not yet integrated
+            raise HTTPException(
+                status_code=501,
+                detail="RAG engine not yet integrated. Memory management must be stable first.",
+            )
 
             return {
                 "summary": summary.summary,
@@ -419,36 +490,66 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount static files for demos
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Initialize Memory API first
+memory_api = MemoryAPI(memory_manager)
+app.include_router(memory_api.router, prefix="/memory")
+logger.info("Memory management API initialized")
+
+# Set up memory alert callback
+memory_alert_callback = asyncio.run(create_memory_alert_callback())
+memory_manager.add_state_callback(memory_alert_callback)
+
 # Instantiate and include our Chatbot API router
 chatbot_api = ChatbotAPI()
 app.include_router(chatbot_api.router)
 
-# Include Voice API routes if available
+# Include Voice API routes if available with memory management
 if VOICE_API_AVAILABLE:
-    try:
-        voice_api = VoiceAPI(chatbot_api.bot)
-        app.include_router(voice_api.router, prefix="/voice")
-        logger.info("Voice API routes added")
-    except Exception as e:
-        logger.warning(f"Failed to initialize Voice API: {e}")
+    can_load, reason = asyncio.run(memory_manager.can_load_component("voice_engine"))
+    if can_load:
+        try:
+            voice_api = VoiceAPI(chatbot_api.bot)
+            asyncio.run(memory_manager.load_component("voice_engine", voice_api))
+            app.include_router(voice_api.router, prefix="/voice")
+            logger.info("Voice API routes added with memory management")
+        except Exception as e:
+            logger.warning(f"Failed to initialize Voice API: {e}")
+    else:
+        logger.warning(f"Cannot load Voice API: {reason}")
 
-# Include Automation API routes if available
+# Include Automation API routes if available with memory management
 if AUTOMATION_API_AVAILABLE and hasattr(chatbot_api.bot, "automation_engine"):
-    try:
-        automation_api = AutomationAPI(chatbot_api.bot.automation_engine)
-        app.include_router(automation_api.router, prefix="/automation")
-        logger.info("Automation API routes added")
-    except Exception as e:
-        logger.warning(f"Failed to initialize Automation API: {e}")
+    can_load, reason = asyncio.run(
+        memory_manager.can_load_component("automation_engine")
+    )
+    if can_load:
+        try:
+            automation_api = AutomationAPI(chatbot_api.bot.automation_engine)
+            asyncio.run(
+                memory_manager.load_component("automation_engine", automation_api)
+            )
+            app.include_router(automation_api.router, prefix="/automation")
+            logger.info("Automation API routes added with memory management")
+        except Exception as e:
+            logger.warning(f"Failed to initialize Automation API: {e}")
+    else:
+        logger.warning(f"Cannot load Automation API: {reason}")
 
 
 # Update root endpoint
 @app.get("/")
 async def root():
+    # Get memory status
+    memory_status = await memory_manager.get_memory_snapshot()
+
     return {
-        "message": "AI-Powered Chatbot with Voice, NLP, Automation & RAG",
-        "version": "5.0",
+        "message": "AI-Powered Chatbot with M1-Optimized Memory Management",
+        "version": "6.0",
         "features": {
+            "memory_management": "Proactive AI-driven memory management for M1 Macs",
             "chat": "Advanced conversational AI with NLP",
             "voice": "Speech recognition and synthesis",
             "nlp": "Intent recognition, entity extraction, sentiment analysis",
@@ -456,8 +557,14 @@ async def root():
             "rag": "Retrieval-Augmented Generation with knowledge base",
             "learning": "Adaptive learning and personalization",
         },
+        "memory_status": {
+            "state": memory_status.state.value,
+            "percent_used": round(memory_status.percent * 100, 1),
+            "available_gb": round(memory_status.available / (1024**3), 1),
+        },
         "api_docs": "/docs",
         "endpoints": {
+            "memory": "/memory/*",
             "chat": "/chat/*",
             "voice": "/voice/*",
             "automation": "/automation/*",
@@ -466,32 +573,79 @@ async def root():
     }
 
 
+# Redirect old demo URLs to new locations
+from fastapi.responses import RedirectResponse
+
+@app.get("/voice_demo.html")
+async def redirect_voice_demo():
+    return RedirectResponse(url="/static/demos/voice_demo.html")
+
+@app.get("/automation_demo.html")
+async def redirect_automation_demo():
+    return RedirectResponse(url="/static/demos/automation_demo.html")
+
+@app.get("/rag_demo.html")
+async def redirect_rag_demo():
+    return RedirectResponse(url="/static/demos/rag_demo.html")
+
+@app.get("/llm_demo.html")
+async def redirect_llm_demo():
+    return RedirectResponse(url="/static/demos/llm_demo.html")
+
+@app.get("/memory_dashboard.html")
+async def redirect_memory_dashboard():
+    return RedirectResponse(url="/static/demos/memory_dashboard.html")
+
 # Health check endpoint
 @app.get("/health")
 async def health_check():
     """Health check endpoint for monitoring"""
     try:
+        # Get memory status
+        memory_snapshot = await memory_manager.get_memory_snapshot()
+        memory_report = await memory_manager.get_memory_report()
+
         # Check if model is loaded
         model_loaded = (
             chatbot_api.bot._model_loaded
             if hasattr(chatbot_api.bot, "_model_loaded")
-            else False
-        )
-        memory_usage = (
-            chatbot_api.bot._get_memory_usage()
-            if hasattr(chatbot_api.bot, "_get_memory_usage")
-            else 0
+            else True  # SimpleChatbot is always "loaded"
         )
 
         return {
-            "status": "healthy",
+            "status": (
+                "healthy" if memory_snapshot.state.value != "emergency" else "critical"
+            ),
             "model": chatbot_api.bot.model_name,
             "model_loaded": model_loaded,
-            "memory_usage_mb": memory_usage,
-            "device": getattr(chatbot_api.bot, "device", "unknown"),
+            "memory": {
+                "state": memory_snapshot.state.value,
+                "percent_used": round(memory_snapshot.percent * 100, 1),
+                "available_mb": round(memory_snapshot.available / (1024 * 1024), 1),
+                "total_mb": round(memory_snapshot.total / (1024 * 1024), 1),
+                "components_loaded": [
+                    name
+                    for name, info in memory_manager.components.items()
+                    if info.is_loaded
+                ],
+            },
+            "device": "M1" if memory_manager.is_m1 else "unknown",
             "components": {
-                "voice_api": VOICE_API_AVAILABLE,
-                "automation_api": AUTOMATION_API_AVAILABLE,
+                "memory_manager": True,
+                "voice_api": VOICE_API_AVAILABLE
+                and "voice_engine"
+                in [
+                    name
+                    for name, info in memory_manager.components.items()
+                    if info.is_loaded
+                ],
+                "automation_api": AUTOMATION_API_AVAILABLE
+                and "automation_engine"
+                in [
+                    name
+                    for name, info in memory_manager.components.items()
+                    if info.is_loaded
+                ],
             },
         }
     except Exception as e:

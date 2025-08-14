@@ -79,7 +79,7 @@ class SimpleChatbot:
 
         # Initialize components if available
         try:
-            from nlp_engine import (
+            from engines.nlp_engine import (
                 NLPEngine,
                 ConversationFlow,
                 TaskPlanner,
