@@ -170,7 +170,9 @@ class ChatbotAPI:
         """POST endpoint that uses the Chatbot to generate a response."""
         try:
             logger.info(f"Received message: {message.user_input[:50]}...")
-            response_data = self.bot.generate_response_with_context(message.user_input)
+            response_data = await self.bot.generate_response_with_context(
+                message.user_input
+            )
             logger.info(f"Generated response successfully")
             return response_data
         except Exception as e:
@@ -190,13 +192,8 @@ class ChatbotAPI:
             # Send initial message
             yield f"data: {json.dumps({'type': 'start', 'message': 'Generating response...'})}\n\n"
 
-            # Generate the response
-            response = await asyncio.to_thread(
-                self.bot.generate_response_stream, message.user_input
-            )
-
             # Stream the response token by token
-            async for token in response:
+            async for token in self.bot.generate_response_stream(message.user_input):
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
                 await asyncio.sleep(0.01)  # Small delay for streaming effect
 
@@ -214,14 +211,15 @@ class ChatbotAPI:
 
     async def get_history(self):
         """Get the conversation history."""
+        history = await self.bot.get_conversation_history()
         return {
-            "history": self.bot.get_conversation_history(),
-            "total_turns": len(self.bot.conversation_history),
+            "history": history,
+            "total_turns": len(history),
         }
 
     async def clear_history(self):
         """Clear the conversation history."""
-        self.bot.clear_history()
+        await self.bot.clear_history()
         return {"message": "Conversation history cleared"}
 
     async def update_config(self, config: ChatConfig):
@@ -247,7 +245,13 @@ class ChatbotAPI:
 
     async def analyze_text(self, message: Message):
         """Analyze text for NLP insights without generating a response."""
-        nlp_result = self.bot.nlp_engine.analyze(message.user_input)
+        if not self.bot.nlp_engine:
+            return {"error": "NLP engine not available"}
+
+        # Run NLP analysis in thread pool
+        nlp_result = await asyncio.get_event_loop().run_in_executor(
+            None, self.bot.nlp_engine.analyze, message.user_input
+        )
 
         return {
             "intent": {
@@ -271,9 +275,15 @@ class ChatbotAPI:
 
     async def create_task_plan(self, message: Message):
         """Create a task plan based on user input."""
-        nlp_result = self.bot.nlp_engine.analyze(message.user_input)
-        task_plan = self.bot.task_planner.create_task_plan(
-            message.user_input, nlp_result
+        if not self.bot.nlp_engine or not self.bot.task_planner:
+            return {"error": "Task planning not available"}
+
+        # Run analysis and planning in thread pool
+        nlp_result = await asyncio.get_event_loop().run_in_executor(
+            None, self.bot.nlp_engine.analyze, message.user_input
+        )
+        task_plan = await asyncio.get_event_loop().run_in_executor(
+            None, self.bot.task_planner.create_task_plan, message.user_input, nlp_result
         )
 
         return {

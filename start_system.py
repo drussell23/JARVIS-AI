@@ -2,6 +2,7 @@
 """
 Comprehensive startup script for AI-Powered Chatbot System
 Handles dependency installation and service launching
+Async version for better performance
 """
 
 import os
@@ -15,6 +16,7 @@ from pathlib import Path
 import argparse
 import webbrowser
 from typing import List, Dict, Optional
+import asyncio
 
 # ANSI color codes for terminal output
 class Colors:
@@ -597,6 +599,118 @@ class SystemManager:
         except KeyboardInterrupt:
             pass
 
+    # Async methods for better performance
+    async def install_backend_dependencies_async(self):
+        """Install backend Python dependencies asynchronously"""
+        print(f"\n{Colors.BLUE}Installing backend dependencies (async)...{Colors.ENDC}")
+        
+        requirements_file = self.backend_dir / "requirements.txt"
+        if not requirements_file.exists():
+            print(f"{Colors.WARNING}⚠️  requirements.txt not found in backend directory{Colors.ENDC}")
+            return
+            
+        try:
+            # Upgrade pip first
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, "-m", "pip", "install", "--upgrade", "pip",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            await proc.communicate()
+            
+            # Install requirements
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, "-m", "pip", "install", "-r", str(requirements_file),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            await proc.communicate()
+            
+            print(f"{Colors.GREEN}✓ Backend dependencies installed{Colors.ENDC}")
+        except Exception as e:
+            print(f"{Colors.FAIL}❌ Failed to install dependencies: {e}{Colors.ENDC}")
+    
+    async def start_backend_services_async(self):
+        """Start backend services asynchronously"""
+        print(f"\n{Colors.CYAN}Starting backend services...{Colors.ENDC}")
+        
+        # Start main API
+        main_api_cmd = [
+            sys.executable,
+            "-m", "uvicorn",
+            "main:app",
+            "--host", "0.0.0.0",
+            "--port", str(self.ports['main_api'])
+        ]
+        
+        proc = await asyncio.create_subprocess_exec(
+            *main_api_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(self.backend_dir)
+        )
+        self.processes.append(proc)
+        print(f"{Colors.GREEN}✓ Main API started on port {self.ports['main_api']}{Colors.ENDC}")
+    
+    async def monitor_services_async(self):
+        """Monitor services asynchronously"""
+        while True:
+            await asyncio.sleep(1)
+            # Check if processes are still running
+            for i, proc in enumerate(self.processes):
+                if isinstance(proc, asyncio.subprocess.Process) and proc.returncode is not None:
+                    service_names = ["Main API", "Training API", "Frontend"]
+                    service_name = service_names[i] if i < len(service_names) else f"Service {i}"
+                    print(f"{Colors.FAIL}❌ {service_name} has stopped unexpectedly{Colors.ENDC}")
+                    self.cleanup()
+                    sys.exit(1)
+    
+    async def run_async(self, skip_install: bool = False, open_browser: bool = True):
+        """Run the system asynchronously"""
+        try:
+            # Show header
+            self.print_header()
+            
+            # Check Python version
+            self.check_python_version()
+            
+            # Install dependencies unless skipped
+            if not skip_install:
+                await self.install_backend_dependencies_async()
+                # Keep frontend setup sync for now
+                self.setup_frontend()
+            else:
+                print(f"\n{Colors.WARNING}Skipping dependency installation (--skip-install flag){Colors.ENDC}")
+            
+            # Create necessary directories
+            self.create_directories()
+            
+            # Start services
+            await self.start_backend_services_async()
+            # Keep frontend sync for now
+            self.start_frontend()
+            
+            # Show status
+            self.print_access_info()
+            
+            # Open browser if requested
+            if open_browser:
+                await asyncio.sleep(3)
+                webbrowser.open(f"http://localhost:{self.ports['frontend']}")
+            
+            # Monitor services
+            print(f"\n{Colors.GREEN}System is running! Press Ctrl+C to stop all services.{Colors.ENDC}")
+            
+            await self.monitor_services_async()
+                        
+        except KeyboardInterrupt:
+            print(f"\n{Colors.WARNING}Shutting down...{Colors.ENDC}")
+            self.cleanup()
+        except Exception as e:
+            print(f"\n{Colors.FAIL}Error: {e}{Colors.ENDC}")
+            self.cleanup()
+            sys.exit(1)
+
 
 def main():
     """Main entry point"""
@@ -616,6 +730,11 @@ def main():
         action="store_true",
         help="Start only backend services"
     )
+    parser.add_argument(
+        "--async",
+        action="store_true",
+        help="Use async mode for better performance"
+    )
     
     args = parser.parse_args()
     
@@ -623,10 +742,18 @@ def main():
     manager = SystemManager()
     
     try:
-        manager.run(
-            skip_install=args.skip_install,
-            open_browser=not args.no_browser
-        )
+        if args.async:
+            # Run in async mode
+            asyncio.run(manager.run_async(
+                skip_install=args.skip_install,
+                open_browser=not args.no_browser
+            ))
+        else:
+            # Run in sync mode (default)
+            manager.run(
+                skip_install=args.skip_install,
+                open_browser=not args.no_browser
+            )
     except Exception as e:
         print(f"{Colors.FAIL}❌ Error: {e}{Colors.ENDC}")
         manager.cleanup()

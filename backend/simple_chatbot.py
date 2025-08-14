@@ -1,12 +1,14 @@
 """
 Simple Chatbot for M1 Macs - No heavy models required
+Async version for better performance
 """
 
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, AsyncGenerator
 from datetime import datetime
 from dataclasses import dataclass, field
 import random
+import asyncio
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -34,6 +36,7 @@ class SimpleChatbot:
         self.max_history_length = max_history_length
         self.model_name = model_name
         self.conversation_history: List[ConversationTurn] = []
+        self._lock = asyncio.Lock()  # For thread-safe history access
 
         # System personality
         self.personality = "helpful and friendly AI assistant named JARVIS"
@@ -94,38 +97,41 @@ class SimpleChatbot:
             self.task_planner = None
             self.response_enhancer = None
 
-    def add_to_history(self, role: str, content: str):
+    async def add_to_history(self, role: str, content: str):
         """Add a conversation turn to history."""
-        turn = ConversationTurn(role=role, content=content)
-        self.conversation_history.append(turn)
+        async with self._lock:
+            turn = ConversationTurn(role=role, content=content)
+            self.conversation_history.append(turn)
 
-        # Maintain history length limit
-        if len(self.conversation_history) > self.max_history_length * 2:
-            self.conversation_history = self.conversation_history[
-                -self.max_history_length * 2 :
+            # Maintain history length limit
+            if len(self.conversation_history) > self.max_history_length * 2:
+                self.conversation_history = self.conversation_history[
+                    -self.max_history_length * 2 :
+                ]
+
+    async def get_conversation_history(self) -> List[Dict]:
+        """Get the conversation history as a list of dictionaries."""
+        async with self._lock:
+            return [
+                {
+                    "role": turn.role,
+                    "content": turn.content,
+                    "timestamp": turn.timestamp.isoformat(),
+                }
+                for turn in self.conversation_history
             ]
 
-    def get_conversation_history(self) -> List[Dict]:
-        """Get the conversation history as a list of dictionaries."""
-        return [
-            {
-                "role": turn.role,
-                "content": turn.content,
-                "timestamp": turn.timestamp.isoformat(),
-            }
-            for turn in self.conversation_history
-        ]
-
-    def clear_history(self):
+    async def clear_history(self):
         """Clear the conversation history."""
-        self.conversation_history = []
+        async with self._lock:
+            self.conversation_history = []
 
-    def generate_response(self, user_input: str) -> str:
+    async def generate_response(self, user_input: str) -> str:
         """
         Generate a response based on pattern matching and context.
         """
         # Add user input to history
-        self.add_to_history("user", user_input)
+        await self.add_to_history("user", user_input)
 
         user_lower = user_input.lower()
 
@@ -189,21 +195,22 @@ class SimpleChatbot:
             response = random.choice(self.responses["default"])
 
         # Add some context awareness
-        if len(self.conversation_history) > 2:
-            last_user_msg = (
-                self.conversation_history[-2].content.lower()
-                if len(self.conversation_history) > 1
-                else ""
-            )
-            if "?" in last_user_msg and "?" not in user_input:
-                response = f"I see. {response}"
+        async with self._lock:
+            if len(self.conversation_history) > 2:
+                last_user_msg = (
+                    self.conversation_history[-2].content.lower()
+                    if len(self.conversation_history) > 1
+                    else ""
+                )
+                if "?" in last_user_msg and "?" not in user_input:
+                    response = f"I see. {response}"
 
         # Add to history
-        self.add_to_history("assistant", response)
+        await self.add_to_history("assistant", response)
 
         return response
 
-    def generate_response_with_context(
+    async def generate_response_with_context(
         self, user_input: str, context: Optional[Dict] = None
     ) -> Dict:
         """
@@ -215,12 +222,15 @@ class SimpleChatbot:
         nlp_result = None
         if self.nlp_engine:
             try:
-                nlp_result = self.nlp_engine.analyze(user_input)
+                # Run NLP analysis in thread pool to avoid blocking
+                nlp_result = await asyncio.get_event_loop().run_in_executor(
+                    None, self.nlp_engine.analyze, user_input
+                )
             except Exception as e:
                 logger.warning(f"NLP analysis failed: {e}")
 
         # Generate response
-        response = self.generate_response(user_input)
+        response = await self.generate_response(user_input)
 
         # Calculate generation time
         generation_time = (datetime.now() - start_time).total_seconds()
@@ -283,30 +293,38 @@ class SimpleChatbot:
         return type("obj", (object,), {"pad_token_id": 0, "eos_token_id": 2})
 
     # Make it compatible with M1Chatbot methods
-    async def generate_response_stream(self, user_input: str):
-        """Fake streaming for compatibility"""
-        response = self.generate_response(user_input)
+    async def generate_response_stream(
+        self, user_input: str
+    ) -> AsyncGenerator[str, None]:
+        """Streaming response generator for compatibility"""
+        response = await self.generate_response(user_input)
         words = response.split()
         for word in words:
             yield word + " "
+            await asyncio.sleep(0.05)  # Small delay to simulate streaming
 
 
 # Test the chatbot
 if __name__ == "__main__":
-    print("Testing Simple Chatbot...")
-    bot = SimpleChatbot()
 
-    test_inputs = [
-        "Hello!",
-        "How are you today?",
-        "What can you do?",
-        "Can you help me with Python?",
-        "Thanks!",
-        "Goodbye!",
-    ]
+    async def test_chatbot():
+        print("Testing Simple Chatbot...")
+        bot = SimpleChatbot()
 
-    for user_input in test_inputs:
-        print(f"\nUser: {user_input}")
-        response_data = bot.generate_response_with_context(user_input)
-        print(f"Assistant: {response_data['response']}")
-        print(f"(Generated in {response_data['generation_time']:.4f} seconds)")
+        test_inputs = [
+            "Hello!",
+            "How are you today?",
+            "What can you do?",
+            "Can you help me with Python?",
+            "Thanks!",
+            "Goodbye!",
+        ]
+
+        for user_input in test_inputs:
+            print(f"\nUser: {user_input}")
+            response_data = await bot.generate_response_with_context(user_input)
+            print(f"Assistant: {response_data['response']}")
+            print(f"(Generated in {response_data['generation_time']:.4f} seconds)")
+
+    # Run the async test
+    asyncio.run(test_chatbot())

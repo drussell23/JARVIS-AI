@@ -218,6 +218,13 @@ Check log files for detailed error information:
 - `logs/training_api.log` - Training API logs
 - `logs/frontend.log` - Frontend logs
 
+## 💡 Tips
+
+- **For best performance on M1/M2 Macs**: Run `./backend/setup_llama_m1.sh` first
+- **To use your own model**: Update model paths in configuration
+- **For production deployment**: Use environment variables for sensitive data
+- **Memory optimization**: The system automatically manages memory on M1/M2
+
 ## 🤝 Contributing
 
 1. Fork the repository
@@ -232,18 +239,17 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 🙏 Acknowledgments
 
-- Hugging Face Transformers for pre-trained models
-- OpenAI Whisper for speech recognition
-- FAISS for efficient similarity search
+- FastAPI for the excellent web framework
+- llama.cpp for M1/M2 optimization
 - The open-source community for various tools and libraries
 
 ## 📞 Support
 
 For issues and questions:
 - Check the [API Documentation](http://localhost:8000/docs)
-- Review logs in the `logs/` directory
+- Review the troubleshooting section above
 - Open an issue on GitHub
 
 ---
 
-Built with ❤️ using FastAPI, PyTorch, and modern AI technologies.
+Built with ❤️ for simplicity and performance on all platforms.
