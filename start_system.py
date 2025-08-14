@@ -521,12 +521,23 @@ class SystemManager:
         """Cleanup processes on exit"""
         print(f"\n{Colors.BLUE}Shutting down services...{Colors.ENDC}")
         for proc in self.processes:
-            if proc.poll() is None:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
+            try:
+                # Handle both subprocess.Popen and asyncio.subprocess.Process
+                if hasattr(proc, 'poll'):
+                    # Regular subprocess.Popen
+                    if proc.poll() is None:
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            proc.kill()
+                elif hasattr(proc, 'returncode'):
+                    # asyncio.subprocess.Process
+                    if proc.returncode is None:
+                        proc.terminate()
+                        # Can't wait synchronously on async process
+            except Exception as e:
+                print(f"{Colors.WARNING}Warning during cleanup: {e}{Colors.ENDC}")
         print(f"{Colors.GREEN}✓ All services stopped{Colors.ENDC}")
         
     def handle_signal(self, signum, frame):
@@ -731,7 +742,7 @@ def main():
         help="Start only backend services"
     )
     parser.add_argument(
-        "--async",
+        "--async-mode",
         action="store_true",
         help="Use async mode for better performance"
     )
@@ -742,7 +753,7 @@ def main():
     manager = SystemManager()
     
     try:
-        if args.async:
+        if args.async_mode:
             # Run in async mode
             asyncio.run(manager.run_async(
                 skip_install=args.skip_install,
