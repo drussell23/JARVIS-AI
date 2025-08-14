@@ -1,6 +1,26 @@
-# 🤖 AI-Powered Chatbot System
+# 🤖 JARVIS - AI-Powered Chatbot System
 
-A comprehensive AI chatbot system featuring conversational AI, voice interaction, automation capabilities, and knowledge management with special optimizations for Apple Silicon (M1/M2) Macs.
+A comprehensive AI chatbot system inspired by JARVIS, featuring conversational AI, voice interaction, automation capabilities, and knowledge management with special optimizations for Apple Silicon (M1/M2) Macs.
+
+## 📊 Current Status
+
+### ✅ What's Working
+- **Basic Chat Interface**: Simple conversational AI with context awareness
+- **API Endpoints**: RESTful API with interactive documentation
+- **M1/M2 Support**: Optimized performance using llama.cpp (when configured)
+- **Auto-Setup**: One-command installation and startup
+- **Web Interface**: Basic frontend for testing
+
+### 🚧 In Development
+- **Voice Interaction**: APIs present but require additional setup
+- **Knowledge Base**: RAG system structure in place
+- **Advanced NLP**: Intent recognition and entity extraction
+- **Task Automation**: Framework ready for expansion
+
+### 🔄 Planned
+- **Model Training**: Custom model fine-tuning interface
+- **Multi-modal Input**: Image and document processing
+- **Agent Actions**: Autonomous task execution
 
 ## 🌟 Features
 
@@ -224,6 +244,112 @@ Check log files for detailed error information:
 - **To use your own model**: Update model paths in configuration
 - **For production deployment**: Use environment variables for sensitive data
 - **Memory optimization**: The system automatically manages memory on M1/M2
+
+## 🚀 Roadmap - JARVIS Evolution
+
+### Phase 1: Core Enhancements (Q1 2025)
+- [ ] **Improved Language Models**
+  - Integrate Llama 3 70B for better responses
+  - Add support for Mixtral and other modern models
+  - Implement model hot-swapping without restart
+  
+- [ ] **Enhanced Memory System**
+  - Long-term conversation memory with vector database
+  - User preference learning and personalization
+  - Context-aware responses based on chat history
+
+- [ ] **Better Voice Interaction**
+  - Real-time voice conversation (no push-to-talk)
+  - Multiple voice options and personalities
+  - Emotion detection in voice input
+
+### Phase 2: Intelligence Upgrade (Q2 2025)
+- [ ] **Multi-Modal Capabilities**
+  - Image understanding and generation
+  - Document analysis (PDF, DOCX, etc.)
+  - Screen reading and UI automation
+  
+- [ ] **Advanced Reasoning**
+  - Chain-of-thought reasoning
+  - Task decomposition and planning
+  - Code generation and execution
+  
+- [ ] **Knowledge Integration**
+  - Wikipedia and web search integration
+  - Custom knowledge base training
+  - Real-time fact checking
+
+### Phase 3: Agent Capabilities (Q3 2025)
+- [ ] **Autonomous Actions**
+  - Email management and composition
+  - Calendar scheduling with conflict resolution
+  - File organization and management
+  
+- [ ] **Tool Integration**
+  - Browser automation for web tasks
+  - API integration framework
+  - Smart home device control
+  
+- [ ] **Proactive Assistance**
+  - Predictive task suggestions
+  - Automated routine handling
+  - Intelligent notifications
+
+### Phase 4: JARVIS Vision (Q4 2025)
+- [ ] **True AI Assistant**
+  - Natural conversation flow
+  - Multi-step task execution
+  - Learning from user feedback
+  
+- [ ] **Security & Privacy**
+  - Local-first processing
+  - End-to-end encryption
+  - Privacy-preserving analytics
+  
+- [ ] **Ecosystem Integration**
+  - Mobile app companion
+  - Browser extension
+  - Desktop widget/overlay
+
+### Future Possibilities
+- **Distributed Processing**: Multi-device coordination
+- **Custom Personalities**: Train JARVIS on specific domains
+- **AR/VR Integration**: Spatial computing interface
+- **Collaborative AI**: Multiple JARVIS instances working together
+
+## 🛠️ Next Steps for Developers
+
+### Quick Wins (Can implement today)
+1. **Improve Chat Responses**
+   - Update `simple_chatbot.py` with more sophisticated responses
+   - Add personality traits and conversation styles
+   - Implement better context handling
+
+2. **Enable llama.cpp Models**
+   - Run `./backend/setup_llama_m1.sh` for M1/M2 Macs
+   - Configure different models in `chatbot_m1_llama.py`
+   - Test with various GGUF models
+
+3. **Enhance Frontend**
+   - Improve the chat UI in `frontend/`
+   - Add dark mode and themes
+   - Implement typing indicators
+
+### Medium-term Goals
+1. **Voice Integration**
+   - Complete `voice_api.py` implementation
+   - Add wake word detection
+   - Implement voice synthesis options
+
+2. **Knowledge Base**
+   - Activate RAG system in `rag_engine.py`
+   - Create document upload interface
+   - Implement semantic search
+
+3. **Task Automation**
+   - Build out `automation_api.py` capabilities
+   - Add calendar integration
+   - Create task templates
 
 ## 🤝 Contributing
 
