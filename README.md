@@ -1,15 +1,15 @@
 # 🤖 AI-Powered Chatbot System
 
-A comprehensive AI chatbot system featuring advanced NLP, voice interaction, automation capabilities, RAG (Retrieval-Augmented Generation), and custom LLM development tools.
+A comprehensive AI chatbot system featuring conversational AI, voice interaction, automation capabilities, and knowledge management with special optimizations for Apple Silicon (M1/M2) Macs.
 
 ## 🌟 Features
 
-- **Advanced Conversational AI**: Multiple model support (GPT-2, BLOOM, custom models)
-- **Voice Interaction**: Speech recognition and synthesis with wake word detection
-- **Task Automation**: Calendar management, weather, news, home automation
-- **RAG System**: Knowledge base with semantic search and learning capabilities
-- **Custom LLM Development**: Train and fine-tune your own language models
-- **Multi-modal Support**: Handle text, voice, and structured data
+- **Conversational AI**: Simple, reliable chatbot with context awareness
+- **Voice Interaction**: Speech recognition and synthesis capabilities
+- **Task Automation**: Natural language command processing
+- **Knowledge Management**: Document storage and retrieval system
+- **M1/M2 Optimized**: Native performance on Apple Silicon using llama.cpp
+- **Easy Setup**: One-command installation and startup
 
 ## 🚀 Quick Start
 
@@ -18,11 +18,11 @@ A comprehensive AI chatbot system featuring advanced NLP, voice interaction, aut
 - Python 3.8 or higher
 - Node.js (optional, for React frontend)
 - 8GB+ RAM recommended
-- CUDA-capable GPU (optional, for faster training)
+- macOS (Intel or Apple Silicon), Linux, or Windows
 
 ### Installation & Running
 
-#### Option 1: Using the Python Launcher (Recommended)
+#### Quick Start (Recommended)
 
 ```bash
 # Clone the repository
@@ -31,65 +31,47 @@ cd AI-Powered-Chatbot
 
 # Run the system (installs dependencies automatically)
 python start_system.py
+```
 
-# Or skip dependency installation if already installed
+The startup script will:
+- ✅ Install all dependencies automatically
+- ✅ Set up the backend and frontend
+- ✅ Detect M1/M2 Macs and configure optimizations
+- ✅ Start all services
+- ✅ Open your browser to the frontend
+
+#### Advanced Options
+
+```bash
+# Skip dependency installation (if already installed)
 python start_system.py --skip-install
+
+# Don't open browser automatically
+python start_system.py --no-browser
+
+# Start only backend services
+python start_system.py --backend-only
 ```
 
-#### Option 2: Using Shell Script (macOS/Linux)
+#### M1/M2 Mac Special Setup
+
+For Apple Silicon Macs, the system can use llama.cpp for better performance:
 
 ```bash
-# Make the script executable
-chmod +x quick_start.sh
-
-# Run the system
-./quick_start.sh
-
-# Options:
-# ./quick_start.sh --skip-install   # Skip dependency installation
-# ./quick_start.sh --backend-only   # Start only backend services
-# ./quick_start.sh --install-only   # Only install dependencies
-```
-
-#### Option 3: Using Batch File (Windows)
-
-```cmd
-# Run the system
-start_system.bat
-
-# Options:
-# start_system.bat --skip-install   # Skip dependency installation
-# start_system.bat --backend-only   # Start only backend services
-```
-
-#### Option 4: Manual Setup
-
-```bash
-# Create virtual environment
-python -m venv venv
-
-# Activate virtual environment
-# On macOS/Linux:
-source venv/bin/activate
-# On Windows:
-venv\Scripts\activate
-
-# Install dependencies
-pip install -r backend/requirements.txt
-
-# Download required models
-python -m spacy download en_core_web_sm
-python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords')"
-
-# Start backend services
+# First time setup for llama.cpp (optional but recommended)
 cd backend
-python main.py &          # Main API (port 8000)
-python training_interface.py &  # Training API (port 8001)
+./setup_llama_m1.sh
 
-# Start frontend (if available)
-cd ../frontend
-npm install && npm start  # Or python -m http.server 3000
+# Then run normally
+cd ..
+python start_system.py
 ```
+
+The system will automatically use llama.cpp if available, providing:
+- 🚀 Native M1/M2 performance
+- 🔧 No PyTorch compatibility issues  
+- 💾 Lower memory usage
+- ⚡ Faster response times
 
 ## 📚 Accessing the System
 
@@ -109,28 +91,7 @@ Once running, access the following services:
 
 ## 🛑 Stopping the System
 
-### Using the launcher:
-Press `Ctrl+C` in the terminal where the system is running.
-
-### Using shell script:
-```bash
-./stop_system.sh
-```
-
-### Using batch file:
-```cmd
-stop_system.bat
-```
-
-### Manual:
-```bash
-# Find and kill Python processes
-pkill -f "python.*main.py"
-pkill -f "python.*training_interface.py"
-
-# Or on Windows:
-taskkill /F /IM python.exe
-```
+Press `Ctrl+C` in the terminal where start_system.py is running. This will gracefully shut down all services.
 
 ## 📖 Documentation
 
@@ -170,20 +131,18 @@ taskkill /F /IM python.exe
 AI-Powered-Chatbot/
 ├── backend/
 │   ├── main.py                 # Main FastAPI application
-│   ├── chatbot.py             # Core chatbot implementation
+│   ├── simple_chatbot.py       # Simple chatbot implementation
+│   ├── chatbot.py             # Advanced chatbot (with M1 fixes)
 │   ├── nlp_engine.py          # NLP processing
-│   ├── voice_engine.py        # Voice processing
-│   ├── automation_engine.py   # Task automation
-│   ├── rag_engine.py          # RAG implementation
-│   ├── custom_model.py        # Custom model architecture
-│   ├── training_pipeline.py   # Model training
-│   ├── fine_tuning.py         # Fine-tuning utilities
+│   ├── voice_api.py           # Voice interaction endpoints
+│   ├── automation_api.py      # Automation endpoints
+│   ├── rag_engine.py          # Knowledge management
+│   ├── training_interface.py  # Model training API
+│   ├── setup_llama_m1.sh      # M1/M2 setup script
 │   └── requirements.txt       # Python dependencies
 ├── frontend/
-│   └── index.html             # Basic frontend (or React app)
-├── start_system.py            # Python launcher script
-├── quick_start.sh             # Shell launcher script
-├── start_system.bat           # Windows launcher script
+│   └── index.html             # Web interface
+├── start_system.py            # Main launcher script
 └── README.md                  # This file
 ```
 
@@ -198,66 +157,59 @@ Create a `.env` file in the backend directory:
 OPENWEATHER_API_KEY=your_api_key
 NEWS_API_KEY=your_api_key
 
-# Model Configuration
-DEFAULT_MODEL=gpt2
-MAX_TOKENS=150
-TEMPERATURE=0.7
+# Force llama.cpp usage on M1 (optional)
+FORCE_LLAMA=1
 
 # Server Configuration
 HOST=0.0.0.0
 PORT=8000
-WORKERS=1
 ```
 
-### Custom Model Configuration
+### M1/M2 Configuration
 
-Edit `backend/custom_model.py` to modify model architecture:
+The system automatically detects Apple Silicon and optimizes accordingly. To customize:
 
-```python
-config = CustomChatbotConfig(
-    vocab_size=50257,
-    hidden_size=768,
-    num_hidden_layers=12,
-    num_attention_heads=12,
-    use_domain_embeddings=True,
-    use_intent_aware_attention=True
-)
-```
+1. **Use llama.cpp** (recommended for M1/M2):
+   ```bash
+   cd backend
+   ./setup_llama_m1.sh
+   ```
+
+2. **Force specific backend**:
+   ```bash
+   # Force llama.cpp
+   export FORCE_LLAMA=1
+   python start_system.py
+   ```
 
 ## 🐛 Troubleshooting
 
 ### Common Issues
 
 1. **Port already in use**
+   - The startup script automatically handles port conflicts
+   - If issues persist, manually kill the process:
    ```bash
-   # Kill process on port (macOS/Linux)
-   lsof -ti:8000 | xargs kill -9
-   
-   # Windows
-   netstat -ano | findstr :8000
-   taskkill /PID <PID> /F
+   lsof -ti:8000 | xargs kill -9  # macOS/Linux
    ```
 
-2. **Module not found errors**
+2. **M1/M2 Mac Bus Errors**
+   - Install llama.cpp: `cd backend && ./setup_llama_m1.sh`
+   - The system will automatically use it when available
+
+3. **Module not found errors**
    ```bash
-   # Ensure virtual environment is activated
-   source venv/bin/activate  # macOS/Linux
-   venv\Scripts\activate     # Windows
-   
-   # Reinstall dependencies
-   pip install -r backend/requirements.txt
+   # Re-run with dependency installation
+   python start_system.py
    ```
 
-3. **CUDA/GPU errors**
-   ```bash
-   # Install CPU-only versions
-   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-   ```
+4. **"SimpleChatbot" import error**
+   - Ensure you're in the project root directory
+   - Check that backend/simple_chatbot.py exists
 
-4. **Memory errors during model training**
-   - Reduce batch size in training configuration
-   - Use gradient accumulation
-   - Enable gradient checkpointing
+5. **llama.cpp server not starting**
+   - Verify model downloaded: `ls ~/Documents/ai-models/`
+   - Check port 8080 is free: `lsof -i :8080`
 
 ### Logs
 

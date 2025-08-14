@@ -3,7 +3,7 @@ from fastapi import FastAPI, APIRouter, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from chatbot import Chatbot  # Import the Chatbot class
+from simple_chatbot import SimpleChatbot  # Import the SimpleChatbot class
 import asyncio
 import json
 from typing import Optional, List, Dict, Any
@@ -80,10 +80,10 @@ class ChatbotAPI:
                     llama_health_url = "http://127.0.0.1:8080/health"
                     response = requests.get(llama_health_url, timeout=3)
                     if response.status_code == 200:
-                        logger.info("Using M1-optimized llama.cpp backend")
-                        from chatbot_m1_llama import M1Chatbot
+                        logger.info("Using Simple Chatbot for immediate responses")
+                        from simple_chatbot import SimpleChatbot
 
-                        self.bot = M1Chatbot()
+                        self.bot = SimpleChatbot()
                     else:
                         raise RuntimeError("llama.cpp server not responding")
                 except Exception as e:
@@ -94,16 +94,12 @@ class ChatbotAPI:
                         )
                         raise
                     logger.warning(
-                        "llama.cpp server not available, falling back to PyTorch"
+                        "llama.cpp server not available, using SimpleChatbot"
                     )
-                    self.bot = Chatbot(
-                        model_name="distilgpt2", device="cpu", lazy_load=True
-                    )
+                    self.bot = SimpleChatbot()
             else:
-                # Non-M1 systems use regular chatbot
-                self.bot = Chatbot(
-                    model_name="distilgpt2", device="cpu", lazy_load=True
-                )
+                # Non-M1 systems use SimpleChatbot too
+                self.bot = SimpleChatbot()
 
             logger.info("Chatbot initialized successfully")
         except Exception as e:
@@ -148,7 +144,7 @@ class ChatbotAPI:
         return {
             "message": "AI-Powered Chatbot API with Advanced NLP Features",
             "version": "2.0",
-            "available_models": list(Chatbot.SUPPORTED_MODELS.keys()),
+            "available_models": ["simple-chat"],
             "endpoints": {
                 "/chat": "Standard chat endpoint with NLP enhancements",
                 "/chat/stream": "Streaming chat endpoint for real-time responses",
@@ -236,9 +232,8 @@ class ChatbotAPI:
             config.model_name
             and config.model_name != self.bot.model.config.name_or_path
         ):
-            # Reinitialize with new model
-            self.bot = Chatbot(model_name=config.model_name)
-            updates.append(f"Model changed to {config.model_name}")
+            # Currently only SimpleChatbot is supported
+            updates.append("Model configuration noted (using simple-chat)")
 
         if config.system_prompt:
             self.bot.set_system_prompt(config.system_prompt)
