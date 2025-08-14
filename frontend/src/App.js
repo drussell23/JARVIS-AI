@@ -17,7 +17,7 @@ function App() {
       const response = await axios.post('http://127.0.0.1:8000/chat', {
         user_input: input,
       });
-      const assistantReply = response.data.reply;
+      const assistantReply = response.data?.response || response.data?.reply || 'Received.';
       newChat.push({ sender: 'Assistant', message: assistantReply });
     } catch (error) {
       console.error('Error sending message:', error);
@@ -36,11 +36,16 @@ function App() {
 
   return (
     <div className="App">
-      <h1>ChatBot Interface</h1>
+      <h1>J.A.R.V.I.S. Interface</h1>
+      <p className="app-subtitle">Just A Rather Very Intelligent System</p>
+      <div className="hud-divider" />
       <div className="chat-window">
         {chat.map((entry, index) => (
           <div key={index} className={`chat-entry ${entry.sender.toLowerCase()}`}>
-            <strong>{entry.sender}:</strong> {entry.message}
+            <div className="chat-bubble">
+              <div className="sender-label">{entry.sender}</div>
+              <div>{entry.message}</div>
+            </div>
           </div>
         ))}
       </div>
@@ -54,6 +59,7 @@ function App() {
         />
         <button onClick={handleSend}>Send</button>
       </div>
+      <div className="status-strip" />
     </div>
   );
 }

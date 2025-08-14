@@ -1,10 +1,21 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
 import torch
-from typing import List, Dict, Optional, AsyncGenerator
+from typing import List, Dict, Optional, AsyncGenerator, Any
 from datetime import datetime
 from dataclasses import dataclass, field
 from threading import Thread
 import asyncio
+import gc
+import psutil
+import os
+import logging
+
+# Disable tokenizer parallelism for M1
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 from nlp_engine import (
     NLPEngine,
     ConversationFlow,
@@ -35,29 +46,45 @@ class Chatbot:
         "distilgpt2": "distilgpt2",  # Lighter weight option
     }
 
-    def __init__(self, model_name: str = "gpt2", max_history_length: int = 10):
+    def __init__(
+        self,
+        model_name: str = "distilgpt2",  # Default to smaller model for M1
+        max_history_length: int = 10,
+        device: str = "auto",  # auto, cpu, or mps
+        lazy_load: bool = True,  # Lazy load models for better startup
+    ):
         """
-        Initialize the chatbot with a specified model and conversation history management.
+        Initialize the chatbot with M1 optimizations.
 
         Args:
             model_name: Name of the model to use (from SUPPORTED_MODELS)
             max_history_length: Maximum number of conversation turns to maintain
+            device: Device to use ('auto', 'cpu', or 'mps')
+            lazy_load: Whether to load models lazily
         """
+        # M1 optimization settings
+        self.device = device
+        self.lazy_load = lazy_load
+        self._model_loaded = False
+
+        # Memory monitoring
+        self.process = psutil.Process(os.getpid())
         # Select model path
         if model_name in self.SUPPORTED_MODELS:
             model_path = self.SUPPORTED_MODELS[model_name]
         else:
             model_path = model_name  # Allow custom model paths
 
-        print(f"Loading model: {model_path}")
+        self.model_name = model_name
+        self.model_path = model_path
 
-        # Load the model and tokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-        self.model = AutoModelForCausalLM.from_pretrained(model_path)
+        # Initialize model and tokenizer as None (lazy loading)
+        self.model = None
+        self.tokenizer = None
 
-        # Set pad token if not already set
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
+        # Load immediately if not lazy loading
+        if not lazy_load:
+            self._load_model()
 
         # Conversation management
         self.max_history_length = max_history_length
@@ -69,44 +96,106 @@ class Chatbot:
         # Model-specific settings
         self.model_config = self._get_model_config(model_name)
 
-        # Initialize NLP components
-        self.nlp_engine = NLPEngine()
-        self.conversation_flow = ConversationFlow()
-        self.task_planner = TaskPlanner()
-        self.response_enhancer = ResponseQualityEnhancer()
+        # Initialize NLP components (with error handling)
+        try:
+            self.nlp_engine = NLPEngine()
+            self.conversation_flow = ConversationFlow()
+            self.task_planner = TaskPlanner()
+            self.response_enhancer = ResponseQualityEnhancer()
+            self.automation_engine = AutomationEngine()
+            self.rag_engine = RAGEngine(base_model_name=model_name)
+        except Exception as e:
+            logger.warning(f"Failed to initialize some components: {e}")
+            # Continue without these components
+            self.nlp_engine = None
+            self.conversation_flow = None
+            self.task_planner = None
+            self.response_enhancer = None
+            self.automation_engine = None
+            self.rag_engine = None
 
-        # Initialize automation engine
-        self.automation_engine = AutomationEngine()
-        
-        # Initialize RAG engine
-        self.rag_engine = RAGEngine(base_model_name=model_name)
+    def _get_memory_usage(self) -> float:
+        """Get current memory usage in MB"""
+        return self.process.memory_info().rss / 1024 / 1024
+
+    def _load_model(self):
+        """Load model with M1 optimizations"""
+        if self._model_loaded:
+            return
+
+        logger.info(f"Loading model: {self.model_path}")
+        logger.info(f"Initial memory: {self._get_memory_usage():.2f} MB")
+
+        try:
+            # Load tokenizer
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
+
+            # Set pad token
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+                self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+
+            # Determine device
+            if self.device == "auto":
+                if torch.backends.mps.is_available():
+                    self.device = "cpu"  # Use CPU for stability on M1
+                else:
+                    self.device = "cpu"
+
+            # Load model with optimizations
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_path,
+                torch_dtype=torch.float32,  # Use float32 for stability
+                low_cpu_mem_usage=True,  # Optimize memory usage
+            )
+
+            # Move to device
+            self.model = self.model.to(self.device)
+            logger.info(f"Using device: {self.device}")
+
+            # Set to evaluation mode
+            self.model.eval()
+
+            self._model_loaded = True
+            logger.info(f"Model loaded. Memory: {self._get_memory_usage():.2f} MB")
+
+        except Exception as e:
+            logger.error(f"Error loading model: {e}")
+            self._model_loaded = False
+            raise
+
+    def _cleanup_memory(self):
+        """Clean up memory after generation"""
+        gc.collect()
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
 
     def _get_model_config(self, model_name: str) -> Dict:
         """Get model-specific generation parameters."""
         configs = {
             "dialogpt": {
-                "max_length": 1000,
+                "max_new_tokens": 150,
                 "temperature": 0.7,
                 "top_k": 50,
                 "top_p": 0.95,
                 "do_sample": True,
             },
             "gpt2": {
-                "max_length": 512,
+                "max_new_tokens": 50,  # Reduced for M1 compatibility
                 "temperature": 0.8,
                 "top_k": 50,
                 "top_p": 0.92,
                 "do_sample": True,
             },
             "bloom": {
-                "max_length": 512,
+                "max_new_tokens": 100,
                 "temperature": 0.7,
                 "top_k": 40,
                 "top_p": 0.9,
                 "do_sample": True,
             },
             "llama2": {
-                "max_length": 512,
+                "max_new_tokens": 100,
                 "temperature": 0.6,
                 "top_k": 40,
                 "top_p": 0.9,
@@ -226,7 +315,10 @@ class Chatbot:
         }
 
         # Process with automation engine
-        result = await self.automation_engine.process_command(user_input, context)
+        if self.automation_engine:
+            result = await self.automation_engine.process_command(user_input, context)
+        else:
+            result = {"success": False, "message": "Automation engine not available"}
 
         return result
 
@@ -236,22 +328,30 @@ class Chatbot:
         knowledge_intents = ["question", "ask_information", "help"]
         if nlp_result.intent.intent.value in knowledge_intents:
             return True
-            
+
         # Use RAG if the query contains knowledge-seeking keywords
         knowledge_keywords = [
-            "what is", "how does", "explain", "tell me about",
-            "why", "when", "where", "who", "define",
-            "describe", "help me understand"
+            "what is",
+            "how does",
+            "explain",
+            "tell me about",
+            "why",
+            "when",
+            "where",
+            "who",
+            "define",
+            "describe",
+            "help me understand",
         ]
-        
+
         user_input_lower = user_input.lower()
         if any(keyword in user_input_lower for keyword in knowledge_keywords):
             return True
-            
+
         # Use RAG for technical topics
         if nlp_result.topic in ["technology", "science", "education"]:
             return True
-            
+
         return False
 
     def _build_enhanced_prompt(
@@ -285,20 +385,22 @@ class Chatbot:
                     f"\nData: {str(automation_response['data'])[:200]}"
                 )
             prompt_parts.append(automation_context)
-            
+
         # Add RAG context if available
         if rag_result:
-            rag_context = f"\nRelevant Knowledge:\n{rag_result.get('context_used', '')[:1000]}"
+            rag_context = (
+                f"\nRelevant Knowledge:\n{rag_result.get('context_used', '')[:1000]}"
+            )
             prompt_parts.append(rag_context)
-            
+
             # Add personalization from learning engine
-            if rag_result.get('adapted_parameters'):
-                params = rag_result['adapted_parameters']
-                if params.get('formal'):
+            if rag_result.get("adapted_parameters"):
+                params = rag_result["adapted_parameters"]
+                if params.get("formal"):
                     enhanced_system += " Use formal language."
-                if params.get('detail_level') == 'high':
+                if params.get("detail_level") == "high":
                     enhanced_system += " Provide detailed explanations."
-                elif params.get('detail_level') == 'low':
+                elif params.get("detail_level") == "low":
                     enhanced_system += " Keep responses concise."
 
         # Add context about detected entities if relevant
@@ -356,53 +458,100 @@ class Chatbot:
         Returns:
             The model's response
         """
-        # Perform NLP analysis
-        nlp_result = self.nlp_engine.analyze(user_input)
+        # Lazy load model if needed
+        if not self._model_loaded:
+            self._load_model()
+
+        # Perform NLP analysis if available
+        nlp_result = None
+        if self.nlp_engine:
+            try:
+                nlp_result = self.nlp_engine.analyze(user_input)
+            except Exception as e:
+                logger.warning(f"Error in NLP analysis: {e}")
+                nlp_result = None
 
         # Check for automation commands
         automation_response = None
-        if self._is_automation_command(user_input, nlp_result):
+        if (
+            nlp_result
+            and self.automation_engine
+            and self._is_automation_command(user_input, nlp_result)
+        ):
             automation_response = asyncio.run(
                 self._handle_automation(user_input, nlp_result)
             )
 
         # Use RAG for knowledge retrieval
         rag_result = None
-        if self._should_use_rag(user_input, nlp_result):
+        if (
+            nlp_result
+            and self.rag_engine
+            and self._should_use_rag(user_input, nlp_result)
+        ):
             rag_result = asyncio.run(
                 self.rag_engine.generate_with_retrieval(
-                    user_input,
-                    self.get_conversation_history()
+                    user_input, self.get_conversation_history()
                 )
             )
 
         # Add user input to history
         self.add_to_history("user", user_input)
 
-        # Build enhanced prompt based on NLP analysis
-        prompt = self._build_enhanced_prompt(
-            user_input, nlp_result, automation_response, rag_result
-        )
+        try:
+            # Build enhanced prompt based on NLP analysis
+            if nlp_result:
+                prompt = self._build_enhanced_prompt(
+                    user_input, nlp_result, automation_response, rag_result
+                )
+            else:
+                prompt = self._build_prompt(user_input)
 
-        # Encode the prompt
-        inputs = self.tokenizer.encode(prompt, return_tensors="pt", truncation=True)
-
-        # Adjust generation parameters based on intent
-        generation_config = self._adjust_generation_config(nlp_result)
-
-        # Generate response
-        with torch.no_grad():
-            outputs = self.model.generate(
-                inputs,
-                max_new_tokens=generation_config.get("max_new_tokens", 150),
-                pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
-                **generation_config,
+            # Encode the prompt with attention mask
+            if not self.tokenizer:
+                raise ValueError("Tokenizer not loaded")
+            inputs = self.tokenizer(
+                prompt, return_tensors="pt", truncation=True, padding=True
             )
 
-        # Decode only the generated part
-        generated_tokens = outputs[0][inputs.shape[1] :]
-        response = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
+            # Adjust generation parameters based on intent
+            if nlp_result:
+                generation_config = self._adjust_generation_config(nlp_result)
+            else:
+                generation_config = self._get_generation_config()
+
+            # Avoid passing duplicate max_new_tokens by extracting it from the config first
+            max_new_tokens = generation_config.pop("max_new_tokens", 150)
+
+            # Generate response with M1 safety measures
+            if not self.model or not self.tokenizer:
+                raise ValueError("Model or tokenizer not loaded")
+
+            with torch.no_grad():
+                try:
+                    # Move inputs to CPU explicitly
+                    input_ids = inputs["input_ids"].cpu()
+                    attention_mask = inputs["attention_mask"].cpu()
+
+                    outputs = self.model.generate(
+                        input_ids=input_ids,
+                        attention_mask=attention_mask,
+                        max_new_tokens=max_new_tokens,
+                        pad_token_id=self.tokenizer.pad_token_id,
+                        eos_token_id=self.tokenizer.eos_token_id,
+                        **generation_config,
+                    )
+                except RuntimeError as e:
+                    logger.error(f"Generation failed with error: {e}")
+                    raise
+
+            # Decode only the generated part
+            generated_tokens = outputs[0][inputs["input_ids"].shape[1] :]
+            response = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
+        except Exception as e:
+            print(f"Error in model generation: {e}")
+            # Fallback response
+            response = f"I understand you said: '{user_input}'. How can I help you?"
 
         # Clean up the response
         response = response.strip()
@@ -414,16 +563,26 @@ class Chatbot:
                 response = response.split(delimiter)[0].strip()
 
         # Enhance response quality
-        context = self.conversation_flow.get_context_summary()
-        response = self.response_enhancer.enhance_response(
-            response, nlp_result, context
-        )
+        try:
+            if self.conversation_flow and self.response_enhancer and nlp_result:
+                context = self.conversation_flow.get_context_summary()
+                response = self.response_enhancer.enhance_response(
+                    response, nlp_result, context
+                )
 
-        # Update conversation flow
-        self.conversation_flow.update_flow(nlp_result, response)
+                # Update conversation flow
+                if nlp_result:
+                    self.conversation_flow.update_flow(nlp_result, response)
+        except Exception as e:
+            logger.warning(f"Error in response enhancement: {e}")
+            # Continue with unenhanced response
 
         # Add response to history
         self.add_to_history("assistant", response)
+
+        # Clean up memory after generation
+        self._cleanup_memory()
+        logger.debug(f"Memory after generation: {self._get_memory_usage():.2f} MB")
 
         return response
 
@@ -443,7 +602,10 @@ class Chatbot:
         start_time = datetime.now()
 
         # Perform NLP analysis
-        nlp_result = self.nlp_engine.analyze(user_input)
+        if self.nlp_engine:
+            nlp_result = self.nlp_engine.analyze(user_input)
+        else:
+            nlp_result = None
 
         # Generate the response
         response = self.generate_response(user_input)
@@ -453,29 +615,48 @@ class Chatbot:
 
         # Create task plan if requested
         task_plan = None
-        if nlp_result.intent.intent.value == "task_planning":
+        if (
+            nlp_result
+            and nlp_result.intent.intent.value == "task_planning"
+            and self.task_planner
+        ):
             task_plan = self.task_planner.create_task_plan(user_input, nlp_result)
 
         return {
             "response": response,
             "generation_time": generation_time,
-            "model_used": self.model.config.name_or_path,
+            "model_used": (
+                self.model.config.name_or_path
+                if self.model and hasattr(self.model, "config")
+                else self.model_name
+            ),
             "conversation_id": id(self),
             "turn_number": len(self.conversation_history) // 2,
             "context": context,
             "nlp_analysis": {
-                "intent": nlp_result.intent.intent.value,
-                "intent_confidence": nlp_result.intent.confidence,
+                "intent": nlp_result.intent.intent.value if nlp_result else "unknown",
+                "intent_confidence": (
+                    nlp_result.intent.confidence if nlp_result else 0.0
+                ),
                 "entities": [
-                    {"text": e.text, "type": e.type} for e in nlp_result.entities
+                    {"text": e.text, "type": e.type}
+                    for e in (nlp_result.entities if nlp_result else [])
                 ],
-                "sentiment": nlp_result.sentiment,
-                "is_question": nlp_result.is_question,
-                "requires_action": nlp_result.requires_action,
-                "topic": nlp_result.topic,
-                "keywords": nlp_result.keywords[:5],
+                "sentiment": (
+                    nlp_result.sentiment
+                    if nlp_result
+                    else {"positive": 0, "negative": 0, "neutral": 1}
+                ),
+                "is_question": nlp_result.is_question if nlp_result else False,
+                "requires_action": nlp_result.requires_action if nlp_result else False,
+                "topic": nlp_result.topic if nlp_result else None,
+                "keywords": nlp_result.keywords[:5] if nlp_result else [],
             },
-            "conversation_flow": self.conversation_flow.get_context_summary(),
+            "conversation_flow": (
+                self.conversation_flow.get_context_summary()
+                if self.conversation_flow
+                else {}
+            ),
             "task_plan": task_plan,
         }
 
@@ -506,13 +687,15 @@ class Chatbot:
         )
 
         # Generation kwargs
+        model_cfg = self.model_config.copy()
+        max_new_tokens = model_cfg.pop("max_new_tokens", 150)
         generation_kwargs = dict(
             inputs,
             streamer=streamer,
-            max_new_tokens=150,
+            max_new_tokens=max_new_tokens,
             pad_token_id=self.tokenizer.pad_token_id,
             eos_token_id=self.tokenizer.eos_token_id,
-            **self.model_config,
+            **model_cfg,
         )
 
         # Start generation in a separate thread

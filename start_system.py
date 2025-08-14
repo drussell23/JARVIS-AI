@@ -39,7 +39,8 @@ class SystemManager:
         self.ports = {
             "main_api": 8000,
             "training_api": 8001,
-            "frontend": 3000
+            "frontend": 3000,
+            "llama_cpp": 8080  # llama.cpp server port
         }
         self.demos = {
             "chat": "http://localhost:8000/docs",
@@ -48,11 +49,15 @@ class SystemManager:
             "rag": "http://localhost:8000/rag_demo.html",
             "training": "http://localhost:8001/llm_demo.html"
         }
+        self.is_m1_mac = platform.system() == "Darwin" and platform.machine() == "arm64"
         
     def print_header(self):
         """Print system header"""
         print(f"\n{Colors.HEADER}{'='*60}")
-        print(f"{Colors.BOLD}🤖 AI-Powered Chatbot System Launcher 🚀{Colors.ENDC}")
+        if self.is_m1_mac:
+            print(f"{Colors.BOLD}🤖 AI-Powered Chatbot System Launcher 🚀 (M1 Optimized){Colors.ENDC}")
+        else:
+            print(f"{Colors.BOLD}🤖 AI-Powered Chatbot System Launcher 🚀{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}\n")
         
     def check_python_version(self):
@@ -74,6 +79,19 @@ class SystemManager:
         except FileNotFoundError:
             pass
         return False
+        
+    def check_llama_cpp_installed(self) -> bool:
+        """Check if llama.cpp is installed"""
+        try:
+            result = subprocess.run(["which", "llama-server"], capture_output=True, text=True)
+            return result.returncode == 0
+        except:
+            return False
+            
+    def check_llama_model_exists(self) -> bool:
+        """Check if a llama.cpp model exists"""
+        model_path = Path.home() / "Documents" / "ai-models" / "mistral-7b-instruct-v0.1.Q4_K_M.gguf"
+        return model_path.exists()
         
     def install_backend_dependencies(self):
         """Install backend Python dependencies"""
@@ -263,45 +281,166 @@ class SystemManager:
         sock.close()
         return result != 0
         
+    def start_llama_cpp_server(self):
+        """Start llama.cpp server for M1 Macs"""
+        if not self.is_m1_mac:
+            return
+            
+        print(f"\n{Colors.BLUE}Checking M1 optimization setup...{Colors.ENDC}")
+        
+        # Check if llama.cpp is installed
+        if not self.check_llama_cpp_installed():
+            print(f"{Colors.WARNING}⚠️  llama.cpp not found. Run ./backend/setup_llama_m1.sh to install{Colors.ENDC}")
+            return
+            
+        # Check if model exists
+        if not self.check_llama_model_exists():
+            print(f"{Colors.WARNING}⚠️  No llama.cpp model found. Run ./backend/setup_llama_m1.sh to download{Colors.ENDC}")
+            return
+            
+        # Check if port is available
+        if not self.check_port_available(self.ports['llama_cpp']):
+            print(f"{Colors.WARNING}⚠️  Port {self.ports['llama_cpp']} is already in use (llama.cpp might already be running){Colors.ENDC}")
+            # Check if it's actually llama.cpp
+            try:
+                import requests
+                response = requests.get(f"http://localhost:{self.ports['llama_cpp']}/health", timeout=1)
+                if response.status_code == 200:
+                    print(f"{Colors.GREEN}✓ llama.cpp server already running{Colors.ENDC}")
+                    return
+            except:
+                pass
+                
+        # Start llama.cpp server
+        print(f"{Colors.CYAN}Starting llama.cpp server on port {self.ports['llama_cpp']}...{Colors.ENDC}")
+        
+        model_path = Path.home() / "Documents" / "ai-models" / "mistral-7b-instruct-v0.1.Q4_K_M.gguf"
+        
+        llama_process = subprocess.Popen(
+            [
+                "llama-server",
+                "-m", str(model_path),
+                "-c", "2048",
+                "--host", "0.0.0.0",
+                "--port", str(self.ports['llama_cpp']),
+                "-ngl", "1",
+                "--n-gpu-layers", "1"
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT
+        )
+        self.processes.append(llama_process)
+        
+        # Wait for llama.cpp to start
+        print(f"{Colors.CYAN}Waiting for llama.cpp to initialize...{Colors.ENDC}")
+        time.sleep(5)
+        
+        # Check if it started successfully
+        try:
+            import requests
+            response = requests.get(f"http://localhost:{self.ports['llama_cpp']}/health", timeout=2)
+            if response.status_code == 200:
+                print(f"{Colors.GREEN}✓ llama.cpp server started successfully{Colors.ENDC}")
+            else:
+                print(f"{Colors.WARNING}⚠️  llama.cpp server may not be ready yet{Colors.ENDC}")
+        except:
+            print(f"{Colors.WARNING}⚠️  Could not verify llama.cpp server status{Colors.ENDC}")
+    
     def start_backend_services(self):
         """Start backend services"""
         print(f"\n{Colors.BLUE}Starting backend services...{Colors.ENDC}")
         
-        # Check ports
-        for service, port in self.ports.items():
+        # Check ports (only backend ports)
+        backend_ports = {"main_api": self.ports["main_api"], "training_api": self.ports["training_api"]}
+        for service, port in backend_ports.items():
             if not self.check_port_available(port):
                 print(f"{Colors.WARNING}⚠️  Port {port} ({service}) is already in use{Colors.ENDC}")
-                response = input("Continue anyway? (y/n): ")
-                if response.lower() != 'y':
-                    sys.exit(1)
+                print(f"{Colors.CYAN}Attempting to kill existing process...{Colors.ENDC}")
+                try:
+                    subprocess.run(f"lsof -ti:{port} | xargs kill -9", shell=True, capture_output=True)
+                    time.sleep(1)
+                except:
+                    pass
+        
+        # Set M1 optimization environment variables
+        env = os.environ.copy()
+        env["TOKENIZERS_PARALLELISM"] = "false"
+        env["PYTHONUNBUFFERED"] = "1"
+        env["OMP_NUM_THREADS"] = "1"
+        
+        # Detect if running on M1 Mac
+        if platform.system() == "Darwin" and platform.machine() == "arm64":
+            print(f"{Colors.CYAN}🍎 M1 Mac detected - using optimized settings{Colors.ENDC}")
                     
         # Start main API
         print(f"{Colors.CYAN}Starting main API on port {self.ports['main_api']}...{Colors.ENDC}")
+        
+        # Use the virtual environment's Python if it exists
+        venv_python = self.backend_dir / "venv" / "bin" / "python"
+        if venv_python.exists():
+            python_cmd = str(venv_python.absolute())
+            print(f"{Colors.CYAN}Using virtual environment Python: {python_cmd}{Colors.ENDC}")
+        else:
+            python_cmd = sys.executable
+            print(f"{Colors.CYAN}Using system Python: {python_cmd}{Colors.ENDC}")
+            
         main_api_process = subprocess.Popen(
-            [sys.executable, "main.py"],
+            [python_cmd, "main.py"],
             cwd=self.backend_dir,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
+            stderr=subprocess.STDOUT,  # Combine stderr with stdout
+            env=env
         )
         self.processes.append(main_api_process)
         
-        # Start training API
+        # Start training API (optional - may fail if dependencies missing)
         print(f"{Colors.CYAN}Starting training API on port {self.ports['training_api']}...{Colors.ENDC}")
-        training_api_process = subprocess.Popen(
-            [sys.executable, "training_interface.py"],
-            cwd=self.backend_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
-        self.processes.append(training_api_process)
+        try:
+            # Check if training_interface.py exists
+            if (self.backend_dir / "training_interface.py").exists():
+                training_api_process = subprocess.Popen(
+                    [python_cmd, "training_interface.py"],
+                    cwd=self.backend_dir,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    env=env
+                )
+                self.processes.append(training_api_process)
+                
+                # Give it a moment to start
+                time.sleep(2)
+                
+                # Check if it's still running
+                if training_api_process.poll() is not None:
+                    # Read output to see what went wrong
+                    output = training_api_process.stdout.read().decode('utf-8') if training_api_process.stdout else ""
+                    if "ModuleNotFoundError" in output:
+                        print(f"{Colors.WARNING}⚠️  Training API skipped (missing dependencies){Colors.ENDC}")
+                        self.processes.remove(training_api_process)
+                    else:
+                        print(f"{Colors.WARNING}⚠️  Training API failed to start{Colors.ENDC}")
+                        if output:
+                            print(f"Error: {output[:200]}...")
+                        self.processes.remove(training_api_process)
+            else:
+                print(f"{Colors.WARNING}⚠️  Training API not found{Colors.ENDC}")
+        except Exception as e:
+            print(f"{Colors.WARNING}⚠️  Failed to start training API: {e}{Colors.ENDC}")
         
         # Wait for services to start
-        time.sleep(3)
+        print(f"{Colors.CYAN}Waiting for services to initialize (this may take 30-60 seconds on M1)...{Colors.ENDC}")
+        time.sleep(10)
         
         # Check if services are running
-        for proc in self.processes:
+        for i, proc in enumerate(self.processes):
             if proc.poll() is not None:
-                print(f"{Colors.FAIL}❌ Failed to start backend service{Colors.ENDC}")
+                # Read output to show error
+                output = proc.stdout.read().decode('utf-8') if proc.stdout else ""
+                service_name = "Main API" if i == 0 else "Training API"
+                print(f"{Colors.FAIL}❌ Failed to start {service_name}{Colors.ENDC}")
+                if output:
+                    print(f"{Colors.FAIL}Error output:{Colors.ENDC}")
+                    print(output[:1000])
                 self.cleanup()
                 sys.exit(1)
                 
@@ -314,6 +453,16 @@ class SystemManager:
             
         print(f"\n{Colors.BLUE}Starting frontend...{Colors.ENDC}")
         
+        # Check if port is available
+        if not self.check_port_available(self.ports['frontend']):
+            print(f"{Colors.WARNING}⚠️  Port {self.ports['frontend']} is already in use{Colors.ENDC}")
+            print(f"{Colors.CYAN}Attempting to kill existing process...{Colors.ENDC}")
+            try:
+                subprocess.run(f"lsof -ti:{self.ports['frontend']} | xargs kill -9", shell=True, capture_output=True)
+                time.sleep(1)
+            except:
+                pass
+        
         # Check if it's a React app or basic HTML
         if (self.frontend_dir / "package.json").exists():
             # Try to start with npm
@@ -323,7 +472,8 @@ class SystemManager:
                         ["npm", "start"],
                         cwd=self.frontend_dir,
                         stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE
+                        stderr=subprocess.STDOUT,
+                        env={**os.environ, "PORT": str(self.ports['frontend'])}
                     )
                     self.processes.append(frontend_process)
                     print(f"{Colors.GREEN}✓ Frontend started on port {self.ports['frontend']}{Colors.ENDC}")
@@ -351,9 +501,17 @@ class SystemManager:
         print(f"  🔌 Main API:        http://localhost:{self.ports['main_api']}")
         print(f"  🔧 Training API:    http://localhost:{self.ports['training_api']}")
         
+        if self.is_m1_mac:
+            print(f"  🤖 llama.cpp:       http://localhost:{self.ports['llama_cpp']} (M1 optimized)")
+        
         print(f"\n{Colors.CYAN}Demo Interfaces:{Colors.ENDC}")
         for name, url in self.demos.items():
             print(f"  📄 {name.title():<15} {url}")
+            
+        if self.is_m1_mac:
+            print(f"\n{Colors.GREEN}🍎 M1 Optimization Active:{Colors.ENDC}")
+            print(f"  Using llama.cpp for native M1 performance")
+            print(f"  No PyTorch bus errors!")
             
         print(f"\n{Colors.WARNING}Press Ctrl+C to stop all services{Colors.ENDC}\n")
         
@@ -395,6 +553,10 @@ class SystemManager:
         # Create directories
         self.create_directories()
         
+        # Start llama.cpp for M1 Macs
+        if self.is_m1_mac:
+            self.start_llama_cpp_server()
+        
         # Start services
         self.start_backend_services()
         self.start_frontend()
@@ -412,9 +574,25 @@ class SystemManager:
             while True:
                 time.sleep(1)
                 # Check if processes are still running
-                for proc in self.processes:
+                for i, proc in enumerate(self.processes):
                     if proc.poll() is not None:
-                        print(f"{Colors.WARNING}⚠️  A service has stopped unexpectedly{Colors.ENDC}")
+                        # Read the output to see what went wrong
+                        output = proc.stdout.read().decode('utf-8') if proc.stdout else ""
+                        
+                        # Determine service name
+                        if self.is_m1_mac and len(self.processes) > 3:
+                            # With llama.cpp: 0=llama, 1=main, 2=training, 3=frontend
+                            service_names = ["llama.cpp", "Main API", "Training API", "Frontend"]
+                        else:
+                            # Without llama.cpp: 0=main, 1=training, 2=frontend
+                            service_names = ["Main API", "Training API", "Frontend"]
+                        
+                        service_name = service_names[i] if i < len(service_names) else f"Service {i}"
+                        
+                        print(f"{Colors.FAIL}❌ {service_name} has stopped unexpectedly{Colors.ENDC}")
+                        if output:
+                            print(f"{Colors.FAIL}Error output:{Colors.ENDC}")
+                            print(output[:500])  # Show first 500 chars of error
                         
         except KeyboardInterrupt:
             pass
