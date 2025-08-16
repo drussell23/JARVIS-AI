@@ -74,8 +74,7 @@ class MemoryAPI:
         # Register routes
         self._register_routes()
 
-        # Start memory monitoring
-        asyncio.create_task(self._start_monitoring())
+        # Memory monitoring will be started on first request or via startup event
 
     def _register_routes(self):
         """Register API routes"""

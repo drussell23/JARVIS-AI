@@ -95,51 +95,121 @@ class SystemManager:
         model_path = Path.home() / "Documents" / "ai-models" / "mistral-7b-instruct-v0.1.Q4_K_M.gguf"
         return model_path.exists()
         
+    def check_installed_packages(self):
+        """Check which packages are already installed"""
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "list", "--format=json"],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                import json
+                installed = json.loads(result.stdout)
+                return {pkg['name'].lower(): pkg['version'] for pkg in installed}
+        except:
+            pass
+        return {}
+    
+    def check_missing_dependencies(self):
+        """Check for missing dependencies from requirements.txt"""
+        requirements_file = self.backend_dir / "requirements.txt"
+        if not requirements_file.exists():
+            return []
+        
+        installed = self.check_installed_packages()
+        missing = []
+        
+        with open(requirements_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    # Parse requirement
+                    if '>=' in line or '==' in line or '<=' in line:
+                        pkg_name = line.split('>=')[0].split('==')[0].split('<=')[0].strip()
+                    elif '@' in line:  # URL-based dependencies
+                        pkg_name = line.split('@')[0].strip()
+                    else:
+                        pkg_name = line.strip()
+                    
+                    # Check if installed
+                    if pkg_name.lower() not in installed:
+                        missing.append(line)
+        
+        return missing
+    
     def install_backend_dependencies(self):
         """Install backend Python dependencies"""
-        print(f"\n{Colors.BLUE}Installing backend dependencies...{Colors.ENDC}")
+        print(f"\n{Colors.BLUE}Checking backend dependencies...{Colors.ENDC}")
         
         requirements_file = self.backend_dir / "requirements.txt"
         if not requirements_file.exists():
             print(f"{Colors.WARNING}⚠️  requirements.txt not found in backend directory{Colors.ENDC}")
             return
+        
+        # Check for missing dependencies
+        missing = self.check_missing_dependencies()
+        
+        if not missing:
+            print(f"{Colors.GREEN}✓ All backend dependencies already installed{Colors.ENDC}")
+        else:
+            print(f"{Colors.CYAN}Found {len(missing)} missing dependencies{Colors.ENDC}")
+            print(f"{Colors.BLUE}Installing missing dependencies...{Colors.ENDC}")
             
-        try:
-            # Upgrade pip first
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
-            
-            # Install requirements
-            subprocess.check_call([
-                sys.executable, "-m", "pip", "install", "-r", str(requirements_file)
-            ])
-            
-            # Download NLTK data
-            print(f"{Colors.BLUE}Downloading NLTK data...{Colors.ENDC}")
             try:
-                import nltk
-                nltk.download('punkt', quiet=True)
-                nltk.download('averaged_perceptron_tagger', quiet=True)
-                nltk.download('stopwords', quiet=True)
-                nltk.download('wordnet', quiet=True)
-                print(f"{Colors.GREEN}✓ NLTK data downloaded{Colors.ENDC}")
-            except:
-                print(f"{Colors.WARNING}⚠️  Could not download NLTK data{Colors.ENDC}")
+                # Install only missing dependencies
+                total = len(missing)
+                for i, dep in enumerate(missing, 1):
+                    print(f"  [{i}/{total}] Installing: {dep}")
+                    subprocess.check_call([
+                        sys.executable, "-m", "pip", "install", dep
+                    ], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
                 
-            # Download spaCy model
-            print(f"{Colors.BLUE}Downloading spaCy model...{Colors.ENDC}")
+                print(f"{Colors.GREEN}✓ Missing dependencies installed{Colors.ENDC}")
+                
+            except subprocess.CalledProcessError as e:
+                print(f"{Colors.FAIL}❌ Failed to install dependencies: {e}{Colors.ENDC}")
+                sys.exit(1)
+        
+        # Check NLTK data
+        print(f"{Colors.BLUE}Checking NLTK data...{Colors.ENDC}")
+        try:
+            import nltk
+            nltk_data_path = Path.home() / "nltk_data"
+            required_data = ['punkt', 'averaged_perceptron_tagger', 'stopwords', 'wordnet']
+            missing_data = []
+            
+            for data in required_data:
+                if not (nltk_data_path / "tokenizers" / data).exists() and \
+                   not (nltk_data_path / "corpora" / data).exists() and \
+                   not (nltk_data_path / "taggers" / data).exists():
+                    missing_data.append(data)
+            
+            if missing_data:
+                print(f"{Colors.CYAN}Downloading missing NLTK data...{Colors.ENDC}")
+                for data in missing_data:
+                    nltk.download(data, quiet=True)
+                print(f"{Colors.GREEN}✓ NLTK data ready{Colors.ENDC}")
+            else:
+                print(f"{Colors.GREEN}✓ NLTK data already downloaded{Colors.ENDC}")
+        except ImportError:
+            print(f"{Colors.WARNING}⚠️  NLTK not installed{Colors.ENDC}")
+        
+        # Check spaCy model
+        print(f"{Colors.BLUE}Checking spaCy model...{Colors.ENDC}")
+        try:
+            import spacy
             try:
+                spacy.load("en_core_web_sm")
+                print(f"{Colors.GREEN}✓ spaCy model already installed{Colors.ENDC}")
+            except OSError:
+                print(f"{Colors.CYAN}Downloading spaCy model...{Colors.ENDC}")
                 subprocess.check_call([
                     sys.executable, "-m", "spacy", "download", "en_core_web_sm"
-                ])
+                ], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
                 print(f"{Colors.GREEN}✓ spaCy model downloaded{Colors.ENDC}")
-            except:
-                print(f"{Colors.WARNING}⚠️  Could not download spaCy model{Colors.ENDC}")
-                
-            print(f"{Colors.GREEN}✓ Backend dependencies installed{Colors.ENDC}")
-            
-        except subprocess.CalledProcessError as e:
-            print(f"{Colors.FAIL}❌ Failed to install backend dependencies: {e}{Colors.ENDC}")
-            sys.exit(1)
+        except ImportError:
+            print(f"{Colors.WARNING}⚠️  spaCy not installed{Colors.ENDC}")
             
     def setup_frontend(self):
         """Setup frontend (React) if it exists"""
@@ -377,17 +447,12 @@ class SystemManager:
         # Start main API
         print(f"{Colors.CYAN}Starting main API on port {self.ports['main_api']}...{Colors.ENDC}")
         
-        # Use the virtual environment's Python if it exists
-        venv_python = self.backend_dir / "venv" / "bin" / "python"
-        if venv_python.exists():
-            python_cmd = str(venv_python.absolute())
-            print(f"{Colors.CYAN}Using virtual environment Python: {python_cmd}{Colors.ENDC}")
-        else:
-            python_cmd = sys.executable
-            print(f"{Colors.CYAN}Using system Python: {python_cmd}{Colors.ENDC}")
+        # Always use system Python for now (has all dependencies)
+        python_cmd = sys.executable
+        print(f"{Colors.CYAN}Using Python: {python_cmd}{Colors.ENDC}")
             
         main_api_process = subprocess.Popen(
-            [python_cmd, "main.py"],
+            [python_cmd, "run_server.py"],
             cwd=self.backend_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,  # Combine stderr with stdout
@@ -613,33 +678,46 @@ class SystemManager:
     # Async methods for better performance
     async def install_backend_dependencies_async(self):
         """Install backend Python dependencies asynchronously"""
-        print(f"\n{Colors.BLUE}Installing backend dependencies (async)...{Colors.ENDC}")
+        print(f"\n{Colors.BLUE}Checking backend dependencies (async)...{Colors.ENDC}")
         
         requirements_file = self.backend_dir / "requirements.txt"
         if not requirements_file.exists():
             print(f"{Colors.WARNING}⚠️  requirements.txt not found in backend directory{Colors.ENDC}")
             return
+        
+        # Check for missing dependencies
+        missing = self.check_missing_dependencies()
+        
+        if not missing:
+            print(f"{Colors.GREEN}✓ All backend dependencies already installed{Colors.ENDC}")
+        else:
+            print(f"{Colors.CYAN}Found {len(missing)} missing dependencies{Colors.ENDC}")
+            print(f"{Colors.BLUE}Installing missing dependencies asynchronously...{Colors.ENDC}")
             
-        try:
-            # Upgrade pip first
-            proc = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", "pip", "install", "--upgrade", "pip",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            await proc.communicate()
-            
-            # Install requirements
-            proc = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", "pip", "install", "-r", str(requirements_file),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            await proc.communicate()
-            
-            print(f"{Colors.GREEN}✓ Backend dependencies installed{Colors.ENDC}")
-        except Exception as e:
-            print(f"{Colors.FAIL}❌ Failed to install dependencies: {e}{Colors.ENDC}")
+            try:
+                # Install missing dependencies in parallel (batches of 5)
+                batch_size = 5
+                for i in range(0, len(missing), batch_size):
+                    batch = missing[i:i + batch_size]
+                    tasks = []
+                    
+                    for dep in batch:
+                        print(f"  Installing: {dep}")
+                        proc = await asyncio.create_subprocess_exec(
+                            sys.executable, "-m", "pip", "install", dep,
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE
+                        )
+                        tasks.append(proc.communicate())
+                    
+                    # Wait for batch to complete
+                    await asyncio.gather(*tasks)
+                
+                print(f"{Colors.GREEN}✓ Missing dependencies installed{Colors.ENDC}")
+                
+            except Exception as e:
+                print(f"{Colors.FAIL}❌ Failed to install dependencies: {e}{Colors.ENDC}")
+                sys.exit(1)
     
     async def start_backend_services_async(self):
         """Start backend services asynchronously"""
@@ -746,11 +824,85 @@ def main():
         action="store_true",
         help="Use async mode for better performance"
     )
+    parser.add_argument(
+        "--check-deps",
+        action="store_true",
+        help="Check dependencies and exit"
+    )
     
     args = parser.parse_args()
     
     # Create and run system manager
     manager = SystemManager()
+    
+    # Check dependencies only
+    if args.check_deps:
+        manager.print_header()
+        print(f"{Colors.BLUE}Checking dependencies...{Colors.ENDC}\n")
+        
+        # Check installed packages
+        installed = manager.check_installed_packages()
+        print(f"{Colors.GREEN}✓ Found {len(installed)} installed packages{Colors.ENDC}")
+        
+        # Check missing dependencies
+        missing = manager.check_missing_dependencies()
+        if missing:
+            print(f"{Colors.WARNING}⚠️  Found {len(missing)} missing dependencies:{Colors.ENDC}")
+            for dep in missing[:10]:  # Show first 10
+                print(f"    - {dep}")
+            if len(missing) > 10:
+                print(f"    ... and {len(missing) - 10} more")
+        else:
+            print(f"{Colors.GREEN}✓ All required dependencies are installed{Colors.ENDC}")
+        
+        # Check NLTK data
+        try:
+            import nltk
+            nltk_data_path = Path.home() / "nltk_data"
+            if nltk_data_path.exists():
+                print(f"{Colors.GREEN}✓ NLTK data found at {nltk_data_path}{Colors.ENDC}")
+            else:
+                print(f"{Colors.WARNING}⚠️  NLTK data not found{Colors.ENDC}")
+        except ImportError:
+            print(f"{Colors.WARNING}⚠️  NLTK not installed{Colors.ENDC}")
+        
+        # Check spaCy model
+        try:
+            import spacy
+            try:
+                spacy.load("en_core_web_sm")
+                print(f"{Colors.GREEN}✓ spaCy model 'en_core_web_sm' is installed{Colors.ENDC}")
+            except OSError:
+                print(f"{Colors.WARNING}⚠️  spaCy model 'en_core_web_sm' not installed{Colors.ENDC}")
+        except ImportError:
+            print(f"{Colors.WARNING}⚠️  spaCy not installed{Colors.ENDC}")
+        
+        # Check LangChain
+        if 'langchain' in installed:
+            print(f"{Colors.GREEN}✓ LangChain {installed['langchain']} is installed{Colors.ENDC}")
+        else:
+            print(f"{Colors.WARNING}⚠️  LangChain not installed{Colors.ENDC}")
+        
+        # Check llama-cpp-python
+        if 'llama-cpp-python' in installed or 'llama_cpp_python' in installed:
+            print(f"{Colors.GREEN}✓ llama-cpp-python is installed{Colors.ENDC}")
+        else:
+            print(f"{Colors.WARNING}⚠️  llama-cpp-python not installed{Colors.ENDC}")
+        
+        # Check if M1 Mac
+        if manager.is_m1_mac:
+            print(f"\n{Colors.CYAN}🍎 M1 Mac detected{Colors.ENDC}")
+            if manager.check_llama_cpp_installed():
+                print(f"{Colors.GREEN}✓ llama.cpp is installed{Colors.ENDC}")
+            else:
+                print(f"{Colors.WARNING}⚠️  llama.cpp not installed{Colors.ENDC}")
+            
+            if manager.check_llama_model_exists():
+                print(f"{Colors.GREEN}✓ Mistral model found{Colors.ENDC}")
+            else:
+                print(f"{Colors.WARNING}⚠️  Mistral model not found{Colors.ENDC}")
+        
+        sys.exit(0)
     
     try:
         if args.async_mode:

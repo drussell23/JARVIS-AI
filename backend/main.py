@@ -8,6 +8,8 @@ from chatbots.simple_chatbot import SimpleChatbot  # Import the SimpleChatbot cl
 from chatbots.intelligent_chatbot import (
     IntelligentChatbot,
 )  # Import the IntelligentChatbot class
+from chatbots.dynamic_chatbot import DynamicChatbot  # Import the DynamicChatbot class
+from chatbots.langchain_chatbot import LangChainChatbot  # Import the LangChainChatbot class
 import asyncio
 import json
 from typing import Optional, List, Dict, Any
@@ -93,49 +95,55 @@ class ChatbotAPI:
 
         # Create an instance of the Chatbot with M1 optimizations
         try:
-            # Check if we can load the chatbot
-            can_load, reason = asyncio.run(
-                memory_manager.can_load_component("simple_chatbot")
-            )
-            if not can_load:
-                raise RuntimeError(f"Cannot load chatbot: {reason}")
+            # Skip async check during initialization - will check on first request
+            # Assume we can load for now
 
-            # Detect if running on M1 Mac
-            import platform
-
-            is_m1_mac = platform.system() == "Darwin" and platform.machine() == "arm64"
-
-            if is_m1_mac:
-                # Prefer llama.cpp on M1; allow forcing via env to avoid PyTorch/MPS crashes
-                try:
-                    import requests
-
-                    force_llama = os.getenv("FORCE_LLAMA", "0") == "1"
-                    # Use 127.0.0.1 and a slightly longer timeout to avoid race on startup
-                    llama_health_url = "http://127.0.0.1:8080/health"
-                    response = requests.get(llama_health_url, timeout=3)
-                    if response.status_code == 200:
-                        logger.info("Using Intelligent Chatbot with memory management")
-                        self.bot = IntelligentChatbot(memory_manager)
-                    else:
-                        raise RuntimeError("llama.cpp server not responding")
-                except Exception as e:
-                    if os.getenv("FORCE_LLAMA", "0") == "1":
-                        # Do not fall back if explicitly forced; surface the error clearly
-                        logger.error(
-                            f"FORCE_LLAMA=1 but llama.cpp health check failed: {e}"
-                        )
-                        raise
-                    logger.warning(
-                        "llama.cpp server not available, using IntelligentChatbot"
-                    )
-                    self.bot = IntelligentChatbot(memory_manager)
+            # Use DynamicChatbot for automatic mode switching
+            use_dynamic = os.getenv("USE_DYNAMIC_CHATBOT", "1") == "1"
+            
+            if use_dynamic:
+                logger.info("Using DynamicChatbot with automatic mode switching and LangChain")
+                self.bot = DynamicChatbot(
+                    memory_manager=memory_manager,
+                    auto_switch=True,
+                    preserve_context=True,
+                    prefer_langchain=True  # Enable LangChain when memory permits
+                )
             else:
-                # Non-M1 systems use IntelligentChatbot too
-                self.bot = IntelligentChatbot(memory_manager)
+                # Legacy static mode selection
+                import platform
+                is_m1_mac = platform.system() == "Darwin" and platform.machine() == "arm64"
+                
+                if is_m1_mac:
+                    # Prefer llama.cpp on M1; allow forcing via env to avoid PyTorch/MPS crashes
+                    try:
+                        import requests
 
-            # Register the loaded chatbot with memory manager
-            asyncio.run(memory_manager.load_component("simple_chatbot", self.bot))
+                        force_llama = os.getenv("FORCE_LLAMA", "0") == "1"
+                        # Use 127.0.0.1 and a slightly longer timeout to avoid race on startup
+                        llama_health_url = "http://127.0.0.1:8080/health"
+                        response = requests.get(llama_health_url, timeout=3)
+                        if response.status_code == 200:
+                            logger.info("Using Intelligent Chatbot with memory management")
+                            self.bot = IntelligentChatbot(memory_manager)
+                        else:
+                            raise RuntimeError("llama.cpp server not responding")
+                    except Exception as e:
+                        if os.getenv("FORCE_LLAMA", "0") == "1":
+                            # Do not fall back if explicitly forced; surface the error clearly
+                            logger.error(
+                                f"FORCE_LLAMA=1 but llama.cpp health check failed: {e}"
+                            )
+                            raise
+                        logger.warning(
+                            "llama.cpp server not available, using IntelligentChatbot"
+                        )
+                        self.bot = IntelligentChatbot(memory_manager)
+                else:
+                    # Non-M1 systems use IntelligentChatbot too
+                    self.bot = IntelligentChatbot(memory_manager)
+
+            # Component loading will happen on startup event
             logger.info("Chatbot initialized successfully with memory management")
         except Exception as e:
             logger.error(f"Failed to initialize chatbot: {e}")
@@ -155,6 +163,12 @@ class ChatbotAPI:
         self.router.add_api_route("/chat/plan", self.create_task_plan, methods=["POST"])
         self.router.add_api_route(
             "/chat/capabilities", self.get_capabilities, methods=["GET"]
+        )
+        self.router.add_api_route(
+            "/chat/mode", self.get_mode, methods=["GET"]
+        )
+        self.router.add_api_route(
+            "/chat/mode", self.set_mode, methods=["POST"]
         )
 
         # RAG endpoints
@@ -321,6 +335,48 @@ class ChatbotAPI:
                 "voice_processing": False,
                 "memory_status": {"components_loaded": 0, "total_components": 0},
             }
+    
+    async def get_mode(self):
+        """Get current chatbot mode"""
+        if isinstance(self.bot, DynamicChatbot):
+            return {
+                "mode": self.bot.current_mode.value,
+                "auto_switch": self.bot.auto_switch,
+                "metrics": self.bot.metrics,
+                "last_switch": self.bot.last_mode_switch.isoformat() if self.bot.last_mode_switch else None
+            }
+        else:
+            # Static mode
+            mode = "intelligent" if isinstance(self.bot, IntelligentChatbot) else "simple"
+            if isinstance(self.bot, LangChainChatbot):
+                mode = "langchain"
+            return {
+                "mode": mode,
+                "auto_switch": False,
+                "metrics": {},
+                "last_switch": None
+            }
+    
+    async def set_mode(self, request: Dict[str, str]):
+        """Set chatbot mode (for DynamicChatbot only)"""
+        if not isinstance(self.bot, DynamicChatbot):
+            raise HTTPException(
+                status_code=400,
+                detail="Mode switching only available with DynamicChatbot"
+            )
+        
+        mode = request.get("mode")
+        if mode not in ["simple", "intelligent", "langchain"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid mode. Use 'simple', 'intelligent', or 'langchain'"
+            )
+        
+        try:
+            await self.bot.force_mode(mode)
+            return {"message": f"Mode switched to {mode}", "mode": mode}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
     async def create_task_plan(self, message: Message):
         """Create a task plan based on user input."""
@@ -481,6 +537,15 @@ class ChatbotAPI:
 # Create FastAPI app
 app = FastAPI()
 
+# Startup event
+@app.on_event("startup")
+async def startup_event():
+    """Initialize async components on startup"""
+    logger.info("Starting up AI-Powered Chatbot...")
+    # Start memory monitoring
+    await memory_manager.start_monitoring()
+    logger.info("Memory monitoring started")
+
 # Enable CORS for all origins (adjust for production)
 app.add_middleware(
     CORSMiddleware,
@@ -498,9 +563,7 @@ memory_api = MemoryAPI(memory_manager)
 app.include_router(memory_api.router, prefix="/memory")
 logger.info("Memory management API initialized")
 
-# Set up memory alert callback
-memory_alert_callback = asyncio.run(create_memory_alert_callback())
-memory_manager.add_state_callback(memory_alert_callback)
+# Memory alert callback will be set up after initialization
 
 # Instantiate and include our Chatbot API router
 chatbot_api = ChatbotAPI()
@@ -508,35 +571,21 @@ app.include_router(chatbot_api.router)
 
 # Include Voice API routes if available with memory management
 if VOICE_API_AVAILABLE:
-    can_load, reason = asyncio.run(memory_manager.can_load_component("voice_engine"))
-    if can_load:
-        try:
-            voice_api = VoiceAPI(chatbot_api.bot)
-            asyncio.run(memory_manager.load_component("voice_engine", voice_api))
-            app.include_router(voice_api.router, prefix="/voice")
-            logger.info("Voice API routes added with memory management")
-        except Exception as e:
-            logger.warning(f"Failed to initialize Voice API: {e}")
-    else:
-        logger.warning(f"Cannot load Voice API: {reason}")
+    try:
+        voice_api = VoiceAPI(chatbot_api.bot)
+        app.include_router(voice_api.router, prefix="/voice")
+        logger.info("Voice API routes added")
+    except Exception as e:
+        logger.warning(f"Failed to initialize Voice API: {e}")
 
 # Include Automation API routes if available with memory management
 if AUTOMATION_API_AVAILABLE and hasattr(chatbot_api.bot, "automation_engine"):
-    can_load, reason = asyncio.run(
-        memory_manager.can_load_component("automation_engine")
-    )
-    if can_load:
-        try:
-            automation_api = AutomationAPI(chatbot_api.bot.automation_engine)
-            asyncio.run(
-                memory_manager.load_component("automation_engine", automation_api)
-            )
-            app.include_router(automation_api.router, prefix="/automation")
-            logger.info("Automation API routes added with memory management")
-        except Exception as e:
-            logger.warning(f"Failed to initialize Automation API: {e}")
-    else:
-        logger.warning(f"Cannot load Automation API: {reason}")
+    try:
+        automation_api = AutomationAPI(chatbot_api.bot.automation_engine)
+        app.include_router(automation_api.router, prefix="/automation")
+        logger.info("Automation API routes added")
+    except Exception as e:
+        logger.warning(f"Failed to initialize Automation API: {e}")
 
 
 # Update root endpoint
