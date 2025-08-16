@@ -15,6 +15,10 @@ from .memory_manager import (
     MemoryState,
     MemorySnapshot,
 )
+from .intelligent_memory_optimizer import (
+    IntelligentMemoryOptimizer,
+    MemoryOptimizationAPI
+)
 
 
 class ComponentRegistration(BaseModel):
@@ -64,12 +68,34 @@ class MemoryReportResponse(BaseModel):
     thresholds: Dict[str, float]
 
 
+class OptimizeLangChainRequest(BaseModel):
+    """Request model for optimizing memory for LangChain"""
+    
+    force: bool = False  # Force optimization even if already below threshold
+
+
+class OptimizationReportResponse(BaseModel):
+    """Response model for memory optimization report"""
+    
+    success: bool
+    initial_percent: float
+    final_percent: float
+    memory_freed_mb: float
+    actions_taken: List[Dict[str, Any]]
+    target_percent: float
+    message: str
+
+
 class MemoryAPI:
     """API for memory management functionality"""
 
     def __init__(self, memory_manager: M1MemoryManager):
         self.memory_manager = memory_manager
         self.router = APIRouter()
+        
+        # Initialize intelligent memory optimizer
+        self.intelligent_optimizer = IntelligentMemoryOptimizer()
+        self.optimization_api = MemoryOptimizationAPI()
 
         # Register routes
         self._register_routes()
@@ -116,6 +142,19 @@ class MemoryAPI:
         self.router.add_api_route("/optimize", self.optimize_memory, methods=["POST"])
         self.router.add_api_route(
             "/emergency-cleanup", self.emergency_cleanup, methods=["POST"]
+        )
+        
+        # Intelligent optimization routes
+        self.router.add_api_route(
+            "/optimize/langchain",
+            self.optimize_for_langchain,
+            methods=["POST"],
+            response_model=OptimizationReportResponse
+        )
+        self.router.add_api_route(
+            "/optimize/suggestions",
+            self.get_optimization_suggestions,
+            methods=["GET"]
         )
 
     async def _start_monitoring(self):
@@ -279,6 +318,41 @@ class MemoryAPI:
             "unloaded_components": unloaded,
             "remaining_components": loaded_after,
         }
+    
+    async def optimize_for_langchain(self, request: OptimizeLangChainRequest) -> OptimizationReportResponse:
+        """Intelligently optimize memory for LangChain mode"""
+        # Check current memory
+        snapshot = await self.memory_manager.get_memory_snapshot()
+        
+        # If already below threshold and not forcing, return success
+        if snapshot.percent <= 0.5 and not request.force:
+            return OptimizationReportResponse(
+                success=True,
+                initial_percent=snapshot.percent * 100,
+                final_percent=snapshot.percent * 100,
+                memory_freed_mb=0,
+                actions_taken=[],
+                target_percent=50,
+                message="Memory already optimized for LangChain mode"
+            )
+        
+        # Run intelligent optimization
+        success, report = await self.intelligent_optimizer.optimize_for_langchain()
+        
+        return OptimizationReportResponse(
+            success=report["success"],
+            initial_percent=report["initial_percent"],
+            final_percent=report["final_percent"],
+            memory_freed_mb=report["memory_freed_mb"],
+            actions_taken=report["actions_taken"],
+            target_percent=report["target_percent"],
+            message=report.get("message", "Memory optimization completed" if success else "Could not free enough memory")
+        )
+    
+    async def get_optimization_suggestions(self) -> Dict[str, Any]:
+        """Get memory optimization suggestions"""
+        result = await self.optimization_api.get_suggestions()
+        return result
 
 
 # Webhook for memory alerts (can be used by frontend)

@@ -7,7 +7,9 @@ import os
 
 # Add the backend directory to Python path
 backend_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(backend_dir)
 sys.path.insert(0, backend_dir)
+sys.path.insert(0, parent_dir)
 
 # Now run uvicorn
 if __name__ == "__main__":

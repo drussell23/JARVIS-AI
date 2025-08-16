@@ -17,6 +17,7 @@ import argparse
 import webbrowser
 from typing import List, Dict, Optional
 import asyncio
+import psutil
 
 # ANSI color codes for terminal output
 class Colors:
@@ -25,6 +26,7 @@ class Colors:
     CYAN = '\033[96m'
     GREEN = '\033[92m'
     WARNING = '\033[93m'
+    YELLOW = '\033[93m'  # Same as WARNING
     FAIL = '\033[91m'
     ENDC = '\033[0m'
     BOLD = '\033[1m'
@@ -52,6 +54,7 @@ class SystemManager:
             "training": "http://localhost:8001/llm_demo.html"
         }
         self.is_m1_mac = platform.system() == "Darwin" and platform.machine() == "arm64"
+        self.memory_warned = False
         
     def print_header(self):
         """Print system header"""
@@ -352,6 +355,105 @@ class SystemManager:
         result = sock.connect_ex(('localhost', port))
         sock.close()
         return result != 0
+    
+    def check_memory_status(self):
+        """Check system memory and provide recommendations"""
+        print(f"\n{Colors.BLUE}Checking system memory...{Colors.ENDC}")
+        
+        mem = psutil.virtual_memory()
+        memory_percent = mem.percent
+        available_gb = mem.available / (1024**3)
+        used_gb = mem.used / (1024**3)
+        total_gb = mem.total / (1024**3)
+        
+        print(f"  Total: {total_gb:.1f} GB")
+        print(f"  Used: {used_gb:.1f} GB ({memory_percent:.1f}%)")
+        print(f"  Available: {available_gb:.1f} GB")
+        
+        # Check memory thresholds
+        if memory_percent < 50:
+            print(f"{Colors.GREEN}✓ Memory OK for all features including LangChain{Colors.ENDC}")
+            return True
+        elif memory_percent < 65:
+            print(f"{Colors.WARNING}⚠️  Memory OK for Intelligent mode (LangChain disabled){Colors.ENDC}")
+            self.memory_warned = True
+            return True
+        elif memory_percent < 80:
+            print(f"{Colors.WARNING}⚠️  Memory high - limited features available{Colors.ENDC}")
+            self.memory_warned = True
+            self.suggest_memory_optimization()
+            return True
+        else:
+            print(f"{Colors.FAIL}❌ Memory critical ({memory_percent:.1f}%) - only basic features available{Colors.ENDC}")
+            self.memory_warned = True
+            self.suggest_memory_optimization()
+            return False
+    
+    def suggest_memory_optimization(self):
+        """Suggest ways to free memory"""
+        print(f"\n{Colors.CYAN}Memory Optimization Suggestions:{Colors.ENDC}")
+        
+        # Get top memory users
+        processes = []
+        for proc in psutil.process_iter(['pid', 'name', 'memory_percent']):
+            try:
+                pinfo = proc.info
+                if pinfo['memory_percent'] > 2:  # Show processes using > 2%
+                    processes.append(pinfo)
+            except:
+                pass
+        
+        # Sort by memory usage
+        processes.sort(key=lambda x: x['memory_percent'], reverse=True)
+        
+        if processes:
+            print(f"\nTop memory-consuming processes:")
+            for i, proc in enumerate(processes[:5]):
+                print(f"  {i+1}. {proc['name'][:30]:30} {proc['memory_percent']:.1f}%")
+        
+        print(f"\n{Colors.CYAN}To free memory:{Colors.ENDC}")
+        print(f"  1. Close unnecessary browser tabs")
+        print(f"  2. Quit unused applications")
+        print(f"  3. Close IDE/editor instances you're not using")
+        print(f"  4. Run memory optimization: curl -X POST http://localhost:8000/chat/optimize-memory")
+        print(f"\nOr continue with limited features.")
+    
+    def optimize_memory_if_needed(self):
+        """Try to optimize memory if it's too high"""
+        mem = psutil.virtual_memory()
+        if mem.percent > 80:
+            print(f"\n{Colors.WARNING}Memory usage is critical ({mem.percent:.1f}%){Colors.ENDC}")
+            response = input(f"\nAttempt automatic memory optimization? (y/n): ")
+            
+            if response.lower() == 'y':
+                print(f"{Colors.CYAN}Attempting memory optimization...{Colors.ENDC}")
+                
+                # Run basic optimizations
+                try:
+                    # Python garbage collection
+                    import gc
+                    gc.collect()
+                    
+                    # Kill some helper processes if on macOS
+                    if platform.system() == "Darwin":
+                        # Kill Cursor helpers if present
+                        subprocess.run(["pkill", "-f", "Cursor Helper"], capture_output=True)
+                        # Kill Chrome helpers
+                        subprocess.run(["pkill", "-f", "Chrome Helper"], capture_output=True)
+                        time.sleep(2)
+                    
+                    # Check memory again
+                    new_mem = psutil.virtual_memory()
+                    freed_mb = (mem.used - new_mem.used) / (1024 * 1024)
+                    
+                    if freed_mb > 0:
+                        print(f"{Colors.GREEN}✓ Freed {freed_mb:.0f} MB of memory{Colors.ENDC}")
+                        print(f"Memory now at {new_mem.percent:.1f}%")
+                    else:
+                        print(f"{Colors.WARNING}Could not free significant memory{Colors.ENDC}")
+                        
+                except Exception as e:
+                    print(f"{Colors.WARNING}Optimization error: {e}{Colors.ENDC}")
         
     def start_llama_cpp_server(self):
         """Start llama.cpp server for M1 Macs"""
@@ -580,7 +682,14 @@ class SystemManager:
             print(f"  Using llama.cpp for native M1 performance")
             print(f"  No PyTorch bus errors!")
             
-        print(f"\n{Colors.WARNING}Press Ctrl+C to stop all services{Colors.ENDC}\n")
+        print(f"\n{Colors.WARNING}Press Ctrl+C to stop all services{Colors.ENDC}")
+        
+        # Show memory warning if applicable
+        if self.memory_warned:
+            print(f"\n{Colors.YELLOW}⚠️  Note: High memory usage detected. Some features may be limited.{Colors.ENDC}")
+            print(f"{Colors.YELLOW}   Run 'curl -X POST http://localhost:8000/chat/optimize-memory' to free memory{Colors.ENDC}")
+        
+        print()
         
     def cleanup(self):
         """Cleanup processes on exit"""
@@ -630,6 +739,12 @@ class SystemManager:
             
         # Create directories
         self.create_directories()
+        
+        # Check memory status
+        self.check_memory_status()
+        
+        # Offer memory optimization if needed
+        self.optimize_memory_if_needed()
         
         # Start llama.cpp for M1 Macs
         if self.is_m1_mac:
@@ -829,6 +944,16 @@ def main():
         action="store_true",
         help="Check dependencies and exit"
     )
+    parser.add_argument(
+        "--optimize-memory",
+        action="store_true",
+        help="Run memory optimization before starting"
+    )
+    parser.add_argument(
+        "--memory-status",
+        action="store_true",
+        help="Check memory status and exit"
+    )
     
     args = parser.parse_args()
     
@@ -903,6 +1028,27 @@ def main():
                 print(f"{Colors.WARNING}⚠️  Mistral model not found{Colors.ENDC}")
         
         sys.exit(0)
+    
+    # Check memory status only
+    if args.memory_status:
+        manager.print_header()
+        manager.check_memory_status()
+        
+        # Show optimization suggestions if memory is high
+        mem = psutil.virtual_memory()
+        if mem.percent > 50:
+            print(f"\n{Colors.CYAN}For full LangChain features, memory should be < 50%{Colors.ENDC}")
+            manager.suggest_memory_optimization()
+        
+        sys.exit(0)
+    
+    # Run memory optimization if requested
+    if args.optimize_memory:
+        manager.print_header()
+        print(f"{Colors.BLUE}Running memory optimization...{Colors.ENDC}")
+        manager.optimize_memory_if_needed()
+        print()
+        # Continue with startup after optimization
     
     try:
         if args.async_mode:

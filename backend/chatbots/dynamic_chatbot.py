@@ -9,6 +9,7 @@ from typing import Dict, Optional, List, Any, Union
 from datetime import datetime, timedelta
 from enum import Enum
 import gc
+import psutil
 
 try:
     # Try relative imports first (when used as a module)
@@ -17,6 +18,7 @@ try:
     from .langchain_chatbot import LangChainChatbot, LANGCHAIN_AVAILABLE
     from ..memory.memory_manager import M1MemoryManager, MemoryState, ComponentPriority
     from ..memory.memory_safe_components import IntelligentComponentManager
+    from ..memory.intelligent_memory_optimizer import IntelligentMemoryOptimizer
 except ImportError:
     # Fall back to absolute imports (when run directly or from backend/)
     import sys
@@ -27,6 +29,7 @@ except ImportError:
     from chatbots.langchain_chatbot import LangChainChatbot, LANGCHAIN_AVAILABLE
     from memory.memory_manager import M1MemoryManager, MemoryState, ComponentPriority
     from memory.memory_safe_components import IntelligentComponentManager
+    from memory.intelligent_memory_optimizer import IntelligentMemoryOptimizer
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +80,9 @@ class DynamicChatbot:
         self.preserve_context = preserve_context
         self.prefer_langchain = prefer_langchain and LANGCHAIN_AVAILABLE
         
+        # Initialize intelligent memory optimizer
+        self.memory_optimizer = IntelligentMemoryOptimizer()
+        
         # Current mode and chatbot instance
         self.current_mode = ChatbotMode.SIMPLE
         self.current_bot: Union[SimpleChatbot, IntelligentChatbot, LangChainChatbot] = SimpleChatbot(
@@ -99,7 +105,9 @@ class DynamicChatbot:
             "intelligent_responses": 0,
             "langchain_responses": 0,
             "memory_cleanups": 0,
-            "failed_upgrades": 0
+            "failed_upgrades": 0,
+            "intelligent_optimizations": 0,
+            "optimization_successes": 0
         }
         
         # Register with memory manager
@@ -258,8 +266,38 @@ class DynamicChatbot:
         can_load, reason = await self.memory_manager.can_load_component("langchain_chatbot")
         if not can_load:
             logger.warning(f"Cannot upgrade to LangChain mode: {reason}")
-            await self._upgrade_to_intelligent()
-            return
+            
+            # Try intelligent memory optimization
+            logger.info("Attempting intelligent memory optimization for LangChain...")
+            self.metrics["intelligent_optimizations"] += 1
+            
+            try:
+                # First try standard optimization
+                success, report = await self.memory_optimizer.optimize_for_langchain(aggressive=False)
+                
+                # If that fails and memory is still > 60%, try aggressive mode
+                if not success and psutil.virtual_memory().percent > 60:
+                    logger.info("Standard optimization insufficient, trying aggressive mode...")
+                    success, report = await self.memory_optimizer.optimize_for_langchain(aggressive=True)
+                
+                if success:
+                    self.metrics["optimization_successes"] += 1
+                    logger.info(f"Memory optimization successful! Freed {report['memory_freed_mb']:.0f} MB")
+                    
+                    # Check again after optimization
+                    can_load, reason = await self.memory_manager.can_load_component("langchain_chatbot")
+                    if not can_load:
+                        logger.warning("Still cannot load LangChain after optimization")
+                        await self._upgrade_to_intelligent()
+                        return
+                else:
+                    logger.warning(f"Memory optimization failed. Final memory: {report['final_percent']:.1f}%")
+                    await self._upgrade_to_intelligent()
+                    return
+            except Exception as e:
+                logger.error(f"Error during memory optimization: {e}")
+                await self._upgrade_to_intelligent()
+                return
         
         try:
             # Set transitioning state
@@ -492,7 +530,9 @@ class DynamicChatbot:
             "intelligent_responses": self.metrics["intelligent_responses"],
             "langchain_responses": self.metrics["langchain_responses"],
             "memory_cleanups": self.metrics["memory_cleanups"],
-            "langchain_available": LANGCHAIN_AVAILABLE
+            "langchain_available": LANGCHAIN_AVAILABLE,
+            "intelligent_optimizations": self.metrics["intelligent_optimizations"],
+            "optimization_successes": self.metrics["optimization_successes"]
         }
         
         # Get capabilities from current bot

@@ -170,6 +170,9 @@ class ChatbotAPI:
         self.router.add_api_route(
             "/chat/mode", self.set_mode, methods=["POST"]
         )
+        self.router.add_api_route(
+            "/chat/optimize-memory", self.optimize_memory_for_langchain, methods=["POST"]
+        )
 
         # RAG endpoints
         self.router.add_api_route(
@@ -376,6 +379,39 @@ class ChatbotAPI:
             await self.bot.force_mode(mode)
             return {"message": f"Mode switched to {mode}", "mode": mode}
         except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    async def optimize_memory_for_langchain(self):
+        """Optimize memory to enable LangChain features"""
+        # Check if we have DynamicChatbot
+        if not isinstance(self.bot, DynamicChatbot):
+            raise HTTPException(
+                status_code=400,
+                detail="Memory optimization only available with DynamicChatbot"
+            )
+        
+        # Import the optimizer
+        from memory.intelligent_memory_optimizer import IntelligentMemoryOptimizer
+        
+        try:
+            # Create optimizer and run optimization
+            optimizer = IntelligentMemoryOptimizer()
+            success, report = await optimizer.optimize_for_langchain()
+            
+            # Return detailed report
+            return {
+                "success": success,
+                "initial_memory_percent": report["initial_percent"],
+                "final_memory_percent": report["final_percent"],
+                "memory_freed_mb": report["memory_freed_mb"],
+                "actions_taken": report["actions_taken"],
+                "target_percent": report["target_percent"],
+                "message": "Memory optimization successful" if success else "Could not free enough memory",
+                "current_mode": self.bot.current_mode.value,
+                "can_use_langchain": report["final_percent"] <= 50
+            }
+        except Exception as e:
+            logger.error(f"Memory optimization failed: {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
     async def create_task_plan(self, message: Message):

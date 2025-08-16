@@ -56,21 +56,57 @@ class CalculatorTool:
     def _run(self, query: str) -> str:
         """Execute calculation"""
         try:
-            # Safe evaluation with limited operations
+            # Clean up the query for calculation
+            cleaned_query = query.strip()
+            
+            # Handle word-based math operations
+            word_replacements = {
+                " plus ": " + ",
+                " minus ": " - ",
+                " times ": " * ",
+                " multiplied by ": " * ",
+                " divided by ": " / ",
+                " to the power of ": " ** ",
+                " squared": " ** 2",
+                " cubed": " ** 3",
+                "what is ": "",
+                "what's ": "",
+                "calculate ": "",
+                "compute ": "",
+                "?": ""
+            }
+            
+            for word, symbol in word_replacements.items():
+                cleaned_query = cleaned_query.lower().replace(word, symbol)
+            
+            # Remove any remaining non-math characters
+            cleaned_query = cleaned_query.strip()
+            
+            # Safe evaluation with numexpr
             import numexpr as ne
-            result = ne.evaluate(query)
-            return f"The result of {query} is {result}"
+            result = ne.evaluate(cleaned_query)
+            
+            # Format the result nicely
+            if isinstance(result, float) and result.is_integer():
+                result = int(result)
+                
+            return f"{result}"
+            
         except Exception as e:
             try:
                 # Fallback to basic eval with safety
                 allowed_names = {
                     "abs": abs, "round": round, "min": min, "max": max,
-                    "sum": sum, "len": len, "pow": pow
+                    "sum": sum, "len": len, "pow": pow, "sqrt": lambda x: x**0.5
                 }
-                result = eval(query, {"__builtins__": {}}, allowed_names)
-                return f"The result of {query} is {result}"
+                result = eval(cleaned_query, {"__builtins__": {}}, allowed_names)
+                
+                if isinstance(result, float) and result.is_integer():
+                    result = int(result)
+                    
+                return f"{result}"
             except:
-                return f"I couldn't calculate {query}. Please ensure it's a valid mathematical expression."
+                return f"I couldn't calculate '{query}'. Please ensure it's a valid mathematical expression."
     
     async def _arun(self, query: str) -> str:
         """Async execution"""
@@ -295,7 +331,32 @@ class LangChainChatbot(IntelligentChatbot):
                 agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
                 verbose=False,
                 handle_parsing_errors=True,
-                max_iterations=3  # Limit iterations for memory
+                max_iterations=3,  # Limit iterations for memory
+                agent_kwargs={
+                    "prefix": """You are JARVIS, an AI assistant. You have access to the following tools:
+
+{tools}
+
+When asked to perform calculations or math operations, ALWAYS use the Calculator tool.
+When asked for current information, use the Web Search tool.
+When asked for factual knowledge, use the Wikipedia tool.
+
+Use the following format:
+
+Question: the input question you must answer
+Thought: you should always think about what to do
+Action: the action to take, should be one of [{tool_names}]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can repeat N times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
+
+Begin!
+
+Question: {input}
+Thought:"""
+                }
             )
             
             logger.info(f"Initialized {len(self.tools)} LangChain tools")
@@ -331,8 +392,26 @@ class LangChainChatbot(IntelligentChatbot):
         if self.features_available.get("langchain") and self.agent:
             try:
                 # Check for tool-triggering patterns
-                if any(trigger in user_input.lower() for trigger in 
-                       ["calculate", "what is", "search", "find", "tell me about", "current", "news"]):
+                user_input_lower = user_input.lower()
+                
+                # Enhanced mathematical pattern detection
+                math_patterns = [
+                    "calculate", "what is", "what's", "how much", "compute",
+                    "+", "-", "*", "/", "×", "÷", "plus", "minus", "times", "divided",
+                    "sum", "difference", "product", "quotient", "equals", "="
+                ]
+                
+                # Check if it contains numbers and math operations
+                has_numbers = any(char.isdigit() for char in user_input)
+                has_math_pattern = any(pattern in user_input_lower for pattern in math_patterns)
+                
+                # Check for other tool patterns
+                search_patterns = ["search", "find", "look up", "google"]
+                knowledge_patterns = ["tell me about", "what is a", "who is", "explain", "define"]
+                current_patterns = ["current", "latest", "today", "now", "news"]
+                
+                if (has_numbers and has_math_pattern) or any(trigger in user_input_lower for trigger in 
+                    search_patterns + knowledge_patterns + current_patterns):
                     # Use agent for tool-based queries
                     response = await asyncio.get_event_loop().run_in_executor(
                         None, self.agent.run, user_input
