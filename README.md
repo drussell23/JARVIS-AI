@@ -5,6 +5,8 @@ A comprehensive AI chatbot system inspired by JARVIS, featuring advanced convers
 ## 🎯 Key Features
 
 ### 🆕 Latest Updates
+- **Real Language Models**: TinyLlama, Phi-2, and Mistral-7B with M1 Metal acceleration
+- **JARVIS Core Architecture**: Tiered model system with intelligent task routing
 - **LangChain Integration**: Advanced reasoning with tools (Calculator, Web Search, Wikipedia)
 - **Smart Dependency Management**: 10x faster startup with intelligent package checking
 - **Dynamic Mode Switching**: Automatically adjusts capabilities based on available memory
@@ -68,13 +70,26 @@ A comprehensive AI chatbot system inspired by JARVIS, featuring advanced convers
 
 ### Installation & Running
 
-#### Quick Start (Recommended)
+#### Quick Start with Real Language Models (M1/M2 Mac)
 
 ```bash
 # Clone the repository
 git clone <repository-url>
 cd AI-Powered-Chatbot
 
+# Download language models (5.7GB total)
+python download_jarvis_models.py
+
+# Start JARVIS with real models
+./start_jarvis.sh
+
+# Test the models
+./test_jarvis_real.sh
+```
+
+#### Standard Quick Start
+
+```bash
 # Check system memory status
 python start_system.py --memory-status
 

@@ -57,3 +57,19 @@ coverage/
 # Temporary folders
 tmp/
 temp/
+
+# Large model files
+models/
+*.gguf
+*.ggml
+*.bin
+*.pth
+*.safetensors
+
+# Project specific
+backend/data/
+backend/checkpoints/
+backend/logs/
+backend/faiss_index/
+backend/chroma_db/
+backend/knowledge_base/

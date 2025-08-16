@@ -55,6 +55,51 @@ class SystemManager:
         }
         self.is_m1_mac = platform.system() == "Darwin" and platform.machine() == "arm64"
         self.memory_warned = False
+        self.python_executable = self._find_best_python()
+        self.has_real_llms = self._check_llama_cpp_available()
+        
+    def _find_best_python(self):
+        """Find the best Python executable with llama-cpp-python support"""
+        # Check for miniforge Python first (has llama-cpp-python for M1 Macs)
+        miniforge_python = Path("/Users/derekjrussell/miniforge3/bin/python")
+        if miniforge_python.exists():
+            # Test if it has llama-cpp-python
+            try:
+                result = subprocess.run(
+                    [str(miniforge_python), "-c", "import llama_cpp; print('OK')"],
+                    capture_output=True,
+                    text=True
+                )
+                if result.returncode == 0 and "OK" in result.stdout:
+                    print(f"{Colors.GREEN}✓ Found miniforge Python with llama-cpp-python support{Colors.ENDC}")
+                    return str(miniforge_python)
+            except:
+                pass
+        
+        # Check current Python
+        try:
+            import llama_cpp
+            print(f"{Colors.GREEN}✓ Current Python has llama-cpp-python support{Colors.ENDC}")
+            return sys.executable
+        except ImportError:
+            pass
+        
+        # Fallback to system Python
+        print(f"{Colors.WARNING}⚠️  No Python with llama-cpp-python found, using system Python{Colors.ENDC}")
+        print(f"{Colors.YELLOW}   For real language models, install llama-cpp-python or use miniforge{Colors.ENDC}")
+        return sys.executable
+    
+    def _check_llama_cpp_available(self):
+        """Check if llama-cpp-python is available in the selected Python"""
+        try:
+            result = subprocess.run(
+                [self.python_executable, "-c", "from langchain_community.llms import LlamaCpp; print('OK')"],
+                capture_output=True,
+                text=True
+            )
+            return result.returncode == 0 and "OK" in result.stdout
+        except:
+            return False
         
     def print_header(self):
         """Print system header"""
@@ -63,7 +108,18 @@ class SystemManager:
             print(f"{Colors.BOLD}🤖 AI-Powered Chatbot System Launcher 🚀 (M1 Optimized){Colors.ENDC}")
         else:
             print(f"{Colors.BOLD}🤖 AI-Powered Chatbot System Launcher 🚀{Colors.ENDC}")
-        print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}\n")
+        print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}")
+        
+        # Show LLM status
+        if self.has_real_llms:
+            print(f"{Colors.GREEN}✓ Real Language Models Available (TinyLlama, Phi-2, Mistral-7B){Colors.ENDC}")
+        else:
+            print(f"{Colors.YELLOW}⚠️  Mock Language Models (install llama-cpp-python for real models){Colors.ENDC}")
+        
+        # Show Python info
+        if self.python_executable != sys.executable:
+            print(f"{Colors.CYAN}Using Python: {self.python_executable}{Colors.ENDC}")
+        print()
         
     def check_python_version(self):
         """Check Python version"""
@@ -220,12 +276,17 @@ class SystemManager:
             if missing_data:
                 print(f"{Colors.CYAN}Downloading missing NLTK data...{Colors.ENDC}")
                 for data in missing_data:
-                    nltk.download(data, quiet=True)
-                print(f"{Colors.GREEN}✓ NLTK data ready{Colors.ENDC}")
+                    try:
+                        nltk.download(data, quiet=True)
+                    except Exception as e:
+                        print(f"{Colors.WARNING}⚠️  Could not download {data}: {e}{Colors.ENDC}")
+                print(f"{Colors.GREEN}✓ NLTK data setup complete{Colors.ENDC}")
             else:
                 print(f"{Colors.GREEN}✓ NLTK data already downloaded{Colors.ENDC}")
         except ImportError:
-            print(f"{Colors.WARNING}⚠️  NLTK not installed{Colors.ENDC}")
+            print(f"{Colors.WARNING}⚠️  NLTK not installed - NLP features limited{Colors.ENDC}")
+        except Exception as e:
+            print(f"{Colors.WARNING}⚠️  NLTK setup error: {e}{Colors.ENDC}")
         
         # Check spaCy model
         print(f"{Colors.BLUE}Checking spaCy model...{Colors.ENDC}")
@@ -376,6 +437,34 @@ class SystemManager:
             directory.mkdir(parents=True, exist_ok=True)
             
         print(f"{Colors.GREEN}✓ Directories created{Colors.ENDC}")
+        
+    def check_language_models(self):
+        """Check if language models are downloaded"""
+        print(f"\n{Colors.BLUE}Checking language models...{Colors.ENDC}")
+        
+        models_dir = Path("models")
+        required_models = {
+            "tinyllama-1.1b.gguf": "TinyLlama (638MB)",
+            "phi-2.gguf": "Phi-2 (1.6GB)",
+            "mistral-7b-instruct.gguf": "Mistral-7B (4.1GB)"
+        }
+        
+        missing_models = []
+        for model_file, model_name in required_models.items():
+            if not (models_dir / model_file).exists():
+                missing_models.append((model_file, model_name))
+            else:
+                print(f"{Colors.GREEN}✓ {model_name} found{Colors.ENDC}")
+        
+        if missing_models:
+            print(f"\n{Colors.WARNING}⚠️  Some language models are missing:{Colors.ENDC}")
+            for model_file, model_name in missing_models:
+                print(f"    - {model_name}")
+            print(f"\n{Colors.CYAN}To download all models (5.7GB total):{Colors.ENDC}")
+            print(f"    {self.python_executable} download_jarvis_models.py")
+            print(f"\n{Colors.YELLOW}JARVIS will use mock responses for missing models{Colors.ENDC}")
+        else:
+            print(f"{Colors.GREEN}✓ All language models present{Colors.ENDC}")
         
     def check_port_available(self, port: int) -> bool:
         """Check if a port is available"""
@@ -642,10 +731,11 @@ class SystemManager:
         # Start main API
         print(f"{Colors.CYAN}Starting main API on port {self.ports['main_api']}...{Colors.ENDC}")
         
-        # Always use system Python for now (has all dependencies)
-        python_cmd = sys.executable
-        print(f"{Colors.CYAN}Using Python: {python_cmd}{Colors.ENDC}")
-            
+        # Use the best Python (with llama-cpp-python if available)
+        python_cmd = self.python_executable
+        if self.has_real_llms:
+            print(f"{Colors.GREEN}Starting with real language model support{Colors.ENDC}")
+        
         main_api_process = subprocess.Popen(
             [python_cmd, "run_server.py"],
             cwd=self.backend_dir,
@@ -661,7 +751,7 @@ class SystemManager:
             # Check if training_interface.py exists
             if (self.backend_dir / "training_interface.py").exists():
                 training_api_process = subprocess.Popen(
-                    [python_cmd, "training_interface.py"],
+                    [self.python_executable, "training_interface.py"],
                     cwd=self.backend_dir,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
@@ -774,6 +864,12 @@ class SystemManager:
             print(f"\n{Colors.GREEN}🍎 M1 Optimization Active:{Colors.ENDC}")
             print(f"  Using llama.cpp for native M1 performance")
             print(f"  No PyTorch bus errors!")
+        
+        if self.has_real_llms:
+            print(f"\n{Colors.GREEN}🤖 Real Language Models Active:{Colors.ENDC}")
+            print(f"  TinyLlama - Fast responses for simple queries")
+            print(f"  Phi-2 - Code generation and standard tasks")
+            print(f"  Mistral-7B - Complex analysis and reasoning")
             
         print(f"\n{Colors.WARNING}Press Ctrl+C to stop all services{Colors.ENDC}")
         
@@ -834,6 +930,10 @@ class SystemManager:
             
         # Create directories
         self.create_directories()
+        
+        # Check for language models if real LLMs are available
+        if self.has_real_llms:
+            self.check_language_models()
         
         # Check memory status
         memory_ok = self.check_memory_status()
@@ -1092,7 +1192,9 @@ def main():
             else:
                 print(f"{Colors.WARNING}⚠️  NLTK data not found{Colors.ENDC}")
         except ImportError:
-            print(f"{Colors.WARNING}⚠️  NLTK not installed{Colors.ENDC}")
+            print(f"{Colors.WARNING}⚠️  NLTK not installed - NLP features limited{Colors.ENDC}")
+        except Exception as e:
+            print(f"{Colors.WARNING}⚠️  NLTK check error: {e}{Colors.ENDC}")
         
         # Check spaCy model
         try:
