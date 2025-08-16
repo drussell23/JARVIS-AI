@@ -16,6 +16,13 @@ from typing import Optional, List, Dict, Any
 import logging
 import os
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv not installed, that's okay
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -102,12 +109,22 @@ class ChatbotAPI:
             use_dynamic = os.getenv("USE_DYNAMIC_CHATBOT", "1") == "1"
             
             if use_dynamic:
-                logger.info("Using DynamicChatbot with automatic mode switching and LangChain")
+                # Check for Claude configuration
+                use_claude = os.getenv("USE_CLAUDE", "0") == "1"
+                claude_api_key = os.getenv("ANTHROPIC_API_KEY")
+                
+                if use_claude and claude_api_key:
+                    logger.info("Using DynamicChatbot with Claude API integration")
+                else:
+                    logger.info("Using DynamicChatbot with automatic mode switching and LangChain")
+                
                 self.bot = DynamicChatbot(
                     memory_manager=memory_manager,
                     auto_switch=True,
                     preserve_context=True,
-                    prefer_langchain=True  # Enable LangChain when memory permits
+                    prefer_langchain=True,  # Enable LangChain when memory permits
+                    use_claude=use_claude,
+                    claude_api_key=claude_api_key
                 )
             else:
                 # Legacy static mode selection

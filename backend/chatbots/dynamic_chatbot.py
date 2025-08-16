@@ -17,6 +17,7 @@ try:
     from .simple_chatbot import SimpleChatbot
     from .intelligent_chatbot import IntelligentChatbot
     from .langchain_chatbot import LangChainChatbot, LANGCHAIN_AVAILABLE
+    from .claude_chatbot import ClaudeChatbot
     from ..memory.memory_manager import M1MemoryManager, MemoryState, ComponentPriority
     from ..memory.memory_safe_components import IntelligentComponentManager
     from ..memory.intelligent_memory_optimizer import IntelligentMemoryOptimizer
@@ -29,6 +30,7 @@ except ImportError:
     from chatbots.simple_chatbot import SimpleChatbot
     from chatbots.intelligent_chatbot import IntelligentChatbot
     from chatbots.langchain_chatbot import LangChainChatbot, LANGCHAIN_AVAILABLE
+    from chatbots.claude_chatbot import ClaudeChatbot
     from memory.memory_manager import M1MemoryManager, MemoryState, ComponentPriority
     from memory.memory_safe_components import IntelligentComponentManager
     from memory.intelligent_memory_optimizer import IntelligentMemoryOptimizer
@@ -42,12 +44,16 @@ class ChatbotMode(Enum):
     SIMPLE = "simple"
     INTELLIGENT = "intelligent"
     LANGCHAIN = "langchain"
+    CLAUDE = "claude"  # Cloud-based Claude API
     TRANSITIONING = "transitioning"
 
 
 class ModeThresholds:
     """Memory thresholds for mode switching"""
 
+    # Claude API is always available regardless of memory (cloud-based)
+    CLAUDE_ALWAYS_AVAILABLE = True
+    
     # Switch to LangChain when memory usage is below this
     LANGCHAIN_THRESHOLD = 0.50  # 50% memory usage
 
@@ -77,6 +83,8 @@ class DynamicChatbot:
         auto_switch: bool = True,
         preserve_context: bool = True,
         prefer_langchain: bool = True,
+        use_claude: bool = False,
+        claude_api_key: Optional[str] = None,
     ):
         self.memory_manager = memory_manager
         self.max_history_length = max_history_length
@@ -87,6 +95,10 @@ class DynamicChatbot:
         self.prefer_langchain = (
             prefer_langchain or env_prefer_langchain
         ) and LANGCHAIN_AVAILABLE
+        
+        # Claude API settings
+        self.use_claude = use_claude or os.getenv("USE_CLAUDE", "0") == "1"
+        self.claude_api_key = claude_api_key or os.getenv("ANTHROPIC_API_KEY")
 
         # TRUE LAZY LOADING: Don't create ANYTHING until needed
         self._memory_optimizer = None
@@ -111,6 +123,7 @@ class DynamicChatbot:
             "mode_switches": 0,
             "simple_responses": 0,
             "intelligent_responses": 0,
+            "claude_responses": 0,
             "langchain_responses": 0,
             "memory_cleanups": 0,
             "failed_upgrades": 0,
@@ -219,6 +232,10 @@ class DynamicChatbot:
 
     def _determine_target_mode(self, memory_usage: float) -> ChatbotMode:
         """Determine the best mode based on memory usage"""
+        # Claude is always available if configured (cloud-based)
+        if self.use_claude and self.claude_api_key:
+            return ChatbotMode.CLAUDE
+            
         if memory_usage > ModeThresholds.DOWNGRADE_THRESHOLD:
             return ChatbotMode.SIMPLE
         elif memory_usage > ModeThresholds.UPGRADE_THRESHOLD:
@@ -237,7 +254,9 @@ class DynamicChatbot:
         if target_mode == self.current_mode:
             return
 
-        if target_mode == ChatbotMode.SIMPLE:
+        if target_mode == ChatbotMode.CLAUDE:
+            await self._switch_to_claude()
+        elif target_mode == ChatbotMode.SIMPLE:
             await self._downgrade_to_simple()
         elif target_mode == ChatbotMode.INTELLIGENT:
             if self.current_mode == ChatbotMode.SIMPLE:
@@ -454,6 +473,59 @@ class DynamicChatbot:
             logger.error(f"Error during downgrade from LangChain: {e}")
             await self._downgrade_to_simple()
 
+    async def _switch_to_claude(self):
+        """Switch to Claude API-powered chatbot"""
+        logger.info("Switching to Claude API mode")
+        
+        try:
+            # Set transitioning state
+            self.current_mode = ChatbotMode.TRANSITIONING
+            
+            # Save conversation history if needed
+            conversation_history = None
+            if self.preserve_context and self._current_bot:
+                if hasattr(self._current_bot, "conversation_history"):
+                    conversation_history = self._current_bot.conversation_history.copy()
+                elif hasattr(self._current_bot, "get_conversation_history"):
+                    conversation_history = await self._current_bot.get_conversation_history()
+                    
+            # Clean up old bot
+            if self._current_bot:
+                if hasattr(self._current_bot, "cleanup"):
+                    await self._current_bot.cleanup()
+                self._current_bot = None
+                gc.collect()
+                
+            # Create Claude chatbot
+            new_bot = ClaudeChatbot(
+                api_key=self.claude_api_key,
+                model="claude-3-haiku-20240307",  # Start with Haiku for cost-effectiveness
+                max_tokens=1024,
+                temperature=0.7
+            )
+            self._loaded_components.add("claude_chatbot")
+            
+            # Restore conversation history
+            if conversation_history:
+                new_bot.conversation_history = conversation_history
+                logger.info(f"Restored {len(conversation_history)} conversation turns to Claude")
+                
+            # Switch to new bot
+            self._current_bot = new_bot
+            self.current_mode = ChatbotMode.CLAUDE
+            self.last_mode_switch = datetime.now()
+            self.metrics["mode_switches"] += 1
+            self.mode_switches += 1
+            
+            logger.info("Successfully switched to Claude API mode")
+            self._log_memory_usage()
+            
+        except Exception as e:
+            logger.error(f"Failed to switch to Claude mode: {e}")
+            self.metrics["failed_upgrades"] += 1
+            # Fall back to simple mode
+            await self._downgrade_to_simple()
+
     def _log_memory_usage(self):
         """Log current memory usage for debugging"""
         try:
@@ -522,9 +594,11 @@ class DynamicChatbot:
             target = ChatbotMode.INTELLIGENT
         elif mode_lower == "langchain":
             target = ChatbotMode.LANGCHAIN
+        elif mode_lower == "claude":
+            target = ChatbotMode.CLAUDE
         else:
             raise ValueError(
-                f"Invalid mode: {mode}. Use 'simple', 'intelligent', or 'langchain'"
+                f"Invalid mode: {mode}. Use 'simple', 'intelligent', 'langchain', or 'claude'"
             )
 
         await self._switch_to_mode(target)
@@ -533,7 +607,9 @@ class DynamicChatbot:
     async def generate_response(self, user_input: str) -> str:
         """Generate a response using the current chatbot mode"""
         # Track metrics
-        if self.current_mode == ChatbotMode.LANGCHAIN:
+        if self.current_mode == ChatbotMode.CLAUDE:
+            self.metrics["claude_responses"] += 1
+        elif self.current_mode == ChatbotMode.LANGCHAIN:
             self.metrics["langchain_responses"] += 1
         elif self.current_mode == ChatbotMode.INTELLIGENT:
             self.metrics["intelligent_responses"] += 1
