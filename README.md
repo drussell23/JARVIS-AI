@@ -10,7 +10,7 @@ A comprehensive AI chatbot system inspired by JARVIS, featuring advanced convers
 - **LangChain Integration**: Advanced reasoning with tools (Calculator, Web Search, Wikipedia)
 - **Smart Dependency Management**: 10x faster startup with intelligent package checking
 - **Dynamic Mode Switching**: Automatically adjusts capabilities based on available memory
-- **Enhanced Math Support**: Natural language math calculations ("What is 2+2?" → "4")
+- **Enhanced Math Support**: Natural language math calculations with quantized LLM support in all modes
 - **Memory-Safe Architecture**: Never crashes, gracefully scales features based on resources
 - **Intelligent Memory Optimization**: Automatically frees memory to enable advanced features
 
@@ -18,7 +18,7 @@ A comprehensive AI chatbot system inspired by JARVIS, featuring advanced convers
 
 ### ✅ What's Working
 - **Advanced Chat Interface**: LangChain-powered conversational AI with tool usage
-- **Mathematical Calculations**: Natural language math support through Calculator tool
+- **Mathematical Calculations**: Natural language math support in all modes (Simple mode now uses quantized LLM for math)
 - **Web Search**: Real-time information retrieval via DuckDuckGo
 - **Knowledge Queries**: Wikipedia integration for factual information
 - **Dynamic Intelligence**: Automatic switching between Simple → Intelligent → LangChain modes
@@ -79,6 +79,9 @@ cd AI-Powered-Chatbot
 
 # Download language models (5.7GB total)
 python download_jarvis_models.py
+
+# Enable math in Simple mode (recommended)
+python enable_math_in_simple_mode.py
 
 # Start JARVIS with real models
 ./start_jarvis.sh
@@ -141,9 +144,9 @@ JARVIS includes intelligent memory management that automatically adjusts feature
 
 | Mode | Memory Usage | Features | Capabilities |
 |------|--------------|----------|--------------|
-| **LangChain** | < 50% | Full | Math, Web Search, Wikipedia, Advanced Reasoning |
-| **Intelligent** | < 65% | Enhanced | NLP, Intent Recognition, Entity Extraction |
-| **Simple** | > 80% | Basic | Simple pattern matching, Basic responses |
+| **LangChain** | < 50% | Full | Advanced Math with tools, Web Search, Wikipedia, Advanced Reasoning |
+| **Intelligent** | < 65% | Enhanced | NLP, Intent Recognition, Entity Extraction, Basic Math |
+| **Simple** | > 80% | Basic | Pattern matching, Basic responses, Math via quantized LLM |
 
 ### Memory Optimization
 
@@ -223,15 +226,28 @@ Benefits:
 ### Chat Examples
 
 #### Mathematical Calculations
+
+JARVIS can perform math calculations in all modes:
+
+**Simple Mode (High Memory Usage)**
 ```
 User: What is 2+2?
-JARVIS: 4
+JARVIS: Answer: 4
+
+User: Calculate 15 * 8
+JARVIS: The result of the calculation is: **120**
+```
+
+**LangChain Mode (Low Memory Usage)**
+```
+User: What is 2+2?
+JARVIS: I'll calculate that for you. 2 + 2 = 4
 
 User: Calculate 15 * 23 + 47
-JARVIS: 392
+JARVIS: Let me solve that step by step. 15 × 23 = 345, then 345 + 47 = 392
 
-User: What's 100 divided by 4?
-JARVIS: 25
+User: What's the square root of 144?
+JARVIS: The square root of 144 is 12
 ```
 
 #### Web Search
@@ -361,9 +377,11 @@ Place GGUF models in `~/Documents/ai-models/`:
 
 ### Common Issues
 
-1. **"What is 2+2?" not working**
-   - Ensure memory usage is below 50% for LangChain mode
-   - Check with: `curl http://localhost:8000/chat/mode`
+1. **"What is 2+2?" returns generic response**
+   - This happens when in Simple mode with the unpatched chatbot
+   - Run `python enable_math_in_simple_mode.py` to enable math in Simple mode
+   - Or ensure memory usage is below 50% for LangChain mode
+   - Check current mode: `curl http://localhost:8000/chat/mode`
    - Force LangChain: `POST /chat/mode {"mode": "langchain"}`
 
 2. **Slow startup**
@@ -382,6 +400,11 @@ Place GGUF models in `~/Documents/ai-models/`:
 5. **Memory warnings**
    - Normal behavior - system automatically adjusts
    - Check status: `GET /memory/status`
+
+6. **Math not working after startup**
+   - Simple mode needs math patch: `python enable_math_in_simple_mode.py`
+   - Ensure quantized model is downloaded: `python setup_m1_optimized_llm.py`
+   - Test directly: `python test_quantized_llm.py`
 
 ### Logs
 
@@ -425,8 +448,10 @@ The system includes:
 - [x] Memory-safe architecture
 - [x] M1/M2 optimization with llama.cpp
 - [x] Smart dependency management
-- [x] Mathematical reasoning
+- [x] Mathematical reasoning in all modes
 - [x] Web search capabilities
+- [x] Quantized LLM support for Simple mode
+- [x] Automatic mode switching based on memory
 
 ### Next Steps
 - [ ] Voice interaction completion
