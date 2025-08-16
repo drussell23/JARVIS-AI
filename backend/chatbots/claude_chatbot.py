@@ -8,7 +8,6 @@ import logging
 import asyncio
 from typing import Dict, List, Optional, Any
 from datetime import datetime
-import httpx
 import json
 
 logger = logging.getLogger(__name__)
@@ -101,6 +100,9 @@ You excel at understanding context and providing insightful, well-structured res
             start_time = datetime.now()
             
             # Use async client for better performance
+            if not self.client:
+                raise ValueError("Claude client not initialized")
+                
             response = await asyncio.to_thread(
                 self.client.messages.create,
                 model=self.model,
@@ -208,6 +210,9 @@ You excel at understanding context and providing insightful, well-structured res
             messages = self._build_messages(user_input)
             
             # Create streaming response
+            if not self.client:
+                raise ValueError("Claude client not initialized")
+                
             stream = await asyncio.to_thread(
                 self.client.messages.create,
                 model=self.model,
@@ -291,10 +296,14 @@ You excel at understanding context and providing insightful, well-structured res
             
     async def add_knowledge(
         self, content: str, metadata: Optional[Dict] = None
-    ) -> bool:
+    ) -> Dict[str, Any]:
         """
         Add knowledge to the system (not implemented for Claude)
         This could be implemented by storing in a vector DB for RAG
         """
         logger.warning("add_knowledge not implemented for Claude chatbot")
-        return False
+        return {
+            "success": False,
+            "message": "Knowledge base not implemented for Claude chatbot",
+            "id": None
+        }

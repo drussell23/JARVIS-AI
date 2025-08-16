@@ -315,7 +315,11 @@ class DynamicChatbot:
             if conversation_history:
                 # IntelligentChatbot expects ConversationTurn objects  
                 if hasattr(new_bot, 'conversation_history'):
-                    new_bot.conversation_history = conversation_history
+                    # Let the bot handle its own format - just preserve what we have
+                    try:
+                        new_bot.conversation_history = conversation_history
+                    except Exception as e:
+                        logger.warning(f"Could not restore conversation history: {e}")
                 logger.info(f"Restored {len(conversation_history)} conversation turns")
 
             # Switch to new bot
@@ -410,7 +414,10 @@ class DynamicChatbot:
             if conversation_history:
                 # LangChainChatbot may expect ConversationTurn objects
                 if hasattr(new_bot, 'conversation_history'):
-                    new_bot.conversation_history = conversation_history
+                    try:
+                        new_bot.conversation_history = conversation_history
+                    except Exception as e:
+                        logger.warning(f"Could not restore conversation history: {e}")
                 logger.info(
                     f"Restored {len(conversation_history)} conversation turns to LangChain"
                 )
@@ -463,7 +470,10 @@ class DynamicChatbot:
             if conversation_history:
                 # IntelligentChatbot expects ConversationTurn objects
                 if hasattr(new_bot, 'conversation_history'):
-                    new_bot.conversation_history = conversation_history
+                    try:
+                        new_bot.conversation_history = conversation_history
+                    except Exception as e:
+                        logger.warning(f"Could not restore conversation history: {e}")
 
             # Switch
             self._current_bot = None
@@ -557,6 +567,9 @@ class DynamicChatbot:
                         else:
                             result.append({"user": "", "assistant": turn.content})
                 return result
+        elif target_format == "turn":
+            # Keep as is - let chatbot handle conversion internally
+            return history
         else:
             # Convert to ConversationTurn format (for other bots)
             if isinstance(first_item, dict):
@@ -614,7 +627,10 @@ class DynamicChatbot:
 
             # Restore conversation history
             if conversation_history and hasattr(self.current_bot, 'conversation_history'):
-                self.current_bot.conversation_history = conversation_history
+                try:
+                    self.current_bot.conversation_history = conversation_history
+                except Exception as e:
+                    logger.warning(f"Could not restore conversation history: {e}")
                 logger.info(f"Preserved {len(conversation_history)} conversation turns")
 
             self.current_mode = ChatbotMode.SIMPLE
