@@ -26,6 +26,9 @@ class OptimizationConfig:
         # Target memory percentage for LangChain
         self.target_memory_percent = 45
         
+        # Aggressive mode settings
+        self.aggressive_mode_threshold = 55  # Use aggressive mode if above this
+        
         # Apps to close first (high priority)
         self.high_priority_apps = [
             AppProfile(
@@ -33,21 +36,21 @@ class OptimizationConfig:
                 patterns=["cursor", "cursor helper"],
                 priority=9,
                 graceful_close=True,
-                min_memory_percent=5.0
+                min_memory_percent=2.0
             ),
             AppProfile(
                 name="Visual Studio Code",
                 patterns=["code", "code helper", "vscode"],
                 priority=9,
                 graceful_close=True,
-                min_memory_percent=5.0
+                min_memory_percent=3.0
             ),
             AppProfile(
                 name="IntelliJ IDEA",
                 patterns=["intellij", "idea"],
                 priority=9,
                 graceful_close=True,
-                min_memory_percent=5.0
+                min_memory_percent=3.0
             ),
             AppProfile(
                 name="WhatsApp",
@@ -110,7 +113,7 @@ class OptimizationConfig:
         # Browser handling
         self.browser_config = {
             "max_tabs": 3,  # Keep only this many tabs
-            "close_if_memory_percent": 10.0,  # Close browser if using > 10%
+            "close_if_memory_percent": 5.0,  # Close browser if using > 5%
             "browsers": ["chrome", "safari", "firefox", "edge", "brave"]
         }
         
@@ -175,8 +178,8 @@ class OptimizationConfig:
         if profile:
             return (
                 profile.can_close and 
-                memory_percent >= profile.min_memory_percent and
-                profile.priority >= 7  # Only high priority for LangChain
+                memory_percent >= profile.min_memory_percent * 0.5 and  # Lower threshold
+                profile.priority >= 6  # Lower priority threshold
             )
         
         # Check if it's a browser using lots of memory

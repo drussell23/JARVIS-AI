@@ -141,13 +141,14 @@ class IntelligentMemoryOptimizer:
         logger.info(f"Need to free {memory_to_free_mb:.0f} MB to reach target")
         
         # Try optimization strategies in order
+        # Reorder for better effectiveness
         strategies = [
             ("garbage_collection", self._optimize_python_memory),
+            ("kill_helpers", self._kill_helper_processes),  # Move up
             ("clear_caches", self._clear_system_caches),
-            ("kill_helpers", self._kill_helper_processes),
-            ("close_high_memory_apps", self._close_high_memory_applications),
+            ("close_high_memory_apps", self._close_high_memory_applications),  # Most effective
+            ("optimize_browsers", self._optimize_browser_memory),  # Before suspending
             ("suspend_apps", self._suspend_background_apps),
-            ("close_browsers", self._optimize_browser_memory),
             ("purge_memory", self._purge_inactive_memory),
         ]
         
@@ -213,12 +214,26 @@ class IntelligentMemoryOptimizer:
         before = psutil.virtual_memory().available / (1024 * 1024)
         
         try:
-            # Clear DNS cache
-            subprocess.run(["sudo", "dscacheutil", "-flushcache"], 
-                         capture_output=True, timeout=5)
+            # Clear DNS cache (non-sudo version)
+            subprocess.run(["dscacheutil", "-flushcache"], 
+                         capture_output=True, timeout=5, stderr=subprocess.DEVNULL)
             
-            # Clear memory pressure
-            subprocess.run(["sudo", "purge"], capture_output=True, timeout=10)
+            # Try memory pressure without sudo first
+            result = subprocess.run(["memory_pressure", "-l", "warn"], 
+                                  capture_output=True, timeout=5)
+            if result.returncode == 0:
+                await asyncio.sleep(1)
+            
+            # Clear Swift/Python caches
+            subprocess.run(["swift-frontend", "-typecheck", "-Xfrontend", "-debug-time-compilation"], 
+                         capture_output=True, timeout=2, stderr=subprocess.DEVNULL)
+            
+            # Force macOS to compress memory
+            vm_stat = subprocess.run(["vm_stat"], capture_output=True, text=True)
+            if vm_stat.returncode == 0:
+                # Parse and trigger compression
+                subprocess.run(["sysctl", "vm.compressor_mode=4"], 
+                             capture_output=True, stderr=subprocess.DEVNULL)
             
         except Exception as e:
             logger.debug(f"Cache clearing error: {e}")
@@ -241,8 +256,8 @@ class IntelligentMemoryOptimizer:
                     memory_mb=proc.info['memory_info'].rss / (1024 * 1024)
                 )
                 
-                # Only kill if using > 0.5% memory and is killable
-                if pinfo.memory_percent > 0.5 and pinfo.can_kill:
+                # More aggressive: kill if using > 0.3% memory and is killable
+                if pinfo.memory_percent > 0.3 and pinfo.can_kill:
                     processes_to_kill.append(pinfo)
                     
             except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -251,7 +266,7 @@ class IntelligentMemoryOptimizer:
         # Sort by memory usage and kill top offenders
         processes_to_kill.sort(key=lambda x: x.memory_mb, reverse=True)
         
-        for proc in processes_to_kill[:5]:  # Kill up to 5 processes
+        for proc in processes_to_kill[:10]:  # Kill up to 10 processes for more impact
             try:
                 psutil.Process(proc.pid).terminate()
                 freed_mb += proc.memory_mb
@@ -280,8 +295,11 @@ class IntelligentMemoryOptimizer:
                 )
                 
                 # Check if this process should be closed for LangChain
-                if optimization_config.should_close_for_langchain(pinfo.name, pinfo.memory_percent):
-                    high_memory_apps.append(pinfo)
+                # Lower threshold for more aggressive optimization
+                if pinfo.memory_mb > 100 and pinfo.memory_percent > 2.0:
+                    # Check if it's a closeable app type
+                    if optimization_config.get_app_profile(pinfo.name) or pinfo._is_high_priority_target():
+                        high_memory_apps.append(pinfo)
                     
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
@@ -424,14 +442,25 @@ class IntelligentMemoryOptimizer:
         before = psutil.virtual_memory().available / (1024 * 1024)
         
         try:
-            # This requires sudo but is very effective
-            result = subprocess.run(["sudo", "-n", "purge"], 
-                                  capture_output=True, timeout=10)
-            if result.returncode == 0:
-                await asyncio.sleep(2)  # Wait for purge to complete
+            # Try alternative memory pressure techniques
+            # 1. Force garbage collection in all Python processes
+            gc.collect(2)
+            
+            # 2. Use memory_pressure tool
+            subprocess.run(["memory_pressure", "-l", "critical", "-s", "1"], 
+                         capture_output=True, timeout=5, stderr=subprocess.DEVNULL)
+            
+            # 3. Clear file caches
+            subprocess.run(["sync"], capture_output=True, timeout=2)
+            
+            # 4. Drop clean caches (doesn't require sudo)
+            with open('/proc/sys/vm/drop_caches', 'w', errors='ignore') as f:
+                f.write('1')
+            
         except:
             pass
             
+        await asyncio.sleep(2)  # Wait for operations to complete
         after = psutil.virtual_memory().available / (1024 * 1024)
         return max(0, after - before)
         

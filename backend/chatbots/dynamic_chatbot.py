@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 import gc
 import psutil
+import os
 
 try:
     # Try relative imports first (when used as a module)
@@ -78,7 +79,9 @@ class DynamicChatbot:
         self.max_history_length = max_history_length
         self.auto_switch = auto_switch
         self.preserve_context = preserve_context
-        self.prefer_langchain = prefer_langchain and LANGCHAIN_AVAILABLE
+        # Check environment variable for LangChain preference
+        env_prefer_langchain = os.getenv("PREFER_LANGCHAIN", "0") == "1"
+        self.prefer_langchain = (prefer_langchain or env_prefer_langchain) and LANGCHAIN_AVAILABLE
         
         # Initialize intelligent memory optimizer
         self.memory_optimizer = IntelligentMemoryOptimizer()
@@ -541,6 +544,50 @@ class DynamicChatbot:
             base_capabilities.update(bot_capabilities)
         
         return base_capabilities
+    
+    # Proxy methods for missing attributes
+    async def generate_response_stream(self, user_input: str):
+        """Stream response token by token"""
+        if hasattr(self.current_bot, 'generate_response_stream'):
+            async for token in self.current_bot.generate_response_stream(user_input):
+                yield token
+        else:
+            # Fallback: simulate streaming by yielding the full response
+            response = await self.generate_response(user_input)
+            words = response.split()
+            for word in words:
+                yield word + " "
+                await asyncio.sleep(0.05)
+    
+    @property
+    def nlp_engine(self):
+        """Get NLP engine from current bot"""
+        return getattr(self.current_bot, 'nlp_engine', None)
+    
+    @property
+    def task_planner(self):
+        """Get task planner from current bot"""
+        return getattr(self.current_bot, 'task_planner', None)
+    
+    @property
+    def automation_engine(self):
+        """Get automation engine from current bot"""
+        return getattr(self.current_bot, 'automation_engine', None)
+    
+    @property
+    def _model_loaded(self):
+        """Check if model is loaded in current bot"""
+        return getattr(self.current_bot, '_model_loaded', True)
+    
+    async def add_knowledge(self, content: str, metadata: Optional[Dict] = None) -> Dict:
+        """Add knowledge to the knowledge base"""
+        if hasattr(self.current_bot, 'add_knowledge'):
+            return await self.current_bot.add_knowledge(content, metadata)
+        else:
+            return {
+                "success": False,
+                "error": f"Knowledge management not available in {self.current_mode.value} mode"
+            }
     
     async def cleanup(self):
         """Clean up resources"""

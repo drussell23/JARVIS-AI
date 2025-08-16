@@ -415,45 +415,99 @@ class SystemManager:
         print(f"  1. Close unnecessary browser tabs")
         print(f"  2. Quit unused applications")
         print(f"  3. Close IDE/editor instances you're not using")
-        print(f"  4. Run memory optimization: curl -X POST http://localhost:8000/chat/optimize-memory")
+        print(f"  4. Run memory optimization:")
+        print(f"     - Standard: curl -X POST http://localhost:8000/chat/optimize-memory")
+        print(f'     - Aggressive: curl -X POST http://localhost:8000/chat/optimize-memory -d \'{{"aggressive": true}}\'')
+        print(f"     - Interactive: python optimize_memory_advanced.py --interactive")
         print(f"\nOr continue with limited features.")
     
     def optimize_memory_if_needed(self):
         """Try to optimize memory if it's too high"""
         mem = psutil.virtual_memory()
-        if mem.percent > 80:
-            print(f"\n{Colors.WARNING}Memory usage is critical ({mem.percent:.1f}%){Colors.ENDC}")
-            response = input(f"\nAttempt automatic memory optimization? (y/n): ")
+        if mem.percent > 65:  # Lower threshold for better experience
+            print(f"\n{Colors.WARNING}Memory usage is high ({mem.percent:.1f}%){Colors.ENDC}")
             
-            if response.lower() == 'y':
-                print(f"{Colors.CYAN}Attempting memory optimization...{Colors.ENDC}")
-                
-                # Run basic optimizations
+            # Different prompts based on memory level
+            if mem.percent > 80:
+                print(f"{Colors.FAIL}Memory is critical - optimization strongly recommended{Colors.ENDC}")
+                default_response = 'y'
+            else:
+                print(f"{Colors.YELLOW}Memory optimization recommended for full features{Colors.ENDC}")
+                default_response = 'n'
+            
+            response = input(f"\nAttempt memory optimization? (Y/n): ").strip().lower()
+            if response == '' or response == 'y':
+                # Try the advanced optimizer first
                 try:
-                    # Python garbage collection
+                    print(f"\n{Colors.CYAN}Running advanced memory optimization...{Colors.ENDC}")
+                    
+                    # Check if API is already running
+                    api_running = not self.check_port_available(self.ports['main_api'])
+                    
+                    if api_running:
+                        # Use API endpoint
+                        import requests
+                        aggressive = mem.percent > 75
+                        response = requests.post(
+                            f"http://localhost:{self.ports['main_api']}/chat/optimize-memory",
+                            json={"aggressive": aggressive},
+                            timeout=30
+                        )
+                        if response.status_code == 200:
+                            result = response.json()
+                            print(f"{Colors.GREEN}✓ Optimization complete{Colors.ENDC}")
+                            print(f"  Memory: {result['initial_memory_percent']:.1f}% → {result['final_memory_percent']:.1f}%")
+                            print(f"  Freed: {result['memory_freed_mb']:.0f} MB")
+                            if result['success']:
+                                print(f"{Colors.GREEN}✓ Memory optimization successful!{Colors.ENDC}")
+                            else:
+                                print(f"{Colors.WARNING}⚠️  Could not reach target memory level{Colors.ENDC}")
+                            return
+                    else:
+                        # Run the optimizer directly
+                        from backend.memory.intelligent_memory_optimizer import IntelligentMemoryOptimizer
+                        import asyncio
+                        
+                        optimizer = IntelligentMemoryOptimizer()
+                        aggressive = mem.percent > 75
+                        
+                        success, report = asyncio.run(optimizer.optimize_for_langchain(aggressive=aggressive))
+                        
+                        print(f"\n{Colors.GREEN}✓ Optimization complete{Colors.ENDC}")
+                        print(f"  Memory: {report['initial_percent']:.1f}% → {report['final_percent']:.1f}%")
+                        print(f"  Freed: {report['memory_freed_mb']:.0f} MB")
+                        
+                        if report['actions_taken']:
+                            print(f"\nActions taken:")
+                            for action in report['actions_taken']:
+                                print(f"  - {action['strategy']}: {action['freed_mb']:.0f} MB")
+                        
+                        if success:
+                            print(f"\n{Colors.GREEN}✓ Memory optimization successful!{Colors.ENDC}")
+                        else:
+                            print(f"\n{Colors.WARNING}⚠️  Could not reach target memory level{Colors.ENDC}")
+                            print(f"Consider closing more applications manually")
+                            
+                except Exception as e:
+                    print(f"{Colors.WARNING}Advanced optimization failed: {e}{Colors.ENDC}")
+                    print(f"Falling back to basic optimization...")
+                    
+                    # Basic fallback
                     import gc
                     gc.collect()
                     
-                    # Kill some helper processes if on macOS
                     if platform.system() == "Darwin":
-                        # Kill Cursor helpers if present
                         subprocess.run(["pkill", "-f", "Cursor Helper"], capture_output=True)
-                        # Kill Chrome helpers
                         subprocess.run(["pkill", "-f", "Chrome Helper"], capture_output=True)
                         time.sleep(2)
                     
-                    # Check memory again
                     new_mem = psutil.virtual_memory()
                     freed_mb = (mem.used - new_mem.used) / (1024 * 1024)
                     
                     if freed_mb > 0:
-                        print(f"{Colors.GREEN}✓ Freed {freed_mb:.0f} MB of memory{Colors.ENDC}")
-                        print(f"Memory now at {new_mem.percent:.1f}%")
-                    else:
-                        print(f"{Colors.WARNING}Could not free significant memory{Colors.ENDC}")
-                        
-                except Exception as e:
-                    print(f"{Colors.WARNING}Optimization error: {e}{Colors.ENDC}")
+                        print(f"{Colors.GREEN}✓ Basic optimization freed {freed_mb:.0f} MB{Colors.ENDC}")
+            else:
+                print(f"{Colors.YELLOW}Skipping optimization. Some features may be limited.{Colors.ENDC}")
         
     def start_llama_cpp_server(self):
         """Start llama.cpp server for M1 Macs"""
@@ -687,7 +741,9 @@ class SystemManager:
         # Show memory warning if applicable
         if self.memory_warned:
             print(f"\n{Colors.YELLOW}⚠️  Note: High memory usage detected. Some features may be limited.{Colors.ENDC}")
-            print(f"{Colors.YELLOW}   Run 'curl -X POST http://localhost:8000/chat/optimize-memory' to free memory{Colors.ENDC}")
+            print(f"{Colors.YELLOW}   Options to free memory:{Colors.ENDC}")
+            print(f"{Colors.YELLOW}   - curl -X POST http://localhost:8000/chat/optimize-memory{Colors.ENDC}")
+            print(f"{Colors.YELLOW}   - python optimize_memory_advanced.py --interactive{Colors.ENDC}")
         
         print()
         
@@ -741,10 +797,13 @@ class SystemManager:
         self.create_directories()
         
         # Check memory status
-        self.check_memory_status()
+        memory_ok = self.check_memory_status()
         
         # Offer memory optimization if needed
-        self.optimize_memory_if_needed()
+        if not skip_install:  # Only offer during full startup
+            self.optimize_memory_if_needed()
+        elif not memory_ok:
+            print(f"\n{Colors.WARNING}⚠️  Consider running with --optimize-memory flag{Colors.ENDC}")
         
         # Start llama.cpp for M1 Macs
         if self.is_m1_mac:
@@ -954,6 +1013,11 @@ def main():
         action="store_true",
         help="Check memory status and exit"
     )
+    parser.add_argument(
+        "--force-langchain",
+        action="store_true",
+        help="Aggressively optimize memory to enable LangChain"
+    )
     
     args = parser.parse_args()
     
@@ -1046,7 +1110,67 @@ def main():
     if args.optimize_memory:
         manager.print_header()
         print(f"{Colors.BLUE}Running memory optimization...{Colors.ENDC}")
-        manager.optimize_memory_if_needed()
+        
+        # Force optimization even if memory isn't critical
+        mem = psutil.virtual_memory()
+        print(f"Current memory usage: {mem.percent:.1f}%")
+        
+        if mem.percent < 50:
+            print(f"{Colors.GREEN}✓ Memory usage is already optimal!{Colors.ENDC}")
+        else:
+            # Run optimization
+            old_optimize = manager.optimize_memory_if_needed
+            # Temporarily lower threshold to force optimization
+            manager.optimize_memory_if_needed = lambda: old_optimize()
+            manager.optimize_memory_if_needed()
+        
+        print()
+        # Continue with startup after optimization
+    
+    # Force LangChain mode with aggressive optimization
+    if args.force_langchain:
+        manager.print_header()
+        print(f"{Colors.BOLD}🚀 Force LangChain Mode{Colors.ENDC}")
+        print(f"{Colors.CYAN}This will aggressively optimize memory to enable LangChain features{Colors.ENDC}")
+        
+        mem = psutil.virtual_memory()
+        print(f"\nCurrent memory usage: {mem.percent:.1f}%")
+        print(f"Target memory usage: < 45%")
+        
+        if mem.percent <= 45:
+            print(f"{Colors.GREEN}✓ Memory already optimal for LangChain!{Colors.ENDC}")
+        else:
+            confirm = input(f"\n{Colors.WARNING}This will close applications to free memory. Continue? (y/N): {Colors.ENDC}").strip().lower()
+            if confirm == 'y':
+                try:
+                    from backend.memory.intelligent_memory_optimizer import IntelligentMemoryOptimizer
+                    import asyncio
+                    
+                    print(f"\n{Colors.CYAN}Running aggressive memory optimization...{Colors.ENDC}")
+                    optimizer = IntelligentMemoryOptimizer()
+                    optimizer.target_memory_percent = 40  # Even more aggressive target
+                    
+                    success, report = asyncio.run(optimizer.optimize_for_langchain(aggressive=True))
+                    
+                    print(f"\n{Colors.GREEN}Optimization complete:{Colors.ENDC}")
+                    print(f"  Memory: {report['initial_percent']:.1f}% → {report['final_percent']:.1f}%")
+                    print(f"  Freed: {report['memory_freed_mb']:.0f} MB")
+                    
+                    if success:
+                        print(f"\n{Colors.GREEN}✅ LangChain mode enabled!{Colors.ENDC}")
+                        # Set environment variable to prefer LangChain
+                        os.environ["PREFER_LANGCHAIN"] = "1"
+                    else:
+                        print(f"\n{Colors.WARNING}⚠️  Could not reach target. Manual intervention needed.{Colors.ENDC}")
+                        print(f"Please close more applications and try again.")
+                        sys.exit(0)
+                        
+                except Exception as e:
+                    print(f"{Colors.FAIL}Error during optimization: {e}{Colors.ENDC}")
+                    sys.exit(1)
+            else:
+                print(f"{Colors.YELLOW}Cancelled. Starting with current memory state.{Colors.ENDC}")
+        
         print()
         # Continue with startup after optimization
     

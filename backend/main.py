@@ -381,7 +381,7 @@ class ChatbotAPI:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
     
-    async def optimize_memory_for_langchain(self):
+    async def optimize_memory_for_langchain(self, request: Optional[Dict[str, Any]] = None):
         """Optimize memory to enable LangChain features"""
         # Check if we have DynamicChatbot
         if not isinstance(self.bot, DynamicChatbot):
@@ -394,9 +394,14 @@ class ChatbotAPI:
         from memory.intelligent_memory_optimizer import IntelligentMemoryOptimizer
         
         try:
+            # Get aggressive mode from request
+            aggressive = False
+            if request and isinstance(request, dict):
+                aggressive = request.get("aggressive", False)
+            
             # Create optimizer and run optimization
             optimizer = IntelligentMemoryOptimizer()
-            success, report = await optimizer.optimize_for_langchain()
+            success, report = await optimizer.optimize_for_langchain(aggressive=aggressive)
             
             # Return detailed report
             return {
@@ -408,7 +413,8 @@ class ChatbotAPI:
                 "target_percent": report["target_percent"],
                 "message": "Memory optimization successful" if success else "Could not free enough memory",
                 "current_mode": self.bot.current_mode.value,
-                "can_use_langchain": report["final_percent"] <= 50
+                "can_use_langchain": report["final_percent"] <= 50,
+                "aggressive_mode": aggressive
             }
         except Exception as e:
             logger.error(f"Memory optimization failed: {e}")
@@ -615,9 +621,19 @@ if VOICE_API_AVAILABLE:
         logger.warning(f"Failed to initialize Voice API: {e}")
 
 # Include Automation API routes if available with memory management
-if AUTOMATION_API_AVAILABLE and hasattr(chatbot_api.bot, "automation_engine"):
+if AUTOMATION_API_AVAILABLE:
     try:
-        automation_api = AutomationAPI(chatbot_api.bot.automation_engine)
+        # Create automation engine if it doesn't exist on the bot
+        if hasattr(chatbot_api.bot, "automation_engine"):
+            automation_engine = chatbot_api.bot.automation_engine
+        else:
+            # Import and create a new automation engine
+            from engines.automation_engine import AutomationEngine
+            automation_engine = AutomationEngine()
+            # Optionally attach it to the bot for future use
+            chatbot_api.bot.automation_engine = automation_engine
+        
+        automation_api = AutomationAPI(automation_engine)
         app.include_router(automation_api.router, prefix="/automation")
         logger.info("Automation API routes added")
     except Exception as e:
@@ -688,14 +704,14 @@ async def health_check():
     try:
         # Get memory status
         memory_snapshot = await memory_manager.get_memory_snapshot()
-        memory_report = await memory_manager.get_memory_report()
 
-        # Check if model is loaded
-        model_loaded = (
-            chatbot_api.bot._model_loaded
-            if hasattr(chatbot_api.bot, "_model_loaded")
-            else True  # SimpleChatbot is always "loaded"
-        )
+        # Check if model is loaded - handle different chatbot types
+        if hasattr(chatbot_api.bot, "_model_loaded"):
+            # DynamicChatbot has _model_loaded as a property
+            model_loaded = chatbot_api.bot._model_loaded
+        else:
+            # SimpleChatbot and IntelligentChatbot are always "loaded"
+            model_loaded = True
 
         return {
             "status": (
