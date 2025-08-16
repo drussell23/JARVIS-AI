@@ -313,7 +313,9 @@ class DynamicChatbot:
 
             # Restore conversation history
             if conversation_history:
-                new_bot.conversation_history = conversation_history
+                # IntelligentChatbot expects ConversationTurn objects  
+                if hasattr(new_bot, 'conversation_history'):
+                    new_bot.conversation_history = conversation_history
                 logger.info(f"Restored {len(conversation_history)} conversation turns")
 
             # Switch to new bot
@@ -406,7 +408,9 @@ class DynamicChatbot:
 
             # Restore conversation history
             if conversation_history:
-                new_bot.conversation_history = conversation_history
+                # LangChainChatbot may expect ConversationTurn objects
+                if hasattr(new_bot, 'conversation_history'):
+                    new_bot.conversation_history = conversation_history
                 logger.info(
                     f"Restored {len(conversation_history)} conversation turns to LangChain"
                 )
@@ -457,7 +461,9 @@ class DynamicChatbot:
 
             # Restore history
             if conversation_history:
-                new_bot.conversation_history = conversation_history
+                # IntelligentChatbot expects ConversationTurn objects
+                if hasattr(new_bot, 'conversation_history'):
+                    new_bot.conversation_history = conversation_history
 
             # Switch
             self._current_bot = None
@@ -507,7 +513,10 @@ class DynamicChatbot:
             
             # Restore conversation history
             if conversation_history:
-                new_bot.conversation_history = conversation_history
+                # Claude uses Dict[str, str] format, need to convert if necessary
+                new_bot.conversation_history = self._convert_conversation_history(
+                    conversation_history, "dict"
+                )
                 logger.info(f"Restored {len(conversation_history)} conversation turns to Claude")
                 
             # Switch to new bot
@@ -526,6 +535,42 @@ class DynamicChatbot:
             # Fall back to simple mode
             await self._downgrade_to_simple()
 
+    def _convert_conversation_history(self, history: List[Any], target_format: str) -> List[Any]:
+        """Convert conversation history between different formats"""
+        if not history:
+            return []
+            
+        # Check source format
+        first_item = history[0]
+        
+        if target_format == "dict":
+            # Convert to dict format (for Claude)
+            if isinstance(first_item, dict):
+                return history  # Already in dict format
+            else:
+                # Convert from ConversationTurn objects
+                result = []
+                for turn in history:
+                    if hasattr(turn, 'role') and hasattr(turn, 'content'):
+                        if turn.role == "user":
+                            result.append({"user": turn.content, "assistant": ""})
+                        else:
+                            result.append({"user": "", "assistant": turn.content})
+                return result
+        else:
+            # Convert to ConversationTurn format (for other bots)
+            if isinstance(first_item, dict):
+                # Convert from dict format
+                result = []
+                for entry in history:
+                    if entry.get("user"):
+                        result.append({"role": "user", "content": entry["user"]})
+                    if entry.get("assistant"):
+                        result.append({"role": "assistant", "content": entry["assistant"]})
+                return result
+            else:
+                return history  # Already in correct format
+    
     def _log_memory_usage(self):
         """Log current memory usage for debugging"""
         try:
@@ -568,7 +613,7 @@ class DynamicChatbot:
             self.current_bot = SimpleChatbot(max_history_length=self.max_history_length)
 
             # Restore conversation history
-            if conversation_history:
+            if conversation_history and hasattr(self.current_bot, 'conversation_history'):
                 self.current_bot.conversation_history = conversation_history
                 logger.info(f"Preserved {len(conversation_history)} conversation turns")
 

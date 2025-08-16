@@ -169,7 +169,7 @@ You excel at understanding context and providing insightful, well-structured res
         if len(self.conversation_history) > self.max_history_length:
             self.conversation_history = self.conversation_history[-self.max_history_length:]
             
-    def clear_history(self):
+    async def clear_history(self):
         """Clear conversation history"""
         self.conversation_history.clear()
         logger.info("Conversation history cleared")
@@ -232,3 +232,69 @@ You excel at understanding context and providing insightful, well-structured res
         except Exception as e:
             logger.error(f"Streaming error: {e}")
             yield f"\nError during streaming: {str(e)}"
+            
+    async def generate_response_with_context(
+        self, user_input: str, context: Optional[Dict] = None
+    ) -> Dict:
+        """
+        Generate response with metadata (compatible with existing API)
+        """
+        response = await self.generate_response(user_input)
+        
+        return {
+            "response": response,
+            "mode": "claude",
+            "model": self.model,
+            "context_used": context is not None
+        }
+        
+    async def get_conversation_history(self) -> List[Dict[str, str]]:
+        """Get conversation history"""
+        return self.conversation_history.copy()
+        
+    async def cleanup(self):
+        """Cleanup resources (no-op for cloud API)"""
+        logger.info("Claude chatbot cleanup (no resources to free)")
+        
+    def set_system_prompt(self, prompt: str):
+        """Update system prompt"""
+        self.system_prompt = prompt
+        logger.info("Updated Claude system prompt")
+        
+    @property
+    def model_name(self) -> str:
+        """Get current model name"""
+        return self.model
+        
+    def get_capabilities(self) -> Dict[str, Any]:
+        """Get chatbot capabilities"""
+        return {
+            "streaming": True,
+            "context_window": 200000,  # Claude 3 has 200k context
+            "multimodal": True,  # Claude 3 supports images
+            "tools": False,  # Not implemented yet
+            "memory_usage": "cloud",  # No local memory usage
+            "models_available": [
+                "claude-3-haiku-20240307",
+                "claude-3-sonnet-20240229", 
+                "claude-3-opus-20240229"
+            ],
+            "current_model": self.model
+        }
+        
+    async def generate_response_stream(
+        self, user_input: str
+    ):
+        """Alias for stream_process for compatibility"""
+        async for chunk in self.stream_process(user_input):
+            yield chunk
+            
+    async def add_knowledge(
+        self, content: str, metadata: Optional[Dict] = None
+    ) -> bool:
+        """
+        Add knowledge to the system (not implemented for Claude)
+        This could be implemented by storing in a vector DB for RAG
+        """
+        logger.warning("add_knowledge not implemented for Claude chatbot")
+        return False
