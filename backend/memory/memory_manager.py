@@ -169,6 +169,29 @@ class M1MemoryManager:
             f"Registered component: {name} (Priority: {priority.name}, Est. Memory: {estimated_memory_mb}MB)"
         )
 
+    async def register_intelligent_components(self):
+        """Register intelligent chatbot components"""
+        try:
+            # Register intelligent chatbot
+            self.register_component(
+                "intelligent_chatbot",
+                ComponentPriority.MEDIUM,
+                estimated_memory_mb=500  # Estimate for intelligent mode
+            )
+            
+            # Register LangChain chatbot
+            self.register_component(
+                "langchain_chatbot", 
+                ComponentPriority.HIGH,
+                estimated_memory_mb=2000  # Estimate for LangChain mode
+            )
+            
+            logger.info("Intelligent components registered successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to register intelligent components: {e}")
+            return False
+
     async def start_monitoring(self):
         """Start the memory monitoring loop"""
         if not self.is_monitoring:
@@ -325,6 +348,22 @@ class M1MemoryManager:
 
         # Aggressive garbage collection
         gc.collect(2)  # Full collection
+
+    async def optimize_memory(self, mode: str = "normal"):
+        """Public method to optimize memory
+        
+        Args:
+            mode: "normal", "aggressive", or "emergency"
+        """
+        if mode == "normal":
+            await self._optimize_memory()
+        elif mode == "aggressive":
+            await self._aggressive_cleanup()
+        elif mode == "emergency":
+            await self._emergency_shutdown()
+        else:
+            logger.warning(f"Unknown optimization mode: {mode}, using normal")
+            await self._optimize_memory()
 
     async def can_load_component(self, name: str) -> Tuple[bool, Optional[str]]:
         """Check if a component can be safely loaded"""

@@ -317,6 +317,33 @@ class SimpleChatbot:
             yield word + " "
             await asyncio.sleep(0.05)  # Small delay to simulate streaming
 
+    async def cleanup(self):
+        """Cleanup method for compatibility"""
+        logger.info("SimpleChatbot cleanup (no-op)")
+        # SimpleChatbot doesn't have resources to clean up
+        pass
+
+    def get_capabilities(self) -> Dict[str, any]:
+        """Get chatbot capabilities"""
+        return {
+            "model_type": "simple",
+            "model_name": self.model_name,
+            "has_nlp": self.nlp_engine is not None,
+            "has_math": hasattr(self, 'math_detector') and self.math_detector is not None,
+            "streaming": True,
+            "context_aware": True,
+            "max_history": self.max_history_length,
+            "personality": self.personality
+        }
+
+    async def add_knowledge(self, content: str, metadata: Optional[Dict] = None) -> Dict:
+        """Add knowledge (not supported in simple mode)"""
+        return {
+            "success": False,
+            "error": "Knowledge management not available in Simple mode",
+            "suggestion": "Upgrade to Intelligent or LangChain mode for knowledge management"
+        }
+
 
 # Test the chatbot
 if __name__ == "__main__":
