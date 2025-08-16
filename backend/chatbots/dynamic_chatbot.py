@@ -124,7 +124,7 @@ class DynamicChatbot:
             ComponentPriority.CRITICAL,
             estimated_memory_mb=50,  # Reduced since we start minimal
         )
-        
+
         # Register intelligent components for future use
         asyncio.create_task(self._register_components())
 
@@ -157,7 +157,7 @@ class DynamicChatbot:
             self._loaded_components.add("memory_optimizer")
             logger.info("Lazy-loaded IntelligentMemoryOptimizer")
         return self._memory_optimizer
-    
+
     async def _register_components(self):
         """Register intelligent components with memory manager"""
         try:
