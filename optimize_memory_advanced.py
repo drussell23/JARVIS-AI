@@ -16,6 +16,70 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
 
 from backend.memory.intelligent_memory_optimizer import IntelligentMemoryOptimizer
 import psutil
+from pathlib import Path
+import json
+
+
+def check_model_usage():
+    """Check for large model files that might be causing memory issues"""
+    common_model_paths = [
+        Path.home() / ".cache" / "huggingface",
+        Path.home() / ".cache" / "torch",
+        Path.home() / ".llama",
+        Path.home() / ".jarvis" / "models",
+        Path("./models"),
+        Path("./backend/models")
+    ]
+    
+    large_files = []
+    for path in common_model_paths:
+        if path.exists():
+            for file in path.rglob("*.bin"):
+                if file.stat().st_size > 1e9:  # Files larger than 1GB
+                    large_files.append((file, file.stat().st_size))
+            for file in path.rglob("*.safetensors"):
+                if file.stat().st_size > 1e9:
+                    large_files.append((file, file.stat().st_size))
+    
+    if large_files:
+        print("\n⚠️  WARNING: Large model files detected!")
+        print("These unquantized models use excessive memory:")
+        for file, size in sorted(large_files, key=lambda x: x[1], reverse=True)[:5]:
+            print(f"  - {file.name}: {size / 1e9:.1f} GB")
+        print("\n💡 SOLUTION: Use quantized models instead!")
+        print("   Run: python setup_m1_optimized_llm.py")
+        print("   This will set up efficient GGUF models that use 75% less RAM\n")
+
+
+def check_llm_config():
+    """Check if JARVIS is configured to use quantized models"""
+    config_paths = [
+        Path.home() / ".jarvis" / "llm_config.json",
+        Path(".env.llm"),
+        Path("backend/config/llm_config.json")
+    ]
+    
+    for config_path in config_paths:
+        if config_path.exists():
+            if config_path.suffix == '.json':
+                try:
+                    with open(config_path) as f:
+                        config = json.load(f)
+                        if config.get('llm', {}).get('model_type') == 'gguf':
+                            return True
+                except:
+                    pass
+            else:
+                # Check .env file
+                try:
+                    with open(config_path) as f:
+                        content = f.read()
+                        if 'USE_QUANTIZED_MODELS=true' in content:
+                            return True
+                except:
+                    pass
+    
+    return False
 
 
 def display_memory_status():
@@ -27,6 +91,9 @@ def display_memory_status():
     print(f"  Available: {mem.available / (1024**3):.1f} GB")
     print(f"  Total: {mem.total / (1024**3):.1f} GB")
     print(f"{'='*50}\n")
+    
+    # Check for large model files
+    check_model_usage()
 
 
 async def run_optimization(aggressive=False, target_percent=45):
@@ -75,14 +142,28 @@ async def interactive_optimization():
         print("✅ Memory usage is already optimal for LangChain!")
         return
     
-    print("Memory optimization is needed to enable LangChain features.")
+    # Check if using correct model format
+    if check_llm_config():
+        print("\n✅ Already using quantized models - good!")
+    else:
+        print("\n❌ Not using quantized models!")
+        print("This is likely why you're having memory issues.")
+        print("\n🚀 Quick Fix Available!")
+        print("Run: python setup_m1_optimized_llm.py")
+        fix_now = input("\nSet up optimized models now? (Y/n): ").strip().lower()
+        if fix_now != 'n':
+            subprocess.run([sys.executable, "setup_m1_optimized_llm.py"])
+            return
+    
+    print("\nMemory optimization is needed to enable LangChain features.")
     print("\nOptions:")
     print("1. Standard optimization (safe, may not free enough)")
     print("2. Aggressive optimization (closes apps, more effective)")
     print("3. Custom optimization (you choose what to close)")
-    print("4. Exit")
+    print("4. Fix model setup (use quantized models)")
+    print("5. Exit")
     
-    choice = input("\nSelect option (1-4): ").strip()
+    choice = input("\nSelect option (1-5): ").strip()
     
     if choice == '1':
         await run_optimization(aggressive=False)
@@ -94,6 +175,10 @@ async def interactive_optimization():
     elif choice == '3':
         await custom_optimization()
     elif choice == '4':
+        print("\nSetting up optimized models...")
+        subprocess.run([sys.executable, "setup_m1_optimized_llm.py"])
+        return
+    elif choice == '5':
         print("Exiting...")
         return
     

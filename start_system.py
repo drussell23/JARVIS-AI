@@ -128,10 +128,13 @@ class SystemManager:
                 line = line.strip()
                 if line and not line.startswith('#'):
                     # Parse requirement
-                    if '>=' in line or '==' in line or '<=' in line:
-                        pkg_name = line.split('>=')[0].split('==')[0].split('<=')[0].strip()
-                    elif '@' in line:  # URL-based dependencies
+                    if '@' in line:  # URL-based dependencies like spacy models
                         pkg_name = line.split('@')[0].strip()
+                        # Skip URL-based deps as they're handled differently
+                        if 'http' in line:
+                            continue
+                    elif '>=' in line or '==' in line or '<=' in line:
+                        pkg_name = line.split('>=')[0].split('==')[0].split('<=')[0].strip()
                     else:
                         pkg_name = line.strip()
                     
@@ -159,20 +162,46 @@ class SystemManager:
             print(f"{Colors.CYAN}Found {len(missing)} missing dependencies{Colors.ENDC}")
             print(f"{Colors.BLUE}Installing missing dependencies...{Colors.ENDC}")
             
-            try:
-                # Install only missing dependencies
-                total = len(missing)
-                for i, dep in enumerate(missing, 1):
-                    print(f"  [{i}/{total}] Installing: {dep}")
-                    subprocess.check_call([
+            # Install dependencies with error handling
+            total = len(missing)
+            failed_deps = []
+            
+            for i, dep in enumerate(missing, 1):
+                print(f"  [{i}/{total}] Installing: {dep}")
+                try:
+                    # Try to install without version constraints first if it fails
+                    result = subprocess.run([
                         sys.executable, "-m", "pip", "install", dep
-                    ], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-                
-                print(f"{Colors.GREEN}✓ Missing dependencies installed{Colors.ENDC}")
-                
-            except subprocess.CalledProcessError as e:
-                print(f"{Colors.FAIL}❌ Failed to install dependencies: {e}{Colors.ENDC}")
-                sys.exit(1)
+                    ], capture_output=True, text=True)
+                    
+                    if result.returncode != 0:
+                        # Try without version constraint
+                        pkg_name = dep.split('>=')[0].split('==')[0].split('<=')[0].strip()
+                        print(f"    Retrying without version constraint: {pkg_name}")
+                        result2 = subprocess.run([
+                            sys.executable, "-m", "pip", "install", pkg_name
+                        ], capture_output=True, text=True)
+                        
+                        if result2.returncode != 0:
+                            failed_deps.append(dep)
+                            print(f"    {Colors.WARNING}⚠️  Failed to install {dep}{Colors.ENDC}")
+                        else:
+                            print(f"    {Colors.GREEN}✓ Installed {pkg_name} (latest version){Colors.ENDC}")
+                    else:
+                        print(f"    {Colors.GREEN}✓ Installed{Colors.ENDC}")
+                        
+                except Exception as e:
+                    failed_deps.append(dep)
+                    print(f"    {Colors.WARNING}⚠️  Error: {e}{Colors.ENDC}")
+            
+            if failed_deps:
+                print(f"\n{Colors.WARNING}⚠️  Some dependencies failed to install:{Colors.ENDC}")
+                for dep in failed_deps:
+                    print(f"  - {dep}")
+                print(f"\n{Colors.YELLOW}JARVIS will still run with reduced functionality.{Colors.ENDC}")
+                print(f"To fix, try: pip install {' '.join(failed_deps)}")
+            else:
+                print(f"{Colors.GREEN}✓ All dependencies installed successfully{Colors.ENDC}")
         
         # Check NLTK data
         print(f"{Colors.BLUE}Checking NLTK data...{Colors.ENDC}")
@@ -435,7 +464,17 @@ class SystemManager:
                 print(f"{Colors.YELLOW}Memory optimization recommended for full features{Colors.ENDC}")
                 default_response = 'n'
             
-            response = input(f"\nAttempt memory optimization? (Y/n): ").strip().lower()
+            # Check if running in interactive mode
+            try:
+                if sys.stdin.isatty():
+                    response = input(f"\nAttempt memory optimization? (Y/n): ").strip().lower()
+                else:
+                    print(f"\n{Colors.YELLOW}Non-interactive mode - skipping memory optimization{Colors.ENDC}")
+                    response = 'n'
+            except (EOFError, KeyboardInterrupt):
+                print(f"\n{Colors.YELLOW}Skipping memory optimization{Colors.ENDC}")
+                response = 'n'
+                
             if response == '' or response == 'y':
                 # Try the advanced optimizer first
                 try:

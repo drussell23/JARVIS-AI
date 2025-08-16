@@ -623,15 +623,19 @@ if VOICE_API_AVAILABLE:
 # Include Automation API routes if available with memory management
 if AUTOMATION_API_AVAILABLE:
     try:
-        # Create automation engine if it doesn't exist on the bot
-        if hasattr(chatbot_api.bot, "automation_engine"):
-            automation_engine = chatbot_api.bot.automation_engine
-        else:
-            # Import and create a new automation engine
-            from engines.automation_engine import AutomationEngine
-            automation_engine = AutomationEngine()
-            # Optionally attach it to the bot for future use
-            chatbot_api.bot.automation_engine = automation_engine
+        # Create automation engine
+        from engines.automation_engine import AutomationEngine
+        automation_engine = AutomationEngine()
+        
+        # Try to attach to bot if it supports it
+        if hasattr(chatbot_api.bot, "set_automation_engine"):
+            chatbot_api.bot.set_automation_engine(automation_engine)
+        elif hasattr(chatbot_api.bot, "__dict__"):
+            try:
+                setattr(chatbot_api.bot, "automation_engine", automation_engine)
+            except AttributeError:
+                # Some bot types might not allow dynamic attributes
+                pass
         
         automation_api = AutomationAPI(automation_engine)
         app.include_router(automation_api.router, prefix="/automation")
@@ -706,12 +710,17 @@ async def health_check():
         memory_snapshot = await memory_manager.get_memory_snapshot()
 
         # Check if model is loaded - handle different chatbot types
-        if hasattr(chatbot_api.bot, "_model_loaded"):
-            # DynamicChatbot has _model_loaded as a property
-            model_loaded = chatbot_api.bot._model_loaded
-        else:
-            # SimpleChatbot and IntelligentChatbot are always "loaded"
-            model_loaded = True
+        model_loaded = True  # Default to true
+        
+        if hasattr(chatbot_api.bot, "current_mode"):
+            # DynamicChatbot - check if it has a mode
+            model_loaded = chatbot_api.bot.current_mode is not None
+        elif hasattr(chatbot_api.bot, "llm"):
+            # LangChain chatbot - check if LLM is initialized
+            model_loaded = chatbot_api.bot.llm is not None
+        elif hasattr(chatbot_api.bot, "model"):
+            # Other chatbots with model attribute
+            model_loaded = chatbot_api.bot.model is not None
 
         return {
             "status": (
