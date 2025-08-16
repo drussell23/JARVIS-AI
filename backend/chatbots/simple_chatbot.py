@@ -179,7 +179,21 @@ class SimpleChatbot:
         elif "?" in user_input:
             # It's a question
             if "what" in user_lower:
-                response = "That's a great question! Based on what you're asking, I'd be happy to help explain or provide information."
+                # Check if it's a math question
+                if any(op in user_input for op in ['+', '-', '*', '/', 'plus', 'minus', 'times', 'divided', 'add', 'subtract', 'multiply']):
+                    try:
+                        # Try to use quantized LLM for math
+                        from chatbots.quantized_llm_wrapper import get_quantized_llm
+                        llm = get_quantized_llm()
+                        if llm.initialized or llm.initialize():
+                            math_response = llm.generate(user_input, max_tokens=50, temperature=0.1)
+                            response = math_response.strip()
+                        else:
+                            response = "I'd love to help with that calculation, but I need the language model to be loaded first. Try running: python setup_m1_optimized_llm.py"
+                    except:
+                        response = "I can help with math, but the calculation engine isn't available right now."
+                else:
+                    response = "That's a great question! Based on what you're asking, I'd be happy to help explain or provide information."
             elif "how" in user_lower:
                 response = "Let me help you understand how that works. Could you be more specific about what aspect you'd like to know?"
             elif "why" in user_lower:
