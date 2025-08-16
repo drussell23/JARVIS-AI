@@ -180,7 +180,7 @@ class SimpleChatbot:
             # It's a question
             if "what" in user_lower:
                 # Check if it's a math question
-                if any(op in user_input for op in ['+', '-', '*', '/', 'plus', 'minus', 'times', 'divided', 'add', 'subtract', 'multiply']):
+                if any(op in user_input for op in ['+', '-', '*', '/', '^', '**', 'plus', 'minus', 'times', 'divided', 'add', 'subtract', 'multiply', 'power', 'squared', 'cubed']) or any(char in user_input for char in '+-*/^'):
                     try:
                         # Try to use quantized LLM for math
                         from chatbots.quantized_llm_wrapper import get_quantized_llm
