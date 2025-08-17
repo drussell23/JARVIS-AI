@@ -10,6 +10,7 @@ const JarvisVoice = () => {
   const [error, setError] = useState(null);
   const [continuousListening, setContinuousListening] = useState(false);
   const [isWaitingForCommand, setIsWaitingForCommand] = useState(false);
+  const [isJarvisSpeaking, setIsJarvisSpeaking] = useState(false);
   
   const wsRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -139,6 +140,9 @@ const JarvisVoice = () => {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       recognitionRef.current = new SpeechRecognition();
       
+      // Track if JARVIS is speaking to avoid self-triggering
+      let jarvisSpeaking = false;
+      
       recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = 'en-US';
@@ -151,8 +155,8 @@ const JarvisVoice = () => {
         // Only process final results to avoid duplicate detections
         if (!isFinal) return;
         
-        // Check for wake word
-        if ((transcript.includes('hey jarvis') || transcript.includes('jarvis')) && !isWaitingForCommand) {
+        // Check for wake word (but not while JARVIS is speaking)
+        if ((transcript.includes('hey jarvis') || transcript.includes('jarvis')) && !isWaitingForCommand && !isJarvisSpeaking) {
           console.log('Wake word detected:', transcript);
           
           // Extract command after wake word
@@ -223,23 +227,21 @@ const JarvisVoice = () => {
       }));
     }
     
-    // Play activation sound and show visual feedback
-    speakResponse("Yes, sir?");
+    // Don't speak here - let the backend handle it
+    // speakResponse("Yes?");
     
-    // Timeout for command after 5 seconds
+    // Timeout for command after 10 seconds (longer for conversation)
     setTimeout(() => {
-      if (isWaitingForCommand) {
+      if (isWaitingForCommand && !isJarvisSpeaking) {
         setIsWaitingForCommand(false);
         setIsListening(false);
       }
-    }, 5000);
+    }, 10000);
   };
 
   const handleVoiceCommand = (command) => {
     console.log('Command received:', command);
     setTranscript(command);
-    setIsWaitingForCommand(false);
-    setIsListening(false);
     
     // Send via WebSocket instead of REST API
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -251,6 +253,20 @@ const JarvisVoice = () => {
     } else {
       // Fallback to REST API if WebSocket not connected
       sendTextCommand(command);
+    }
+    
+    // Keep listening for follow-up commands (continuous conversation mode)
+    if (continuousListening) {
+      // Stay in command mode for 10 seconds after response
+      setTimeout(() => {
+        if (!isJarvisSpeaking) {
+          setIsWaitingForCommand(false);
+          setIsListening(false);
+        }
+      }, 10000);
+    } else {
+      setIsWaitingForCommand(false);
+      setIsListening(false);
     }
   };
 
@@ -457,11 +473,13 @@ const JarvisVoice = () => {
     
     utterance.onstart = () => {
       console.log('Speech started:', text);
+      setIsJarvisSpeaking(true);
     };
     
     utterance.onend = () => {
       console.log('Speech ended');
       isSpeakingRef.current = false;
+      setIsJarvisSpeaking(false);
       // Process next in queue
       setTimeout(processSpeechQueue, 100);
     };
@@ -469,6 +487,7 @@ const JarvisVoice = () => {
     utterance.onerror = (event) => {
       console.error('Speech error:', event.error);
       isSpeakingRef.current = false;
+      setIsJarvisSpeaking(false);
       
       // Retry once if not a fatal error
       if (event.error === 'canceled' && speechQueueRef.current.length === 0) {

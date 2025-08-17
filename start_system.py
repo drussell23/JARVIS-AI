@@ -382,20 +382,31 @@ class AsyncSystemManager:
             
     async def monitor_services(self):
         """Monitor running services"""
-        while True:
-            await asyncio.sleep(5)
-            
-            for i, proc in enumerate(self.processes):
-                if proc.returncode is not None:
-                    service_name = "Backend" if i == 0 else "Frontend"
-                    print(f"\n{Colors.FAIL}❌ {service_name} stopped unexpectedly{Colors.ENDC}")
+        try:
+            while True:
+                await asyncio.sleep(5)
+                
+                # Check if we're shutting down
+                if asyncio.current_task().cancelled():
+                    break
                     
-                    # Try to get error output
-                    if proc.stdout:
-                        output = await proc.stdout.read(1000)
-                        if output:
-                            print(f"{Colors.FAIL}Error output:{Colors.ENDC}")
-                            print(output.decode()[:500])
+                for i, proc in enumerate(self.processes):
+                    if proc.returncode is not None:
+                        service_name = "Backend" if i == 0 else "Frontend"
+                        print(f"\n{Colors.FAIL}❌ {service_name} stopped unexpectedly{Colors.ENDC}")
+                        
+                        # Try to get error output
+                        if proc.stdout:
+                            try:
+                                output = await proc.stdout.read(1000)
+                                if output:
+                                    print(f"{Colors.FAIL}Error output:{Colors.ENDC}")
+                                    print(output.decode()[:500])
+                            except:
+                                pass
+        except asyncio.CancelledError:
+            # Normal during shutdown
+            pass
         
     async def cleanup(self):
         """Clean up all processes"""
@@ -498,8 +509,19 @@ class AsyncSystemManager:
         return True
 
 
+# Global manager for cleanup
+_manager = None
+
+async def shutdown_handler():
+    """Handle shutdown gracefully"""
+    global _manager
+    if _manager:
+        await _manager.cleanup()
+
 async def main():
     """Main entry point"""
+    global _manager
+    
     parser = argparse.ArgumentParser(description="JARVIS System Launcher - Async Edition")
     parser.add_argument("--no-browser", action="store_true", help="Don't open browser")
     parser.add_argument("--check-only", action="store_true", help="Check setup and exit")
@@ -507,33 +529,86 @@ async def main():
     args = parser.parse_args()
     
     # Create manager
-    manager = AsyncSystemManager()
+    _manager = AsyncSystemManager()
     
     if args.check_only:
-        manager.print_header()
-        await manager.check_python_version()
-        await manager.check_claude_config()
-        await manager.check_dependencies()
+        _manager.print_header()
+        await _manager.check_python_version()
+        await _manager.check_claude_config()
+        await _manager.check_dependencies()
         return
         
     # Run the system
     try:
-        success = await manager.run()
-        sys.exit(0 if success else 1)
+        success = await _manager.run()
+        return success
     except Exception as e:
         print(f"{Colors.FAIL}❌ Error: {e}{Colors.ENDC}")
-        await manager.cleanup()
-        sys.exit(1)
+        if _manager:
+            await _manager.cleanup()
+        return False
 
 
+def handle_exception(loop, context):
+    """Handle exceptions in asyncio"""
+    # Ignore asyncio exceptions during shutdown
+    exception = context.get('exception')
+    if isinstance(exception, asyncio.CancelledError):
+        return
+    if 'Event loop is closed' in str(context.get('message', '')):
+        return
+        
 if __name__ == "__main__":
     # Handle Ctrl+C gracefully
     try:
-        # Suppress asyncio debug messages on exit
+        # Suppress warnings
         import warnings
-        warnings.filterwarnings("ignore", category=RuntimeWarning, module="asyncio")
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
+        warnings.filterwarnings("ignore", message=".*Event loop is closed.*")
         
-        asyncio.run(main())
+        # Set up asyncio to handle exceptions quietly
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.set_exception_handler(handle_exception)
+        
+        # Install signal handlers
+        def signal_handler():
+            print(f"\n{Colors.YELLOW}Shutting down gracefully...{Colors.ENDC}")
+            # Create task to handle cleanup
+            asyncio.create_task(shutdown_handler())
+            # Stop the loop after cleanup
+            loop.stop()
+            
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, signal_handler)
+        
+        # Run main
+        success = loop.run_until_complete(main())
+        
     except KeyboardInterrupt:
-        print(f"\n{Colors.YELLOW}Interrupted by user{Colors.ENDC}")
+        # Silently handle keyboard interrupt
+        pass
+    except Exception as e:
+        print(f"\n{Colors.FAIL}Error: {e}{Colors.ENDC}")
+    finally:
+        # Clean shutdown
+        try:
+            # Cancel remaining tasks
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            
+            # Wait for cancellation with suppressed errors
+            if pending:
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            
+            # Close the loop
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            loop.close()
+        except:
+            # Ignore any errors during cleanup
+            pass
+            
+        # Exit cleanly
+        print(f"{Colors.GREEN}✓ Shutdown complete{Colors.ENDC}")
         sys.exit(0)
