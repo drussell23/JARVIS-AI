@@ -121,6 +121,7 @@ class AsyncSystemManager:
             "speech_recognition": "Speech recognition",
             "pyttsx3": "Text-to-speech",
             "pygame": "Audio feedback",
+            "pyaudio": "Audio input/output",
             "geocoder": "Location services"
         }
         

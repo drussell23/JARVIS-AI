@@ -291,6 +291,7 @@ class JARVISVoiceAPI:
                 if data.get("type") == "command":
                     # Process voice command
                     command_text = data.get("text", "")
+                    logger.info(f"WebSocket received command: '{command_text}'")
                     
                     # Handle activation command specially
                     if command_text.lower() == "activate":

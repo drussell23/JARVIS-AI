@@ -398,6 +398,9 @@ class EnhancedJARVISPersonality:
         context_info = self._get_context_info()
         recent_context = self._get_recent_voice_context()
         
+        # Log for debugging
+        logger.info(f"Processing command: '{command.raw_text}' (confidence: {command.confidence})")
+        
         # Determine if we need to use voice optimization
         if command.confidence < VoiceConfidence.HIGH.value or command.needs_clarification:
             return await self._optimize_voice_command(command, context_info, recent_context)
@@ -445,11 +448,11 @@ class EnhancedJARVISPersonality:
     
     async def _process_clear_command(self, command: str, context_info: str) -> str:
         """Process clear commands normally"""
-        # Check if this is a weather request
+        # Check if this is a weather request FIRST - before adding context
         if await self._is_weather_request(command):
             return await self._handle_weather_request(command)
         
-        # Build the prompt with context
+        # For non-weather requests, build the prompt with context
         enhanced_prompt = f"{context_info}\n\nUser command (spoken): {command}"
         
         # Get response from Claude
@@ -589,21 +592,25 @@ class EnhancedJARVISPersonality:
         command_lower = command.lower()
         # Quick check for common patterns
         if 'weather' in command_lower or 'temperature' in command_lower:
+            logger.info(f"Weather request detected: '{command}'")
             return True
-        return any(keyword in command_lower for keyword in weather_keywords)
+        is_weather = any(keyword in command_lower for keyword in weather_keywords)
+        if is_weather:
+            logger.info(f"Weather request detected via keywords: '{command}'")
+        return is_weather
     
     async def _handle_weather_request(self, command: str) -> str:
         """Handle weather requests with real data"""
+        logger.info(f"Handling weather request. Weather service available: {self.weather_service is not None}")
         if not self.weather_service:
             # Fallback to Claude if weather service not available
-            enhanced_prompt = f"{self._get_context_info()}\n\nUser command (spoken): {command}"
+            enhanced_prompt = f"User is asking about weather: {command}"
             message = await asyncio.to_thread(
                 self.claude.messages.create,
                 model="claude-3-haiku-20240307",
-                max_tokens=300,
-                system=JARVIS_SYSTEM_PROMPT,
+                max_tokens=150,
+                system="You are JARVIS. Give a brief, direct weather response. Be concise.",
                 messages=[
-                    *self.context,
                     {"role": "user", "content": enhanced_prompt}
                 ]
             )
@@ -778,7 +785,7 @@ class EnhancedJARVISVoiceAssistant:
                 if detected:
                     logger.info(f"Wake word detected: '{text}' (confidence: {confidence:.2f}, type: {wake_type})")
                     consecutive_failures = 0
-                    await self._handle_activation(confidence, wake_type)
+                    await self._handle_activation(confidence, wake_type, text)
                 else:
                     # Log near-misses for debugging
                     if any(word in text.lower() for sublist in self.wake_words.values() for word in (sublist if isinstance(sublist, list) else [sublist])):
@@ -794,21 +801,43 @@ class EnhancedJARVISVoiceAssistant:
             # Small delay to prevent CPU overuse
             await asyncio.sleep(0.1)
     
-    async def _handle_activation(self, wake_confidence: float, wake_type: str):
+    async def _handle_activation(self, wake_confidence: float, wake_type: str, full_text: str = None):
         """Enhanced activation handling"""
-        # Play activation sound and respond based on confidence
-        if wake_type == 'urgent':
-            self.voice_engine.speak("Emergency protocol activated. What's the situation?")
-        else:
-            response = self.personality.get_activation_response(wake_confidence)
-            self.voice_engine.speak(response)
+        # Check if command was included with wake word
+        command_text = None
+        command_confidence = wake_confidence
         
-        # Listen for command with confidence scoring
-        print("🎤 Listening for command...")
-        command_text, command_confidence = self.voice_engine.listen_with_confidence(
-            timeout=5, 
-            phrase_time_limit=10
-        )
+        if full_text:
+            # Extract command after wake word
+            text_lower = full_text.lower()
+            for wake_list in self.wake_words.values():
+                for wake_word in (wake_list if isinstance(wake_list, list) else [wake_list]):
+                    if wake_word in text_lower:
+                        # Find the wake word position and extract everything after it
+                        wake_pos = text_lower.find(wake_word)
+                        if wake_pos != -1:
+                            potential_command = full_text[wake_pos + len(wake_word):].strip()
+                            if potential_command:
+                                command_text = potential_command
+                                print(f"📝 Command detected with wake word: '{command_text}'")
+                                break
+                if command_text:
+                    break
+        
+        if not command_text:
+            # No command with wake word, so respond and listen
+            if wake_type == 'urgent':
+                self.voice_engine.speak("Emergency protocol activated. What's the situation?")
+            else:
+                response = self.personality.get_activation_response(wake_confidence)
+                self.voice_engine.speak(response)
+            
+            # Listen for command with confidence scoring
+            print("🎤 Listening for command...")
+            command_text, command_confidence = self.voice_engine.listen_with_confidence(
+                timeout=5, 
+                phrase_time_limit=10
+            )
         
         if command_text:
             # Detect intent
