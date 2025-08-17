@@ -7,7 +7,7 @@ import asyncio
 import speech_recognition as sr
 import pygame
 import numpy as np
-from typing import Optional, Callable, Dict, List, Tuple
+from typing import Optional, Callable, Dict, List, Tuple, Union
 import json
 import random
 from datetime import datetime
@@ -21,6 +21,18 @@ from dataclasses import dataclass
 from enum import Enum
 import logging
 
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Import ML trainer
+try:
+    from voice.voice_ml_trainer import VoiceMLTrainer, VoicePattern
+    ML_TRAINING_AVAILABLE = True
+except ImportError:
+    ML_TRAINING_AVAILABLE = False
+    logger.warning("ML training not available. Install required libraries for adaptive learning.")
+
 # Use macOS native voice on Mac
 if platform.system() == 'Darwin':
     from voice.macos_voice import MacOSVoice
@@ -28,10 +40,6 @@ if platform.system() == 'Darwin':
 else:
     import pyttsx3
     USE_MACOS_VOICE = False
-
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # JARVIS Personality System Prompt
 JARVIS_SYSTEM_PROMPT = """You are JARVIS, Tony Stark's AI assistant from Iron Man. 
@@ -91,16 +99,16 @@ class VoiceCommand:
     confidence: float
     intent: str
     needs_clarification: bool = False
-    timestamp: datetime = None
+    timestamp: Optional[datetime] = None
     
     def __post_init__(self):
         if self.timestamp is None:
             self.timestamp = datetime.now()
 
 class EnhancedVoiceEngine:
-    """Enhanced speech recognition with confidence scoring and noise reduction"""
+    """Enhanced speech recognition with confidence scoring, noise reduction, and ML training"""
     
-    def __init__(self):
+    def __init__(self, ml_trainer: Optional['VoiceMLTrainer'] = None):
         # Speech recognition with multiple engines
         self.recognizer = sr.Recognizer()
         self.microphone = sr.Microphone()
@@ -114,7 +122,7 @@ class EnhancedVoiceEngine:
         
         # Text-to-speech
         if USE_MACOS_VOICE:
-            self.tts_engine = MacOSVoice()
+            self.tts_engine: Union[MacOSVoice, Any] = MacOSVoice()
         else:
             self.tts_engine = pyttsx3.init()
         self._setup_voice()
@@ -125,6 +133,10 @@ class EnhancedVoiceEngine:
         
         # Noise profile for reduction
         self.noise_profile = None
+        
+        # ML trainer for adaptive learning
+        self.ml_trainer = ml_trainer
+        self.last_audio_data = None  # Store for ML training
         
         # Intent patterns for better recognition
         self.intent_patterns = {
@@ -145,11 +157,12 @@ class EnhancedVoiceEngine:
             
             # Try to find a British male voice
             british_voice = None
-            for voice in voices:
-                if any(word in voice.name.lower() for word in ['british', 'uk', 'english']):
-                    if 'male' in voice.name.lower() or not any(word in voice.name.lower() for word in ['female', 'woman']):
-                        british_voice = voice.id
-                        break
+            if voices:
+                for voice in voices:
+                    if any(word in voice.name.lower() for word in ['british', 'uk', 'english']):
+                        if 'male' in voice.name.lower() or not any(word in voice.name.lower() for word in ['female', 'woman']):
+                            british_voice = voice.id
+                            break
             
             if british_voice:
                 self.tts_engine.setProperty('voice', british_voice)
@@ -195,6 +208,9 @@ class EnhancedVoiceEngine:
                 
                 self.listening = False
                 
+                # Store audio data for ML training
+                self.last_audio_data = np.frombuffer(audio.get_raw_data(), dtype=np.int16)
+                
                 # Try multiple recognition methods for better accuracy
                 recognition_results = []
                 confidence = 0.0
@@ -224,6 +240,17 @@ class EnhancedVoiceEngine:
                     
                     # Apply confidence adjustments based on audio quality
                     adjusted_confidence = self._adjust_confidence(audio, best_confidence)
+                    
+                    # Check ML predictions if available
+                    if self.ml_trainer and best_text:
+                        predicted_correction = self.ml_trainer.predict_correction(
+                            best_text, adjusted_confidence,
+                            self.ml_trainer.extract_audio_features(self.last_audio_data)
+                        )
+                        if predicted_correction:
+                            logger.info(f"ML prediction: '{best_text}' -> '{predicted_correction}'")
+                            # You might want to return the prediction with higher confidence
+                            # For now, we'll just log it
                     
                     return best_text, adjusted_confidence
                 
@@ -304,9 +331,9 @@ class EnhancedVoiceEngine:
 
 
 class EnhancedJARVISPersonality:
-    """Enhanced JARVIS personality with voice-specific intelligence"""
+    """Enhanced JARVIS personality with voice-specific intelligence and ML integration"""
     
-    def __init__(self, claude_api_key: str):
+    def __init__(self, claude_api_key: str, ml_trainer: Optional['VoiceMLTrainer'] = None):
         self.claude = Anthropic(api_key=claude_api_key)
         self.context = []
         self.voice_context = []  # Separate context for voice commands
@@ -320,6 +347,9 @@ class EnhancedJARVISPersonality:
         
         # Voice command history for learning patterns
         self.command_history = []
+        
+        # ML trainer for adaptive learning
+        self.ml_trainer = ml_trainer
         
     async def process_voice_command(self, command: VoiceCommand) -> str:
         """Process voice command with enhanced intelligence"""
@@ -490,11 +520,22 @@ class EnhancedJARVISPersonality:
 
 
 class EnhancedJARVISVoiceAssistant:
-    """Enhanced JARVIS Voice Assistant with professional-grade accuracy"""
+    """Enhanced JARVIS Voice Assistant with professional-grade accuracy and ML training"""
     
-    def __init__(self, claude_api_key: str):
-        self.voice_engine = EnhancedVoiceEngine()
-        self.personality = EnhancedJARVISPersonality(claude_api_key)
+    def __init__(self, claude_api_key: str, enable_ml_training: bool = True):
+        # Initialize ML trainer if enabled
+        self.ml_trainer = None
+        if enable_ml_training and ML_TRAINING_AVAILABLE:
+            try:
+                self.ml_trainer = VoiceMLTrainer(claude_api_key)
+                logger.info("ML training system initialized")
+            except Exception as e:
+                logger.error(f"Failed to initialize ML trainer: {e}")
+                self.ml_trainer = None
+        
+        # Initialize components with ML trainer
+        self.voice_engine = EnhancedVoiceEngine(ml_trainer=self.ml_trainer)
+        self.personality = EnhancedJARVISPersonality(claude_api_key, ml_trainer=self.ml_trainer)
         self.running = False
         self.command_queue = queue.Queue()
         
@@ -516,10 +557,13 @@ class EnhancedJARVISVoiceAssistant:
             'shut down': self._shutdown,
             'calibrate': self._calibrate,
             'change my name': self._change_name,
-            'improve accuracy': self._improve_accuracy
+            'improve accuracy': self._improve_accuracy,
+            'show my voice stats': self._show_voice_stats,
+            'export my voice model': self._export_voice_model,
+            'personalized tips': self._get_personalized_tips
         }
         
-    def _check_wake_word(self, text: str, confidence: float) -> Tuple[bool, str]:
+    def _check_wake_word(self, text: str, confidence: float) -> Tuple[bool, Optional[str]]:
         """Enhanced wake word detection with fuzzy matching"""
         if not text:
             return False, None
@@ -556,7 +600,7 @@ class EnhancedJARVISVoiceAssistant:
         self.voice_engine.calibrate_microphone(duration=3)
         
         # Startup greeting
-        startup_msg = f"JARVIS enhanced voice system online. All systems operational. {self.personality.get_activation_response()}"
+        startup_msg = "JARVIS enhanced voice system online. All systems operational."
         self.voice_engine.speak(startup_msg)
         
         self.running = True
@@ -633,25 +677,80 @@ class EnhancedJARVISVoiceAssistant:
             else:
                 self.voice_engine.speak("I didn't catch that, sir. Could you repeat?")
     
-    async def _process_command(self, command: VoiceCommand):
-        """Process enhanced voice command"""
+    async def _process_command(self, command: VoiceCommand, audio_data: Optional[np.ndarray] = None):
+        """Process enhanced voice command with ML training"""
         logger.info(f"Command: '{command.raw_text}' (confidence: {command.confidence:.2f}, intent: {command.intent})")
+        
+        # Store original command for ML training
+        original_command = command.raw_text
+        success = True
+        corrected_text = None
         
         # Check for special commands first
         for special_cmd, handler in self.special_commands.items():
             if special_cmd in command.raw_text.lower():
                 await handler()
+                # Train ML on successful special command
+                if self.ml_trainer and audio_data is not None:
+                    await self.ml_trainer.learn_from_interaction(
+                        recognized_text=original_command,
+                        confidence=command.confidence,
+                        audio_data=audio_data,
+                        corrected_text=None,
+                        success=True,
+                        context="special_command"
+                    )
                 return
         
         # Process with enhanced personality
         response = await self.personality.process_voice_command(command)
         
-        # Speak response
+        # Check if response indicates a clarification was needed
+        if "?" in response and command.needs_clarification:
+            # Wait for clarification
+            self.voice_engine.speak(response)
+            
+            # Listen for clarification
+            clarification_text, clarification_confidence = self.voice_engine.listen_with_confidence(
+                timeout=5, phrase_time_limit=10
+            )
+            
+            if clarification_text:
+                corrected_text = clarification_text
+                # Re-process with clarification
+                clarified_command = VoiceCommand(
+                    raw_text=clarification_text,
+                    confidence=clarification_confidence,
+                    intent=self.voice_engine.detect_intent(clarification_text),
+                    needs_clarification=False
+                )
+                response = await self.personality.process_voice_command(clarified_command)
+        
+        # Speak final response
         self.voice_engine.speak(response)
         
-        # Log successful commands for learning
-        if command.confidence > 0.8:
-            logger.debug(f"High confidence command logged for pattern learning")
+        # Train ML system with the interaction
+        if self.ml_trainer:
+            # Get audio data from voice engine if not provided
+            if audio_data is None and hasattr(self.voice_engine, 'last_audio_data'):
+                audio_data = self.voice_engine.last_audio_data
+            
+            if audio_data is not None:
+                await self.ml_trainer.learn_from_interaction(
+                    recognized_text=original_command,
+                    confidence=command.confidence,
+                    audio_data=audio_data,
+                    corrected_text=corrected_text,
+                    success=success,
+                    context=f"intent:{command.intent}"
+                )
+                
+                # Log ML insights periodically
+                user_profile = self.ml_trainer.user_profiles.get(self.ml_trainer.current_user, {})
+                voice_patterns = user_profile.get('voice_patterns', []) if isinstance(user_profile, dict) else []
+                if len(voice_patterns) % 20 == 0:
+                    insights = self.ml_trainer.get_user_insights()
+                    logger.info(f"ML Insights - Accuracy: {insights['recent_accuracy']:.2%}, Total interactions: {insights['total_interactions']}")
     
     async def _improve_accuracy(self):
         """Guide user through accuracy improvement"""
@@ -730,6 +829,64 @@ class EnhancedJARVISVoiceAssistant:
             self.voice_engine.speak(f"Very well. I shall address you as {name} from now on.")
         else:
             self.voice_engine.speak("I didn't catch that. Maintaining current designation.")
+    
+    async def _show_voice_stats(self):
+        """Show user's voice interaction statistics"""
+        if not self.ml_trainer:
+            self.voice_engine.speak("Voice statistics are not available. ML training is not enabled.")
+            return
+        
+        insights = self.ml_trainer.get_user_insights()
+        
+        if 'error' in insights:
+            self.voice_engine.speak("No voice statistics available yet. Keep using voice commands to build your profile.")
+            return
+        
+        # Prepare summary
+        stats_summary = f"""Your voice interaction statistics:
+        
+Total interactions: {insights['total_interactions']}
+Recent accuracy: {insights['recent_accuracy']:.0%}
+Most used command: {insights['top_commands'][0][0] if insights['top_commands'] else 'None'}
+
+You've used voice commands {insights['total_interactions']} times with {insights['recent_accuracy']:.0%} accuracy recently."""
+        
+        self.voice_engine.speak(stats_summary)
+        
+        # Log detailed stats
+        logger.info(f"Voice Stats: {json.dumps(insights, indent=2, default=str)}")
+    
+    async def _export_voice_model(self):
+        """Export user's voice model"""
+        if not self.ml_trainer:
+            self.voice_engine.speak("Voice model export is not available. ML training is not enabled.")
+            return
+        
+        try:
+            export_path = self.ml_trainer.export_user_model()
+            if export_path:
+                self.voice_engine.speak(f"Your voice model has been exported successfully. Check the models directory.")
+                logger.info(f"Voice model exported to: {export_path}")
+            else:
+                self.voice_engine.speak("Unable to export voice model. No data available.")
+        except Exception as e:
+            logger.error(f"Error exporting voice model: {e}")
+            self.voice_engine.speak("There was an error exporting your voice model.")
+    
+    async def _get_personalized_tips(self):
+        """Get personalized tips based on ML analysis"""
+        if not self.ml_trainer:
+            self.voice_engine.speak("Personalized tips are not available. ML training is not enabled.")
+            return
+        
+        self.voice_engine.speak("Analyzing your voice patterns to generate personalized tips...")
+        
+        try:
+            tips = await self.ml_trainer.generate_personalized_tips()
+            self.voice_engine.speak(tips)
+        except Exception as e:
+            logger.error(f"Error generating tips: {e}")
+            self.voice_engine.speak("I encountered an error while generating tips. Please try again later.")
 
 
 async def main():

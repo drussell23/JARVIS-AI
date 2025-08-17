@@ -15,7 +15,7 @@ import base64
 import io
 from datetime import datetime
 
-from ..engines.voice_engine import (
+from engines.voice_engine import (
     VoiceAssistant,
     VoiceConfig,
     TTSEngine,
@@ -23,7 +23,7 @@ from ..engines.voice_engine import (
     TranscriptionResult,
     TTSResult,
 )
-from ..chatbots.intelligent_chatbot import IntelligentChatbot
+from chatbots._archived_local_models.intelligent_chatbot import IntelligentChatbot
 
 
 class TTSRequest(BaseModel):

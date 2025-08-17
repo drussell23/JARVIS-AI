@@ -23,6 +23,16 @@ const JarvisVoice = () => {
     // Initialize speech recognition
     initializeSpeechRecognition();
     
+    // Load voices for speech synthesis
+    if ('speechSynthesis' in window) {
+      // Load voices
+      speechSynthesis.getVoices();
+      // Chrome needs this event to load voices
+      speechSynthesis.onvoiceschanged = () => {
+        speechSynthesis.getVoices();
+      };
+    }
+    
     return () => {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.close();
@@ -104,7 +114,6 @@ const JarvisVoice = () => {
       case 'response':
         setResponse(data.text);
         setIsProcessing(false);
-        // Speak the response
         speakResponse(data.text);
         break;
       case 'error':
@@ -128,12 +137,16 @@ const JarvisVoice = () => {
       recognitionRef.current.onresult = (event) => {
         const last = event.results.length - 1;
         const transcript = event.results[last][0].transcript.toLowerCase();
+        const isFinal = event.results[last].isFinal;
+        
+        // Only process final results to avoid duplicate detections
+        if (!isFinal) return;
         
         // Check for wake word
         if ((transcript.includes('hey jarvis') || transcript.includes('jarvis')) && !isWaitingForCommand) {
           console.log('Wake word detected:', transcript);
           handleWakeWordDetected();
-        } else if (isWaitingForCommand && event.results[last].isFinal) {
+        } else if (isWaitingForCommand) {
           // Process the command after wake word
           handleVoiceCommand(event.results[last][0].transcript);
         }
@@ -207,7 +220,7 @@ const JarvisVoice = () => {
       setJarvisStatus('activating');
       setTimeout(() => {
         setJarvisStatus('online');
-        speakResponse(data.activation_phrase);
+        // Backend JARVIS will speak the activation phrase
         
         // Start continuous listening after activation
         enableContinuousListening();
@@ -315,7 +328,6 @@ const JarvisVoice = () => {
       setResponse(data.response);
       setIsProcessing(false);
       
-      // Speak the response
       speakResponse(data.response);
     } catch (err) {
       console.error('Failed to send command:', err);
@@ -325,18 +337,52 @@ const JarvisVoice = () => {
   };
 
   const speakResponse = (text) => {
-    // Use browser's speech synthesis as fallback
+    // Use browser's speech synthesis
     if ('speechSynthesis' in window) {
+      // Cancel any ongoing speech
+      speechSynthesis.cancel();
+      
       const utterance = new SpeechSynthesisUtterance(text);
       
-      // Try to use a British voice
+      // Get available voices
       const voices = speechSynthesis.getVoices();
-      const britishVoice = voices.find(voice => 
-        voice.lang.includes('en-GB') || voice.name.includes('British')
-      );
       
-      if (britishVoice) {
-        utterance.voice = britishVoice;
+      // Preferred voices in order (avoiding Siri)
+      const preferredVoices = [
+        'Daniel', // British male
+        'Oliver', // British male
+        'Google UK English Male',
+        'Microsoft David - English (United States)',
+        'Alex', // macOS default male
+      ];
+      
+      // Find best available voice
+      let selectedVoice = null;
+      for (const preferredName of preferredVoices) {
+        selectedVoice = voices.find(voice => 
+          voice.name.includes(preferredName) && !voice.name.includes('Siri')
+        );
+        if (selectedVoice) break;
+      }
+      
+      // Fallback to any British voice
+      if (!selectedVoice) {
+        selectedVoice = voices.find(voice => 
+          voice.lang.includes('en-GB') && !voice.name.includes('Siri')
+        );
+      }
+      
+      // Fallback to any English male voice
+      if (!selectedVoice) {
+        selectedVoice = voices.find(voice => 
+          voice.lang.includes('en') && 
+          (voice.name.includes('Male') || voice.name.includes('David') || voice.name.includes('Daniel')) &&
+          !voice.name.includes('Siri')
+        );
+      }
+      
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
       }
       
       utterance.rate = 0.9;

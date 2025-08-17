@@ -191,7 +191,60 @@ class UnifiedSystemManager:
             print(f"\n{Colors.GREEN}✅ All voice features available!{Colors.ENDC}")
             print(f"{Colors.CYAN}Say 'Hey JARVIS' to activate voice control{Colors.ENDC}")
             
+        # Check ML training dependencies
+        self.check_ml_dependencies()
+            
         return voice_available
+    
+    def check_ml_dependencies(self):
+        """Check ML training dependencies for voice (optional)"""
+        print(f"\n{Colors.BLUE}Checking ML voice training dependencies (optional)...{Colors.ENDC}")
+        
+        ml_packages = {
+            "sklearn": "Machine learning models",
+            "librosa": "Audio feature extraction",
+            "joblib": "Model persistence",
+            "numpy": "Numerical computing",
+            "scipy": "Scientific computing"
+        }
+        
+        ml_available = True
+        missing_ml = []
+        
+        for package, description in ml_packages.items():
+            try:
+                if package == "sklearn":
+                    __import__("sklearn")
+                else:
+                    __import__(package)
+                print(f"{Colors.GREEN}✓ {description} ({package}){Colors.ENDC}")
+            except ImportError:
+                missing_ml.append(package if package != "sklearn" else "scikit-learn")
+                print(f"{Colors.WARNING}⚠️  {description} ({package}) - not installed{Colors.ENDC}")
+                ml_available = False
+        
+        # Check optional deep learning
+        try:
+            import torch
+            print(f"{Colors.GREEN}✓ Deep learning (torch) - Available for advanced voice embeddings{Colors.ENDC}")
+        except ImportError:
+            print(f"{Colors.WARNING}⚠️  Deep learning (torch) - Not installed (optional){Colors.ENDC}")
+        
+        if not ml_available:
+            print(f"\n{Colors.YELLOW}🧠 ML voice training unavailable. To enable:{Colors.ENDC}")
+            print(f"   pip install -r backend/voice/requirements_ml.txt")
+            print(f"   or: pip install {' '.join(missing_ml)}")
+            print(f"\n{Colors.CYAN}ML training features include:{Colors.ENDC}")
+            print("  • Adaptive learning from your voice patterns")
+            print("  • Common mistake correction")
+            print("  • Personalized voice profiles")
+            print("  • Voice command predictions")
+            print("  • Accuracy improvement over time")
+        else:
+            print(f"\n{Colors.GREEN}✅ ML voice training available!{Colors.ENDC}")
+            print(f"{Colors.CYAN}JARVIS will learn and adapt to your voice patterns{Colors.ENDC}")
+            
+        return ml_available
         
         
     def check_memory_status(self):
@@ -380,6 +433,16 @@ class UnifiedSystemManager:
             print(f"\n{Colors.CYAN}Voice Commands:{Colors.ENDC}")
             print(f"  • Say 'Hey JARVIS' to activate")
             print(f"  • Test voice: python test_jarvis_voice.py")
+            
+            # Check if ML is available
+            try:
+                import sklearn
+                print(f"\n{Colors.CYAN}ML Voice Commands:{Colors.ENDC}")
+                print(f"  • 'Show my voice stats' - See your accuracy metrics")
+                print(f"  • 'Personalized tips' - Get AI-generated improvement tips")
+                print(f"  • 'Export my voice model' - Save your voice profile")
+            except ImportError:
+                pass
         except ImportError:
             pass
             

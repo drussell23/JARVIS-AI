@@ -35,7 +35,7 @@ try:
     from api.voice_api import VoiceAPI
 
     VOICE_API_AVAILABLE = True
-except ImportError as e:
+except (ImportError, RuntimeError, AttributeError) as e:
     logger.warning(f"Voice API not available: {e}")
     VOICE_API_AVAILABLE = False
 
@@ -43,7 +43,7 @@ except ImportError as e:
 try:
     from api.jarvis_voice_api import JARVISVoiceAPI
     JARVIS_VOICE_AVAILABLE = True
-except ImportError as e:
+except (ImportError, RuntimeError, AttributeError) as e:
     logger.warning(f"JARVIS Voice API not available: {e}")
     JARVIS_VOICE_AVAILABLE = False
 
@@ -51,7 +51,7 @@ try:
     from api.automation_api import AutomationAPI
 
     AUTOMATION_API_AVAILABLE = True
-except ImportError as e:
+except (ImportError, RuntimeError, AttributeError) as e:
     logger.warning(f"Automation API not available: {e}")
     AUTOMATION_API_AVAILABLE = False
 
@@ -275,32 +275,16 @@ class ChatbotAPI:
 
     async def analyze_text(self, message: Message):
         """Analyze text for NLP insights without generating a response."""
-        if not self.bot.nlp_engine:
-            return {"error": "NLP engine not available"}
-
-        # Run NLP analysis in thread pool
-        nlp_result = await asyncio.get_event_loop().run_in_executor(
-            None, self.bot.nlp_engine.analyze, message.user_input
-        )
-
+        # Claude-based analysis
         return {
-            "intent": {
-                "primary": nlp_result.intent.intent.value,
-                "confidence": nlp_result.intent.confidence,
-                "sub_intents": [
-                    {"intent": i.value, "confidence": c}
-                    for i, c in (nlp_result.intent.sub_intents or [])
-                ],
-            },
-            "entities": [
-                {"text": e.text, "type": e.type, "start": e.start, "end": e.end}
-                for e in nlp_result.entities
-            ],
-            "sentiment": nlp_result.sentiment,
-            "is_question": nlp_result.is_question,
-            "requires_action": nlp_result.requires_action,
-            "topic": nlp_result.topic,
-            "keywords": nlp_result.keywords,
+            "message": "NLP analysis is integrated into Claude's responses",
+            "note": "Claude provides contextual understanding natively",
+            "capabilities": [
+                "Intent detection",
+                "Entity recognition", 
+                "Sentiment analysis",
+                "Context awareness"
+            ]
         }
 
     async def get_capabilities(self):
@@ -355,26 +339,20 @@ class ChatbotAPI:
 
     async def create_task_plan(self, message: Message):
         """Create a task plan based on user input."""
-        if not self.bot.nlp_engine or not self.bot.task_planner:
-            return {"error": "Task planning not available"}
-
-        # Run analysis and planning in thread pool
-        nlp_result = await asyncio.get_event_loop().run_in_executor(
-            None, self.bot.nlp_engine.analyze, message.user_input
-        )
-        task_plan = await asyncio.get_event_loop().run_in_executor(
-            None, self.bot.task_planner.create_task_plan, message.user_input, nlp_result
-        )
-
+        # Use Claude to create task plans
+        task_prompt = f"""Create a detailed task plan for the following request. 
+        Break it down into clear, actionable steps:
+        
+        Request: {message.user_input}
+        
+        Format the response as a numbered list of tasks."""
+        
+        response = await self.bot.get_response(task_prompt)
+        
         return {
-            "task_plan": task_plan,
-            "nlp_insights": {
-                "intent": nlp_result.intent.intent.value,
-                "entities": [
-                    {"text": e.text, "type": e.type} for e in nlp_result.entities
-                ],
-                "keywords": nlp_result.keywords[:5],
-            },
+            "task_plan": response,
+            "source": "claude",
+            "capabilities": ["Task breakdown", "Priority assessment", "Dependency analysis"]
         }
 
     # RAG endpoints
@@ -563,10 +541,9 @@ if AUTOMATION_API_AVAILABLE:
 
         automation_engine = AutomationEngine()
 
-        # Try to attach to bot if it supports it
-        if hasattr(chatbot_api.bot, "set_automation_engine"):
-            chatbot_api.bot.set_automation_engine(automation_engine)
-        elif hasattr(chatbot_api.bot, "__dict__"):
+        # Claude doesn't need a separate automation engine
+        logger.info("Automation requests are handled through Claude's API")
+        if hasattr(chatbot_api.bot, "__dict__"):
             try:
                 setattr(chatbot_api.bot, "automation_engine", automation_engine)
             except AttributeError:

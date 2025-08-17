@@ -15,7 +15,7 @@ import logging
 from datetime import datetime
 
 # Import JARVIS voice components
-from voice.jarvis_voice import JARVISVoiceAssistant, JARVISPersonality
+from voice.jarvis_voice import EnhancedJARVISVoiceAssistant, EnhancedJARVISPersonality, VoiceCommand
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ class JARVISVoiceAPI:
         # Initialize JARVIS if API key is available
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if api_key:
-            self.jarvis = JARVISVoiceAssistant(api_key)
+            self.jarvis = EnhancedJARVISVoiceAssistant(api_key)
             self.jarvis_available = True
             logger.info("JARVIS Voice System initialized")
         else:
@@ -119,8 +119,7 @@ class JARVISVoiceAPI:
         
         return {
             "status": "activating",
-            "message": "JARVIS coming online. All systems operational.",
-            "activation_phrase": self.jarvis.personality.get_activation_response()
+            "message": "JARVIS coming online. All systems operational."
         }
         
     async def deactivate(self) -> Dict:
@@ -148,7 +147,14 @@ class JARVISVoiceAPI:
             
         try:
             # Process command with JARVIS personality
-            response = await self.jarvis.personality.process_command(command.text)
+            # Create a VoiceCommand object for the personality
+            voice_command = VoiceCommand(
+                raw_text=command.text,
+                confidence=0.9,  # High confidence for text commands
+                intent="conversation",
+                needs_clarification=False
+            )
+            response = await self.jarvis.personality.process_voice_command(voice_command)
             
             # Get contextual info
             context = self.jarvis.personality._get_context_info()
@@ -294,7 +300,14 @@ class JARVISVoiceAPI:
                     })
                     
                     # Process with JARVIS
-                    response = await self.jarvis.personality.process_command(command_text)
+                    # Create a VoiceCommand object for the personality
+                    voice_command = VoiceCommand(
+                        raw_text=command_text,
+                        confidence=0.9,  # High confidence for text commands
+                        intent="conversation",
+                        needs_clarification=False
+                    )
+                    response = await self.jarvis.personality.process_voice_command(voice_command)
                     
                     # Send response
                     await websocket.send_json({
