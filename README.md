@@ -1,492 +1,184 @@
-# 🤖 JARVIS - AI-Powered Chatbot System
+# 🤖 JARVIS - AI Assistant Powered by Claude
 
-A comprehensive AI chatbot system inspired by JARVIS, featuring advanced conversational AI with LangChain integration, voice interaction, automation capabilities, and intelligent memory management with special optimizations for Apple Silicon (M1/M2) Macs.
+<p align="center">
+  <img src="https://img.shields.io/badge/AI-Claude%203-blue" alt="Claude AI">
+  <img src="https://img.shields.io/badge/UI-Iron%20Man%20Inspired-red" alt="Iron Man UI">
+  <img src="https://img.shields.io/badge/Platform-Cloud%20Based-green" alt="Cloud Based">
+</p>
 
-## 🎯 Key Features
+## Overview
 
-### 🆕 Latest Updates
-- **Real Language Models**: TinyLlama, Phi-2, and Mistral-7B with M1 Metal acceleration
-- **JARVIS Core Architecture**: Tiered model system with intelligent task routing
-- **LangChain Integration**: Advanced reasoning with tools (Calculator, Web Search, Wikipedia)
-- **Smart Dependency Management**: 10x faster startup with intelligent package checking
-- **Dynamic Mode Switching**: Automatically adjusts capabilities based on available memory
-- **Enhanced Math Support**: Natural language math calculations with quantized LLM support in all modes
-- **Memory-Safe Architecture**: Never crashes, gracefully scales features based on resources
-- **Intelligent Memory Optimization**: Automatically frees memory to enable advanced features
+JARVIS is an AI-powered assistant with an Iron Man-inspired interface, now exclusively powered by Anthropic's Claude AI. Experience superior language understanding, accurate calculations, and cloud-based processing with no local memory constraints.
 
-## 📊 Current Status
+![JARVIS Interface](https://via.placeholder.com/800x400?text=JARVIS+Iron+Man+Interface)
 
-### ✅ What's Working
-- **Advanced Chat Interface**: LangChain-powered conversational AI with tool usage
-- **Mathematical Calculations**: Natural language math support in all modes (Simple mode now uses quantized LLM for math)
-- **Web Search**: Real-time information retrieval via DuckDuckGo
-- **Knowledge Queries**: Wikipedia integration for factual information
-- **Dynamic Intelligence**: Automatic switching between Simple → Intelligent → LangChain modes
-- **API Endpoints**: RESTful API with interactive documentation
-- **M1/M2 Support**: Optimized performance using llama.cpp
-- **Smart Setup**: Only installs missing dependencies
-- **Memory Management**: Proactive monitoring and component lifecycle management
+## ✨ Key Features
 
-### 🚧 In Development
-- **Voice Interaction**: APIs present, integration ongoing
-- **RAG System**: Knowledge base structure ready for activation
-- **Task Automation**: Framework ready for expansion
-
-### 🔄 Planned
-- **Model Training**: Custom model fine-tuning interface
-- **Multi-modal Input**: Image and document processing
-- **Agent Actions**: Autonomous task execution
-
-## 🌟 Architecture
-
-```
-┌─────────────────────────────────────────────────────┐
-│                    JARVIS System                     │
-├─────────────────────────────────────────────────────┤
-│                 Dynamic Chatbot                      │
-│  ┌─────────────┐ ┌──────────────┐ ┌──────────────┐ │
-│  │   Simple    │ │ Intelligent  │ │  LangChain   │ │
-│  │   (Basic)   │ │   (NLP)      │ │  (Advanced)  │ │
-│  └─────────────┘ └──────────────┘ └──────────────┘ │
-│         ↑               ↑               ↑           │
-│         └───────────────┴───────────────┘           │
-│              Memory-Based Switching                  │
-├─────────────────────────────────────────────────────┤
-│              Memory Management System                │
-│  - Proactive monitoring (HEALTHY/WARNING/CRITICAL)  │
-│  - Component priority system                        │
-│  - Automatic resource optimization                  │
-└─────────────────────────────────────────────────────┘
-```
+- **🎯 Claude AI Integration**: Powered by Anthropic's Claude for superior intelligence
+- **🎨 Iron Man UI**: Futuristic holographic interface inspired by JARVIS
+- **🧮 Accurate Calculations**: Handles math correctly (2 + 2 * 2 = 6, not 8!)
+- **☁️ Cloud-Based**: No local memory usage - perfect for M1 Macs
+- **🚀 Fast Responses**: Low latency with Claude's optimized API
+- **📚 200k Context**: Handle long conversations and documents
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### 1. Get Claude API Key
+1. Visit [Anthropic Console](https://console.anthropic.com/)
+2. Create account and generate API key
+3. Add credits to your account
 
-- Python 3.8 or higher
-- Node.js (optional, for React frontend)
-- 8GB+ RAM (16GB recommended for full features)
-- macOS (Intel or Apple Silicon), Linux, or Windows
-
-### Installation & Running
-
-#### Quick Start with Real Language Models (M1/M2 Mac)
-
+### 2. Setup
 ```bash
-# Clone the repository
-git clone <repository-url>
+# Clone repository
+git clone https://github.com/yourusername/AI-Powered-Chatbot.git
 cd AI-Powered-Chatbot
 
-# Download language models (5.7GB total)
-python download_jarvis_models.py
+# Create .env file
+echo "ANTHROPIC_API_KEY=your-api-key-here" > .env
 
-# Enable math in Simple mode (recommended)
-python enable_math_in_simple_mode.py
+# Install dependencies (one time)
+pip install anthropic python-dotenv fastapi uvicorn pydantic psutil
 
-# Start JARVIS with real models
-./start_jarvis.sh
-
-# Test the models
-./test_jarvis_real.sh
+# For the React frontend
+cd frontend && npm install && cd ..
 ```
 
-#### Standard Quick Start
-
+### 3. Launch JARVIS
 ```bash
-# Check system memory status
-python start_system.py --memory-status
-
-# Run the system (installs dependencies automatically)
-python start_system.py
-
-# For faster startup (skip dependency check)
-python start_system.py --skip-install
+python3 start_system.py
 ```
 
-The enhanced startup script will:
-- ✅ Check installed packages and only install missing ones
-- ✅ Show progress: `[1/5] Installing: package-name`
-- ✅ Set up backend and frontend
-- ✅ Detect M1/M2 Macs and configure optimizations
-- ✅ Start all services with proper memory management
-- ✅ Open your browser to the frontend
+This will:
+- ✅ Verify Claude API configuration
+- ✅ Start the backend API
+- ✅ Launch the JARVIS React interface
+- ✅ Open your browser to the Iron Man UI
 
-#### Advanced Options
+## 🖥️ Interfaces
 
-```bash
-# Check dependencies without starting
-python start_system.py --check-deps
+| Interface | URL | Description |
+|-----------|-----|-------------|
+| **JARVIS UI** | http://localhost:3000/ | Iron Man-inspired chat interface |
+| **API Docs** | http://localhost:8000/docs | Interactive API documentation |
+| **Basic Chat** | http://localhost:8000/ | Simple chat interface |
 
-# Skip dependency installation (fastest startup)
-python start_system.py --skip-install
+## 💬 Example Interactions
 
-# Don't open browser automatically
-python start_system.py --no-browser
+```
+You: What is 2 + 2 * 2?
+JARVIS: Following the order of operations (PEMDAS), I need to multiply first, 
+then add: 2 * 2 = 4, then 2 + 4 = 6
 
-# Use async mode for faster installation
-python start_system.py --async-mode
+You: Calculate the square root of 144
+JARVIS: The square root of 144 is 12.
 
-# Combine options
-python start_system.py --skip-install --no-browser
-
-# Check memory status before starting
-python start_system.py --memory-status
-
-# Optimize memory before starting
-python start_system.py --optimize-memory
+You: Explain quantum computing in simple terms
+JARVIS: Quantum computing is like having a magical computer that can try many 
+solutions at once...
 ```
 
-## 🧠 Memory Management
+## 🔧 Configuration
 
-JARVIS includes intelligent memory management that automatically adjusts features based on available system memory:
+### Environment Variables (.env)
+```env
+# Required
+ANTHROPIC_API_KEY=sk-ant-api03-...
 
-### Memory Modes
-
-| Mode | Memory Usage | Features | Capabilities |
-|------|--------------|----------|--------------|
-| **LangChain** | < 50% | Full | Advanced Math with tools, Web Search, Wikipedia, Advanced Reasoning |
-| **Intelligent** | < 65% | Enhanced | NLP, Intent Recognition, Entity Extraction, Basic Math |
-| **Simple** | > 80% | Basic | Pattern matching, Basic responses, Math via quantized LLM |
-
-### Memory Optimization
-
-#### Quick Memory Check
-```bash
-# Check current memory status
-python check_memory.py
-
-# Or use the optimization tool
-python optimize_memory.py
+# Optional
+CLAUDE_MODEL=claude-3-haiku-20240307  # or sonnet/opus
+CLAUDE_MAX_TOKENS=1024
+CLAUDE_TEMPERATURE=0.7
 ```
 
-#### Automatic Optimization
-When memory is too high for advanced features, JARVIS can automatically:
-- Clear Python caches and run garbage collection
-- Kill helper processes (browser helpers, etc.)
-- Suspend background applications
-- Clear system caches
-- Optimize browser memory usage
+### Available Models
+- `claude-3-haiku-20240307` - Fast & cost-effective (default)
+- `claude-3-sonnet-20240229` - Balanced performance
+- `claude-3-opus-20240229` - Most capable
 
-```bash
-# Trigger optimization via API
-curl -X POST http://localhost:8000/chat/optimize-memory
+## 📊 API Usage
 
-# Response shows what was freed:
-{
-  "success": true,
-  "memory_freed_mb": 2156,
-  "actions_taken": [
-    {"strategy": "kill_helpers", "freed_mb": 1831},
-    {"strategy": "clear_caches", "freed_mb": 200}
-  ]
-}
-```
-
-#### Manual Optimization Tips
-1. **Close Browser Tabs**: Each tab can use 100-500MB
-2. **Quit IDEs**: Cursor/VS Code can use 1-3GB each
-3. **Close Chat Apps**: Slack, Discord use 200-500MB
-4. **Docker Desktop**: Can use 2-4GB if running
-
-### Startup Memory Check
-The startup script now checks memory and provides recommendations:
-
-```bash
-python start_system.py
-# Will show:
-# - Current memory usage
-# - Available modes
-# - Optimization suggestions if needed
-```
-
-#### M1/M2 Mac Optimization
-
-For Apple Silicon Macs, the system uses llama.cpp for optimal performance:
-
-```bash
-# Download a model for LangChain (one-time setup)
-mkdir -p ~/Documents/ai-models
-cd ~/Documents/ai-models
-curl -L -o tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf \
-  "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
-
-# Start JARVIS
-cd ~/path/to/AI-Powered-Chatbot
-python start_system.py
-```
-
-Benefits:
-- 🚀 Native M1/M2 performance with Metal acceleration
-- 🔧 No PyTorch compatibility issues or bus errors
-- 💾 Efficient memory usage
-- ⚡ Fast response times
-
-## 📚 Using JARVIS
-
-### Chat Examples
-
-#### Mathematical Calculations
-
-JARVIS can perform math calculations in all modes:
-
-**Simple Mode (High Memory Usage)**
-```
-User: What is 2+2?
-JARVIS: Answer: 4
-
-User: Calculate 15 * 8
-JARVIS: The result of the calculation is: **120**
-```
-
-**LangChain Mode (Low Memory Usage)**
-```
-User: What is 2+2?
-JARVIS: I'll calculate that for you. 2 + 2 = 4
-
-User: Calculate 15 * 23 + 47
-JARVIS: Let me solve that step by step. 15 × 23 = 345, then 345 + 47 = 392
-
-User: What's the square root of 144?
-JARVIS: The square root of 144 is 12
-```
-
-#### Web Search
-```
-User: Search for the latest AI news
-JARVIS: [Searches and returns current AI news]
-
-User: What's the weather like in San Francisco?
-JARVIS: [Provides current weather information]
-```
-
-#### Knowledge Queries
-```
-User: Tell me about quantum computing
-JARVIS: [Provides Wikipedia-based explanation]
-```
-
-### Memory Management
-
-JARVIS automatically adjusts its capabilities based on available memory:
-
-| Memory Usage | Mode | Features |
-|-------------|------|----------|
-| < 50% | LangChain | Full capabilities with all tools |
-| 50-65% | Intelligent | Enhanced NLP without tools |
-| 65-80% | Intelligent | Basic NLP features |
-| > 80% | Simple | Pattern-based responses |
-
-## 📖 API Documentation
-
-### Core Endpoints
-
-#### Chat API
-- `POST /chat` - Send a message and get a response
-- `POST /chat/stream` - Get streaming responses
-- `GET /chat/history` - Get conversation history
-- `GET /chat/mode` - Check current chatbot mode
-- `POST /chat/mode` - Force a specific mode
-- `GET /chat/capabilities` - Get current capabilities
-
-#### Memory API
-- `GET /memory/status` - Get memory status
-- `GET /memory/report` - Get detailed memory report
-- `POST /memory/optimize` - Trigger memory optimization
-- `GET /memory/components` - List loaded components
-
-#### Knowledge API (LangChain-enhanced)
-- `POST /knowledge/add` - Add documents to knowledge base
-- `POST /knowledge/search` - Search with semantic understanding
-- `POST /knowledge/feedback` - Improve responses with feedback
-
-### Example API Usage
-
+### Chat Endpoint
 ```python
 import requests
 
-# Chat with JARVIS
 response = requests.post("http://localhost:8000/chat", 
-    json={"user_input": "What is 2+2?"})
-print(response.json())
-# {"response": "4", "chatbot_mode": "langchain", ...}
-
-# Check capabilities
-caps = requests.get("http://localhost:8000/chat/capabilities").json()
-print(f"LangChain enabled: {caps['langchain']['enabled']}")
-print(f"Available tools: {caps['langchain']['tools']}")
+    json={"user_input": "Hello JARVIS!"})
+print(response.json()["response"])
 ```
 
-## 🏗️ Project Structure
+### Check Status
+```bash
+curl http://localhost:8000/health
+```
+
+## 🛠️ Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| "No credits" error | Add credits at https://console.anthropic.com/settings/plans |
+| API key not found | Ensure `.env` file exists with `ANTHROPIC_API_KEY` |
+| Port already in use | The launcher will auto-kill existing processes |
+| React won't compile | Run `cd frontend && npm install` |
+
+## 📁 Project Structure
 
 ```
 AI-Powered-Chatbot/
 ├── backend/
 │   ├── chatbots/
-│   │   ├── simple_chatbot.py      # Basic pattern matching
-│   │   ├── intelligent_chatbot.py # NLP-enhanced chatbot
-│   │   ├── langchain_chatbot.py   # LangChain integration
-│   │   └── dynamic_chatbot.py     # Automatic mode switching
-│   ├── memory/
-│   │   ├── memory_manager.py      # M1-optimized memory management
-│   │   ├── memory_api.py          # Memory monitoring endpoints
-│   │   └── memory_safe_components.py # Safe component loading
-│   ├── api/
-│   │   ├── voice_api.py           # Voice interaction
-│   │   └── automation_api.py      # Task automation
-│   ├── utils/
-│   │   └── intelligent_cache.py   # Smart caching system
-│   ├── main.py                    # FastAPI application
-│   ├── run_server.py              # Server runner with proper paths
-│   └── requirements.txt           # Python dependencies
+│   │   └── claude_chatbot.py    # Claude API integration
+│   ├── main.py                  # FastAPI application
+│   └── run_server.py           # Server runner
 ├── frontend/
-│   └── [React/HTML interface]
-├── start_system.py                # Enhanced launcher script
-└── README.md                      # This file
+│   ├── src/
+│   │   ├── App.js              # JARVIS UI component
+│   │   └── App.css             # Iron Man styling
+│   └── package.json
+├── start_system.py             # Main launcher
+├── .env                        # API configuration
+└── README.md                   # This file
 ```
 
-## 🔧 Configuration
+## 🎯 Why Claude?
 
-### Environment Variables
+Previously, JARVIS supported multiple local models with complex memory management. We've simplified to Claude-only because:
 
-Create a `.env` file in the backend directory:
+- ✅ **Accurate Math**: No more calculation errors
+- ✅ **Better Understanding**: Superior context awareness
+- ✅ **No Memory Issues**: Cloud-based processing
+- ✅ **Consistent Quality**: Same performance every time
+- ✅ **Simpler Setup**: No model downloads or management
 
-```env
-# Enable dynamic chatbot (recommended)
-USE_DYNAMIC_CHATBOT=1
+## 💰 Costs
 
-# Force llama.cpp usage on M1
-FORCE_LLAMA=1
-
-# API Keys (optional)
-OPENWEATHER_API_KEY=your_api_key
-NEWS_API_KEY=your_api_key
-
-# Server Configuration
-HOST=0.0.0.0
-PORT=8000
-```
-
-### LangChain Models
-
-Place GGUF models in `~/Documents/ai-models/`:
-- `tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf` - Lightweight, fast
-- `mistral-7b-instruct-v0.1.Q4_K_M.gguf` - Balanced performance
-- `mixtral-8x7b-instruct-v0.1.Q4_K_M.gguf` - Maximum capability
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-1. **"What is 2+2?" returns generic response**
-   - This happens when in Simple mode with the unpatched chatbot
-   - Run `python enable_math_in_simple_mode.py` to enable math in Simple mode
-   - Or ensure memory usage is below 50% for LangChain mode
-   - Check current mode: `curl http://localhost:8000/chat/mode`
-   - Force LangChain: `POST /chat/mode {"mode": "langchain"}`
-
-2. **Slow startup**
-   - Use `--skip-install` flag after first run
-   - Check dependencies: `python start_system.py --check-deps`
-
-3. **M1/M2 Mac Issues**
-   - Ensure llama-cpp-python is installed
-   - Download at least one GGUF model
-   - Set `FORCE_LLAMA=1` in environment
-
-4. **Import errors**
-   - Run from project root directory
-   - Use `python start_system.py` instead of running main.py directly
-
-5. **Memory warnings**
-   - Normal behavior - system automatically adjusts
-   - Check status: `GET /memory/status`
-
-6. **Math not working after startup**
-   - Simple mode needs math patch: `python enable_math_in_simple_mode.py`
-   - Ensure quantized model is downloaded: `python setup_m1_optimized_llm.py`
-   - Test directly: `python test_quantized_llm.py`
-
-### Logs
-
-- Backend logs show mode switches and component loading
-- Check console output for LangChain tool usage
-- Memory state changes are logged in real-time
-
-## 💡 Advanced Features
-
-### LangChain Tools
-
-When in LangChain mode (memory < 50%), JARVIS can:
-- **Calculate**: Any mathematical expression
-- **Search**: Current information from the web
-- **Research**: Detailed knowledge from Wikipedia
-- **Analyze**: System status and memory usage
-
-### Dynamic Switching
-
-JARVIS seamlessly transitions between modes:
-```
-High Memory → Simple (fast, basic)
-     ↓
-Medium Memory → Intelligent (NLP-enhanced)
-     ↓
-Low Memory → LangChain (full capabilities)
-```
-
-### Memory Optimization
-
-The system includes:
-- Proactive memory monitoring
-- Component priority system
-- Automatic garbage collection
-- Emergency shutdown procedures
-
-## 🚀 Roadmap
-
-### Completed ✅
-- [x] LangChain integration with tools
-- [x] Memory-safe architecture
-- [x] M1/M2 optimization with llama.cpp
-- [x] Smart dependency management
-- [x] Mathematical reasoning in all modes
-- [x] Web search capabilities
-- [x] Quantized LLM support for Simple mode
-- [x] Automatic mode switching based on memory
-
-### Next Steps
-- [ ] Voice interaction completion
-- [ ] RAG system activation
-- [ ] Custom tool creation
-- [ ] Multi-modal inputs
-- [ ] Agent autonomy
+Claude API is pay-as-you-go:
+- Haiku: ~$0.25 per million input tokens
+- Typical conversation: < $0.01
+- Monitor usage in Anthropic console
+- Set spending limits for safety
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create feature branch (`git checkout -b feature/awesome-feature`)
+3. Commit changes (`git commit -m 'Add awesome feature'`)
+4. Push branch (`git push origin feature/awesome-feature`)
+5. Open Pull Request
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT License - see LICENSE file for details
 
 ## 🙏 Acknowledgments
 
-- FastAPI for the excellent web framework
-- LangChain for advanced AI capabilities
-- llama.cpp for M1/M2 optimization
-- The open-source community for various tools and libraries
-
-## 📞 Support
-
-For issues and questions:
-- Check the [API Documentation](http://localhost:8000/docs)
-- Review the troubleshooting section
-- Test with: `python test_langchain_integration.py`
-- Open an issue on GitHub
+- Anthropic for Claude AI
+- FastAPI for the web framework
+- React for the frontend
+- Iron Man/Marvel for UI inspiration
 
 ---
 
-Built with ❤️ for intelligence, performance, and reliability on all platforms.
+<p align="center">
+Built with ❤️ for superior AI assistance
+</p>

@@ -60,22 +60,14 @@ class UnifiedSystemManager:
     def print_header(self):
         """Print system header"""
         print(f"\n{Colors.HEADER}{'='*60}")
-        print(f"{Colors.BOLD}🤖 AI-Powered Chatbot System Launcher 🚀{Colors.ENDC}")
-        
-        # Check Claude configuration
-        self.check_claude_config()
-        
-        if self.claude_configured:
-            print(f"{Colors.CYAN}☁️  Claude API Mode - Cloud-powered AI{Colors.ENDC}")
-            if self.is_m1_mac:
-                print(f"{Colors.GREEN}✨ Perfect for M1 Mac - No local memory usage!{Colors.ENDC}")
-        else:
-            print(f"{Colors.YELLOW}💻 Local Model Mode{Colors.ENDC}")
-            
+        print(f"{Colors.BOLD}🤖 JARVIS System - Claude AI Powered 🚀{Colors.ENDC}")
+        print(f"{Colors.CYAN}☁️  Cloud-based AI for superior performance{Colors.ENDC}")
+        if self.is_m1_mac:
+            print(f"{Colors.GREEN}✨ Perfect for M1 Mac - No local memory usage!{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}\n")
         
     def check_claude_config(self):
-        """Check if Claude API is configured"""
+        """Check if Claude API is configured (required)"""
         # Load .env file
         try:
             from dotenv import load_dotenv
@@ -84,10 +76,22 @@ class UnifiedSystemManager:
             pass
             
         api_key = os.getenv("ANTHROPIC_API_KEY")
-        use_claude = os.getenv("USE_CLAUDE", "1") == "1"
         
-        self.claude_configured = bool(api_key and use_claude)
-        return self.claude_configured
+        if not api_key:
+            print(f"{Colors.FAIL}❌ ANTHROPIC_API_KEY not found!{Colors.ENDC}")
+            print(f"\n{Colors.YELLOW}To set up Claude (required):{Colors.ENDC}")
+            print("1. Get an API key from: https://console.anthropic.com/")
+            print("2. Create a .env file with:")
+            print("   ANTHROPIC_API_KEY=your-api-key-here")
+            print(f"\n{Colors.CYAN}Claude API provides:{Colors.ENDC}")
+            print("  • Superior language understanding")
+            print("  • Accurate calculations and reasoning")
+            print("  • No local memory usage")
+            print("  • 200k token context window")
+            return False
+            
+        self.claude_configured = True
+        return True
         
     def check_python_version(self):
         """Check Python version"""
@@ -127,13 +131,10 @@ class UnifiedSystemManager:
             "fastapi": "FastAPI web framework",
             "uvicorn": "ASGI server",
             "pydantic": "Data validation",
-            "psutil": "System monitoring"
+            "psutil": "System monitoring",
+            "anthropic": "Claude API client",
+            "python-dotenv": "Environment variables"
         }
-        
-        # Add Claude-specific if configured
-        if self.claude_configured:
-            essential_packages["anthropic"] = "Claude API client"
-            essential_packages["python-dotenv"] = "Environment variables"
             
         missing = []
         for package, description in essential_packages.items():
@@ -154,41 +155,9 @@ class UnifiedSystemManager:
             
         return True
         
-    def check_optional_dependencies(self):
-        """Check optional dependencies for local models"""
-        if self.claude_configured and not self.use_local_models:
-            return True
-            
-        print(f"\n{Colors.BLUE}Checking optional dependencies for local models...{Colors.ENDC}")
-        
-        optional_packages = {
-            "transformers": "Hugging Face models",
-            "torch": "PyTorch deep learning",
-            "nltk": "Natural language toolkit",
-            "spacy": "Advanced NLP"
-        }
-        
-        available = []
-        missing = []
-        
-        for package, description in optional_packages.items():
-            try:
-                __import__(package)
-                available.append(package)
-                print(f"{Colors.GREEN}✓ {description} ({package}){Colors.ENDC}")
-            except ImportError:
-                missing.append(package)
-                print(f"{Colors.YELLOW}○ {description} ({package}) - not installed{Colors.ENDC}")
-                
-        if missing and not self.claude_configured:
-            print(f"\n{Colors.WARNING}Some features may be limited without:{Colors.ENDC}")
-            for pkg in missing[:3]:
-                print(f"  - {pkg}")
-                
-        return True
         
     def check_memory_status(self):
-        """Check system memory and provide recommendations"""
+        """Check system memory (informational only)"""
         print(f"\n{Colors.BLUE}System memory status:{Colors.ENDC}")
         
         mem = psutil.virtual_memory()
@@ -200,35 +169,9 @@ class UnifiedSystemManager:
         print(f"  Used: {mem.used / (1024**3):.1f} GB ({memory_percent:.1f}%)")
         print(f"  Available: {available_gb:.1f} GB")
         
-        if self.claude_configured:
-            print(f"\n{Colors.GREEN}✓ With Claude, memory usage is not a concern!{Colors.ENDC}")
-            print(f"  All AI processing happens in the cloud")
-            return True
-            
-        # Memory recommendations for local models
-        if memory_percent < 50:
-            print(f"{Colors.GREEN}✓ Memory OK for all features{Colors.ENDC}")
-            return True
-        elif memory_percent < 65:
-            print(f"{Colors.WARNING}⚠️  Memory OK for basic features{Colors.ENDC}")
-            self.memory_warned = True
-            return True
-        elif memory_percent < 80:
-            print(f"{Colors.WARNING}⚠️  Memory high - limited features available{Colors.ENDC}")
-            self.memory_warned = True
-            
-            if not self.claude_configured:
-                print(f"\n{Colors.CYAN}💡 Tip: Use Claude API for better performance!{Colors.ENDC}")
-                print(f"   1. Get API key: https://console.anthropic.com/")
-                print(f"   2. Set ANTHROPIC_API_KEY in .env file")
-            return True
-        else:
-            print(f"{Colors.FAIL}❌ Memory critical ({memory_percent:.1f}%){Colors.ENDC}")
-            self.memory_warned = True
-            
-            if not self.claude_configured:
-                print(f"\n{Colors.YELLOW}⚠️  Consider using Claude API instead of local models{Colors.ENDC}")
-            return False
+        print(f"\n{Colors.GREEN}✓ With Claude AI, memory usage is not a concern!{Colors.ENDC}")
+        print(f"  All AI processing happens in the cloud")
+        return True
             
     def create_directories(self):
         """Create necessary directories"""
@@ -236,20 +179,9 @@ class UnifiedSystemManager:
         
         directories = [
             self.backend_dir / "logs",
-            self.backend_dir / "static"
+            self.backend_dir / "static",
+            self.backend_dir / "static" / "demos"  # For demo HTML files
         ]
-        
-        # Only create model/data directories if using local models
-        if not self.claude_configured or self.use_local_models:
-            directories.extend([
-                self.backend_dir / "data",
-                self.backend_dir / "models",
-                self.backend_dir / "checkpoints",
-                self.backend_dir / "domain_knowledge",
-                self.backend_dir / "faiss_index",
-                self.backend_dir / "chroma_db",
-                self.backend_dir / "knowledge_base"
-            ])
             
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)
@@ -286,13 +218,9 @@ class UnifiedSystemManager:
         # Set environment variables
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
+        env["USE_CLAUDE"] = "1"
         
-        if self.claude_configured:
-            env["USE_CLAUDE"] = "1"
-            print(f"{Colors.CYAN}Starting Claude-powered API on port {self.ports['main_api']}...{Colors.ENDC}")
-        else:
-            env["USE_CLAUDE"] = "0"
-            print(f"{Colors.CYAN}Starting API with local models on port {self.ports['main_api']}...{Colors.ENDC}")
+        print(f"{Colors.CYAN}Starting Claude-powered API on port {self.ports['main_api']}...{Colors.ENDC}")
             
         # Start main API
         main_api_process = subprocess.Popen(
@@ -319,10 +247,6 @@ class UnifiedSystemManager:
             sys.exit(1)
             
         print(f"{Colors.GREEN}✓ Backend API started{Colors.ENDC}")
-        
-        # Start training API only if using local models
-        if not self.claude_configured or self.use_local_models:
-            self.start_training_api()
             
     def start_training_api(self):
         """Start training API for local models"""
@@ -411,24 +335,12 @@ class UnifiedSystemManager:
         elif self.frontend_dir.exists():
             print(f"  📱 Frontend:          http://localhost:{self.ports['frontend']}")
             
-        if not self.claude_configured or self.use_local_models:
-            print(f"  🔧 Training API:      http://localhost:{self.ports['training_api']}")
-            
-        if self.claude_configured:
-            print(f"\n{Colors.GREEN}✨ Using Claude API:{Colors.ENDC}")
-            print(f"  • No local memory usage")
-            print(f"  • Superior language understanding")
-            print(f"  • Fast responses")
-            print(f"  • 200k token context window")
-        else:
-            print(f"\n{Colors.YELLOW}💻 Using Local Models:{Colors.ENDC}")
-            print(f"  • Running on your machine")
-            print(f"  • No API costs")
-            print(f"  • Privacy-focused")
-            
-            if not self.memory_warned:
-                print(f"\n{Colors.CYAN}💡 Tip: For better performance on M1 Macs,{Colors.ENDC}")
-                print(f"   consider using Claude API!")
+        print(f"\n{Colors.GREEN}✨ Powered by Claude AI:{Colors.ENDC}")
+        print(f"  • Superior language understanding")
+        print(f"  • Accurate calculations and reasoning") 
+        print(f"  • No local memory usage")
+        print(f"  • 200k token context window")
+        print(f"  • Fast cloud-based responses")
                 
         print(f"\n{Colors.WARNING}Press Ctrl+C to stop all services{Colors.ENDC}")
         
@@ -452,46 +364,38 @@ class UnifiedSystemManager:
         self.cleanup()
         sys.exit(0)
         
-    def run(self, skip_install: bool = False, open_browser: bool = True, force_local: bool = False):
+    def run(self, skip_install: bool = False, open_browser: bool = True):
         """Run the system"""
         # Setup signal handler
         signal.signal(signal.SIGINT, self.handle_signal)
         
-        # Force local models if requested
-        if force_local:
-            self.use_local_models = True
-            self.claude_configured = False
-            
         # Print header
         self.print_header()
         
         # Check Python version
         self.check_python_version()
         
+        # Check Claude configuration (required)
+        if not self.check_claude_config():
+            print(f"\n{Colors.FAIL}❌ Claude API configuration required. Please set up your API key.{Colors.ENDC}")
+            sys.exit(1)
+            
         # Check dependencies
         if not skip_install:
-            # Check Claude setup if configured
-            if self.claude_configured and not force_local:
-                if not self.check_claude_setup():
-                    print(f"\n{Colors.WARNING}Claude setup incomplete. Falling back to local models.{Colors.ENDC}")
-                    self.claude_configured = False
+            # Check Claude setup
+            if not self.check_claude_setup():
+                print(f"\n{Colors.FAIL}❌ Claude setup incomplete. Please install required packages.{Colors.ENDC}")
+                sys.exit(1)
                     
             # Check essential dependencies
             if not self.check_essential_dependencies():
                 print(f"\n{Colors.FAIL}❌ Missing essential dependencies. Please install required packages.{Colors.ENDC}")
                 sys.exit(1)
-                
-            # Check optional dependencies if using local models
-            if not self.claude_configured or self.use_local_models:
-                self.check_optional_dependencies()
         else:
             print(f"{Colors.WARNING}⚠️  Skipping dependency installation{Colors.ENDC}")
             
-        # Check memory status
-        memory_ok = self.check_memory_status()
-        if not memory_ok and not self.claude_configured:
-            print(f"\n{Colors.FAIL}❌ Insufficient memory for local models{Colors.ENDC}")
-            sys.exit(1)
+        # Check memory status (informational only for Claude)
+        self.check_memory_status()
             
         # Create directories
         self.create_directories()
@@ -536,7 +440,7 @@ class UnifiedSystemManager:
 
 def main():
     """Main entry point"""
-    parser = argparse.ArgumentParser(description="AI-Powered Chatbot System Launcher")
+    parser = argparse.ArgumentParser(description="JARVIS System Launcher - Claude AI Powered")
     parser.add_argument(
         "--skip-install",
         action="store_true",
@@ -546,16 +450,6 @@ def main():
         "--no-browser",
         action="store_true",
         help="Don't open browser automatically"
-    )
-    parser.add_argument(
-        "--force-local",
-        action="store_true",
-        help="Force local model mode even if Claude is configured"
-    )
-    parser.add_argument(
-        "--claude-only",
-        action="store_true",
-        help="Run in Claude-only mode (fail if not configured)"
     )
     parser.add_argument(
         "--check-only",
@@ -572,35 +466,23 @@ def main():
         manager.print_header()
         manager.check_python_version()
         
-        all_good = True
+        if not manager.check_claude_config():
+            print(f"\n{Colors.FAIL}❌ Claude API not configured.{Colors.ENDC}")
+            sys.exit(1)
+            
+        all_good = manager.check_claude_setup() and manager.check_essential_dependencies()
         
-        if manager.claude_configured:
-            if manager.check_claude_setup() and manager.check_essential_dependencies():
-                print(f"\n{Colors.GREEN}✅ Claude mode ready!{Colors.ENDC}")
-            else:
-                all_good = False
+        if all_good:
+            print(f"\n{Colors.GREEN}✅ System ready! Claude API configured.{Colors.ENDC}")
         else:
-            if manager.check_essential_dependencies() and manager.check_optional_dependencies():
-                print(f"\n{Colors.GREEN}✅ Local mode ready!{Colors.ENDC}")
-            else:
-                all_good = False
-                
-        if not all_good:
             print(f"\n{Colors.FAIL}❌ Some checks failed. Please fix issues above.{Colors.ENDC}")
             
         sys.exit(0 if all_good else 1)
         
-    if args.claude_only:
-        if not manager.claude_configured:
-            print(f"{Colors.FAIL}❌ Claude not configured. Please set ANTHROPIC_API_KEY.{Colors.ENDC}")
-            sys.exit(1)
-        args.force_local = False
-        
     try:
         manager.run(
             skip_install=args.skip_install,
-            open_browser=not args.no_browser,
-            force_local=args.force_local
+            open_browser=not args.no_browser
         )
     except Exception as e:
         print(f"{Colors.FAIL}❌ Error: {e}{Colors.ENDC}")

@@ -4,24 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from chatbots.simple_chatbot import SimpleChatbot  # Import the SimpleChatbot class
-from chatbots.dynamic_chatbot import DynamicChatbot  # Import the DynamicChatbot class
 from chatbots.claude_chatbot import ClaudeChatbot  # Import the ClaudeChatbot class
-
-# Optional imports for backward compatibility
-try:
-    from chatbots.intelligent_chatbot import IntelligentChatbot
-    INTELLIGENT_AVAILABLE = True
-except ImportError:
-    IntelligentChatbot = None
-    INTELLIGENT_AVAILABLE = False
-
-try:
-    from chatbots.langchain_chatbot import LangChainChatbot
-    LANGCHAIN_AVAILABLE = True
-except ImportError:
-    LangChainChatbot = None
-    LANGCHAIN_AVAILABLE = False
 import asyncio
 import json
 from typing import Optional, List, Dict, Any
@@ -31,6 +14,7 @@ import os
 # Load environment variables from .env file
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass  # dotenv not installed, that's okay
@@ -74,10 +58,8 @@ class ChatConfig(BaseModel):
     system_prompt: Optional[str] = None
     stream: Optional[bool] = False
     device: Optional[str] = "auto"  # Device selection for M1
-    
-    model_config = {
-        'protected_namespaces': ()
-    }
+
+    model_config = {"protected_namespaces": ()}
 
 
 class KnowledgeRequest(BaseModel):
@@ -112,74 +94,31 @@ class ChatbotAPI:
             "automation_engine", ComponentPriority.LOW, 500
         )
 
-        # Create an instance of the Chatbot with M1 optimizations
+        # Create an instance of the Chatbot - Claude API only
         try:
-            # Skip async check during initialization - will check on first request
-            # Assume we can load for now
+            # Check for Claude configuration
+            claude_api_key = os.getenv("ANTHROPIC_API_KEY")
 
-            # Use DynamicChatbot for automatic mode switching
-            use_dynamic = os.getenv("USE_DYNAMIC_CHATBOT", "1") == "1"
-            
-            if use_dynamic:
-                # Check for Claude configuration
-                use_claude = os.getenv("USE_CLAUDE", "0") == "1"
-                claude_api_key = os.getenv("ANTHROPIC_API_KEY")
-                
-                if use_claude and claude_api_key:
-                    logger.info("Using DynamicChatbot with Claude API integration")
-                else:
-                    logger.info("Using DynamicChatbot with automatic mode switching and LangChain")
-                
-                self.bot = DynamicChatbot(
-                    memory_manager=memory_manager,
-                    auto_switch=True,
-                    preserve_context=True,
-                    prefer_langchain=True,  # Enable LangChain when memory permits
-                    use_claude=use_claude,
-                    claude_api_key=claude_api_key
+            if not claude_api_key:
+                logger.error("ANTHROPIC_API_KEY not found in environment variables")
+                raise ValueError(
+                    "Claude API key required. Please set ANTHROPIC_API_KEY in your .env file. "
+                    "Get your API key from: https://console.anthropic.com/"
                 )
-            else:
-                # Legacy static mode selection
-                import platform
-                is_m1_mac = platform.system() == "Darwin" and platform.machine() == "arm64"
-                
-                if is_m1_mac:
-                    # Prefer llama.cpp on M1; allow forcing via env to avoid PyTorch/MPS crashes
-                    try:
-                        import requests
 
-                        force_llama = os.getenv("FORCE_LLAMA", "0") == "1"
-                        # Use 127.0.0.1 and a slightly longer timeout to avoid race on startup
-                        llama_health_url = "http://127.0.0.1:8080/health"
-                        response = requests.get(llama_health_url, timeout=3)
-                        if response.status_code == 200 and INTELLIGENT_AVAILABLE:
-                            logger.info("Using Intelligent Chatbot with memory management")
-                            self.bot = IntelligentChatbot(memory_manager)
-                        else:
-                            raise RuntimeError("llama.cpp server not responding or IntelligentChatbot not available")
-                    except Exception as e:
-                        if os.getenv("FORCE_LLAMA", "0") == "1":
-                            # Do not fall back if explicitly forced; surface the error clearly
-                            logger.error(
-                                f"FORCE_LLAMA=1 but llama.cpp health check failed: {e}"
-                            )
-                            raise
-                        logger.warning(
-                            "llama.cpp server not available, using SimpleChatbot"
-                        )
-                        self.bot = SimpleChatbot(max_history_length=10)
-                else:
-                    # Non-M1 systems use SimpleChatbot when IntelligentChatbot not available
-                    if INTELLIGENT_AVAILABLE:
-                        self.bot = IntelligentChatbot(memory_manager)
-                    else:
-                        logger.info("Using SimpleChatbot (IntelligentChatbot not available)")
-                        self.bot = SimpleChatbot(max_history_length=10)
+            logger.info("Initializing Claude-powered chatbot")
 
-            # Component loading will happen on startup event
-            logger.info("Chatbot initialized successfully with memory management")
+            # Use ClaudeChatbot directly for consistent, high-quality responses
+            self.bot = ClaudeChatbot(
+                api_key=claude_api_key,
+                model=os.getenv("CLAUDE_MODEL", "claude-3-haiku-20240307"),
+                max_tokens=int(os.getenv("CLAUDE_MAX_TOKENS", "1024")),
+                temperature=float(os.getenv("CLAUDE_TEMPERATURE", "0.7")),
+            )
+
+            logger.info("Claude chatbot initialized successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize chatbot: {e}")
+            logger.error(f"Failed to initialize Claude chatbot: {e}")
             raise
         # Create a router for our endpoints
         self.router = APIRouter()
@@ -197,14 +136,12 @@ class ChatbotAPI:
         self.router.add_api_route(
             "/chat/capabilities", self.get_capabilities, methods=["GET"]
         )
+        self.router.add_api_route("/chat/mode", self.get_mode, methods=["GET"])
+        self.router.add_api_route("/chat/mode", self.set_mode, methods=["POST"])
         self.router.add_api_route(
-            "/chat/mode", self.get_mode, methods=["GET"]
-        )
-        self.router.add_api_route(
-            "/chat/mode", self.set_mode, methods=["POST"]
-        )
-        self.router.add_api_route(
-            "/chat/optimize-memory", self.optimize_memory_for_langchain, methods=["POST"]
+            "/chat/optimize-memory",
+            self.optimize_memory_for_langchain,
+            methods=["POST"],
         )
 
         # RAG endpoints
@@ -371,87 +308,42 @@ class ChatbotAPI:
                 "voice_processing": False,
                 "memory_status": {"components_loaded": 0, "total_components": 0},
             }
-    
+
     async def get_mode(self):
         """Get current chatbot mode"""
-        if isinstance(self.bot, DynamicChatbot):
-            return {
-                "mode": self.bot.current_mode.value,
-                "auto_switch": self.bot.auto_switch,
-                "metrics": self.bot.metrics,
-                "last_switch": self.bot.last_mode_switch.isoformat() if self.bot.last_mode_switch else None
-            }
-        else:
-            # Static mode
-            mode = "intelligent" if isinstance(self.bot, IntelligentChatbot) else "simple"
-            if isinstance(self.bot, LangChainChatbot):
-                mode = "langchain"
-            return {
-                "mode": mode,
-                "auto_switch": False,
-                "metrics": {},
-                "last_switch": None
-            }
-    
+        return {
+            "mode": "claude",
+            "auto_switch": False,
+            "metrics": (
+                self.bot.get_usage_stats()
+                if hasattr(self.bot, "get_usage_stats")
+                else {}
+            ),
+            "last_switch": None,
+            "model": (
+                self.bot.model
+                if hasattr(self.bot, "model")
+                else "claude-3-haiku-20240307"
+            ),
+        }
+
     async def set_mode(self, request: Dict[str, str]):
-        """Set chatbot mode (for DynamicChatbot only)"""
-        if not isinstance(self.bot, DynamicChatbot):
-            raise HTTPException(
-                status_code=400,
-                detail="Mode switching only available with DynamicChatbot"
-            )
-        
-        mode = request.get("mode")
-        if mode not in ["simple", "intelligent", "langchain"]:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid mode. Use 'simple', 'intelligent', or 'langchain'"
-            )
-        
-        try:
-            await self.bot.force_mode(mode)
-            return {"message": f"Mode switched to {mode}", "mode": mode}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-    
-    async def optimize_memory_for_langchain(self, request: Optional[Dict[str, Any]] = None):
-        """Optimize memory to enable LangChain features"""
-        # Check if we have DynamicChatbot
-        if not isinstance(self.bot, DynamicChatbot):
-            raise HTTPException(
-                status_code=400,
-                detail="Memory optimization only available with DynamicChatbot"
-            )
-        
-        # Import the optimizer
-        from memory.intelligent_memory_optimizer import IntelligentMemoryOptimizer
-        
-        try:
-            # Get aggressive mode from request
-            aggressive = False
-            if request and isinstance(request, dict):
-                aggressive = request.get("aggressive", False)
-            
-            # Create optimizer and run optimization
-            optimizer = IntelligentMemoryOptimizer()
-            success, report = await optimizer.optimize_for_langchain(aggressive=aggressive)
-            
-            # Return detailed report
-            return {
-                "success": success,
-                "initial_memory_percent": report["initial_percent"],
-                "final_memory_percent": report["final_percent"],
-                "memory_freed_mb": report["memory_freed_mb"],
-                "actions_taken": report["actions_taken"],
-                "target_percent": report["target_percent"],
-                "message": "Memory optimization successful" if success else "Could not free enough memory",
-                "current_mode": self.bot.current_mode.value,
-                "can_use_langchain": report["final_percent"] <= 50,
-                "aggressive_mode": aggressive
-            }
-        except Exception as e:
-            logger.error(f"Memory optimization failed: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+        """Set chatbot mode (deprecated - Claude only mode)"""
+        raise HTTPException(
+            status_code=400,
+            detail="Mode switching is not available. System runs in Claude-only mode for consistent, high-quality responses.",
+        )
+
+    async def optimize_memory_for_langchain(
+        self, request: Optional[Dict[str, Any]] = None
+    ):
+        """Memory optimization (not needed for Claude API)"""
+        return {
+            "success": True,
+            "message": "Memory optimization not needed when using Claude API. All processing happens in the cloud.",
+            "current_mode": "claude",
+            "cloud_based": True,
+        }
 
     async def create_task_plan(self, message: Message):
         """Create a task plan based on user input."""
@@ -612,6 +504,7 @@ class ChatbotAPI:
 # Create FastAPI app
 app = FastAPI()
 
+
 # Startup event
 @app.on_event("startup")
 async def startup_event():
@@ -620,6 +513,7 @@ async def startup_event():
     # Start memory monitoring
     await memory_manager.start_monitoring()
     logger.info("Memory monitoring started")
+
 
 # Enable CORS for all origins (adjust for production)
 app.add_middleware(
@@ -658,8 +552,9 @@ if AUTOMATION_API_AVAILABLE:
     try:
         # Create automation engine
         from engines.automation_engine import AutomationEngine
+
         automation_engine = AutomationEngine()
-        
+
         # Try to attach to bot if it supports it
         if hasattr(chatbot_api.bot, "set_automation_engine"):
             chatbot_api.bot.set_automation_engine(automation_engine)
@@ -669,7 +564,7 @@ if AUTOMATION_API_AVAILABLE:
             except AttributeError:
                 # Some bot types might not allow dynamic attributes
                 pass
-        
+
         automation_api = AutomationAPI(automation_engine)
         app.include_router(automation_api.router, prefix="/automation")
         logger.info("Automation API routes added")
@@ -714,25 +609,31 @@ async def root():
 # Redirect old demo URLs to new locations
 from fastapi.responses import RedirectResponse
 
+
 @app.get("/voice_demo.html")
 async def redirect_voice_demo():
     return RedirectResponse(url="/static/demos/voice_demo.html")
+
 
 @app.get("/automation_demo.html")
 async def redirect_automation_demo():
     return RedirectResponse(url="/static/demos/automation_demo.html")
 
+
 @app.get("/rag_demo.html")
 async def redirect_rag_demo():
     return RedirectResponse(url="/static/demos/rag_demo.html")
+
 
 @app.get("/llm_demo.html")
 async def redirect_llm_demo():
     return RedirectResponse(url="/static/demos/llm_demo.html")
 
+
 @app.get("/memory_dashboard.html")
 async def redirect_memory_dashboard():
     return RedirectResponse(url="/static/demos/memory_dashboard.html")
+
 
 # Health check endpoint
 @app.get("/health")
@@ -742,18 +643,12 @@ async def health_check():
         # Get memory status
         memory_snapshot = await memory_manager.get_memory_snapshot()
 
-        # Check if model is loaded - handle different chatbot types
-        model_loaded = True  # Default to true
-        
-        if hasattr(chatbot_api.bot, "current_mode"):
-            # DynamicChatbot - check if it has a mode
-            model_loaded = chatbot_api.bot.current_mode is not None
-        elif hasattr(chatbot_api.bot, "llm"):
-            # LangChain chatbot - check if LLM is initialized
-            model_loaded = chatbot_api.bot.llm is not None
-        elif hasattr(chatbot_api.bot, "model"):
-            # Other chatbots with model attribute
-            model_loaded = chatbot_api.bot.model is not None
+        # Check if Claude is configured
+        model_loaded = (
+            chatbot_api.bot.is_available()
+            if hasattr(chatbot_api.bot, "is_available")
+            else True
+        )
 
         return {
             "status": (
