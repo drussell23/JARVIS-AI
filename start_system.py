@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-Comprehensive startup script for AI-Powered Chatbot System
-Handles dependency installation and service launching
-Async version for better performance
+Unified startup script for AI-Powered Chatbot System
+Prioritizes Claude API for cloud-based AI, with fallback options
 """
 
 import os
@@ -26,15 +25,15 @@ class Colors:
     CYAN = '\033[96m'
     GREEN = '\033[92m'
     WARNING = '\033[93m'
-    YELLOW = '\033[93m'  # Same as WARNING
+    YELLOW = '\033[93m'
     FAIL = '\033[91m'
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
 
-class SystemManager:
-    """Manages the AI Chatbot system startup"""
+class UnifiedSystemManager:
+    """Unified system manager that prioritizes Claude but supports all modes"""
     
     def __init__(self):
         self.processes = []
@@ -44,7 +43,7 @@ class SystemManager:
             "main_api": 8000,
             "training_api": 8001,
             "frontend": 3000,
-            "llama_cpp": 8080  # llama.cpp server port
+            "llama_cpp": 8080
         }
         self.demos = {
             "chat": "http://localhost:8000/docs",
@@ -55,71 +54,40 @@ class SystemManager:
         }
         self.is_m1_mac = platform.system() == "Darwin" and platform.machine() == "arm64"
         self.memory_warned = False
-        self.python_executable = self._find_best_python()
-        self.has_real_llms = self._check_llama_cpp_available()
-        
-    def _find_best_python(self):
-        """Find the best Python executable with llama-cpp-python support"""
-        # Check for miniforge Python first (has llama-cpp-python for M1 Macs)
-        miniforge_python = Path("/Users/derekjrussell/miniforge3/bin/python")
-        if miniforge_python.exists():
-            # Test if it has llama-cpp-python
-            try:
-                result = subprocess.run(
-                    [str(miniforge_python), "-c", "import llama_cpp; print('OK')"],
-                    capture_output=True,
-                    text=True
-                )
-                if result.returncode == 0 and "OK" in result.stdout:
-                    print(f"{Colors.GREEN}✓ Found miniforge Python with llama-cpp-python support{Colors.ENDC}")
-                    return str(miniforge_python)
-            except:
-                pass
-        
-        # Check current Python
-        try:
-            import llama_cpp
-            print(f"{Colors.GREEN}✓ Current Python has llama-cpp-python support{Colors.ENDC}")
-            return sys.executable
-        except ImportError:
-            pass
-        
-        # Fallback to system Python
-        print(f"{Colors.WARNING}⚠️  No Python with llama-cpp-python found, using system Python{Colors.ENDC}")
-        print(f"{Colors.YELLOW}   For real language models, install llama-cpp-python or use miniforge{Colors.ENDC}")
-        return sys.executable
-    
-    def _check_llama_cpp_available(self):
-        """Check if llama-cpp-python is available in the selected Python"""
-        try:
-            result = subprocess.run(
-                [self.python_executable, "-c", "from langchain_community.llms import LlamaCpp; print('OK')"],
-                capture_output=True,
-                text=True
-            )
-            return result.returncode == 0 and "OK" in result.stdout
-        except:
-            return False
+        self.claude_configured = False
+        self.use_local_models = False
         
     def print_header(self):
         """Print system header"""
         print(f"\n{Colors.HEADER}{'='*60}")
-        if self.is_m1_mac:
-            print(f"{Colors.BOLD}🤖 AI-Powered Chatbot System Launcher 🚀 (M1 Optimized){Colors.ENDC}")
-        else:
-            print(f"{Colors.BOLD}🤖 AI-Powered Chatbot System Launcher 🚀{Colors.ENDC}")
-        print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}")
+        print(f"{Colors.BOLD}🤖 AI-Powered Chatbot System Launcher 🚀{Colors.ENDC}")
         
-        # Show LLM status
-        if self.has_real_llms:
-            print(f"{Colors.GREEN}✓ Real Language Models Available (TinyLlama, Phi-2, Mistral-7B){Colors.ENDC}")
-        else:
-            print(f"{Colors.YELLOW}⚠️  Mock Language Models (install llama-cpp-python for real models){Colors.ENDC}")
+        # Check Claude configuration
+        self.check_claude_config()
         
-        # Show Python info
-        if self.python_executable != sys.executable:
-            print(f"{Colors.CYAN}Using Python: {self.python_executable}{Colors.ENDC}")
-        print()
+        if self.claude_configured:
+            print(f"{Colors.CYAN}☁️  Claude API Mode - Cloud-powered AI{Colors.ENDC}")
+            if self.is_m1_mac:
+                print(f"{Colors.GREEN}✨ Perfect for M1 Mac - No local memory usage!{Colors.ENDC}")
+        else:
+            print(f"{Colors.YELLOW}💻 Local Model Mode{Colors.ENDC}")
+            
+        print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}\n")
+        
+    def check_claude_config(self):
+        """Check if Claude API is configured"""
+        # Load .env file
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+        except ImportError:
+            pass
+            
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        use_claude = os.getenv("USE_CLAUDE", "1") == "1"
+        
+        self.claude_configured = bool(api_key and use_claude)
+        return self.claude_configured
         
     def check_python_version(self):
         """Check Python version"""
@@ -130,341 +98,163 @@ class SystemManager:
             sys.exit(1)
         print(f"{Colors.GREEN}✓ Python {version.major}.{version.minor} detected{Colors.ENDC}")
         
-    def check_node_installed(self) -> bool:
-        """Check if Node.js is installed"""
-        try:
-            result = subprocess.run(["node", "--version"], capture_output=True, text=True)
-            if result.returncode == 0:
-                print(f"{Colors.GREEN}✓ Node.js {result.stdout.strip()} detected{Colors.ENDC}")
-                return True
-        except FileNotFoundError:
-            pass
-        return False
-        
-    def check_llama_cpp_installed(self) -> bool:
-        """Check if llama.cpp is installed"""
-        try:
-            result = subprocess.run(["which", "llama-server"], capture_output=True, text=True)
-            return result.returncode == 0
-        except:
+    def check_claude_setup(self):
+        """Check Claude API setup and configuration"""
+        if not self.claude_configured:
             return False
             
-    def check_llama_model_exists(self) -> bool:
-        """Check if a llama.cpp model exists"""
-        model_path = Path.home() / "Documents" / "ai-models" / "mistral-7b-instruct-v0.1.Q4_K_M.gguf"
-        return model_path.exists()
+        print(f"\n{Colors.BLUE}Checking Claude API setup...{Colors.ENDC}")
         
-    def check_installed_packages(self):
-        """Check which packages are already installed"""
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        print(f"{Colors.GREEN}✓ Claude API key found{Colors.ENDC}")
+        print(f"{Colors.GREEN}✓ Claude mode enabled{Colors.ENDC}")
+        
+        # Check if anthropic package is installed
         try:
-            result = subprocess.run(
-                [sys.executable, "-m", "pip", "list", "--format=json"],
-                capture_output=True,
-                text=True
-            )
-            if result.returncode == 0:
-                import json
-                installed = json.loads(result.stdout)
-                return {pkg['name'].lower(): pkg['version'] for pkg in installed}
-        except:
-            pass
-        return {}
-    
-    def check_missing_dependencies(self):
-        """Check for missing dependencies from requirements.txt"""
-        requirements_file = self.backend_dir / "requirements.txt"
-        if not requirements_file.exists():
-            return []
+            import anthropic
+            print(f"{Colors.GREEN}✓ Anthropic package installed{Colors.ENDC}")
+            return True
+        except ImportError:
+            print(f"{Colors.WARNING}⚠️  Anthropic package not installed{Colors.ENDC}")
+            print(f"   Run: pip install anthropic")
+            return False
+            
+    def check_essential_dependencies(self):
+        """Check only essential dependencies"""
+        print(f"\n{Colors.BLUE}Checking essential dependencies...{Colors.ENDC}")
         
-        installed = self.check_installed_packages()
+        essential_packages = {
+            "fastapi": "FastAPI web framework",
+            "uvicorn": "ASGI server",
+            "pydantic": "Data validation",
+            "psutil": "System monitoring"
+        }
+        
+        # Add Claude-specific if configured
+        if self.claude_configured:
+            essential_packages["anthropic"] = "Claude API client"
+            essential_packages["python-dotenv"] = "Environment variables"
+            
+        missing = []
+        for package, description in essential_packages.items():
+            try:
+                if package == "python-dotenv":
+                    __import__("dotenv")
+                else:
+                    __import__(package.replace("-", "_"))
+                print(f"{Colors.GREEN}✓ {description} ({package}){Colors.ENDC}")
+            except ImportError:
+                missing.append(package)
+                print(f"{Colors.WARNING}⚠️  {description} ({package}) - missing{Colors.ENDC}")
+                
+        if missing:
+            print(f"\n{Colors.YELLOW}Install missing packages:{Colors.ENDC}")
+            print(f"pip install {' '.join(missing)}")
+            return False
+            
+        return True
+        
+    def check_optional_dependencies(self):
+        """Check optional dependencies for local models"""
+        if self.claude_configured and not self.use_local_models:
+            return True
+            
+        print(f"\n{Colors.BLUE}Checking optional dependencies for local models...{Colors.ENDC}")
+        
+        optional_packages = {
+            "transformers": "Hugging Face models",
+            "torch": "PyTorch deep learning",
+            "nltk": "Natural language toolkit",
+            "spacy": "Advanced NLP"
+        }
+        
+        available = []
         missing = []
         
-        with open(requirements_file, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith('#'):
-                    # Parse requirement
-                    if '@' in line:  # URL-based dependencies like spacy models
-                        pkg_name = line.split('@')[0].strip()
-                        # Skip URL-based deps as they're handled differently
-                        if 'http' in line:
-                            continue
-                    elif '>=' in line or '==' in line or '<=' in line:
-                        pkg_name = line.split('>=')[0].split('==')[0].split('<=')[0].strip()
-                    else:
-                        pkg_name = line.strip()
-                    
-                    # Check if installed
-                    if pkg_name.lower() not in installed:
-                        missing.append(line)
-        
-        return missing
-    
-    def install_backend_dependencies(self):
-        """Install backend Python dependencies"""
-        print(f"\n{Colors.BLUE}Checking backend dependencies...{Colors.ENDC}")
-        
-        requirements_file = self.backend_dir / "requirements.txt"
-        if not requirements_file.exists():
-            print(f"{Colors.WARNING}⚠️  requirements.txt not found in backend directory{Colors.ENDC}")
-            return
-        
-        # Check for missing dependencies
-        missing = self.check_missing_dependencies()
-        
-        if not missing:
-            print(f"{Colors.GREEN}✓ All backend dependencies already installed{Colors.ENDC}")
-        else:
-            print(f"{Colors.CYAN}Found {len(missing)} missing dependencies{Colors.ENDC}")
-            print(f"{Colors.BLUE}Installing missing dependencies...{Colors.ENDC}")
-            
-            # Install dependencies with error handling
-            total = len(missing)
-            failed_deps = []
-            
-            for i, dep in enumerate(missing, 1):
-                print(f"  [{i}/{total}] Installing: {dep}")
-                try:
-                    # Try to install without version constraints first if it fails
-                    result = subprocess.run([
-                        sys.executable, "-m", "pip", "install", dep
-                    ], capture_output=True, text=True)
-                    
-                    if result.returncode != 0:
-                        # Try without version constraint
-                        pkg_name = dep.split('>=')[0].split('==')[0].split('<=')[0].strip()
-                        print(f"    Retrying without version constraint: {pkg_name}")
-                        result2 = subprocess.run([
-                            sys.executable, "-m", "pip", "install", pkg_name
-                        ], capture_output=True, text=True)
-                        
-                        if result2.returncode != 0:
-                            failed_deps.append(dep)
-                            print(f"    {Colors.WARNING}⚠️  Failed to install {dep}{Colors.ENDC}")
-                        else:
-                            print(f"    {Colors.GREEN}✓ Installed {pkg_name} (latest version){Colors.ENDC}")
-                    else:
-                        print(f"    {Colors.GREEN}✓ Installed{Colors.ENDC}")
-                        
-                except Exception as e:
-                    failed_deps.append(dep)
-                    print(f"    {Colors.WARNING}⚠️  Error: {e}{Colors.ENDC}")
-            
-            if failed_deps:
-                print(f"\n{Colors.WARNING}⚠️  Some dependencies failed to install:{Colors.ENDC}")
-                for dep in failed_deps:
-                    print(f"  - {dep}")
-                print(f"\n{Colors.YELLOW}JARVIS will still run with reduced functionality.{Colors.ENDC}")
-                print(f"To fix, try: pip install {' '.join(failed_deps)}")
-            else:
-                print(f"{Colors.GREEN}✓ All dependencies installed successfully{Colors.ENDC}")
-        
-        # Check NLTK data
-        print(f"{Colors.BLUE}Checking NLTK data...{Colors.ENDC}")
-        try:
-            import nltk
-            nltk_data_path = Path.home() / "nltk_data"
-            required_data = ['punkt', 'averaged_perceptron_tagger', 'stopwords', 'wordnet']
-            missing_data = []
-            
-            for data in required_data:
-                if not (nltk_data_path / "tokenizers" / data).exists() and \
-                   not (nltk_data_path / "corpora" / data).exists() and \
-                   not (nltk_data_path / "taggers" / data).exists():
-                    missing_data.append(data)
-            
-            if missing_data:
-                print(f"{Colors.CYAN}Downloading missing NLTK data...{Colors.ENDC}")
-                for data in missing_data:
-                    try:
-                        nltk.download(data, quiet=True)
-                    except Exception as e:
-                        print(f"{Colors.WARNING}⚠️  Could not download {data}: {e}{Colors.ENDC}")
-                print(f"{Colors.GREEN}✓ NLTK data setup complete{Colors.ENDC}")
-            else:
-                print(f"{Colors.GREEN}✓ NLTK data already downloaded{Colors.ENDC}")
-        except ImportError:
-            print(f"{Colors.WARNING}⚠️  NLTK not installed - NLP features limited{Colors.ENDC}")
-        except Exception as e:
-            print(f"{Colors.WARNING}⚠️  NLTK setup error: {e}{Colors.ENDC}")
-        
-        # Check spaCy model
-        print(f"{Colors.BLUE}Checking spaCy model...{Colors.ENDC}")
-        try:
-            import spacy
+        for package, description in optional_packages.items():
             try:
-                spacy.load("en_core_web_sm")
-                print(f"{Colors.GREEN}✓ spaCy model already installed{Colors.ENDC}")
-            except OSError:
-                print(f"{Colors.CYAN}Downloading spaCy model...{Colors.ENDC}")
-                subprocess.check_call([
-                    sys.executable, "-m", "spacy", "download", "en_core_web_sm"
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-                print(f"{Colors.GREEN}✓ spaCy model downloaded{Colors.ENDC}")
-        except ImportError:
-            print(f"{Colors.WARNING}⚠️  spaCy not installed{Colors.ENDC}")
-            
-    def setup_frontend(self):
-        """Setup frontend (React) if it exists"""
-        if not self.frontend_dir.exists():
-            print(f"{Colors.WARNING}⚠️  Frontend directory not found. Creating basic frontend...{Colors.ENDC}")
-            self.create_basic_frontend()
-            return
-            
-        print(f"\n{Colors.BLUE}Setting up frontend...{Colors.ENDC}")
+                __import__(package)
+                available.append(package)
+                print(f"{Colors.GREEN}✓ {description} ({package}){Colors.ENDC}")
+            except ImportError:
+                missing.append(package)
+                print(f"{Colors.YELLOW}○ {description} ({package}) - not installed{Colors.ENDC}")
+                
+        if missing and not self.claude_configured:
+            print(f"\n{Colors.WARNING}Some features may be limited without:{Colors.ENDC}")
+            for pkg in missing[:3]:
+                print(f"  - {pkg}")
+                
+        return True
         
-        if not self.check_node_installed():
-            print(f"{Colors.WARNING}⚠️  Node.js not installed. Skipping frontend setup.{Colors.ENDC}")
-            print(f"    Install Node.js from https://nodejs.org/ to use the React frontend")
-            return
+    def check_memory_status(self):
+        """Check system memory and provide recommendations"""
+        print(f"\n{Colors.BLUE}System memory status:{Colors.ENDC}")
+        
+        mem = psutil.virtual_memory()
+        memory_percent = mem.percent
+        available_gb = mem.available / (1024**3)
+        total_gb = mem.total / (1024**3)
+        
+        print(f"  Total: {total_gb:.1f} GB")
+        print(f"  Used: {mem.used / (1024**3):.1f} GB ({memory_percent:.1f}%)")
+        print(f"  Available: {available_gb:.1f} GB")
+        
+        if self.claude_configured:
+            print(f"\n{Colors.GREEN}✓ With Claude, memory usage is not a concern!{Colors.ENDC}")
+            print(f"  All AI processing happens in the cloud")
+            return True
             
-        # Check if package.json exists
-        package_json = self.frontend_dir / "package.json"
-        if not package_json.exists():
-            self.create_basic_frontend()
-            return
+        # Memory recommendations for local models
+        if memory_percent < 50:
+            print(f"{Colors.GREEN}✓ Memory OK for all features{Colors.ENDC}")
+            return True
+        elif memory_percent < 65:
+            print(f"{Colors.WARNING}⚠️  Memory OK for basic features{Colors.ENDC}")
+            self.memory_warned = True
+            return True
+        elif memory_percent < 80:
+            print(f"{Colors.WARNING}⚠️  Memory high - limited features available{Colors.ENDC}")
+            self.memory_warned = True
             
-        # Install npm dependencies
-        try:
-            print(f"{Colors.BLUE}Installing npm dependencies...{Colors.ENDC}")
-            subprocess.check_call(["npm", "install"], cwd=self.frontend_dir)
-            print(f"{Colors.GREEN}✓ Frontend dependencies installed{Colors.ENDC}")
-        except subprocess.CalledProcessError as e:
-            print(f"{Colors.WARNING}⚠️  Failed to install frontend dependencies: {e}{Colors.ENDC}")
+            if not self.claude_configured:
+                print(f"\n{Colors.CYAN}💡 Tip: Use Claude API for better performance!{Colors.ENDC}")
+                print(f"   1. Get API key: https://console.anthropic.com/")
+                print(f"   2. Set ANTHROPIC_API_KEY in .env file")
+            return True
+        else:
+            print(f"{Colors.FAIL}❌ Memory critical ({memory_percent:.1f}%){Colors.ENDC}")
+            self.memory_warned = True
             
-    def create_basic_frontend(self):
-        """Create a basic frontend structure"""
-        print(f"{Colors.BLUE}Creating basic frontend...{Colors.ENDC}")
-        
-        # Create frontend directory
-        self.frontend_dir.mkdir(exist_ok=True)
-        
-        # Create package.json
-        package_json = {
-            "name": "ai-chatbot-frontend",
-            "version": "1.0.0",
-            "description": "AI-Powered Chatbot Frontend",
-            "scripts": {
-                "start": "python -m http.server 3000",
-                "dev": "python -m http.server 3000"
-            }
-        }
-        
-        with open(self.frontend_dir / "package.json", "w") as f:
-            json.dump(package_json, f, indent=2)
+            if not self.claude_configured:
+                print(f"\n{Colors.YELLOW}⚠️  Consider using Claude API instead of local models{Colors.ENDC}")
+            return False
             
-        # Create basic index.html
-        index_html = """<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI-Powered Chatbot</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #1a1a2e;
-            color: #eee;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-        }
-        .container {
-            text-align: center;
-            padding: 2rem;
-        }
-        h1 {
-            color: #00d4ff;
-        }
-        .demo-links {
-            margin-top: 2rem;
-        }
-        .demo-links a {
-            display: inline-block;
-            margin: 0.5rem;
-            padding: 1rem 2rem;
-            background: linear-gradient(45deg, #00a8cc, #00d4ff);
-            color: #000;
-            text-decoration: none;
-            border-radius: 25px;
-            font-weight: bold;
-            transition: transform 0.3s;
-        }
-        .demo-links a:hover {
-            transform: scale(1.05);
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🤖 AI-Powered Chatbot System</h1>
-        <p>Welcome to your AI Assistant powered by advanced NLP and custom LLMs</p>
-        
-        <div class="demo-links">
-            <a href="http://localhost:8000/docs" target="_blank">📚 API Documentation</a>
-            <a href="http://localhost:8000/voice_demo.html" target="_blank">🎤 Voice Assistant</a>
-            <a href="http://localhost:8000/automation_demo.html" target="_blank">⚡ Automation Demo</a>
-            <a href="http://localhost:8000/rag_demo.html" target="_blank">🧠 RAG System</a>
-            <a href="http://localhost:8001/llm_demo.html" target="_blank">🔧 LLM Training</a>
-        </div>
-    </div>
-</body>
-</html>"""
-        
-        with open(self.frontend_dir / "index.html", "w") as f:
-            f.write(index_html)
-            
-        print(f"{Colors.GREEN}✓ Basic frontend created{Colors.ENDC}")
-        
     def create_directories(self):
         """Create necessary directories"""
         print(f"\n{Colors.BLUE}Creating directories...{Colors.ENDC}")
         
         directories = [
-            self.backend_dir / "data",
-            self.backend_dir / "models",
-            self.backend_dir / "checkpoints",
             self.backend_dir / "logs",
-            self.backend_dir / "domain_knowledge",
-            self.backend_dir / "faiss_index",
-            self.backend_dir / "chroma_db",
-            self.backend_dir / "knowledge_base"
+            self.backend_dir / "static"
         ]
         
+        # Only create model/data directories if using local models
+        if not self.claude_configured or self.use_local_models:
+            directories.extend([
+                self.backend_dir / "data",
+                self.backend_dir / "models",
+                self.backend_dir / "checkpoints",
+                self.backend_dir / "domain_knowledge",
+                self.backend_dir / "faiss_index",
+                self.backend_dir / "chroma_db",
+                self.backend_dir / "knowledge_base"
+            ])
+            
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)
             
         print(f"{Colors.GREEN}✓ Directories created{Colors.ENDC}")
-        
-    def check_language_models(self):
-        """Check if language models are downloaded"""
-        print(f"\n{Colors.BLUE}Checking language models...{Colors.ENDC}")
-        
-        models_dir = Path("models")
-        required_models = {
-            "tinyllama-1.1b.gguf": "TinyLlama (638MB)",
-            "phi-2.gguf": "Phi-2 (1.6GB)",
-            "mistral-7b-instruct.gguf": "Mistral-7B (4.1GB)"
-        }
-        
-        missing_models = []
-        for model_file, model_name in required_models.items():
-            if not (models_dir / model_file).exists():
-                missing_models.append((model_file, model_name))
-            else:
-                print(f"{Colors.GREEN}✓ {model_name} found{Colors.ENDC}")
-        
-        if missing_models:
-            print(f"\n{Colors.WARNING}⚠️  Some language models are missing:{Colors.ENDC}")
-            for model_file, model_name in missing_models:
-                print(f"    - {model_name}")
-            print(f"\n{Colors.CYAN}To download all models (5.7GB total):{Colors.ENDC}")
-            print(f"    {self.python_executable} download_jarvis_models.py")
-            print(f"\n{Colors.YELLOW}JARVIS will use mock responses for missing models{Colors.ENDC}")
-        else:
-            print(f"{Colors.GREEN}✓ All language models present{Colors.ENDC}")
         
     def check_port_available(self, port: int) -> bool:
         """Check if a port is available"""
@@ -473,333 +263,93 @@ class SystemManager:
         result = sock.connect_ex(('localhost', port))
         sock.close()
         return result != 0
-    
-    def check_memory_status(self):
-        """Check system memory and provide recommendations"""
-        print(f"\n{Colors.BLUE}Checking system memory...{Colors.ENDC}")
         
-        mem = psutil.virtual_memory()
-        memory_percent = mem.percent
-        available_gb = mem.available / (1024**3)
-        used_gb = mem.used / (1024**3)
-        total_gb = mem.total / (1024**3)
-        
-        print(f"  Total: {total_gb:.1f} GB")
-        print(f"  Used: {used_gb:.1f} GB ({memory_percent:.1f}%)")
-        print(f"  Available: {available_gb:.1f} GB")
-        
-        # Check memory thresholds
-        if memory_percent < 50:
-            print(f"{Colors.GREEN}✓ Memory OK for all features including LangChain{Colors.ENDC}")
-            return True
-        elif memory_percent < 65:
-            print(f"{Colors.WARNING}⚠️  Memory OK for Intelligent mode (LangChain disabled){Colors.ENDC}")
-            self.memory_warned = True
-            return True
-        elif memory_percent < 80:
-            print(f"{Colors.WARNING}⚠️  Memory high - limited features available{Colors.ENDC}")
-            self.memory_warned = True
-            self.suggest_memory_optimization()
-            return True
-        else:
-            print(f"{Colors.FAIL}❌ Memory critical ({memory_percent:.1f}%) - only basic features available{Colors.ENDC}")
-            self.memory_warned = True
-            self.suggest_memory_optimization()
-            return False
-    
-    def suggest_memory_optimization(self):
-        """Suggest ways to free memory"""
-        print(f"\n{Colors.CYAN}Memory Optimization Suggestions:{Colors.ENDC}")
-        
-        # Get top memory users
-        processes = []
-        for proc in psutil.process_iter(['pid', 'name', 'memory_percent']):
-            try:
-                pinfo = proc.info
-                if pinfo['memory_percent'] > 2:  # Show processes using > 2%
-                    processes.append(pinfo)
-            except:
-                pass
-        
-        # Sort by memory usage
-        processes.sort(key=lambda x: x['memory_percent'], reverse=True)
-        
-        if processes:
-            print(f"\nTop memory-consuming processes:")
-            for i, proc in enumerate(processes[:5]):
-                print(f"  {i+1}. {proc['name'][:30]:30} {proc['memory_percent']:.1f}%")
-        
-        print(f"\n{Colors.CYAN}To free memory:{Colors.ENDC}")
-        print(f"  1. Close unnecessary browser tabs")
-        print(f"  2. Quit unused applications")
-        print(f"  3. Close IDE/editor instances you're not using")
-        print(f"  4. Run memory optimization:")
-        print(f"     - Standard: curl -X POST http://localhost:8000/chat/optimize-memory")
-        print(f'     - Aggressive: curl -X POST http://localhost:8000/chat/optimize-memory -d \'{{"aggressive": true}}\'')
-        print(f"     - Interactive: python optimize_memory_advanced.py --interactive")
-        print(f"\nOr continue with limited features.")
-    
-    def optimize_memory_if_needed(self):
-        """Try to optimize memory if it's too high"""
-        mem = psutil.virtual_memory()
-        if mem.percent > 65:  # Lower threshold for better experience
-            print(f"\n{Colors.WARNING}Memory usage is high ({mem.percent:.1f}%){Colors.ENDC}")
-            
-            # Different prompts based on memory level
-            if mem.percent > 80:
-                print(f"{Colors.FAIL}Memory is critical - optimization strongly recommended{Colors.ENDC}")
-                default_response = 'y'
-            else:
-                print(f"{Colors.YELLOW}Memory optimization recommended for full features{Colors.ENDC}")
-                default_response = 'n'
-            
-            # Check if running in interactive mode
-            try:
-                if sys.stdin.isatty():
-                    response = input(f"\nAttempt memory optimization? (Y/n): ").strip().lower()
-                else:
-                    print(f"\n{Colors.YELLOW}Non-interactive mode - skipping memory optimization{Colors.ENDC}")
-                    response = 'n'
-            except (EOFError, KeyboardInterrupt):
-                print(f"\n{Colors.YELLOW}Skipping memory optimization{Colors.ENDC}")
-                response = 'n'
-                
-            if response == '' or response == 'y':
-                # Try the advanced optimizer first
-                try:
-                    print(f"\n{Colors.CYAN}Running advanced memory optimization...{Colors.ENDC}")
-                    
-                    # Check if API is already running
-                    api_running = not self.check_port_available(self.ports['main_api'])
-                    
-                    if api_running:
-                        # Use API endpoint
-                        import requests
-                        aggressive = mem.percent > 75
-                        response = requests.post(
-                            f"http://localhost:{self.ports['main_api']}/chat/optimize-memory",
-                            json={"aggressive": aggressive},
-                            timeout=30
-                        )
-                        if response.status_code == 200:
-                            result = response.json()
-                            print(f"{Colors.GREEN}✓ Optimization complete{Colors.ENDC}")
-                            print(f"  Memory: {result['initial_memory_percent']:.1f}% → {result['final_memory_percent']:.1f}%")
-                            print(f"  Freed: {result['memory_freed_mb']:.0f} MB")
-                            if result['success']:
-                                print(f"{Colors.GREEN}✓ Memory optimization successful!{Colors.ENDC}")
-                            else:
-                                print(f"{Colors.WARNING}⚠️  Could not reach target memory level{Colors.ENDC}")
-                            return
-                    else:
-                        # Run the optimizer directly
-                        from backend.memory.intelligent_memory_optimizer import IntelligentMemoryOptimizer
-                        import asyncio
-                        
-                        optimizer = IntelligentMemoryOptimizer()
-                        aggressive = mem.percent > 75
-                        
-                        success, report = asyncio.run(optimizer.optimize_for_langchain(aggressive=aggressive))
-                        
-                        print(f"\n{Colors.GREEN}✓ Optimization complete{Colors.ENDC}")
-                        print(f"  Memory: {report['initial_percent']:.1f}% → {report['final_percent']:.1f}%")
-                        print(f"  Freed: {report['memory_freed_mb']:.0f} MB")
-                        
-                        if report['actions_taken']:
-                            print(f"\nActions taken:")
-                            for action in report['actions_taken']:
-                                print(f"  - {action['strategy']}: {action['freed_mb']:.0f} MB")
-                        
-                        if success:
-                            print(f"\n{Colors.GREEN}✓ Memory optimization successful!{Colors.ENDC}")
-                        else:
-                            print(f"\n{Colors.WARNING}⚠️  Could not reach target memory level{Colors.ENDC}")
-                            print(f"Consider closing more applications manually")
-                            
-                except Exception as e:
-                    print(f"{Colors.WARNING}Advanced optimization failed: {e}{Colors.ENDC}")
-                    print(f"Falling back to basic optimization...")
-                    
-                    # Basic fallback
-                    import gc
-                    gc.collect()
-                    
-                    if platform.system() == "Darwin":
-                        subprocess.run(["pkill", "-f", "Cursor Helper"], capture_output=True)
-                        subprocess.run(["pkill", "-f", "Chrome Helper"], capture_output=True)
-                        time.sleep(2)
-                    
-                    new_mem = psutil.virtual_memory()
-                    freed_mb = (mem.used - new_mem.used) / (1024 * 1024)
-                    
-                    if freed_mb > 0:
-                        print(f"{Colors.GREEN}✓ Basic optimization freed {freed_mb:.0f} MB{Colors.ENDC}")
-            else:
-                print(f"{Colors.YELLOW}Skipping optimization. Some features may be limited.{Colors.ENDC}")
-        
-    def start_llama_cpp_server(self):
-        """Start llama.cpp server for M1 Macs"""
-        if not self.is_m1_mac:
-            return
-            
-        print(f"\n{Colors.BLUE}Checking M1 optimization setup...{Colors.ENDC}")
-        
-        # Check if llama.cpp is installed
-        if not self.check_llama_cpp_installed():
-            print(f"{Colors.WARNING}⚠️  llama.cpp not found. Run ./backend/setup_llama_m1.sh to install{Colors.ENDC}")
-            return
-            
-        # Check if model exists
-        if not self.check_llama_model_exists():
-            print(f"{Colors.WARNING}⚠️  No llama.cpp model found. Run ./backend/setup_llama_m1.sh to download{Colors.ENDC}")
-            return
-            
-        # Check if port is available
-        if not self.check_port_available(self.ports['llama_cpp']):
-            print(f"{Colors.WARNING}⚠️  Port {self.ports['llama_cpp']} is already in use (llama.cpp might already be running){Colors.ENDC}")
-            # Check if it's actually llama.cpp
-            try:
-                import requests
-                response = requests.get(f"http://localhost:{self.ports['llama_cpp']}/health", timeout=1)
-                if response.status_code == 200:
-                    print(f"{Colors.GREEN}✓ llama.cpp server already running{Colors.ENDC}")
-                    return
-            except:
-                pass
-                
-        # Start llama.cpp server
-        print(f"{Colors.CYAN}Starting llama.cpp server on port {self.ports['llama_cpp']}...{Colors.ENDC}")
-        
-        model_path = Path.home() / "Documents" / "ai-models" / "mistral-7b-instruct-v0.1.Q4_K_M.gguf"
-        
-        llama_process = subprocess.Popen(
-            [
-                "llama-server",
-                "-m", str(model_path),
-                "-c", "2048",
-                "--host", "0.0.0.0",
-                "--port", str(self.ports['llama_cpp']),
-                "-ngl", "1",
-                "--n-gpu-layers", "1"
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT
-        )
-        self.processes.append(llama_process)
-        
-        # Wait for llama.cpp to start
-        print(f"{Colors.CYAN}Waiting for llama.cpp to initialize...{Colors.ENDC}")
-        time.sleep(5)
-        
-        # Check if it started successfully
-        try:
-            import requests
-            response = requests.get(f"http://localhost:{self.ports['llama_cpp']}/health", timeout=2)
-            if response.status_code == 200:
-                print(f"{Colors.GREEN}✓ llama.cpp server started successfully{Colors.ENDC}")
-            else:
-                print(f"{Colors.WARNING}⚠️  llama.cpp server may not be ready yet{Colors.ENDC}")
-        except:
-            print(f"{Colors.WARNING}⚠️  Could not verify llama.cpp server status{Colors.ENDC}")
-    
     def start_backend_services(self):
         """Start backend services"""
         print(f"\n{Colors.BLUE}Starting backend services...{Colors.ENDC}")
         
-        # Check ports (only backend ports)
-        backend_ports = {"main_api": self.ports["main_api"], "training_api": self.ports["training_api"]}
-        for service, port in backend_ports.items():
-            if not self.check_port_available(port):
-                print(f"{Colors.WARNING}⚠️  Port {port} ({service}) is already in use{Colors.ENDC}")
-                print(f"{Colors.CYAN}Attempting to kill existing process...{Colors.ENDC}")
-                try:
-                    subprocess.run(f"lsof -ti:{port} | xargs kill -9", shell=True, capture_output=True)
-                    time.sleep(1)
-                except:
-                    pass
-        
-        # Set M1 optimization environment variables
+        # Check main API port
+        if not self.check_port_available(self.ports["main_api"]):
+            print(f"{Colors.WARNING}⚠️  Port {self.ports['main_api']} is already in use{Colors.ENDC}")
+            print(f"{Colors.CYAN}Attempting to kill existing process...{Colors.ENDC}")
+            try:
+                if platform.system() == "Darwin":
+                    subprocess.run(f"lsof -ti:{self.ports['main_api']} | xargs kill -9", 
+                                 shell=True, capture_output=True)
+                else:
+                    subprocess.run(f"fuser -k {self.ports['main_api']}/tcp", 
+                                 shell=True, capture_output=True)
+                time.sleep(1)
+            except:
+                pass
+                
+        # Set environment variables
         env = os.environ.copy()
-        env["TOKENIZERS_PARALLELISM"] = "false"
         env["PYTHONUNBUFFERED"] = "1"
-        env["OMP_NUM_THREADS"] = "1"
         
-        # Detect if running on M1 Mac
-        if platform.system() == "Darwin" and platform.machine() == "arm64":
-            print(f"{Colors.CYAN}🍎 M1 Mac detected - using optimized settings{Colors.ENDC}")
-                    
+        if self.claude_configured:
+            env["USE_CLAUDE"] = "1"
+            print(f"{Colors.CYAN}Starting Claude-powered API on port {self.ports['main_api']}...{Colors.ENDC}")
+        else:
+            env["USE_CLAUDE"] = "0"
+            print(f"{Colors.CYAN}Starting API with local models on port {self.ports['main_api']}...{Colors.ENDC}")
+            
         # Start main API
-        print(f"{Colors.CYAN}Starting main API on port {self.ports['main_api']}...{Colors.ENDC}")
-        
-        # Use the best Python (with llama-cpp-python if available)
-        python_cmd = self.python_executable
-        if self.has_real_llms:
-            print(f"{Colors.GREEN}Starting with real language model support{Colors.ENDC}")
-        
         main_api_process = subprocess.Popen(
-            [python_cmd, "run_server.py"],
+            [sys.executable, "run_server.py"],
             cwd=self.backend_dir,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,  # Combine stderr with stdout
+            stderr=subprocess.STDOUT,
             env=env
         )
         self.processes.append(main_api_process)
         
-        # Start training API (optional - may fail if dependencies missing)
+        # Wait for service to start
+        print(f"{Colors.CYAN}Waiting for API to initialize...{Colors.ENDC}")
+        time.sleep(5)
+        
+        # Check if service is running
+        if main_api_process.poll() is not None:
+            output = main_api_process.stdout.read().decode('utf-8') if main_api_process.stdout else ""
+            print(f"{Colors.FAIL}❌ Failed to start API{Colors.ENDC}")
+            if output:
+                print(f"{Colors.FAIL}Error output:{Colors.ENDC}")
+                print(output[:500])
+            self.cleanup()
+            sys.exit(1)
+            
+        print(f"{Colors.GREEN}✓ Backend API started{Colors.ENDC}")
+        
+        # Start training API only if using local models
+        if not self.claude_configured or self.use_local_models:
+            self.start_training_api()
+            
+    def start_training_api(self):
+        """Start training API for local models"""
         print(f"{Colors.CYAN}Starting training API on port {self.ports['training_api']}...{Colors.ENDC}")
         try:
-            # Check if training_interface.py exists
             if (self.backend_dir / "training_interface.py").exists():
                 training_api_process = subprocess.Popen(
-                    [self.python_executable, "training_interface.py"],
+                    [sys.executable, "training_interface.py"],
                     cwd=self.backend_dir,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
-                    env=env
+                    env=os.environ.copy()
                 )
                 self.processes.append(training_api_process)
                 
-                # Give it a moment to start
                 time.sleep(2)
                 
-                # Check if it's still running
                 if training_api_process.poll() is not None:
-                    # Read output to see what went wrong
-                    output = training_api_process.stdout.read().decode('utf-8') if training_api_process.stdout else ""
-                    if "ModuleNotFoundError" in output:
-                        print(f"{Colors.WARNING}⚠️  Training API skipped (missing dependencies){Colors.ENDC}")
-                        self.processes.remove(training_api_process)
-                    else:
-                        print(f"{Colors.WARNING}⚠️  Training API failed to start{Colors.ENDC}")
-                        if output:
-                            print(f"Error: {output[:200]}...")
-                        self.processes.remove(training_api_process)
+                    print(f"{Colors.WARNING}⚠️  Training API skipped (not available){Colors.ENDC}")
+                    self.processes.remove(training_api_process)
             else:
                 print(f"{Colors.WARNING}⚠️  Training API not found{Colors.ENDC}")
         except Exception as e:
             print(f"{Colors.WARNING}⚠️  Failed to start training API: {e}{Colors.ENDC}")
-        
-        # Wait for services to start
-        print(f"{Colors.CYAN}Waiting for services to initialize (this may take 30-60 seconds on M1)...{Colors.ENDC}")
-        time.sleep(10)
-        
-        # Check if services are running
-        for i, proc in enumerate(self.processes):
-            if proc.poll() is not None:
-                # Read output to show error
-                output = proc.stdout.read().decode('utf-8') if proc.stdout else ""
-                service_name = "Main API" if i == 0 else "Training API"
-                print(f"{Colors.FAIL}❌ Failed to start {service_name}{Colors.ENDC}")
-                if output:
-                    print(f"{Colors.FAIL}Error output:{Colors.ENDC}")
-                    print(output[:1000])
-                self.cleanup()
-                sys.exit(1)
-                
-        print(f"{Colors.GREEN}✓ Backend services started{Colors.ENDC}")
-        
+            
     def start_frontend(self):
-        """Start frontend service"""
+        """Start frontend service if needed"""
         if not self.frontend_dir.exists():
             return
             
@@ -808,99 +358,91 @@ class SystemManager:
         # Check if port is available
         if not self.check_port_available(self.ports['frontend']):
             print(f"{Colors.WARNING}⚠️  Port {self.ports['frontend']} is already in use{Colors.ENDC}")
-            print(f"{Colors.CYAN}Attempting to kill existing process...{Colors.ENDC}")
-            try:
-                subprocess.run(f"lsof -ti:{self.ports['frontend']} | xargs kill -9", shell=True, capture_output=True)
-                time.sleep(1)
-            except:
-                pass
-        
-        # Check if it's a React app or basic HTML
+            return
+            
+        # Check if it's a React app with package.json
         if (self.frontend_dir / "package.json").exists():
-            # Try to start with npm
-            if self.check_node_installed():
-                try:
-                    frontend_process = subprocess.Popen(
-                        ["npm", "start"],
-                        cwd=self.frontend_dir,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.STDOUT,
-                        env={**os.environ, "PORT": str(self.ports['frontend'])}
-                    )
-                    self.processes.append(frontend_process)
-                    print(f"{Colors.GREEN}✓ Frontend started on port {self.ports['frontend']}{Colors.ENDC}")
-                except:
-                    print(f"{Colors.WARNING}⚠️  Failed to start frontend with npm{Colors.ENDC}")
-            else:
-                # Start simple HTTP server
-                frontend_process = subprocess.Popen(
-                    [sys.executable, "-m", "http.server", str(self.ports['frontend'])],
-                    cwd=self.frontend_dir,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
-                )
-                self.processes.append(frontend_process)
-                print(f"{Colors.GREEN}✓ Frontend started on port {self.ports['frontend']}{Colors.ENDC}")
+            # Check if node_modules exists
+            if not (self.frontend_dir / "node_modules").exists():
+                print(f"{Colors.WARNING}⚠️  Frontend dependencies not installed. Run: cd frontend && npm install{Colors.ENDC}")
+                return
                 
+            print(f"{Colors.CYAN}Starting JARVIS React Interface...{Colors.ENDC}")
+            
+            # Set environment to use port 3000
+            env = os.environ.copy()
+            env["PORT"] = str(self.ports['frontend'])
+            env["BROWSER"] = "none"  # Don't auto-open browser from React
+            
+            # Start React development server
+            frontend_process = subprocess.Popen(
+                ["npm", "start"],
+                cwd=self.frontend_dir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env
+            )
+            self.processes.append(frontend_process)
+            print(f"{Colors.GREEN}✓ JARVIS Interface starting on port {self.ports['frontend']}...{Colors.ENDC}")
+            print(f"{Colors.CYAN}   Note: React may take 10-15 seconds to compile{Colors.ENDC}")
+        elif (self.frontend_dir / "index.html").exists():
+            # Fallback to simple HTTP server
+            frontend_process = subprocess.Popen(
+                [sys.executable, "-m", "http.server", str(self.ports['frontend'])],
+                cwd=self.frontend_dir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            self.processes.append(frontend_process)
+            print(f"{Colors.GREEN}✓ Frontend started on port {self.ports['frontend']}{Colors.ENDC}")
+            
     def print_access_info(self):
         """Print access information"""
         print(f"\n{Colors.HEADER}{'='*60}{Colors.ENDC}")
-        print(f"{Colors.BOLD}🎉 System is ready! Access your services at:{Colors.ENDC}")
+        print(f"{Colors.BOLD}🎉 System is ready!{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}\n")
         
         print(f"{Colors.CYAN}Main Services:{Colors.ENDC}")
-        print(f"  📱 Frontend:        http://localhost:{self.ports['frontend']}")
-        print(f"  🔌 Main API:        http://localhost:{self.ports['main_api']}")
-        print(f"  🔧 Training API:    http://localhost:{self.ports['training_api']}")
+        print(f"  🔌 API Documentation: http://localhost:{self.ports['main_api']}/docs")
+        print(f"  💬 Basic Chat:        http://localhost:{self.ports['main_api']}/")
         
-        if self.is_m1_mac:
-            print(f"  🤖 llama.cpp:       http://localhost:{self.ports['llama_cpp']} (M1 optimized)")
-        
-        print(f"\n{Colors.CYAN}Demo Interfaces:{Colors.ENDC}")
-        for name, url in self.demos.items():
-            print(f"  📄 {name.title():<15} {url}")
+        if self.frontend_dir.exists() and (self.frontend_dir / "package.json").exists():
+            print(f"  🎯 JARVIS Interface:  http://localhost:{self.ports['frontend']}/ {Colors.GREEN}← Iron Man UI{Colors.ENDC}")
+        elif self.frontend_dir.exists():
+            print(f"  📱 Frontend:          http://localhost:{self.ports['frontend']}")
             
-        if self.is_m1_mac:
-            print(f"\n{Colors.GREEN}🍎 M1 Optimization Active:{Colors.ENDC}")
-            print(f"  Using llama.cpp for native M1 performance")
-            print(f"  No PyTorch bus errors!")
-        
-        if self.has_real_llms:
-            print(f"\n{Colors.GREEN}🤖 Real Language Models Active:{Colors.ENDC}")
-            print(f"  TinyLlama - Fast responses for simple queries")
-            print(f"  Phi-2 - Code generation and standard tasks")
-            print(f"  Mistral-7B - Complex analysis and reasoning")
+        if not self.claude_configured or self.use_local_models:
+            print(f"  🔧 Training API:      http://localhost:{self.ports['training_api']}")
             
+        if self.claude_configured:
+            print(f"\n{Colors.GREEN}✨ Using Claude API:{Colors.ENDC}")
+            print(f"  • No local memory usage")
+            print(f"  • Superior language understanding")
+            print(f"  • Fast responses")
+            print(f"  • 200k token context window")
+        else:
+            print(f"\n{Colors.YELLOW}💻 Using Local Models:{Colors.ENDC}")
+            print(f"  • Running on your machine")
+            print(f"  • No API costs")
+            print(f"  • Privacy-focused")
+            
+            if not self.memory_warned:
+                print(f"\n{Colors.CYAN}💡 Tip: For better performance on M1 Macs,{Colors.ENDC}")
+                print(f"   consider using Claude API!")
+                
         print(f"\n{Colors.WARNING}Press Ctrl+C to stop all services{Colors.ENDC}")
-        
-        # Show memory warning if applicable
-        if self.memory_warned:
-            print(f"\n{Colors.YELLOW}⚠️  Note: High memory usage detected. Some features may be limited.{Colors.ENDC}")
-            print(f"{Colors.YELLOW}   Options to free memory:{Colors.ENDC}")
-            print(f"{Colors.YELLOW}   - curl -X POST http://localhost:8000/chat/optimize-memory{Colors.ENDC}")
-            print(f"{Colors.YELLOW}   - python optimize_memory_advanced.py --interactive{Colors.ENDC}")
-        
-        print()
         
     def cleanup(self):
         """Cleanup processes on exit"""
         print(f"\n{Colors.BLUE}Shutting down services...{Colors.ENDC}")
         for proc in self.processes:
             try:
-                # Handle both subprocess.Popen and asyncio.subprocess.Process
-                if hasattr(proc, 'poll'):
-                    # Regular subprocess.Popen
-                    if proc.poll() is None:
-                        proc.terminate()
-                        try:
-                            proc.wait(timeout=5)
-                        except subprocess.TimeoutExpired:
-                            proc.kill()
-                elif hasattr(proc, 'returncode'):
-                    # asyncio.subprocess.Process
-                    if proc.returncode is None:
-                        proc.terminate()
-                        # Can't wait synchronously on async process
+                if proc.poll() is None:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
             except Exception as e:
                 print(f"{Colors.WARNING}Warning during cleanup: {e}{Colors.ENDC}")
         print(f"{Colors.GREEN}✓ All services stopped{Colors.ENDC}")
@@ -910,43 +452,49 @@ class SystemManager:
         self.cleanup()
         sys.exit(0)
         
-    def run(self, skip_install: bool = False, open_browser: bool = True):
+    def run(self, skip_install: bool = False, open_browser: bool = True, force_local: bool = False):
         """Run the system"""
         # Setup signal handler
         signal.signal(signal.SIGINT, self.handle_signal)
         
+        # Force local models if requested
+        if force_local:
+            self.use_local_models = True
+            self.claude_configured = False
+            
         # Print header
         self.print_header()
         
         # Check Python version
         self.check_python_version()
         
-        # Install dependencies
+        # Check dependencies
         if not skip_install:
-            self.install_backend_dependencies()
-            self.setup_frontend()
+            # Check Claude setup if configured
+            if self.claude_configured and not force_local:
+                if not self.check_claude_setup():
+                    print(f"\n{Colors.WARNING}Claude setup incomplete. Falling back to local models.{Colors.ENDC}")
+                    self.claude_configured = False
+                    
+            # Check essential dependencies
+            if not self.check_essential_dependencies():
+                print(f"\n{Colors.FAIL}❌ Missing essential dependencies. Please install required packages.{Colors.ENDC}")
+                sys.exit(1)
+                
+            # Check optional dependencies if using local models
+            if not self.claude_configured or self.use_local_models:
+                self.check_optional_dependencies()
         else:
             print(f"{Colors.WARNING}⚠️  Skipping dependency installation{Colors.ENDC}")
             
-        # Create directories
-        self.create_directories()
-        
-        # Check for language models if real LLMs are available
-        if self.has_real_llms:
-            self.check_language_models()
-        
         # Check memory status
         memory_ok = self.check_memory_status()
-        
-        # Offer memory optimization if needed
-        if not skip_install:  # Only offer during full startup
-            self.optimize_memory_if_needed()
-        elif not memory_ok:
-            print(f"\n{Colors.WARNING}⚠️  Consider running with --optimize-memory flag{Colors.ENDC}")
-        
-        # Start llama.cpp for M1 Macs
-        if self.is_m1_mac:
-            self.start_llama_cpp_server()
+        if not memory_ok and not self.claude_configured:
+            print(f"\n{Colors.FAIL}❌ Insufficient memory for local models{Colors.ENDC}")
+            sys.exit(1)
+            
+        # Create directories
+        self.create_directories()
         
         # Start services
         self.start_backend_services()
@@ -958,7 +506,13 @@ class SystemManager:
         # Open browser if requested
         if open_browser:
             time.sleep(2)
-            webbrowser.open(f"http://localhost:{self.ports['frontend']}")
+            # Prefer JARVIS interface if available
+            if self.frontend_dir.exists() and (self.frontend_dir / "package.json").exists():
+                print(f"{Colors.CYAN}Opening JARVIS Interface in browser...{Colors.ENDC}")
+                time.sleep(8)  # Give React more time to compile
+                webbrowser.open(f"http://localhost:{self.ports['frontend']}/")
+            else:
+                webbrowser.open(f"http://localhost:{self.ports['main_api']}/docs")
             
         # Keep running
         try:
@@ -967,151 +521,17 @@ class SystemManager:
                 # Check if processes are still running
                 for i, proc in enumerate(self.processes):
                     if proc.poll() is not None:
-                        # Read the output to see what went wrong
-                        output = proc.stdout.read().decode('utf-8') if proc.stdout else ""
-                        
-                        # Determine service name
-                        if self.is_m1_mac and len(self.processes) > 3:
-                            # With llama.cpp: 0=llama, 1=main, 2=training, 3=frontend
-                            service_names = ["llama.cpp", "Main API", "Training API", "Frontend"]
-                        else:
-                            # Without llama.cpp: 0=main, 1=training, 2=frontend
-                            service_names = ["Main API", "Training API", "Frontend"]
-                        
+                        service_names = ["Main API", "Training API", "Frontend"]
                         service_name = service_names[i] if i < len(service_names) else f"Service {i}"
                         
-                        print(f"{Colors.FAIL}❌ {service_name} has stopped unexpectedly{Colors.ENDC}")
+                        output = proc.stdout.read().decode('utf-8') if proc.stdout else ""
+                        print(f"{Colors.FAIL}❌ {service_name} stopped unexpectedly{Colors.ENDC}")
                         if output:
-                            print(f"{Colors.FAIL}Error output:{Colors.ENDC}")
-                            print(output[:500])  # Show first 500 chars of error
-                        
+                            print(f"{Colors.FAIL}Error:{Colors.ENDC}")
+                            print(output[:500])
+                            
         except KeyboardInterrupt:
             pass
-
-    # Async methods for better performance
-    async def install_backend_dependencies_async(self):
-        """Install backend Python dependencies asynchronously"""
-        print(f"\n{Colors.BLUE}Checking backend dependencies (async)...{Colors.ENDC}")
-        
-        requirements_file = self.backend_dir / "requirements.txt"
-        if not requirements_file.exists():
-            print(f"{Colors.WARNING}⚠️  requirements.txt not found in backend directory{Colors.ENDC}")
-            return
-        
-        # Check for missing dependencies
-        missing = self.check_missing_dependencies()
-        
-        if not missing:
-            print(f"{Colors.GREEN}✓ All backend dependencies already installed{Colors.ENDC}")
-        else:
-            print(f"{Colors.CYAN}Found {len(missing)} missing dependencies{Colors.ENDC}")
-            print(f"{Colors.BLUE}Installing missing dependencies asynchronously...{Colors.ENDC}")
-            
-            try:
-                # Install missing dependencies in parallel (batches of 5)
-                batch_size = 5
-                for i in range(0, len(missing), batch_size):
-                    batch = missing[i:i + batch_size]
-                    tasks = []
-                    
-                    for dep in batch:
-                        print(f"  Installing: {dep}")
-                        proc = await asyncio.create_subprocess_exec(
-                            sys.executable, "-m", "pip", "install", dep,
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.PIPE
-                        )
-                        tasks.append(proc.communicate())
-                    
-                    # Wait for batch to complete
-                    await asyncio.gather(*tasks)
-                
-                print(f"{Colors.GREEN}✓ Missing dependencies installed{Colors.ENDC}")
-                
-            except Exception as e:
-                print(f"{Colors.FAIL}❌ Failed to install dependencies: {e}{Colors.ENDC}")
-                sys.exit(1)
-    
-    async def start_backend_services_async(self):
-        """Start backend services asynchronously"""
-        print(f"\n{Colors.CYAN}Starting backend services...{Colors.ENDC}")
-        
-        # Start main API
-        main_api_cmd = [
-            sys.executable,
-            "-m", "uvicorn",
-            "main:app",
-            "--host", "0.0.0.0",
-            "--port", str(self.ports['main_api'])
-        ]
-        
-        proc = await asyncio.create_subprocess_exec(
-            *main_api_cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(self.backend_dir)
-        )
-        self.processes.append(proc)
-        print(f"{Colors.GREEN}✓ Main API started on port {self.ports['main_api']}{Colors.ENDC}")
-    
-    async def monitor_services_async(self):
-        """Monitor services asynchronously"""
-        while True:
-            await asyncio.sleep(1)
-            # Check if processes are still running
-            for i, proc in enumerate(self.processes):
-                if isinstance(proc, asyncio.subprocess.Process) and proc.returncode is not None:
-                    service_names = ["Main API", "Training API", "Frontend"]
-                    service_name = service_names[i] if i < len(service_names) else f"Service {i}"
-                    print(f"{Colors.FAIL}❌ {service_name} has stopped unexpectedly{Colors.ENDC}")
-                    self.cleanup()
-                    sys.exit(1)
-    
-    async def run_async(self, skip_install: bool = False, open_browser: bool = True):
-        """Run the system asynchronously"""
-        try:
-            # Show header
-            self.print_header()
-            
-            # Check Python version
-            self.check_python_version()
-            
-            # Install dependencies unless skipped
-            if not skip_install:
-                await self.install_backend_dependencies_async()
-                # Keep frontend setup sync for now
-                self.setup_frontend()
-            else:
-                print(f"\n{Colors.WARNING}Skipping dependency installation (--skip-install flag){Colors.ENDC}")
-            
-            # Create necessary directories
-            self.create_directories()
-            
-            # Start services
-            await self.start_backend_services_async()
-            # Keep frontend sync for now
-            self.start_frontend()
-            
-            # Show status
-            self.print_access_info()
-            
-            # Open browser if requested
-            if open_browser:
-                await asyncio.sleep(3)
-                webbrowser.open(f"http://localhost:{self.ports['frontend']}")
-            
-            # Monitor services
-            print(f"\n{Colors.GREEN}System is running! Press Ctrl+C to stop all services.{Colors.ENDC}")
-            
-            await self.monitor_services_async()
-                        
-        except KeyboardInterrupt:
-            print(f"\n{Colors.WARNING}Shutting down...{Colors.ENDC}")
-            self.cleanup()
-        except Exception as e:
-            print(f"\n{Colors.FAIL}Error: {e}{Colors.ENDC}")
-            self.cleanup()
-            sys.exit(1)
 
 
 def main():
@@ -1128,206 +548,60 @@ def main():
         help="Don't open browser automatically"
     )
     parser.add_argument(
-        "--backend-only",
+        "--force-local",
         action="store_true",
-        help="Start only backend services"
+        help="Force local model mode even if Claude is configured"
     )
     parser.add_argument(
-        "--async-mode",
+        "--claude-only",
         action="store_true",
-        help="Use async mode for better performance"
+        help="Run in Claude-only mode (fail if not configured)"
     )
     parser.add_argument(
-        "--check-deps",
+        "--check-only",
         action="store_true",
-        help="Check dependencies and exit"
-    )
-    parser.add_argument(
-        "--optimize-memory",
-        action="store_true",
-        help="Run memory optimization before starting"
-    )
-    parser.add_argument(
-        "--memory-status",
-        action="store_true",
-        help="Check memory status and exit"
-    )
-    parser.add_argument(
-        "--force-langchain",
-        action="store_true",
-        help="Aggressively optimize memory to enable LangChain"
+        help="Check setup and exit"
     )
     
     args = parser.parse_args()
     
     # Create and run system manager
-    manager = SystemManager()
+    manager = UnifiedSystemManager()
     
-    # Check dependencies only
-    if args.check_deps:
+    if args.check_only:
         manager.print_header()
-        print(f"{Colors.BLUE}Checking dependencies...{Colors.ENDC}\n")
+        manager.check_python_version()
         
-        # Check installed packages
-        installed = manager.check_installed_packages()
-        print(f"{Colors.GREEN}✓ Found {len(installed)} installed packages{Colors.ENDC}")
+        all_good = True
         
-        # Check missing dependencies
-        missing = manager.check_missing_dependencies()
-        if missing:
-            print(f"{Colors.WARNING}⚠️  Found {len(missing)} missing dependencies:{Colors.ENDC}")
-            for dep in missing[:10]:  # Show first 10
-                print(f"    - {dep}")
-            if len(missing) > 10:
-                print(f"    ... and {len(missing) - 10} more")
-        else:
-            print(f"{Colors.GREEN}✓ All required dependencies are installed{Colors.ENDC}")
-        
-        # Check NLTK data
-        try:
-            import nltk
-            nltk_data_path = Path.home() / "nltk_data"
-            if nltk_data_path.exists():
-                print(f"{Colors.GREEN}✓ NLTK data found at {nltk_data_path}{Colors.ENDC}")
+        if manager.claude_configured:
+            if manager.check_claude_setup() and manager.check_essential_dependencies():
+                print(f"\n{Colors.GREEN}✅ Claude mode ready!{Colors.ENDC}")
             else:
-                print(f"{Colors.WARNING}⚠️  NLTK data not found{Colors.ENDC}")
-        except ImportError:
-            print(f"{Colors.WARNING}⚠️  NLTK not installed - NLP features limited{Colors.ENDC}")
-        except Exception as e:
-            print(f"{Colors.WARNING}⚠️  NLTK check error: {e}{Colors.ENDC}")
-        
-        # Check spaCy model
-        try:
-            import spacy
-            try:
-                spacy.load("en_core_web_sm")
-                print(f"{Colors.GREEN}✓ spaCy model 'en_core_web_sm' is installed{Colors.ENDC}")
-            except OSError:
-                print(f"{Colors.WARNING}⚠️  spaCy model 'en_core_web_sm' not installed{Colors.ENDC}")
-        except ImportError:
-            print(f"{Colors.WARNING}⚠️  spaCy not installed{Colors.ENDC}")
-        
-        # Check LangChain
-        if 'langchain' in installed:
-            print(f"{Colors.GREEN}✓ LangChain {installed['langchain']} is installed{Colors.ENDC}")
+                all_good = False
         else:
-            print(f"{Colors.WARNING}⚠️  LangChain not installed{Colors.ENDC}")
-        
-        # Check llama-cpp-python
-        if 'llama-cpp-python' in installed or 'llama_cpp_python' in installed:
-            print(f"{Colors.GREEN}✓ llama-cpp-python is installed{Colors.ENDC}")
-        else:
-            print(f"{Colors.WARNING}⚠️  llama-cpp-python not installed{Colors.ENDC}")
-        
-        # Check if M1 Mac
-        if manager.is_m1_mac:
-            print(f"\n{Colors.CYAN}🍎 M1 Mac detected{Colors.ENDC}")
-            if manager.check_llama_cpp_installed():
-                print(f"{Colors.GREEN}✓ llama.cpp is installed{Colors.ENDC}")
+            if manager.check_essential_dependencies() and manager.check_optional_dependencies():
+                print(f"\n{Colors.GREEN}✅ Local mode ready!{Colors.ENDC}")
             else:
-                print(f"{Colors.WARNING}⚠️  llama.cpp not installed{Colors.ENDC}")
+                all_good = False
+                
+        if not all_good:
+            print(f"\n{Colors.FAIL}❌ Some checks failed. Please fix issues above.{Colors.ENDC}")
             
-            if manager.check_llama_model_exists():
-                print(f"{Colors.GREEN}✓ Mistral model found{Colors.ENDC}")
-            else:
-                print(f"{Colors.WARNING}⚠️  Mistral model not found{Colors.ENDC}")
+        sys.exit(0 if all_good else 1)
         
-        sys.exit(0)
-    
-    # Check memory status only
-    if args.memory_status:
-        manager.print_header()
-        manager.check_memory_status()
+    if args.claude_only:
+        if not manager.claude_configured:
+            print(f"{Colors.FAIL}❌ Claude not configured. Please set ANTHROPIC_API_KEY.{Colors.ENDC}")
+            sys.exit(1)
+        args.force_local = False
         
-        # Show optimization suggestions if memory is high
-        mem = psutil.virtual_memory()
-        if mem.percent > 50:
-            print(f"\n{Colors.CYAN}For full LangChain features, memory should be < 50%{Colors.ENDC}")
-            manager.suggest_memory_optimization()
-        
-        sys.exit(0)
-    
-    # Run memory optimization if requested
-    if args.optimize_memory:
-        manager.print_header()
-        print(f"{Colors.BLUE}Running memory optimization...{Colors.ENDC}")
-        
-        # Force optimization even if memory isn't critical
-        mem = psutil.virtual_memory()
-        print(f"Current memory usage: {mem.percent:.1f}%")
-        
-        if mem.percent < 50:
-            print(f"{Colors.GREEN}✓ Memory usage is already optimal!{Colors.ENDC}")
-        else:
-            # Run optimization
-            old_optimize = manager.optimize_memory_if_needed
-            # Temporarily lower threshold to force optimization
-            manager.optimize_memory_if_needed = lambda: old_optimize()
-            manager.optimize_memory_if_needed()
-        
-        print()
-        # Continue with startup after optimization
-    
-    # Force LangChain mode with aggressive optimization
-    if args.force_langchain:
-        manager.print_header()
-        print(f"{Colors.BOLD}🚀 Force LangChain Mode{Colors.ENDC}")
-        print(f"{Colors.CYAN}This will aggressively optimize memory to enable LangChain features{Colors.ENDC}")
-        
-        mem = psutil.virtual_memory()
-        print(f"\nCurrent memory usage: {mem.percent:.1f}%")
-        print(f"Target memory usage: < 45%")
-        
-        if mem.percent <= 45:
-            print(f"{Colors.GREEN}✓ Memory already optimal for LangChain!{Colors.ENDC}")
-        else:
-            confirm = input(f"\n{Colors.WARNING}This will close applications to free memory. Continue? (y/N): {Colors.ENDC}").strip().lower()
-            if confirm == 'y':
-                try:
-                    from backend.memory.intelligent_memory_optimizer import IntelligentMemoryOptimizer
-                    import asyncio
-                    
-                    print(f"\n{Colors.CYAN}Running aggressive memory optimization...{Colors.ENDC}")
-                    optimizer = IntelligentMemoryOptimizer()
-                    optimizer.target_memory_percent = 40  # Even more aggressive target
-                    
-                    success, report = asyncio.run(optimizer.optimize_for_langchain(aggressive=True))
-                    
-                    print(f"\n{Colors.GREEN}Optimization complete:{Colors.ENDC}")
-                    print(f"  Memory: {report['initial_percent']:.1f}% → {report['final_percent']:.1f}%")
-                    print(f"  Freed: {report['memory_freed_mb']:.0f} MB")
-                    
-                    if success:
-                        print(f"\n{Colors.GREEN}✅ LangChain mode enabled!{Colors.ENDC}")
-                        # Set environment variable to prefer LangChain
-                        os.environ["PREFER_LANGCHAIN"] = "1"
-                    else:
-                        print(f"\n{Colors.WARNING}⚠️  Could not reach target. Manual intervention needed.{Colors.ENDC}")
-                        print(f"Please close more applications and try again.")
-                        sys.exit(0)
-                        
-                except Exception as e:
-                    print(f"{Colors.FAIL}Error during optimization: {e}{Colors.ENDC}")
-                    sys.exit(1)
-            else:
-                print(f"{Colors.YELLOW}Cancelled. Starting with current memory state.{Colors.ENDC}")
-        
-        print()
-        # Continue with startup after optimization
-    
     try:
-        if args.async_mode:
-            # Run in async mode
-            asyncio.run(manager.run_async(
-                skip_install=args.skip_install,
-                open_browser=not args.no_browser
-            ))
-        else:
-            # Run in sync mode (default)
-            manager.run(
-                skip_install=args.skip_install,
-                open_browser=not args.no_browser
-            )
+        manager.run(
+            skip_install=args.skip_install,
+            open_browser=not args.no_browser,
+            force_local=args.force_local
+        )
     except Exception as e:
         print(f"{Colors.FAIL}❌ Error: {e}{Colors.ENDC}")
         manager.cleanup()
