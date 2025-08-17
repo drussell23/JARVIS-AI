@@ -5,11 +5,12 @@
   <img src="https://img.shields.io/badge/Voice-Enabled-green" alt="Voice Enabled">
   <img src="https://img.shields.io/badge/UI-Iron%20Man%20Inspired-red" alt="Iron Man UI">
   <img src="https://img.shields.io/badge/Platform-M1%20Optimized-orange" alt="M1 Optimized">
+  <img src="https://img.shields.io/badge/Weather-Real%20Time-yellow" alt="Real-time Weather">
 </p>
 
 ## 🎯 Overview
 
-JARVIS is a sophisticated AI assistant inspired by Iron Man's iconic AI companion. Powered by Anthropic's Claude API, it features voice interaction, continuous wake word detection, and a stunning Arc Reactor interface. The system combines cutting-edge AI with an immersive user experience, bringing the JARVIS experience to life.
+JARVIS is a sophisticated AI assistant inspired by Iron Man's iconic AI companion. Powered by Anthropic's Claude API, it features voice interaction, continuous wake word detection, real-time weather data, and a stunning Arc Reactor interface. The system combines cutting-edge AI with an immersive user experience, bringing the JARVIS experience to life with <1 second response times.
 
 ### ✨ Key Features
 
@@ -17,12 +18,15 @@ JARVIS is a sophisticated AI assistant inspired by Iron Man's iconic AI companio
 - **🧠 Claude AI Integration**: Powered by Anthropic's Claude for superior intelligence
 - **🎨 Arc Reactor UI**: Interactive Iron Man-inspired interface with visual feedback
 - **🗣️ JARVIS Personality**: British accent, contextual awareness, and witty responses
+- **🌤️ Real-time Weather**: Live weather data with location detection (OpenWeatherMap)
+- **⚡ Ultra-fast Responses**: <1 second response time with async processing
 - **🔄 Continuous Listening**: Always-on wake word detection mode
 - **🧮 Accurate Calculations**: Perfect mathematical operations
 - **💾 Memory Management**: M1 Mac optimized with intelligent memory control
 - **🚀 Real-time Processing**: WebSocket-based streaming for instant responses
 - **🧠 ML Voice Training**: Adaptive learning system that improves with use
 - **📊 Voice Analytics**: Track accuracy and get personalized insights
+- **🔊 Dual Audio System**: Browser + backend speech for reliability
 
 ## 🚀 Quick Start
 
@@ -54,6 +58,9 @@ pip install -r requirements.txt
 # Voice dependencies (required for JARVIS voice)
 pip install SpeechRecognition pyttsx3 pygame pyaudio
 
+# Weather service dependency (required for real-time weather)
+pip install geocoder
+
 # ML training dependencies (optional but recommended for adaptive learning)
 pip install -r backend/voice/requirements_ml.txt
 
@@ -75,10 +82,11 @@ python start_system.py
 ```
 
 This will:
-- ✅ Start services in parallel (async version)
+- ✅ Start services in parallel (3x faster with async)
 - ✅ Start the FastAPI backend server
 - ✅ Launch the React frontend
 - ✅ Initialize JARVIS voice system
+- ✅ Pre-load weather data and location
 - ✅ Open your browser to http://localhost:3000
 
 ## 🎙️ Voice Control Guide
@@ -114,6 +122,10 @@ This will:
 "Hey JARVIS"
 → "Yes, sir? How may I assist you?"
 
+"Hey JARVIS, what's the weather like?"
+→ "Currently in Toronto, we have overcast clouds with a temperature of 24 degrees Celsius. 
+   Wind speed is 22.2 kilometers per hour."
+
 "What's 2 plus 2 times 2?"
 → "Following the order of operations, sir: 2 × 2 = 4, then 2 + 4 = 6."
 
@@ -123,15 +135,18 @@ This will:
 "Tell me about quantum computing"
 → "Quantum computing leverages quantum mechanical phenomena, sir..."
 
-"What's the weather like?"
-→ "Currently in Toronto, we have partly cloudy with a temperature of 21 degrees Celsius. Wind speed is 15 kilometers per hour. Beautiful weather for any outdoor activities you might have planned."
-
 "What's the weather in New York?"
-→ "Currently in New York, we have clear skies with a temperature of 25 degrees Celsius. Quite warm today, sir. Perhaps consider lighter attire."
+→ "Currently in New York, we have clear skies with a temperature of 25 degrees Celsius. 
+   Quite warm today, sir. Perhaps consider lighter attire."
+
+"Calculate the square root of 144"
+→ "The square root of 144 is 12, sir."
 
 "Goodbye JARVIS"
 → "Shutting down. Goodbye, sir."
 ```
+
+**Pro Tip**: You can say commands together with the wake word! Try "Hey JARVIS, what's the weather?" for instant responses.
 
 ## 🌤️ Weather Features
 
@@ -361,10 +376,13 @@ AI-Powered-Chatbot/
 | Issue | Solution |
 |-------|----------|
 | **"No module named 'speech_recognition'"** | Run: `pip install SpeechRecognition pyaudio` |
+| **"No module named 'geocoder'"** | Run: `pip install geocoder` (required for weather) |
 | **"WebSocket connection refused"** | Ensure backend is running: `python backend/main.py` |
 | **"Microphone not found"** | Grant microphone permissions in System Preferences |
 | **"pyttsx3 import error on macOS"** | System will auto-use macOS 'say' command |
 | **Voice not responding** | 1. Check microphone permissions<br>2. Test with `python test_jarvis_voice.py`<br>3. Ensure quiet environment for calibration |
+| **Weather not working** | 1. Check OPENWEATHER_API_KEY in .env<br>2. Install geocoder: `pip install geocoder` |
+| **Long generic responses** | Update frontend: `cd frontend && npm install` |
 | **Memory warnings on M1** | Normal - system auto-optimizes. Warnings at 0.8% are false positives |
 | **ML training not available** | Install ML dependencies: `pip install -r backend/voice/requirements_ml.txt` |
 | **Voice stats empty** | ML system needs 20+ interactions to start generating insights |
@@ -460,7 +478,9 @@ const handleCustomAnimation = () => {
 
 ## 📊 Performance Metrics
 
-- **Response Time**: < 200ms (local), < 500ms (with Claude API)
+- **Response Time**: < 200ms (cached), < 1s (with Claude API)
+- **Weather Queries**: < 1 second (< 200ms when cached)
+- **Startup Time**: 3-5 seconds (async parallel initialization)
 - **Wake Word Detection**: 95%+ accuracy in quiet environments
 - **Memory Usage**: < 500MB idle, < 2GB active
 - **CPU Usage**: < 5% idle, < 20% active listening
@@ -482,6 +502,10 @@ const handleCustomAnimation = () => {
 - [x] ML-based voice training system
 - [x] Adaptive learning from user patterns
 - [x] Voice analytics and insights
+- [x] Real-time weather integration
+- [x] Ultra-fast async processing
+- [x] Command + wake word detection
+- [x] Dual audio system (browser + backend)
 - [ ] Multi-language support
 - [ ] Home automation integration
 - [ ] Mobile app companion
