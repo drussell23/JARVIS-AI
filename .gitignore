@@ -73,3 +73,7 @@ backend/logs/
 backend/faiss_index/
 backend/chroma_db/
 backend/knowledge_base/
+
+# Archived local model files (no longer used)
+backend/chatbots/_archived_local_models/
+archived_local_models/
