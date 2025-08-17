@@ -292,31 +292,55 @@ class JARVISVoiceAPI:
                     # Process voice command
                     command_text = data.get("text", "")
                     
-                    # Send acknowledgment
+                    # Handle activation command specially
+                    if command_text.lower() == "activate":
+                        # Speak activation response on backend
+                        if hasattr(self.jarvis, 'voice_engine') and hasattr(self.jarvis.voice_engine, 'speak'):
+                            try:
+                                await asyncio.to_thread(self.jarvis.voice_engine.speak, "Yes, sir?")
+                            except Exception as e:
+                                logger.warning(f"Backend activation speech failed: {e}")
+                    
+                    # Send acknowledgment immediately
                     await websocket.send_json({
                         "type": "processing",
-                        "message": "Processing your request...",
                         "timestamp": datetime.now().isoformat()
                     })
                     
-                    # Process with JARVIS
-                    # Create a VoiceCommand object for the personality
+                    # Process with JARVIS - FAST
                     voice_command = VoiceCommand(
                         raw_text=command_text,
-                        confidence=0.9,  # High confidence for text commands
+                        confidence=0.9,
                         intent="conversation",
                         needs_clarification=False
                     )
-                    response = await self.jarvis.personality.process_voice_command(voice_command)
                     
-                    # Send response
+                    # Process command and get context in parallel
+                    response_task = asyncio.create_task(
+                        self.jarvis.personality.process_voice_command(voice_command)
+                    )
+                    context_task = asyncio.create_task(
+                        asyncio.to_thread(self.jarvis.personality._get_context_info)
+                    )
+                    
+                    response = await response_task
+                    context = await context_task
+                    
+                    # Send response immediately
                     await websocket.send_json({
                         "type": "response",
                         "text": response,
                         "command": command_text,
-                        "context": self.jarvis.personality._get_context_info(),
+                        "context": context,
                         "timestamp": datetime.now().isoformat()
                     })
+                    
+                    # Also speak on backend if on macOS
+                    if hasattr(self.jarvis, 'voice_engine') and hasattr(self.jarvis.voice_engine, 'speak'):
+                        try:
+                            await asyncio.to_thread(self.jarvis.voice_engine.speak, response)
+                        except Exception as e:
+                            logger.warning(f"Backend speech failed: {e}")
                     
                 elif data.get("type") == "audio":
                     # Handle audio data (base64 encoded)

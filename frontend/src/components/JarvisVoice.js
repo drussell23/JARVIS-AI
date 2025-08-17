@@ -114,11 +114,16 @@ const JarvisVoice = () => {
         break;
       case 'processing':
         setIsProcessing(true);
+        // Don't cancel speech here - it might cancel the wake word response
         break;
       case 'response':
         setResponse(data.text);
         setIsProcessing(false);
-        speakResponse(data.text);
+        // Try frontend speech, but backend will also speak
+        console.log('Response received, attempting speech...');
+        requestAnimationFrame(() => {
+          speakResponse(data.text);
+        });
         break;
       case 'error':
         setError(data.message);
@@ -340,60 +345,137 @@ const JarvisVoice = () => {
     }
   };
 
-  const speakResponse = (text) => {
-    // Use browser's speech synthesis
-    if ('speechSynthesis' in window) {
-      // Cancel any ongoing speech
-      speechSynthesis.cancel();
-      
-      const utterance = new SpeechSynthesisUtterance(text);
-      
-      // Get available voices
+  // Pre-select voice for faster speech
+  const [selectedVoice, setSelectedVoice] = useState(null);
+  
+  useEffect(() => {
+    // Pre-select the best voice once
+    const selectBestVoice = () => {
       const voices = speechSynthesis.getVoices();
+      console.log('Available voices:', voices.length);
       
-      // Preferred voices in order (avoiding Siri)
+      if (voices.length === 0) {
+        // Try again after a delay
+        setTimeout(selectBestVoice, 100);
+        return;
+      }
+      
       const preferredVoices = [
-        'Daniel', // British male
-        'Oliver', // British male
-        'Google UK English Male',
-        'Microsoft David - English (United States)',
-        'Alex', // macOS default male
+        'Daniel', 'Oliver', 'Google UK English Male',
+        'Microsoft David - English (United States)', 'Alex',
+        'Google US English', 'Microsoft Mark', 'Fred'
       ];
       
-      // Find best available voice
-      let selectedVoice = null;
+      let voiceSelected = false;
       for (const preferredName of preferredVoices) {
-        selectedVoice = voices.find(voice => 
-          voice.name.includes(preferredName) && !voice.name.includes('Siri')
+        const voice = voices.find(v => 
+          v.name.includes(preferredName) && !v.name.includes('Siri')
         );
-        if (selectedVoice) break;
+        if (voice) {
+          setSelectedVoice(voice);
+          console.log('Selected voice:', voice.name);
+          voiceSelected = true;
+          break;
+        }
       }
       
-      // Fallback to any British voice
-      if (!selectedVoice) {
-        selectedVoice = voices.find(voice => 
-          voice.lang.includes('en-GB') && !voice.name.includes('Siri')
-        );
+      // If no preferred voice found, use any English voice
+      if (!voiceSelected) {
+        const englishVoice = voices.find(v => v.lang.startsWith('en'));
+        if (englishVoice) {
+          setSelectedVoice(englishVoice);
+          console.log('Using fallback English voice:', englishVoice.name);
+        }
       }
-      
-      // Fallback to any English male voice
-      if (!selectedVoice) {
-        selectedVoice = voices.find(voice => 
-          voice.lang.includes('en') && 
-          (voice.name.includes('Male') || voice.name.includes('David') || voice.name.includes('Daniel')) &&
-          !voice.name.includes('Siri')
-        );
-      }
-      
-      if (selectedVoice) {
-        utterance.voice = selectedVoice;
-      }
-      
-      utterance.rate = 0.9;
-      utterance.pitch = 0.95;
-      
-      speechSynthesis.speak(utterance);
+    };
+    
+    // Initial attempt
+    selectBestVoice();
+    
+    // Also listen for voice changes
+    speechSynthesis.onvoiceschanged = selectBestVoice;
+    
+    // Force load voices
+    speechSynthesis.getVoices();
+  }, []);
+  
+  // Create a queue for speech to prevent overlapping
+  const speechQueueRef = useRef([]);
+  const isSpeakingRef = useRef(false);
+  
+  const processSpeechQueue = () => {
+    if (isSpeakingRef.current || speechQueueRef.current.length === 0) {
+      return;
     }
+    
+    const { text, voice } = speechQueueRef.current.shift();
+    isSpeakingRef.current = true;
+    
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    if (voice) {
+      utterance.voice = voice;
+    }
+    
+    utterance.rate = 1.0;
+    utterance.pitch = 0.95;
+    utterance.volume = 1.0;
+    
+    utterance.onstart = () => {
+      console.log('Speech started:', text);
+    };
+    
+    utterance.onend = () => {
+      console.log('Speech ended');
+      isSpeakingRef.current = false;
+      // Process next in queue
+      setTimeout(processSpeechQueue, 100);
+    };
+    
+    utterance.onerror = (event) => {
+      console.error('Speech error:', event.error);
+      isSpeakingRef.current = false;
+      
+      // Retry once if not a fatal error
+      if (event.error === 'canceled' && speechQueueRef.current.length === 0) {
+        console.log('Retrying speech...');
+        setTimeout(() => {
+          speechQueueRef.current.unshift({ text, voice });
+          processSpeechQueue();
+        }, 200);
+      } else {
+        // Process next in queue
+        setTimeout(processSpeechQueue, 100);
+      }
+    };
+    
+    // Clear any pending speech and speak
+    speechSynthesis.cancel();
+    setTimeout(() => {
+      try {
+        speechSynthesis.speak(utterance);
+        console.log('Speech initiated');
+      } catch (error) {
+        console.error('Speech failed:', error);
+        isSpeakingRef.current = false;
+      }
+    }, 100);
+  };
+  
+  const speakResponse = (text) => {
+    if (!('speechSynthesis' in window)) {
+      console.error('Speech synthesis not supported');
+      return;
+    }
+    
+    console.log('Queueing speech:', text);
+    console.log('Using voice:', selectedVoice?.name || 'default');
+    
+    // Add to queue
+    speechQueueRef.current.push({ text, voice: selectedVoice });
+    
+    // Process queue
+    processSpeechQueue();
   };
 
   return (
@@ -479,6 +561,58 @@ const JarvisVoice = () => {
       <div className="voice-tips">
         <p>Click "Start Listening" then say "Hey JARVIS" to activate</p>
         <p>Available commands: weather, time, calculations, reminders</p>
+        
+        {/* Debug audio buttons */}
+        <div style={{ marginTop: '10px' }}>
+          <button 
+            onClick={() => {
+              console.log('Testing speech with queue...');
+              speakResponse('Testing JARVIS voice. Can you hear me, sir?');
+            }}
+            style={{
+              padding: '5px 10px',
+              marginRight: '10px',
+              background: '#444',
+              border: '1px solid #666',
+              color: '#fff',
+              cursor: 'pointer',
+              borderRadius: '4px'
+            }}
+          >
+            Test Audio (Queue)
+          </button>
+          
+          <button 
+            onClick={() => {
+              console.log('Direct speech test...');
+              // Direct test without our system
+              speechSynthesis.cancel();
+              const u = new SpeechSynthesisUtterance('Direct test. Hello!');
+              u.rate = 1.0;
+              u.pitch = 1.0;
+              u.volume = 1.0;
+              
+              u.onstart = () => console.log('Direct speech started');
+              u.onend = () => console.log('Direct speech ended');
+              u.onerror = (e) => console.error('Direct speech error:', e);
+              
+              setTimeout(() => {
+                speechSynthesis.speak(u);
+                console.log('Direct speech queued');
+              }, 100);
+            }}
+            style={{
+              padding: '5px 10px',
+              background: '#444',
+              border: '1px solid #666',
+              color: '#fff',
+              cursor: 'pointer',
+              borderRadius: '4px'
+            }}
+          >
+            Test Audio (Direct)
+          </button>
+        </div>
       </div>
     </div>
   );

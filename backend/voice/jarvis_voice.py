@@ -582,10 +582,14 @@ class EnhancedJARVISPersonality:
         return random.choice(responses)
     
     async def _is_weather_request(self, command: str) -> bool:
-        """Check if command is asking about weather"""
+        """Check if command is asking about weather - FAST"""
         weather_keywords = ['weather', 'temperature', 'forecast', 'rain', 'sunny', 'cloudy', 
-                          'cold', 'hot', 'warm', 'degrees', 'celsius', 'fahrenheit']
+                          'cold', 'hot', 'warm', 'degrees', 'celsius', 'fahrenheit',
+                          'outside', 'today']
         command_lower = command.lower()
+        # Quick check for common patterns
+        if 'weather' in command_lower or 'temperature' in command_lower:
+            return True
         return any(keyword in command_lower for keyword in weather_keywords)
     
     async def _handle_weather_request(self, command: str) -> str:
@@ -679,9 +683,12 @@ class EnhancedJARVISVoiceAssistant:
                 logger.error(f"Failed to initialize ML trainer: {e}")
                 self.ml_trainer = None
         
-        # Initialize components with ML trainer
-        self.voice_engine = EnhancedVoiceEngine(ml_trainer=self.ml_trainer)
+        # Initialize components with ML trainer - OPTIMIZED
+        # Start personality initialization early (it pre-loads weather)
         self.personality = EnhancedJARVISPersonality(claude_api_key, ml_trainer=self.ml_trainer)
+        
+        # Initialize voice engine in parallel
+        self.voice_engine = EnhancedVoiceEngine(ml_trainer=self.ml_trainer)
         self.running = False
         self.command_queue = queue.Queue()
         

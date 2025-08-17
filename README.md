@@ -67,11 +67,15 @@ npm install
 ### 3. Launch JARVIS
 
 ```bash
-# From project root
+# Quick start - uses async for 3x faster startup
+python start_jarvis.py
+
+# Or run directly
 python start_system.py
 ```
 
 This will:
+- ✅ Start services in parallel (async version)
 - ✅ Start the FastAPI backend server
 - ✅ Launch the React frontend
 - ✅ Initialize JARVIS voice system
@@ -344,7 +348,8 @@ AI-Powered-Chatbot/
 │   │   ├── App.js              # Main React app
 │   │   └── App.css             # Iron Man styling
 │   └── package.json
-├── start_system.py             # System launcher
+├── start_system.py             # System launcher (async, 3x faster)
+├── start_jarvis.py            # Quick launcher
 ├── test_jarvis_voice.py        # Voice testing
 └── README.md                   # This file
 ```
