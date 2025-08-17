@@ -115,7 +115,10 @@ class ClaudeSystemManager:
         missing = []
         for package, description in essential_packages.items():
             try:
-                __import__(package.replace("-", "_"))
+                if package == "python-dotenv":
+                    __import__("dotenv")
+                else:
+                    __import__(package.replace("-", "_"))
                 print(f"{Colors.GREEN}✓ {description} ({package}){Colors.ENDC}")
             except ImportError:
                 missing.append(package)

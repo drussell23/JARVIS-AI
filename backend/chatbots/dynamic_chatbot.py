@@ -15,8 +15,6 @@ import os
 try:
     # Try relative imports first (when used as a module)
     from .simple_chatbot import SimpleChatbot
-    from .intelligent_chatbot import IntelligentChatbot
-    from .langchain_chatbot import LangChainChatbot, LANGCHAIN_AVAILABLE
     from .claude_chatbot import ClaudeChatbot
     from ..memory.memory_manager import M1MemoryManager, MemoryState, ComponentPriority
     from ..memory.memory_safe_components import IntelligentComponentManager
@@ -28,12 +26,33 @@ except ImportError:
 
     sys.path.append(str(Path(__file__).parent.parent))
     from chatbots.simple_chatbot import SimpleChatbot
-    from chatbots.intelligent_chatbot import IntelligentChatbot
-    from chatbots.langchain_chatbot import LangChainChatbot, LANGCHAIN_AVAILABLE
     from chatbots.claude_chatbot import ClaudeChatbot
     from memory.memory_manager import M1MemoryManager, MemoryState, ComponentPriority
     from memory.memory_safe_components import IntelligentComponentManager
     from memory.intelligent_memory_optimizer import IntelligentMemoryOptimizer
+
+# Try to import optional chatbots
+try:
+    from .intelligent_chatbot import IntelligentChatbot
+    INTELLIGENT_AVAILABLE = True
+except ImportError:
+    try:
+        from chatbots.intelligent_chatbot import IntelligentChatbot
+        INTELLIGENT_AVAILABLE = True
+    except ImportError:
+        INTELLIGENT_AVAILABLE = False
+        IntelligentChatbot = None
+
+try:
+    from .langchain_chatbot import LangChainChatbot
+    LANGCHAIN_AVAILABLE = True
+except ImportError:
+    try:
+        from chatbots.langchain_chatbot import LangChainChatbot
+        LANGCHAIN_AVAILABLE = True
+    except ImportError:
+        LANGCHAIN_AVAILABLE = False
+        LangChainChatbot = None
 
 logger = logging.getLogger(__name__)
 
@@ -239,15 +258,23 @@ class DynamicChatbot:
         if memory_usage > ModeThresholds.DOWNGRADE_THRESHOLD:
             return ChatbotMode.SIMPLE
         elif memory_usage > ModeThresholds.UPGRADE_THRESHOLD:
-            return ChatbotMode.INTELLIGENT
+            if INTELLIGENT_AVAILABLE:
+                return ChatbotMode.INTELLIGENT
+            else:
+                return ChatbotMode.SIMPLE
         elif memory_usage > ModeThresholds.LANGCHAIN_THRESHOLD:
-            return ChatbotMode.INTELLIGENT
+            if INTELLIGENT_AVAILABLE:
+                return ChatbotMode.INTELLIGENT
+            else:
+                return ChatbotMode.SIMPLE
         else:
             # Low memory usage - use best available
             if self.prefer_langchain and LANGCHAIN_AVAILABLE:
                 return ChatbotMode.LANGCHAIN
-            else:
+            elif INTELLIGENT_AVAILABLE:
                 return ChatbotMode.INTELLIGENT
+            else:
+                return ChatbotMode.SIMPLE
 
     async def _switch_to_mode(self, target_mode: ChatbotMode):
         """Switch to the target mode"""
@@ -259,15 +286,26 @@ class DynamicChatbot:
         elif target_mode == ChatbotMode.SIMPLE:
             await self._downgrade_to_simple()
         elif target_mode == ChatbotMode.INTELLIGENT:
-            if self.current_mode == ChatbotMode.SIMPLE:
-                await self._upgrade_to_intelligent()
+            if INTELLIGENT_AVAILABLE:
+                if self.current_mode == ChatbotMode.SIMPLE:
+                    await self._upgrade_to_intelligent()
+                else:
+                    await self._downgrade_from_langchain()
             else:
-                await self._downgrade_from_langchain()
+                logger.warning("IntelligentChatbot not available, switching to Simple mode")
+                await self._downgrade_to_simple()
         elif target_mode == ChatbotMode.LANGCHAIN:
-            await self._upgrade_to_langchain()
+            if LANGCHAIN_AVAILABLE:
+                await self._upgrade_to_langchain()
+            else:
+                logger.warning("LangChain not available, staying in current mode")
 
     async def _upgrade_to_intelligent(self):
         """Upgrade from Simple to Intelligent mode"""
+        if not INTELLIGENT_AVAILABLE:
+            logger.warning("IntelligentChatbot not available, staying in current mode")
+            return
+            
         logger.info("Attempting to upgrade to Intelligent chatbot mode")
 
         # Only load memory optimizer if we need it
@@ -435,11 +473,19 @@ class DynamicChatbot:
         except Exception as e:
             logger.error(f"Failed to upgrade to LangChain mode: {e}")
             self.metrics["failed_upgrades"] += 1
-            # Try Intelligent mode as fallback
-            await self._upgrade_to_intelligent()
+            # Try Intelligent mode as fallback if available
+            if INTELLIGENT_AVAILABLE:
+                await self._upgrade_to_intelligent()
+            else:
+                logger.warning("No fallback mode available")
 
     async def _downgrade_from_langchain(self):
         """Downgrade from LangChain to Intelligent mode"""
+        if not INTELLIGENT_AVAILABLE:
+            logger.warning("IntelligentChatbot not available, downgrading to Simple mode")
+            await self._downgrade_to_simple()
+            return
+            
         logger.info("Downgrading from LangChain to Intelligent mode")
 
         try:

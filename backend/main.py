@@ -5,11 +5,23 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from chatbots.simple_chatbot import SimpleChatbot  # Import the SimpleChatbot class
-from chatbots.intelligent_chatbot import (
-    IntelligentChatbot,
-)  # Import the IntelligentChatbot class
 from chatbots.dynamic_chatbot import DynamicChatbot  # Import the DynamicChatbot class
-from chatbots.langchain_chatbot import LangChainChatbot  # Import the LangChainChatbot class
+from chatbots.claude_chatbot import ClaudeChatbot  # Import the ClaudeChatbot class
+
+# Optional imports for backward compatibility
+try:
+    from chatbots.intelligent_chatbot import IntelligentChatbot
+    INTELLIGENT_AVAILABLE = True
+except ImportError:
+    IntelligentChatbot = None
+    INTELLIGENT_AVAILABLE = False
+
+try:
+    from chatbots.langchain_chatbot import LangChainChatbot
+    LANGCHAIN_AVAILABLE = True
+except ImportError:
+    LangChainChatbot = None
+    LANGCHAIN_AVAILABLE = False
 import asyncio
 import json
 from typing import Optional, List, Dict, Any
@@ -140,11 +152,11 @@ class ChatbotAPI:
                         # Use 127.0.0.1 and a slightly longer timeout to avoid race on startup
                         llama_health_url = "http://127.0.0.1:8080/health"
                         response = requests.get(llama_health_url, timeout=3)
-                        if response.status_code == 200:
+                        if response.status_code == 200 and INTELLIGENT_AVAILABLE:
                             logger.info("Using Intelligent Chatbot with memory management")
                             self.bot = IntelligentChatbot(memory_manager)
                         else:
-                            raise RuntimeError("llama.cpp server not responding")
+                            raise RuntimeError("llama.cpp server not responding or IntelligentChatbot not available")
                     except Exception as e:
                         if os.getenv("FORCE_LLAMA", "0") == "1":
                             # Do not fall back if explicitly forced; surface the error clearly
@@ -153,12 +165,16 @@ class ChatbotAPI:
                             )
                             raise
                         logger.warning(
-                            "llama.cpp server not available, using IntelligentChatbot"
+                            "llama.cpp server not available, using SimpleChatbot"
                         )
-                        self.bot = IntelligentChatbot(memory_manager)
+                        self.bot = SimpleChatbot(max_history_length=10)
                 else:
-                    # Non-M1 systems use IntelligentChatbot too
-                    self.bot = IntelligentChatbot(memory_manager)
+                    # Non-M1 systems use SimpleChatbot when IntelligentChatbot not available
+                    if INTELLIGENT_AVAILABLE:
+                        self.bot = IntelligentChatbot(memory_manager)
+                    else:
+                        logger.info("Using SimpleChatbot (IntelligentChatbot not available)")
+                        self.bot = SimpleChatbot(max_history_length=10)
 
             # Component loading will happen on startup event
             logger.info("Chatbot initialized successfully with memory management")

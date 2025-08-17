@@ -118,13 +118,19 @@ You excel at understanding context and providing insightful, well-structured res
             # Track usage
             self.api_calls_made += 1
             if hasattr(response, 'usage'):
-                self.total_tokens_used += response.usage.total_tokens
+                # Claude API usage structure
+                if hasattr(response.usage, 'input_tokens') and hasattr(response.usage, 'output_tokens'):
+                    self.total_tokens_used += response.usage.input_tokens + response.usage.output_tokens
                 
             # Log performance
             response_time = (datetime.now() - start_time).total_seconds()
+            token_info = "N/A"
+            if hasattr(response, 'usage'):
+                if hasattr(response.usage, 'input_tokens') and hasattr(response.usage, 'output_tokens'):
+                    token_info = f"in:{response.usage.input_tokens}, out:{response.usage.output_tokens}"
             logger.info(
                 f"Claude API call completed in {response_time:.2f}s "
-                f"(model: {self.model}, tokens: {getattr(response.usage, 'total_tokens', 'N/A')})"
+                f"(model: {self.model}, tokens: {token_info})"
             )
             
             # Update conversation history
