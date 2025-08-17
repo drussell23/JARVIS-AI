@@ -33,6 +33,14 @@ except ImportError:
     ML_TRAINING_AVAILABLE = False
     logger.warning("ML training not available. Install required libraries for adaptive learning.")
 
+# Import weather service
+try:
+    from services.weather_service import WeatherService
+    WEATHER_SERVICE_AVAILABLE = True
+except ImportError:
+    WEATHER_SERVICE_AVAILABLE = False
+    logger.warning("Weather service not available")
+
 # Use macOS native voice on Mac
 if platform.system() == 'Darwin':
     from voice.macos_voice import MacOSVoice
@@ -373,6 +381,12 @@ class EnhancedJARVISPersonality:
         # ML trainer for adaptive learning
         self.ml_trainer = ml_trainer
         
+        # Initialize weather service
+        if WEATHER_SERVICE_AVAILABLE:
+            self.weather_service = WeatherService()
+        else:
+            self.weather_service = None
+        
     async def process_voice_command(self, command: VoiceCommand) -> str:
         """Process voice command with enhanced intelligence"""
         # Add to command history
@@ -431,6 +445,10 @@ class EnhancedJARVISPersonality:
     
     async def _process_clear_command(self, command: str, context_info: str) -> str:
         """Process clear commands normally"""
+        # Check if this is a weather request
+        if await self._is_weather_request(command):
+            return await self._handle_weather_request(command)
+        
         # Build the prompt with context
         enhanced_prompt = f"{context_info}\n\nUser command (spoken): {command}"
         
@@ -562,6 +580,89 @@ class EnhancedJARVISPersonality:
             responses.append(f"Working late again, {self.user_preferences['name']}?")
             
         return random.choice(responses)
+    
+    async def _is_weather_request(self, command: str) -> bool:
+        """Check if command is asking about weather"""
+        weather_keywords = ['weather', 'temperature', 'forecast', 'rain', 'sunny', 'cloudy', 
+                          'cold', 'hot', 'warm', 'degrees', 'celsius', 'fahrenheit']
+        command_lower = command.lower()
+        return any(keyword in command_lower for keyword in weather_keywords)
+    
+    async def _handle_weather_request(self, command: str) -> str:
+        """Handle weather requests with real data"""
+        if not self.weather_service:
+            # Fallback to Claude if weather service not available
+            enhanced_prompt = f"{self._get_context_info()}\n\nUser command (spoken): {command}"
+            message = await asyncio.to_thread(
+                self.claude.messages.create,
+                model="claude-3-haiku-20240307",
+                max_tokens=300,
+                system=JARVIS_SYSTEM_PROMPT,
+                messages=[
+                    *self.context,
+                    {"role": "user", "content": enhanced_prompt}
+                ]
+            )
+            return message.content[0].text
+        
+        try:
+            # Determine if asking about specific location or current location
+            command_lower = command.lower()
+            
+            # Check for specific cities
+            city = None
+            common_cities = ['toronto', 'new york', 'london', 'paris', 'tokyo', 'los angeles', 
+                           'chicago', 'vancouver', 'montreal', 'calgary', 'ottawa']
+            
+            for c in common_cities:
+                if c in command_lower:
+                    city = c.title()
+                    break
+            
+            # Get weather data
+            if city:
+                weather_data = await self.weather_service.get_weather_by_city(city)
+            else:
+                # Use current location
+                weather_data = await self.weather_service.get_current_weather()
+            
+            # Format response in JARVIS style
+            location = weather_data.get('location', 'your location')
+            temp = weather_data.get('temperature', 0)
+            feels_like = weather_data.get('feels_like', temp)
+            description = weather_data.get('description', 'unknown conditions')
+            wind = weather_data.get('wind_speed', 0)
+            
+            # Build JARVIS-style response
+            response = f"Currently in {location}, we have {description} "
+            response += f"with a temperature of {temp} degrees Celsius"
+            
+            if abs(feels_like - temp) > 2:
+                response += f", though it feels like {feels_like}"
+            
+            response += f". Wind speed is {wind} kilometers per hour. "
+            
+            # Add personalized suggestions based on conditions
+            hour = datetime.now().hour
+            if temp > 25:
+                response += "Quite warm today, sir. Perhaps consider lighter attire."
+            elif temp < 10:
+                response += "Rather chilly, sir. I'd recommend a jacket."
+            elif 'rain' in description.lower():
+                response += "Don't forget an umbrella if you're heading out, sir."
+            elif 'clear' in description.lower() and temp > 18 and hour < 18:
+                response += "Beautiful weather for any outdoor activities you might have planned."
+            
+            # Update context with actual weather info
+            self.context.append({"role": "user", "content": command})
+            self.context.append({"role": "assistant", "content": response})
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error getting weather data: {e}")
+            # Fallback to Claude
+            return await self._process_clear_command(command, self._get_context_info())
 
 
 class EnhancedJARVISVoiceAssistant:

@@ -29,7 +29,8 @@ JARVIS is a sophisticated AI assistant inspired by Iron Man's iconic AI companio
 ### Prerequisites
 - Python 3.8+
 - Node.js 14+
-- Anthropic API key
+- Anthropic API key ✅
+- OpenWeatherMap API key ✅ (Weather service enabled)
 - macOS (for full voice features) or Linux/Windows (text-only)
 
 ### 1. Clone & Setup
@@ -118,9 +119,51 @@ This will:
 "Tell me about quantum computing"
 → "Quantum computing leverages quantum mechanical phenomena, sir..."
 
+"What's the weather like?"
+→ "Currently in Toronto, we have partly cloudy with a temperature of 21 degrees Celsius. Wind speed is 15 kilometers per hour. Beautiful weather for any outdoor activities you might have planned."
+
+"What's the weather in New York?"
+→ "Currently in New York, we have clear skies with a temperature of 25 degrees Celsius. Quite warm today, sir. Perhaps consider lighter attire."
+
 "Goodbye JARVIS"
 → "Shutting down. Goodbye, sir."
 ```
+
+## 🌤️ Weather Features
+
+JARVIS includes real-time weather data integration with OpenWeatherMap API.
+
+### Weather Service Status: ✅ ENABLED
+
+The weather service is now fully configured and ready to use! JARVIS can provide real-time weather data for your location or any city worldwide.
+
+### Features:
+- **Automatic location detection** based on IP geolocation
+- **Real-time weather data** for any major city
+- **Contextual weather advice** (e.g., "Take an umbrella" when raining)
+- **Current conditions**: Temperature, feels-like, wind speed, humidity
+- **JARVIS-style suggestions** based on weather conditions
+
+### Usage Examples:
+```
+"What's the weather like?"
+→ Gets weather for your current location
+
+"What's the weather in Paris?"
+→ Gets weather for specific city
+
+"Is it going to rain?"
+→ Checks current conditions for rain
+
+"What's the temperature outside?"
+→ Reports current temperature with personalized advice
+```
+
+### Technical Details:
+- API Key is configured in `.env`
+- Fallback to Claude's knowledge if API is unavailable
+- Location detection via IP geolocation
+- Temperature in Celsius with wind speed in km/h
 
 ## 🧠 ML Voice Training System
 
@@ -197,6 +240,9 @@ CLAUDE_TEMPERATURE=0.7
 JARVIS_VOICE_ENABLED=true
 JARVIS_WAKE_WORDS=jarvis,hey jarvis,okay jarvis
 JARVIS_ACCENT=british  # british, american, australian
+
+# Weather Service (Optional - for real weather data)
+OPENWEATHER_API_KEY=your-openweather-api-key-here
 ```
 
 ### JARVIS Personality Customization
