@@ -405,12 +405,28 @@ class AsyncSystemManager:
         tasks = []
         for proc in self.processes:
             if proc.returncode is None:
-                proc.terminate()
-                tasks.append(proc.wait())
+                try:
+                    proc.terminate()
+                    tasks.append(proc.wait())
+                except ProcessLookupError:
+                    # Process already terminated
+                    pass
                 
-        # Wait for all to terminate
+        # Wait for all to terminate with timeout
         if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True),
+                    timeout=5.0
+                )
+            except asyncio.TimeoutError:
+                # Force kill if still running
+                for proc in self.processes:
+                    if proc.returncode is None:
+                        try:
+                            proc.kill()
+                        except ProcessLookupError:
+                            pass
             
         print(f"{Colors.GREEN}✓ All services stopped{Colors.ENDC}")
         
@@ -513,6 +529,10 @@ async def main():
 if __name__ == "__main__":
     # Handle Ctrl+C gracefully
     try:
+        # Suppress asyncio debug messages on exit
+        import warnings
+        warnings.filterwarnings("ignore", category=RuntimeWarning, module="asyncio")
+        
         asyncio.run(main())
     except KeyboardInterrupt:
         print(f"\n{Colors.YELLOW}Interrupted by user{Colors.ENDC}")

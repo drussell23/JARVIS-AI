@@ -154,7 +154,30 @@ const JarvisVoice = () => {
         // Check for wake word
         if ((transcript.includes('hey jarvis') || transcript.includes('jarvis')) && !isWaitingForCommand) {
           console.log('Wake word detected:', transcript);
-          handleWakeWordDetected();
+          
+          // Extract command after wake word
+          let commandAfterWake = null;
+          if (transcript.includes('hey jarvis')) {
+            commandAfterWake = transcript.split('hey jarvis')[1].trim();
+          } else if (transcript.includes('jarvis')) {
+            commandAfterWake = transcript.split('jarvis')[1].trim();
+          }
+          
+          if (commandAfterWake && commandAfterWake.length > 2) {
+            // Send command directly without wake word activation
+            console.log('Command with wake word:', commandAfterWake);
+            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+              wsRef.current.send(JSON.stringify({
+                type: 'command',
+                text: commandAfterWake
+              }));
+            }
+            setTranscript(commandAfterWake);
+            setResponse('Processing...');
+          } else {
+            // Just wake word, no command
+            handleWakeWordDetected();
+          }
         } else if (isWaitingForCommand) {
           // Process the command after wake word
           handleVoiceCommand(event.results[last][0].transcript);
@@ -217,7 +240,18 @@ const JarvisVoice = () => {
     setTranscript(command);
     setIsWaitingForCommand(false);
     setIsListening(false);
-    sendTextCommand(command);
+    
+    // Send via WebSocket instead of REST API
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'command',
+        text: command
+      }));
+      setResponse('Processing...');
+    } else {
+      // Fallback to REST API if WebSocket not connected
+      sendTextCommand(command);
+    }
   };
 
   const activateJarvis = async () => {
