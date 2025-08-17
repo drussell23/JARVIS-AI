@@ -489,30 +489,59 @@ const JarvisVoice = () => {
       isSpeakingRef.current = false;
       setIsJarvisSpeaking(false);
       
-      // Retry once if not a fatal error
-      if (event.error === 'canceled' && speechQueueRef.current.length === 0) {
-        console.log('Retrying speech...');
-        setTimeout(() => {
-          speechQueueRef.current.unshift({ text, voice });
-          processSpeechQueue();
-        }, 200);
+      // Handle different error types
+      if (event.error === 'canceled') {
+        // Speech was canceled - likely by another utterance
+        console.log('Speech was canceled, checking if retry needed');
+        // Only retry if this was the only item and queue is empty
+        if (text && speechQueueRef.current.length === 0) {
+          console.log('Retrying canceled speech...');
+          setTimeout(() => {
+            speechQueueRef.current.push({ text, voice });
+            processSpeechQueue();
+          }, 300);
+        } else {
+          // Process next in queue
+          setTimeout(processSpeechQueue, 100);
+        }
+      } else if (event.error === 'interrupted') {
+        // Speech was interrupted by user
+        console.log('Speech interrupted by user');
+        // Process next in queue
+        setTimeout(processSpeechQueue, 100);
       } else {
+        // Other errors - don't retry
+        console.error('Speech synthesis error:', event.error);
         // Process next in queue
         setTimeout(processSpeechQueue, 100);
       }
     };
     
-    // Clear any pending speech and speak
-    speechSynthesis.cancel();
-    setTimeout(() => {
+    // Only cancel if there's actually something speaking
+    if (speechSynthesis.speaking && !speechSynthesis.pending) {
+      speechSynthesis.cancel();
+      // Wait a bit longer after cancel
+      setTimeout(() => {
+        try {
+          speechSynthesis.speak(utterance);
+          console.log('Speech initiated after cancel');
+        } catch (error) {
+          console.error('Speech failed:', error);
+          isSpeakingRef.current = false;
+          setIsJarvisSpeaking(false);
+        }
+      }, 200);
+    } else {
+      // No need to cancel, speak immediately
       try {
         speechSynthesis.speak(utterance);
-        console.log('Speech initiated');
+        console.log('Speech initiated directly');
       } catch (error) {
         console.error('Speech failed:', error);
         isSpeakingRef.current = false;
+        setIsJarvisSpeaking(false);
       }
-    }, 100);
+    }
   };
   
   const speakResponse = (text) => {

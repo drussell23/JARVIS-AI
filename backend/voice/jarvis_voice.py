@@ -608,22 +608,54 @@ class EnhancedJARVISPersonality:
             # Determine if asking about specific location or current location
             command_lower = command.lower()
             
-            # Check for specific cities
-            city = None
-            common_cities = ['toronto', 'new york', 'london', 'paris', 'tokyo', 'los angeles', 
-                           'chicago', 'vancouver', 'montreal', 'calgary', 'ottawa']
+            # Extract ANY location from command - no hardcoding!
+            location = None
             
-            for c in common_cities:
-                if c in command_lower:
-                    city = c.title()
-                    break
+            import re
+            # Flexible patterns to extract location after prepositions
+            patterns = [
+                r'(?:weather|temperature|forecast|rain|snow|sunny|cloudy|hot|cold|warm)(?:\s+(?:is|be|like|today))?\s+(?:in|at|for|around|near)\s+(.+?)(?:\s*\?|$)',
+                r'(?:what\'?s|how\'?s|is)\s+(?:the\s+)?(?:weather|temperature|it)\s+(?:like\s+)?(?:in|at|for)\s+(.+?)(?:\s*\?|$)',
+                r'(?:in|at|for)\s+(.+?)\s+(?:weather|temperature)',
+                r'(.+?)\s+weather(?:\s+like)?(?:\s*\?|$)',
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, command_lower, re.IGNORECASE)
+                if match:
+                    # Extract everything after the preposition as the location
+                    location = match.group(1).strip()
+                    # Clean up common endings
+                    location = re.sub(r'\s*(today|tomorrow|now|please|thanks|thank you)$', '', location, flags=re.IGNORECASE)
+                    location = location.strip('.,!?')
+                    
+                    if location:
+                        logger.info(f"Extracted location from pattern: '{location}'")
+                        break
+            
+            # If no location found, check if entire query after "weather" might be a location
+            if not location:
+                # Simple fallback - take everything after weather-related keywords
+                weather_match = re.search(r'(?:weather|temperature|forecast)\s+(?:in|at|for|of)?\s*(.+?)(?:\s*\?|$)', command_lower)
+                if weather_match:
+                    potential_location = weather_match.group(1).strip()
+                    if potential_location and len(potential_location) > 2:
+                        location = potential_location
+                        logger.info(f"Extracted location from fallback: '{location}'")
             
             # Get weather data
-            if city:
-                weather_data = await self.weather_service.get_weather_by_city(city)
+            if location:
+                logger.info(f"Getting weather for location: {location}")
+                # Pass the full location string to OpenWeatherMap - it handles cities, states, countries
+                weather_data = await self.weather_service.get_weather_by_city(location)
             else:
+                logger.info("No location specified, using current location")
                 # Use current location
                 weather_data = await self.weather_service.get_current_weather()
+            
+            # Check for errors first
+            if weather_data.get('error'):
+                return f"I apologize, sir, but I couldn't find weather information for {location}. Perhaps you could verify the location name?"
             
             # Format response in JARVIS style
             location = weather_data.get('location', 'your location')

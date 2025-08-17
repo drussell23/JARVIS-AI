@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Unified startup script for AI-Powered Chatbot System
-Uses asyncio for parallel initialization and better performance
+Unified startup script for JARVIS AI System
+Powered by Claude AI with Iron Man-inspired interface
+Uses asyncio for parallel initialization and ultra-fast performance
 """
 
 import os
@@ -56,6 +57,7 @@ class AsyncSystemManager:
         print(f"{Colors.BOLD}🤖 JARVIS System - Claude AI Powered 🚀{Colors.ENDC}")
         print(f"{Colors.CYAN}☁️  Cloud-based AI for superior performance{Colors.ENDC}")
         print(f"{Colors.GREEN}⚡ ASYNC: Ultra-fast parallel initialization{Colors.ENDC}")
+        print(f"{Colors.YELLOW}🌍 Dynamic weather for ANY location worldwide{Colors.ENDC}")
         if self.is_m1_mac:
             print(f"{Colors.GREEN}✨ Perfect for M1 Mac - No local memory usage!{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}\n")
@@ -83,6 +85,15 @@ class AsyncSystemManager:
             
         self.claude_configured = True
         print(f"{Colors.GREEN}✓ Claude API key found{Colors.ENDC}")
+        
+        # Check OpenWeatherMap API key
+        weather_key = os.getenv("OPENWEATHER_API_KEY")
+        if weather_key:
+            print(f"{Colors.GREEN}✓ OpenWeatherMap API key found - weather for ANY location worldwide!{Colors.ENDC}")
+        else:
+            print(f"{Colors.WARNING}⚠️  OpenWeatherMap API key not found - weather will use mock data{Colors.ENDC}")
+            print(f"   To enable real weather: Add OPENWEATHER_API_KEY to .env file")
+        
         return True
         
     async def check_python_version(self) -> bool:
@@ -363,20 +374,24 @@ class AsyncSystemManager:
             
         print(f"\n{Colors.CYAN}Voice Commands:{Colors.ENDC}")
         print(f"  • Say 'Hey JARVIS' to activate")
-        print(f"  • Weather queries: 'What's the weather like?'")
+        print(f"  • Weather: 'What's the weather like in [ANY LOCATION]?'")
         print(f"  • Calculations: 'What's 2 plus 2?'")
+        print(f"  • General questions: 'Tell me about...'")
         
         if platform.system() == 'Darwin':
             print(f"\n{Colors.BLUE}Audio Configuration:{Colors.ENDC}")
             print(f"  🔊 Backend speech: {Colors.GREEN}Enabled{Colors.ENDC} (macOS native)")
             print(f"  🎵 Browser speech: Fallback mode")
             
-        print(f"\n{Colors.GREEN}✨ Performance Features:{Colors.ENDC}")
+        print(f"\n{Colors.GREEN}✨ System Features:{Colors.ENDC}")
+        print(f"  • 🌍 Weather for ANY location worldwide")
         print(f"  • ⚡ Async initialization (3x faster startup)")
         print(f"  • 🔄 Parallel service launch")
+        print(f"  • 🎤 'Hey JARVIS' wake word detection")
+        print(f"  • 💾 Intelligent response caching")
+        print(f"  • 🔊 Dual audio system (browser + backend)")
         print(f"  • 📊 Real-time health monitoring")
-        print(f"  • 🌤️  Pre-loaded weather data")
-        print(f"  • 💾 Intelligent caching")
+        print(f"  • 🧮 Accurate calculations and math")
         
         print(f"\n{Colors.WARNING}Press Ctrl+C to stop all services{Colors.ENDC}")
             
@@ -522,7 +537,7 @@ async def main():
     """Main entry point"""
     global _manager
     
-    parser = argparse.ArgumentParser(description="JARVIS System Launcher - Async Edition")
+    parser = argparse.ArgumentParser(description="JARVIS System Launcher - Iron Man AI Assistant")
     parser.add_argument("--no-browser", action="store_true", help="Don't open browser")
     parser.add_argument("--check-only", action="store_true", help="Check setup and exit")
     

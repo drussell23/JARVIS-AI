@@ -32,6 +32,50 @@
   color: var(--text-secondary);
 }
 
+/* Personality Header */
+.personality-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.back-button {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+}
+
+.back-button:hover {
+  background: rgba(0, 229, 255, 0.1);
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateX(-3px);
+}
+
+.current-personality {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.1rem;
+  color: var(--accent);
+}
+
+.personality-icon {
+  font-size: 1.5rem;
+}
+
+.personality-name {
+  font-weight: 600;
+}
+
 .hud-divider {
   height: 1px;
   background: linear-gradient(90deg, transparent, var(--border), transparent);

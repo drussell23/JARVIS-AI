@@ -212,11 +212,14 @@ class WeatherService:
             session = await self._get_session()
             url = f"{self.base_url}/weather"
             params = {"q": city, "appid": self.api_key, "units": "metric"}
+            
+            logger.info(f"Fetching weather for: {city}")
 
             async with session.get(url, params=params) as response:
                 if response.status == 200:
                     data = await response.json()
                     weather_data = self._format_weather_data(data)
+                    logger.info(f"Successfully got weather for: {weather_data.get('location', city)}")
                     
                     # Cache the result
                     with self._cache_lock:
@@ -226,8 +229,20 @@ class WeatherService:
                         }
                     
                     return weather_data
+                elif response.status == 404:
+                    logger.warning(f"Location not found: {city}")
+                    # Return a clear error message
+                    return {
+                        'location': city,
+                        'temperature': 0,
+                        'feels_like': 0,
+                        'description': 'location not found',
+                        'humidity': 0,
+                        'wind_speed': 0,
+                        'error': True
+                    }
                 else:
-                    logger.error(f"Weather API error: {response.status}")
+                    logger.error(f"Weather API error: {response.status} for location: {city}")
                     return self._get_mock_weather(city)
 
         except Exception as e:
