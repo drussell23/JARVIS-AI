@@ -1,0 +1,335 @@
+.jarvis-voice-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem;
+  min-height: 400px;
+  background: radial-gradient(ellipse at center, rgba(0, 100, 200, 0.1) 0%, transparent 70%);
+}
+
+/* Arc Reactor Animation */
+.arc-reactor {
+  width: 150px;
+  height: 150px;
+  position: relative;
+  margin: 2rem auto;
+  cursor: pointer;
+  transition: transform 0.3s ease;
+}
+
+.arc-reactor:hover {
+  transform: scale(1.05);
+}
+
+.arc-reactor .core {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  background: radial-gradient(circle, #00d4ff 0%, #0080ff 50%, #004080 100%);
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 20px #00d4ff, inset 0 0 20px rgba(0, 212, 255, 0.5);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.arc-reactor .ring {
+  position: absolute;
+  border: 2px solid #00d4ff;
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0.6;
+}
+
+.ring-1 {
+  width: 80px;
+  height: 80px;
+  animation: rotate 4s linear infinite;
+}
+
+.ring-2 {
+  width: 110px;
+  height: 110px;
+  animation: rotate 6s linear infinite reverse;
+}
+
+.ring-3 {
+  width: 140px;
+  height: 140px;
+  animation: rotate 8s linear infinite;
+}
+
+/* Listening State */
+.arc-reactor.listening .core {
+  animation: pulse 0.5s ease-in-out infinite;
+  background: radial-gradient(circle, #ff6b00 0%, #ff4500 50%, #cc3300 100%);
+  box-shadow: 0 0 30px #ff6b00, inset 0 0 20px rgba(255, 107, 0, 0.5);
+}
+
+.arc-reactor.listening .ring {
+  border-color: #ff6b00;
+  animation-duration: 2s;
+}
+
+/* Processing State */
+.arc-reactor.processing .core {
+  animation: pulse 0.3s ease-in-out infinite;
+  background: radial-gradient(circle, #00ff00 0%, #00cc00 50%, #008800 100%);
+  box-shadow: 0 0 30px #00ff00, inset 0 0 20px rgba(0, 255, 0, 0.5);
+}
+
+.arc-reactor.processing .ring {
+  border-color: #00ff00;
+  animation-duration: 1s;
+}
+
+/* Status Indicator */
+.jarvis-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1rem 0;
+  font-family: 'Orbitron', monospace;
+  color: #00d4ff;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.status-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #666;
+  transition: all 0.3s ease;
+}
+
+.status-indicator.online {
+  background: #00ff00;
+  box-shadow: 0 0 10px #00ff00;
+}
+
+.status-indicator.activating {
+  background: #ffaa00;
+  box-shadow: 0 0 10px #ffaa00;
+  animation: blink 0.5s infinite;
+}
+
+.status-indicator.offline {
+  background: #ff0000;
+  box-shadow: 0 0 10px #ff0000;
+}
+
+/* Voice Controls */
+.voice-controls {
+  margin: 1rem 0;
+}
+
+.jarvis-button {
+  background: linear-gradient(135deg, #0080ff 0%, #00d4ff 100%);
+  border: none;
+  color: white;
+  padding: 12px 30px;
+  font-size: 1rem;
+  font-family: 'Orbitron', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  border-radius: 25px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(0, 212, 255, 0.3);
+}
+
+.jarvis-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 212, 255, 0.4);
+}
+
+.jarvis-button:active {
+  transform: translateY(0);
+}
+
+.jarvis-button.activate {
+  background: linear-gradient(135deg, #00ff00 0%, #00cc00 100%);
+  box-shadow: 0 4px 15px rgba(0, 255, 0, 0.3);
+}
+
+.jarvis-button.stop {
+  background: linear-gradient(135deg, #ff4500 0%, #ff6b00 100%);
+  box-shadow: 0 4px 15px rgba(255, 107, 0, 0.3);
+}
+
+.jarvis-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Voice Input */
+.voice-input {
+  margin: 1rem 0;
+  width: 100%;
+  max-width: 400px;
+}
+
+.voice-input input {
+  width: 100%;
+  padding: 12px 20px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid #00d4ff;
+  border-radius: 25px;
+  color: #00d4ff;
+  font-family: 'Orbitron', monospace;
+  font-size: 0.9rem;
+  outline: none;
+  transition: all 0.3s ease;
+}
+
+.voice-input input:focus {
+  border-color: #00ff00;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+}
+
+.voice-input input::placeholder {
+  color: rgba(0, 212, 255, 0.5);
+}
+
+/* Transcript and Response */
+.transcript,
+.jarvis-response {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-left: 3px solid #00d4ff;
+  max-width: 600px;
+  width: 100%;
+  font-family: 'Roboto', sans-serif;
+  color: #e0e0e0;
+  line-height: 1.6;
+}
+
+.jarvis-response {
+  border-left-color: #00ff00;
+}
+
+.transcript strong,
+.jarvis-response strong {
+  color: #00d4ff;
+  font-family: 'Orbitron', monospace;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+}
+
+/* Error Message */
+.error-message {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: rgba(255, 0, 0, 0.1);
+  border: 1px solid #ff0000;
+  border-radius: 5px;
+  color: #ff6666;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.reconnect-button {
+  background: linear-gradient(135deg, #ff4500 0%, #ff6b00 100%);
+  border: none;
+  color: white;
+  padding: 8px 20px;
+  font-size: 0.9rem;
+  font-family: 'Orbitron', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 0.5rem;
+}
+
+.reconnect-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(255, 107, 0, 0.4);
+}
+
+/* Voice Tips */
+.voice-tips {
+  margin-top: 2rem;
+  text-align: center;
+  color: rgba(0, 212, 255, 0.6);
+  font-size: 0.85rem;
+}
+
+.voice-tips p {
+  margin: 0.5rem 0;
+}
+
+/* Animations */
+@keyframes pulse {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes rotate {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+@keyframes blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .arc-reactor {
+    width: 120px;
+    height: 120px;
+  }
+  
+  .arc-reactor .core {
+    width: 30px;
+    height: 30px;
+  }
+  
+  .ring-1 {
+    width: 60px;
+    height: 60px;
+  }
+  
+  .ring-2 {
+    width: 85px;
+    height: 85px;
+  }
+  
+  .ring-3 {
+    width: 110px;
+    height: 110px;
+  }
+  
+  .jarvis-button {
+    padding: 10px 24px;
+    font-size: 0.9rem;
+  }
+}

@@ -16,10 +16,12 @@ JARVIS is an AI-powered assistant with an Iron Man-inspired interface, now exclu
 
 - **🎯 Claude AI Integration**: Powered by Anthropic's Claude for superior intelligence
 - **🎨 Iron Man UI**: Futuristic holographic interface inspired by JARVIS
+- **🎤 Voice Activation**: "Hey JARVIS" wake word with personality-driven responses
 - **🧮 Accurate Calculations**: Handles math correctly (2 + 2 * 2 = 6, not 8!)
 - **☁️ Cloud-Based**: No local memory usage - perfect for M1 Macs
 - **🚀 Fast Responses**: Low latency with Claude's optimized API
 - **📚 200k Context**: Handle long conversations and documents
+- **🤖 JARVIS Personality**: British accent, witty responses, contextual awareness
 
 ## 🚀 Quick Start
 
@@ -39,6 +41,9 @@ echo "ANTHROPIC_API_KEY=your-api-key-here" > .env
 
 # Install dependencies (one time)
 pip install anthropic python-dotenv fastapi uvicorn pydantic psutil
+
+# For voice features (optional)
+pip install SpeechRecognition pyttsx3 pygame pyaudio
 
 # For the React frontend
 cd frontend && npm install && cd ..
@@ -65,6 +70,7 @@ This will:
 
 ## 💬 Example Interactions
 
+### Text Chat
 ```
 You: What is 2 + 2 * 2?
 JARVIS: Following the order of operations (PEMDAS), I need to multiply first, 
@@ -76,6 +82,19 @@ JARVIS: The square root of 144 is 12.
 You: Explain quantum computing in simple terms
 JARVIS: Quantum computing is like having a magical computer that can try many 
 solutions at once...
+```
+
+### Voice Commands
+```
+You: "Hey JARVIS"
+JARVIS: "Yes, Sir? How may I assist you?"
+
+You: "What's the weather like?"
+JARVIS: "The weather is partly cloudy, 72 degrees. Perfect for flying, if I may say so, sir."
+
+You: "Remind me to take a break"
+JARVIS: "Of course, sir. Shall I also cancel your 3 o'clock? You do have a tendency 
+to lose track of time when working on new projects."
 ```
 
 ## 🔧 Configuration
@@ -128,6 +147,10 @@ AI-Powered-Chatbot/
 ├── backend/
 │   ├── chatbots/
 │   │   └── claude_chatbot.py    # Claude API integration
+│   ├── voice/
+│   │   └── jarvis_voice.py      # JARVIS personality & voice
+│   ├── api/
+│   │   └── jarvis_voice_api.py  # Voice endpoints
 │   ├── main.py                  # FastAPI application
 │   └── run_server.py           # Server runner
 ├── frontend/
@@ -136,6 +159,7 @@ AI-Powered-Chatbot/
 │   │   └── App.css             # Iron Man styling
 │   └── package.json
 ├── start_system.py             # Main launcher
+├── test_jarvis_voice.py        # Voice system test
 ├── .env                        # API configuration
 └── README.md                   # This file
 ```
@@ -149,6 +173,34 @@ Previously, JARVIS supported multiple local models with complex memory managemen
 - ✅ **No Memory Issues**: Cloud-based processing
 - ✅ **Consistent Quality**: Same performance every time
 - ✅ **Simpler Setup**: No model downloads or management
+
+## 🎤 Voice Features
+
+### Activation
+- Say "Hey JARVIS" or "JARVIS" to activate
+- Visual feedback with Arc reactor animation
+- Continuous listening mode available
+
+### JARVIS Personality
+- British accent like Paul Bettany's JARVIS
+- Contextual awareness (time of day, work patterns)
+- Witty responses and dry humor
+- Addresses you as "Sir" or customizable name
+
+### Voice Commands
+```python
+# Test voice system
+python test_jarvis_voice.py
+
+# Run standalone voice assistant
+python -m backend.voice.jarvis_voice
+```
+
+### API Endpoints
+- `/voice/jarvis/status` - Check JARVIS status
+- `/voice/jarvis/activate` - Start voice system
+- `/voice/jarvis/command` - Send voice commands
+- `/voice/jarvis/config` - Configure preferences
 
 ## 💰 Costs
 

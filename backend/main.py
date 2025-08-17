@@ -39,6 +39,14 @@ except ImportError as e:
     logger.warning(f"Voice API not available: {e}")
     VOICE_API_AVAILABLE = False
 
+# Import JARVIS Voice API
+try:
+    from api.jarvis_voice_api import JARVISVoiceAPI
+    JARVIS_VOICE_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"JARVIS Voice API not available: {e}")
+    JARVIS_VOICE_AVAILABLE = False
+
 try:
     from api.automation_api import AutomationAPI
 
@@ -571,12 +579,32 @@ if AUTOMATION_API_AVAILABLE:
     except Exception as e:
         logger.warning(f"Failed to initialize Automation API: {e}")
 
+# Include JARVIS Voice API routes
+if JARVIS_VOICE_AVAILABLE:
+    try:
+        jarvis_api = JARVISVoiceAPI()
+        app.include_router(jarvis_api.router, prefix="/voice")
+        logger.info("JARVIS Voice API routes added - Iron Man mode activated!")
+    except Exception as e:
+        logger.warning(f"Failed to initialize JARVIS Voice API: {e}")
+
 
 # Update root endpoint
 @app.get("/")
 async def root():
     # Get memory status
     memory_status = await memory_manager.get_memory_snapshot()
+
+    # Check JARVIS status
+    jarvis_status = "offline"
+    if JARVIS_VOICE_AVAILABLE:
+        try:
+            if hasattr(app.state, 'jarvis_api') and app.state.jarvis_api.jarvis_available:
+                jarvis_status = "online"
+            elif 'jarvis_api' in locals() and jarvis_api.jarvis_available:
+                jarvis_status = "standby"
+        except:
+            pass
 
     return {
         "message": "AI-Powered Chatbot with M1-Optimized Memory Management",
@@ -585,6 +613,7 @@ async def root():
             "memory_management": "Proactive AI-driven memory management for M1 Macs",
             "chat": "Advanced conversational AI with NLP",
             "voice": "Speech recognition and synthesis",
+            "jarvis": "Iron Man-style AI assistant with personality" if JARVIS_VOICE_AVAILABLE else "Not available",
             "nlp": "Intent recognition, entity extraction, sentiment analysis",
             "automation": "Calendar, weather, information services, task automation",
             "rag": "Retrieval-Augmented Generation with knowledge base",
@@ -595,11 +624,13 @@ async def root():
             "percent_used": round(memory_status.percent * 100, 1),
             "available_gb": round(memory_status.available / (1024**3), 1),
         },
+        "jarvis_status": jarvis_status,
         "api_docs": "/docs",
         "endpoints": {
             "memory": "/memory/*",
             "chat": "/chat/*",
             "voice": "/voice/*",
+            "jarvis": "/voice/jarvis/*" if JARVIS_VOICE_AVAILABLE else None,
             "automation": "/automation/*",
             "knowledge": "/knowledge/*",
         },

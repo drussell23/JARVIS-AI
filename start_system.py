@@ -154,6 +154,44 @@ class UnifiedSystemManager:
             return False
             
         return True
+    
+    def check_voice_dependencies(self):
+        """Check voice-related dependencies (optional)"""
+        print(f"\n{Colors.BLUE}Checking voice dependencies (optional)...{Colors.ENDC}")
+        
+        voice_packages = {
+            "speech_recognition": "Speech recognition",
+            "pyttsx3": "Text-to-speech",
+            "pygame": "Audio feedback",
+            "pyaudio": "Audio input/output"
+        }
+        
+        voice_available = True
+        missing_voice = []
+        
+        for package, description in voice_packages.items():
+            try:
+                __import__(package)
+                print(f"{Colors.GREEN}✓ {description} ({package}){Colors.ENDC}")
+            except ImportError:
+                missing_voice.append(package)
+                print(f"{Colors.WARNING}⚠️  {description} ({package}) - not installed{Colors.ENDC}")
+                voice_available = False
+        
+        if not voice_available:
+            print(f"\n{Colors.YELLOW}🎤 Voice features unavailable. To enable:{Colors.ENDC}")
+            print(f"   python install_voice_deps.py")
+            print(f"   or: pip install {' '.join(missing_voice)}")
+            print(f"\n{Colors.CYAN}Voice features include:{Colors.ENDC}")
+            print("  • 'Hey JARVIS' wake word activation")
+            print("  • British accent text-to-speech")
+            print("  • Personality-driven responses")
+            print("  • Real-time voice interaction")
+        else:
+            print(f"\n{Colors.GREEN}✅ All voice features available!{Colors.ENDC}")
+            print(f"{Colors.CYAN}Say 'Hey JARVIS' to activate voice control{Colors.ENDC}")
+            
+        return voice_available
         
         
     def check_memory_status(self):
@@ -335,6 +373,16 @@ class UnifiedSystemManager:
         elif self.frontend_dir.exists():
             print(f"  📱 Frontend:          http://localhost:{self.ports['frontend']}")
             
+        # Check if voice is available
+        try:
+            import speech_recognition
+            print(f"  🎤 Voice Status:      http://localhost:{self.ports['main_api']}/voice/jarvis/status")
+            print(f"\n{Colors.CYAN}Voice Commands:{Colors.ENDC}")
+            print(f"  • Say 'Hey JARVIS' to activate")
+            print(f"  • Test voice: python test_jarvis_voice.py")
+        except ImportError:
+            pass
+            
         print(f"\n{Colors.GREEN}✨ Powered by Claude AI:{Colors.ENDC}")
         print(f"  • Superior language understanding")
         print(f"  • Accurate calculations and reasoning") 
@@ -391,6 +439,9 @@ class UnifiedSystemManager:
             if not self.check_essential_dependencies():
                 print(f"\n{Colors.FAIL}❌ Missing essential dependencies. Please install required packages.{Colors.ENDC}")
                 sys.exit(1)
+                
+            # Check voice dependencies (optional)
+            self.check_voice_dependencies()
         else:
             print(f"{Colors.WARNING}⚠️  Skipping dependency installation{Colors.ENDC}")
             

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import './App.css';
+import JarvisVoice from './components/JarvisVoice';
 
 function App() {
   const [input, setInput] = useState('');
@@ -39,6 +40,12 @@ function App() {
       <h1>J.A.R.V.I.S. Interface</h1>
       <p className="app-subtitle">Just A Rather Very Intelligent System</p>
       <div className="hud-divider" />
+      
+      {/* Voice Control Section */}
+      <JarvisVoice />
+      
+      <div className="hud-divider" />
+      
       <div className="chat-window">
         {chat.map((entry, index) => (
           <div key={index} className={`chat-entry ${entry.sender.toLowerCase()}`}>
