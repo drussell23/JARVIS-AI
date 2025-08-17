@@ -86,6 +86,31 @@
   animation-duration: 1s;
 }
 
+/* Continuous Listening State */
+.arc-reactor.continuous .core {
+  animation: pulse 3s ease-in-out infinite;
+  background: radial-gradient(circle, #9400d3 0%, #4b0082 50%, #310062 100%);
+  box-shadow: 0 0 20px #9400d3, inset 0 0 15px rgba(148, 0, 211, 0.5);
+}
+
+.arc-reactor.continuous .ring {
+  border-color: #9400d3;
+  animation-duration: 6s;
+  opacity: 0.4;
+}
+
+/* Waiting for Command State */
+.arc-reactor.waiting .core {
+  animation: pulse 0.8s ease-in-out infinite;
+  background: radial-gradient(circle, #ffd700 0%, #ffaa00 50%, #ff8800 100%);
+  box-shadow: 0 0 30px #ffd700, inset 0 0 20px rgba(255, 215, 0, 0.5);
+}
+
+.arc-reactor.waiting .ring {
+  border-color: #ffd700;
+  animation-duration: 1.5s;
+}
+
 /* Status Indicator */
 .jarvis-status {
   display: flex;
@@ -97,6 +122,18 @@
   font-size: 0.9rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
+}
+
+.listening-mode {
+  color: #9400d3;
+  font-size: 0.8rem;
+  animation: fadeInOut 2s ease-in-out infinite;
+}
+
+.waiting-mode {
+  color: #ffd700;
+  font-size: 0.8rem;
+  animation: fadeInOut 0.8s ease-in-out infinite;
 }
 
 .status-indicator {
@@ -165,6 +202,26 @@
 .jarvis-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.jarvis-button.continuous {
+  background: linear-gradient(135deg, #9400d3 0%, #4b0082 100%);
+  box-shadow: 0 4px 15px rgba(148, 0, 211, 0.3);
+}
+
+.jarvis-button.continuous-active {
+  background: linear-gradient(135deg, #4b0082 0%, #310062 100%);
+  box-shadow: 0 4px 15px rgba(75, 0, 130, 0.5);
+  position: relative;
+}
+
+.jarvis-button.continuous-active::after {
+  content: '●';
+  position: absolute;
+  top: 5px;
+  right: 10px;
+  color: #00ff00;
+  animation: blink 1s infinite;
 }
 
 /* Voice Input */
@@ -298,6 +355,15 @@
   }
   50% {
     opacity: 0.3;
+  }
+}
+
+@keyframes fadeInOut {
+  0%, 100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
   }
 }
 

@@ -8,18 +8,27 @@ const JarvisVoice = () => {
   const [transcript, setTranscript] = useState('');
   const [response, setResponse] = useState('');
   const [error, setError] = useState(null);
+  const [continuousListening, setContinuousListening] = useState(false);
+  const [isWaitingForCommand, setIsWaitingForCommand] = useState(false);
   
   const wsRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+  const recognitionRef = useRef(null);
 
   useEffect(() => {
     // Check JARVIS status on mount
     checkJarvisStatus();
     
+    // Initialize speech recognition
+    initializeSpeechRecognition();
+    
     return () => {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.close();
+      }
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
       }
     };
   }, []);
@@ -107,6 +116,88 @@ const JarvisVoice = () => {
     }
   };
 
+  const initializeSpeechRecognition = () => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      
+      recognitionRef.current.continuous = true;
+      recognitionRef.current.interimResults = true;
+      recognitionRef.current.lang = 'en-US';
+      
+      recognitionRef.current.onresult = (event) => {
+        const last = event.results.length - 1;
+        const transcript = event.results[last][0].transcript.toLowerCase();
+        
+        // Check for wake word
+        if ((transcript.includes('hey jarvis') || transcript.includes('jarvis')) && !isWaitingForCommand) {
+          console.log('Wake word detected:', transcript);
+          handleWakeWordDetected();
+        } else if (isWaitingForCommand && event.results[last].isFinal) {
+          // Process the command after wake word
+          handleVoiceCommand(event.results[last][0].transcript);
+        }
+      };
+      
+      recognitionRef.current.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        if (event.error === 'no-speech') {
+          // Restart recognition if no speech detected
+          if (continuousListening) {
+            recognitionRef.current.start();
+          }
+        }
+      };
+      
+      recognitionRef.current.onend = () => {
+        // Restart if continuous listening is enabled
+        if (continuousListening) {
+          setTimeout(() => {
+            try {
+              recognitionRef.current.start();
+            } catch (e) {
+              console.log('Recognition restart failed:', e);
+            }
+          }, 100);
+        }
+      };
+    } else {
+      setError('Speech recognition not supported in this browser');
+    }
+  };
+
+  const handleWakeWordDetected = () => {
+    setIsWaitingForCommand(true);
+    setIsListening(true);
+    
+    // Send wake word to JARVIS
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'command',
+        text: 'activate'
+      }));
+    }
+    
+    // Play activation sound and show visual feedback
+    speakResponse("Yes, sir?");
+    
+    // Timeout for command after 5 seconds
+    setTimeout(() => {
+      if (isWaitingForCommand) {
+        setIsWaitingForCommand(false);
+        setIsListening(false);
+      }
+    }, 5000);
+  };
+
+  const handleVoiceCommand = (command) => {
+    console.log('Command received:', command);
+    setTranscript(command);
+    setIsWaitingForCommand(false);
+    setIsListening(false);
+    sendTextCommand(command);
+  };
+
   const activateJarvis = async () => {
     try {
       const response = await fetch('http://localhost:8000/voice/jarvis/activate', {
@@ -117,10 +208,32 @@ const JarvisVoice = () => {
       setTimeout(() => {
         setJarvisStatus('online');
         speakResponse(data.activation_phrase);
+        
+        // Start continuous listening after activation
+        enableContinuousListening();
       }, 2000);
     } catch (err) {
       console.error('Failed to activate JARVIS:', err);
       setError('Failed to activate JARVIS');
+    }
+  };
+  
+  const enableContinuousListening = () => {
+    if (recognitionRef.current) {
+      setContinuousListening(true);
+      try {
+        recognitionRef.current.start();
+        console.log('Continuous listening enabled - say "Hey JARVIS"');
+      } catch (e) {
+        console.log('Recognition already started');
+      }
+    }
+  };
+  
+  const disableContinuousListening = () => {
+    setContinuousListening(false);
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
     }
   };
 
@@ -235,7 +348,7 @@ const JarvisVoice = () => {
 
   return (
     <div className="jarvis-voice-container">
-      <div className={`arc-reactor ${isListening ? 'listening' : ''} ${isProcessing ? 'processing' : ''}`}>
+      <div className={`arc-reactor ${isListening ? 'listening' : ''} ${isProcessing ? 'processing' : ''} ${continuousListening ? 'continuous' : ''} ${isWaitingForCommand ? 'waiting' : ''}`}>
         <div className="core"></div>
         <div className="ring ring-1"></div>
         <div className="ring ring-2"></div>
@@ -245,6 +358,12 @@ const JarvisVoice = () => {
       <div className="jarvis-status">
         <div className={`status-indicator ${jarvisStatus}`}></div>
         <span>JARVIS {jarvisStatus.toUpperCase()}</span>
+        {continuousListening && (
+          <span className="listening-mode"> - LISTENING FOR "HEY JARVIS"</span>
+        )}
+        {isWaitingForCommand && (
+          <span className="waiting-mode"> - AWAITING COMMAND</span>
+        )}
       </div>
       
       <div className="voice-controls">
@@ -255,13 +374,23 @@ const JarvisVoice = () => {
         )}
         
         {jarvisStatus === 'online' && (
-          <button 
-            onClick={isListening ? stopListening : startListening}
-            className={`jarvis-button ${isListening ? 'stop' : 'start'}`}
-            disabled={isProcessing}
-          >
-            {isListening ? 'Stop Listening' : 'Start Listening'}
-          </button>
+          <>
+            {!continuousListening && (
+              <button 
+                onClick={isListening ? stopListening : startListening}
+                className={`jarvis-button ${isListening ? 'stop' : 'start'}`}
+                disabled={isProcessing}
+              >
+                {isListening ? 'Stop Listening' : 'Start Listening'}
+              </button>
+            )}
+            <button 
+              onClick={continuousListening ? disableContinuousListening : enableContinuousListening}
+              className={`jarvis-button ${continuousListening ? 'continuous-active' : 'continuous'}`}
+            >
+              {continuousListening ? 'Disable Wake Word' : 'Enable Wake Word'}
+            </button>
+          </>
         )}
       </div>
       
