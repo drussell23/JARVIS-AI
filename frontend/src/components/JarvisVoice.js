@@ -420,23 +420,12 @@ const JarvisVoice = () => {
         )}
         
         {jarvisStatus === 'online' && (
-          <>
-            {!continuousListening && (
-              <button 
-                onClick={isListening ? stopListening : startListening}
-                className={`jarvis-button ${isListening ? 'stop' : 'start'}`}
-                disabled={isProcessing}
-              >
-                {isListening ? 'Stop Listening' : 'Start Listening'}
-              </button>
-            )}
-            <button 
-              onClick={continuousListening ? disableContinuousListening : enableContinuousListening}
-              className={`jarvis-button ${continuousListening ? 'continuous-active' : 'continuous'}`}
-            >
-              {continuousListening ? 'Disable Wake Word' : 'Enable Wake Word'}
-            </button>
-          </>
+          <button 
+            onClick={continuousListening ? disableContinuousListening : enableContinuousListening}
+            className={`jarvis-button ${continuousListening ? 'continuous-active' : 'start'}`}
+          >
+            {continuousListening ? 'Stop Listening' : 'Start Listening'}
+          </button>
         )}
       </div>
       
@@ -484,7 +473,7 @@ const JarvisVoice = () => {
       )}
       
       <div className="voice-tips">
-        <p>Say "Hey JARVIS" to activate voice control</p>
+        <p>Click "Start Listening" then say "Hey JARVIS" to activate</p>
         <p>Available commands: weather, time, calculations, reminders</p>
       </div>
     </div>
