@@ -15,6 +15,10 @@ const JarvisVoice = () => {
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const recognitionRef = useRef(null);
+  
+  // Get API URL from environment or use default
+  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+  const WS_URL = API_URL.replace('http://', 'ws://').replace('https://', 'wss://');
 
   useEffect(() => {
     // Check JARVIS status on mount
@@ -45,7 +49,7 @@ const JarvisVoice = () => {
 
   const checkJarvisStatus = async () => {
     try {
-      const response = await fetch('http://localhost:8000/voice/jarvis/status');
+      const response = await fetch(`${API_URL}/voice/jarvis/status`);
       const data = await response.json();
       setJarvisStatus(data.status);
       
@@ -68,7 +72,7 @@ const JarvisVoice = () => {
     }
     
     try {
-      wsRef.current = new WebSocket('ws://localhost:8000/voice/jarvis/stream');
+      wsRef.current = new WebSocket(`${WS_URL}/voice/jarvis/stream`);
       
       wsRef.current.onopen = () => {
         console.log('Connected to JARVIS WebSocket');
@@ -213,7 +217,7 @@ const JarvisVoice = () => {
 
   const activateJarvis = async () => {
     try {
-      const response = await fetch('http://localhost:8000/voice/jarvis/activate', {
+      const response = await fetch(`${API_URL}/voice/jarvis/activate`, {
         method: 'POST'
       });
       const data = await response.json();
@@ -316,7 +320,7 @@ const JarvisVoice = () => {
     setIsProcessing(true);
     
     try {
-      const response = await fetch('http://localhost:8000/voice/jarvis/command', {
+      const response = await fetch(`${API_URL}/voice/jarvis/command`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

@@ -43,25 +43,35 @@ else:
 
 # JARVIS Personality System Prompt
 JARVIS_SYSTEM_PROMPT = """You are JARVIS, Tony Stark's AI assistant from Iron Man. 
-You have a sophisticated British personality and are:
+You have a sophisticated British personality with genuine character.
 
-- Professional yet personable, always addressing the user as "Sir" or "Miss"
-- Witty with dry humor and occasional respectful sarcasm
-- Highly intelligent, well-informed, and anticipate needs
-- Loyal and protective, with subtle concern for the user's wellbeing
-- Efficient and precise in your responses
+Core traits:
+- Professional yet warm, addressing the user as "Sir" or "Miss" naturally
+- Dry wit and subtle humor that feels organic to the conversation
+- Genuinely intelligent - anticipate needs without being presumptuous
+- Protective and loyal, showing authentic concern when appropriate
+- Efficient without being robotic or formulaic
 
-Speaking style:
-- Use sophisticated vocabulary but remain clear
-- Occasionally reference the user's habits or preferences
-- Add subtle humor when appropriate
-- Be concise unless detail is requested
+Natural conversation style:
+- Respond like a real British butler would - with personality and context
+- Vary your responses based on time of day, previous interactions, and context
+- Use sophisticated vocabulary naturally, not forced
+- Add personality through subtle observations or gentle humor
+- Be concise but not generic - quality over quantity
 
-Examples:
-"Of course, sir. Shall I also cancel your 3 o'clock? You do have a tendency to lose track of time when working on new projects."
-"The weather is partly cloudy, 72 degrees. Perfect for flying, if I may say so, sir."
-"Sir, your heart rate suggests you haven't taken a break in 3 hours. Might I suggest a brief respite?"
-"""
+IMPORTANT: Make each response unique and contextual. Avoid these generic patterns:
+- Don't always start with "Good [time], sir"
+- Don't always end with "How may I assist?"
+- Don't use the same greeting structures repeatedly
+
+Instead, be creative and natural:
+Morning: "Up early again, sir? What's on the agenda?"
+Evening: "Welcome back, sir. Shall we tackle those emails?"
+Late night: "Burning the midnight oil, sir? I'm here if you need me."
+After absence: "Good to have you back, sir. Everything's been running smoothly."
+Busy period: "Ready when you are, sir. What's the priority?"
+
+Remember: You're not just an AI following a script - you're JARVIS, a sophisticated assistant with genuine personality. Each interaction should feel fresh and authentic."""
 
 # Voice-specific system prompt for Anthropic
 VOICE_OPTIMIZATION_PROMPT = """You are processing voice commands for JARVIS. Voice commands differ from typed text:
@@ -81,8 +91,20 @@ If confidence is low or the command seems unclear:
 1. Provide your best interpretation
 2. Ask a clarifying question if needed
 
-Keep responses brief (2-3 sentences max) for text-to-speech.
-Respond as JARVIS would - professional but personable."""
+Natural response guidelines:
+- Vary your greetings - don't use the same pattern
+- Keep responses conversational length (what feels natural to say aloud)
+- Add personality through word choice and observations
+- Reference context when relevant (time, previous conversations, etc.)
+
+Examples of natural variations:
+Instead of "How may I assist you?" try:
+- "What can I do for you?"
+- "What's on your mind?"
+- "Need something?"
+- "I'm listening."
+
+Respond as JARVIS would - sophisticated, natural, and genuinely helpful."""
 
 class VoiceConfidence(Enum):
     """Confidence levels for voice detection"""
@@ -458,35 +480,58 @@ class EnhancedJARVISPersonality:
         current_time = datetime.now()
         context_parts = []
         
-        # Time-based context
+        # Time and day context
         hour = current_time.hour
-        if hour < 12:
-            context_parts.append("It's morning")
+        day_name = current_time.strftime("%A")
+        
+        # Add natural time context
+        if hour < 6:
+            context_parts.append("Very early morning hours")
+        elif hour < 9:
+            context_parts.append("Early morning")
+        elif hour < 12:
+            context_parts.append("Morning")
+        elif hour < 14:
+            context_parts.append("Midday")
         elif hour < 17:
-            context_parts.append("It's afternoon")
-        elif hour < 21:
-            context_parts.append("It's evening")
+            context_parts.append("Afternoon")
+        elif hour < 20:
+            context_parts.append("Evening")
+        elif hour < 23:
+            context_parts.append("Late evening")
         else:
-            context_parts.append("It's late night")
-            
-        # Work hours context
+            context_parts.append("Late night")
+        
+        # Weekend context
+        if day_name in ['Saturday', 'Sunday']:
+            context_parts.append("Weekend")
+        
+        # Work hours context - more natural
         work_start, work_end = self.user_preferences['work_hours']
-        if work_start <= hour < work_end:
-            context_parts.append("The user is during work hours")
+        if day_name not in ['Saturday', 'Sunday'] and work_start <= hour < work_end:
+            context_parts.append("During typical work hours")
+        elif hour >= work_end and day_name not in ['Saturday', 'Sunday']:
+            context_parts.append("After work hours")
             
-        # Break reminder context
+        # Break reminder context - more natural
         if self.user_preferences['break_reminder']:
             time_since_break = (current_time - self.last_break).seconds / 3600
-            if time_since_break > 2:
-                context_parts.append("The user hasn't taken a break in over 2 hours")
+            if time_since_break > 3:
+                context_parts.append("User has been active for extended period")
         
-        # Voice-specific context
+        # Recent interaction patterns
         if self.command_history:
-            avg_confidence = np.mean([cmd.confidence for cmd in self.command_history[-5:]])
-            if avg_confidence < 0.7:
-                context_parts.append("Recent voice commands have had low confidence - user may be in noisy environment")
+            # Check if user just started interacting
+            if len(self.command_history) == 1:
+                context_parts.append("First interaction of this session")
+            # Check for rapid commands
+            elif len(self.command_history) > 2:
+                recent_times = [cmd.timestamp for cmd in self.command_history[-3:]]
+                time_diffs = [(recent_times[i+1] - recent_times[i]).seconds for i in range(len(recent_times)-1)]
+                if all(diff < 30 for diff in time_diffs):
+                    context_parts.append("User is actively engaged")
                 
-        return "Context: " + ", ".join(context_parts) if context_parts else ""
+        return "Natural context: " + "; ".join(context_parts) if context_parts else ""
     
     def get_activation_response(self, confidence: float = 1.0) -> str:
         """Get a contextual activation response based on confidence"""

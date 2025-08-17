@@ -700,6 +700,16 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-
-    logger.info("Starting M1-optimized chatbot server...")
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    import argparse
+    
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="AI-Powered Chatbot Server")
+    parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
+    args = parser.parse_args()
+    
+    # Also check environment variable for port
+    port = int(os.getenv("PORT", args.port))
+    
+    logger.info(f"Starting M1-optimized chatbot server on {args.host}:{port}...")
+    uvicorn.run(app, host=args.host, port=port)

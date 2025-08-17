@@ -286,36 +286,108 @@ class UnifiedSystemManager:
         result = sock.connect_ex(('localhost', port))
         sock.close()
         return result != 0
+    
+    def find_available_port(self, start_port: int, max_attempts: int = 10) -> int:
+        """Find an available port starting from the given port"""
+        for i in range(max_attempts):
+            port = start_port + i
+            if self.check_port_available(port):
+                return port
+        raise RuntimeError(f"No available ports found in range {start_port}-{start_port + max_attempts}")
+    
+    def kill_process_on_port(self, port: int) -> bool:
+        """Kill any process using the specified port"""
+        try:
+            print(f"{Colors.YELLOW}Attempting to kill process on port {port}...{Colors.ENDC}")
+            
+            if platform.system() == "Darwin":  # macOS
+                # First try to find the PID
+                result = subprocess.run(
+                    f"lsof -ti:{port}", 
+                    shell=True, 
+                    capture_output=True, 
+                    text=True
+                )
+                if result.stdout.strip():
+                    pids = result.stdout.strip().split('\n')
+                    for pid in pids:
+                        subprocess.run(f"kill -9 {pid}", shell=True)
+                    time.sleep(1)
+                    return True
+            elif platform.system() == "Linux":
+                subprocess.run(f"fuser -k {port}/tcp", shell=True, capture_output=True)
+                time.sleep(1)
+                return True
+            elif platform.system() == "Windows":
+                # Find process using netstat and kill it
+                result = subprocess.run(
+                    f'netstat -ano | findstr :{port}', 
+                    shell=True, 
+                    capture_output=True, 
+                    text=True
+                )
+                if result.stdout:
+                    lines = result.stdout.strip().split('\n')
+                    for line in lines:
+                        parts = line.split()
+                        if len(parts) >= 5:
+                            pid = parts[-1]
+                            subprocess.run(f"taskkill /F /PID {pid}", shell=True, capture_output=True)
+                    time.sleep(1)
+                    return True
+        except Exception as e:
+            print(f"{Colors.WARNING}Failed to kill process: {e}{Colors.ENDC}")
+        return False
         
     def start_backend_services(self):
         """Start backend services"""
         print(f"\n{Colors.BLUE}Starting backend services...{Colors.ENDC}")
         
         # Check main API port
+        original_port = self.ports["main_api"]
         if not self.check_port_available(self.ports["main_api"]):
             print(f"{Colors.WARNING}⚠️  Port {self.ports['main_api']} is already in use{Colors.ENDC}")
-            print(f"{Colors.CYAN}Attempting to kill existing process...{Colors.ENDC}")
+            
+            # Ask user what to do
+            print(f"\n{Colors.CYAN}Options:{Colors.ENDC}")
+            print("1. Kill the existing process and use port 8000")
+            print("2. Find an alternative port automatically")
+            print("3. Exit")
+            
             try:
-                if platform.system() == "Darwin":
-                    subprocess.run(f"lsof -ti:{self.ports['main_api']} | xargs kill -9", 
-                                 shell=True, capture_output=True)
+                choice = input(f"\n{Colors.YELLOW}Choose an option (1-3) [default: 1]: {Colors.ENDC}").strip() or "1"
+            except KeyboardInterrupt:
+                print(f"\n{Colors.FAIL}Cancelled{Colors.ENDC}")
+                sys.exit(1)
+                
+            if choice == "1":
+                if self.kill_process_on_port(self.ports["main_api"]):
+                    print(f"{Colors.GREEN}✓ Process killed successfully{Colors.ENDC}")
                 else:
-                    subprocess.run(f"fuser -k {self.ports['main_api']}/tcp", 
-                                 shell=True, capture_output=True)
-                time.sleep(1)
-            except:
-                pass
+                    print(f"{Colors.WARNING}Could not kill process, trying alternative port...{Colors.ENDC}")
+                    self.ports["main_api"] = self.find_available_port(original_port + 1)
+                    print(f"{Colors.GREEN}Using port {self.ports['main_api']}{Colors.ENDC}")
+            elif choice == "2":
+                self.ports["main_api"] = self.find_available_port(original_port + 1)
+                print(f"{Colors.GREEN}Using alternative port {self.ports['main_api']}{Colors.ENDC}")
+            else:
+                print(f"{Colors.FAIL}Exiting...{Colors.ENDC}")
+                sys.exit(0)
                 
         # Set environment variables
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
         env["USE_CLAUDE"] = "1"
+        env["PORT"] = str(self.ports["main_api"])  # Pass the port to the backend
         
         print(f"{Colors.CYAN}Starting Claude-powered API on port {self.ports['main_api']}...{Colors.ENDC}")
-            
-        # Start main API
+        
+        # Check if run_server.py exists, otherwise use main.py
+        server_script = "run_server.py" if (self.backend_dir / "run_server.py").exists() else "main.py"
+        
+        # Start main API with explicit port
         main_api_process = subprocess.Popen(
-            [sys.executable, "run_server.py"],
+            [sys.executable, server_script, "--port", str(self.ports["main_api"])],
             cwd=self.backend_dir,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -323,21 +395,46 @@ class UnifiedSystemManager:
         )
         self.processes.append(main_api_process)
         
-        # Wait for service to start
+        # Wait for service to start with retries
         print(f"{Colors.CYAN}Waiting for API to initialize...{Colors.ENDC}")
-        time.sleep(5)
+        max_wait = 30  # Maximum 30 seconds
+        start_time = time.time()
+        api_ready = False
         
-        # Check if service is running
-        if main_api_process.poll() is not None:
-            output = main_api_process.stdout.read().decode('utf-8') if main_api_process.stdout else ""
-            print(f"{Colors.FAIL}❌ Failed to start API{Colors.ENDC}")
-            if output:
-                print(f"{Colors.FAIL}Error output:{Colors.ENDC}")
-                print(output[:500])
-            self.cleanup()
-            sys.exit(1)
-            
-        print(f"{Colors.GREEN}✓ Backend API started{Colors.ENDC}")
+        while time.time() - start_time < max_wait:
+            # Check if process is still running
+            if main_api_process.poll() is not None:
+                output = main_api_process.stdout.read().decode('utf-8') if main_api_process.stdout else ""
+                print(f"{Colors.FAIL}❌ Failed to start API{Colors.ENDC}")
+                if output:
+                    print(f"{Colors.FAIL}Error output:{Colors.ENDC}")
+                    print(output[:1000])  # Show more output for debugging
+                    
+                    # Check for specific errors
+                    if "ImportError" in output:
+                        print(f"\n{Colors.YELLOW}Missing dependencies detected. Try running:{Colors.ENDC}")
+                        print(f"  pip install -r backend/requirements.txt")
+                    elif "ANTHROPIC_API_KEY" in output:
+                        print(f"\n{Colors.YELLOW}API key issue detected. Check your .env file{Colors.ENDC}")
+                        
+                self.cleanup()
+                sys.exit(1)
+                
+            # Try to connect to the API
+            try:
+                import urllib.request
+                response = urllib.request.urlopen(f"http://localhost:{self.ports['main_api']}/docs", timeout=1)
+                if response.status == 200:
+                    api_ready = True
+                    break
+            except:
+                time.sleep(1)
+                continue
+                
+        if api_ready:
+            print(f"{Colors.GREEN}✓ Backend API started successfully{Colors.ENDC}")
+        else:
+            print(f"{Colors.WARNING}⚠️  API may still be starting up...{Colors.ENDC}")
             
     def start_training_api(self):
         """Start training API for local models"""
@@ -371,9 +468,16 @@ class UnifiedSystemManager:
         print(f"\n{Colors.BLUE}Starting frontend...{Colors.ENDC}")
         
         # Check if port is available
+        original_frontend_port = self.ports['frontend']
         if not self.check_port_available(self.ports['frontend']):
             print(f"{Colors.WARNING}⚠️  Port {self.ports['frontend']} is already in use{Colors.ENDC}")
-            return
+            # Try to find alternative port
+            try:
+                self.ports['frontend'] = self.find_available_port(original_frontend_port + 1)
+                print(f"{Colors.GREEN}Using alternative port {self.ports['frontend']} for frontend{Colors.ENDC}")
+            except:
+                print(f"{Colors.WARNING}Could not find available port for frontend, skipping...{Colors.ENDC}")
+                return
             
         # Check if it's a React app with package.json
         if (self.frontend_dir / "package.json").exists():
@@ -384,10 +488,12 @@ class UnifiedSystemManager:
                 
             print(f"{Colors.CYAN}Starting JARVIS React Interface...{Colors.ENDC}")
             
-            # Set environment to use port 3000
+            # Set environment to use correct port and API URL
             env = os.environ.copy()
             env["PORT"] = str(self.ports['frontend'])
             env["BROWSER"] = "none"  # Don't auto-open browser from React
+            # Update React app to use correct backend port
+            env["REACT_APP_API_URL"] = f"http://localhost:{self.ports['main_api']}"
             
             # Start React development server
             frontend_process = subprocess.Popen(
@@ -420,6 +526,11 @@ class UnifiedSystemManager:
         print(f"{Colors.CYAN}Main Services:{Colors.ENDC}")
         print(f"  🔌 API Documentation: http://localhost:{self.ports['main_api']}/docs")
         print(f"  💬 Basic Chat:        http://localhost:{self.ports['main_api']}/")
+        
+        # Show port changes if any
+        if self.ports['main_api'] != 8000:
+            print(f"\n{Colors.YELLOW}⚠️  Note: Backend is running on port {self.ports['main_api']} instead of 8000{Colors.ENDC}")
+            print(f"  Update your frontend configuration if needed")
         
         if self.frontend_dir.exists() and (self.frontend_dir / "package.json").exists():
             print(f"  🎯 JARVIS Interface:  http://localhost:{self.ports['frontend']}/ {Colors.GREEN}← Iron Man UI{Colors.ENDC}")
@@ -543,10 +654,26 @@ class UnifiedSystemManager:
                         service_name = service_names[i] if i < len(service_names) else f"Service {i}"
                         
                         output = proc.stdout.read().decode('utf-8') if proc.stdout else ""
-                        print(f"{Colors.FAIL}❌ {service_name} stopped unexpectedly{Colors.ENDC}")
-                        if output:
-                            print(f"{Colors.FAIL}Error:{Colors.ENDC}")
-                            print(output[:500])
+                        error_output = proc.stderr.read().decode('utf-8') if proc.stderr else ""
+                        
+                        print(f"\n{Colors.FAIL}❌ {service_name} stopped unexpectedly{Colors.ENDC}")
+                        if output or error_output:
+                            print(f"{Colors.FAIL}Output:{Colors.ENDC}")
+                            if output:
+                                print(output[:1000])
+                            if error_output:
+                                print(f"{Colors.FAIL}Error output:{Colors.ENDC}")
+                                print(error_output[:1000])
+                                
+                        # Try to restart the service
+                        if service_name == "Main API" and i == 0:
+                            print(f"{Colors.YELLOW}Attempting to restart {service_name}...{Colors.ENDC}")
+                            self.processes.pop(i)
+                            try:
+                                self.start_backend_services()
+                            except:
+                                print(f"{Colors.FAIL}Failed to restart {service_name}{Colors.ENDC}")
+                                break
                             
         except KeyboardInterrupt:
             pass
