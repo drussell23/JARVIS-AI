@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>J.A.R.V.I.S. - AI Agent System</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/animations.css">
+    <link rel="stylesheet" href="css/holographic.css">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <!-- Particle Background -->
+    <div id="particles-js"></div>
+    
+    <!-- HUD Overlay -->
+    <div class="hud-overlay">
+        <div class="hud-corner top-left"></div>
+        <div class="hud-corner top-right"></div>
+        <div class="hud-corner bottom-left"></div>
+        <div class="hud-corner bottom-right"></div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="logo">
+                <div class="arc-reactor-mini">
+                    <div class="core"></div>
+                </div>
+                <span>J.A.R.V.I.S.</span>
+            </div>
+            <ul class="nav-links">
+                <li><a href="#features" class="nav-link">Features</a></li>
+                <li><a href="#capabilities" class="nav-link">Capabilities</a></li>
+                <li><a href="#demo" class="nav-link">Demo</a></li>
+                <li><a href="#install" class="nav-link">Install</a></li>
+                <li><a href="https://github.com/drussell23/JARVIS-AI-Agent" class="nav-link github"><i class="fab fa-github"></i></a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-content">
+            <div class="jarvis-intro">
+                <div class="glitch-wrapper">
+                    <h1 class="glitch" data-text="J.A.R.V.I.S.">J.A.R.V.I.S.</h1>
+                </div>
+                <p class="subtitle">Just A Rather Very Intelligent System</p>
+                <p class="tagline">AI Agent with macOS System Control</p>
+            </div>
+
+            <!-- Central Arc Reactor -->
+            <div class="arc-reactor-container">
+                <div class="arc-reactor-large">
+                    <div class="outer-ring">
+                        <div class="energy-flow"></div>
+                    </div>
+                    <div class="middle-ring">
+                        <div class="energy-pulse"></div>
+                    </div>
+                    <div class="inner-ring">
+                        <div class="data-stream"></div>
+                    </div>
+                    <div class="core-large">
+                        <div class="core-pulse"></div>
+                        <div class="status-text">ONLINE</div>
+                    </div>
+                    <div class="holographic-display">
+                        <div class="holo-ring"></div>
+                        <div class="holo-data">
+                            <span>SYS: 100%</span>
+                            <span>AI: ACTIVE</span>
+                            <span>VOICE: READY</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Call to Action -->
+            <div class="cta-container">
+                <a href="#demo" class="cta-button primary">
+                    <span class="button-text">Activate JARVIS</span>
+                    <div class="button-glow"></div>
+                </a>
+                <a href="#install" class="cta-button secondary">
+                    <span class="button-text">Get Started</span>
+                    <div class="button-glow"></div>
+                </a>
+            </div>
+        </div>
+
+        <!-- Floating Tech Elements -->
+        <div class="floating-elements">
+            <div class="tech-card" style="--delay: 0s;">
+                <i class="fas fa-microphone"></i>
+                <span>Voice Control</span>
+            </div>
+            <div class="tech-card" style="--delay: 0.5s;">
+                <i class="fas fa-brain"></i>
+                <span>AI Powered</span>
+            </div>
+            <div class="tech-card" style="--delay: 1s;">
+                <i class="fas fa-shield-alt"></i>
+                <span>Secure</span>
+            </div>
+            <div class="tech-card" style="--delay: 1.5s;">
+                <i class="fas fa-rocket"></i>
+                <span>Fast</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="features">
+        <div class="container">
+            <h2 class="section-title">
+                <span class="title-line"></span>
+                Core Features
+                <span class="title-line"></span>
+            </h2>
+            
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <div class="icon-hex">
+                            <i class="fas fa-comment-dots"></i>
+                        </div>
+                    </div>
+                    <h3>Natural Language</h3>
+                    <p>Understands complex conversational commands with context awareness</p>
+                    <div class="feature-stats">
+                        <span><i class="fas fa-check"></i> 85%+ Accuracy</span>
+                        <span><i class="fas fa-bolt"></i> <1s Response</span>
+                    </div>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <div class="icon-hex">
+                            <i class="fas fa-desktop"></i>
+                        </div>
+                    </div>
+                    <h3>System Control</h3>
+                    <p>Control apps, files, and system settings with voice commands</p>
+                    <div class="feature-stats">
+                        <span><i class="fas fa-apple-alt"></i> macOS Native</span>
+                        <span><i class="fas fa-lock"></i> Safe Mode</span>
+                    </div>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <div class="icon-hex">
+                            <i class="fas fa-robot"></i>
+                        </div>
+                    </div>
+                    <h3>AI Agent</h3>
+                    <p>Powered by Claude AI for intelligent command interpretation</p>
+                    <div class="feature-stats">
+                        <span><i class="fas fa-brain"></i> ML Enhanced</span>
+                        <span><i class="fas fa-sync"></i> Learning</span>
+                    </div>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <div class="icon-hex">
+                            <i class="fas fa-tasks"></i>
+                        </div>
+                    </div>
+                    <h3>Workflows</h3>
+                    <p>Execute complex multi-step routines with a single command</p>
+                    <div class="feature-stats">
+                        <span><i class="fas fa-magic"></i> Automation</span>
+                        <span><i class="fas fa-cog"></i> Custom</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Capabilities Section -->
+    <section id="capabilities" class="capabilities">
+        <div class="container">
+            <h2 class="section-title">
+                <span class="title-line"></span>
+                System Capabilities
+                <span class="title-line"></span>
+            </h2>
+
+            <div class="capabilities-showcase">
+                <div class="capability-list left">
+                    <div class="capability-item" data-category="apps">
+                        <div class="cap-icon"><i class="fas fa-window-restore"></i></div>
+                        <div class="cap-content">
+                            <h4>Application Management</h4>
+                            <p>Open, close, switch between apps</p>
+                        </div>
+                    </div>
+                    <div class="capability-item" data-category="files">
+                        <div class="cap-icon"><i class="fas fa-folder-open"></i></div>
+                        <div class="cap-content">
+                            <h4>File Operations</h4>
+                            <p>Create, search, manage files</p>
+                        </div>
+                    </div>
+                    <div class="capability-item" data-category="system">
+                        <div class="cap-icon"><i class="fas fa-sliders-h"></i></div>
+                        <div class="cap-content">
+                            <h4>System Settings</h4>
+                            <p>Volume, WiFi, screenshots</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="hologram-display">
+                    <div class="hologram-container">
+                        <div class="holo-base"></div>
+                        <div class="holo-projection">
+                            <div class="holo-content">
+                                <div class="code-display">
+                                    <pre><code class="command-preview">
+> "Hey JARVIS, open Chrome"
+> "Set volume to 50%"
+> "Take a screenshot"
+> "Start morning routine"
+                                    </code></pre>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="holo-particles"></div>
+                    </div>
+                </div>
+
+                <div class="capability-list right">
+                    <div class="capability-item" data-category="web">
+                        <div class="cap-icon"><i class="fas fa-globe"></i></div>
+                        <div class="cap-content">
+                            <h4>Web Integration</h4>
+                            <p>Search, browse, research</p>
+                        </div>
+                    </div>
+                    <div class="capability-item" data-category="voice">
+                        <div class="cap-icon"><i class="fas fa-microphone-alt"></i></div>
+                        <div class="cap-content">
+                            <h4>Voice Recognition</h4>
+                            <p>ML-enhanced accuracy</p>
+                        </div>
+                    </div>
+                    <div class="capability-item" data-category="ai">
+                        <div class="cap-icon"><i class="fas fa-brain"></i></div>
+                        <div class="cap-content">
+                            <h4>AI Intelligence</h4>
+                            <p>Context-aware responses</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Demo Section -->
+    <section id="demo" class="demo-section">
+        <div class="container">
+            <h2 class="section-title">
+                <span class="title-line"></span>
+                Live Demo
+                <span class="title-line"></span>
+            </h2>
+
+            <div class="demo-container">
+                <div class="demo-screen">
+                    <div class="screen-header">
+                        <div class="status-bar">
+                            <span class="status-dot active"></span>
+                            <span>JARVIS ONLINE</span>
+                        </div>
+                    </div>
+                    <div class="screen-content">
+                        <div class="voice-visualizer">
+                            <div class="wave-bar" style="--i: 1;"></div>
+                            <div class="wave-bar" style="--i: 2;"></div>
+                            <div class="wave-bar" style="--i: 3;"></div>
+                            <div class="wave-bar" style="--i: 4;"></div>
+                            <div class="wave-bar" style="--i: 5;"></div>
+                        </div>
+                        <p class="demo-text">Say "Hey JARVIS" to activate</p>
+                        <button class="demo-button" onclick="window.location.href='http://localhost:3000'">
+                            <span>Launch JARVIS</span>
+                            <i class="fas fa-external-link-alt"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Installation Section -->
+    <section id="install" class="installation">
+        <div class="container">
+            <h2 class="section-title">
+                <span class="title-line"></span>
+                Quick Installation
+                <span class="title-line"></span>
+            </h2>
+
+            <div class="install-steps">
+                <div class="step-card">
+                    <div class="step-number">01</div>
+                    <h3>Clone Repository</h3>
+                    <div class="code-block">
+                        <code>git clone https://github.com/drussell23/JARVIS-AI-Agent.git</code>
+                        <button class="copy-btn" onclick="copyCode(this)">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="step-card">
+                    <div class="step-number">02</div>
+                    <h3>Set API Key</h3>
+                    <div class="code-block">
+                        <code>echo "ANTHROPIC_API_KEY=your-key" > backend/.env</code>
+                        <button class="copy-btn" onclick="copyCode(this)">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="step-card">
+                    <div class="step-number">03</div>
+                    <h3>Launch System</h3>
+                    <div class="code-block">
+                        <code>python start_system.py</code>
+                        <button class="copy-btn" onclick="copyCode(this)">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tech-stack">
+                <h3>Powered By</h3>
+                <div class="tech-icons">
+                    <div class="tech-icon" data-tooltip="Python">
+                        <i class="fab fa-python"></i>
+                    </div>
+                    <div class="tech-icon" data-tooltip="React">
+                        <i class="fab fa-react"></i>
+                    </div>
+                    <div class="tech-icon" data-tooltip="Claude AI">
+                        <img src="assets/claude-icon.svg" alt="Claude">
+                    </div>
+                    <div class="tech-icon" data-tooltip="FastAPI">
+                        <img src="assets/fastapi-icon.svg" alt="FastAPI">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-logo">
+                <div class="arc-reactor-mini">
+                    <div class="core"></div>
+                </div>
+                <span>J.A.R.V.I.S.</span>
+            </div>
+            <div class="footer-links">
+                <a href="https://github.com/drussell23/JARVIS-AI-Agent" target="_blank">
+                    <i class="fab fa-github"></i> GitHub
+                </a>
+                <a href="https://github.com/drussell23/JARVIS-AI-Agent/blob/main/README.md" target="_blank">
+                    <i class="fas fa-book"></i> Documentation
+                </a>
+                <a href="https://github.com/drussell23/JARVIS-AI-Agent/issues" target="_blank">
+                    <i class="fas fa-bug"></i> Issues
+                </a>
+            </div>
+            <div class="footer-info">
+                <p>&copy; 2024 JARVIS AI Agent | Version 3.1.3</p>
+                <p class="stark-quote">"Sometimes you gotta run before you can walk." - Tony Stark</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
+    <script src="js/particles-config.js"></script>
+    <script src="js/main.js"></script>
+    <script src="js/animations.js"></script>
+</body>
+</html>

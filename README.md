@@ -1,4 +1,4 @@
-# 🤖 JARVIS - AI Agent with macOS System Control (v3.1.2)
+# 🤖 JARVIS - AI Agent with macOS System Control (v3.1.3)
 
 <p align="center">
   <img src="https://img.shields.io/badge/AI%20Agent-System%20Control-purple" alt="AI Agent">
@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/Safety-Built--in-yellow" alt="Safety Features">
   <img src="https://img.shields.io/badge/Response%20Time-%3C1s-brightgreen" alt="Fast Response">
   <img src="https://img.shields.io/badge/Status-STABLE-success" alt="Stable">
-  <img src="https://img.shields.io/badge/Version-3.1.2-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Version-3.1.3-brightgreen" alt="Version">
 </p>
 
 <p align="center">
@@ -20,7 +20,13 @@
 
 JARVIS has evolved from Tony Stark's AI assistant into a powerful **AI Agent** capable of controlling your macOS environment through natural voice commands. This isn't just a chatbot - it's a sophisticated system that can open applications, manage files, control system settings, and execute complex workflows, all while maintaining the personality and sophistication that made JARVIS legendary.
 
-### 🆕 Latest Updates (v3.1.2)
+### 🆕 Latest Updates (v3.1.3)
+- 🎭 **NEW: Futuristic Iron Man Landing Page** - Arc Reactor animations & holographic UI
+- ⚡ **Interactive Features Showcase** - Live demos and capability displays
+- 🎯 **Enhanced Visual Design** - Particle effects and glitch animations
+- 🔗 **Quick Installation Steps** - Copy-paste commands with one click
+
+### Previous Updates (v3.1.2)
 - 🎤 **Smart Microphone Permission Helper** - Browser-specific instructions when blocked
 - ⏱️ **Extended Voice Timeouts** - 60s speech timeout, 15s silence (was ~5s)
 - 🔵 **Visual Listening Indicators** - Pulsing dots show current state
@@ -189,6 +195,16 @@ Experience the power of a true AI agent:
 
 ### 🎨 Iron Man UI Experience
 
+**NEW: Futuristic Landing Page**
+- Arc Reactor centerpiece with rotating energy rings
+- Particle.js background effects
+- Holographic UI elements and shimmer effects
+- Interactive feature cards with hover animations
+- Live voice command demo with wave visualizer
+- Tech stack showcase with animated icons
+- Quick installation with copy-paste functionality
+- Easter egg: Konami code for special effects
+
 **Arc Reactor Interface**
 - Authentic Iron Man-inspired design
 - Real-time visual feedback:
@@ -282,6 +298,9 @@ bash quick_start.sh
 
 # 4. JARVIS automatically opens in your browser
 # Say "Hey JARVIS" to activate!
+
+# 5. (Optional) View the new landing page
+# Open landing-page/index.html in your browser
 ```
 
 ✅ **JARVIS is now running with full AI Agent capabilities!**
@@ -1540,7 +1559,16 @@ A: Absolutely:
 
 ## 📈 Version History
 
-### v3.1.2 (Current) - Enhanced User Experience
+### v3.1.3 (Current) - Iron Man Edition
+- 🎭 **NEW: Futuristic Landing Page** - Arc Reactor animations & holographic UI
+- ⚡ **Interactive Features Showcase** - Live demos and capability displays
+- 🎯 **Enhanced Visual Design** - Particle effects, glitch animations, energy flows
+- 🔗 **Quick Installation Steps** - Copy-paste commands with one click
+- 🎨 **Tech Stack Display** - Powered by React, Python, Claude AI, FastAPI
+- 🌟 **Easter Egg** - Konami code activates special JARVIS mode
+- 📱 **Responsive Design** - Works beautifully on all devices
+
+### v3.1.2 - Enhanced User Experience
 - 🎤 **NEW: Microphone Permission Helper** - Smart detection and browser-specific guides
 - ⏱️ **NEW: Extended Timeouts** - 60 second speech, 15 second silence timeouts
 - 🔵 **NEW: Visual State Indicators** - Pulsing dots show listening/awaiting states

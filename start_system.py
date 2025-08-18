@@ -73,16 +73,16 @@ class AsyncSystemManager:
     def print_header(self):
         """Print system header"""
         print(f"\n{Colors.HEADER}{'='*60}")
-        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v3.1.2 - Enhanced UX 🚀{Colors.ENDC}")
+        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v3.1.3 - Iron Man Edition 🚀{Colors.ENDC}")
         print(f"{Colors.CYAN}🎯 Voice-activated macOS control powered by Claude{Colors.ENDC}")
         print(f"{Colors.GREEN}⚡ ASYNC: Ultra-fast parallel initialization{Colors.ENDC}")
         print(f"{Colors.YELLOW}🖥️  Control apps, files, and system settings naturally{Colors.ENDC}")
         print(f"{Colors.BLUE}🧠 ML-Enhanced: 85%+ wake word accuracy{Colors.ENDC}")
         print(f"{Colors.HEADER}🛡️  Built-in safety features and confirmations{Colors.ENDC}")
         print(f"{Colors.CYAN}🔄 Workflow automation & complex task execution{Colors.ENDC}")
-        print(f"{Colors.GREEN}✅ NEW: Smart microphone permission helper{Colors.ENDC}")
-        print(f"{Colors.GREEN}✅ NEW: Extended voice timeout (more patient){Colors.ENDC}")
-        print(f"{Colors.CYAN}🎤 Visual indicators for listening states{Colors.ENDC}")
+        print(f"{Colors.GREEN}✅ NEW: Futuristic Iron Man landing page{Colors.ENDC}")
+        print(f"{Colors.GREEN}✅ NEW: Arc Reactor animations & effects{Colors.ENDC}")
+        print(f"{Colors.CYAN}🎤 Smart microphone helper & extended timeouts{Colors.ENDC}")
         if self.is_m1_mac:
             print(f"{Colors.GREEN}✨ Optimized for Apple Silicon with native AppleScript{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}\n")
@@ -488,6 +488,12 @@ class AsyncSystemManager:
         
         if self.frontend_dir.exists():
             print(f"  🎯 JARVIS Interface:  http://localhost:{self.ports['frontend']}/ {Colors.GREEN}← Iron Man UI{Colors.ENDC}")
+        
+        # Landing page info
+        landing_page = Path("landing-page/index.html")
+        if landing_page.exists():
+            print(f"\n{Colors.CYAN}Landing Page:{Colors.ENDC}")
+            print(f"  ⚡ Iron Man Landing:  file://{landing_page.absolute()} {Colors.GREEN}← NEW!{Colors.ENDC}")
             
         print(f"\n{Colors.CYAN}Voice Commands:{Colors.ENDC}")
         print(f"  • Say 'Hey JARVIS' to activate (now more patient!)")
@@ -511,7 +517,7 @@ class AsyncSystemManager:
             print(f"  🔊 Backend speech: {Colors.GREEN}Enabled{Colors.ENDC} (macOS native)")
             print(f"  🎵 Browser speech: Fallback mode")
             
-        print(f"\n{Colors.GREEN}✨ AI Agent Features (v3.1):{Colors.ENDC}")
+        print(f"\n{Colors.GREEN}✨ AI Agent Features (v3.1.3):{Colors.ENDC}")
         print(f"  • 🖥️  Voice-activated macOS control {Colors.GREEN}[WORKING]{Colors.ENDC}")
         print(f"  • 🎯 Natural language command interpretation {Colors.GREEN}[FIXED]{Colors.ENDC}") 
         print(f"  • 🛡️  Built-in safety features & confirmations")
@@ -529,6 +535,9 @@ class AsyncSystemManager:
         print(f"  • 🔵 Pulsing indicators show listening state")
         print(f"  • 🔇 Silenced normal timeout messages")
         print(f"  • 🛠️ Test microphone utility included")
+        print(f"  • 🎭 NEW: Futuristic Iron Man landing page")
+        print(f"  • ⚡ NEW: Arc Reactor animations & holographic UI")
+        print(f"  • 🎯 NEW: Interactive features showcase")
         
         print(f"\n{Colors.WARNING}Press Ctrl+C to stop all services{Colors.ENDC}")
         
