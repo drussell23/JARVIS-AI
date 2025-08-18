@@ -148,8 +148,8 @@ start_service() {
     
     echo -e "${BLUE}Starting $name on port $port...${NC}"
     cd "$dir" || exit
-    nohup $command > "../logs/${name}.log" 2>&1 &
-    echo $! > "../logs/${name}.pid"
+    nohup $command > "logs/${name}.log" 2>&1 &
+    echo $! > "logs/${name}.pid"
     cd - > /dev/null || exit
     sleep 2
     
@@ -166,10 +166,10 @@ start_service() {
 echo -e "\n${BLUE}Starting backend services...${NC}"
 
 # Start main API
-start_service "main_api" "python3 main.py" "backend" 8000
+start_service "main_api" "uvicorn main:app --host 127.0.0.1 --port 8000" "backend" 8000
 
 # Start training API
-start_service "training_api" "python3 training_interface.py" "backend" 8001
+start_service "training_api" "uvicorn models.training_interface:app --host 0.0.0.0 --port 8001" "backend" 8001
 
 # Start frontend if not backend-only
 if [ "$BACKEND_ONLY" = false ]; then

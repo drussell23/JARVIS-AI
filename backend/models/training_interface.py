@@ -1,3 +1,26 @@
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# Fix TensorFlow import issues before any other imports
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Disable TF warnings
+os.environ['USE_TORCH'] = '1'  # Use PyTorch backend for transformers
+os.environ['USE_TF'] = '0'     # Disable TensorFlow in transformers
+
+# Apply TensorFlow fixes
+try:
+    import tensorflow as tf
+    if not hasattr(tf, 'data'):
+        # Create a mock data module to prevent import errors
+        class MockData:
+            class Dataset:
+                @staticmethod
+                def from_tensor_slices(*args, **kwargs):
+                    return None
+        tf.data = MockData()
+except:
+    pass  # TensorFlow not required for core functionality
+
 from fastapi import FastAPI, APIRouter, BackgroundTasks, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Any, Union
@@ -583,27 +606,27 @@ class TrainingInterface:
 
 
 # Example usage
-if __name__ == "__main__":
-    # Create interface
-    interface = TrainingInterface()
-    
-    # Create FastAPI app
-    app = FastAPI(title="Model Training Interface")
-    app.include_router(interface.router, prefix="/training")
-    
-    @app.get("/")
-    async def root():
-        return {
-            "message": "Model Training Interface",
-            "endpoints": {
-                "/training/train": "Start training job",
-                "/training/fine-tune": "Start fine-tuning job", 
-                "/training/evaluate": "Evaluate model",
-                "/training/domains": "Manage domain knowledge",
-                "/training/models": "List available models"
-            }
+# Create interface
+interface = TrainingInterface()
+
+# Create FastAPI app
+app = FastAPI(title="Model Training Interface")
+app.include_router(interface.router, prefix="/training")
+
+@app.get("/")
+async def root():
+    return {
+        "message": "Model Training Interface",
+        "endpoints": {
+            "/training/train": "Start training job",
+            "/training/fine-tune": "Start fine-tuning job", 
+            "/training/evaluate": "Evaluate model",
+            "/training/domains": "Manage domain knowledge",
+            "/training/models": "List available models"
         }
-        
+    }
+
+if __name__ == "__main__":
     # Run server
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)

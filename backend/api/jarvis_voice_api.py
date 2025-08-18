@@ -14,10 +14,25 @@ import os
 import logging
 from datetime import datetime
 
-# Import JARVIS voice components
-from voice.jarvis_voice import EnhancedJARVISVoiceAssistant, EnhancedJARVISPersonality, VoiceCommand
-
 logger = logging.getLogger(__name__)
+
+# Import JARVIS voice components with error handling
+try:
+    from voice.jarvis_voice import EnhancedJARVISVoiceAssistant, EnhancedJARVISPersonality, VoiceCommand
+    JARVIS_IMPORTS_AVAILABLE = True
+except (ImportError, OSError, AttributeError) as e:
+    logger.warning(f"Failed to import JARVIS voice components: {e}")
+    JARVIS_IMPORTS_AVAILABLE = False
+    # Create stub classes to prevent NameError
+    class EnhancedJARVISVoiceAssistant:
+        def __init__(self, *args, **kwargs):
+            raise NotImplementedError("JARVIS voice components not available")
+    
+    class EnhancedJARVISPersonality:
+        pass
+    
+    class VoiceCommand:
+        pass
 
 
 class JARVISCommand(BaseModel):
@@ -41,12 +56,16 @@ class JARVISVoiceAPI:
         """Initialize JARVIS Voice API"""
         self.router = APIRouter()
         
-        # Initialize JARVIS if API key is available
+        # Initialize JARVIS if API key and imports are available
         api_key = os.getenv("ANTHROPIC_API_KEY")
-        if api_key:
-            self.jarvis = EnhancedJARVISVoiceAssistant(api_key)
-            self.jarvis_available = True
-            logger.info("JARVIS Voice System initialized")
+        if api_key and JARVIS_IMPORTS_AVAILABLE:
+            try:
+                self.jarvis = EnhancedJARVISVoiceAssistant(api_key)
+                self.jarvis_available = True
+                logger.info("JARVIS Voice System initialized")
+            except Exception as e:
+                self.jarvis_available = False
+                logger.error(f"Failed to initialize JARVIS: {e}")
         else:
             self.jarvis = None
             self.jarvis_available = False

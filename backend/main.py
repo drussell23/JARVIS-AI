@@ -1,4 +1,26 @@
 # main.py
+import os
+import sys
+
+# Fix TensorFlow import issues before any other imports
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Disable TF warnings
+os.environ['USE_TORCH'] = '1'  # Use PyTorch backend for transformers
+os.environ['USE_TF'] = '0'     # Disable TensorFlow in transformers
+
+# Apply TensorFlow fixes
+try:
+    import tensorflow as tf
+    if not hasattr(tf, 'data'):
+        # Create a mock data module to prevent import errors
+        class MockData:
+            class Dataset:
+                @staticmethod
+                def from_tensor_slices(*args, **kwargs):
+                    return None
+        tf.data = MockData()
+except:
+    pass  # TensorFlow not required for core functionality
+
 from fastapi import FastAPI, APIRouter, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -9,7 +31,6 @@ import asyncio
 import json
 from typing import Optional, List, Dict, Any
 import logging
-import os
 
 # Load environment variables from .env file
 try:
@@ -511,7 +532,8 @@ app.add_middleware(
 )
 
 # Mount static files for demos
-app.mount("/static", StaticFiles(directory="static"), name="static")
+STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # Initialize Memory API first
 memory_api = MemoryAPI(memory_manager)

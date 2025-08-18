@@ -25,6 +25,14 @@ from engines.voice_engine import (
 )
 from chatbots._archived_local_models.intelligent_chatbot import IntelligentChatbot
 
+# Import base Chatbot type
+from typing import Protocol
+
+class Chatbot(Protocol):
+    """Protocol for chatbot interface"""
+    async def chat(self, user_input: str) -> str:
+        ...
+
 
 class TTSRequest(BaseModel):
     text: str
