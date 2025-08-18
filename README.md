@@ -1,4 +1,4 @@
-# 🤖 JARVIS - AI Agent with macOS System Control (v3.1.1)
+# 🤖 JARVIS - AI Agent with macOS System Control (v3.1.2)
 
 <p align="center">
   <img src="https://img.shields.io/badge/AI%20Agent-System%20Control-purple" alt="AI Agent">
@@ -8,7 +8,8 @@
   <img src="https://img.shields.io/badge/Platform-macOS%20Control-orange" alt="macOS Control">
   <img src="https://img.shields.io/badge/Safety-Built--in-yellow" alt="Safety Features">
   <img src="https://img.shields.io/badge/Response%20Time-%3C1s-brightgreen" alt="Fast Response">
-  <img src="https://img.shields.io/badge/Status-WORKING-success" alt="Working">
+  <img src="https://img.shields.io/badge/Status-STABLE-success" alt="Stable">
+  <img src="https://img.shields.io/badge/Version-3.1.2-brightgreen" alt="Version">
 </p>
 
 <p align="center">
@@ -19,12 +20,13 @@
 
 JARVIS has evolved from Tony Stark's AI assistant into a powerful **AI Agent** capable of controlling your macOS environment through natural voice commands. This isn't just a chatbot - it's a sophisticated system that can open applications, manage files, control system settings, and execute complex workflows, all while maintaining the personality and sophistication that made JARVIS legendary.
 
-### 🆕 Latest Updates (v3.1.1)
-- ✅ **All syntax errors fixed** - Production-ready code
-- ✅ **Type safety improved** - Better IDE integration
-- ✅ **Stable system control** - Reliable command execution
-- ✅ **Better error handling** - Graceful failure recovery
-- ✅ **IDE support** - pyrightconfig.json for better development experience
+### 🆕 Latest Updates (v3.1.2)
+- 🎤 **Smart Microphone Permission Helper** - Browser-specific instructions when blocked
+- ⏱️ **Extended Voice Timeouts** - 60s speech timeout, 15s silence (was ~5s)
+- 🔵 **Visual Listening Indicators** - Pulsing dots show current state
+- 🔇 **Quieter Console** - Normal timeout messages are now silent
+- 🧪 **Microphone Test Utility** - `test_microphone.py` for debugging
+- 🎯 **Better UX** - Clear feedback for all permission states
 
 **New AI Agent Capabilities:**
 - 🖥️ **Voice-Activated System Control**: "Hey JARVIS, open Chrome and search for Python tutorials"
@@ -454,6 +456,16 @@ INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
 
 **Note**: You may see "Memory warning: 0.8% used" messages - these are false positives on M1 Macs and can be safely ignored.
 
+### 🎤 Microphone Permission Helper (NEW in v3.1.2!)
+
+If your microphone is blocked, JARVIS now shows a smart permission helper that:
+- 🔍 **Auto-detects** your browser (Chrome, Safari, Firefox, Edge)
+- 📋 **Shows step-by-step instructions** specific to your browser
+- 🔄 **Monitors permission status** and updates automatically
+- 🧪 **Includes troubleshooting tips** for common issues
+
+The helper appears as a red box with clear instructions and disappears once permission is granted.
+
 ### 🔒 macOS Permissions Setup (Important!)
 
 For full AI Agent functionality on macOS:
@@ -842,6 +854,9 @@ AI-Powered-Chatbot/
 | **System control commands not working** | ✅ FIXED in v3.1 - Commands now execute properly |
 | **"AttributeError: '_detect_wake_word'"** | ✅ FIXED in v3.1 - Wake word detection implemented |
 | **".env file not found"** | The `.env` file MUST be in `backend/` directory, not root |
+| **"Microphone not available"** | ✅ FIXED in v3.1.2 - Permission helper guides you through browser settings |
+| **"no-speech" errors in console** | ✅ FIXED in v3.1.2 - Extended timeouts (60s/15s), errors silenced |
+| **Can't tell if listening** | ✅ FIXED in v3.1.2 - Purple dot = listening, Gold dot = awaiting command |
 | **"No module named 'speech_recognition'"** | Run: `pip install SpeechRecognition pyaudio` |
 | **"No module named 'geocoder'"** | Run: `pip install geocoder` (required for weather) |
 | **"WebSocket connection refused"** | Ensure backend is running: `python backend/main.py` |
@@ -1525,7 +1540,24 @@ A: Absolutely:
 
 ## 📈 Version History
 
-### v3.1.0 (Current) - System Control Working!
+### v3.1.2 (Current) - Enhanced User Experience
+- 🎤 **NEW: Microphone Permission Helper** - Smart detection and browser-specific guides
+- ⏱️ **NEW: Extended Timeouts** - 60 second speech, 15 second silence timeouts
+- 🔵 **NEW: Visual State Indicators** - Pulsing dots show listening/awaiting states
+- 🔇 **Improved: Console Noise** - Silenced normal timeout messages
+- 🧪 **Added: test_microphone.py** - Debug microphone issues quickly
+- 📚 **Added: VOICE_TROUBLESHOOTING.md** - Comprehensive voice debugging guide
+- 🎯 **Better error messages** - Clear feedback for all permission states
+- 🌐 **Browser compatibility** - Detects Chrome, Safari, Firefox, Edge
+
+### v3.1.1 - Stable Production Release
+- ✅ **FIXED: All syntax errors** - Production-ready code
+- ✅ **FIXED: Type errors** - Added proper type annotations
+- ✅ **FIXED: IDE warnings** - Added pyrightconfig.json
+- 🔧 **Improved stability** - Better error handling throughout
+- 📚 **Better documentation** - Clearer troubleshooting guides
+
+### v3.1.0 - System Control Working!
 - ✅ **FIXED: Claude API system role error** - Commands now execute properly
 - ✅ **FIXED: Empty responses from JARVIS** - Proper activation and response handling
 - ✅ **FIXED: Wake word detection** - Implemented detect_wake_word_in_text method

@@ -73,15 +73,16 @@ class AsyncSystemManager:
     def print_header(self):
         """Print system header"""
         print(f"\n{Colors.HEADER}{'='*60}")
-        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v3.1.1 - Stable & Working 🚀{Colors.ENDC}")
+        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v3.1.2 - Enhanced UX 🚀{Colors.ENDC}")
         print(f"{Colors.CYAN}🎯 Voice-activated macOS control powered by Claude{Colors.ENDC}")
         print(f"{Colors.GREEN}⚡ ASYNC: Ultra-fast parallel initialization{Colors.ENDC}")
         print(f"{Colors.YELLOW}🖥️  Control apps, files, and system settings naturally{Colors.ENDC}")
         print(f"{Colors.BLUE}🧠 ML-Enhanced: 85%+ wake word accuracy{Colors.ENDC}")
         print(f"{Colors.HEADER}🛡️  Built-in safety features and confirmations{Colors.ENDC}")
         print(f"{Colors.CYAN}🔄 Workflow automation & complex task execution{Colors.ENDC}")
-        print(f"{Colors.GREEN}✅ Fixed: All syntax errors & type issues{Colors.ENDC}")
-        print(f"{Colors.GREEN}✅ Stable: Production-ready system control{Colors.ENDC}")
+        print(f"{Colors.GREEN}✅ NEW: Smart microphone permission helper{Colors.ENDC}")
+        print(f"{Colors.GREEN}✅ NEW: Extended voice timeout (more patient){Colors.ENDC}")
+        print(f"{Colors.CYAN}🎤 Visual indicators for listening states{Colors.ENDC}")
         if self.is_m1_mac:
             print(f"{Colors.GREEN}✨ Optimized for Apple Silicon with native AppleScript{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}\n")
@@ -489,7 +490,8 @@ class AsyncSystemManager:
             print(f"  🎯 JARVIS Interface:  http://localhost:{self.ports['frontend']}/ {Colors.GREEN}← Iron Man UI{Colors.ENDC}")
             
         print(f"\n{Colors.CYAN}Voice Commands:{Colors.ENDC}")
-        print(f"  • Say 'Hey JARVIS' to activate")
+        print(f"  • Say 'Hey JARVIS' to activate (now more patient!)")
+        print(f"  • Watch for pulsing dots: Purple=Listening, Gold=Awaiting")
         
         print(f"\n{Colors.YELLOW}🎯 System Control Commands (WORKING!):{Colors.ENDC}")
         print(f"  • Apps: 'Open Chrome', 'Close Safari', 'List open applications'")
@@ -522,9 +524,11 @@ class AsyncSystemManager:
         print(f"  • 🔊 Dual audio system (browser + backend)")
         print(f"  • 📊 Real-time system monitoring")
         print(f"  • 🧮 Advanced calculations and research")
-        print(f"  • ✅ Fixed all syntax and indentation errors")
-        print(f"  • ✅ Fixed type errors and improved stability")
-        print(f"  • 🔧 Added pyrightconfig.json for better IDE support")
+        print(f"  • 🎤 Microphone permission helper with browser guides")
+        print(f"  • ⏱️ Extended timeouts (60s speech, 15s silence)")
+        print(f"  • 🔵 Pulsing indicators show listening state")
+        print(f"  • 🔇 Silenced normal timeout messages")
+        print(f"  • 🛠️ Test microphone utility included")
         
         print(f"\n{Colors.WARNING}Press Ctrl+C to stop all services{Colors.ENDC}")
         
@@ -539,6 +543,8 @@ class AsyncSystemManager:
         print(f"  • Empty responses: Ensure API key is in backend/.env")
         print(f"  • Connection refused: Run this script to auto-fix ports")
         print(f"  • Import errors in IDE: These are false positives - packages are installed")
+        print(f"  • Microphone blocked: Look for red permission box with instructions")
+        print(f"  • Test your mic: cd backend && python test_microphone.py")
             
     async def monitor_services(self):
         """Monitor running services with auto-restart capability"""
