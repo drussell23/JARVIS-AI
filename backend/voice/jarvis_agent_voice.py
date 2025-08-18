@@ -11,9 +11,10 @@ from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 import json
 
-from .ml_enhanced_voice_system import MLEnhancedVoiceSystem
-from ..system_control import ClaudeCommandInterpreter, CommandCategory, SafetyLevel
-from ..services.claude_service import ClaudeService
+from voice.ml_enhanced_voice_system import MLEnhancedVoiceSystem
+from voice.jarvis_personality_adapter import PersonalityAdapter
+from system_control import ClaudeCommandInterpreter, CommandCategory, SafetyLevel
+from chatbots.claude_chatbot import ClaudeChatbot
 
 logger = logging.getLogger(__name__)
 
@@ -23,16 +24,42 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
     
     def __init__(self, user_name: str = "Sir"):
         super().__init__(user_name)
+        self.user_name = user_name
+        self.wake_words = ["jarvis", "hey jarvis", "okay jarvis", "yo jarvis"]
+        self.wake_word_variations = ["jar vis", "hey jar vis", "jarv", "j.a.r.v.i.s"]
+        self.urgent_wake_words = ["jarvis emergency", "jarvis urgent"]
         
         # Initialize system control
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
         if self.api_key:
             self.command_interpreter = ClaudeCommandInterpreter(self.api_key)
-            self.claude_service = ClaudeService(self.api_key)
+            self.claude_chatbot = ClaudeChatbot(self.api_key)
             self.system_control_enabled = True
         else:
             self.system_control_enabled = False
             logger.warning("System control disabled - no API key")
+            
+        # Add personality adapter for compatibility
+        self.personality = PersonalityAdapter(self)
+        
+        # Add special commands compatibility
+        self.special_commands = {
+            "system control": "Switch to system control mode",
+            "conversation mode": "Switch to conversation mode",
+            "morning routine": "Start morning routine",
+            "development setup": "Start development setup",
+            "meeting prep": "Prepare for meeting"
+        }
+        
+        # Add voice_engine compatibility (references parent's if exists)
+        if hasattr(self, 'voice_engine'):
+            self.voice_engine = self.voice_engine
+        else:
+            # Create a mock voice engine for compatibility
+            class MockVoiceEngine:
+                def speak(self, text): 
+                    logger.info(f"[Voice]: {text}")
+            self.voice_engine = MockVoiceEngine()
             
         # Command modes
         self.command_mode = "conversation"  # conversation, system_control, workflow
@@ -65,7 +92,7 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         """Process voice input with system control capabilities"""
         
         # First, let parent class handle wake word detection
-        if not self.is_active and not self._detect_wake_word(text):
+        if not self.running and not self._detect_wake_word(text):
             return ""
             
         # Check for mode switches
@@ -236,7 +263,8 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         }
         
         if workflow_name not in voice_feedback:
-            return f"Unknown workflow: {workflow_name}"
+            yield f"Unknown workflow: {workflow_name}"
+            return
             
         # Execute workflow with voice feedback
         feedback_messages = voice_feedback[workflow_name]
@@ -257,9 +285,9 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         )
         
         if success:
-            return feedback_messages[-1].format(user=self.user_name)
+            yield feedback_messages[-1].format(user=self.user_name)
         else:
-            return f"There was an issue with the workflow, {self.user_name}: {result}"
+            yield f"There was an issue with the workflow, {self.user_name}: {result}"
             
     def get_capabilities(self) -> Dict[str, List[str]]:
         """Get current agent capabilities"""

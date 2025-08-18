@@ -39,6 +39,15 @@ except (ImportError, OSError, AttributeError) as e:
         def __init__(self, *args, **kwargs):
             raise NotImplementedError("JARVIS agent components not available")
 
+# Create VoiceCommand if not imported
+if JARVIS_IMPORTS_AVAILABLE and not hasattr(VoiceCommand, '__init__'):
+    class VoiceCommand:
+        def __init__(self, raw_text, confidence=0.9, intent="conversation", needs_clarification=False):
+            self.raw_text = raw_text
+            self.confidence = confidence
+            self.intent = intent
+            self.needs_clarification = needs_clarification
+
 
 class JARVISCommand(BaseModel):
     """Voice command request"""
@@ -131,8 +140,8 @@ class JARVISVoiceAPI:
             ])
         
         return {
-            "status": "online" if self.jarvis.is_active else "standby",
-            "message": "JARVIS Agent at your service" if self.jarvis.is_active else "JARVIS in standby mode",
+            "status": "online" if self.jarvis.running else "standby",
+            "message": "JARVIS Agent at your service" if self.jarvis.running else "JARVIS in standby mode",
             "user_name": self.jarvis.user_name,
             "features": features,
             "wake_words": {
@@ -142,7 +151,7 @@ class JARVISVoiceAPI:
             },
             "voice_engine": {
                 "calibrated": hasattr(self.jarvis, 'voice_engine'),
-                "listening": self.jarvis.is_active
+                "listening": self.jarvis.running
             },
             "system_control": {
                 "enabled": self.system_control_enabled,

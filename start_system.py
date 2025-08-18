@@ -20,6 +20,22 @@ import aiohttp
 import time
 from datetime import datetime
 
+# Set up logging
+import logging
+logger = logging.getLogger(__name__)
+
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    # Load from backend/.env if it exists
+    backend_env = Path("backend") / ".env"
+    if backend_env.exists():
+        load_dotenv(backend_env)
+    else:
+        load_dotenv()  # Load from root .env
+except ImportError:
+    pass
+
 # ANSI color codes for terminal output
 class Colors:
     HEADER = '\033[95m'
@@ -50,6 +66,9 @@ class AsyncSystemManager:
         self.is_m1_mac = platform.system() == "Darwin" and platform.machine() == "arm64"
         self.claude_configured = False
         self.start_time = datetime.now()
+        self.no_browser = False  # Initialize the attribute
+        self.backend_only = False  # Start only backend
+        self.frontend_only = False  # Start only frontend
         
     def print_header(self):
         """Print system header"""
@@ -69,25 +88,22 @@ class AsyncSystemManager:
         """Check if Claude API is configured"""
         print(f"{Colors.BLUE}Checking Claude configuration...{Colors.ENDC}")
         
-        # Load .env file
-        try:
-            from dotenv import load_dotenv
-            load_dotenv()
-        except ImportError:
-            pass
-            
+        # Check if already loaded from backend/.env
         api_key = os.getenv("ANTHROPIC_API_KEY")
         
         if not api_key:
             print(f"{Colors.FAIL}❌ ANTHROPIC_API_KEY not found!{Colors.ENDC}")
-            print(f"\n{Colors.YELLOW}To set up Claude (required):{Colors.ENDC}")
+            print(f"\n{Colors.YELLOW}To enable JARVIS AI Agent features:{Colors.ENDC}")
             print("1. Get an API key from: https://console.anthropic.com/")
-            print("2. Create a .env file with:")
+            print("2. Create backend/.env file with:")
             print("   ANTHROPIC_API_KEY=your-api-key-here")
-            return False
-            
-        self.claude_configured = True
-        print(f"{Colors.GREEN}✓ Claude API key found{Colors.ENDC}")
+            print(f"\n{Colors.WARNING}Note: Basic chat will work, but AI Agent features require API key{Colors.ENDC}")
+            # Don't return False - allow startup without API key
+            self.claude_configured = False
+        else:
+            self.claude_configured = True
+            print(f"{Colors.GREEN}✓ Claude API key found{Colors.ENDC}")
+            print(f"{Colors.GREEN}✓ AI Agent system control enabled{Colors.ENDC}")
         
         # Check OpenWeatherMap API key
         weather_key = os.getenv("OPENWEATHER_API_KEY")
@@ -109,7 +125,7 @@ class AsyncSystemManager:
         print(f"{Colors.GREEN}✓ Python {version.major}.{version.minor} detected{Colors.ENDC}")
         return True
         
-    async def check_package(self, package: str, display_name: str) -> bool:
+    async def check_package(self, package: str) -> bool:
         """Check if a package is installed"""
         try:
             if package == "python-dotenv":
@@ -145,7 +161,7 @@ class AsyncSystemManager:
         # Check all packages in parallel
         tasks = []
         for package, description in packages.items():
-            task = asyncio.create_task(self.check_package(package, description))
+            task = asyncio.create_task(self.check_package(package))
             tasks.append((package, description, task))
         
         missing = []
@@ -203,13 +219,19 @@ class AsyncSystemManager:
             self.backend_dir / "logs",
             self.backend_dir / "static",
             self.backend_dir / "static" / "demos",
-            self.backend_dir / "models" / "voice_ml"
+            self.backend_dir / "models" / "voice_ml",
+            self.backend_dir / "system_control"
         ]
         
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)
             
         print(f"{Colors.GREEN}✓ Directories created{Colors.ENDC}")
+        
+        # Check for .env file
+        env_file = self.backend_dir / ".env"
+        if not env_file.exists() and not os.getenv("ANTHROPIC_API_KEY"):
+            print(f"\n{Colors.YELLOW}💡 Tip: Create {env_file} with your API key for AI Agent features{Colors.ENDC}")
         
         
     async def check_port_available(self, port: int) -> bool:
@@ -279,6 +301,11 @@ class AsyncSystemManager:
         env["USE_CLAUDE"] = "1"
         env["PORT"] = str(self.ports["main_api"])
         
+        # Ensure API key is passed to backend
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if api_key:
+            env["ANTHROPIC_API_KEY"] = api_key
+        
         # Start backend
         server_script = "main.py" if (self.backend_dir / "main.py").exists() else "run_server.py"
         
@@ -340,25 +367,34 @@ class AsyncSystemManager:
         """Wait for a service to be ready"""
         start_time = time.time()
         
+        print(f"{Colors.BLUE}Waiting for service at {url}...{Colors.ENDC}")
+        
         async with aiohttp.ClientSession() as session:
             while time.time() - start_time < timeout:
                 try:
                     async with session.get(url, timeout=1) as response:
                         if response.status == 200:
+                            print(f"{Colors.GREEN}✓ Service ready at {url}{Colors.ENDC}")
                             return True
                 except:
-                    pass
+                    # Show progress dots
+                    elapsed = int(time.time() - start_time)
+                    if elapsed % 5 == 0:
+                        print(f"{Colors.YELLOW}Still waiting... ({elapsed}s){Colors.ENDC}")
                 await asyncio.sleep(1)
                 
+        print(f"{Colors.WARNING}⚠️ Service at {url} did not respond after {timeout}s{Colors.ENDC}")
         return False
             
     async def verify_services(self):
         """Verify all services are running"""
         print(f"\n{Colors.BLUE}Verifying services...{Colors.ENDC}")
         
-        # Check backend
+        # Check backend with extended timeout
         backend_url = f"http://localhost:{self.ports['main_api']}/docs"
-        if await self.wait_for_service(backend_url, timeout=15):
+        backend_ready = await self.wait_for_service(backend_url, timeout=30)
+        
+        if backend_ready:
             print(f"{Colors.GREEN}✓ Backend API ready{Colors.ENDC}")
             
             # Check specific endpoints
@@ -367,19 +403,69 @@ class AsyncSystemManager:
                 try:
                     async with session.get(f"http://localhost:{self.ports['main_api']}/voice/jarvis/status") as resp:
                         if resp.status == 200:
-                            print(f"{Colors.GREEN}✓ JARVIS Voice System ready{Colors.ENDC}")
-                except:
-                    pass
+                            data = await resp.json()
+                            if isinstance(data, dict):
+                                # Display status message
+                                message = data.get('message', 'Online')
+                                print(f"{Colors.GREEN}✓ JARVIS Voice System ready - {message}{Colors.ENDC}")
+                                
+                                # Check for system control
+                                system_control = data.get('system_control', {})
+                                if isinstance(system_control, dict) and system_control.get('enabled'):
+                                    print(f"{Colors.GREEN}✓ System control enabled - mode: {system_control.get('mode', 'unknown')}{Colors.ENDC}")
+                                    
+                                # Show feature count
+                                features = data.get('features', [])
+                                if features:
+                                    print(f"{Colors.CYAN}  • {len(features)} features available including: {', '.join(features[:3])}...{Colors.ENDC}")
+                            else:
+                                print(f"{Colors.GREEN}✓ JARVIS Voice System ready{Colors.ENDC}")
+                except Exception as e:
+                    print(f"{Colors.WARNING}⚠️  JARVIS status check failed: {e}{Colors.ENDC}")
         else:
-            print(f"{Colors.WARNING}⚠️  Backend API may still be starting{Colors.ENDC}")
+            print(f"{Colors.FAIL}❌ Backend API failed to start!{Colors.ENDC}")
+            print(f"{Colors.YELLOW}Try running manually: cd backend && python main.py{Colors.ENDC}")
             
         # Check frontend
         if self.frontend_dir.exists():
             frontend_url = f"http://localhost:{self.ports['frontend']}"
-            if await self.wait_for_service(frontend_url, timeout=20):
+            frontend_ready = await self.wait_for_service(frontend_url, timeout=30)
+            if frontend_ready:
                 print(f"{Colors.GREEN}✓ Frontend ready{Colors.ENDC}")
             else:
                 print(f"{Colors.WARNING}⚠️  Frontend may still be compiling{Colors.ENDC}")
+                
+        # If backend isn't ready, offer to restart
+        if not backend_ready:
+            print(f"\n{Colors.FAIL}⚠️  Backend failed to start properly!{Colors.ENDC}")
+            print(f"{Colors.YELLOW}Common causes:{Colors.ENDC}")
+            print(f"  • Port {self.ports['main_api']} already in use")
+            print(f"  • Missing dependencies")
+            print(f"  • API key issues")
+            print(f"\n{Colors.CYAN}Attempting automatic recovery...{Colors.ENDC}")
+            
+            # Try to kill the backend process and restart
+            for proc in self.processes:
+                if proc.returncode is None:
+                    try:
+                        proc.terminate()
+                        await proc.wait()
+                    except:
+                        pass
+                        
+            # Clear processes list and try again
+            self.processes = []
+            await self.start_backend()
+            
+            # Wait again for backend
+            if await self.wait_for_service(backend_url, timeout=20):
+                print(f"{Colors.GREEN}✓ Backend recovered successfully!{Colors.ENDC}")
+            else:
+                print(f"{Colors.FAIL}❌ Backend recovery failed{Colors.ENDC}")
+                print(f"\n{Colors.YELLOW}Manual troubleshooting steps:{Colors.ENDC}")
+                print(f"1. Check if port {self.ports['main_api']} is in use: lsof -i:{self.ports['main_api']}")
+                print(f"2. Check logs: tail -f backend/logs/jarvis.log")
+                print(f"3. Run manually: cd backend && python main.py")
             
     def print_access_info(self):
         """Print access information"""
@@ -392,6 +478,7 @@ class AsyncSystemManager:
         print(f"{Colors.CYAN}Main Services:{Colors.ENDC}")
         print(f"  🔌 API Documentation: http://localhost:{self.ports['main_api']}/docs")
         print(f"  💬 Basic Chat:        http://localhost:{self.ports['main_api']}/")
+        print(f"  🎤 JARVIS Status:     http://localhost:{self.ports['main_api']}/voice/jarvis/status")
         
         if self.frontend_dir.exists():
             print(f"  🎯 JARVIS Interface:  http://localhost:{self.ports['frontend']}/ {Colors.GREEN}← Iron Man UI{Colors.ENDC}")
@@ -433,7 +520,10 @@ class AsyncSystemManager:
         print(f"\n{Colors.WARNING}Press Ctrl+C to stop all services{Colors.ENDC}")
             
     async def monitor_services(self):
-        """Monitor running services"""
+        """Monitor running services with auto-restart capability"""
+        consecutive_backend_failures = 0
+        last_health_check = time.time()
+        
         try:
             while True:
                 await asyncio.sleep(5)
@@ -443,6 +533,7 @@ class AsyncSystemManager:
                 if current_task and current_task.cancelled():
                     break
                     
+                # Check process status
                 for i, proc in enumerate(self.processes):
                     if proc.returncode is not None:
                         service_name = "Backend" if i == 0 else "Frontend"
@@ -457,6 +548,38 @@ class AsyncSystemManager:
                                     print(output.decode()[:500])
                             except:
                                 pass
+                                
+                        # Auto-restart backend if it crashes
+                        if i == 0:  # Backend
+                            print(f"{Colors.CYAN}Attempting to restart backend...{Colors.ENDC}")
+                            new_proc = await self.start_backend()
+                            self.processes[i] = new_proc
+                            await asyncio.sleep(5)  # Give it time to start
+                            
+                            # Verify it started
+                            backend_url = f"http://localhost:{self.ports['main_api']}/docs"
+                            if await self.wait_for_service(backend_url, timeout=15):
+                                print(f"{Colors.GREEN}✓ Backend restarted successfully{Colors.ENDC}")
+                            else:
+                                print(f"{Colors.FAIL}❌ Backend restart failed{Colors.ENDC}")
+                            
+                # Periodic health check (every 30 seconds)
+                if time.time() - last_health_check > 30:
+                    last_health_check = time.time()
+                    try:
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(f"http://localhost:{self.ports['main_api']}/health", timeout=2) as resp:
+                                if resp.status == 200:
+                                    consecutive_backend_failures = 0
+                                else:
+                                    consecutive_backend_failures += 1
+                    except:
+                        consecutive_backend_failures += 1
+                        
+                    if consecutive_backend_failures >= 3:
+                        print(f"\n{Colors.WARNING}⚠️  Backend health checks failing ({consecutive_backend_failures} failures){Colors.ENDC}")
+                        consecutive_backend_failures = 0
+                        
         except asyncio.CancelledError:
             # Normal during shutdown
             pass
@@ -520,6 +643,9 @@ class AsyncSystemManager:
         # Check system control capabilities
         await self.check_system_control()
             
+        # Create necessary directories first
+        await self.create_directories()
+        
         # Check dependencies
         deps_ok, missing = await self.check_dependencies()
         if not deps_ok and missing:
@@ -527,19 +653,26 @@ class AsyncSystemManager:
             print(f"pip install {' '.join(missing)}")
             if not await self.ask_continue("Continue anyway?"):
                 return False
-                
-        # Create directories
-        await self.create_directories()
         
-        # Start services in parallel
-        print(f"\n{Colors.CYAN}🚀 Starting services in parallel...{Colors.ENDC}")
-        
-        service_tasks = [
-            self.start_backend(),
-            self.start_frontend()
-        ]
-        
-        await asyncio.gather(*service_tasks, return_exceptions=True)
+        # Start services based on arguments
+        if getattr(self, 'backend_only', False):
+            print(f"\n{Colors.CYAN}🚀 Starting backend only...{Colors.ENDC}")
+            await self.start_backend()
+        elif getattr(self, 'frontend_only', False):
+            print(f"\n{Colors.CYAN}🚀 Starting frontend only...{Colors.ENDC}")
+            await self.start_frontend()
+        else:
+            print(f"\n{Colors.CYAN}🚀 Starting services in parallel...{Colors.ENDC}")
+            
+            # Start backend first and wait a bit for it to initialize
+            backend_task = asyncio.create_task(self.start_backend())
+            await asyncio.sleep(2)  # Give backend time to start
+            
+            # Then start frontend
+            frontend_task = asyncio.create_task(self.start_frontend())
+            
+            # Wait for both to complete
+            await asyncio.gather(backend_task, frontend_task, return_exceptions=True)
         
         # Verify services
         await self.verify_services()
@@ -548,11 +681,12 @@ class AsyncSystemManager:
         self.print_access_info()
         
         # Open browser
-        if self.frontend_dir.exists():
-            await asyncio.sleep(2)
-            webbrowser.open(f"http://localhost:{self.ports['frontend']}/")
-        else:
-            webbrowser.open(f"http://localhost:{self.ports['main_api']}/docs")
+        if not getattr(self, 'no_browser', False):
+            if self.frontend_dir.exists():
+                await asyncio.sleep(2)
+                webbrowser.open(f"http://localhost:{self.ports['frontend']}/")
+            else:
+                webbrowser.open(f"http://localhost:{self.ports['main_api']}/docs")
             
         # Monitor services
         try:
@@ -581,11 +715,16 @@ async def main():
     parser = argparse.ArgumentParser(description="JARVIS System Launcher - Iron Man AI Assistant")
     parser.add_argument("--no-browser", action="store_true", help="Don't open browser")
     parser.add_argument("--check-only", action="store_true", help="Check setup and exit")
+    parser.add_argument("--backend-only", action="store_true", help="Start only the backend server")
+    parser.add_argument("--frontend-only", action="store_true", help="Start only the frontend")
     
     args = parser.parse_args()
     
     # Create manager
     _manager = AsyncSystemManager()
+    _manager.no_browser = args.no_browser
+    _manager.backend_only = args.backend_only
+    _manager.frontend_only = args.frontend_only
     
     if args.check_only:
         _manager.print_header()
@@ -613,6 +752,9 @@ def handle_exception(loop, context):
         return
     if 'Event loop is closed' in str(context.get('message', '')):
         return
+    # Log other exceptions if needed
+    if logger:
+        logger.debug(f"Asyncio exception: {context}")
         
 if __name__ == "__main__":
     # Handle Ctrl+C gracefully

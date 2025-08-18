@@ -249,6 +249,32 @@ project/
 - Transparent about external API usage
 - No user tracking or analytics
 
+## 🚀 Quick Start Guide
+
+### 🎯 Get JARVIS Running in 5 Minutes
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/yourusername/AI-Powered-Chatbot.git
+cd AI-Powered-Chatbot
+
+# 2. Create API key file (MUST be in backend directory!)
+echo "ANTHROPIC_API_KEY=your-api-key-here" > backend/.env
+
+# 3. Install dependencies
+cd backend && pip install -r requirements.txt
+cd ../frontend && npm install
+cd ..
+
+# 4. Launch JARVIS
+python start_system.py
+
+# 5. Open browser to http://localhost:3000
+# Say "Hey JARVIS" to activate!
+```
+
+That's it! JARVIS is now running with full AI Agent capabilities.
+
 ## 🚀 Installation & Setup
 
 ### 📋 Prerequisites
@@ -299,12 +325,14 @@ source venv/bin/activate
 # Windows:
 venv\Scripts\activate
 
-# Create environment configuration
-cat > .env << EOL
+# Create environment configuration in backend directory
+cat > backend/.env << EOL
 ANTHROPIC_API_KEY=your-claude-api-key-here
 OPENWEATHER_API_KEY=your-weather-api-key-here
 EOL
 ```
+
+**Important**: The `.env` file MUST be in the `backend/` directory, not the root directory.
 
 #### Step 2: Backend Installation
 
@@ -388,6 +416,20 @@ This will:
 - ✅ Initialize JARVIS voice system
 - ✅ Pre-load weather data and location
 - ✅ Open your browser to http://localhost:3000
+
+**Expected Backend Output:**
+```
+INFO:__main__:Initializing Claude-powered chatbot
+INFO:__main__:Claude chatbot initialized successfully
+INFO:voice.voice_ml_trainer:Deep learning models initialized for advanced voice analysis
+INFO:api.jarvis_voice_api:JARVIS Agent Voice System initialized with system control
+INFO:__main__:JARVIS Voice API routes added - Iron Man mode activated!
+INFO:__main__:Starting M1-optimized chatbot server on 127.0.0.1:8000...
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+```
+
+**Note**: You may see "Memory warning: 0.8% used" messages - these are false positives on M1 Macs and can be safely ignored.
 
 ### 🔒 macOS Permissions Setup (Important!)
 
@@ -769,6 +811,12 @@ AI-Powered-Chatbot/
 
 | Issue | Solution |
 |-------|----------|
+| **"Connection refused on port 8000"** | Backend not running. Use `python start_system.py` to start all services |
+| **"JARVIS system not available - API key required"** | 1. Create `backend/.env` file<br>2. Add: `ANTHROPIC_API_KEY=your-key-here`<br>3. Restart the system |
+| **"No module named 'services.claude_service'"** | Old import error - update to latest code version |
+| **"AttributeError: 'JARVISAgentVoice' object has no attribute..."** | Ensure all voice files are updated from the latest version |
+| **"SyntaxError: 'return' with value in async generator"** | Python version issue - ensure Python 3.8+ is installed |
+| **".env file not found"** | The `.env` file MUST be in `backend/` directory, not root |
 | **"No module named 'speech_recognition'"** | Run: `pip install SpeechRecognition pyaudio` |
 | **"No module named 'geocoder'"** | Run: `pip install geocoder` (required for weather) |
 | **"WebSocket connection refused"** | Ensure backend is running: `python backend/main.py` |
@@ -1445,7 +1493,16 @@ A: Absolutely:
 
 ## 📈 Version History
 
-### v3.0.0 (Current) - AI Agent Update
+### v3.0.1 (Current) - Bug Fixes & Improvements
+- 🐛 Fixed import errors in AI Agent system
+- 📝 Improved error handling for missing API keys
+- 🔧 Fixed async generator syntax errors
+- 📁 Updated .env file location to backend directory
+- 🎯 Added PersonalityAdapter for API compatibility
+- 📚 Enhanced documentation with troubleshooting guide
+- ⚡ Improved startup process with better error messages
+
+### v3.0.0 - AI Agent Update
 - 🤖 **NEW: AI Agent with macOS System Control**
   - Voice-activated app management
   - File operations with safety features
