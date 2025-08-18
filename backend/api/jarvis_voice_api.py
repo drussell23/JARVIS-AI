@@ -202,6 +202,11 @@ class JARVISVoiceAPI:
             raise HTTPException(status_code=503, detail="JARVIS not available")
             
         try:
+            # Ensure JARVIS is active
+            if not self.jarvis.running:
+                self.jarvis.running = True
+                logger.info("Activating JARVIS for command processing")
+            
             # Process command with JARVIS personality
             # Create a VoiceCommand object for the personality
             voice_command = VoiceCommand(
@@ -348,6 +353,11 @@ class JARVISVoiceAPI:
                     # Process voice command
                     command_text = data.get("text", "")
                     logger.info(f"WebSocket received command: '{command_text}'")
+                    
+                    # Ensure JARVIS is active for WebSocket commands
+                    if not self.jarvis.running:
+                        self.jarvis.running = True
+                        logger.info("Activating JARVIS for WebSocket command")
                     
                     # Handle activation command specially
                     if command_text.lower() == "activate":

@@ -90,10 +90,17 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         
     async def process_voice_input(self, text: str) -> str:
         """Process voice input with system control capabilities"""
+        logger.info(f"JARVISAgentVoice received: '{text}'")
         
-        # First, let parent class handle wake word detection
-        if not self.running and not self._detect_wake_word(text):
-            return ""
+        # Check if we need to detect wake word in text
+        if not self.running:
+            if not self.detect_wake_word_in_text(text):
+                logger.info("No wake word detected, ignoring")
+                return ""
+            else:
+                # Wake word detected, activate
+                logger.info("Wake word detected, activating JARVIS")
+                self.running = True
             
         # Check for mode switches
         if "system control" in text.lower() or "control my mac" in text.lower():
@@ -110,10 +117,44 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             
         # Detect if this is a system command
         if self._is_system_command(text):
+            logger.info(f"Detected system command: {text}")
             return await self._handle_system_command(text)
             
         # Otherwise, use normal conversation processing
-        return await super().process_voice_input(text)
+        logger.info(f"Processing as conversation: {text}")
+        
+        # Since parent doesn't have process_voice_input, handle conversation here
+        if self.claude_chatbot:
+            try:
+                response = await self.claude_chatbot.generate_response(text)
+                logger.info(f"Claude response: {response}")
+                return response
+            except Exception as e:
+                logger.error(f"Error getting Claude response: {e}")
+                return f"I apologize, {self.user_name}, but I encountered an error processing your request."
+        else:
+            return f"I'm sorry, {self.user_name}, but I need my API key to answer that question."
+        
+    def detect_wake_word_in_text(self, text: str) -> bool:
+        """Detect wake word in text input"""
+        text_lower = text.lower()
+        
+        # Check primary wake words
+        for wake_word in self.wake_words:
+            if wake_word in text_lower:
+                return True
+                
+        # Check variations
+        for variation in self.wake_word_variations:
+            if variation in text_lower:
+                return True
+                
+        # Check urgent wake words
+        for urgent in self.urgent_wake_words:
+            if urgent in text_lower:
+                return True
+                
+        return False
         
     def _is_system_command(self, text: str) -> bool:
         """Detect if input is a system command"""
@@ -227,8 +268,12 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         
     def _format_response(self, response_type: str, **kwargs) -> str:
         """Format agent responses"""
-        template = self.agent_responses.get(response_type, 
-                                          self.responses.get(response_type, ""))
+        # Try agent_responses first, then fall back to default
+        template = self.agent_responses.get(response_type, "")
+        
+        if not template:
+            # Provide a default response if not found
+            template = f"Command {response_type} completed, {{user}}."
         
         # Add default user name
         kwargs["user"] = kwargs.get("user", self.user_name)

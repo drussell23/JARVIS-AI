@@ -125,9 +125,7 @@ class ClaudeCommandInterpreter:
         """
         
         # Add conversation history for context
-        messages = [
-            {"role": "system", "content": system_prompt}
-        ]
+        messages = []
         
         # Add recent history
         for hist in self.conversation_history[-5:]:
@@ -142,11 +140,12 @@ class ClaudeCommandInterpreter:
         messages.append({"role": "user", "content": user_message})
         
         try:
-            # Call Claude API
+            # Call Claude API with system prompt as parameter
             response = self.client.messages.create(
-                model="claude-3-sonnet-20240229",
+                model="claude-3-haiku-20240307",  # Use available model
                 max_tokens=500,
                 temperature=0.3,
+                system=system_prompt,  # System prompt as parameter
                 messages=messages
             )
             
@@ -189,8 +188,17 @@ class ClaudeCommandInterpreter:
             
     def _assess_safety(self, intent_data: Dict) -> SafetyLevel:
         """Assess safety level of command"""
-        action = intent_data.get("action", "").lower()
-        target = intent_data.get("target", "").lower()
+        action = intent_data.get("action", "")
+        target = intent_data.get("target", "")
+        
+        # Handle None values
+        if action is None:
+            action = ""
+        if target is None:
+            target = ""
+            
+        action = action.lower()
+        target = target.lower()
         
         # Dangerous actions
         if any(word in action for word in ["delete", "remove", "shutdown", "restart", "format"]):
