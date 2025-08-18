@@ -1,0 +1,15 @@
+{
+  "include": [
+    "**/*.py"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*"
+  ],
+  "reportMissingImports": false,
+  "reportMissingTypeStubs": false,
+  "pythonVersion": "3.10",
+  "venvPath": "/Users/derekjrussell/miniforge3",
+  "venv": "."
+}

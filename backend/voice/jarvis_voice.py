@@ -13,7 +13,7 @@ import asyncio
 import speech_recognition as sr
 import pygame
 import numpy as np
-from typing import Optional, Callable, Dict, List, Tuple, Union
+from typing import Optional, Callable, Dict, List, Tuple, Union, Any
 import json
 import random
 from datetime import datetime
@@ -874,7 +874,7 @@ class EnhancedJARVISVoiceAssistant:
                     if self.ml_enhanced_system and audio_data is not None:
                         await self.ml_enhanced_system.update_environmental_profile(audio_data)
                     
-                    await self._handle_activation(confidence, wake_type, text)
+                    await self._handle_activation(confidence, wake_type or 'normal', text)
                 else:
                     # Track false positives for ML learning
                     if self.ml_enhanced_system and audio_data is not None:
@@ -898,7 +898,7 @@ class EnhancedJARVISVoiceAssistant:
             # Small delay to prevent CPU overuse
             await asyncio.sleep(0.1)
 
-    async def _handle_activation(self, wake_confidence: float, wake_type: str, full_text: str = None):
+    async def _handle_activation(self, wake_confidence: float, wake_type: str, full_text: Optional[str] = None):
         """Enhanced activation handling"""
         # Check if command was included with wake word
         command_text = None
