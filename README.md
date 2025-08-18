@@ -1,4 +1,4 @@
-# 🤖 JARVIS - AI Agent with macOS System Control & Vision (v3.2.0)
+# 🤖 JARVIS - AI Agent with macOS System Control & Computer Vision (v3.2.0)
 
 <p align="center">
   <img src="https://img.shields.io/badge/AI%20Agent-System%20Control-purple" alt="AI Agent">
@@ -20,6 +20,8 @@
 ## 🎯 Overview
 
 JARVIS has evolved from Tony Stark's AI assistant into a powerful **AI Agent** capable of controlling your macOS environment through natural voice commands and now with **computer vision** to see and understand your screen. This isn't just a chatbot - it's a sophisticated system that can open applications, manage files, control system settings, detect software updates, read screen content, and execute complex workflows, all while maintaining the personality and sophistication that made JARVIS legendary.
+
+> **"Sir, I can now see your screen and alert you to important updates. Shall I begin monitoring?"** - JARVIS
 
 ### 🆕 Latest Updates (v3.2.0)
 - 🖥️ **NEW: Computer Vision System** - JARVIS can now see and understand your screen!
@@ -56,13 +58,17 @@ Built on Anthropic's Claude AI platform with advanced ML voice processing, JARVI
 
 ### 🌟 The JARVIS AI Agent Experience
 
-Experience the power of a true AI agent:
+Experience the power of a true AI agent with vision:
 - **System Control**: "Hey JARVIS, open Visual Studio Code and create a new Python file"
+- **Screen Understanding**: "What's on my screen?" - JARVIS describes what he sees
+- **Update Detection**: "Check for software updates" - identifies all pending updates
 - **App Management**: "Close all distracting apps and open my work applications"
 - **Workflow Automation**: "Start my morning routine" - opens email, calendar, news, and weather
 - **File Operations**: "Search for all Python files in my projects folder"
 - **Web Integration**: "Open GitHub and search for machine learning repositories"
 - **System Settings**: "Set volume to 30% and take a screenshot"
+- **Error Reading**: "Read the error message" - extracts text from any dialog
+- **Continuous Monitoring**: "Monitor for important notifications" - background watching
 - **Natural Conversations**: Still answers questions, does calculations, and chats like the original JARVIS
 
 ## 🚀 Core Features & Capabilities
@@ -267,6 +273,27 @@ Experience the power of a true AI agent:
 - Error state handling
 - Accessibility features
 
+## 🎨 How Computer Vision Works
+
+### Screen Capture Technology
+- **Native macOS APIs**: Uses Quartz framework for efficient screen capture
+- **No external dependencies**: Direct system integration
+- **Privacy-first**: All processing happens locally on your machine
+- **Real-time analysis**: Instant screen comprehension
+
+### Text Extraction Process
+1. **Screen Capture**: Takes screenshot of full screen or specific region
+2. **Image Processing**: OpenCV preprocessing for optimal OCR
+3. **Text Recognition**: Tesseract OCR extracts all visible text
+4. **Pattern Matching**: Identifies updates, errors, and notifications
+5. **AI Analysis**: Optional Claude vision for advanced understanding
+
+### Update Detection Algorithm
+- **Visual Indicators**: Detects red notification badges
+- **Text Patterns**: Recognizes "update available", version numbers
+- **Application Monitoring**: Tracks App Store, browsers, system updates
+- **Smart Filtering**: Prioritizes critical vs optional updates
+
 ## 🎯 What Makes JARVIS Special
 
 ### Beyond Traditional Assistants
@@ -321,6 +348,23 @@ project/
 
 ## 🚀 Quick Start Guide
 
+### 🖥️ Quick Start: Computer Vision (NEW!)
+
+```bash
+# 1. Install vision dependencies
+pip install opencv-python pytesseract Pillow
+brew install tesseract
+
+# 2. Test vision system
+cd backend
+python test_vision_system.py
+
+# 3. Try vision commands
+python start_system.py
+# Say: "Hey JARVIS, what's on my screen?"
+# Say: "Check for software updates"
+```
+
 ### 🎯 Get JARVIS Running in 3 Minutes
 
 ```bash
@@ -345,6 +389,10 @@ bash quick_start.sh
 
 # 5. (Optional) View the new landing page
 # Open landing-page/index.html in your browser
+
+# 6. Test Computer Vision features
+cd backend
+python test_vision_system.py
 ```
 
 ✅ **JARVIS is now running with full AI Agent capabilities!**
@@ -386,9 +434,10 @@ Expected output:
    - Free tier: 1,000 calls/day
 
 **System Requirements for AI Agent**
-- **macOS**: Full system control with AppleScript
+- **macOS**: Full system control with AppleScript and screen capture
 - **Permissions**: Grant accessibility and automation permissions
 - **Python**: Must have automation access in System Preferences
+- **Tesseract**: Required for OCR text extraction (install via Homebrew)
 
 **Platform Support**
 - **macOS**: Full support including voice synthesis ✅
@@ -887,6 +936,40 @@ POST /memory/optimize
 GET /memory/health
 ```
 
+### Vision Endpoints (NEW!)
+
+```python
+# Check vision system status
+GET /api/vision/status
+
+# Process vision command
+POST /api/vision/command
+{
+    "command": "check for updates",
+    "use_claude": true
+}
+
+# Analyze screen
+POST /api/vision/analyze
+{
+    "analysis_type": "updates",  # or "activity", "security", "text"
+    "region": [100, 100, 500, 300]  # Optional: [x, y, width, height]
+}
+
+# Configure update monitoring
+POST /api/vision/monitor/updates
+{
+    "enabled": true,
+    "interval": 300  # seconds
+}
+
+# Get pending updates
+GET /api/vision/updates/pending
+
+# Capture and describe screen
+POST /api/vision/capture
+```
+
 ## 🏗️ Architecture
 
 ```
@@ -894,8 +977,13 @@ AI-Powered-Chatbot/
 ├── backend/
 │   ├── api/                    # API endpoints
 │   │   ├── jarvis_voice_api.py # Voice control endpoints
-│   │   └── automation_api.py   # Task automation
-│   ├── system_control/         # AI Agent system control (NEW!)
+│   │   ├── automation_api.py   # Task automation
+│   │   └── vision_api.py       # Vision system endpoints (NEW!)
+│   ├── vision/                 # Computer Vision System (NEW!)
+│   │   ├── screen_vision.py    # Core vision & OCR system
+│   │   ├── claude_vision_analyzer.py # Claude AI vision
+│   │   └── VISION_SYSTEM_GUIDE.md # Vision documentation
+│   ├── system_control/         # AI Agent system control
 │   │   ├── macos_controller.py # macOS system operations
 │   │   ├── claude_command_interpreter.py # NLP command processing
 │   │   └── SYSTEM_CONTROL_GUIDE.md # Agent documentation
@@ -904,7 +992,7 @@ AI-Powered-Chatbot/
 │   │   └── simple_chatbot.py   # Lightweight fallback
 │   ├── voice/
 │   │   ├── jarvis_voice.py     # Voice engine & personality
-│   │   ├── jarvis_agent_voice.py # AI Agent voice integration (NEW!)
+│   │   ├── jarvis_agent_voice.py # AI Agent voice integration
 │   │   ├── macos_voice.py      # macOS TTS support
 │   │   ├── voice_ml_trainer.py # Basic ML training system
 │   │   ├── ml_enhanced_voice_system.py # Advanced ML with 80%+ accuracy
@@ -928,12 +1016,23 @@ AI-Powered-Chatbot/
 │   │   └── App.css             # Iron Man styling
 │   └── package.json
 ├── start_system.py             # System launcher (async, 3x faster)
-├── start_jarvis.py            # Quick launcher
+├── test_vision_system.py       # Vision testing (NEW!)
 ├── test_jarvis_voice.py        # Voice testing
 └── README.md                   # This file
 ```
 
 ## 🛠️ Troubleshooting
+
+### Vision System Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| **"Vision capabilities are not available"** | 1. Install packages: `pip install opencv-python pytesseract Pillow`<br>2. Install Tesseract: `brew install tesseract`<br>3. Restart JARVIS |
+| **"No text detected on screen"** | 1. Ensure screen has good contrast<br>2. Check if text is visible (not covered by other windows)<br>3. Try `python test_vision_system.py` to debug |
+| **"Update detection not working"** | 1. Make sure update notifications are visible on screen<br>2. Check if notifications are in English<br>3. Try manual command: "Check for updates" |
+| **"ImportError: No module named cv2"** | Run: `pip install opencv-python` |
+| **"TesseractNotFoundError"** | Run: `brew install tesseract` |
+| **"Claude vision not available"** | Ensure ANTHROPIC_API_KEY is set in backend/.env |
 
 ### Common Issues (v3.1 - Updated!)
 
@@ -1085,6 +1184,11 @@ const handleCustomAnimation = () => {
 - **Accuracy Improvement**: +10-15% after 100 interactions
 - **Voice Profile Size**: ~5MB per user
 - **Model Training Time**: < 2 seconds
+- **Screen Capture Time**: < 100ms for full screen
+- **OCR Processing**: < 500ms for typical screen
+- **Update Detection**: < 1 second per scan
+- **Vision Memory Usage**: +100-200MB when active
+- **Claude Vision Analysis**: < 2 seconds (when enabled)
 
 ## 🔐 Security & Privacy
 

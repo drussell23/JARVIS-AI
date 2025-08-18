@@ -134,17 +134,22 @@ class AsyncSystemManager:
         try:
             if package == "python-dotenv":
                 __import__("dotenv")
+            elif package == "opencv-python":
+                __import__("cv2")
+            elif package == "Pillow":
+                __import__("PIL")
             else:
                 __import__(package.replace("-", "_"))
             return True
         except ImportError:
             return False
             
-    async def check_dependencies(self) -> Tuple[bool, List[str]]:
-        """Check all dependencies in parallel"""
+    async def check_dependencies(self) -> Tuple[bool, List[str], List[str]]:
+        """Check all dependencies in parallel, return (all_ok, critical_missing, optional_missing)"""
         print(f"\n{Colors.BLUE}Checking dependencies (parallel)...{Colors.ENDC}")
         
-        packages = {
+        # Define packages with criticality
+        critical_packages = {
             "fastapi": "FastAPI web framework",
             "uvicorn": "ASGI server",
             "pydantic": "Data validation",
@@ -152,6 +157,9 @@ class AsyncSystemManager:
             "anthropic": "Claude API client",
             "python-dotenv": "Environment variables",
             "aiohttp": "Async HTTP client",
+        }
+        
+        optional_packages = {
             "speech_recognition": "Speech recognition",
             "pyttsx3": "Text-to-speech",
             "pygame": "Audio feedback",
@@ -163,27 +171,34 @@ class AsyncSystemManager:
             "transformers": "Hugging Face models",
             "torch": "PyTorch for ML models",
             "torchaudio": "Audio processing with PyTorch",
-            "opencv-python": "Computer vision",
-            "pytesseract": "OCR text extraction",
-            "Pillow": "Image processing"
+            "opencv-python": "Computer vision (NEW)",
+            "pytesseract": "OCR text extraction (NEW)",
+            "Pillow": "Image processing (NEW)"
         }
         
         # Check all packages in parallel
+        all_packages = {**critical_packages, **optional_packages}
         tasks = []
-        for package, description in packages.items():
+        for package, description in all_packages.items():
             task = asyncio.create_task(self.check_package(package))
             tasks.append((package, description, task))
         
-        missing = []
+        critical_missing = []
+        optional_missing = []
+        
         for package, description, task in tasks:
             installed = await task
             if installed:
                 print(f"{Colors.GREEN}✓ {description} ({package}){Colors.ENDC}")
             else:
-                missing.append(package)
-                print(f"{Colors.WARNING}⚠️  {description} ({package}) - missing{Colors.ENDC}")
+                if package in critical_packages:
+                    critical_missing.append(package)
+                    print(f"{Colors.FAIL}❌ {description} ({package}) - REQUIRED{Colors.ENDC}")
+                else:
+                    optional_missing.append(package)
+                    print(f"{Colors.WARNING}⚠️  {description} ({package}) - optional{Colors.ENDC}")
                 
-        return len(missing) == 0, missing
+        return len(critical_missing) == 0, critical_missing, optional_missing
     
     async def check_system_resources(self):
         """Check system resources"""
@@ -696,12 +711,72 @@ class AsyncSystemManager:
         await self.create_directories()
         
         # Check dependencies
-        deps_ok, missing = await self.check_dependencies()
-        if not deps_ok and missing:
-            print(f"\n{Colors.YELLOW}Install missing packages:{Colors.ENDC}")
-            print(f"pip install {' '.join(missing)}")
-            if not await self.ask_continue("Continue anyway?"):
-                return False
+        deps_ok, critical_missing, optional_missing = await self.check_dependencies()
+        
+        # Handle critical missing packages
+        if not deps_ok and critical_missing:
+            print(f"\n{Colors.FAIL}❌ Critical packages missing!{Colors.ENDC}")
+            print(f"{Colors.YELLOW}JARVIS cannot run without these packages.{Colors.ENDC}")
+            print(f"\n{Colors.CYAN}Installing critical packages...{Colors.ENDC}")
+            
+            # Auto-install critical packages
+            for package in critical_missing:
+                print(f"\n{Colors.BLUE}Installing {package}...{Colors.ENDC}")
+                try:
+                    proc = await asyncio.create_subprocess_exec(
+                        sys.executable, "-m", "pip", "install", package,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    stdout, stderr = await proc.communicate()
+                    
+                    if proc.returncode == 0:
+                        print(f"{Colors.GREEN}✓ {package} installed successfully{Colors.ENDC}")
+                    else:
+                        print(f"{Colors.FAIL}❌ Failed to install {package}{Colors.ENDC}")
+                        if stderr:
+                            print(f"{Colors.WARNING}Error: {stderr.decode()[:200]}{Colors.ENDC}")
+                        print(f"\n{Colors.YELLOW}Please install manually:{Colors.ENDC}")
+                        print(f"pip install {package}")
+                        return False
+                except Exception as e:
+                    print(f"{Colors.FAIL}❌ Error installing {package}: {e}{Colors.ENDC}")
+                    return False
+            
+            print(f"\n{Colors.GREEN}✓ All critical packages installed!{Colors.ENDC}")
+            print(f"{Colors.CYAN}Please restart the script to load the new packages.{Colors.ENDC}")
+            return False
+        
+        # Handle optional missing packages
+        if optional_missing:
+            print(f"\n{Colors.YELLOW}Optional packages missing:{Colors.ENDC}")
+            print(f"These enhance JARVIS but aren't required to run:")
+            
+            # Group by feature
+            voice_packages = [p for p in optional_missing if p in ["speech_recognition", "pyttsx3", "pygame", "pyaudio"]]
+            ml_packages = [p for p in optional_missing if p in ["librosa", "joblib", "sklearn", "torch", "torchaudio"]]
+            vision_packages = [p for p in optional_missing if p in ["opencv-python", "pytesseract", "Pillow"]]
+            other_packages = [p for p in optional_missing if p not in voice_packages + ml_packages + vision_packages]
+            
+            if voice_packages:
+                print(f"\n{Colors.CYAN}🎤 Voice features:{Colors.ENDC}")
+                print(f"   pip install {' '.join(voice_packages)}")
+            
+            if ml_packages:
+                print(f"\n{Colors.CYAN}🧠 ML enhancements:{Colors.ENDC}")
+                print(f"   pip install {' '.join(ml_packages)}")
+            
+            if vision_packages:
+                print(f"\n{Colors.CYAN}🖥️  Vision features (NEW!):{Colors.ENDC}")
+                print(f"   pip install {' '.join(vision_packages)}")
+                if "pytesseract" in vision_packages:
+                    print(f"   {Colors.YELLOW}Also run: brew install tesseract{Colors.ENDC}")
+            
+            if other_packages:
+                print(f"\n{Colors.CYAN}📦 Other features:{Colors.ENDC}")
+                print(f"   pip install {' '.join(other_packages)}")
+            
+            print(f"\n{Colors.GREEN}JARVIS will run with limited features.{Colors.ENDC}")
         
         # Start services based on arguments
         if getattr(self, 'backend_only', False):
@@ -779,7 +854,13 @@ async def main():
         _manager.print_header()
         await _manager.check_python_version()
         await _manager.check_claude_config()
-        await _manager.check_dependencies()
+        deps_ok, critical_missing, optional_missing = await _manager.check_dependencies()
+        if not deps_ok:
+            print(f"\n{Colors.FAIL}Critical dependencies missing. Cannot run JARVIS.{Colors.ENDC}")
+        elif optional_missing:
+            print(f"\n{Colors.GREEN}JARVIS can run with current setup (some features limited).{Colors.ENDC}")
+        else:
+            print(f"\n{Colors.GREEN}All dependencies installed! JARVIS is fully operational.{Colors.ENDC}")
         return
         
     # Run the system
