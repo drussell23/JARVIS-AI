@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 # Import JARVIS voice components with error handling
 try:
     from voice.jarvis_voice import EnhancedJARVISVoiceAssistant, EnhancedJARVISPersonality, VoiceCommand
+    from voice.jarvis_agent_voice import JARVISAgentVoice
     JARVIS_IMPORTS_AVAILABLE = True
 except (ImportError, OSError, AttributeError) as e:
     logger.warning(f"Failed to import JARVIS voice components: {e}")
@@ -33,6 +34,10 @@ except (ImportError, OSError, AttributeError) as e:
     
     class VoiceCommand:
         pass
+    
+    class JARVISAgentVoice:
+        def __init__(self, *args, **kwargs):
+            raise NotImplementedError("JARVIS agent components not available")
 
 
 class JARVISCommand(BaseModel):
@@ -60,15 +65,19 @@ class JARVISVoiceAPI:
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if api_key and JARVIS_IMPORTS_AVAILABLE:
             try:
-                self.jarvis = EnhancedJARVISVoiceAssistant(api_key)
+                # Use the new JARVIS Agent with system control
+                self.jarvis = JARVISAgentVoice()
                 self.jarvis_available = True
-                logger.info("JARVIS Voice System initialized")
+                self.system_control_enabled = self.jarvis.system_control_enabled
+                logger.info("JARVIS Agent Voice System initialized with system control")
             except Exception as e:
                 self.jarvis_available = False
-                logger.error(f"Failed to initialize JARVIS: {e}")
+                self.system_control_enabled = False
+                logger.error(f"Failed to initialize JARVIS Agent: {e}")
         else:
             self.jarvis = None
             self.jarvis_available = False
+            self.system_control_enabled = False
             logger.warning("JARVIS Voice System not available - ANTHROPIC_API_KEY not set")
         
         self._register_routes()
@@ -103,22 +112,41 @@ class JARVISVoiceAPI:
                 "features": []
             }
             
+        features = [
+            "voice_activation",
+            "natural_conversation",
+            "contextual_awareness",
+            "personality_system",
+            "break_reminders",
+            "humor_and_wit"
+        ]
+        
+        if self.system_control_enabled:
+            features.extend([
+                "system_control",
+                "app_management",
+                "file_operations",
+                "web_integration",
+                "workflow_automation"
+            ])
+        
         return {
-            "status": "online" if self.jarvis.running else "standby",
-            "message": "JARVIS at your service" if self.jarvis.running else "JARVIS in standby mode",
-            "user_name": self.jarvis.personality.user_preferences['name'],
-            "features": [
-                "voice_activation",
-                "natural_conversation",
-                "contextual_awareness",
-                "personality_system",
-                "break_reminders",
-                "humor_and_wit"
-            ],
-            "wake_words": self.jarvis.wake_words,
+            "status": "online" if self.jarvis.is_active else "standby",
+            "message": "JARVIS Agent at your service" if self.jarvis.is_active else "JARVIS in standby mode",
+            "user_name": self.jarvis.user_name,
+            "features": features,
+            "wake_words": {
+                "primary": self.jarvis.wake_words,
+                "variations": getattr(self.jarvis, 'wake_word_variations', []),
+                "urgent": getattr(self.jarvis, 'urgent_wake_words', [])
+            },
             "voice_engine": {
-                "calibrated": hasattr(self.jarvis.voice_engine, 'recognizer'),
-                "listening": self.jarvis.running
+                "calibrated": hasattr(self.jarvis, 'voice_engine'),
+                "listening": self.jarvis.is_active
+            },
+            "system_control": {
+                "enabled": self.system_control_enabled,
+                "mode": getattr(self.jarvis, 'command_mode', 'conversation')
             }
         }
         

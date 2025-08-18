@@ -1,33 +1,86 @@
-# 🤖 JARVIS - Tony Stark's AI Assistant, Now Real
+# 🤖 JARVIS - AI Agent with macOS System Control
 
 <p align="center">
+  <img src="https://img.shields.io/badge/AI%20Agent-System%20Control-purple" alt="AI Agent">
   <img src="https://img.shields.io/badge/AI-Claude%203-blue" alt="Claude AI">
-  <img src="https://img.shields.io/badge/Voice-Enabled-green" alt="Voice Enabled">
+  <img src="https://img.shields.io/badge/Voice-ML%20Enhanced-green" alt="ML Voice">
   <img src="https://img.shields.io/badge/UI-Iron%20Man%20Inspired-red" alt="Iron Man UI">
-  <img src="https://img.shields.io/badge/Platform-M1%20Optimized-orange" alt="M1 Optimized">
-  <img src="https://img.shields.io/badge/Weather-Real%20Time-yellow" alt="Real-time Weather">
+  <img src="https://img.shields.io/badge/Platform-macOS%20Control-orange" alt="macOS Control">
+  <img src="https://img.shields.io/badge/Safety-Built--in-yellow" alt="Safety Features">
   <img src="https://img.shields.io/badge/Response%20Time-%3C1s-brightgreen" alt="Fast Response">
 </p>
 
 <p align="center">
-  <em>"Sometimes you gotta run before you can walk." - Tony Stark</em>
+  <em>"JARVIS, sometimes you gotta run before you can walk." - Tony Stark</em>
 </p>
 
 ## 🎯 Overview
 
-JARVIS (Just A Rather Very Intelligent System) is a fully functional AI assistant that brings Tony Stark's iconic companion from the Marvel Cinematic Universe into reality. This isn't just another chatbot - it's a sophisticated AI system that combines cutting-edge technology with the personality, voice, and capabilities that made JARVIS an integral part of Iron Man's success.
+JARVIS has evolved from Tony Stark's AI assistant into a powerful **AI Agent** capable of controlling your macOS environment through natural voice commands. This isn't just a chatbot - it's a sophisticated system that can open applications, manage files, control system settings, and execute complex workflows, all while maintaining the personality and sophistication that made JARVIS legendary.
 
-Built on Anthropic's Claude AI platform, JARVIS features natural voice interaction, real-time global weather intelligence, and an authentic Arc Reactor interface that responds to your every command. Whether you need complex calculations, weather updates from anywhere on Earth, or just want to have an intelligent conversation, JARVIS is ready to assist with the same British sophistication and dry wit that helped Tony Stark save the world.
+**New AI Agent Capabilities:**
+- 🖥️ **Voice-Activated System Control**: "Hey JARVIS, open Chrome and search for Python tutorials"
+- 🎯 **Natural Language Commands**: Understands complex, conversational instructions
+- 🛡️ **Built-in Safety**: Confirmations for dangerous actions, restricted access to system files
+- 🔄 **Workflow Automation**: Execute multi-step routines like "Start my morning routine"
+- 🧠 **Claude-Powered Intelligence**: Leverages Anthropic's AI for command interpretation
 
-### 🌟 The JARVIS Experience
+Built on Anthropic's Claude AI platform with advanced ML voice processing, JARVIS combines the power of an AI agent with the personality of Tony Stark's legendary assistant.
 
-Imagine having Tony Stark's AI at your command:
-- Wake up and ask "Hey JARVIS, what's the weather like in London?" - get instant, accurate weather data
-- Need quick calculations? "JARVIS, what's 18% of $2,847?" - solved in milliseconds
-- Want to learn something? "Tell me about quantum entanglement" - get clear, intelligent explanations
-- All with the authentic British accent and personality from the films
+### 🌟 The JARVIS AI Agent Experience
+
+Experience the power of a true AI agent:
+- **System Control**: "Hey JARVIS, open Visual Studio Code and create a new Python file"
+- **App Management**: "Close all distracting apps and open my work applications"
+- **Workflow Automation**: "Start my morning routine" - opens email, calendar, news, and weather
+- **File Operations**: "Search for all Python files in my projects folder"
+- **Web Integration**: "Open GitHub and search for machine learning repositories"
+- **System Settings**: "Set volume to 30% and take a screenshot"
+- **Natural Conversations**: Still answers questions, does calculations, and chats like the original JARVIS
 
 ## 🚀 Core Features & Capabilities
+
+### 🤖 AI Agent - System Control (NEW!)
+
+**Application Management**
+- Open, close, or switch between any macOS application
+- Natural commands: "Open Chrome", "Close Spotify", "Switch to Mail"
+- Smart app recognition with common aliases (e.g., "Code" → "Visual Studio Code")
+- List all open applications with voice command
+- Minimize all windows or activate Mission Control
+
+**File & Folder Operations**
+- Create files and folders with voice commands
+- Open documents in their default applications
+- Search for files using Spotlight integration
+- Safe deletion with mandatory confirmation
+- Restricted to safe directories (Desktop, Documents, Downloads, etc.)
+
+**System Settings Control**
+- Volume control: "Set volume to 50%", "Mute the sound"
+- Screenshot capture with automatic desktop saving
+- WiFi toggle on/off
+- Display sleep control
+- System information queries
+
+**Web Integration**
+- Open any website: "Go to github.com"
+- Web searches: "Search Google for Python tutorials"
+- Multi-browser support (Chrome, Safari, Firefox)
+- Research assistance with Claude AI
+
+**Workflow Automation**
+- **Morning Routine**: Opens email, calendar, weather, and news
+- **Development Setup**: Launches IDE, terminal, Docker, and localhost
+- **Meeting Prep**: Adjusts volume, closes distractions, opens video app
+- Create custom workflows for your daily tasks
+
+**Safety Features**
+- 🛡️ Confirmation required for all destructive actions
+- 🚫 System-critical applications blocked (System Preferences, Terminal)
+- 📁 File operations restricted to safe directories
+- ✅ High-confidence command execution only
+- 🔒 Voice authentication options
 
 ### 🎙️ ML-Enhanced Voice Interaction System
 
@@ -209,14 +262,19 @@ project/
 
 **API Keys Required**
 1. **Anthropic Claude API** (Required)
-   - Powers JARVIS's intelligence
+   - Powers JARVIS's intelligence and system control
    - Get it from: https://console.anthropic.com/
-   - Free tier available
+   - Required for AI Agent features
 
-2. **OpenWeatherMap API** (Recommended)
+2. **OpenWeatherMap API** (Optional)
    - Enables real-time weather for any location
    - Get it from: https://openweathermap.org/api
    - Free tier: 1,000 calls/day
+
+**System Requirements for AI Agent**
+- **macOS**: Full system control with AppleScript
+- **Permissions**: Grant accessibility and automation permissions
+- **Python**: Must have automation access in System Preferences
 
 **Platform Support**
 - **macOS**: Full support including voice synthesis ✅
@@ -331,31 +389,71 @@ This will:
 - ✅ Pre-load weather data and location
 - ✅ Open your browser to http://localhost:3000
 
+### 🔒 macOS Permissions Setup (Important!)
+
+For full AI Agent functionality on macOS:
+
+1. **Accessibility Permissions**
+   ```
+   System Preferences → Security & Privacy → Privacy → Accessibility
+   ✓ Terminal (or your IDE)
+   ✓ Python
+   ```
+
+2. **Automation Permissions**
+   ```
+   System Preferences → Security & Privacy → Privacy → Automation
+   ✓ Allow Terminal/IDE to control System Events
+   ✓ Allow Terminal/IDE to control other apps
+   ```
+
+3. **Microphone Access**
+   ```
+   System Preferences → Security & Privacy → Privacy → Microphone
+   ✓ Terminal (or your IDE)
+   ```
+
 ## 💡 Example Use Cases
 
-Experience JARVIS in action:
+### AI Agent - System Control
+
+```
+You: "Hey JARVIS, open Chrome"
+JARVIS: "I've opened Google Chrome for you, sir."
+
+You: "Search for Python machine learning tutorials"
+JARVIS: "Searching Google for Python machine learning tutorials..."
+
+You: "Create a new file called notes.txt on my desktop"
+JARVIS: "Created file: notes.txt on your desktop, sir."
+
+You: "Set volume to 30 percent"
+JARVIS: "Volume adjusted to 30%, sir."
+
+You: "Start my morning routine"
+JARVIS: "Initiating morning routine, sir. Opening your email... Checking your calendar... 
+         Getting today's weather... Morning routine complete, sir."
+
+You: "Take a screenshot"
+JARVIS: "Screenshot captured and saved to your desktop, sir."
+```
+
+### Natural Conversations
 
 ```
 You: "Hey JARVIS"
 JARVIS: "Yes, sir?"
 
-You: "What's the weather like in Oakland, California?"
-JARVIS: "Currently in Oakland, California, we have clear skies with a temperature of 18 degrees Celsius. 
-         Quite pleasant today, sir."
+You: "What's the weather like in Tokyo?"
+JARVIS: "Currently in Tokyo, Japan, we have partly cloudy conditions with a temperature of 15 degrees 
+         Celsius, sir."
 
-You: "Calculate the square root of 529"
-JARVIS: "The square root of 529 is 23, sir."
-
-You: "What's 15% tip on $85.50?"
-JARVIS: "A 15% tip on $85.50 would be $12.83, sir. The total would be $98.33."
+You: "Calculate 18% of 2,500"
+JARVIS: "18% of 2,500 is 450, sir."
 
 You: "Tell me about quantum computing"
 JARVIS: "Quantum computing leverages quantum mechanical phenomena like superposition and entanglement 
          to process information in fundamentally different ways than classical computers, sir..."
-
-You: "What's the weather in Paris, France?"
-JARVIS: "Currently in Paris, France, we have partly cloudy conditions with a temperature of 12 degrees 
-         Celsius. Rather typical for this time of year, sir."
 ```
 
 ## 🎙️ Voice Control Guide
@@ -627,11 +725,16 @@ AI-Powered-Chatbot/
 │   ├── api/                    # API endpoints
 │   │   ├── jarvis_voice_api.py # Voice control endpoints
 │   │   └── automation_api.py   # Task automation
+│   ├── system_control/         # AI Agent system control (NEW!)
+│   │   ├── macos_controller.py # macOS system operations
+│   │   ├── claude_command_interpreter.py # NLP command processing
+│   │   └── SYSTEM_CONTROL_GUIDE.md # Agent documentation
 │   ├── chatbots/
 │   │   ├── claude_chatbot.py   # Claude AI integration
 │   │   └── simple_chatbot.py   # Lightweight fallback
 │   ├── voice/
 │   │   ├── jarvis_voice.py     # Voice engine & personality
+│   │   ├── jarvis_agent_voice.py # AI Agent voice integration (NEW!)
 │   │   ├── macos_voice.py      # macOS TTS support
 │   │   ├── voice_ml_trainer.py # Basic ML training system
 │   │   ├── ml_enhanced_voice_system.py # Advanced ML with 80%+ accuracy
@@ -1342,7 +1445,18 @@ A: Absolutely:
 
 ## 📈 Version History
 
-### v2.1.0 (Current)
+### v3.0.0 (Current) - AI Agent Update
+- 🤖 **NEW: AI Agent with macOS System Control**
+  - Voice-activated app management
+  - File operations with safety features
+  - System settings control
+  - Workflow automation
+  - Natural language command interpretation
+- 🛡️ Built-in safety confirmations
+- 🎯 Claude-powered command processing
+- 🔄 Complex multi-step workflows
+
+### v2.1.0
 - 🧠 ML-Enhanced Voice System with 80%+ false positive reduction
 - 🎯 Personalized wake word detection with continuous learning
 - 📈 Dynamic environmental adaptation
