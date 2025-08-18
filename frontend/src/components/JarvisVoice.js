@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './JarvisVoice.css';
+import MicrophonePermissionHelper from './MicrophonePermissionHelper';
 
 const JarvisVoice = () => {
   const [isListening, setIsListening] = useState(false);
@@ -11,6 +12,7 @@ const JarvisVoice = () => {
   const [continuousListening, setContinuousListening] = useState(false);
   const [isWaitingForCommand, setIsWaitingForCommand] = useState(false);
   const [isJarvisSpeaking, setIsJarvisSpeaking] = useState(false);
+  const [microphonePermission, setMicrophonePermission] = useState('checking');
   
   const wsRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -25,8 +27,8 @@ const JarvisVoice = () => {
     // Check JARVIS status on mount
     checkJarvisStatus();
     
-    // Initialize speech recognition
-    initializeSpeechRecognition();
+    // Check microphone permission first
+    checkMicrophonePermission();
     
     // Load voices for speech synthesis
     if ('speechSynthesis' in window) {
@@ -63,6 +65,37 @@ const JarvisVoice = () => {
     } catch (err) {
       console.error('Failed to check JARVIS status:', err);
       setJarvisStatus('offline');
+    }
+  };
+
+  const checkMicrophonePermission = async () => {
+    try {
+      // Check if browser supports speech recognition
+      if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+        setMicrophonePermission('unsupported');
+        setError('Speech recognition not supported in this browser');
+        return;
+      }
+
+      // Try to get microphone access
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(track => track.stop());
+      
+      setMicrophonePermission('granted');
+      // Initialize speech recognition after permission granted
+      initializeSpeechRecognition();
+    } catch (error) {
+      console.error('Microphone permission error:', error);
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        setMicrophonePermission('denied');
+        setError('Microphone access denied. Please grant permission to use JARVIS.');
+      } else if (error.name === 'NotFoundError') {
+        setMicrophonePermission('no-device');
+        setError('No microphone found. Please connect a microphone.');
+      } else {
+        setMicrophonePermission('error');
+        setError('Error accessing microphone: ' + error.message);
+      }
     }
   };
 
@@ -586,6 +619,15 @@ const JarvisVoice = () => {
 
   return (
     <div className="jarvis-voice-container">
+      {microphonePermission !== 'granted' && (
+        <MicrophonePermissionHelper 
+          onPermissionGranted={() => {
+            setMicrophonePermission('granted');
+            initializeSpeechRecognition();
+          }}
+        />
+      )}
+      
       <div className={`arc-reactor ${isListening ? 'listening' : ''} ${isProcessing ? 'processing' : ''} ${continuousListening ? 'continuous' : ''} ${isWaitingForCommand ? 'waiting' : ''}`}>
         <div className="core"></div>
         <div className="ring ring-1"></div>
