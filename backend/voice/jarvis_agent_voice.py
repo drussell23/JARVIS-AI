@@ -48,6 +48,10 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             "conversation mode": "Switch to conversation mode",
             "morning routine": "Start morning routine",
             "development setup": "Start development setup",
+            "check my screen": "Analyze what's on screen",
+            "check for updates": "Check for software updates",
+            "monitor updates": "Start monitoring for updates",
+            "vision mode": "Enable screen comprehension",
             "meeting prep": "Prepare for meeting"
         }
         
@@ -61,6 +65,17 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
                     logger.info(f"[Voice]: {text}")
             self.voice_engine = MockVoiceEngine()
             
+        # Initialize vision integration if available
+        self.vision_enabled = False
+        try:
+            from vision.screen_vision import ScreenVisionSystem, JARVISVisionIntegration
+            self.vision_system = ScreenVisionSystem()
+            self.vision_integration = JARVISVisionIntegration(self.vision_system)
+            self.vision_enabled = True
+            logger.info("Vision system initialized successfully")
+        except ImportError:
+            logger.info("Vision system not available - install vision dependencies")
+            
         # Command modes
         self.command_mode = "conversation"  # conversation, system_control, workflow
         self.pending_confirmations = {}
@@ -71,7 +86,8 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             "volume", "mute", "screenshot", "sleep", "wifi",
             "search", "google", "browse", "website",
             "create", "delete", "file", "folder",
-            "routine", "workflow", "setup"
+            "routine", "workflow", "setup",
+            "screen", "update", "monitor", "vision", "see", "check"
         }
         
         # Add agent-specific responses
@@ -172,6 +188,11 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         if not self.system_control_enabled:
             return "System control is not available. Please configure your API key."
             
+        # Check for vision commands first
+        text_lower = text.lower()
+        if any(vision_cmd in text_lower for vision_cmd in ["screen", "update", "monitor", "vision", "see"]):
+            return await self._handle_vision_command(text)
+            
         try:
             # Get system context
             context = {
@@ -265,6 +286,19 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             return f"Action cancelled, {self.user_name}."
             
         return "Please say 'confirm' to proceed or 'cancel' to abort."
+        
+    async def _handle_vision_command(self, text: str) -> str:
+        """Handle vision-related commands"""
+        if not self.vision_enabled:
+            return f"Vision capabilities are not available, {self.user_name}. Please install the required dependencies."
+            
+        try:
+            # Use the vision integration to handle the command
+            response = await self.vision_integration.handle_vision_command(text)
+            return response
+        except Exception as e:
+            logger.error(f"Vision command error: {e}")
+            return f"I encountered an error with the vision system, {self.user_name}."
         
     def _format_response(self, response_type: str, **kwargs) -> str:
         """Format agent responses"""

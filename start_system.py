@@ -83,6 +83,7 @@ class AsyncSystemManager:
         print(f"{Colors.GREEN}✅ NEW: Futuristic Iron Man landing page{Colors.ENDC}")
         print(f"{Colors.GREEN}✅ NEW: Arc Reactor animations & effects{Colors.ENDC}")
         print(f"{Colors.CYAN}🎤 Smart microphone helper & extended timeouts{Colors.ENDC}")
+        print(f"{Colors.BOLD}🖥️  NEW: Computer Vision - JARVIS can see your screen!{Colors.ENDC}")
         if self.is_m1_mac:
             print(f"{Colors.GREEN}✨ Optimized for Apple Silicon with native AppleScript{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}\n")
@@ -161,7 +162,10 @@ class AsyncSystemManager:
             "sklearn": "Machine learning algorithms",
             "transformers": "Hugging Face models",
             "torch": "PyTorch for ML models",
-            "torchaudio": "Audio processing with PyTorch"
+            "torchaudio": "Audio processing with PyTorch",
+            "opencv-python": "Computer vision",
+            "pytesseract": "OCR text extraction",
+            "Pillow": "Image processing"
         }
         
         # Check all packages in parallel
@@ -507,6 +511,11 @@ class AsyncSystemManager:
         print(f"  • Workflows: 'Start my morning routine', 'Development setup'")
         print(f"  • Mode: 'Switch to system control mode' for better accuracy")
         
+        print(f"\n{Colors.BOLD}🖥️  Vision Commands (NEW!):{Colors.ENDC}")
+        print(f"  • Screen: 'What's on my screen?', 'Check for software updates'")
+        print(f"  • Monitor: 'Start monitoring for updates', 'Stop monitoring'")
+        print(f"  • Analysis: 'What applications are open?', 'Read the error message'")
+        
         print(f"\n{Colors.CYAN}Conversation Commands:{Colors.ENDC}")
         print(f"  • Weather: 'What's the weather in Paris?'")
         print(f"  • Questions: 'Tell me about quantum computing'")
@@ -538,6 +547,10 @@ class AsyncSystemManager:
         print(f"  • 🎭 NEW: Futuristic Iron Man landing page")
         print(f"  • ⚡ NEW: Arc Reactor animations & holographic UI")
         print(f"  • 🎯 NEW: Interactive features showcase")
+        print(f"  • 🖥️  NEW: Computer vision - JARVIS can see your screen!")
+        print(f"  • 🔍 NEW: Software update detection & monitoring")
+        print(f"  • 📝 NEW: OCR text extraction from any application")
+        print(f"  • 🧠 NEW: Claude vision AI for advanced understanding")
         
         print(f"\n{Colors.WARNING}Press Ctrl+C to stop all services{Colors.ENDC}")
         

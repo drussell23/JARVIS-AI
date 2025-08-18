@@ -546,6 +546,16 @@ logger.info("Memory management API initialized")
 chatbot_api = ChatbotAPI()
 app.include_router(chatbot_api.router)
 
+# Include vision API if available
+try:
+    from api.vision_api import router as vision_router
+    app.include_router(vision_router, prefix="/api")
+    logger.info("Vision API routes added - Screen comprehension activated!")
+    VISION_API_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Vision API not available: {e}")
+    VISION_API_AVAILABLE = False
+
 # Include Voice API routes if available with memory management
 if VOICE_API_AVAILABLE:
     try:
@@ -632,6 +642,7 @@ async def root():
             "jarvis": "/voice/jarvis/*" if JARVIS_VOICE_AVAILABLE else None,
             "automation": "/automation/*",
             "knowledge": "/knowledge/*",
+            "vision": "/api/vision/*" if VISION_API_AVAILABLE else None,
         },
     }
 

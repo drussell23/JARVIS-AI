@@ -1,4 +1,4 @@
-# 🤖 JARVIS - AI Agent with macOS System Control (v3.1.3)
+# 🤖 JARVIS - AI Agent with macOS System Control & Vision (v3.2.0)
 
 <p align="center">
   <img src="https://img.shields.io/badge/AI%20Agent-System%20Control-purple" alt="AI Agent">
@@ -9,7 +9,8 @@
   <img src="https://img.shields.io/badge/Safety-Built--in-yellow" alt="Safety Features">
   <img src="https://img.shields.io/badge/Response%20Time-%3C1s-brightgreen" alt="Fast Response">
   <img src="https://img.shields.io/badge/Status-STABLE-success" alt="Stable">
-  <img src="https://img.shields.io/badge/Version-3.1.3-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Version-3.2.0-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/NEW-Computer%20Vision-ff69b4" alt="Computer Vision">
 </p>
 
 <p align="center">
@@ -18,10 +19,18 @@
 
 ## 🎯 Overview
 
-JARVIS has evolved from Tony Stark's AI assistant into a powerful **AI Agent** capable of controlling your macOS environment through natural voice commands. This isn't just a chatbot - it's a sophisticated system that can open applications, manage files, control system settings, and execute complex workflows, all while maintaining the personality and sophistication that made JARVIS legendary.
+JARVIS has evolved from Tony Stark's AI assistant into a powerful **AI Agent** capable of controlling your macOS environment through natural voice commands and now with **computer vision** to see and understand your screen. This isn't just a chatbot - it's a sophisticated system that can open applications, manage files, control system settings, detect software updates, read screen content, and execute complex workflows, all while maintaining the personality and sophistication that made JARVIS legendary.
 
-### 🆕 Latest Updates (v3.1.3)
-- 🎭 **NEW: Futuristic Iron Man Landing Page** - Arc Reactor animations & holographic UI
+### 🆕 Latest Updates (v3.2.0)
+- 🖥️ **NEW: Computer Vision System** - JARVIS can now see and understand your screen!
+- 🔍 **Software Update Detection** - Automatically detects macOS and app updates
+- 📝 **OCR Text Extraction** - Read text from any application on screen
+- 🧠 **Claude Vision AI** - Advanced image understanding when API available
+- 📊 **Continuous Monitoring** - Background monitoring for important notifications
+- 🎤 **Vision Voice Commands** - "Check my screen", "Look for updates", etc.
+
+### Previous Updates (v3.1.3)
+- 🎭 **Futuristic Iron Man Landing Page** - Arc Reactor animations & holographic UI
 - ⚡ **Interactive Features Showcase** - Live demos and capability displays
 - 🎯 **Enhanced Visual Design** - Particle effects and glitch animations
 - 🔗 **Quick Installation Steps** - Copy-paste commands with one click
@@ -40,6 +49,8 @@ JARVIS has evolved from Tony Stark's AI assistant into a powerful **AI Agent** c
 - 🛡️ **Built-in Safety**: Confirmations for dangerous actions, restricted access to system files
 - 🔄 **Workflow Automation**: Execute multi-step routines like "Start my morning routine"
 - 🧠 **Claude-Powered Intelligence**: Leverages Anthropic's AI for command interpretation
+- 👁️ **Computer Vision**: JARVIS can now see your screen and understand what's displayed
+- 🔍 **Update Detection**: Automatically identifies software updates and notifications
 
 Built on Anthropic's Claude AI platform with advanced ML voice processing, JARVIS combines the power of an AI agent with the personality of Tony Stark's legendary assistant.
 
@@ -56,7 +67,40 @@ Experience the power of a true AI agent:
 
 ## 🚀 Core Features & Capabilities
 
-### 🤖 AI Agent - System Control (NEW!)
+### 👁️ Computer Vision - Screen Understanding (NEW!)
+
+**What JARVIS Can See**
+- Software update notifications across all applications
+- Text content in any window or dialog
+- Application states and open windows
+- Error messages and alerts
+- System notifications and badges
+- Menu bar indicators
+
+**Vision Commands**
+- "What's on my screen?" - Describes visible content
+- "Check for software updates" - Scans for update notifications
+- "Read the error message" - Extracts text from dialogs
+- "What applications are open?" - Identifies running apps
+- "Monitor for updates" - Continuous background monitoring
+- "Is there anything important?" - AI-powered importance detection
+
+**Update Detection**
+- macOS system updates
+- App Store updates
+- Browser updates (Chrome, Safari, Firefox)
+- Third-party application updates
+- Security updates and patches
+- Red notification badges
+
+**Claude Vision AI**
+- Advanced image understanding
+- Natural language descriptions
+- Activity context analysis
+- Security threat detection
+- Intelligent recommendations
+
+### 🤖 AI Agent - System Control
 
 **Application Management**
 - Open, close, or switch between any macOS application
@@ -404,6 +448,14 @@ pip install scikit-learn        # ML algorithms
 pip install joblib             # Model persistence
 pip install torch torchaudio    # Deep learning (optional)
 
+# Computer Vision dependencies (NEW!)
+brew install tesseract         # OCR engine (macOS)
+pip install opencv-python      # Image processing
+pip install pytesseract       # OCR Python wrapper
+pip install Pillow            # Image manipulation
+pip install pyobjc-framework-Quartz  # macOS screen capture
+pip install pyobjc-framework-Vision  # macOS Vision framework
+
 # Or install all ML dependencies at once:
 pip install -r backend/requirements.txt
 ```
@@ -510,6 +562,28 @@ For full AI Agent functionality on macOS:
    ```
 
 ## 💡 Example Use Cases
+
+### Computer Vision - Screen Understanding
+
+```
+You: "Hey JARVIS, check my screen for updates"
+JARVIS: "Sir, I've detected 3 software updates: macOS 14.2 is available, Chrome has an 
+         update pending, and I see a red badge on your App Store icon indicating 
+         additional updates."
+
+You: "Start monitoring for important notifications"
+JARVIS: "I'll monitor your screen continuously and alert you to any important 
+         notifications or updates, sir."
+
+You: "What's on my screen?"
+JARVIS: "I can see you have VS Code open with a Python file, Chrome with several 
+         Stack Overflow tabs, and Terminal running a development server. You also 
+         have Slack open with 2 unread messages."
+
+You: "Read the error message"
+JARVIS: "The error dialog says: 'TypeError: Cannot read property 'map' of undefined 
+         at line 42 in App.js', sir."
+```
 
 ### AI Agent - System Control
 
@@ -908,6 +982,12 @@ python test_jarvis_voice.py
 # Test ML-enhanced JARVIS
 python test_ml_enhanced_jarvis.py
 
+# Test vision system (NEW!)
+python test_vision_system.py
+
+# Test vision voice commands
+python test_jarvis_vision_commands.py
+
 # Test Claude integration
 python test_claude_math.py
 
@@ -1028,6 +1108,10 @@ const handleCustomAnimation = () => {
 - [x] Ultra-fast async processing
 - [x] Command + wake word detection
 - [x] Dual audio system (browser + backend)
+- [x] Computer vision system
+- [x] Software update detection
+- [x] OCR text extraction
+- [x] Claude vision AI integration
 
 ### 🚀 In Progress
 - [ ] Multi-user voice profiles
@@ -1559,7 +1643,17 @@ A: Absolutely:
 
 ## 📈 Version History
 
-### v3.1.3 (Current) - Iron Man Edition
+### v3.2.0 (Current) - Vision Edition
+- 🖥️ **NEW: Computer Vision System** - JARVIS can now see and understand your screen
+- 🔍 **Software Update Detection** - Automatically detects all types of updates
+- 📝 **OCR Text Extraction** - Read text from any application
+- 🧠 **Claude Vision AI Integration** - Advanced image understanding
+- 📊 **Continuous Monitoring** - Background update monitoring
+- 🎤 **Vision Voice Commands** - Natural language screen interaction
+- 🛡️ **Privacy-First Design** - All processing happens locally
+- 📚 **Comprehensive Documentation** - Full vision system guide
+
+### v3.1.3 - Iron Man Edition
 - 🎭 **NEW: Futuristic Landing Page** - Arc Reactor animations & holographic UI
 - ⚡ **Interactive Features Showcase** - Live demos and capability displays
 - 🎯 **Enhanced Visual Design** - Particle effects, glitch animations, energy flows
