@@ -178,7 +178,7 @@ class EnhancedVoiceEngine:
             "system": ["system", "status", "diagnostic", "check", "monitor", "analyze", "report"],
             "conversation": ["chat", "talk", "discuss", "explain", "describe", "hello", "hi"]
         }
-        
+
     def _setup_voice(self):
         """Configure JARVIS voice settings"""
         if USE_MACOS_VOICE:
@@ -497,7 +497,7 @@ class EnhancedJARVISPersonality:
                 context_parts.append(f"{time_ago//60}m ago: '{cmd.raw_text}'")
         
         return "Recent commands: " + "; ".join(context_parts) if context_parts else "No recent commands"
-    
+
     def _get_context_info(self) -> str:
         """Get contextual information for more intelligent responses"""
         current_time = datetime.now()
