@@ -1,4 +1,4 @@
-# 🤖 JARVIS - AI Agent with macOS System Control (v3.1)
+# 🤖 JARVIS - AI Agent with macOS System Control (v3.1.1)
 
 <p align="center">
   <img src="https://img.shields.io/badge/AI%20Agent-System%20Control-purple" alt="AI Agent">
@@ -18,6 +18,13 @@
 ## 🎯 Overview
 
 JARVIS has evolved from Tony Stark's AI assistant into a powerful **AI Agent** capable of controlling your macOS environment through natural voice commands. This isn't just a chatbot - it's a sophisticated system that can open applications, manage files, control system settings, and execute complex workflows, all while maintaining the personality and sophistication that made JARVIS legendary.
+
+### 🆕 Latest Updates (v3.1.1)
+- ✅ **All syntax errors fixed** - Production-ready code
+- ✅ **Type safety improved** - Better IDE integration
+- ✅ **Stable system control** - Reliable command execution
+- ✅ **Better error handling** - Graceful failure recovery
+- ✅ **IDE support** - pyrightconfig.json for better development experience
 
 **New AI Agent Capabilities:**
 - 🖥️ **Voice-Activated System Control**: "Hey JARVIS, open Chrome and search for Python tutorials"
@@ -854,11 +861,18 @@ AI-Powered-Chatbot/
 ### Testing Components
 
 ```bash
+# Test system control commands (WORKING!)
+cd backend
+python test_jarvis_commands.py
+
+# Verify no syntax errors
+python -m py_compile voice/*.py system_control/*.py
+
 # Test voice system
 python test_jarvis_voice.py
 
 # Test ML-enhanced JARVIS
-python backend/test_ml_enhanced_jarvis.py
+python test_ml_enhanced_jarvis.py
 
 # Test Claude integration
 python test_claude_math.py
