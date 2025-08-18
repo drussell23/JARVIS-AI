@@ -93,11 +93,13 @@ class ClaudeCommandInterpreter:
         system_prompt = """You are JARVIS, an AI assistant that controls macOS systems. 
         Analyze the user's command and extract:
         1. The action to perform
-        2. The target (application, file, URL, etc.)
+        2. The target (application, file, URL, etc.) - if multiple targets use "and" between them
         3. Any parameters needed
         4. The command category (application, file, system, web, workflow)
         5. Safety assessment (safe, caution, dangerous)
         6. Confidence level (0-1)
+        
+        For multiple targets (e.g., "close whatsapp and preview"), set target as "whatsapp and preview".
         
         Return a JSON response with this structure:
         {
@@ -335,9 +337,45 @@ class ClaudeCommandInterpreter:
     async def _execute_app_command(self, intent: CommandIntent) -> CommandResult:
         """Execute application commands"""
         if intent.action == "open_app":
-            success, message = self.controller.open_application(intent.target)
+            # Check if target contains multiple apps separated by "and"
+            if " and " in intent.target:
+                apps = [app.strip() for app in intent.target.split(" and ")]
+                results = []
+                all_success = True
+                
+                for app in apps:
+                    success, msg = self.controller.open_application(app)
+                    results.append(f"{app}: {msg}")
+                    if not success:
+                        all_success = False
+                
+                return CommandResult(
+                    success=all_success,
+                    message="; ".join(results)
+                )
+            else:
+                success, message = self.controller.open_application(intent.target)
+                
         elif intent.action == "close_app":
-            success, message = self.controller.close_application(intent.target)
+            # Check if target contains multiple apps separated by "and"
+            if " and " in intent.target:
+                apps = [app.strip() for app in intent.target.split(" and ")]
+                results = []
+                all_success = True
+                
+                for app in apps:
+                    success, msg = self.controller.close_application(app)
+                    results.append(f"{app}: {msg}")
+                    if not success:
+                        all_success = False
+                
+                return CommandResult(
+                    success=all_success,
+                    message="; ".join(results)
+                )
+            else:
+                success, message = self.controller.close_application(intent.target)
+                
         elif intent.action == "switch_to_app":
             success, message = self.controller.switch_to_application(intent.target)
         elif intent.action == "list_apps":

@@ -138,6 +138,19 @@ class AsyncSystemManager:
                 __import__("cv2")
             elif package == "Pillow":
                 __import__("PIL")
+            elif package == "scikit-learn" or package == "sklearn":
+                __import__("sklearn")
+            elif package == "pytesseract":
+                # Check if package is installed
+                __import__("pytesseract")
+                # Also check if tesseract binary is available
+                import subprocess
+                try:
+                    subprocess.run(["tesseract", "--version"], capture_output=True, check=True)
+                except (subprocess.CalledProcessError, FileNotFoundError):
+                    print(f"{Colors.WARNING}   Note: pytesseract package found but tesseract binary not installed{Colors.ENDC}")
+                    print(f"{Colors.YELLOW}   Run: brew install tesseract{Colors.ENDC}")
+                    return False
             else:
                 __import__(package.replace("-", "_"))
             return True
@@ -167,7 +180,7 @@ class AsyncSystemManager:
             "geocoder": "Location services",
             "librosa": "ML audio processing",
             "joblib": "ML model persistence",
-            "sklearn": "Machine learning algorithms",
+            "scikit-learn": "Machine learning algorithms",
             "transformers": "Hugging Face models",
             "torch": "PyTorch for ML models",
             "torchaudio": "Audio processing with PyTorch",
@@ -754,7 +767,7 @@ class AsyncSystemManager:
             
             # Group by feature
             voice_packages = [p for p in optional_missing if p in ["speech_recognition", "pyttsx3", "pygame", "pyaudio"]]
-            ml_packages = [p for p in optional_missing if p in ["librosa", "joblib", "sklearn", "torch", "torchaudio"]]
+            ml_packages = [p for p in optional_missing if p in ["librosa", "joblib", "scikit-learn", "transformers", "torch", "torchaudio"]]
             vision_packages = [p for p in optional_missing if p in ["opencv-python", "pytesseract", "Pillow"]]
             other_packages = [p for p in optional_missing if p not in voice_packages + ml_packages + vision_packages]
             

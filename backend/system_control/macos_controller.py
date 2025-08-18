@@ -62,6 +62,7 @@ class MacOSController:
             "firefox": "Firefox",
             "safari": "Safari",
             "whatsapp": "WhatsApp",
+            "whatsapp desktop": "WhatsApp",
             "spotify": "Spotify",
             "slack": "Slack",
             "zoom": "zoom.us",
@@ -72,7 +73,13 @@ class MacOSController:
             "finder": "Finder",
             "messages": "Messages",
             "notes": "Notes",
-            "preview": "Preview"
+            "preview": "Preview",
+            "terminal": "Terminal",
+            "music": "Music",
+            "photos": "Photos",
+            "pages": "Pages",
+            "numbers": "Numbers",
+            "keynote": "Keynote"
         }
         
     def execute_applescript(self, script: str) -> Tuple[bool, str]:
@@ -82,7 +89,7 @@ class MacOSController:
                 ["osascript", "-e", script],
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=15
             )
             if result.returncode == 0:
                 return True, result.stdout.strip()
@@ -144,11 +151,39 @@ class MacOSController:
         """Close an application gracefully"""
         app_name = self.app_aliases.get(app_name.lower(), app_name)
         
+        # First try the standard quit command
         script = f'tell application "{app_name}" to quit'
         success, message = self.execute_applescript(script)
         
         if success:
             return True, f"Closed {app_name}"
+        
+        # If that fails, try using System Events
+        script = f'''
+        tell application "System Events"
+            if exists process "{app_name}" then
+                tell process "{app_name}"
+                    set frontmost to true
+                    keystroke "q" using command down
+                end tell
+                return "Closed using keyboard shortcut"
+            else
+                return "Application not running"
+            end if
+        end tell
+        '''
+        success, message = self.execute_applescript(script)
+        
+        if success:
+            return True, f"Closed {app_name}"
+        
+        # Final attempt: Force quit if necessary
+        # But only for non-system apps
+        if app_name not in ["Finder", "System Preferences", "System Settings"]:
+            success, message = self.execute_shell(f"pkill -x '{app_name}'", safe_mode=False)
+            if success:
+                return True, f"Force closed {app_name}"
+        
         return False, f"Failed to close {app_name}: {message}"
         
     def switch_to_application(self, app_name: str) -> Tuple[bool, str]:

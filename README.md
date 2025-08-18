@@ -1,4 +1,4 @@
-# 🤖 JARVIS - AI Agent with macOS System Control & Computer Vision (v3.2.0)
+# 🤖 JARVIS - AI Agent with macOS System Control & Computer Vision (v3.1.3)
 
 <p align="center">
   <img src="https://img.shields.io/badge/AI%20Agent-System%20Control-purple" alt="AI Agent">
@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/Safety-Built--in-yellow" alt="Safety Features">
   <img src="https://img.shields.io/badge/Response%20Time-%3C1s-brightgreen" alt="Fast Response">
   <img src="https://img.shields.io/badge/Status-STABLE-success" alt="Stable">
-  <img src="https://img.shields.io/badge/Version-3.2.0-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Version-3.1.3-brightgreen" alt="Version">
   <img src="https://img.shields.io/badge/NEW-Computer%20Vision-ff69b4" alt="Computer Vision">
 </p>
 
@@ -23,15 +23,13 @@ JARVIS has evolved from Tony Stark's AI assistant into a powerful **AI Agent** c
 
 > **"Sir, I can now see your screen and alert you to important updates. Shall I begin monitoring?"** - JARVIS
 
-### 🆕 Latest Updates (v3.2.0)
+### 🆕 Latest Updates (v3.1.3)
 - 🖥️ **NEW: Computer Vision System** - JARVIS can now see and understand your screen!
 - 🔍 **Software Update Detection** - Automatically detects macOS and app updates
 - 📝 **OCR Text Extraction** - Read text from any application on screen
 - 🧠 **Claude Vision AI** - Advanced image understanding when API available
 - 📊 **Continuous Monitoring** - Background monitoring for important notifications
 - 🎤 **Vision Voice Commands** - "Check my screen", "Look for updates", etc.
-
-### Previous Updates (v3.1.3)
 - 🎭 **Futuristic Iron Man Landing Page** - Arc Reactor animations & holographic UI
 - ⚡ **Interactive Features Showcase** - Live demos and capability displays
 - 🎯 **Enhanced Visual Design** - Particle effects and glitch animations
@@ -111,9 +109,11 @@ Experience the power of a true AI agent with vision:
 **Application Management**
 - Open, close, or switch between any macOS application
 - Natural commands: "Open Chrome", "Close Spotify", "Switch to Mail"
+- Close multiple apps at once: "Close WhatsApp and Preview"
 - Smart app recognition with common aliases (e.g., "Code" → "Visual Studio Code")
 - List all open applications with voice command
 - Minimize all windows or activate Mission Control
+- Enhanced closing methods for stubborn apps (WhatsApp, Preview, etc.)
 
 **File & Folder Operations**
 - Create files and folders with voice commands
@@ -642,6 +642,9 @@ JARVIS: "I've opened Google Chrome for you, sir."
 
 You: "Search for Python machine learning tutorials"
 JARVIS: "Searching Google for Python machine learning tutorials..."
+
+You: "Close WhatsApp and Preview"
+JARVIS: "WhatsApp and Preview have been closed, sir."
 
 You: "Create a new file called notes.txt on my desktop"
 JARVIS: "Created file: notes.txt on your desktop, sir."
@@ -1747,7 +1750,7 @@ A: Absolutely:
 
 ## 📈 Version History
 
-### v3.2.0 (Current) - Vision Edition
+### v3.1.3 (Current) - Iron Man Edition with Vision
 - 🖥️ **NEW: Computer Vision System** - JARVIS can now see and understand your screen
 - 🔍 **Software Update Detection** - Automatically detects all types of updates
 - 📝 **OCR Text Extraction** - Read text from any application
@@ -1755,9 +1758,6 @@ A: Absolutely:
 - 📊 **Continuous Monitoring** - Background update monitoring
 - 🎤 **Vision Voice Commands** - Natural language screen interaction
 - 🛡️ **Privacy-First Design** - All processing happens locally
-- 📚 **Comprehensive Documentation** - Full vision system guide
-
-### v3.1.3 - Iron Man Edition
 - 🎭 **NEW: Futuristic Landing Page** - Arc Reactor animations & holographic UI
 - ⚡ **Interactive Features Showcase** - Live demos and capability displays
 - 🎯 **Enhanced Visual Design** - Particle effects, glitch animations, energy flows
