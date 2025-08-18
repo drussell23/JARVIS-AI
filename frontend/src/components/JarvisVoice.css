@@ -128,12 +128,44 @@
   color: #9400d3;
   font-size: 0.8rem;
   animation: fadeInOut 2s ease-in-out infinite;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .waiting-mode {
   color: #ffd700;
   font-size: 0.8rem;
   animation: fadeInOut 0.8s ease-in-out infinite;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Pulsing dot indicator */
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #9400d3;
+  display: inline-block;
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+.pulse-dot.active {
+  background: #ffd700;
+  animation-duration: 0.8s;
+}
+
+@keyframes pulse-dot {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.5);
+    opacity: 0.5;
+  }
 }
 
 .status-indicator {

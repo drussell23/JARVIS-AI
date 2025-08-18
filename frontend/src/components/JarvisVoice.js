@@ -146,6 +146,16 @@ const JarvisVoice = () => {
       recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = 'en-US';
+      recognitionRef.current.maxAlternatives = 1;
+      
+      // Increase timeouts to be more patient
+      // Note: These are non-standard but work in some browsers
+      if ('speechTimeout' in recognitionRef.current) {
+        recognitionRef.current.speechTimeout = 60000; // 60 seconds
+      }
+      if ('noSpeechTimeout' in recognitionRef.current) {
+        recognitionRef.current.noSpeechTimeout = 15000; // 15 seconds
+      }
       
       recognitionRef.current.onresult = (event) => {
         const last = event.results.length - 1;
@@ -189,12 +199,26 @@ const JarvisVoice = () => {
       };
       
       recognitionRef.current.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
+        // Only log actual errors, not timeouts
+        if (event.error !== 'no-speech') {
+          console.error('Speech recognition error:', event.error);
+        }
+        
         if (event.error === 'no-speech') {
-          // Restart recognition if no speech detected
+          // Silently restart recognition if no speech detected
           if (continuousListening) {
-            recognitionRef.current.start();
+            setTimeout(() => {
+              try {
+                recognitionRef.current.start();
+              } catch (e) {
+                // Ignore restart errors
+              }
+            }, 100);
           }
+        } else if (event.error === 'aborted' || event.error === 'network') {
+          // More serious errors - notify user
+          console.error('Recognition stopped:', event.error);
+          setError('Speech recognition stopped. Please reload the page.');
         }
       };
       
@@ -572,11 +596,15 @@ const JarvisVoice = () => {
       <div className="jarvis-status">
         <div className={`status-indicator ${jarvisStatus}`}></div>
         <span>JARVIS {jarvisStatus.toUpperCase()}</span>
-        {continuousListening && (
-          <span className="listening-mode"> - LISTENING FOR "HEY JARVIS"</span>
+        {continuousListening && !isWaitingForCommand && (
+          <span className="listening-mode">
+            <span className="pulse-dot"></span> LISTENING FOR "HEY JARVIS"
+          </span>
         )}
         {isWaitingForCommand && (
-          <span className="waiting-mode"> - AWAITING COMMAND</span>
+          <span className="waiting-mode">
+            <span className="pulse-dot active"></span> AWAITING COMMAND
+          </span>
         )}
       </div>
       
