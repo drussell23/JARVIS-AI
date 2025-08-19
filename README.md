@@ -1,4 +1,4 @@
-# 🤖 JARVIS - AI Agent with macOS System Control & Computer Vision (v3.2.1)
+# 🤖 JARVIS - AI Agent with macOS System Control & Intelligent Vision (v3.3.0)
 
 <p align="center">
   <img src="https://img.shields.io/badge/AI%20Agent-System%20Control-purple" alt="AI Agent">
@@ -9,8 +9,8 @@
   <img src="https://img.shields.io/badge/Safety-Built--in-yellow" alt="Safety Features">
   <img src="https://img.shields.io/badge/Response%20Time-%3C1s-brightgreen" alt="Fast Response">
   <img src="https://img.shields.io/badge/Status-STABLE-success" alt="Stable">
-  <img src="https://img.shields.io/badge/Version-3.2.1-brightgreen" alt="Version">
-  <img src="https://img.shields.io/badge/NEW-Enhanced%20Vision-ff69b4" alt="Enhanced Vision">
+  <img src="https://img.shields.io/badge/Version-3.3.0-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/NEW-Intelligent%20Vision-ff69b4" alt="Intelligent Vision">
 </p>
 
 <p align="center">
@@ -23,15 +23,15 @@ JARVIS has evolved from Tony Stark's AI assistant into a powerful **AI Agent** c
 
 > **"Sir, I can now see your screen and alert you to important updates. Shall I begin monitoring?"** - JARVIS
 
-### 🆕 Latest Updates (v3.2.1 - Vision Enhanced Edition)
-- 🧠 **NEW: Claude Vision Integration** - "Hey JARVIS, can you see my screen?" - Yes sir!
-- 🎯 **Intelligent Screen Understanding** - JARVIS understands context, not just text
-- 🔧 **Enhanced Vision Reliability** - Automatic fallback to screencapture when Quartz fails
-- 📸 **Revolutionary Approach** - One permission, infinite intelligence with Claude AI
-- ✨ **Natural Language Vision** - Ask anything about what's on your screen
-- 🛠️ **Permission Diagnostic Tool** - `fix_screen_permission.py` helps resolve issues
-- 🔍 **Smart Error Detection** - Understands errors and suggests fixes
-- 🤖 **Contextual Assistance** - "What should I do next?" - JARVIS guides you
+### 🆕 Latest Updates (v3.3.0 - Intelligent Vision Edition)
+- 🧠 **BREAKTHROUGH: Natural Work Understanding** - "What am I working on?" - JARVIS knows!
+- 🎯 **Context-Aware Intelligence** - Understands your tasks, not just pixels
+- 💬 **Natural Language Queries** - Ask about your work in plain English
+- 🔍 **Intelligent Analysis** - "You're editing vision_integration.py in VS Code..."
+- ✨ **No Rigid Commands** - "What am I doing?", "What's my current task?" all work
+- 🤖 **Deep Context Understanding** - Identifies apps, files, errors, and work context
+- 📸 **Enhanced Claude Integration** - Specific analysis based on your intent
+- 🛡️ **Smart Fallbacks** - Gracefully handles all scenarios
 
 ### Previous Updates (v3.1.3)
 - 🖥️ **Computer Vision System** - JARVIS can now see and understand your screen!
@@ -67,9 +67,11 @@ Built on Anthropic's Claude AI platform with advanced ML voice processing, JARVI
 ### 🌟 The JARVIS AI Agent Experience
 
 Experience the power of a true AI agent with vision:
-- **System Control**: "Hey JARVIS, open Visual Studio Code and create a new Python file"
-- **Screen Understanding**: "What's on my screen?" - JARVIS describes what he sees
-- **Update Detection**: "Check for software updates" - identifies all pending updates
+- **Work Understanding**: "Hey JARVIS, what am I working on?" - Gets specific context
+- **Natural Queries**: "What am I doing in Cursor?" - Understands your current task
+- **System Control**: "Open Visual Studio Code and create a new Python file"
+- **Screen Analysis**: "Describe my current work" - Detailed contextual analysis
+- **Update Detection**: "Check for software updates" - Identifies all pending updates
 - **App Management**: "Close all distracting apps and open my work applications"
 - **Workflow Automation**: "Start my morning routine" - opens email, calendar, news, and weather
 - **File Operations**: "Search for all Python files in my projects folder"
@@ -81,18 +83,19 @@ Experience the power of a true AI agent with vision:
 
 ## 🚀 Core Features & Capabilities
 
-### 👁️ Enhanced Computer Vision with Claude AI (v3.2.1)
+### 👁️ Intelligent Computer Vision with Claude AI (v3.3.0)
 
-**The Revolutionary Approach: One Permission, Infinite Intelligence**
+**The Breakthrough: Natural Understanding of Your Work**
 
-When you ask **"Hey JARVIS, can you see my screen?"**, JARVIS now responds:
-> **"Yes sir, I can see your screen perfectly. I'm viewing your 2880x1800 display. With Claude Vision enabled, I can analyze what you're working on, detect errors, find UI elements, and provide intelligent assistance."**
+When you ask **"Hey JARVIS, what am I working on?"**, JARVIS now responds:
+> **"Sir, you're working on enhancing JARVIS's vision capabilities in VS Code. I can see you're editing the intelligent_vision_integration.py file and have several terminal windows open running tests. You appear to be integrating Claude AI for better screen comprehension."**
 
-**What Makes This Revolutionary**
-- **Traditional Vision**: Captures pixels → Basic OCR → Limited understanding
-- **Claude-Enhanced Vision**: Captures pixels → AI Analysis → Deep contextual understanding
-- **Natural Language Queries**: Ask anything about your screen in plain English
-- **Intelligent Assistance**: JARVIS understands what you're doing and helps proactively
+**What Makes This Intelligent**
+- **Old JARVIS**: "I can't see your screen or know what you're doing"
+- **New JARVIS**: Full contextual understanding of your work and tasks
+- **Natural Queries**: "What am I working on?", "What's in Cursor?", "What am I doing?"
+- **Specific Responses**: Identifies exact files, applications, and current tasks
+- **Proactive Help**: Understands context to provide relevant assistance
 
 **What JARVIS Can See & Understand**
 - Software update notifications across all applications
@@ -102,17 +105,31 @@ When you ask **"Hey JARVIS, can you see my screen?"**, JARVIS now responds:
 - System notifications and badges
 - Menu bar indicators
 
-**Vision Commands (Enhanced with Claude AI)**
-- **"Hey JARVIS, can you see my screen?"** - Confirms vision status and capabilities
-- "What's on my screen?" / "What am I working on?" - Intelligent context analysis
-- "Help me debug this error" - Understands errors and suggests fixes
-- "What should I do next?" - Provides contextual guidance based on screen content
-- "Find the save button" - Locates UI elements naturally
-- "Check for software updates" - Scans all applications for updates
-- "Read the error message" - Extracts and explains error text
-- "What applications are open?" - Lists and understands app context
+**Intelligent Vision Commands (v3.3.0)**
+
+🎯 **Natural Work Understanding**
+- **"What am I working on?"** - Analyzes your current task and context
+- **"What am I doing in Cursor?"** - Specific understanding of your IDE work
+- **"Describe my current work"** - Detailed analysis of files, code, and tasks
+- **"What's my current task?"** - Identifies what you're trying to accomplish
+- **"Can you see what I'm doing?"** - Natural confirmation with context
+
+🔍 **Screen Analysis**
+- "What's on my screen?" - Comprehensive screen content analysis
+- "What applications do I have open?" - Lists apps with context
+- "Read the error message" - Extracts and explains errors
 - "Is there anything important?" - AI-powered priority detection
-- "Analyze my workflow" - Understands what you're trying to accomplish
+
+🛠️ **Intelligent Assistance**
+- "Help me debug this" - Understands errors and suggests fixes
+- "What should I do next?" - Context-aware guidance
+- "Analyze my workflow" - Understands your overall goal
+- "Find the save button" - Locates UI elements naturally
+
+📊 **System Monitoring**
+- "Check for software updates" - Scans all applications
+- "Monitor for changes" - Continuous background watching
+- "Any notifications?" - Identifies important alerts
 
 **Update Detection**
 - macOS system updates
@@ -373,7 +390,7 @@ project/
 
 ## 🚀 Quick Start Guide
 
-### 🖥️ Quick Start: Enhanced Vision with Claude AI
+### 🖥️ Quick Start: Intelligent Vision with Claude AI (v3.3.0)
 
 ```bash
 # 1. Install vision dependencies
@@ -385,27 +402,29 @@ brew install tesseract
 # Check the box next to Terminal (or your IDE)
 # Restart Terminal/IDE after granting permission
 
-# 3. Enable Claude Vision Intelligence (Recommended)
+# 3. Enable Claude Vision Intelligence (REQUIRED for intelligent responses)
 echo "ANTHROPIC_API_KEY=your-api-key-here" >> backend/.env
 # Get your key at: https://console.anthropic.com/
 
-# 4. Test the enhanced vision
+# 4. Test the intelligent vision
 cd backend
-python vision/test_jarvis_vision_response.py
-# You should see: "✅ Screen recording permission: GRANTED"
+python test_enhanced_vision_commands.py
+# You should see natural language understanding of your work!
 
-# 5. Start JARVIS and test
+# 5. Start JARVIS with intelligent vision
 cd ..
 python start_system.py
-
-# Try these commands:
-# "Hey JARVIS, can you see my screen?"
-# "What am I working on?"
-# "Help me debug this error"
-# "What should I do next?"
+# Or use: ./restart_jarvis_intelligent.sh
 ```
 
-**The Magic**: With one screen recording permission, JARVIS gains infinite intelligence through Claude AI. He doesn't just capture your screen - he understands it!
+**🎯 NEW Natural Commands That Work:**
+- **"Hey JARVIS, what am I working on?"** - Understands your current task
+- **"What am I doing in Cursor?"** - Specific context about your IDE
+- **"Describe my current work"** - Detailed analysis of your activities
+- **"Can you see what I'm doing?"** - Natural confirmation with context
+- **"What's my current task?"** - Identifies what you're trying to accomplish
+
+**The Intelligence**: JARVIS no longer says "I can't see your screen". He understands your work context, identifies applications, reads code, and provides specific, helpful responses about what you're doing!
 
 ### 🎯 Get JARVIS Running in 3 Minutes
 
@@ -1816,7 +1835,17 @@ A: Absolutely:
 
 ## 📈 Version History
 
-### v3.2.1 (Current) - Vision Enhanced Edition
+### v3.3.0 (Current) - Intelligent Vision Edition
+- 🧠 **BREAKTHROUGH: Natural Work Understanding** - "What am I working on?" now works!
+- 🎯 **Context-Aware Intelligence** - JARVIS understands your tasks, not just pixels
+- 💬 **Natural Language Queries** - Ask about your work in plain English
+- 🔍 **Deep Context Analysis** - Identifies apps, files, errors, and work context
+- ✨ **No Rigid Commands** - "What am I doing?", "What's my task?" all work naturally
+- 🤖 **Enhanced Vision Integration** - IntelligentJARVISVision for contextual responses
+- 📸 **Smart Query Mapping** - Maps user intent to specific Claude analysis
+- 🛡️ **Graceful Fallbacks** - Works with or without Claude API
+
+### v3.2.1 - Vision Enhanced Edition
 - 🔧 **Enhanced Vision Reliability** - Automatic fallback to screencapture when Quartz fails
 - 🛠️ **Permission Diagnostic Tool** - New `fix_screen_permission.py` for troubleshooting
 - 🎯 **Improved Error Handling** - Better error messages when vision features fail

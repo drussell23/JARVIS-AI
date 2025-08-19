@@ -73,7 +73,7 @@ class AsyncSystemManager:
     def print_header(self):
         """Print system header"""
         print(f"\n{Colors.HEADER}{'='*60}")
-        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v3.2.1 - Vision Enhanced Edition 🚀{Colors.ENDC}")
+        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v3.3.0 - Intelligent Vision Edition 🧠{Colors.ENDC}")
         print(f"{Colors.CYAN}🎯 Voice-activated macOS control powered by Claude{Colors.ENDC}")
         print(f"{Colors.GREEN}⚡ ASYNC: Parallel initialization (60-90s for ML models){Colors.ENDC}")
         print(f"{Colors.YELLOW}🖥️  Control apps, files, and system settings naturally{Colors.ENDC}")
@@ -83,9 +83,10 @@ class AsyncSystemManager:
         print(f"{Colors.GREEN}✅ NEW: Futuristic Iron Man landing page{Colors.ENDC}")
         print(f"{Colors.GREEN}✅ NEW: Arc Reactor animations & effects{Colors.ENDC}")
         print(f"{Colors.CYAN}🎤 Smart microphone helper & extended timeouts{Colors.ENDC}")
-        print(f"{Colors.BOLD}🖥️  ENHANCED: Computer Vision with Claude AI Intelligence!{Colors.ENDC}")
-        print(f"{Colors.GREEN}✅ v3.2.1: 'Hey JARVIS, can you see my screen?' - Yes sir!{Colors.ENDC}")
-        print(f"{Colors.CYAN}🧠 Claude Vision: Understands context, not just text{Colors.ENDC}")
+        print(f"{Colors.BOLD}🖥️  ENHANCED: Intelligent Screen Comprehension with Claude AI!{Colors.ENDC}")
+        print(f"{Colors.GREEN}✅ v3.3.0: 'Hey JARVIS, what am I working on?' - Full context aware!{Colors.ENDC}")
+        print(f"{Colors.CYAN}🧠 Claude Vision: Understands your work, not just pixels{Colors.ENDC}")
+        print(f"{Colors.YELLOW}🎯 NEW: Natural language queries about your current tasks{Colors.ENDC}")
         if self.is_m1_mac:
             print(f"{Colors.GREEN}✨ Optimized for Apple Silicon with native AppleScript{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}\n")
@@ -282,7 +283,7 @@ class AsyncSystemManager:
                     
                     # Check if Claude API is available for enhanced vision
                     if os.getenv("ANTHROPIC_API_KEY"):
-                        print(f"{Colors.BOLD}✨ Enhanced Vision Active: Claude AI can understand your screen!{Colors.ENDC}")
+                        print(f"{Colors.BOLD}✨ Intelligent Vision Active: Ask 'What am I working on?' for context-aware analysis!{Colors.ENDC}")
             except ImportError:
                 print(f"{Colors.WARNING}⚠️  Vision dependencies not installed{Colors.ENDC}")
                 print(f"   Install: pip install opencv-python pytesseract Pillow pyobjc-framework-Quartz")
@@ -589,12 +590,12 @@ class AsyncSystemManager:
         print(f"  • Mode: 'Switch to system control mode' for better accuracy")
         
         print(f"\n{Colors.BOLD}🖥️  Vision Commands (Enhanced with Claude!):{Colors.ENDC}")
-        print(f"  • {Colors.GREEN}Verification: 'Hey JARVIS, can you see my screen?' - Confirms vision status{Colors.ENDC}")
-        print(f"  • Screen: 'What's on my screen?', 'What am I working on?'")
-        print(f"  • Updates: 'Check for software updates', 'Any notifications?'")
-        print(f"  • Monitor: 'Start monitoring for updates', 'Stop monitoring'")
+        print(f"  • {Colors.GREEN}Natural Queries: 'What am I working on?', 'What am I doing in Cursor?'{Colors.ENDC}")
+        print(f"  • {Colors.CYAN}Context Aware: 'Describe my current work', 'What's my task?'{Colors.ENDC}")
+        print(f"  • Verification: 'Can you see my screen?' - Confirms vision + context")
         print(f"  • Analysis: 'What applications are open?', 'Read the error message'")
-        print(f"  • {Colors.CYAN}Intelligence: 'Help me debug this', 'What should I do next?'{Colors.ENDC}")
+        print(f"  • Updates: 'Check for software updates', 'Any notifications?'")
+        print(f"  • {Colors.YELLOW}Intelligence: 'Help me debug this', 'What should I do next?'{Colors.ENDC}")
         
         print(f"\n{Colors.CYAN}Conversation Commands:{Colors.ENDC}")
         print(f"  • Weather: 'What's the weather in Paris?'")
@@ -627,11 +628,11 @@ class AsyncSystemManager:
         print(f"  • 🎭 NEW: Futuristic Iron Man landing page")
         print(f"  • ⚡ NEW: Arc Reactor animations & holographic UI")
         print(f"  • 🎯 NEW: Interactive features showcase")
-        print(f"  • 🖥️  ENHANCED: Computer vision - Works with Cursor AI & high-res displays!")
-        print(f"  • 🔍 Software update detection & monitoring")
-        print(f"  • 📝 OCR text extraction from any application")
-        print(f"  • 🧠 Claude vision AI for advanced screen understanding")
-        print(f"  • ✅ v3.2.1: Fixed numpy reshape errors for all screen resolutions")
+        print(f"  • 🖥️  INTELLIGENT VISION: Understands 'What am I working on?' naturally!")
+        print(f"  • 🧠 Context-aware responses about your current tasks and applications")
+        print(f"  • 🎯 Natural language understanding - no rigid command patterns")
+        print(f"  • 📝 Identifies files, code, errors, and work context intelligently")
+        print(f"  • ✅ v3.3.0: Full screen comprehension with Claude AI integration")
         
         print(f"\n{Colors.WARNING}Press Ctrl+C to stop all services{Colors.ENDC}")
         

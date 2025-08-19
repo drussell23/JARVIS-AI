@@ -67,14 +67,24 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             
         # Initialize vision integration if available
         self.vision_enabled = False
+        self.intelligent_vision_enabled = False
         try:
-            from vision.screen_vision import ScreenVisionSystem, JARVISVisionIntegration
-            self.vision_system = ScreenVisionSystem()
-            self.vision_integration = JARVISVisionIntegration(self.vision_system)
+            # Try to use intelligent vision first
+            from vision.intelligent_vision_integration import IntelligentJARVISVision
+            self.vision_integration = IntelligentJARVISVision()
             self.vision_enabled = True
-            logger.info("Vision system initialized successfully")
+            self.intelligent_vision_enabled = True
+            logger.info("Intelligent vision system initialized successfully")
         except ImportError:
-            logger.info("Vision system not available - install vision dependencies")
+            # Fallback to basic vision
+            try:
+                from vision.screen_vision import ScreenVisionSystem, JARVISVisionIntegration
+                self.vision_system = ScreenVisionSystem()
+                self.vision_integration = JARVISVisionIntegration(self.vision_system)
+                self.vision_enabled = True
+                logger.info("Basic vision system initialized")
+            except ImportError:
+                logger.info("Vision system not available - install vision dependencies")
             
         # Command modes
         self.command_mode = "conversation"  # conversation, system_control, workflow
@@ -180,6 +190,17 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         if self.command_mode == "system_control":
             return True
             
+        # Check for vision-related phrases first (more specific)
+        vision_phrases = [
+            "what am i working", "what i'm working", "working on",
+            "can you see", "do you see", "what's on my screen",
+            "what do you see", "describe what you see",
+            "analyze my screen", "look at my screen",
+            "tell me what", "show me what", "what are you seeing"
+        ]
+        if any(phrase in text_lower for phrase in vision_phrases):
+            return True
+            
         # Check for system keywords
         return any(keyword in text_lower for keyword in self.system_keywords)
         
@@ -188,9 +209,15 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         if not self.system_control_enabled:
             return "System control is not available. Please configure your API key."
             
-        # Check for vision commands first
+        # Check for vision commands with expanded patterns
         text_lower = text.lower()
-        if any(vision_cmd in text_lower for vision_cmd in ["screen", "update", "monitor", "vision", "see"]):
+        vision_triggers = [
+            "screen", "update", "monitor", "vision", "see",
+            "what am i", "what i'm", "working on", "cursor",
+            "analyze", "look at", "show me", "tell me about",
+            "describe", "can you see", "do you see"
+        ]
+        if any(trigger in text_lower for trigger in vision_triggers):
             return await self._handle_vision_command(text)
             
         try:
@@ -293,8 +320,33 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             return f"Vision capabilities are not available, {self.user_name}. Please install the required dependencies."
             
         try:
-            # Use the vision integration to handle the command
-            response = await self.vision_integration.handle_vision_command(text)
+            # Use intelligent vision if available
+            if self.intelligent_vision_enabled:
+                # Map common queries to intelligent analysis
+                text_lower = text.lower()
+                
+                # Handle "what am I working on" type queries
+                if any(phrase in text_lower for phrase in ["what am i working", "what i'm working", "what are you seeing"]):
+                    # Use Claude to analyze the screen contextually
+                    from vision.screen_capture_fallback import capture_with_intelligence
+                    result = capture_with_intelligence(
+                        query="Analyze what the user is currently working on based on the open applications and visible content. Be specific about the applications, files, and tasks visible.",
+                        use_claude=True
+                    )
+                    
+                    if result.get("intelligence_used") and result.get("analysis"):
+                        return f"Sir, {result['analysis']}"
+                    elif result.get("success"):
+                        return "I can see your screen, but I need the Claude API to provide intelligent analysis of what you're working on."
+                    else:
+                        return "I can't see your screen right now. Please ensure screen recording permission is granted."
+                
+                # Use the intelligent handler for other commands
+                response = await self.vision_integration.handle_intelligent_command(text)
+            else:
+                # Use basic vision handler
+                response = await self.vision_integration.handle_vision_command(text)
+                
             return response
         except Exception as e:
             logger.error(f"Vision command error: {e}")

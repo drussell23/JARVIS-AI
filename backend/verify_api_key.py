@@ -12,11 +12,7 @@ print("🔍 JARVIS API Key Verification")
 print("=" * 60)
 
 # Check various possible .env locations
-env_locations = [
-    Path("backend") / ".env",
-    Path(".env"),
-    Path.home() / ".env"
-]
+env_locations = [Path("backend") / ".env", Path(".env"), Path.home() / ".env"]
 
 print("1️⃣ Checking .env file locations:")
 env_found = False
@@ -26,11 +22,11 @@ for env_path in env_locations:
         # Try to load it
         load_dotenv(env_path)
         env_found = True
-        
+
         # Check if it contains ANTHROPIC_API_KEY
-        with open(env_path, 'r') as f:
+        with open(env_path, "r") as f:
             content = f.read()
-            if 'ANTHROPIC_API_KEY' in content:
+            if "ANTHROPIC_API_KEY" in content:
                 print(f"      → Contains ANTHROPIC_API_KEY")
             else:
                 print(f"      → Does NOT contain ANTHROPIC_API_KEY")
@@ -64,13 +60,14 @@ print("\n4️⃣ Testing API key validity:")
 if api_key:
     try:
         from anthropic import Anthropic
+
         client = Anthropic(api_key=api_key)
-        
+
         # Try a simple test
         response = client.messages.create(
             model="claude-3-haiku-20240307",
             max_tokens=10,
-            messages=[{"role": "user", "content": "Say 'Hello'"}]
+            messages=[{"role": "user", "content": "Say 'Hello'"}],
         )
         print("   ✅ API key is VALID - Claude responded!")
     except Exception as e:
@@ -84,17 +81,17 @@ print("=" * 60)
 
 if not api_key:
     print("\n🔧 To fix this, do ONE of the following:\n")
-    
+
     print("Option 1: Add to backend/.env file (RECOMMENDED)")
     print("   echo 'ANTHROPIC_API_KEY=your-actual-api-key-here' >> backend/.env")
-    
+
     print("\nOption 2: Export in current shell")
     print("   export ANTHROPIC_API_KEY='your-actual-api-key-here'")
-    
+
     print("\nOption 3: Add to shell profile (permanent)")
     print("   echo 'export ANTHROPIC_API_KEY=\"your-actual-api-key-here\"' >> ~/.zshrc")
     print("   source ~/.zshrc")
-    
+
     print("\n⚠️  After adding the key, restart JARVIS!")
     print("\n🔑 Get your API key from: https://console.anthropic.com/")
 else:
@@ -109,14 +106,14 @@ print("\n5️⃣ Checking vision system integration:")
 vision_files = [
     "vision/screen_capture_fallback.py",
     "vision/enhanced_vision_system.py",
-    "vision/jarvis_vision_enhanced.py"
+    "vision/jarvis_vision_enhanced.py",
 ]
 
 for file in vision_files:
     if Path(file).exists():
-        with open(file, 'r') as f:
+        with open(file, "r") as f:
             content = f.read()
-            if 'ANTHROPIC_API_KEY' in content:
+            if "ANTHROPIC_API_KEY" in content:
                 print(f"   ✅ {file} checks for API key")
             else:
                 print(f"   ⚠️  {file} might not be checking for API key")

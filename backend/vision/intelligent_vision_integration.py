@@ -89,12 +89,23 @@ class IntelligentJARVISVision:
         # For other vision commands, use enhanced processing
         elif any(phrase in command_lower for phrase in [
             "what's on my screen", "analyze my screen", "what do you see",
-            "check for updates", "look for updates"
+            "check for updates", "look for updates",
+            "what am i working", "what i'm working", "working on",
+            "what are you seeing", "describe what you see",
+            "tell me what", "show me what"
         ]):
             # Use the intelligent capture if Claude is available
             if self.api_key:
+                # Create a more specific query based on the user's intent
+                if "working" in command_lower:
+                    query = "Analyze what the user is currently working on based on the open applications, visible windows, and content. Be specific about the applications, files, and tasks visible."
+                elif "update" in command_lower:
+                    query = "Check for any software update notifications, badges, or update-related windows on the screen."
+                else:
+                    query = f"Analyze the screen and respond to this request: {command}"
+                
                 result = capture_with_intelligence(
-                    query=command,
+                    query=query,
                     use_claude=True
                 )
                 
