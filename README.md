@@ -1,4 +1,4 @@
-# 🤖 JARVIS - AI Agent with macOS System Control & Computer Vision (v3.1.3)
+# 🤖 JARVIS - AI Agent with macOS System Control & Computer Vision (v3.2.1)
 
 <p align="center">
   <img src="https://img.shields.io/badge/AI%20Agent-System%20Control-purple" alt="AI Agent">
@@ -9,8 +9,8 @@
   <img src="https://img.shields.io/badge/Safety-Built--in-yellow" alt="Safety Features">
   <img src="https://img.shields.io/badge/Response%20Time-%3C1s-brightgreen" alt="Fast Response">
   <img src="https://img.shields.io/badge/Status-STABLE-success" alt="Stable">
-  <img src="https://img.shields.io/badge/Version-3.1.3-brightgreen" alt="Version">
-  <img src="https://img.shields.io/badge/NEW-Computer%20Vision-ff69b4" alt="Computer Vision">
+  <img src="https://img.shields.io/badge/Version-3.2.1-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/NEW-Enhanced%20Vision-ff69b4" alt="Enhanced Vision">
 </p>
 
 <p align="center">
@@ -23,8 +23,17 @@ JARVIS has evolved from Tony Stark's AI assistant into a powerful **AI Agent** c
 
 > **"Sir, I can now see your screen and alert you to important updates. Shall I begin monitoring?"** - JARVIS
 
-### 🆕 Latest Updates (v3.1.3)
-- 🖥️ **NEW: Computer Vision System** - JARVIS can now see and understand your screen!
+### 🆕 Latest Updates (v3.2.1 - Vision Enhanced Edition)
+- 🔧 **NEW: Enhanced Vision Reliability** - Automatic fallback to screencapture when Quartz fails
+- 🛠️ **NEW: Permission Diagnostic Tool** - `fix_screen_permission.py` helps resolve screen recording issues
+- 🎯 **Improved Error Handling** - Better error messages when vision features fail
+- 📸 **Fallback Screen Capture** - Uses macOS screencapture command as backup method
+- ✨ **Better Permission Guidance** - Step-by-step instructions for different Python environments
+- 🐛 **Bug Fixes** - Resolved screen capture issues with certain Python installations
+- 🔍 **Enhanced Debugging** - More detailed diagnostic information for troubleshooting
+
+### Previous Updates (v3.1.3)
+- 🖥️ **Computer Vision System** - JARVIS can now see and understand your screen!
 - 🔍 **Software Update Detection** - Automatically detects macOS and app updates
 - 📝 **OCR Text Extraction** - Read text from any application on screen
 - 🧠 **Claude Vision AI** - Advanced image understanding when API available
@@ -366,14 +375,18 @@ brew install tesseract
 cd backend
 python test_vision_system.py
 
-# 4. Try vision commands
+# 4. If permission issues occur, use the diagnostic tool
+python fix_screen_permission.py
+# This will diagnose the issue and provide specific solutions
+
+# 5. Try vision commands
 python start_system.py
 # Say: "Hey JARVIS, can you see my screen?"
 # Say: "Check for software updates"
 # Say: "Analyze what's on my screen"
 ```
 
-**Note**: If JARVIS says "I'm unable to see your screen", you need to grant screen recording permission and restart your terminal.
+**Note**: If JARVIS says "I'm unable to see your screen", run `python fix_screen_permission.py` for troubleshooting steps.
 
 ### 🎯 Get JARVIS Running in 3 Minutes
 
@@ -1058,9 +1071,11 @@ AI-Powered-Chatbot/
 
 | Issue | Solution |
 |-------|----------|
-| **"I'm unable to see your screen"** | 1. Grant screen recording permission in System Preferences<br>2. Go to: Security & Privacy → Privacy → Screen Recording<br>3. Check the box next to Terminal/IDE<br>4. **Restart Terminal/IDE after granting permission** |
+| **"I'm unable to see your screen"** | 1. Run `python fix_screen_permission.py` for diagnosis<br>2. Grant screen recording permission in System Preferences<br>3. Go to: Security & Privacy → Privacy → Screen Recording<br>4. Check the box next to Terminal/IDE<br>5. **Restart Terminal/IDE after granting permission** |
+| **"Screen capture failed with Quartz"** | 1. The system will automatically try fallback screencapture method<br>2. If still failing, run `python fix_screen_permission.py`<br>3. Consider using system Python: `/usr/bin/python3 start_system.py`<br>4. Or create a desktop launcher (see fix_screen_permission.py output) |
+| **"Permission issues with miniforge/conda"** | 1. Grant permission to your Python executable specifically<br>2. Find path with: `which python`<br>3. Add exact path in Screen Recording permissions<br>4. Or use system Python as fallback |
 | **"Vision capabilities are not available"** | 1. Install packages: `pip install opencv-python pytesseract Pillow`<br>2. Install Tesseract: `brew install tesseract`<br>3. Restart JARVIS |
-| **"I encountered an error with the vision system"** | 1. Check screen recording permissions (most common issue)<br>2. Ensure all vision packages are installed<br>3. Try `python test_vision_system.py` to debug |
+| **"I encountered an error with the vision system"** | 1. Run `python fix_screen_permission.py` for detailed diagnostics<br>2. Check screen recording permissions (most common issue)<br>3. Ensure all vision packages are installed<br>4. Try `python test_vision_system.py` to debug |
 | **"No text detected on screen"** | 1. Ensure screen has good contrast<br>2. Check if text is visible (not covered by other windows)<br>3. OCR works best with clear, non-stylized text |
 | **"Update detection not working"** | 1. Make sure update notifications are visible on screen<br>2. Check if notifications are in English<br>3. Try manual command: "Check for updates" |
 | **"ImportError: No module named cv2"** | Run: `pip install opencv-python` |
@@ -1780,7 +1795,16 @@ A: Absolutely:
 
 ## 📈 Version History
 
-### v3.1.3 (Current) - Iron Man Edition with Vision
+### v3.2.1 (Current) - Vision Enhanced Edition
+- 🔧 **Enhanced Vision Reliability** - Automatic fallback to screencapture when Quartz fails
+- 🛠️ **Permission Diagnostic Tool** - New `fix_screen_permission.py` for troubleshooting
+- 🎯 **Improved Error Handling** - Better error messages when vision features fail
+- 📸 **Fallback Screen Capture** - Uses macOS screencapture command as backup
+- ✨ **Better Permission Guidance** - Step-by-step instructions for different Python environments
+- 🐛 **Bug Fixes** - Resolved screen capture issues with certain Python installations
+- 🔍 **Enhanced Debugging** - More detailed diagnostic information
+
+### v3.1.3 - Iron Man Edition with Vision
 - 🖥️ **NEW: Computer Vision System** - JARVIS can now see and understand your screen
 - 🔍 **Software Update Detection** - Automatically detects all types of updates
 - 📝 **OCR Text Extraction** - Read text from any application
