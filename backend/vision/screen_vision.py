@@ -422,9 +422,9 @@ class ScreenVisionSystem:
     async def capture_and_describe(self) -> str:
         """Capture screen and provide a natural language description"""
         context = await self.get_screen_context()
-        
-        # Check if we have valid screen data
-        if len(context['text_elements']) == 0 and context['screen_size'][0] == 100:
+
+        # Check if we have valid screen data (100x100 is our placeholder size)
+        if context['screen_size'][0] == 100 and context['screen_size'][1] == 100:
             return ("I'm unable to see your screen at the moment. "
                    "Please ensure I have screen recording permission in "
                    "System Preferences → Security & Privacy → Privacy → Screen Recording.")

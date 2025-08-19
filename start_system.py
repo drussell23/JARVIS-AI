@@ -75,7 +75,7 @@ class AsyncSystemManager:
         print(f"\n{Colors.HEADER}{'='*60}")
         print(f"{Colors.BOLD}🤖 JARVIS AI Agent v3.1.3 - Iron Man Edition 🚀{Colors.ENDC}")
         print(f"{Colors.CYAN}🎯 Voice-activated macOS control powered by Claude{Colors.ENDC}")
-        print(f"{Colors.GREEN}⚡ ASYNC: Ultra-fast parallel initialization{Colors.ENDC}")
+        print(f"{Colors.GREEN}⚡ ASYNC: Parallel initialization (60-90s for ML models){Colors.ENDC}")
         print(f"{Colors.YELLOW}🖥️  Control apps, files, and system settings naturally{Colors.ENDC}")
         print(f"{Colors.BLUE}🧠 ML-Enhanced: 85%+ wake word accuracy{Colors.ENDC}")
         print(f"{Colors.HEADER}🛡️  Built-in safety features and confirmations{Colors.ENDC}")
@@ -151,6 +151,8 @@ class AsyncSystemManager:
                     print(f"{Colors.WARNING}   Note: pytesseract package found but tesseract binary not installed{Colors.ENDC}")
                     print(f"{Colors.YELLOW}   Run: brew install tesseract{Colors.ENDC}")
                     return False
+            elif package == "pyobjc-framework-Quartz":
+                __import__("Quartz")
             else:
                 __import__(package.replace("-", "_"))
             return True
@@ -186,7 +188,8 @@ class AsyncSystemManager:
             "torchaudio": "Audio processing with PyTorch",
             "opencv-python": "Computer vision (NEW)",
             "pytesseract": "OCR text extraction (NEW)",
-            "Pillow": "Image processing (NEW)"
+            "Pillow": "Image processing (NEW)",
+            "pyobjc-framework-Quartz": "macOS screen capture (NEW)"
         }
         
         # Check all packages in parallel
@@ -248,6 +251,34 @@ class AsyncSystemManager:
         else:
             print(f"{Colors.WARNING}⚠️  System control limited on {platform.system()}{Colors.ENDC}")
             print(f"   Full features available on macOS only")
+    
+    async def check_vision_permissions(self):
+        """Check vision system permissions"""
+        print(f"\n{Colors.BLUE}Checking vision capabilities...{Colors.ENDC}")
+        
+        if platform.system() == "Darwin":
+            # Test if we can capture screen
+            try:
+                import Quartz
+                screenshot = Quartz.CGDisplayCreateImage(Quartz.CGMainDisplayID())
+                if screenshot is None:
+                    print(f"{Colors.WARNING}⚠️  Screen Recording permission not granted{Colors.ENDC}")
+                    print(f"\n{Colors.YELLOW}To enable JARVIS vision features:{Colors.ENDC}")
+                    print(f"  1. System Preferences → Security & Privacy → Privacy")
+                    print(f"  2. Click 'Screen Recording' in the left sidebar")
+                    print(f"  3. Check the box next to Terminal (or your IDE)")
+                    print(f"  4. Restart Terminal/IDE after granting permission")
+                    print(f"\n{Colors.CYAN}Vision commands available after permission:{Colors.ENDC}")
+                    print(f"  • 'Hey JARVIS, can you see my screen?'")
+                    print(f"  • 'Hey JARVIS, check for software updates'")
+                    print(f"  • 'Hey JARVIS, analyze what's on my screen'")
+                else:
+                    print(f"{Colors.GREEN}✓ Screen Recording permission granted{Colors.ENDC}")
+                    print(f"{Colors.GREEN}✓ Vision features ready to use{Colors.ENDC}")
+            except ImportError:
+                print(f"{Colors.WARNING}⚠️  Vision dependencies not installed{Colors.ENDC}")
+                print(f"   Install: pip install opencv-python pytesseract Pillow pyobjc-framework-Quartz")
+                print(f"   Also run: brew install tesseract")
     
     async def create_directories(self):
         """Create necessary directories"""
@@ -415,10 +446,19 @@ class AsyncSystemManager:
                             print(f"{Colors.GREEN}✓ Service ready at {url}{Colors.ENDC}")
                             return True
                 except:
-                    # Show progress dots
+                    # Show progress with more detailed info
                     elapsed = int(time.time() - start_time)
-                    if elapsed % 5 == 0:
-                        print(f"{Colors.YELLOW}Still waiting... ({elapsed}s){Colors.ENDC}")
+                    if elapsed % 5 == 0 and elapsed > 0:
+                        if elapsed <= 15:
+                            print(f"{Colors.YELLOW}Still waiting... ({elapsed}s) - Server initializing{Colors.ENDC}")
+                        elif elapsed <= 30:
+                            print(f"{Colors.YELLOW}Still waiting... ({elapsed}s) - Loading core modules{Colors.ENDC}")
+                        elif elapsed <= 45:
+                            print(f"{Colors.YELLOW}Still waiting... ({elapsed}s) - Loading ML models (this takes time){Colors.ENDC}")
+                        elif elapsed <= 60:
+                            print(f"{Colors.YELLOW}Still waiting... ({elapsed}s) - Initializing voice & vision systems{Colors.ENDC}")
+                        else:
+                            print(f"{Colors.YELLOW}Still waiting... ({elapsed}s) - Almost ready...{Colors.ENDC}")
                 await asyncio.sleep(1)
                 
         print(f"{Colors.WARNING}⚠️ Service at {url} did not respond after {timeout}s{Colors.ENDC}")
@@ -428,9 +468,10 @@ class AsyncSystemManager:
         """Verify all services are running"""
         print(f"\n{Colors.BLUE}Verifying services...{Colors.ENDC}")
         
-        # Check backend with extended timeout
+        # Check backend with extended timeout for ML model loading
         backend_url = f"http://localhost:{self.ports['main_api']}/docs"
-        backend_ready = await self.wait_for_service(backend_url, timeout=30)
+        print(f"{Colors.CYAN}Note: Backend startup may take 60-90 seconds to load ML models...{Colors.ENDC}")
+        backend_ready = await self.wait_for_service(backend_url, timeout=90)
         
         if backend_ready:
             print(f"{Colors.GREEN}✓ Backend API ready{Colors.ENDC}")
@@ -495,8 +536,8 @@ class AsyncSystemManager:
             self.processes = []
             await self.start_backend()
             
-            # Wait again for backend
-            if await self.wait_for_service(backend_url, timeout=20):
+            # Wait again for backend with extended timeout
+            if await self.wait_for_service(backend_url, timeout=60):
                 print(f"{Colors.GREEN}✓ Backend recovered successfully!{Colors.ENDC}")
             else:
                 print(f"{Colors.FAIL}❌ Backend recovery failed{Colors.ENDC}")
@@ -590,6 +631,7 @@ class AsyncSystemManager:
         print(f"\n{Colors.CYAN}Quick Troubleshooting:{Colors.ENDC}")
         print(f"  • If JARVIS doesn't respond: Check microphone permissions")
         print(f"  • For system control errors: Grant accessibility permissions")
+        print(f"  • 'Can't see your screen': Grant screen recording permission & restart terminal")
         print(f"  • Empty responses: Ensure API key is in backend/.env")
         print(f"  • Connection refused: Run this script to auto-fix ports")
         print(f"  • Import errors in IDE: These are false positives - packages are installed")
@@ -719,6 +761,9 @@ class AsyncSystemManager:
             
         # Check system control capabilities
         await self.check_system_control()
+        
+        # Check vision permissions
+        await self.check_vision_permissions()
             
         # Create necessary directories first
         await self.create_directories()
@@ -768,7 +813,7 @@ class AsyncSystemManager:
             # Group by feature
             voice_packages = [p for p in optional_missing if p in ["speech_recognition", "pyttsx3", "pygame", "pyaudio"]]
             ml_packages = [p for p in optional_missing if p in ["librosa", "joblib", "scikit-learn", "transformers", "torch", "torchaudio"]]
-            vision_packages = [p for p in optional_missing if p in ["opencv-python", "pytesseract", "Pillow"]]
+            vision_packages = [p for p in optional_missing if p in ["opencv-python", "pytesseract", "Pillow", "pyobjc-framework-Quartz"]]
             other_packages = [p for p in optional_missing if p not in voice_packages + ml_packages + vision_packages]
             
             if voice_packages:
@@ -794,12 +839,14 @@ class AsyncSystemManager:
         # Start services based on arguments
         if getattr(self, 'backend_only', False):
             print(f"\n{Colors.CYAN}🚀 Starting backend only...{Colors.ENDC}")
+            print(f"{Colors.YELLOW}⏱️  First startup may take 60-90 seconds to load ML models{Colors.ENDC}")
             await self.start_backend()
         elif getattr(self, 'frontend_only', False):
             print(f"\n{Colors.CYAN}🚀 Starting frontend only...{Colors.ENDC}")
             await self.start_frontend()
         else:
             print(f"\n{Colors.CYAN}🚀 Starting services in parallel...{Colors.ENDC}")
+            print(f"{Colors.YELLOW}⏱️  First startup may take 60-90 seconds to load ML models{Colors.ENDC}")
             
             # Start backend first and wait a bit for it to initialize
             backend_task = asyncio.create_task(self.start_backend())
