@@ -123,8 +123,12 @@ class ScreenVisionSystem:
         # Check if screenshot was captured successfully
         if screenshot is None:
             # Return a placeholder image if capture failed
-            print("Warning: Screen capture failed - please grant screen recording permission")
-            print("Go to: System Preferences → Security & Privacy → Privacy → Screen Recording")
+            print(
+                "Warning: Screen capture failed - please grant screen recording permission"
+            )
+            print(
+                "Go to: System Preferences → Security & Privacy → Privacy → Screen Recording"
+            )
             print("Then check the box next to Terminal (or your Python/IDE)")
             return np.zeros((100, 100, 3), dtype=np.uint8)
 
@@ -143,13 +147,39 @@ class ScreenVisionSystem:
             return np.zeros((100, 100, 3), dtype=np.uint8)
 
         try:
-            image = np.frombuffer(pixel_data, dtype=np.uint8)
-            image = image.reshape((height, bytes_per_row // 4, 4))
-            image = image[:, :width, [2, 1, 0, 3]]  # BGRA to RGBA
-
-            return image[:, :, :3]  # Return RGB only
+            # Convert pixel data to numpy array
+            image_data = np.frombuffer(pixel_data, dtype=np.uint8)
+            
+            # Calculate the expected data size
+            expected_size = height * bytes_per_row
+            actual_size = len(image_data)
+            
+            # Trim any extra data (sometimes there's padding at the end)
+            if actual_size > expected_size:
+                image_data = image_data[:expected_size]
+            elif actual_size < expected_size:
+                # If we have less data than expected, something's wrong
+                print(f"Warning: Insufficient pixel data. Expected {expected_size}, got {actual_size}")
+                return np.zeros((100, 100, 3), dtype=np.uint8)
+            
+            # First reshape to get rows
+            image = image_data.reshape((height, bytes_per_row))
+            
+            # Now reshape to get pixels (BGRA format, 4 bytes per pixel)
+            pixels_per_row = bytes_per_row // 4
+            image = image.reshape((height, pixels_per_row, 4))
+            
+            # Crop to actual width (in case bytes_per_row includes padding)
+            image = image[:, :width, :]
+            
+            # Convert BGRA to RGB (skip alpha channel)
+            image = image[:, :, [2, 1, 0]]  # BGR to RGB
+            
+            return image
         except Exception as e:
             print(f"Error converting screenshot to numpy array: {e}")
+            print(f"Debug info: height={height}, width={width}, bytes_per_row={bytes_per_row}")
+            print(f"Data size: {len(pixel_data) if pixel_data else 'None'}")
             return np.zeros((100, 100, 3), dtype=np.uint8)
 
     async def detect_text_regions(self, image: np.ndarray) -> List[ScreenElement]:
@@ -424,10 +454,12 @@ class ScreenVisionSystem:
         context = await self.get_screen_context()
 
         # Check if we have valid screen data (100x100 is our placeholder size)
-        if context['screen_size'][0] == 100 and context['screen_size'][1] == 100:
-            return ("I'm unable to see your screen at the moment. "
-                   "Please ensure I have screen recording permission in "
-                   "System Preferences → Security & Privacy → Privacy → Screen Recording.")
+        if context["screen_size"][0] == 100 and context["screen_size"][1] == 100:
+            return (
+                "I'm unable to see your screen at the moment. "
+                "Please ensure I have screen recording permission in "
+                "System Preferences → Security & Privacy → Privacy → Screen Recording."
+            )
 
         description = (
             f"I can see {len(context['text_elements'])} text elements on your screen. "

@@ -73,7 +73,7 @@ class AsyncSystemManager:
     def print_header(self):
         """Print system header"""
         print(f"\n{Colors.HEADER}{'='*60}")
-        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v3.1.3 - Iron Man Edition 🚀{Colors.ENDC}")
+        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v3.2.1 - Vision Enhanced Edition 🚀{Colors.ENDC}")
         print(f"{Colors.CYAN}🎯 Voice-activated macOS control powered by Claude{Colors.ENDC}")
         print(f"{Colors.GREEN}⚡ ASYNC: Parallel initialization (60-90s for ML models){Colors.ENDC}")
         print(f"{Colors.YELLOW}🖥️  Control apps, files, and system settings naturally{Colors.ENDC}")
@@ -83,7 +83,8 @@ class AsyncSystemManager:
         print(f"{Colors.GREEN}✅ NEW: Futuristic Iron Man landing page{Colors.ENDC}")
         print(f"{Colors.GREEN}✅ NEW: Arc Reactor animations & effects{Colors.ENDC}")
         print(f"{Colors.CYAN}🎤 Smart microphone helper & extended timeouts{Colors.ENDC}")
-        print(f"{Colors.BOLD}🖥️  NEW: Computer Vision - JARVIS can see your screen!{Colors.ENDC}")
+        print(f"{Colors.BOLD}🖥️  FIXED: Computer Vision - JARVIS can now see your screen!{Colors.ENDC}")
+        print(f"{Colors.GREEN}✅ v3.2.1: Fixed screen capture for Cursor AI & high-res displays{Colors.ENDC}")
         if self.is_m1_mac:
             print(f"{Colors.GREEN}✨ Optimized for Apple Silicon with native AppleScript{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}\n")
@@ -275,6 +276,7 @@ class AsyncSystemManager:
                 else:
                     print(f"{Colors.GREEN}✓ Screen Recording permission granted{Colors.ENDC}")
                     print(f"{Colors.GREEN}✓ Vision features ready to use{Colors.ENDC}")
+                    print(f"{Colors.GREEN}✓ v3.2.1 fix applied - high-res displays supported{Colors.ENDC}")
             except ImportError:
                 print(f"{Colors.WARNING}⚠️  Vision dependencies not installed{Colors.ENDC}")
                 print(f"   Install: pip install opencv-python pytesseract Pillow pyobjc-framework-Quartz")
@@ -595,7 +597,7 @@ class AsyncSystemManager:
             print(f"  🔊 Backend speech: {Colors.GREEN}Enabled{Colors.ENDC} (macOS native)")
             print(f"  🎵 Browser speech: Fallback mode")
             
-        print(f"\n{Colors.GREEN}✨ AI Agent Features (v3.1.3):{Colors.ENDC}")
+        print(f"\n{Colors.GREEN}✨ AI Agent Features (v3.2.1):{Colors.ENDC}")
         print(f"  • 🖥️  Voice-activated macOS control {Colors.GREEN}[WORKING]{Colors.ENDC}")
         print(f"  • 🎯 Natural language command interpretation {Colors.GREEN}[FIXED]{Colors.ENDC}") 
         print(f"  • 🛡️  Built-in safety features & confirmations")
@@ -616,10 +618,11 @@ class AsyncSystemManager:
         print(f"  • 🎭 NEW: Futuristic Iron Man landing page")
         print(f"  • ⚡ NEW: Arc Reactor animations & holographic UI")
         print(f"  • 🎯 NEW: Interactive features showcase")
-        print(f"  • 🖥️  NEW: Computer vision - JARVIS can see your screen!")
-        print(f"  • 🔍 NEW: Software update detection & monitoring")
-        print(f"  • 📝 NEW: OCR text extraction from any application")
-        print(f"  • 🧠 NEW: Claude vision AI for advanced understanding")
+        print(f"  • 🖥️  ENHANCED: Computer vision - Works with Cursor AI & high-res displays!")
+        print(f"  • 🔍 Software update detection & monitoring")
+        print(f"  • 📝 OCR text extraction from any application")
+        print(f"  • 🧠 Claude vision AI for advanced screen understanding")
+        print(f"  • ✅ v3.2.1: Fixed numpy reshape errors for all screen resolutions")
         
         print(f"\n{Colors.WARNING}Press Ctrl+C to stop all services{Colors.ENDC}")
         
@@ -631,7 +634,7 @@ class AsyncSystemManager:
         print(f"\n{Colors.CYAN}Quick Troubleshooting:{Colors.ENDC}")
         print(f"  • If JARVIS doesn't respond: Check microphone permissions")
         print(f"  • For system control errors: Grant accessibility permissions")
-        print(f"  • 'Can't see your screen': Grant screen recording permission & restart terminal")
+        print(f"  • 'Can't see your screen': Grant permission to Cursor (not Terminal) & restart")
         print(f"  • Empty responses: Ensure API key is in backend/.env")
         print(f"  • Connection refused: Run this script to auto-fix ports")
         print(f"  • Import errors in IDE: These are false positives - packages are installed")
