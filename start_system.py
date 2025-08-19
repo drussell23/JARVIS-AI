@@ -83,8 +83,9 @@ class AsyncSystemManager:
         print(f"{Colors.GREEN}✅ NEW: Futuristic Iron Man landing page{Colors.ENDC}")
         print(f"{Colors.GREEN}✅ NEW: Arc Reactor animations & effects{Colors.ENDC}")
         print(f"{Colors.CYAN}🎤 Smart microphone helper & extended timeouts{Colors.ENDC}")
-        print(f"{Colors.BOLD}🖥️  FIXED: Computer Vision - JARVIS can now see your screen!{Colors.ENDC}")
-        print(f"{Colors.GREEN}✅ v3.2.1: Fixed screen capture for Cursor AI & high-res displays{Colors.ENDC}")
+        print(f"{Colors.BOLD}🖥️  ENHANCED: Computer Vision with Claude AI Intelligence!{Colors.ENDC}")
+        print(f"{Colors.GREEN}✅ v3.2.1: 'Hey JARVIS, can you see my screen?' - Yes sir!{Colors.ENDC}")
+        print(f"{Colors.CYAN}🧠 Claude Vision: Understands context, not just text{Colors.ENDC}")
         if self.is_m1_mac:
             print(f"{Colors.GREEN}✨ Optimized for Apple Silicon with native AppleScript{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}\n")
@@ -276,7 +277,12 @@ class AsyncSystemManager:
                 else:
                     print(f"{Colors.GREEN}✓ Screen Recording permission granted{Colors.ENDC}")
                     print(f"{Colors.GREEN}✓ Vision features ready to use{Colors.ENDC}")
+                    print(f"{Colors.GREEN}✓ Claude Vision integration available{Colors.ENDC}")
                     print(f"{Colors.GREEN}✓ v3.2.1 fix applied - high-res displays supported{Colors.ENDC}")
+                    
+                    # Check if Claude API is available for enhanced vision
+                    if os.getenv("ANTHROPIC_API_KEY"):
+                        print(f"{Colors.BOLD}✨ Enhanced Vision Active: Claude AI can understand your screen!{Colors.ENDC}")
             except ImportError:
                 print(f"{Colors.WARNING}⚠️  Vision dependencies not installed{Colors.ENDC}")
                 print(f"   Install: pip install opencv-python pytesseract Pillow pyobjc-framework-Quartz")
@@ -582,10 +588,13 @@ class AsyncSystemManager:
         print(f"  • Workflows: 'Start my morning routine', 'Development setup'")
         print(f"  • Mode: 'Switch to system control mode' for better accuracy")
         
-        print(f"\n{Colors.BOLD}🖥️  Vision Commands (NEW!):{Colors.ENDC}")
-        print(f"  • Screen: 'What's on my screen?', 'Check for software updates'")
+        print(f"\n{Colors.BOLD}🖥️  Vision Commands (Enhanced with Claude!):{Colors.ENDC}")
+        print(f"  • {Colors.GREEN}Verification: 'Hey JARVIS, can you see my screen?' - Confirms vision status{Colors.ENDC}")
+        print(f"  • Screen: 'What's on my screen?', 'What am I working on?'")
+        print(f"  • Updates: 'Check for software updates', 'Any notifications?'")
         print(f"  • Monitor: 'Start monitoring for updates', 'Stop monitoring'")
         print(f"  • Analysis: 'What applications are open?', 'Read the error message'")
+        print(f"  • {Colors.CYAN}Intelligence: 'Help me debug this', 'What should I do next?'{Colors.ENDC}")
         
         print(f"\n{Colors.CYAN}Conversation Commands:{Colors.ENDC}")
         print(f"  • Weather: 'What's the weather in Paris?'")

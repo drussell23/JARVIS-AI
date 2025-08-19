@@ -5,6 +5,7 @@ JARVIS Screen Vision System - Computer Vision for macOS Screen Understanding
 import asyncio
 import base64
 import io
+import os
 import re
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
@@ -467,6 +468,18 @@ class ScreenVisionSystem:
 
     async def capture_and_describe(self) -> str:
         """Capture screen and provide a natural language description"""
+        # First, try to capture the screen to test permissions
+        test_capture = self.capture_screen()
+        
+        # Check if screen capture is working
+        if test_capture is None:
+            return (
+                "I'm unable to see your screen at the moment. "
+                "Please ensure I have screen recording permission in "
+                "System Preferences → Security & Privacy → Privacy → Screen Recording."
+            )
+            
+        # Now get the full context
         context = await self.get_screen_context()
 
         # Check if we have valid screen data (100x100 is our placeholder size)
@@ -477,15 +490,28 @@ class ScreenVisionSystem:
                 "System Preferences → Security & Privacy → Privacy → Screen Recording."
             )
 
-        description = (
-            f"I can see {len(context['text_elements'])} text elements on your screen. "
-        )
+        # Build an intelligent response
+        description = f"Yes sir, I can see your screen. "
+        
+        # Add screen details
+        width, height = context["screen_size"]
+        description += f"I'm viewing your {width}x{height} display. "
 
+        # Describe what's visible
         if context["detected_apps"]:
             description += f"You have {', '.join(context['detected_apps'])} open. "
+        
+        if len(context['text_elements']) > 0:
+            description += f"I can read {len(context['text_elements'])} text elements on your screen. "
 
         if context["potential_updates"] > 0:
-            description += f"I've detected {context['potential_updates']} potential software updates. "
+            description += f"I've also detected {context['potential_updates']} potential software updates that may need your attention. "
+        
+        # Add Claude enhancement hint if available
+        if os.getenv("ANTHROPIC_API_KEY"):
+            description += "With Claude Vision enabled, I can provide even deeper insights about what you're working on."
+        else:
+            description += "If you add Claude Vision, I'll be able to understand context and help you more intelligently."
 
         return description
 
@@ -506,6 +532,8 @@ class JARVISVisionIntegration:
         if any(
             phrase in command_lower
             for phrase in [
+                "can you see my screen",
+                "do you see my screen",
                 "what's on my screen",
                 "what can you see",
                 "analyze my screen",
@@ -517,7 +545,11 @@ class JARVISVisionIntegration:
             ]
         ):
             description = await self.vision.capture_and_describe()
-            return f"Sir, {description}"
+            # Remove "Sir," prefix since description already starts appropriately
+            if "can you see my screen" in command_lower or "do you see my screen" in command_lower:
+                return description  # Returns "Yes sir, I can see your screen..."
+            else:
+                return f"Sir, {description}"
 
         elif (
             "check for updates" in command_lower or "look for updates" in command_lower

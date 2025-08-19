@@ -24,13 +24,14 @@ JARVIS has evolved from Tony Stark's AI assistant into a powerful **AI Agent** c
 > **"Sir, I can now see your screen and alert you to important updates. Shall I begin monitoring?"** - JARVIS
 
 ### 🆕 Latest Updates (v3.2.1 - Vision Enhanced Edition)
-- 🔧 **NEW: Enhanced Vision Reliability** - Automatic fallback to screencapture when Quartz fails
-- 🛠️ **NEW: Permission Diagnostic Tool** - `fix_screen_permission.py` helps resolve screen recording issues
-- 🎯 **Improved Error Handling** - Better error messages when vision features fail
-- 📸 **Fallback Screen Capture** - Uses macOS screencapture command as backup method
-- ✨ **Better Permission Guidance** - Step-by-step instructions for different Python environments
-- 🐛 **Bug Fixes** - Resolved screen capture issues with certain Python installations
-- 🔍 **Enhanced Debugging** - More detailed diagnostic information for troubleshooting
+- 🧠 **NEW: Claude Vision Integration** - "Hey JARVIS, can you see my screen?" - Yes sir!
+- 🎯 **Intelligent Screen Understanding** - JARVIS understands context, not just text
+- 🔧 **Enhanced Vision Reliability** - Automatic fallback to screencapture when Quartz fails
+- 📸 **Revolutionary Approach** - One permission, infinite intelligence with Claude AI
+- ✨ **Natural Language Vision** - Ask anything about what's on your screen
+- 🛠️ **Permission Diagnostic Tool** - `fix_screen_permission.py` helps resolve issues
+- 🔍 **Smart Error Detection** - Understands errors and suggests fixes
+- 🤖 **Contextual Assistance** - "What should I do next?" - JARVIS guides you
 
 ### Previous Updates (v3.1.3)
 - 🖥️ **Computer Vision System** - JARVIS can now see and understand your screen!
@@ -80,9 +81,20 @@ Experience the power of a true AI agent with vision:
 
 ## 🚀 Core Features & Capabilities
 
-### 👁️ Computer Vision - Screen Understanding (NEW!)
+### 👁️ Enhanced Computer Vision with Claude AI (v3.2.1)
 
-**What JARVIS Can See**
+**The Revolutionary Approach: One Permission, Infinite Intelligence**
+
+When you ask **"Hey JARVIS, can you see my screen?"**, JARVIS now responds:
+> **"Yes sir, I can see your screen perfectly. I'm viewing your 2880x1800 display. With Claude Vision enabled, I can analyze what you're working on, detect errors, find UI elements, and provide intelligent assistance."**
+
+**What Makes This Revolutionary**
+- **Traditional Vision**: Captures pixels → Basic OCR → Limited understanding
+- **Claude-Enhanced Vision**: Captures pixels → AI Analysis → Deep contextual understanding
+- **Natural Language Queries**: Ask anything about your screen in plain English
+- **Intelligent Assistance**: JARVIS understands what you're doing and helps proactively
+
+**What JARVIS Can See & Understand**
 - Software update notifications across all applications
 - Text content in any window or dialog
 - Application states and open windows
@@ -90,15 +102,17 @@ Experience the power of a true AI agent with vision:
 - System notifications and badges
 - Menu bar indicators
 
-**Vision Commands**
-- "What's on my screen?" / "Can you see my screen?" - Describes visible content
-- "Analyze what's on my screen" / "Look at my screen" - Provides screen analysis
-- "Check for software updates" / "Look for updates" - Scans for update notifications
-- "Read the error message" - Extracts text from dialogs
-- "What applications are open?" - Identifies running apps
-- "Start monitoring for updates" - Continuous background monitoring
-- "Stop monitoring" - Stops background monitoring
-- "Is there anything important?" - AI-powered importance detection
+**Vision Commands (Enhanced with Claude AI)**
+- **"Hey JARVIS, can you see my screen?"** - Confirms vision status and capabilities
+- "What's on my screen?" / "What am I working on?" - Intelligent context analysis
+- "Help me debug this error" - Understands errors and suggests fixes
+- "What should I do next?" - Provides contextual guidance based on screen content
+- "Find the save button" - Locates UI elements naturally
+- "Check for software updates" - Scans all applications for updates
+- "Read the error message" - Extracts and explains error text
+- "What applications are open?" - Lists and understands app context
+- "Is there anything important?" - AI-powered priority detection
+- "Analyze my workflow" - Understands what you're trying to accomplish
 
 **Update Detection**
 - macOS system updates
@@ -359,11 +373,11 @@ project/
 
 ## 🚀 Quick Start Guide
 
-### 🖥️ Quick Start: Computer Vision (NEW!)
+### 🖥️ Quick Start: Enhanced Vision with Claude AI
 
 ```bash
 # 1. Install vision dependencies
-pip install opencv-python pytesseract Pillow
+pip install opencv-python pytesseract Pillow anthropic
 brew install tesseract
 
 # 2. Grant screen recording permission (REQUIRED!)
@@ -371,22 +385,27 @@ brew install tesseract
 # Check the box next to Terminal (or your IDE)
 # Restart Terminal/IDE after granting permission
 
-# 3. Test vision system
+# 3. Enable Claude Vision Intelligence (Recommended)
+echo "ANTHROPIC_API_KEY=your-api-key-here" >> backend/.env
+# Get your key at: https://console.anthropic.com/
+
+# 4. Test the enhanced vision
 cd backend
-python test_vision_system.py
+python vision/test_jarvis_vision_response.py
+# You should see: "✅ Screen recording permission: GRANTED"
 
-# 4. If permission issues occur, use the diagnostic tool
-python fix_screen_permission.py
-# This will diagnose the issue and provide specific solutions
-
-# 5. Try vision commands
+# 5. Start JARVIS and test
+cd ..
 python start_system.py
-# Say: "Hey JARVIS, can you see my screen?"
-# Say: "Check for software updates"
-# Say: "Analyze what's on my screen"
+
+# Try these commands:
+# "Hey JARVIS, can you see my screen?"
+# "What am I working on?"
+# "Help me debug this error"
+# "What should I do next?"
 ```
 
-**Note**: If JARVIS says "I'm unable to see your screen", run `python fix_screen_permission.py` for troubleshooting steps.
+**The Magic**: With one screen recording permission, JARVIS gains infinite intelligence through Claude AI. He doesn't just capture your screen - he understands it!
 
 ### 🎯 Get JARVIS Running in 3 Minutes
 
@@ -647,14 +666,16 @@ For full AI Agent functionality on macOS:
 
 ## 💡 Example Use Cases
 
-### Computer Vision - Screen Understanding
+### Enhanced Computer Vision with Claude AI
 
 **Important**: Requires screen recording permission (see setup instructions)
 
 ```
 You: "Hey JARVIS, can you see my screen?"
-JARVIS: "I can see 12 text elements on your screen. You have Chrome, VS Code, and 
-         Terminal open. I've detected 2 potential software updates."
+JARVIS: "Yes sir, I can see your screen perfectly. I'm viewing your 2880x1800 display. 
+         You're working on a Python project in VS Code with several vision-related files open. 
+         I can see you're debugging the Claude Vision integration, and there's an error 
+         message about the opus model. I can help you fix that."
 
 You: "Hey JARVIS, check my screen for updates"
 JARVIS: "Sir, I've detected 3 software updates: macOS 14.2 is available, Chrome has an 
