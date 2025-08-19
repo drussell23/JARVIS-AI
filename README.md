@@ -82,11 +82,13 @@ Experience the power of a true AI agent with vision:
 - Menu bar indicators
 
 **Vision Commands**
-- "What's on my screen?" - Describes visible content
-- "Check for software updates" - Scans for update notifications
+- "What's on my screen?" / "Can you see my screen?" - Describes visible content
+- "Analyze what's on my screen" / "Look at my screen" - Provides screen analysis
+- "Check for software updates" / "Look for updates" - Scans for update notifications
 - "Read the error message" - Extracts text from dialogs
 - "What applications are open?" - Identifies running apps
-- "Monitor for updates" - Continuous background monitoring
+- "Start monitoring for updates" - Continuous background monitoring
+- "Stop monitoring" - Stops background monitoring
 - "Is there anything important?" - AI-powered importance detection
 
 **Update Detection**
@@ -355,15 +357,23 @@ project/
 pip install opencv-python pytesseract Pillow
 brew install tesseract
 
-# 2. Test vision system
+# 2. Grant screen recording permission (REQUIRED!)
+# Go to: System Preferences → Security & Privacy → Privacy → Screen Recording
+# Check the box next to Terminal (or your IDE)
+# Restart Terminal/IDE after granting permission
+
+# 3. Test vision system
 cd backend
 python test_vision_system.py
 
-# 3. Try vision commands
+# 4. Try vision commands
 python start_system.py
-# Say: "Hey JARVIS, what's on my screen?"
+# Say: "Hey JARVIS, can you see my screen?"
 # Say: "Check for software updates"
+# Say: "Analyze what's on my screen"
 ```
+
+**Note**: If JARVIS says "I'm unable to see your screen", you need to grant screen recording permission and restart your terminal.
 
 ### 🎯 Get JARVIS Running in 3 Minutes
 
@@ -435,9 +445,10 @@ Expected output:
 
 **System Requirements for AI Agent**
 - **macOS**: Full system control with AppleScript and screen capture
-- **Permissions**: Grant accessibility and automation permissions
+- **Permissions**: Grant accessibility, automation, and screen recording permissions
 - **Python**: Must have automation access in System Preferences
 - **Tesseract**: Required for OCR text extraction (install via Homebrew)
+- **Screen Recording**: Required for vision features (see setup instructions)
 
 **Platform Support**
 - **macOS**: Full support including voice synthesis ✅
@@ -610,11 +621,28 @@ For full AI Agent functionality on macOS:
    ✓ Terminal (or your IDE)
    ```
 
+4. **Screen Recording Access (Required for Vision)**
+   ```
+   System Preferences → Security & Privacy → Privacy → Screen Recording
+   ✓ Terminal (or your IDE)
+   ```
+   
+   **Note**: If JARVIS says "I'm unable to see your screen", you need to:
+   - Grant screen recording permission to Terminal/IDE
+   - Restart Terminal/IDE after granting permission
+   - Try the vision command again
+
 ## 💡 Example Use Cases
 
 ### Computer Vision - Screen Understanding
 
+**Important**: Requires screen recording permission (see setup instructions)
+
 ```
+You: "Hey JARVIS, can you see my screen?"
+JARVIS: "I can see 12 text elements on your screen. You have Chrome, VS Code, and 
+         Terminal open. I've detected 2 potential software updates."
+
 You: "Hey JARVIS, check my screen for updates"
 JARVIS: "Sir, I've detected 3 software updates: macOS 14.2 is available, Chrome has an 
          update pending, and I see a red badge on your App Store icon indicating 
@@ -1030,8 +1058,10 @@ AI-Powered-Chatbot/
 
 | Issue | Solution |
 |-------|----------|
+| **"I'm unable to see your screen"** | 1. Grant screen recording permission in System Preferences<br>2. Go to: Security & Privacy → Privacy → Screen Recording<br>3. Check the box next to Terminal/IDE<br>4. **Restart Terminal/IDE after granting permission** |
 | **"Vision capabilities are not available"** | 1. Install packages: `pip install opencv-python pytesseract Pillow`<br>2. Install Tesseract: `brew install tesseract`<br>3. Restart JARVIS |
-| **"No text detected on screen"** | 1. Ensure screen has good contrast<br>2. Check if text is visible (not covered by other windows)<br>3. Try `python test_vision_system.py` to debug |
+| **"I encountered an error with the vision system"** | 1. Check screen recording permissions (most common issue)<br>2. Ensure all vision packages are installed<br>3. Try `python test_vision_system.py` to debug |
+| **"No text detected on screen"** | 1. Ensure screen has good contrast<br>2. Check if text is visible (not covered by other windows)<br>3. OCR works best with clear, non-stylized text |
 | **"Update detection not working"** | 1. Make sure update notifications are visible on screen<br>2. Check if notifications are in English<br>3. Try manual command: "Check for updates" |
 | **"ImportError: No module named cv2"** | Run: `pip install opencv-python` |
 | **"TesseractNotFoundError"** | Run: `brew install tesseract` |
@@ -1087,8 +1117,8 @@ python test_ml_enhanced_jarvis.py
 # Test vision system (NEW!)
 python test_vision_system.py
 
-# Test vision voice commands
-python test_jarvis_vision_commands.py
+# Test vision integration with JARVIS
+python test_jarvis_vision_integration.py
 
 # Test Claude integration
 python test_claude_math.py
