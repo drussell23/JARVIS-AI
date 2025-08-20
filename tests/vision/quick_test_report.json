@@ -1,0 +1,74 @@
+{
+  "summary": {
+    "total_tests": 5,
+    "passed": 4,
+    "failed": 1,
+    "pass_rate": 0.8,
+    "execution_time_ms": 0.0,
+    "timestamp": "2025-08-20T16:53:14.478101"
+  },
+  "by_category": {
+    "functional": {
+      "passed": 4,
+      "failed": 1,
+      "tests": [
+        {
+          "name": "single_window_basic",
+          "passed": true,
+          "duration_ms": 0.0,
+          "error": null,
+          "metrics": {}
+        },
+        {
+          "name": "privacy_meeting",
+          "passed": true,
+          "duration_ms": 0.0,
+          "error": null,
+          "metrics": {
+            "mode": "meeting"
+          }
+        },
+        {
+          "name": "privacy_private",
+          "passed": true,
+          "duration_ms": 0.0,
+          "error": null,
+          "metrics": {
+            "mode": "private"
+          }
+        },
+        {
+          "name": "privacy_normal",
+          "passed": false,
+          "duration_ms": 0.0,
+          "error": null,
+          "metrics": {
+            "mode": "normal"
+          }
+        },
+        {
+          "name": "privacy_sensitive_detection",
+          "passed": true,
+          "duration_ms": 0.0,
+          "error": null,
+          "metrics": {
+            "sensitive_count": 3
+          }
+        }
+      ]
+    }
+  },
+  "performance": {
+    "avg_response_time_ms": 0.0,
+    "p95_response_time_ms": 0.0,
+    "max_response_time_ms": 0.0,
+    "min_response_time_ms": 0.0
+  },
+  "failures": [
+    {
+      "test": "privacy_normal",
+      "category": "functional",
+      "error": null
+    }
+  ]
+}

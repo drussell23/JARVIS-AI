@@ -7,6 +7,7 @@ Analyzes relationships between windows and provides workspace insights
 import os
 import base64
 import asyncio
+import re
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
 import logging
@@ -18,6 +19,7 @@ from .window_detector import WindowDetector, WindowInfo
 from .multi_window_capture import MultiWindowCapture, WindowCapture
 from .window_relationship_detector import WindowRelationshipDetector
 from .smart_query_router import SmartQueryRouter
+from .privacy_controls import PrivacyControlSystem
 
 # Only import Anthropic if available
 try:
@@ -49,6 +51,7 @@ class WorkspaceAnalyzer:
         self.capture_system = MultiWindowCapture()
         self.relationship_detector = WindowRelationshipDetector()
         self.query_router = SmartQueryRouter()
+        self.privacy_controls = PrivacyControlSystem()
         
         # Initialize Claude if available
         self.claude_client = None
@@ -64,8 +67,15 @@ class WorkspaceAnalyzer:
         # Get all windows first
         all_windows = self.window_detector.get_all_windows()
         
+        # Apply privacy filtering
+        filtered_windows, blocked = self.privacy_controls.filter_windows(all_windows)
+        
+        # Log if windows were blocked
+        if blocked:
+            logger.info(f"Privacy: Blocked {len(blocked)} windows from analysis")
+        
         # Use smart query routing to select relevant windows
-        route = self.query_router.route_query(query, all_windows)
+        route = self.query_router.route_query(query, filtered_windows)
         
         # Capture only the relevant windows
         if route.capture_all:
@@ -401,7 +411,6 @@ Keep the ENTIRE response under 100 words. Focus on the primary window."""
         # Clean up any numbered list formatting
         if focused_task:
             # Remove numbered list prefixes like "1. " or "1) "
-            import re
             focused_task = re.sub(r'^\d+[\.\)]\s*', '', focused_task)
             focused_task = focused_task.strip()
         

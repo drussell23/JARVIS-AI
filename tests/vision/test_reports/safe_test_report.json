@@ -1,0 +1,425 @@
+{
+  "summary": {
+    "total_tests": 32,
+    "passed": 28,
+    "failed": 4,
+    "pass_rate": 0.875,
+    "duration_seconds": 43.98443007469177,
+    "timestamp": "2025-08-20T16:55:34.629221"
+  },
+  "by_category": {
+    "functional": {
+      "passed": 24,
+      "failed": 4
+    },
+    "performance": {
+      "passed": 2,
+      "failed": 0
+    },
+    "integration": {
+      "passed": 2,
+      "failed": 0
+    }
+  },
+  "success_criteria": {
+    "functional_tests_pass": false,
+    "performance_acceptable": true,
+    "integration_working": true,
+    "ready_for_launch": false
+  },
+  "suite_results": {
+    "functional": {
+      "summary": {
+        "total_tests": 28,
+        "passed": 24,
+        "failed": 4,
+        "pass_rate": 0.8571428571428571,
+        "execution_time_ms": 0.0,
+        "timestamp": "2025-08-20T16:55:34.625601"
+      },
+      "by_category": {
+        "functional": {
+          "passed": 24,
+          "failed": 4,
+          "tests": [
+            {
+              "name": "single_window_basic",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {}
+            },
+            {
+              "name": "multi_window_What am I working on",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "windows_count": 3,
+                "query": "What am I working on?"
+              }
+            },
+            {
+              "name": "multi_window_Do I have any docume",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "windows_count": 3,
+                "query": "Do I have any documentation open?"
+              }
+            },
+            {
+              "name": "multi_window_What's on my screen?",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "windows_count": 3,
+                "query": "What's on my screen?"
+              }
+            },
+            {
+              "name": "edge_case_many_windows",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "windows_count": 25
+              }
+            },
+            {
+              "name": "edge_case_empty_query",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "windows_count": 25
+              }
+            },
+            {
+              "name": "edge_case_very_long_query",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "windows_count": 25
+              }
+            },
+            {
+              "name": "privacy_meeting",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "mode": "meeting"
+              }
+            },
+            {
+              "name": "privacy_private",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "mode": "private"
+              }
+            },
+            {
+              "name": "privacy_normal",
+              "passed": false,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "mode": "normal"
+              }
+            },
+            {
+              "name": "privacy_sensitive_detection",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "sensitive_count": 3
+              }
+            },
+            {
+              "name": "query_type_current_work",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "query": "What am I working on?",
+                "type": "current_work"
+              }
+            },
+            {
+              "name": "query_type_workspace_overview",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "query": "What's on my screen?",
+                "type": "workspace_overview"
+              }
+            },
+            {
+              "name": "query_type_workspace_overview",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "query": "Describe my workspace",
+                "type": "workspace_overview"
+              }
+            },
+            {
+              "name": "query_type_messages",
+              "passed": false,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "query": "Do I have any messages?",
+                "type": "messages"
+              }
+            },
+            {
+              "name": "query_type_errors",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "query": "Are there any errors?",
+                "type": "errors"
+              }
+            },
+            {
+              "name": "query_type_documentation",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "query": "Show me documentation",
+                "type": "documentation"
+              }
+            },
+            {
+              "name": "query_type_windows",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "query": "What windows are open?",
+                "type": "windows"
+              }
+            },
+            {
+              "name": "query_type_specific_app",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "query": "Show me Chrome windows",
+                "type": "specific_app"
+              }
+            },
+            {
+              "name": "query_type_specific_app",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "query": "What's in my terminal?",
+                "type": "specific_app"
+              }
+            },
+            {
+              "name": "query_type_optimize",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "query": "Optimize my workspace",
+                "type": "optimize"
+              }
+            },
+            {
+              "name": "query_type_meeting",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "query": "Prepare for meeting",
+                "type": "meeting"
+              }
+            },
+            {
+              "name": "query_type_workflow",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "query": "What's my usual workflow?",
+                "type": "workflow"
+              }
+            },
+            {
+              "name": "query_type_privacy",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "query": "Set privacy mode to meeting",
+                "type": "privacy"
+              }
+            },
+            {
+              "name": "meeting_preparation",
+              "passed": false,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "response_length": 93
+              }
+            },
+            {
+              "name": "meeting_layout_generation",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "layout_type": "meeting_focus"
+              }
+            },
+            {
+              "name": "workflow_recording",
+              "passed": true,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {
+                "predictions_count": 0
+              }
+            },
+            {
+              "name": "workflow_insights_query",
+              "passed": false,
+              "duration_ms": 0.0,
+              "error": null,
+              "metrics": {}
+            }
+          ]
+        }
+      },
+      "performance": {
+        "avg_response_time_ms": 0.0,
+        "p95_response_time_ms": 0.0,
+        "max_response_time_ms": 0.0,
+        "min_response_time_ms": 0.0
+      },
+      "failures": [
+        {
+          "test": "privacy_normal",
+          "category": "functional",
+          "error": null
+        },
+        {
+          "test": "query_type_messages",
+          "category": "functional",
+          "error": null
+        },
+        {
+          "test": "meeting_preparation",
+          "category": "functional",
+          "error": null
+        },
+        {
+          "test": "workflow_insights_query",
+          "category": "functional",
+          "error": null
+        }
+      ]
+    },
+    "performance": {
+      "summary": {
+        "total_tests": 2,
+        "passed": 2,
+        "failed": 0,
+        "pass_rate": 1.0,
+        "execution_time_ms": 500,
+        "timestamp": "2025-08-20T16:55:34.628923"
+      },
+      "by_category": {
+        "performance": {
+          "passed": 2,
+          "failed": 0,
+          "tests": [
+            {
+              "name": "response_time_basic",
+              "passed": true,
+              "duration_ms": 500,
+              "error": null,
+              "metrics": {
+                "window_count": 5
+              }
+            },
+            {
+              "name": "resource_usage",
+              "passed": true,
+              "duration_ms": 0,
+              "error": null,
+              "metrics": {
+                "cpu_percent": 25,
+                "memory_mb": 150
+              }
+            }
+          ]
+        }
+      },
+      "performance": {
+        "avg_response_time_ms": 250.0,
+        "p95_response_time_ms": 475.0,
+        "max_response_time_ms": 500,
+        "min_response_time_ms": 0
+      },
+      "failures": []
+    },
+    "integration": {
+      "summary": {
+        "total_tests": 2,
+        "passed": 2,
+        "failed": 0,
+        "pass_rate": 1.0,
+        "execution_time_ms": 150,
+        "timestamp": "2025-08-20T16:55:34.629154"
+      },
+      "by_category": {
+        "integration": {
+          "passed": 2,
+          "failed": 0,
+          "tests": [
+            {
+              "name": "claude_api_mock",
+              "passed": true,
+              "duration_ms": 100,
+              "error": null,
+              "metrics": {}
+            },
+            {
+              "name": "macos_api_mock",
+              "passed": true,
+              "duration_ms": 50,
+              "error": null,
+              "metrics": {}
+            }
+          ]
+        }
+      },
+      "performance": {
+        "avg_response_time_ms": 75.0,
+        "p95_response_time_ms": 97.5,
+        "max_response_time_ms": 100,
+        "min_response_time_ms": 50
+      },
+      "failures": []
+    }
+  }
+}

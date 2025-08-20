@@ -6,6 +6,7 @@ Connects multi-window awareness to JARVIS voice commands
 
 import asyncio
 import logging
+import re
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
@@ -13,6 +14,9 @@ from .workspace_analyzer import WorkspaceAnalyzer, WorkspaceAnalysis
 from .window_detector import WindowDetector
 from .proactive_insights import ProactiveInsights, Insight
 from .workspace_optimizer import WorkspaceOptimizer, WorkspaceOptimization
+from .meeting_preparation import MeetingPreparationSystem, MeetingContext, MeetingAlert
+from .workflow_learning import WorkflowLearningSystem, WorkflowPrediction
+from .privacy_controls import PrivacyControlSystem
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +29,9 @@ class JARVISWorkspaceIntelligence:
         self.window_detector = WindowDetector()
         self.proactive_insights = ProactiveInsights()
         self.workspace_optimizer = WorkspaceOptimizer()
+        self.meeting_system = MeetingPreparationSystem()
+        self.workflow_learning = WorkflowLearningSystem()
+        self.privacy_controls = PrivacyControlSystem()
         self.last_analysis = None
         self.monitoring_active = False
         self.pending_insights: List[Insight] = []
@@ -71,6 +78,27 @@ class JARVISWorkspaceIntelligence:
                 "organize windows",
                 "workspace suggestions",
                 "productivity tips"
+            ],
+            'meeting': [
+                "prepare for meeting",
+                "meeting setup",
+                "hide sensitive windows",
+                "screen sharing mode",
+                "meeting layout"
+            ],
+            'privacy': [
+                "privacy mode",
+                "hide windows",
+                "sensitive content",
+                "private mode",
+                "privacy settings"
+            ],
+            'workflow': [
+                "workflow suggestions",
+                "what should i open",
+                "missing windows",
+                "usual setup",
+                "workflow patterns"
             ]
         }
     
@@ -84,8 +112,24 @@ class JARVISWorkspaceIntelligence:
         # Determine query type
         query_type = self._determine_query_type(command_lower)
         
+        # Record window state for workflow learning
+        self.workflow_learning.record_window_state()
+        
         # Analyze workspace with appropriate context
         try:
+            # Apply privacy filtering
+            all_windows = self.window_detector.get_all_windows()
+            filtered_windows, blocked = self.privacy_controls.filter_windows(all_windows)
+            
+            # Different handling based on query type
+            if query_type == 'meeting':
+                return await self._format_meeting_response()
+            elif query_type == 'privacy':
+                return self._format_privacy_response(command_lower)
+            elif query_type == 'workflow':
+                return self._format_workflow_response()
+            
+            # For other queries, use filtered windows
             analysis = await self.workspace_analyzer.analyze_workspace(command)
             self.last_analysis = analysis
             
@@ -120,7 +164,6 @@ class JARVISWorkspaceIntelligence:
         task = analysis.focused_task
         
         # Remove any numbered list formatting
-        import re
         task = re.sub(r'^\d+[\.\)]\s*', '', task)
         
         # Remove any section markers that might have leaked through
@@ -295,7 +338,6 @@ class JARVISWorkspaceIntelligence:
         task = analysis.focused_task
         
         # Remove any section markers and numbered lists
-        import re
         task = re.sub(r'^\d+[\.\)]\s*', '', task)
         task = task.replace("PRIMARY TASK:", "").replace("1. PRIMARY TASK:", "")
         task = task.replace("CONTEXT:", "").replace("2. CONTEXT:", "")
@@ -327,6 +369,99 @@ class JARVISWorkspaceIntelligence:
         """Format workspace optimization suggestions"""
         optimization = self.workspace_optimizer.analyze_workspace()
         return optimization.to_jarvis_message()
+    
+    async def _format_meeting_response(self) -> str:
+        """Format meeting preparation response"""
+        context, alerts = self.meeting_system.analyze_meeting_preparation()
+        
+        response_parts = []
+        
+        # Check meeting readiness
+        if context.meeting_app:
+            response_parts.append(f"Sir, {context.meeting_app.app_name} is ready for your meeting")
+        else:
+            response_parts.append("Sir, no meeting application detected")
+        
+        # Report alerts
+        if alerts:
+            high_priority = [a for a in alerts if a.severity == 'high']
+            if high_priority:
+                alert = high_priority[0]
+                response_parts.append(alert.message)
+                if alert.suggestions:
+                    response_parts.append(alert.suggestions[0])
+        
+        # Check sensitive windows
+        if context.sensitive_windows:
+            response_parts.append(f"I've detected {len(context.sensitive_windows)} sensitive windows that should be hidden")
+        
+        # Suggest layout
+        if context.meeting_app:
+            layout = self.meeting_system.get_meeting_layout(context)
+            if layout:
+                response_parts.append(f"I can arrange your windows in {layout.layout_type} mode")
+        
+        return ". ".join(response_parts)
+    
+    def _format_privacy_response(self, command: str) -> str:
+        """Format privacy control response"""
+        # Check for specific privacy commands
+        if "meeting" in command and "mode" in command:
+            success = self.privacy_controls.set_privacy_mode('meeting')
+            if success:
+                return "Sir, I've activated meeting privacy mode. Sensitive windows will be hidden during screen sharing"
+        
+        elif "private" in command or "privacy mode" in command:
+            success = self.privacy_controls.set_privacy_mode('private')
+            if success:
+                return "Sir, maximum privacy mode activated. All windows are excluded from analysis"
+        
+        elif "normal" in command:
+            success = self.privacy_controls.set_privacy_mode('normal')
+            if success:
+                return "Sir, privacy mode set to normal. Standard protections are active"
+        
+        # Generate privacy report
+        report = self.privacy_controls.generate_privacy_report()
+        
+        response_parts = [
+            f"Sir, privacy mode is set to '{report['current_mode']}'",
+            f"{report['statistics']['blocked_windows']} windows are currently blocked"
+        ]
+        
+        if report['statistics']['sensitive_windows'] > 0:
+            response_parts.append(f"{report['statistics']['sensitive_windows']} windows contain sensitive content")
+        
+        if report['recommendations']:
+            response_parts.append(report['recommendations'][0])
+        
+        return ". ".join(response_parts)
+    
+    def _format_workflow_response(self) -> str:
+        """Format workflow learning response"""
+        predictions = self.workflow_learning.predict_workflow()
+        
+        if not predictions:
+            insights = self.workflow_learning.get_workflow_insights()
+            if insights['total_sessions'] < 5:
+                return "Sir, I'm still learning your workflow patterns. I need more data to make suggestions"
+            else:
+                return "Sir, your current setup matches your usual workflow"
+        
+        # Get top prediction
+        top_prediction = predictions[0]
+        
+        if top_prediction.prediction_type == 'missing_window':
+            apps = ", ".join(top_prediction.suggested_apps[:2])
+            return f"Sir, {top_prediction.description}. You usually have {apps} open at this time"
+        
+        elif top_prediction.prediction_type == 'likely_relationship':
+            return f"Sir, {top_prediction.description}"
+        
+        elif top_prediction.prediction_type == 'workflow_suggestion':
+            return f"Sir, {top_prediction.description}"
+        
+        return "Sir, I've analyzed your workflow patterns and everything looks optimal"
     
     def get_pending_insights(self) -> List[str]:
         """Get any pending proactive insights as JARVIS messages"""

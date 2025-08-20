@@ -1,0 +1,15 @@
+{
+  "summary": {
+    "total_tests": 28,
+    "passed": 24,
+    "failed": 4,
+    "pass_rate": 0.8571428571428571,
+    "execution_time_ms": 0.0,
+    "timestamp": "2025-08-20T16:48:40.796803"
+  },
+  "by_category": {
+    "functional": {
+      "passed": 24,
+      "failed": 4,
+      "tests": [
+        
