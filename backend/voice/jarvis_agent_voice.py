@@ -108,7 +108,9 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             "search", "google", "browse", "website",
             "create", "delete", "file", "folder",
             "routine", "workflow", "setup",
-            "screen", "update", "monitor", "vision", "see", "check"
+            "screen", "update", "monitor", "vision", "see", "check",
+            "messages", "errors", "windows", "workspace", "optimize",
+            "meeting", "privacy", "sensitive", "productivity"
         }
         
         # Add agent-specific responses
@@ -210,6 +212,18 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             "tell me what", "show me what", "what are you seeing"
         ]
         if any(phrase in text_lower for phrase in vision_phrases):
+            return True
+            
+        # Check for workspace intelligence phrases
+        workspace_phrases = [
+            "do i have any messages", "any messages", "check messages",
+            "do i have messages", "new messages", "unread messages",
+            "any errors", "show errors", "what's broken",
+            "optimize workspace", "productivity", "what windows",
+            "prepare for meeting", "meeting prep", "privacy mode",
+            "workflow", "usual setup"
+        ]
+        if any(phrase in text_lower for phrase in workspace_phrases):
             return True
             
         # Check for system keywords

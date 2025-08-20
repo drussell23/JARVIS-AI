@@ -18,7 +18,7 @@ import numpy as np
 from .window_detector import WindowDetector, WindowInfo
 from .multi_window_capture import MultiWindowCapture, WindowCapture
 from .window_relationship_detector import WindowRelationshipDetector
-from .smart_query_router import SmartQueryRouter
+from .smart_query_router import SmartQueryRouter, QueryRoute, QueryIntent
 from .privacy_controls import PrivacyControlSystem
 
 # Only import Anthropic if available
@@ -85,21 +85,23 @@ class WorkspaceAnalyzer:
             # Capture specific windows based on routing
             captures = []
             for window in route.target_windows[:5]:  # Limit to 5
-                capture = await self.capture_system._async_capture_window(
-                    window, 
-                    1.0 if window.is_focused else 0.5
-                )
-                captures.append(capture)
+                try:
+                    capture = await self.capture_system._async_capture_window(
+                        window, 
+                        1.0 if window.is_focused else 0.5
+                    )
+                    captures.append(capture)
+                except Exception as e:
+                    logger.warning(f"Failed to capture {window.app_name}: {e}")
+                    # Continue with other windows instead of failing entirely
         
         if not captures:
-            return WorkspaceAnalysis(
-                focused_task="Unable to capture windows",
-                window_relationships={},
-                workspace_context="No windows detected",
-                suggestions=[],
-                important_notifications=[],
-                confidence=0.0
-            )
+            # Fall back to basic window info without screenshots
+            all_windows = self.window_detector.get_all_windows()
+            filtered_windows, _ = self.privacy_controls.filter_windows(all_windows)
+            
+            # Still try to provide useful info based on window titles
+            return self._analyze_from_window_info_only(filtered_windows, query, route)
         
         # Use Claude for analysis if available
         if self.claude_client and len(captures) > 0:
@@ -205,6 +207,53 @@ Keep the ENTIRE response under 100 words. Focus on the primary window."""
         except Exception as e:
             logger.error(f"Claude analysis failed: {e}")
             return self._analyze_basic(captures)
+    
+    def _analyze_from_window_info_only(self, windows: List[WindowInfo], 
+                                       query: str, route: QueryRoute) -> WorkspaceAnalysis:
+        """Analyze workspace using only window titles when captures fail"""
+        # Find focused window
+        focused_window = next((w for w in windows if w.is_focused), None)
+        
+        # Determine task based on window info
+        if focused_window:
+            task = f"You're working in {focused_window.app_name}"
+            if focused_window.window_title:
+                task += f" on {focused_window.window_title}"
+        else:
+            task = "Unable to determine current focus"
+        
+        # Detect window relationships
+        relationships = self.relationship_detector.detect_relationships(windows)
+        
+        # Build context based on query type
+        if route.intent == QueryIntent.MESSAGES:
+            # Look for communication apps
+            comm_apps = ['Discord', 'Slack', 'Messages', 'Mail', 'WhatsApp', 'Telegram']
+            comm_windows = [w for w in windows if any(app in w.app_name for app in comm_apps)]
+            if comm_windows:
+                context = f"Communication apps open: {', '.join(w.app_name for w in comm_windows)}"
+            else:
+                context = "No communication apps detected"
+        else:
+            # General context
+            context = f"{len(windows)} windows open across {len(set(w.app_name for w in windows))} applications"
+        
+        # Check for important notifications in window titles
+        notifications = []
+        for window in windows:
+            if window.window_title:
+                title_lower = window.window_title.lower()
+                if any(word in title_lower for word in ['error', 'warning', 'failed', 'alert']):
+                    notifications.append(f"{window.app_name}: {window.window_title}")
+        
+        return WorkspaceAnalysis(
+            focused_task=task,
+            window_relationships={"groups": relationships} if relationships else {},
+            workspace_context=context,
+            suggestions=[],
+            important_notifications=notifications[:3],  # Limit to 3
+            confidence=0.5  # Lower confidence without screenshots
+        )
     
     def _analyze_basic(self, captures: List[WindowCapture]) -> WorkspaceAnalysis:
         """Basic workspace analysis without Claude"""
