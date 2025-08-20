@@ -8,7 +8,7 @@ import os
 # Add backend to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from voice.jarvis_agent_voice import JARVISAgentVoice
+from backend.voice.jarvis_agent_voice import JARVISAgentVoice
 
 async def test_commands():
     """Test various JARVIS commands"""

@@ -17,7 +17,7 @@ from datetime import datetime
 # Add backend to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from voice.jarvis_voice import EnhancedJARVISVoiceAssistant
+from backend.voice.jarvis_voice import EnhancedJARVISVoiceAssistant
 
 # Configure logging
 logging.basicConfig(

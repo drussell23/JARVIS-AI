@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
 """
+import sys
+from pathlib import Path
+
+# Add project root to path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+
 Demo: Enhanced Vision with Claude Intelligence
 Shows how screen capture + Claude API = Revolutionary Vision
 """

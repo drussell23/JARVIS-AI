@@ -12,7 +12,7 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.append(str(Path(__file__).parent))
 
-from voice.jarvis_agent_voice import JARVISAgentVoice
+from backend.voice.jarvis_agent_voice import JARVISAgentVoice
 
 async def test_vision_commands():
     """Test various vision commands"""
@@ -61,7 +61,7 @@ async def test_direct_vision_analysis():
     print("=" * 60)
     
     try:
-        from vision.screen_capture_fallback import capture_with_intelligence
+        from backend.vision.screen_capture_fallback import capture_with_intelligence
         
         # Test with specific query
         result = capture_with_intelligence(

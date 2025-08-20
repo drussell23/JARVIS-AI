@@ -25,21 +25,21 @@ except Exception as e:
 
 # Test 2: ML Enhanced Voice System
 try:
-    from voice.ml_enhanced_voice_system import MLEnhancedVoiceSystem
+    from backend.voice.ml_enhanced_voice_system import MLEnhancedVoiceSystem
     print("✅ ML Enhanced Voice System imported successfully")
 except Exception as e:
     print(f"❌ Failed to import ML Enhanced Voice System: {e}")
 
 # Test 3: JARVIS Voice
 try:
-    from voice.jarvis_voice import EnhancedJARVISVoiceAssistant
+    from backend.voice.jarvis_voice import EnhancedJARVISVoiceAssistant
     print("✅ JARVIS Voice imported successfully")
 except Exception as e:
     print(f"❌ Failed to import JARVIS Voice: {e}")
 
 # Test 4: JARVIS API
 try:
-    from api.jarvis_voice_api import JARVISVoiceAPI
+    from backend.api.jarvis_voice_api import JARVISVoiceAPI
     print("✅ JARVIS Voice API imported successfully")
 except Exception as e:
     print(f"❌ Failed to import JARVIS Voice API: {e}")

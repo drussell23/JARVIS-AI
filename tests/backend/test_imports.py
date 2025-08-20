@@ -30,7 +30,7 @@ try:
     print("   ✓ Success")
     
     print("4. Importing dynamic chatbot...")
-    from chatbots.dynamic_chatbot import DynamicChatbot
+    from backend.chatbots.dynamic_chatbot import DynamicChatbot
     print("   ✓ Success")
     
     print("\nAll imports successful!")

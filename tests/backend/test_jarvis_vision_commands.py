@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 """
+import sys
+from pathlib import Path
+
+# Add project root to path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+
 Test JARVIS Vision Commands
 """
 
 import asyncio
 import os
-from voice.jarvis_agent_voice import JARVISAgentVoice
+from backend.voice.jarvis_agent_voice import JARVISAgentVoice
 
 
 async def test_vision_commands():

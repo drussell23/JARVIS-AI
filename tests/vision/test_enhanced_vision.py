@@ -12,7 +12,7 @@ from datetime import datetime
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from vision.enhanced_vision_system import EnhancedVisionSystem, IntelligentVisionCommands
+from backend.vision.enhanced_vision_system import EnhancedVisionSystem, IntelligentVisionCommands
 
 
 async def test_enhanced_vision():

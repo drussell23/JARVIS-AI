@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
 """
+import sys
+from pathlib import Path
+
+# Add project root to path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+
 Test script for JARVIS Vision System
 """
 
 import asyncio
 import logging
 import os
-from vision.screen_vision import ScreenVisionSystem, JARVISVisionIntegration
-from vision.claude_vision_analyzer import ClaudeVisionAnalyzer
+from backend.vision.screen_vision import ScreenVisionSystem, JARVISVisionIntegration
+from backend.vision.claude_vision_analyzer import ClaudeVisionAnalyzer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

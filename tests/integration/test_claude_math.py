@@ -19,7 +19,7 @@ try:
 except ImportError:
     pass
 
-from chatbots.claude_chatbot import ClaudeChatbot
+from backend.chatbots.claude_chatbot import ClaudeChatbot
 
 
 async def test_math_calculations():

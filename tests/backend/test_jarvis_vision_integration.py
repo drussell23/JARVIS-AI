@@ -8,7 +8,7 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath('.'))
 
-from voice.jarvis_agent_voice import JARVISAgentVoice
+from backend.voice.jarvis_agent_voice import JARVISAgentVoice
 
 
 async def test_vision_commands():

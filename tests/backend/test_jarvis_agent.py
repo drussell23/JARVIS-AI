@@ -58,7 +58,7 @@ async def test_system_control():
     # Test MacOSController
     print("1️⃣ Testing macOS Controller...")
     try:
-        from system_control import MacOSController
+        from backend.system_control import MacOSController
         controller = MacOSController()
         
         # Test safe operations
@@ -81,7 +81,7 @@ async def test_system_control():
         return
         
     try:
-        from system_control import ClaudeCommandInterpreter
+        from backend.system_control import ClaudeCommandInterpreter
         interpreter = ClaudeCommandInterpreter(api_key)
         
         # Test basic command interpretation
@@ -104,7 +104,7 @@ async def test_jarvis_agent():
     print("3️⃣ Testing JARVIS Agent Voice System...")
     
     try:
-        from voice.jarvis_agent_voice import JARVISAgentVoice
+        from backend.voice.jarvis_agent_voice import JARVISAgentVoice
         jarvis = JARVISAgentVoice()
         
         if not jarvis.system_control_enabled:
@@ -150,7 +150,7 @@ async def test_api_integration():
     print("\n4️⃣ Testing API Integration...")
     
     try:
-        from api.jarvis_voice_api import JARVISVoiceAPI
+        from backend.api.jarvis_voice_api import JARVISVoiceAPI
         api = JARVISVoiceAPI()
         
         if api.jarvis_available:
@@ -179,7 +179,7 @@ async def interactive_test():
     print("Type commands to test (or 'quit' to exit):\n")
     
     try:
-        from voice.jarvis_agent_voice import JARVISAgentVoice
+        from backend.voice.jarvis_agent_voice import JARVISAgentVoice
         jarvis = JARVISAgentVoice()
         
         if not jarvis.system_control_enabled:

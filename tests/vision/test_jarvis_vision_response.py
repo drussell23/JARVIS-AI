@@ -8,7 +8,7 @@ import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from vision.screen_capture_fallback import capture_with_intelligence
+from backend.vision.screen_capture_fallback import capture_with_intelligence
 
 
 def test_vision_response():

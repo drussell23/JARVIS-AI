@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 """
+import sys
+from pathlib import Path
+
+# Add project root to path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+
 Test JARVIS closing apps functionality
 """
 
 import asyncio
-from voice.jarvis_agent_voice import JARVISAgentVoice
+from backend.voice.jarvis_agent_voice import JARVISAgentVoice
 
 
 async def test_close_apps():
@@ -46,7 +54,7 @@ async def test_direct_controller():
     """Test the controller directly"""
     print("\n\n🔧 Testing Direct Controller\n")
     
-    from system_control.macos_controller import MacOSController
+    from backend.system_control.macos_controller import MacOSController
     controller = MacOSController()
     
     # Test closing WhatsApp specifically

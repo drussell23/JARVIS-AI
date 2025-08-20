@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 """
+import sys
+from pathlib import Path
+
+# Add project root to path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+
 Test script for closing applications on macOS
 """
 
 import asyncio
-from system_control.macos_controller import MacOSController
+from backend.system_control.macos_controller import MacOSController
 
 def test_close_apps():
     """Test closing various applications"""
