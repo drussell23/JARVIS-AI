@@ -16,6 +16,8 @@ import numpy as np
 
 from .window_detector import WindowDetector, WindowInfo
 from .multi_window_capture import MultiWindowCapture, WindowCapture
+from .window_relationship_detector import WindowRelationshipDetector
+from .smart_query_router import SmartQueryRouter
 
 # Only import Anthropic if available
 try:
@@ -45,6 +47,8 @@ class WorkspaceAnalyzer:
     def __init__(self, api_key: Optional[str] = None):
         self.window_detector = WindowDetector()
         self.capture_system = MultiWindowCapture()
+        self.relationship_detector = WindowRelationshipDetector()
+        self.query_router = SmartQueryRouter()
         
         # Initialize Claude if available
         self.claude_client = None
@@ -57,8 +61,25 @@ class WorkspaceAnalyzer:
     async def analyze_workspace(self, query: str = "What am I working on?") -> WorkspaceAnalysis:
         """Analyze entire workspace based on query"""
         
-        # Capture multiple windows
-        captures = await self.capture_system.capture_multiple_windows()
+        # Get all windows first
+        all_windows = self.window_detector.get_all_windows()
+        
+        # Use smart query routing to select relevant windows
+        route = self.query_router.route_query(query, all_windows)
+        
+        # Capture only the relevant windows
+        if route.capture_all:
+            # For overview queries, capture representative sample
+            captures = await self.capture_system.capture_multiple_windows()
+        else:
+            # Capture specific windows based on routing
+            captures = []
+            for window in route.target_windows[:5]:  # Limit to 5
+                capture = await self.capture_system._async_capture_window(
+                    window, 
+                    1.0 if window.is_focused else 0.5
+                )
+                captures.append(capture)
         
         if not captures:
             return WorkspaceAnalysis(
@@ -187,45 +208,45 @@ Keep the ENTIRE response under 100 words. Focus on the primary window."""
         else:
             focused_task = "No focused application detected"
         
-        # Group windows by app category
-        categories = {
-            'development': [],
-            'browser': [],
-            'communication': [],
-            'other': []
-        }
+        # Get all windows for relationship analysis
+        all_windows = [c.window_info for c in captures]
         
-        for capture in captures:
-            app = capture.window_info.app_name
-            if any(dev in app for dev in ['Code', 'Terminal', 'Xcode']):
-                categories['development'].append(app)
-            elif any(browser in app for browser in ['Chrome', 'Safari', 'Firefox']):
-                categories['browser'].append(app)
-            elif any(comm in app for comm in ['Discord', 'Slack', 'Messages']):
-                categories['communication'].append(app)
-            else:
-                categories['other'].append(app)
+        # Detect relationships using our intelligence layer
+        detected_relationships = self.relationship_detector.detect_relationships(all_windows)
+        groups = self.relationship_detector.group_windows(all_windows, detected_relationships)
         
-        # Build relationships
+        # Build relationships dictionary
         relationships = {}
-        if categories['development'] and categories['browser']:
-            relationships['development_support'] = [
-                f"{dev} likely using {browser} for documentation"
-                for dev in categories['development']
-                for browser in categories['browser']
-            ]
+        for rel in detected_relationships:
+            if rel.confidence >= 0.7:  # Only high confidence
+                window1 = next(w for w in all_windows if w.window_id == rel.window1_id)
+                window2 = next(w for w in all_windows if w.window_id == rel.window2_id)
+                rel_key = f"{window1.app_name}_{window2.app_name}"
+                relationships[rel_key] = [
+                    f"{rel.relationship_type}: {', '.join(rel.evidence)}"
+                ]
         
-        # Build context
-        active_categories = [cat for cat, apps in categories.items() if apps]
-        workspace_context = f"Active workspace with {len(captures)} windows across {len(active_categories)} categories"
+        # Build context from groups
+        if groups:
+            group = groups[0]  # Primary group
+            workspace_context = f"Working on {group.group_type} with {len(group.windows)} related windows"
+            if group.common_elements:
+                workspace_context += f" ({', '.join(group.common_elements[:2])})"
+        else:
+            workspace_context = f"Active workspace with {len(captures)} windows"
+        
+        # Generate suggestions based on workspace
+        suggestions = []
+        if any('error' in w.window_title.lower() if w.window_title else False for w in all_windows):
+            suggestions.append("Errors detected - check terminal output")
         
         return WorkspaceAnalysis(
             focused_task=focused_task,
             window_relationships=relationships,
             workspace_context=workspace_context,
-            suggestions=["Enable Claude API for intelligent workspace analysis"],
+            suggestions=suggestions or ["Enable Claude API for deeper analysis"],
             important_notifications=[],
-            confidence=0.5
+            confidence=0.7
         )
     
     def _encode_image(self, image: np.ndarray) -> str:

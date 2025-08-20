@@ -1,4 +1,4 @@
-# 🤖 JARVIS - AI Agent with Multi-Window Workspace Intelligence (v3.4.0)
+# 🤖 JARVIS - AI Agent with Proactive Intelligence & Workspace Optimization (v3.6.0)
 
 <p align="center">
   <img src="https://img.shields.io/badge/AI%20Agent-System%20Control-purple" alt="AI Agent">
@@ -9,8 +9,9 @@
   <img src="https://img.shields.io/badge/Safety-Built--in-yellow" alt="Safety Features">
   <img src="https://img.shields.io/badge/Response%20Time-%3C1s-brightgreen" alt="Fast Response">
   <img src="https://img.shields.io/badge/Status-STABLE-success" alt="Stable">
-  <img src="https://img.shields.io/badge/Version-3.4.0-brightgreen" alt="Version">
-  <img src="https://img.shields.io/badge/NEW-Multi%20Window%20Awareness-ff1493" alt="Multi-Window">
+  <img src="https://img.shields.io/badge/Version-3.6.0-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/NEW-Proactive%20Insights-FF6B6B" alt="Proactive">
+  <img src="https://img.shields.io/badge/NEW-Workspace%20Optimizer-4ECDC4" alt="Optimizer">
 </p>
 
 <p align="center">
@@ -19,21 +20,27 @@
 
 ## 🎯 Overview
 
-JARVIS has evolved from Tony Stark's AI assistant into a powerful **AI Agent** capable of controlling your macOS environment through natural voice commands and now with **Multi-Window Workspace Intelligence** to see and understand your ENTIRE workspace. This isn't just a chatbot - it's a sophisticated system that can open applications, manage files, control system settings, see ALL your windows, understand window relationships, and execute complex workflows, all while maintaining the personality and sophistication that made JARVIS legendary.
+JARVIS has evolved from Tony Stark's AI assistant into a powerful **AI Agent** capable of controlling your macOS environment through natural voice commands and now with **Proactive Intelligence** that alerts you to important information before you ask. This isn't just a chatbot - it's a sophisticated system that can open applications, manage files, control system settings, proactively surface insights, optimize your workspace layout, and execute complex workflows, all while maintaining the personality and sophistication that made JARVIS legendary.
 
-> **"Sir, I can now see all 46 windows across your 16 applications. You're working on JARVIS-AI-Agent in Terminal. Shall I analyze your workspace?"** - JARVIS
+> **"Sir, you have new messages in Discord. Also, I've detected errors in your Terminal. Would you like me to reorganize your windows for better productivity?"** - JARVIS
 
-### 🆕 Latest Updates (v3.4.0 - Multi-Window Awareness Edition)
-- 🪟 **REVOLUTIONARY: Multi-Window Intelligence** - Sees ALL windows, not just the focused one!
-- 🎯 **"What's on my screen?"** - Lists every open window across all applications
-- 🧠 **"What am I working on?"** - Prioritizes and understands your focused window
-- 📊 **Workspace Relationships** - Understands how windows work together
-- 💬 **"Do I have any messages?"** - Checks Discord, Slack, Messages simultaneously
-- 🔍 **"Are there any errors?"** - Scans all terminals and development windows
-- 🚀 **50+ Window Tracking** - Handles complex multi-monitor developer setups
-- ⚡ **Sub-second Analysis** - Captures and analyzes multiple windows in <1s
-- 🎨 **Smart Resolution Scaling** - Full res for focused, optimized for background
-- 🤖 **Context-Aware Responses** - Concise, focused answers about your workspace
+### 🆕 Latest Updates (v3.6.0 - Proactive Intelligence Edition)
+- 🔔 **Proactive Insights** - Alerts you to new messages while coding!
+- 🚨 **Error Detection** - Automatically notices errors in terminals/logs
+- 📚 **Smart Documentation** - Suggests relevant docs based on your work
+- 🎯 **Workspace Optimization** - "Optimize my workspace" for better layouts
+- 🏗️ **Layout Suggestions** - IDE+Terminal+Docs, Quadrant, Focus modes
+- 🧹 **Window Cleanup** - Identifies unused windows to close
+- 📊 **Productivity Score** - Measures workspace efficiency (0-100%)
+- 🎨 **Context Awareness** - Won't interrupt coding with low-priority alerts
+- ⚡ **5-Second Monitoring** - Lightweight background insights generation
+- 🤖 **Task Detection** - Knows if you're coding, debugging, or researching
+
+### Previous Updates (v3.5.0 - Intelligence Layer)
+- 🧠 **Window Relationship Detection** - Knows IDE + Terminal + Docs work together!
+- 🎯 **Smart Query Routing** - "Any messages?" checks ONLY communication apps
+- 🔍 **Intelligent Capture** - Captures 2-5 relevant windows instead of all 50+
+- 📊 **Project Grouping** - Automatically groups windows by project/task
 
 ### Previous Updates (v3.1.3)
 - 🖥️ **Computer Vision System** - JARVIS can now see and understand your screen!
@@ -85,26 +92,35 @@ Experience the power of a true AI agent with vision:
 
 ## 🚀 Core Features & Capabilities
 
-### 🪟 Multi-Window Workspace Intelligence (v3.4.0)
+### 🧠 Intelligent Workspace Analysis (v3.5.0)
 
-**The Revolution: JARVIS Sees Your ENTIRE Workspace**
+**The Intelligence: JARVIS Understands How Your Windows Work Together**
 
-When you ask **"Hey JARVIS, what's on my screen?"**, JARVIS now responds:
-> **"Sir, you have 46 windows open: Terminal (focused), Cursor, Chrome, Safari, Discord, Slack, and 10 more applications. You're working in Terminal on test_multi_window_phase1.py."**
+When you ask **"Hey JARVIS, do I have any messages?"**, JARVIS now:
+1. **Detects Intent**: Recognizes you're asking about messages
+2. **Routes Intelligently**: ONLY checks Discord, Slack, Messages, Mail
+3. **Captures Efficiently**: Takes 0.2s instead of 2s (only 3-4 windows vs 50+)
+4. **Responds Precisely**: "Sir, Discord and Slack are open but no new messages."
 
-**What Makes This Revolutionary**
-- **Old JARVIS**: Could only see the primary/focused window
-- **New JARVIS**: Sees ALL windows across your entire workspace
-- **Window Relationships**: Understands how windows work together
-- **Smart Prioritization**: Knows which window is focused and relevant
-- **Context Awareness**: Checks specific windows based on your query
+**Intelligence Features**
 
-**Multi-Window Capabilities**
-- Tracks 50+ windows simultaneously across all applications
-- Understands window hierarchy and focus states
-- Detects window relationships and workflows
-- Smart resolution scaling for efficient processing
-- Sub-second analysis of entire workspace
+🔍 **Window Relationship Detection**
+- IDE + Terminal: "You're coding in VS Code with 2 Terminal windows running tests"
+- IDE + Documentation: "Chrome has 3 Stack Overflow tabs related to your Python project"
+- Communication Group: "Discord and Slack are both open for team communication"
+
+🎯 **Smart Query Routing**
+```
+"Any errors?" → Scans ONLY terminals and error logs
+"Check my email" → Routes ONLY to Mail app
+"What's my project?" → Groups IDE + Terminal + Docs
+"Show notifications" → Checks apps with badges
+```
+
+📊 **Confidence-Based Analysis**
+- Each relationship has a confidence score (0-100%)
+- Groups windows by project with 80%+ accuracy
+- Learns common patterns in your workflow
 - Text content in any window or dialog
 - Application states and open windows
 - Error messages and alerts
@@ -127,6 +143,19 @@ When you ask **"Hey JARVIS, what's on my screen?"**, JARVIS now responds:
 - **"Do I have any messages?"** - Checks Discord, Slack, Messages, Mail simultaneously
 - **"Are there any errors?"** - Scans all terminals and development windows
 - **"Check for notifications"** - Looks across all windows for important alerts
+
+🔔 **Proactive Intelligence (NEW!)**
+- **Background Monitoring** - JARVIS watches for important changes without being asked
+- **"Sir, you have new messages in Discord"** - Alerts while you're coding
+- **"Sir, I've detected errors in your Terminal"** - Notices problems immediately
+- **Smart Context** - Won't interrupt coding with low-priority notifications
+
+🎯 **Workspace Optimization (NEW!)**
+- **"Optimize my workspace"** - Suggests better window arrangements
+- **"Give me productivity tips"** - Analyzes efficiency and suggests improvements
+- **Layout Modes** - Coding layout (IDE+Terminal+Docs), Quadrant view, Focus mode
+- **"Clean up my windows"** - Identifies unused windows to close
+- **Productivity Score** - Get a 0-100% efficiency rating
 
 🔍 **Smart Context Detection**
 - **"What's in my browser?"** - Analyzes all browser windows

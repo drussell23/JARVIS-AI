@@ -6,10 +6,13 @@ Connects multi-window awareness to JARVIS voice commands
 
 import asyncio
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+from datetime import datetime
 
 from .workspace_analyzer import WorkspaceAnalyzer, WorkspaceAnalysis
 from .window_detector import WindowDetector
+from .proactive_insights import ProactiveInsights, Insight
+from .workspace_optimizer import WorkspaceOptimizer, WorkspaceOptimization
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +23,11 @@ class JARVISWorkspaceIntelligence:
     def __init__(self):
         self.workspace_analyzer = WorkspaceAnalyzer()
         self.window_detector = WindowDetector()
+        self.proactive_insights = ProactiveInsights()
+        self.workspace_optimizer = WorkspaceOptimizer()
         self.last_analysis = None
         self.monitoring_active = False
+        self.pending_insights: List[Insight] = []
         
         # Query patterns for workspace intelligence
         self.workspace_patterns = {
@@ -58,6 +64,13 @@ class JARVISWorkspaceIntelligence:
                 "describe my workspace",
                 "workspace summary",
                 "what can you see"
+            ],
+            'optimize': [
+                "optimize my workspace",
+                "improve my setup",
+                "organize windows",
+                "workspace suggestions",
+                "productivity tips"
             ]
         }
     
@@ -85,6 +98,8 @@ class JARVISWorkspaceIntelligence:
                 return self._format_errors_response(analysis)
             elif query_type == 'windows':
                 return self._format_windows_response()
+            elif query_type == 'optimize':
+                return await self._format_optimization_response()
             else:
                 return self._format_general_response(analysis)
                 
@@ -308,9 +323,27 @@ class JARVISWorkspaceIntelligence:
         
         return response.strip()
     
+    async def _format_optimization_response(self) -> str:
+        """Format workspace optimization suggestions"""
+        optimization = self.workspace_optimizer.analyze_workspace()
+        return optimization.to_jarvis_message()
+    
+    def get_pending_insights(self) -> List[str]:
+        """Get any pending proactive insights as JARVIS messages"""
+        messages = []
+        for insight in self.pending_insights:
+            messages.append(insight.to_jarvis_message())
+        
+        # Clear pending insights after retrieving
+        self.pending_insights = []
+        return messages
+    
     async def start_monitoring(self):
         """Start monitoring workspace for proactive insights"""
         self.monitoring_active = True
+        
+        # Start proactive insights monitoring in background
+        asyncio.create_task(self._monitor_insights())
         
         async def monitor_callback(changes):
             """Handle workspace changes"""
@@ -322,6 +355,18 @@ class JARVISWorkspaceIntelligence:
                 
         # Start monitoring
         await self.window_detector.monitor_windows(monitor_callback)
+    
+    async def _monitor_insights(self):
+        """Background task to monitor for proactive insights"""
+        try:
+            async for insight in self.proactive_insights.start_monitoring():
+                if self.monitoring_active:
+                    self.pending_insights.append(insight)
+                    logger.info(f"New proactive insight: {insight.insight_type}")
+                else:
+                    break
+        except Exception as e:
+            logger.error(f"Error in proactive monitoring: {e}")
     
     def stop_monitoring(self):
         """Stop workspace monitoring"""
@@ -349,7 +394,9 @@ async def test_jarvis_workspace():
         "What windows are open?",
         "Are there any errors I should look at?",
         "Describe my current workspace",
-        "What's on my screen right now?"
+        "What's on my screen right now?",
+        "Optimize my workspace",
+        "Give me productivity tips"
     ]
     
     for command in test_commands:
@@ -360,6 +407,23 @@ async def test_jarvis_workspace():
         
         # Small delay between commands
         await asyncio.sleep(1)
+    
+    # Test proactive insights
+    print("\n🔔 Testing Proactive Insights (10 seconds)...")
+    await workspace_intel.start_monitoring()
+    
+    # Wait for some insights
+    await asyncio.sleep(10)
+    
+    insights = workspace_intel.get_pending_insights()
+    if insights:
+        print(f"\n📢 Proactive Insights Generated:")
+        for insight in insights:
+            print(f"   • {insight}")
+    else:
+        print("\n   No proactive insights generated in test period")
+    
+    workspace_intel.stop_monitoring()
     
     print("\n✅ JARVIS workspace intelligence test complete!")
 
