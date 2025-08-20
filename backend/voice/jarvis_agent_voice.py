@@ -68,6 +68,17 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         # Initialize vision integration if available
         self.vision_enabled = False
         self.intelligent_vision_enabled = False
+        self.workspace_intelligence_enabled = False
+        
+        # Try to initialize workspace intelligence first (Phase 1)
+        try:
+            from vision.jarvis_workspace_integration import JARVISWorkspaceIntelligence
+            self.workspace_intelligence = JARVISWorkspaceIntelligence()
+            self.workspace_intelligence_enabled = True
+            logger.info("Workspace intelligence (multi-window) initialized successfully")
+        except ImportError:
+            logger.info("Workspace intelligence not available")
+            
         try:
             # Try to use intelligent vision first
             from vision.intelligent_vision_integration import IntelligentJARVISVision
@@ -211,6 +222,19 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             
         # Check for vision commands with expanded patterns
         text_lower = text.lower()
+        
+        # Check for workspace intelligence commands first (multi-window)
+        if self.workspace_intelligence_enabled:
+            workspace_triggers = [
+                "what am i working on", "what am i doing", "workspace",
+                "what windows", "list windows", "open applications",
+                "any messages", "check messages", "do i have messages",
+                "any errors", "show errors", "what's broken"
+            ]
+            if any(trigger in text_lower for trigger in workspace_triggers):
+                return await self._handle_workspace_command(text)
+        
+        # Standard vision triggers
         vision_triggers = [
             "screen", "update", "monitor", "vision", "see",
             "what am i", "what i'm", "working on", "cursor",
@@ -314,6 +338,16 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             
         return "Please say 'confirm' to proceed or 'cancel' to abort."
         
+    async def _handle_workspace_command(self, text: str) -> str:
+        """Handle multi-window workspace commands"""
+        try:
+            response = await self.workspace_intelligence.handle_workspace_command(text)
+            return response
+        except Exception as e:
+            logger.error(f"Workspace command error: {e}")
+            # Fallback to regular vision if workspace fails
+            return await self._handle_vision_command(text)
+    
     async def _handle_vision_command(self, text: str) -> str:
         """Handle vision-related commands"""
         if not self.vision_enabled:

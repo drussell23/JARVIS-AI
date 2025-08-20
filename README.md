@@ -1,4 +1,4 @@
-# 🤖 JARVIS - AI Agent with macOS System Control & Intelligent Vision (v3.3.0)
+# 🤖 JARVIS - AI Agent with Multi-Window Workspace Intelligence (v3.4.0)
 
 <p align="center">
   <img src="https://img.shields.io/badge/AI%20Agent-System%20Control-purple" alt="AI Agent">
@@ -9,8 +9,8 @@
   <img src="https://img.shields.io/badge/Safety-Built--in-yellow" alt="Safety Features">
   <img src="https://img.shields.io/badge/Response%20Time-%3C1s-brightgreen" alt="Fast Response">
   <img src="https://img.shields.io/badge/Status-STABLE-success" alt="Stable">
-  <img src="https://img.shields.io/badge/Version-3.3.0-brightgreen" alt="Version">
-  <img src="https://img.shields.io/badge/NEW-Intelligent%20Vision-ff69b4" alt="Intelligent Vision">
+  <img src="https://img.shields.io/badge/Version-3.4.0-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/NEW-Multi%20Window%20Awareness-ff1493" alt="Multi-Window">
 </p>
 
 <p align="center">
@@ -19,19 +19,21 @@
 
 ## 🎯 Overview
 
-JARVIS has evolved from Tony Stark's AI assistant into a powerful **AI Agent** capable of controlling your macOS environment through natural voice commands and now with **computer vision** to see and understand your screen. This isn't just a chatbot - it's a sophisticated system that can open applications, manage files, control system settings, detect software updates, read screen content, and execute complex workflows, all while maintaining the personality and sophistication that made JARVIS legendary.
+JARVIS has evolved from Tony Stark's AI assistant into a powerful **AI Agent** capable of controlling your macOS environment through natural voice commands and now with **Multi-Window Workspace Intelligence** to see and understand your ENTIRE workspace. This isn't just a chatbot - it's a sophisticated system that can open applications, manage files, control system settings, see ALL your windows, understand window relationships, and execute complex workflows, all while maintaining the personality and sophistication that made JARVIS legendary.
 
-> **"Sir, I can now see your screen and alert you to important updates. Shall I begin monitoring?"** - JARVIS
+> **"Sir, I can now see all 46 windows across your 16 applications. You're working on JARVIS-AI-Agent in Terminal. Shall I analyze your workspace?"** - JARVIS
 
-### 🆕 Latest Updates (v3.3.0 - Intelligent Vision Edition)
-- 🧠 **BREAKTHROUGH: Natural Work Understanding** - "What am I working on?" - JARVIS knows!
-- 🎯 **Context-Aware Intelligence** - Understands your tasks, not just pixels
-- 💬 **Natural Language Queries** - Ask about your work in plain English
-- 🔍 **Intelligent Analysis** - "You're editing vision_integration.py in VS Code..."
-- ✨ **No Rigid Commands** - "What am I doing?", "What's my current task?" all work
-- 🤖 **Deep Context Understanding** - Identifies apps, files, errors, and work context
-- 📸 **Enhanced Claude Integration** - Specific analysis based on your intent
-- 🛡️ **Smart Fallbacks** - Gracefully handles all scenarios
+### 🆕 Latest Updates (v3.4.0 - Multi-Window Awareness Edition)
+- 🪟 **REVOLUTIONARY: Multi-Window Intelligence** - Sees ALL windows, not just the focused one!
+- 🎯 **"What's on my screen?"** - Lists every open window across all applications
+- 🧠 **"What am I working on?"** - Prioritizes and understands your focused window
+- 📊 **Workspace Relationships** - Understands how windows work together
+- 💬 **"Do I have any messages?"** - Checks Discord, Slack, Messages simultaneously
+- 🔍 **"Are there any errors?"** - Scans all terminals and development windows
+- 🚀 **50+ Window Tracking** - Handles complex multi-monitor developer setups
+- ⚡ **Sub-second Analysis** - Captures and analyzes multiple windows in <1s
+- 🎨 **Smart Resolution Scaling** - Full res for focused, optimized for background
+- 🤖 **Context-Aware Responses** - Concise, focused answers about your workspace
 
 ### Previous Updates (v3.1.3)
 - 🖥️ **Computer Vision System** - JARVIS can now see and understand your screen!
@@ -83,42 +85,53 @@ Experience the power of a true AI agent with vision:
 
 ## 🚀 Core Features & Capabilities
 
-### 👁️ Intelligent Computer Vision with Claude AI (v3.3.0)
+### 🪟 Multi-Window Workspace Intelligence (v3.4.0)
 
-**The Breakthrough: Natural Understanding of Your Work**
+**The Revolution: JARVIS Sees Your ENTIRE Workspace**
 
-When you ask **"Hey JARVIS, what am I working on?"**, JARVIS now responds:
-> **"Sir, you're working on enhancing JARVIS's vision capabilities in VS Code. I can see you're editing the intelligent_vision_integration.py file and have several terminal windows open running tests. You appear to be integrating Claude AI for better screen comprehension."**
+When you ask **"Hey JARVIS, what's on my screen?"**, JARVIS now responds:
+> **"Sir, you have 46 windows open: Terminal (focused), Cursor, Chrome, Safari, Discord, Slack, and 10 more applications. You're working in Terminal on test_multi_window_phase1.py."**
 
-**What Makes This Intelligent**
-- **Old JARVIS**: "I can't see your screen or know what you're doing"
-- **New JARVIS**: Full contextual understanding of your work and tasks
-- **Natural Queries**: "What am I working on?", "What's in Cursor?", "What am I doing?"
-- **Specific Responses**: Identifies exact files, applications, and current tasks
-- **Proactive Help**: Understands context to provide relevant assistance
+**What Makes This Revolutionary**
+- **Old JARVIS**: Could only see the primary/focused window
+- **New JARVIS**: Sees ALL windows across your entire workspace
+- **Window Relationships**: Understands how windows work together
+- **Smart Prioritization**: Knows which window is focused and relevant
+- **Context Awareness**: Checks specific windows based on your query
 
-**What JARVIS Can See & Understand**
-- Software update notifications across all applications
+**Multi-Window Capabilities**
+- Tracks 50+ windows simultaneously across all applications
+- Understands window hierarchy and focus states
+- Detects window relationships and workflows
+- Smart resolution scaling for efficient processing
+- Sub-second analysis of entire workspace
 - Text content in any window or dialog
 - Application states and open windows
 - Error messages and alerts
 - System notifications and badges
 - Menu bar indicators
 
-**Intelligent Vision Commands (v3.3.0)**
+**Multi-Window Commands (v3.4.0)**
 
-🎯 **Natural Work Understanding**
-- **"What am I working on?"** - Analyzes your current task and context
-- **"What am I doing in Cursor?"** - Specific understanding of your IDE work
-- **"Describe my current work"** - Detailed analysis of files, code, and tasks
-- **"What's my current task?"** - Identifies what you're trying to accomplish
-- **"Can you see what I'm doing?"** - Natural confirmation with context
+🪟 **Workspace Overview**
+- **"What's on my screen?"** - Lists ALL open windows across every application
+- **"What windows are open?"** - Shows window count and application breakdown
+- **"Describe my workspace"** - Full analysis of your entire workspace setup
 
-🔍 **Screen Analysis**
-- "What's on my screen?" - Comprehensive screen content analysis
-- "What applications do I have open?" - Lists apps with context
-- "Read the error message" - Extracts and explains errors
-- "Is there anything important?" - AI-powered priority detection
+🎯 **Focused Work Analysis**
+- **"What am I working on?"** - Prioritizes and analyzes your focused window
+- **"What am I doing in [App]?"** - Specific understanding of work in any app
+- **"What's my current task?"** - Identifies task from focused window context
+
+💬 **Cross-Window Intelligence**
+- **"Do I have any messages?"** - Checks Discord, Slack, Messages, Mail simultaneously
+- **"Are there any errors?"** - Scans all terminals and development windows
+- **"Check for notifications"** - Looks across all windows for important alerts
+
+🔍 **Smart Context Detection**
+- **"What's in my browser?"** - Analyzes all browser windows
+- **"Show me my code windows"** - Filters to development environments
+- **"Any documentation open?"** - Finds reference materials across windows
 
 🛠️ **Intelligent Assistance**
 - "Help me debug this" - Understands errors and suggests fixes
@@ -685,21 +698,24 @@ For full AI Agent functionality on macOS:
 
 ## 💡 Example Use Cases
 
-### Enhanced Computer Vision with Claude AI
+### Multi-Window Workspace Intelligence
 
 **Important**: Requires screen recording permission (see setup instructions)
 
 ```
-You: "Hey JARVIS, can you see my screen?"
-JARVIS: "Yes sir, I can see your screen perfectly. I'm viewing your 2880x1800 display. 
-         You're working on a Python project in VS Code with several vision-related files open. 
-         I can see you're debugging the Claude Vision integration, and there's an error 
-         message about the opus model. I can help you fix that."
+You: "Hey JARVIS, what's on my screen?"
+JARVIS: "Sir, you have 42 windows open: Terminal (focused), Cursor, Chrome, Safari, 
+         Discord, Slack, Finder, Preview, and 8 more applications."
 
-You: "Hey JARVIS, check my screen for updates"
-JARVIS: "Sir, I've detected 3 software updates: macOS 14.2 is available, Chrome has an 
-         update pending, and I see a red badge on your App Store icon indicating 
-         additional updates."
+You: "Hey JARVIS, what am I working on?"
+JARVIS: "Sir, you're working in Terminal on test_multi_window_phase1.py. 
+         Also using: Cursor, Chrome."
+
+You: "Hey JARVIS, do I have any messages?"
+JARVIS: "Sir, Discord and Slack are open but no new messages."
+
+You: "Hey JARVIS, are there any errors?"
+JARVIS: "Sir, I detect error indicators in your Terminal window."
 
 You: "Start monitoring for important notifications"
 JARVIS: "I'll monitor your screen continuously and alert you to any important 
@@ -1063,8 +1079,12 @@ AI-Powered-Chatbot/
 │   │   ├── jarvis_voice_api.py # Voice control endpoints
 │   │   ├── automation_api.py   # Task automation
 │   │   └── vision_api.py       # Vision system endpoints (NEW!)
-│   ├── vision/                 # Computer Vision System (NEW!)
+│   ├── vision/                 # Multi-Window Vision System (v3.4.0!)
 │   │   ├── screen_vision.py    # Core vision & OCR system
+│   │   ├── window_detector.py  # Multi-window detection (NEW!)
+│   │   ├── multi_window_capture.py # Parallel window capture (NEW!)
+│   │   ├── workspace_analyzer.py # Workspace intelligence (NEW!)
+│   │   ├── jarvis_workspace_integration.py # JARVIS integration (NEW!)
 │   │   ├── claude_vision_analyzer.py # Claude AI vision
 │   │   └── VISION_SYSTEM_GUIDE.md # Vision documentation
 │   ├── system_control/         # AI Agent system control
@@ -1854,21 +1874,31 @@ A: Absolutely:
 - 🐛 **Bug Fixes** - Resolved screen capture issues with certain Python installations
 - 🔍 **Enhanced Debugging** - More detailed diagnostic information
 
+### v3.4.0 - Multi-Window Awareness Edition
+- 🪟 **REVOLUTIONARY: Multi-Window Intelligence** - Sees ALL windows, not just focused
+- 🎯 **Workspace Overview** - "What's on my screen?" lists every open window
+- 🧠 **Smart Prioritization** - "What am I working on?" understands focus
+- 📊 **Window Relationships** - Understands how windows work together
+- 💬 **Cross-App Queries** - Check messages across Discord, Slack, etc. simultaneously
+- 🔍 **Error Detection** - Scans all terminals and dev windows for issues
+- ⚡ **50+ Window Tracking** - Handles complex multi-monitor setups
+- 🎨 **Smart Resolution** - Full res for focused, optimized for background
+- 🤖 **Concise Responses** - Clean, focused answers without verbose preambles
+- 📈 **Sub-second Analysis** - Captures and analyzes multiple windows in <1s
+
+### v3.3.0 - Intelligent Vision Edition  
+- 🧠 **Natural Work Understanding** - "What am I working on?" - JARVIS knows!
+- 🎯 **Context-Aware Intelligence** - Understands your tasks, not just pixels
+- 💬 **Natural Language Queries** - Ask about your work in plain English
+- 🔍 **Intelligent Analysis** - Identifies files, code, errors, and work context
+
 ### v3.1.3 - Iron Man Edition with Vision
-- 🖥️ **NEW: Computer Vision System** - JARVIS can now see and understand your screen
+- 🖥️ **Computer Vision System** - JARVIS can see and understand your screen
 - 🔍 **Software Update Detection** - Automatically detects all types of updates
 - 📝 **OCR Text Extraction** - Read text from any application
 - 🧠 **Claude Vision AI Integration** - Advanced image understanding
-- 📊 **Continuous Monitoring** - Background update monitoring
-- 🎤 **Vision Voice Commands** - Natural language screen interaction
 - 🛡️ **Privacy-First Design** - All processing happens locally
-- 🎭 **NEW: Futuristic Landing Page** - Arc Reactor animations & holographic UI
-- ⚡ **Interactive Features Showcase** - Live demos and capability displays
-- 🎯 **Enhanced Visual Design** - Particle effects, glitch animations, energy flows
-- 🔗 **Quick Installation Steps** - Copy-paste commands with one click
-- 🎨 **Tech Stack Display** - Powered by React, Python, Claude AI, FastAPI
-- 🌟 **Easter Egg** - Konami code activates special JARVIS mode
-- 📱 **Responsive Design** - Works beautifully on all devices
+- 🎭 **Futuristic Landing Page** - Arc Reactor animations & holographic UI
 
 ### v3.1.2 - Enhanced User Experience
 - 🎤 **NEW: Microphone Permission Helper** - Smart detection and browser-specific guides
