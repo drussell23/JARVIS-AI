@@ -73,21 +73,21 @@ class AsyncSystemManager:
     def print_header(self):
         """Print system header"""
         print(f"\n{Colors.HEADER}{'='*60}")
-        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v3.7.1 - Intelligent Vision Edition 🏆{Colors.ENDC}")
+        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v3.8.0 - Autonomous Agent Edition 🚀{Colors.ENDC}")
         print(f"{Colors.CYAN}🎯 Voice-activated macOS control powered by Claude{Colors.ENDC}")
         print(f"{Colors.GREEN}⚡ 100% PRD Complete with 87.5% Test Coverage{Colors.ENDC}")
-        print(f"{Colors.YELLOW}🖥️  World's First Workspace Intelligence Agent{Colors.ENDC}")
+        print(f"{Colors.YELLOW}🖥️  World's First Autonomous Workspace Intelligence Agent{Colors.ENDC}")
         print(f"{Colors.BLUE}🧠 ML-Enhanced: Pattern recognition & predictions{Colors.ENDC}")
         print(f"{Colors.HEADER}🛡️  Privacy controls with sensitive content detection{Colors.ENDC}")
         print(f"{Colors.CYAN}🔄 Workflow learning & automation{Colors.ENDC}")
-        print(f"{Colors.GREEN}✅ NEW: Meeting Assistant - Auto-hides sensitive windows!{Colors.ENDC}")
-        print(f"{Colors.GREEN}✅ NEW: Privacy Modes - normal, meeting, focused, private!{Colors.ENDC}")
-        print(f"{Colors.BOLD}🔧 v3.7.1: Dynamic app detection - sees ANY app without hardcoding!{Colors.ENDC}")
+        print(f"{Colors.GREEN}✅ NEW: Autonomous Decision Engine - Acts on your behalf!{Colors.ENDC}")
+        print(f"{Colors.GREEN}✅ NEW: Permission Learning - Improves with your preferences!{Colors.ENDC}")
+        print(f"{Colors.BOLD}🔧 v3.8.0: Fully autonomous - detects, decides, and acts!{Colors.ENDC}")
         print(f"{Colors.CYAN}🎤 Smart microphone & extended voice timeouts{Colors.ENDC}")
         print(f"{Colors.BOLD}🧠 INTELLIGENCE: <3s response time, <$0.05 per query!{Colors.ENDC}")
-        print(f"{Colors.GREEN}✅ v3.7.1: Intelligent Vision - Detects ANY app dynamically!{Colors.ENDC}")
-        print(f"{Colors.CYAN}📅 'Prepare for meeting' - Detects Zoom, hides passwords{Colors.ENDC}")
-        print(f"{Colors.YELLOW}🔒 'Set privacy mode' - Protect banking, passwords, personal{Colors.ENDC}")
+        print(f"{Colors.GREEN}✅ v3.8.0: Autonomous agent - handles tasks proactively!{Colors.ENDC}")
+        print(f"{Colors.CYAN}📅 'Enable autonomous mode' - JARVIS acts independently{Colors.ENDC}")
+        print(f"{Colors.YELLOW}🔒 Context-aware timing - Respects your focus time{Colors.ENDC}")
         if self.is_m1_mac:
             print(f"{Colors.GREEN}✨ Optimized for Apple Silicon with native AppleScript{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}\n")
@@ -291,6 +291,11 @@ class AsyncSystemManager:
                         print(f"{Colors.GREEN}   • Project Groups: Understands which windows work together{Colors.ENDC}")
                         print(f"{Colors.CYAN}   • Try: 'Any messages?' - Routes to communication apps only{Colors.ENDC}")
                         print(f"{Colors.CYAN}   • Try: 'Show errors' - Scans terminals and error logs{Colors.ENDC}")
+                        print(f"\n{Colors.BOLD}🤖 Autonomous Agent System Ready!{Colors.ENDC}")
+                        print(f"{Colors.GREEN}   • Decision Engine: Makes intelligent choices without hardcoding{Colors.ENDC}")
+                        print(f"{Colors.GREEN}   • Permission Manager: Learns your preferences over time{Colors.ENDC}")
+                        print(f"{Colors.GREEN}   • Context Engine: Understands when to act or wait{Colors.ENDC}")
+                        print(f"{Colors.GREEN}   • Action Executor: Safely executes with rollback capability{Colors.ENDC}")
             except ImportError:
                 print(f"{Colors.WARNING}⚠️  Vision dependencies not installed{Colors.ENDC}")
                 print(f"   Install: pip install opencv-python pytesseract Pillow pyobjc-framework-Quartz")
@@ -305,7 +310,9 @@ class AsyncSystemManager:
             self.backend_dir / "static",
             self.backend_dir / "static" / "demos",
             self.backend_dir / "models" / "voice_ml",
-            self.backend_dir / "system_control"
+            self.backend_dir / "system_control",
+            self.backend_dir / "data",  # For autonomous permissions
+            self.backend_dir / "autonomy"  # Autonomous system modules
         ]
         
         for directory in directories:
@@ -513,6 +520,13 @@ class AsyncSystemManager:
                                 features = data.get('features', [])
                                 if features:
                                     print(f"{Colors.CYAN}  • {len(features)} features available including: {', '.join(features[:3])}...{Colors.ENDC}")
+                                    
+                                # Check autonomous mode status
+                                autonomous_enabled = data.get('autonomous_mode', {}).get('enabled', False)
+                                if autonomous_enabled:
+                                    print(f"{Colors.GREEN}✓ Autonomous mode active - JARVIS is monitoring workspace{Colors.ENDC}")
+                                else:
+                                    print(f"{Colors.CYAN}  • Autonomous mode available - say 'enable autonomous mode'{Colors.ENDC}")
                             else:
                                 print(f"{Colors.GREEN}✓ JARVIS Voice System ready{Colors.ENDC}")
                 except Exception as e:
@@ -596,7 +610,14 @@ class AsyncSystemManager:
         print(f"  • Workflows: 'Start my morning routine', 'Development setup'")
         print(f"  • Mode: 'Switch to system control mode' for better accuracy")
         
-        print(f"\n{Colors.BOLD}🧠 Intelligent Workspace Commands (v3.7.1 - Enhanced!):{Colors.ENDC}")
+        print(f"\n{Colors.BOLD}🤖 Autonomous Agent Commands (v3.8.0 - NEW!):{Colors.ENDC}")
+        print(f"  • {Colors.GREEN}'Enable autonomous mode' - JARVIS acts independently{Colors.ENDC}")
+        print(f"  • {Colors.GREEN}'What's your autonomous status?' - Check current state{Colors.ENDC}")
+        print(f"  • {Colors.CYAN}'Show permission statistics' - See learning progress{Colors.ENDC}")
+        print(f"  • {Colors.CYAN}'Rollback last action' - Undo autonomous actions{Colors.ENDC}")
+        print(f"  • {Colors.YELLOW}'Disable autonomous mode' - Return to manual control{Colors.ENDC}")
+        
+        print(f"\n{Colors.BOLD}🧠 Intelligent Workspace Commands (v3.8.0 - Enhanced!):{Colors.ENDC}")
         print(f"  • {Colors.GREEN}Smart Routing: 'Any messages?' - ONLY checks Discord, Slack, Mail{Colors.ENDC}")
         print(f"  • {Colors.GREEN}Error Focus: 'Show errors' - ONLY scans terminals and logs{Colors.ENDC}")
         print(f"  • {Colors.CYAN}Project Aware: 'What am I working on?' - Shows project + related windows{Colors.ENDC}")
@@ -621,7 +642,11 @@ class AsyncSystemManager:
             print(f"  🔊 Backend speech: {Colors.GREEN}Enabled{Colors.ENDC} (macOS native)")
             print(f"  🎵 Browser speech: Fallback mode")
             
-        print(f"\n{Colors.GREEN}✨ AI Agent Features (v3.2.1):{Colors.ENDC}")
+        print(f"\n{Colors.GREEN}✨ AI Agent Features (v3.8.0):{Colors.ENDC}")
+        print(f"  • 🤖 Autonomous decision-making engine {Colors.GREEN}[NEW]{Colors.ENDC}")
+        print(f"  • 🧠 Permission learning system {Colors.GREEN}[NEW]{Colors.ENDC}")
+        print(f"  • ⏰ Context-aware action timing {Colors.GREEN}[NEW]{Colors.ENDC}")
+        print(f"  • 🔄 Safe action execution with rollback {Colors.GREEN}[NEW]{Colors.ENDC}")
         print(f"  • 🖥️  Voice-activated macOS control {Colors.GREEN}[WORKING]{Colors.ENDC}")
         print(f"  • 🎯 Natural language command interpretation {Colors.GREEN}[FIXED]{Colors.ENDC}") 
         print(f"  • 🛡️  Built-in safety features & confirmations")
@@ -647,6 +672,7 @@ class AsyncSystemManager:
         print(f"  • 🔍 Window Relationships - Detects IDE + Terminal + Documentation connections")
         print(f"  • ⚡ Efficient Capture - Only 2-5 relevant windows instead of all 50+")
         print(f"  • ✅ v3.7.1: Intelligent Vision - Works with ANY app, even ones JARVIS has never seen!")
+        print(f"  • ✅ v3.8.0: Autonomous Agent - Proactively handles notifications, meetings, and workspace!")
         
         print(f"\n{Colors.WARNING}Press Ctrl+C to stop all services{Colors.ENDC}")
         

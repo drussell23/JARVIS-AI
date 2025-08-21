@@ -18,6 +18,16 @@ from .meeting_preparation import MeetingPreparationSystem, MeetingContext, Meeti
 from .workflow_learning import WorkflowLearningSystem, WorkflowPrediction
 from .privacy_controls import PrivacyControlSystem
 
+# Import autonomous components
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+
+from autonomy.autonomous_decision_engine import AutonomousDecisionEngine, AutonomousAction
+from autonomy.permission_manager import PermissionManager
+from autonomy.context_engine import ContextEngine
+from autonomy.action_executor import ActionExecutor
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,6 +45,14 @@ class JARVISWorkspaceIntelligence:
         self.last_analysis = None
         self.monitoring_active = False
         self.pending_insights: List[Insight] = []
+        
+        # Initialize autonomous components
+        self.autonomous_engine = AutonomousDecisionEngine()
+        self.permission_manager = PermissionManager()
+        self.context_engine = ContextEngine()
+        self.action_executor = ActionExecutor()
+        self.autonomous_enabled = False
+        self.autonomous_task = None
         
         # Query patterns for workspace intelligence
         self.workspace_patterns = {
@@ -108,6 +126,10 @@ class JARVISWorkspaceIntelligence:
         
         # Store the command for use in formatting
         self._last_command = command
+        
+        # Check for autonomous commands first
+        if any(word in command_lower for word in ['autonomous', 'rollback', 'permission stats']):
+            return await self.handle_autonomous_command(command)
         
         # Determine query type
         query_type = self._determine_query_type(command_lower)
@@ -480,6 +502,10 @@ class JARVISWorkspaceIntelligence:
         # Start proactive insights monitoring in background
         asyncio.create_task(self._monitor_insights())
         
+        # Start autonomous monitoring if enabled
+        if self.autonomous_enabled:
+            await self.start_autonomous_mode()
+        
         async def monitor_callback(changes):
             """Handle workspace changes"""
             if changes['focus_changed'] and changes['current_focus']:
@@ -506,6 +532,201 @@ class JARVISWorkspaceIntelligence:
     def stop_monitoring(self):
         """Stop workspace monitoring"""
         self.monitoring_active = False
+        
+        # Stop autonomous monitoring
+        if self.autonomous_task:
+            self.autonomous_task.cancel()
+            self.autonomous_task = None
+    
+    # ========== AUTONOMOUS SYSTEM METHODS ==========
+    
+    async def enable_autonomous_mode(self, user_confirmation: bool = True):
+        """Enable JARVIS autonomous mode"""
+        logger.info("Enabling JARVIS autonomous mode")
+        
+        self.autonomous_enabled = True
+        
+        if user_confirmation:
+            # In production, get actual user confirmation
+            response = "Sir, I'll now operate autonomously. I'll handle routine tasks, "
+            response += "organize your workspace, and manage notifications intelligently. "
+            response += "I'll always ask permission for important actions. Shall I proceed?"
+            logger.info(response)
+        
+        # Start autonomous monitoring if monitoring is active
+        if self.monitoring_active:
+            await self.start_autonomous_mode()
+        
+        return "Autonomous mode activated. I'll handle routine tasks while you focus on what matters."
+    
+    async def disable_autonomous_mode(self):
+        """Disable JARVIS autonomous mode"""
+        logger.info("Disabling JARVIS autonomous mode")
+        
+        self.autonomous_enabled = False
+        
+        # Cancel autonomous task
+        if self.autonomous_task:
+            self.autonomous_task.cancel()
+            self.autonomous_task = None
+        
+        return "Autonomous mode disabled. I'll wait for your explicit commands."
+    
+    async def start_autonomous_mode(self):
+        """Start autonomous monitoring and decision-making"""
+        if not self.autonomous_enabled:
+            return
+        
+        logger.info("Starting autonomous monitoring")
+        
+        # Cancel existing task if any
+        if self.autonomous_task:
+            self.autonomous_task.cancel()
+        
+        # Start new autonomous monitoring task
+        self.autonomous_task = asyncio.create_task(self._autonomous_monitor_loop())
+    
+    async def _autonomous_monitor_loop(self):
+        """Main autonomous monitoring loop"""
+        logger.info("Autonomous monitor loop started")
+        
+        while self.autonomous_enabled and self.monitoring_active:
+            try:
+                # Get current workspace state
+                windows = self.window_detector.get_all_windows()
+                workspace_state = await self.workspace_analyzer.analyze_workspace("")
+                
+                # Analyze context
+                context = await self.context_engine.analyze_context(workspace_state, windows)
+                
+                # Make autonomous decisions
+                actions = await self.autonomous_engine.analyze_and_decide(workspace_state, windows)
+                
+                # Process each action
+                for action in actions:
+                    await self._process_autonomous_action(action, context)
+                
+                # Wait before next check
+                await asyncio.sleep(5)  # Check every 5 seconds
+                
+            except asyncio.CancelledError:
+                logger.info("Autonomous monitoring cancelled")
+                break
+            except Exception as e:
+                logger.error(f"Error in autonomous monitoring: {e}")
+                await asyncio.sleep(10)  # Wait longer on error
+    
+    async def _process_autonomous_action(self, action: AutonomousAction, context):
+        """Process a single autonomous action"""
+        try:
+            # Check if we should act now based on context
+            should_act, timing_reason = self.context_engine.should_act_now(action, context)
+            
+            if not should_act:
+                logger.info(f"Delaying action {action.action_type}: {timing_reason}")
+                # Could queue for later or skip
+                return
+            
+            # Check permissions
+            permission, confidence, permission_reason = self.permission_manager.check_permission(action)
+            
+            if permission is True:
+                # Auto-approved - execute
+                logger.info(f"Auto-executing {action.action_type}: {permission_reason}")
+                await self._execute_autonomous_action(action)
+                
+            elif permission is False:
+                # Auto-denied - skip
+                logger.info(f"Auto-denied {action.action_type}: {permission_reason}")
+                
+            else:
+                # Need user permission
+                if action.requires_permission or confidence < 0.7:
+                    await self._request_user_permission(action, confidence, permission_reason)
+                else:
+                    # High confidence, just notify
+                    await self._notify_autonomous_action(action)
+                    await self._execute_autonomous_action(action)
+            
+        except Exception as e:
+            logger.error(f"Error processing autonomous action: {e}")
+    
+    async def _execute_autonomous_action(self, action: AutonomousAction):
+        """Execute an autonomous action"""
+        try:
+            # Execute the action
+            result = await self.action_executor.execute_action(action, dry_run=False)
+            
+            # Learn from result
+            success = result.status.value == "success"
+            self.autonomous_engine.learn_from_feedback(action, success)
+            
+            if success:
+                logger.info(f"Successfully executed {action.action_type}")
+                # Could notify user of successful action
+            else:
+                logger.error(f"Failed to execute {action.action_type}: {result.error}")
+                
+        except Exception as e:
+            logger.error(f"Error executing autonomous action: {e}")
+    
+    async def _request_user_permission(self, action: AutonomousAction, confidence: float, reason: str):
+        """Request user permission for an action"""
+        # In production, this would integrate with the UI/voice system
+        message = f"Sir, may I {action.action_type.replace('_', ' ')} for {action.target}? "
+        message += f"Confidence: {confidence:.0%}. {reason}"
+        
+        logger.info(f"Permission request: {message}")
+        
+        # For now, simulate approval
+        # In production, wait for actual user response
+        approved = True  # Would get actual user input
+        
+        # Record decision for learning
+        self.permission_manager.record_decision(action, approved)
+        
+        if approved:
+            await self._execute_autonomous_action(action)
+    
+    async def _notify_autonomous_action(self, action: AutonomousAction):
+        """Notify user of autonomous action being taken"""
+        message = f"Sir, I'm {action.action_type.replace('_', ' ')} for {action.target}. "
+        message += action.reasoning
+        
+        logger.info(f"Autonomous action notification: {message}")
+        
+        # In production, this would show a notification or speak to user
+        # Could use self.workspace_analyzer.claude_client to generate natural language
+    
+    async def handle_autonomous_command(self, command: str) -> str:
+        """Handle commands related to autonomous operation"""
+        command_lower = command.lower()
+        
+        if "enable autonomous" in command_lower or "activate autonomous" in command_lower:
+            return await self.enable_autonomous_mode()
+            
+        elif "disable autonomous" in command_lower or "stop autonomous" in command_lower:
+            return await self.disable_autonomous_mode()
+            
+        elif "autonomous status" in command_lower:
+            if self.autonomous_enabled:
+                stats = self.action_executor.get_execution_stats()
+                return f"Autonomous mode is active. {stats['total_executions']} actions taken, {stats.get('success_rate', 0):.0%} success rate."
+            else:
+                return "Autonomous mode is currently disabled."
+                
+        elif "rollback" in command_lower:
+            if await self.action_executor.rollback_last_action():
+                return "Sir, I've rolled back the last action."
+            else:
+                return "No actions available to rollback."
+                
+        elif "permission" in command_lower and "stats" in command_lower:
+            stats = self.permission_manager.get_permission_stats()
+            return f"Permission stats: {stats['total_decisions']} decisions recorded, {len(stats['auto_approval_candidates'])} actions ready for automation."
+            
+        else:
+            return "I can enable/disable autonomous mode, show status, rollback actions, or show permission statistics."
 
 
 # Integration function for JARVIS voice system

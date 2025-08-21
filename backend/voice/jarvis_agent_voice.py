@@ -112,7 +112,8 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             "messages", "errors", "windows", "workspace", "optimize",
             "meeting", "privacy", "sensitive", "productivity",
             "notifications", "notification", "whatsapp", "discord", "slack",
-            "telegram", "signal", "teams", "mail", "email"
+            "telegram", "signal", "teams", "mail", "email",
+            "autonomous", "automatic", "rollback", "permission"
         }
         
         # Add agent-specific responses
