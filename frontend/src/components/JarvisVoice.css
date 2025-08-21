@@ -347,6 +347,82 @@
   box-shadow: 0 4px 15px rgba(255, 107, 0, 0.4);
 }
 
+/* Autonomous Mode Styles */
+.jarvis-button.autonomous {
+  background: linear-gradient(135deg, #2c3e50, #34495e);
+  border: 1px solid #7f8c8d;
+}
+
+.jarvis-button.autonomous:hover {
+  background: linear-gradient(135deg, #34495e, #2c3e50);
+  border-color: #95a5a6;
+}
+
+.jarvis-button.autonomous-active {
+  background: linear-gradient(135deg, #27ae60, #2ecc71);
+  border: 1px solid #27ae60;
+  box-shadow: 0 0 20px rgba(46, 204, 113, 0.5);
+  animation: pulse 2s infinite;
+}
+
+.jarvis-button.autonomous-active:hover {
+  background: linear-gradient(135deg, #2ecc71, #27ae60);
+}
+
+.autonomous-mode {
+  margin-left: 15px;
+  color: #2ecc71;
+  font-size: 0.9em;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.vision-indicator::before {
+  content: '👁️';
+  animation: blink 3s infinite;
+}
+
+/* Vision Status Bar */
+.vision-status-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 15px 0;
+  padding: 10px 15px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 215, 0, 0.2);
+  border-radius: 8px;
+  font-size: 0.9em;
+}
+
+.vision-connection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vision-connection.connected {
+  color: #2ecc71;
+}
+
+.vision-connection.disconnected {
+  color: #e74c3c;
+}
+
+.vision-icon {
+  font-size: 1.2em;
+}
+
+.workspace-summary {
+  color: #95a5a6;
+  font-size: 0.85em;
+}
+
+.workspace-summary span {
+  margin: 0 5px;
+}
+
 /* Voice Tips */
 .voice-tips {
   margin-top: 2rem;

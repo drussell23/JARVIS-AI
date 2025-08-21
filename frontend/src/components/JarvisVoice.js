@@ -2,6 +2,251 @@ import React, { useState, useEffect, useRef } from 'react';
 import './JarvisVoice.css';
 import MicrophonePermissionHelper from './MicrophonePermissionHelper';
 
+// VisionConnection class for real-time workspace monitoring
+class VisionConnection {
+    constructor(onUpdate, onAction) {
+        this.socket = null;
+        this.isConnected = false;
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
+        this.reconnectDelay = 2000;
+        this.workspaceData = null;
+        this.actionQueue = [];
+        
+        // Callbacks
+        this.onWorkspaceUpdate = onUpdate || (() => {});
+        this.onActionExecuted = onAction || (() => {});
+        
+        // Monitoring state
+        this.monitoringActive = false;
+        this.updateInterval = 2.0;
+    }
+    
+    async connect() {
+        try {
+            console.log('🔌 Connecting to Vision WebSocket...');
+            
+            const wsUrl = `ws://localhost:8000/vision/ws/vision`;
+            this.socket = new WebSocket(wsUrl);
+            
+            this.socket.onopen = () => {
+                console.log('✅ Vision WebSocket connected!');
+                this.isConnected = true;
+                this.reconnectAttempts = 0;
+                this.monitoringActive = true;
+                
+                // Request initial analysis
+                this.requestWorkspaceAnalysis();
+            };
+            
+            this.socket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    this.handleVisionMessage(data);
+                } catch (error) {
+                    console.error('Error parsing vision message:', error);
+                }
+            };
+            
+            this.socket.onerror = (error) => {
+                console.error('❌ Vision WebSocket error:', error);
+            };
+            
+            this.socket.onclose = () => {
+                console.log('🔌 Vision WebSocket disconnected');
+                this.isConnected = false;
+                this.monitoringActive = false;
+                this.attemptReconnect();
+            };
+            
+        } catch (error) {
+            console.error('Failed to connect to Vision WebSocket:', error);
+            this.attemptReconnect();
+        }
+    }
+    
+    handleVisionMessage(data) {
+        console.log('👁️ Vision Update:', data.type);
+        
+        switch (data.type) {
+            case 'initial_state':
+                this.handleInitialState(data);
+                break;
+                
+            case 'workspace_update':
+                this.handleWorkspaceUpdate(data);
+                break;
+                
+            case 'workspace_analysis':
+                this.handleWorkspaceAnalysis(data);
+                break;
+                
+            case 'action_result':
+                this.handleActionResult(data);
+                break;
+                
+            case 'config_updated':
+                console.log('⚙️ Config updated:', data);
+                this.updateInterval = data.update_interval;
+                break;
+                
+            default:
+                console.log('Unknown vision message type:', data.type);
+        }
+    }
+    
+    handleInitialState(data) {
+        console.log('📊 Initial workspace state:', data.workspace);
+        this.workspaceData = data.workspace;
+        this.monitoringActive = data.monitoring_active;
+        this.updateInterval = data.update_interval;
+        
+        this.onWorkspaceUpdate({
+            type: 'initial',
+            workspace: data.workspace,
+            timestamp: data.timestamp
+        });
+    }
+    
+    handleWorkspaceUpdate(data) {
+        console.log(`🔄 Workspace update: ${data.workspace.window_count} windows`);
+        
+        this.workspaceData = data.workspace;
+        
+        // Process autonomous actions
+        if (data.autonomous_actions && data.autonomous_actions.length > 0) {
+            this.processAutonomousActions(data.autonomous_actions);
+        }
+        
+        // Check for important notifications
+        if (data.workspace.notification_details) {
+            const details = data.workspace.notification_details;
+            const totalNotifs = details.badges + details.messages + details.meetings + details.alerts;
+            
+            if (totalNotifs > 0) {
+                console.log(`📬 Notifications: ${details.badges} badges, ${details.messages} messages, ${details.meetings} meetings, ${details.alerts} alerts`);
+            }
+        }
+        
+        // Notify UI
+        this.onWorkspaceUpdate({
+            type: 'update',
+            workspace: data.workspace,
+            autonomousActions: data.autonomous_actions,
+            enhancedData: data.enhanced_data,
+            queueStatus: data.queue_status,
+            timestamp: data.timestamp
+        });
+    }
+    
+    handleWorkspaceAnalysis(data) {
+        console.log('🔍 Workspace analysis received:', data.analysis);
+        
+        this.onWorkspaceUpdate({
+            type: 'analysis',
+            analysis: data.analysis,
+            timestamp: data.timestamp
+        });
+    }
+    
+    handleActionResult(data) {
+        console.log('⚡ Action result:', data);
+        
+        this.onActionExecuted({
+            success: data.success,
+            action: data.action,
+            message: data.message
+        });
+    }
+    
+    processAutonomousActions(actions) {
+        // Filter actions that don't require permission
+        const autoActions = actions.filter(a => !a.requires_permission && a.confidence > 0.8);
+        
+        // Add to action queue
+        this.actionQueue = [...this.actionQueue, ...autoActions];
+        
+        // Process queue
+        this.processActionQueue();
+        
+        // Notify about actions requiring permission
+        const permissionRequired = actions.filter(a => a.requires_permission);
+        if (permissionRequired.length > 0) {
+            console.log(`🔐 ${permissionRequired.length} actions require permission`);
+            // Here you would show permission UI
+        }
+    }
+    
+    async processActionQueue() {
+        if (this.actionQueue.length === 0) return;
+        
+        const action = this.actionQueue.shift();
+        console.log(`🤖 Executing autonomous action: ${action.type}`);
+        
+        // Send action execution request
+        this.executeAction(action);
+        
+        // Process next action after delay
+        setTimeout(() => this.processActionQueue(), 1000);
+    }
+    
+    requestWorkspaceAnalysis() {
+        if (this.isConnected && this.socket.readyState === WebSocket.OPEN) {
+            this.socket.send(JSON.stringify({
+                type: 'request_analysis'
+            }));
+        }
+    }
+    
+    setUpdateInterval(interval) {
+        if (this.isConnected && this.socket.readyState === WebSocket.OPEN) {
+            this.socket.send(JSON.stringify({
+                type: 'set_interval',
+                interval: interval
+            }));
+        }
+    }
+    
+    executeAction(action) {
+        if (this.isConnected && this.socket.readyState === WebSocket.OPEN) {
+            this.socket.send(JSON.stringify({
+                type: 'execute_action',
+                action: action
+            }));
+        }
+    }
+    
+    attemptReconnect() {
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+            this.reconnectAttempts++;
+            console.log(`🔄 Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+            
+            setTimeout(() => {
+                this.connect();
+            }, this.reconnectDelay * this.reconnectAttempts);
+        } else {
+            console.error('❌ Max reconnection attempts reached. Vision system offline.');
+        }
+    }
+    
+    disconnect() {
+        if (this.socket) {
+            this.socket.close();
+            this.socket = null;
+            this.isConnected = false;
+            this.monitoringActive = false;
+        }
+    }
+    
+    getWorkspaceData() {
+        return this.workspaceData;
+    }
+    
+    isMonitoring() {
+        return this.isConnected && this.monitoringActive;
+    }
+}
+
 const JarvisVoice = () => {
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -13,11 +258,15 @@ const JarvisVoice = () => {
   const [isWaitingForCommand, setIsWaitingForCommand] = useState(false);
   const [isJarvisSpeaking, setIsJarvisSpeaking] = useState(false);
   const [microphonePermission, setMicrophonePermission] = useState('checking');
+  const [visionConnected, setVisionConnected] = useState(false);
+  const [workspaceData, setWorkspaceData] = useState(null);
+  const [autonomousMode, setAutonomousMode] = useState(false);
   
   const wsRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const recognitionRef = useRef(null);
+  const visionConnectionRef = useRef(null);
   
   // Get API URL from environment or use default
   const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -40,6 +289,50 @@ const JarvisVoice = () => {
       };
     }
     
+    // Initialize Vision Connection
+    if (!visionConnectionRef.current) {
+      visionConnectionRef.current = new VisionConnection(
+        // Workspace update callback
+        (data) => {
+          setWorkspaceData(data);
+          setVisionConnected(true);
+          
+          // Process workspace updates
+          if (data.type === 'update' && data.workspace) {
+            // Check for important notifications
+            if (data.workspace.notifications && data.workspace.notifications.length > 0) {
+              const notification = data.workspace.notifications[0];
+              speakResponse(`I've detected: ${notification}`);
+            }
+            
+            // Handle autonomous actions
+            if (data.autonomousActions && data.autonomousActions.length > 0 && autonomousMode) {
+              const highPriorityActions = data.autonomousActions.filter(a => 
+                a.priority === 'HIGH' || a.priority === 'CRITICAL'
+              );
+              
+              if (highPriorityActions.length > 0) {
+                const action = highPriorityActions[0];
+                speakResponse(`I'm going to ${action.type.replace(/_/g, ' ')} for ${action.target}`);
+              }
+            }
+            
+            // Check queue status
+            if (data.queueStatus && data.queueStatus.queue_length > 0) {
+              console.log(`📋 Action Queue: ${data.queueStatus.queue_length} actions pending`);
+            }
+          }
+        },
+        // Action executed callback
+        (result) => {
+          console.log('Action executed:', result);
+          if (!result.success) {
+            speakResponse(`I encountered an issue: ${result.message}`);
+          }
+        }
+      );
+    }
+    
     return () => {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.close();
@@ -47,8 +340,11 @@ const JarvisVoice = () => {
       if (recognitionRef.current) {
         recognitionRef.current.stop();
       }
+      if (visionConnectionRef.current) {
+        visionConnectionRef.current.disconnect();
+      }
     };
-  }, []);
+  }, [autonomousMode]);
 
   const checkJarvisStatus = async () => {
     try {
@@ -344,6 +640,35 @@ const JarvisVoice = () => {
     } catch (err) {
       console.error('Failed to activate JARVIS:', err);
       setError('Failed to activate JARVIS');
+    }
+  };
+  
+  const toggleAutonomousMode = async () => {
+    const newMode = !autonomousMode;
+    setAutonomousMode(newMode);
+    
+    if (newMode) {
+      // Enable autonomous mode
+      speakResponse("Autonomous mode activated. I'm now monitoring your workspace.");
+      
+      // Connect vision system
+      if (visionConnectionRef.current) {
+        await visionConnectionRef.current.connect();
+      }
+      
+      // Enable continuous listening
+      enableContinuousListening();
+    } else {
+      // Disable autonomous mode
+      speakResponse("Autonomous mode deactivated. Standing by for manual commands.");
+      
+      // Disconnect vision system
+      if (visionConnectionRef.current) {
+        visionConnectionRef.current.disconnect();
+      }
+      setVisionConnected(false);
+      
+      // Keep listening if user wants
     }
   };
   
@@ -648,7 +973,30 @@ const JarvisVoice = () => {
             <span className="pulse-dot active"></span> AWAITING COMMAND
           </span>
         )}
+        {autonomousMode && (
+          <span className="autonomous-mode">
+            <span className="vision-indicator"></span> AUTONOMOUS MODE
+          </span>
+        )}
       </div>
+      
+      {/* Vision Status */}
+      {autonomousMode && (
+        <div className="vision-status-bar">
+          <div className={`vision-connection ${visionConnected ? 'connected' : 'disconnected'}`}>
+            <span className="vision-icon">👁️</span>
+            <span>Vision: {visionConnected ? 'Connected' : 'Connecting...'}</span>
+          </div>
+          {workspaceData && workspaceData.workspace && (
+            <div className="workspace-summary">
+              <span>{workspaceData.workspace.window_count} windows</span>
+              {workspaceData.workspace.focused_app && (
+                <span> • Focused: {workspaceData.workspace.focused_app}</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       
       <div className="voice-controls">
         {jarvisStatus === 'offline' && (
@@ -658,12 +1006,21 @@ const JarvisVoice = () => {
         )}
         
         {jarvisStatus === 'online' && (
-          <button 
-            onClick={continuousListening ? disableContinuousListening : enableContinuousListening}
-            className={`jarvis-button ${continuousListening ? 'continuous-active' : 'start'}`}
-          >
-            {continuousListening ? 'Stop Listening' : 'Start Listening'}
-          </button>
+          <>
+            <button 
+              onClick={continuousListening ? disableContinuousListening : enableContinuousListening}
+              className={`jarvis-button ${continuousListening ? 'continuous-active' : 'start'}`}
+            >
+              {continuousListening ? 'Stop Listening' : 'Start Listening'}
+            </button>
+            
+            <button
+              onClick={toggleAutonomousMode}
+              className={`jarvis-button ${autonomousMode ? 'autonomous-active' : 'autonomous'}`}
+            >
+              {autonomousMode ? '🤖 Autonomous ON' : '👤 Manual Mode'}
+            </button>
+          </>
         )}
       </div>
       

@@ -1,0 +1,237 @@
+.workspace-monitor {
+    background: rgba(10, 10, 10, 0.9);
+    border: 1px solid rgba(255, 215, 0, 0.3);
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px 0;
+    font-family: 'Orbitron', monospace;
+    color: #fff;
+    backdrop-filter: blur(10px);
+}
+
+.monitor-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 215, 0, 0.2);
+}
+
+.monitor-header h3 {
+    margin: 0;
+    color: #ffd700;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.vision-icon {
+    font-size: 24px;
+}
+
+.monitor-status {
+    font-size: 14px;
+}
+
+.status-active {
+    color: #4ade80;
+    animation: pulse 2s infinite;
+}
+
+.status-inactive {
+    color: #888;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.monitor-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.stat-item {
+    text-align: center;
+    padding: 12px;
+    background: rgba(255, 215, 0, 0.1);
+    border-radius: 6px;
+    border: 1px solid rgba(255, 215, 0, 0.2);
+}
+
+.stat-value {
+    display: block;
+    font-size: 28px;
+    font-weight: bold;
+    color: #ffd700;
+}
+
+.stat-label {
+    display: block;
+    font-size: 12px;
+    color: #888;
+    text-transform: uppercase;
+    margin-top: 4px;
+}
+
+.monitor-section {
+    margin-bottom: 20px;
+}
+
+.monitor-section h4 {
+    margin: 0 0 12px 0;
+    color: #ffd700;
+    font-size: 16px;
+}
+
+.notification-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.notification-item {
+    background: rgba(255, 68, 68, 0.1);
+    border: 1px solid rgba(255, 68, 68, 0.3);
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 14px;
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.window-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.window-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: rgba(255, 215, 0, 0.05);
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.window-app {
+    font-weight: bold;
+    color: #ffd700;
+    min-width: 80px;
+}
+
+.window-title {
+    flex: 1;
+    color: #aaa;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.window-focused {
+    color: #4ade80;
+    font-size: 10px;
+}
+
+.action-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.action-item {
+    background: rgba(66, 153, 225, 0.1);
+    border: 1px solid rgba(66, 153, 225, 0.3);
+    border-radius: 6px;
+    padding: 12px;
+}
+
+.action-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.action-type {
+    font-weight: bold;
+    color: #4299e1;
+    text-transform: uppercase;
+    font-size: 12px;
+}
+
+.action-priority {
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.action-target {
+    font-size: 13px;
+    color: #aaa;
+    margin-bottom: 4px;
+}
+
+.action-reasoning {
+    font-size: 13px;
+    color: #ccc;
+    margin-bottom: 8px;
+    font-style: italic;
+}
+
+.confidence-bar {
+    position: relative;
+    height: 20px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.confidence-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    background: linear-gradient(90deg, #4299e1, #667eea);
+    transition: width 0.3s ease;
+}
+
+.confidence-text {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 11px;
+    font-weight: bold;
+    color: #fff;
+    text-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+}
+
+.monitor-empty {
+    text-align: center;
+    padding: 40px;
+    color: #666;
+}
+
+.monitor-hint {
+    font-size: 12px;
+    color: #888;
+    margin-top: 8px;
+}

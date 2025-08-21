@@ -2,18 +2,28 @@
 Vision API endpoints for JARVIS screen comprehension
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, Set
 import os
 from datetime import datetime
+import asyncio
+import logging
 
 import sys
-import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from vision.screen_vision import ScreenVisionSystem, JARVISVisionIntegration
 from vision.claude_vision_analyzer import ClaudeVisionAnalyzer
+from vision.workspace_analyzer import WorkspaceAnalyzer
+from vision.window_detector import WindowDetector
+from vision.enhanced_monitoring import EnhancedWorkspaceMonitor
+from autonomy.autonomous_behaviors import AutonomousBehaviorManager
+from autonomy.action_queue import ActionQueueManager
+from autonomy.action_executor import ExecutionStatus
+from autonomy.vision_decision_pipeline import VisionDecisionPipeline
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/vision", tags=["vision"])
@@ -28,6 +38,9 @@ if anthropic_key:
     claude_analyzer = ClaudeVisionAnalyzer(anthropic_key)
 
 jarvis_vision = JARVISVisionIntegration(vision_system)
+
+# Initialize vision decision pipeline
+vision_pipeline = VisionDecisionPipeline()
 
 
 class VisionCommand(BaseModel):
@@ -59,14 +72,235 @@ monitoring_config = {
     "pending_updates": []
 }
 
+# WebSocket connection manager
+class VisionWebSocketManager:
+    """Manages WebSocket connections for real-time vision updates"""
+    
+    def __init__(self):
+        self.active_connections: Set[WebSocket] = set()
+        self.enhanced_monitor = EnhancedWorkspaceMonitor()
+        self.workspace_analyzer = WorkspaceAnalyzer()
+        self.window_detector = WindowDetector()
+        self.behavior_manager = AutonomousBehaviorManager()
+        self.action_queue = ActionQueueManager()
+        self.monitoring_active = False
+        self.monitoring_task = None
+        self.update_interval = 2.0  # 2-second updates
+        
+        # Set up action queue callbacks
+        self.action_queue.add_execution_callback(self._handle_action_execution)
+        
+    async def connect(self, websocket: WebSocket):
+        """Accept new WebSocket connection"""
+        await websocket.accept()
+        self.active_connections.add(websocket)
+        logger.info(f"Vision WebSocket connected. Total connections: {len(self.active_connections)}")
+        
+        # Send initial state
+        await self.send_initial_state(websocket)
+        
+        # Start monitoring if not already active
+        if not self.monitoring_active and self.active_connections:
+            await self.start_monitoring()
+            
+        # Start vision pipeline if not running
+        if not vision_pipeline.is_running:
+            await vision_pipeline.start_pipeline()
+            
+    def disconnect(self, websocket: WebSocket):
+        """Remove WebSocket connection"""
+        self.active_connections.discard(websocket)
+        logger.info(f"Vision WebSocket disconnected. Total connections: {len(self.active_connections)}")
+        
+        # Stop monitoring if no connections
+        if not self.active_connections and self.monitoring_active:
+            self.stop_monitoring()
+            
+        # Stop vision pipeline if no connections
+        if not self.active_connections and vision_pipeline.is_running:
+            asyncio.create_task(vision_pipeline.stop_pipeline())
+            
+    async def send_initial_state(self, websocket: WebSocket):
+        """Send initial workspace state to new connection"""
+        try:
+            # Get current workspace state
+            windows = self.window_detector.get_all_windows()
+            workspace_analysis = await self.workspace_analyzer.analyze_workspace()
+            
+            initial_state = {
+                "type": "initial_state",
+                "timestamp": datetime.now().isoformat(),
+                "workspace": {
+                    "window_count": len(windows),
+                    "focused_app": next((w.app_name for w in windows if w.is_focused), None),
+                    "notifications": workspace_analysis.important_notifications,
+                    "context": workspace_analysis.workspace_context,
+                    "confidence": workspace_analysis.confidence
+                },
+                "monitoring_active": self.monitoring_active,
+                "update_interval": self.update_interval
+            }
+            
+            await websocket.send_json(initial_state)
+            
+        except Exception as e:
+            logger.error(f"Error sending initial state: {e}")
+            
+    async def broadcast(self, message: Dict[str, Any]):
+        """Broadcast message to all connected clients"""
+        disconnected = set()
+        
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception as e:
+                logger.error(f"Error broadcasting to client: {e}")
+                disconnected.add(connection)
+                
+        # Clean up disconnected clients
+        for conn in disconnected:
+            self.disconnect(conn)
+            
+    async def start_monitoring(self):
+        """Start continuous workspace monitoring"""
+        if self.monitoring_active:
+            return
+            
+        self.monitoring_active = True
+        self.monitoring_task = asyncio.create_task(self._monitoring_loop())
+        logger.info("Started workspace monitoring")
+        
+    def stop_monitoring(self):
+        """Stop workspace monitoring"""
+        self.monitoring_active = False
+        if self.monitoring_task:
+            self.monitoring_task.cancel()
+        logger.info("Stopped workspace monitoring")
+        
+    async def _monitoring_loop(self):
+        """Main monitoring loop"""
+        while self.monitoring_active and self.active_connections:
+            try:
+                # Get enhanced workspace state
+                enhanced_state = await self.enhanced_monitor.get_complete_workspace_state()
+                
+                # Extract components
+                windows = enhanced_state['windows']
+                workspace_analysis = enhanced_state['analysis']
+                notifications = enhanced_state['notifications']
+                ui_elements = enhanced_state['ui_elements']
+                
+                # Build workspace state for behavior manager
+                workspace_state = {
+                    "windows": windows,
+                    "analysis": workspace_analysis,
+                    "window_count": len(windows),
+                    "timestamp": datetime.now(),
+                    "notifications": notifications,
+                    "ui_elements": ui_elements
+                }
+                
+                # Get autonomous actions
+                autonomous_actions = []
+                if workspace_analysis.confidence > 0.5:
+                    autonomous_actions = await self.behavior_manager.process_workspace_state(
+                        workspace_state,
+                        windows
+                    )
+                    
+                    # Add high-confidence actions to queue
+                    if autonomous_actions:
+                        high_confidence = [a for a in autonomous_actions if a.confidence > 0.7]
+                        await self.action_queue.add_actions(high_confidence)
+                
+                # Prepare enhanced update message
+                update_message = {
+                    "type": "workspace_update",
+                    "timestamp": datetime.now().isoformat(),
+                    "workspace": {
+                        "window_count": len(windows),
+                        "windows": [
+                            {
+                                "id": w.window_id,
+                                "app": w.app_name,
+                                "title": w.window_title,
+                                "focused": w.is_focused,
+                                "visible": w.is_visible
+                            } for w in windows[:10]  # Limit to 10 windows
+                        ],
+                        "focused_task": workspace_analysis.focused_task,
+                        "context": workspace_analysis.workspace_context,
+                        "notifications": workspace_analysis.important_notifications,
+                        "suggestions": workspace_analysis.suggestions,
+                        "notification_details": {
+                            "badges": len(notifications.get('badges', [])),
+                            "messages": len(notifications.get('messages', [])),
+                            "meetings": len(notifications.get('meetings', [])),
+                            "alerts": len(notifications.get('alerts', []))
+                        },
+                        "actionable_items": len(ui_elements)
+                    },
+                    "autonomous_actions": [
+                        {
+                            "type": action.action_type,
+                            "target": action.target,
+                            "priority": action.priority.name,
+                            "confidence": action.confidence,
+                            "reasoning": action.reasoning,
+                            "requires_permission": action.requires_permission
+                        } for action in autonomous_actions[:5]  # Limit to 5 actions
+                    ],
+                    "enhanced_data": {
+                        "state_changes": enhanced_state['state_changes'][:3],  # Recent changes
+                        "ui_elements": ui_elements[:3],  # Top UI elements
+                        "clipboard_active": enhanced_state['clipboard'] is not None
+                    },
+                    "queue_status": self.action_queue.get_queue_state()
+                }
+                
+                # Broadcast update
+                await self.broadcast(update_message)
+                
+                # Wait before next update
+                await asyncio.sleep(self.update_interval)
+                
+            except Exception as e:
+                logger.error(f"Error in monitoring loop: {e}")
+                await asyncio.sleep(self.update_interval)
+                
+        logger.info("Monitoring loop ended")
+        
+    async def _handle_action_execution(self, result):
+        """Handle action execution results"""
+        # Broadcast execution result to all clients
+        await self.broadcast({
+            "type": "action_executed",
+            "timestamp": datetime.now().isoformat(),
+            "action": {
+                "type": result.action.action_type,
+                "target": result.action.target,
+                "status": result.status.value,
+                "execution_time": result.execution_time
+            },
+            "success": result.status == ExecutionStatus.SUCCESS,
+            "error": result.error
+        })
+
+# Initialize WebSocket manager
+ws_manager = VisionWebSocketManager()
+
 
 @router.get("/status")
 async def get_vision_status() -> Dict[str, Any]:
     """Get current vision system status"""
+    pipeline_status = vision_pipeline.get_pipeline_status()
+    
     return {
         "vision_enabled": True,
         "claude_vision_available": claude_analyzer is not None,
         "monitoring_active": monitoring_config["active"],
+        "pipeline_active": pipeline_status["is_running"],
+        "pipeline_cycles": pipeline_status["cycle_count"],
         "last_scan": vision_system.last_scan_time.isoformat() if vision_system.last_scan_time else None,
         "detected_updates": len(vision_system.detected_updates),
         "capabilities": [
@@ -75,8 +309,10 @@ async def get_vision_status() -> Dict[str, Any]:
             "update_detection",
             "application_detection",
             "ui_element_detection",
+            "autonomous_decision_pipeline",
             "claude_vision_analysis" if claude_analyzer else None
-        ]
+        ],
+        "pipeline_performance": pipeline_status.get("performance", {})
     }
 
 
@@ -314,6 +550,143 @@ async def get_vision_capabilities() -> Dict[str, List[str]]:
             "Application identification",
             "UI element detection",
             "Notification badge detection",
+            "Autonomous decision pipeline",
             "Claude vision integration" if claude_analyzer else "Claude vision (requires API key)"
         ]
     }
+
+
+@router.post("/pipeline/control")
+async def control_vision_pipeline(action: str) -> Dict[str, Any]:
+    """Control the vision decision pipeline"""
+    try:
+        if action == "start":
+            if not vision_pipeline.is_running:
+                await vision_pipeline.start_pipeline()
+                return {
+                    "success": True,
+                    "message": "Vision pipeline started",
+                    "status": vision_pipeline.get_pipeline_status()
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "Pipeline already running",
+                    "status": vision_pipeline.get_pipeline_status()
+                }
+                
+        elif action == "stop":
+            if vision_pipeline.is_running:
+                await vision_pipeline.stop_pipeline()
+                return {
+                    "success": True,
+                    "message": "Vision pipeline stopped",
+                    "status": vision_pipeline.get_pipeline_status()
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "Pipeline not running",
+                    "status": vision_pipeline.get_pipeline_status()
+                }
+                
+        else:
+            return {
+                "success": False,
+                "message": f"Unknown action: {action}",
+                "valid_actions": ["start", "stop"]
+            }
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/pipeline/status")
+async def get_pipeline_status() -> Dict[str, Any]:
+    """Get detailed vision pipeline status"""
+    return vision_pipeline.get_pipeline_status()
+
+
+@router.get("/monitoring/report")
+async def get_monitoring_report() -> Dict[str, Any]:
+    """Get comprehensive monitoring report"""
+    status = vision_pipeline.get_pipeline_status()
+    if 'monitoring_report' in status:
+        return status['monitoring_report']
+    return {
+        "error": "Monitoring data not available",
+        "message": "Pipeline may not be running"
+    }
+
+
+@router.get("/monitoring/health")
+async def get_system_health() -> Dict[str, Any]:
+    """Get system health status"""
+    status = vision_pipeline.get_pipeline_status()
+    
+    # Extract health information
+    system_state = status.get('system_state', {})
+    monitoring = status.get('monitoring_report', {})
+    
+    return {
+        "healthy": system_state.get('healthy_components', 0) > 0,
+        "system_health": monitoring.get('current_values', {}).get('system_health', 0),
+        "component_health": monitoring.get('component_health', {}),
+        "uptime": monitoring.get('uptime', {}),
+        "alerts": monitoring.get('alerts', [])
+    }
+
+
+@router.websocket("/ws/vision")
+async def vision_websocket_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for real-time vision updates"""
+    await ws_manager.connect(websocket)
+    
+    try:
+        while True:
+            # Receive messages from client
+            data = await websocket.receive_json()
+            
+            # Handle different message types
+            if data.get("type") == "set_interval":
+                # Update monitoring interval
+                new_interval = data.get("interval", 2.0)
+                ws_manager.update_interval = max(0.5, min(10.0, new_interval))  # Clamp between 0.5-10s
+                await websocket.send_json({
+                    "type": "config_updated",
+                    "update_interval": ws_manager.update_interval
+                })
+                
+            elif data.get("type") == "request_analysis":
+                # Immediate workspace analysis
+                windows = ws_manager.window_detector.get_all_windows()
+                analysis = await ws_manager.workspace_analyzer.analyze_workspace()
+                
+                await websocket.send_json({
+                    "type": "workspace_analysis",
+                    "timestamp": datetime.now().isoformat(),
+                    "analysis": {
+                        "focused_task": analysis.focused_task,
+                        "context": analysis.workspace_context,
+                        "notifications": analysis.important_notifications,
+                        "suggestions": analysis.suggestions,
+                        "confidence": analysis.confidence
+                    }
+                })
+                
+            elif data.get("type") == "execute_action":
+                # Execute autonomous action (with permission check)
+                action_data = data.get("action", {})
+                # Here you would integrate with action executor
+                await websocket.send_json({
+                    "type": "action_result",
+                    "success": True,
+                    "action": action_data,
+                    "message": "Action execution would happen here"
+                })
+                
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        ws_manager.disconnect(websocket)

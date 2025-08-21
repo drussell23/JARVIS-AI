@@ -73,21 +73,21 @@ class AsyncSystemManager:
     def print_header(self):
         """Print system header"""
         print(f"\n{Colors.HEADER}{'='*60}")
-        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v3.8.1 - Enhanced Behavioral Intelligence 🧠{Colors.ENDC}")
-        print(f"{Colors.CYAN}🎯 Voice-activated macOS control powered by Claude{Colors.ENDC}")
-        print(f"{Colors.GREEN}⚡ 100% PRD Complete with 87.5% Test Coverage{Colors.ENDC}")
+        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v4.0 - Full Autonomy Edition 🚀{Colors.ENDC}")
+        print(f"{Colors.CYAN}🎯 Fully Autonomous AI Agent with Real-time Vision{Colors.ENDC}")
+        print(f"{Colors.GREEN}⚡ <2s Latency • Proactive Actions • Smart Decisions{Colors.ENDC}")
         print(f"{Colors.YELLOW}🖥️  World's First Autonomous Workspace Intelligence Agent{Colors.ENDC}")
-        print(f"{Colors.BLUE}🧠 ML-Enhanced: Pattern recognition & predictions{Colors.ENDC}")
-        print(f"{Colors.HEADER}🛡️  Privacy controls with sensitive content detection{Colors.ENDC}")
-        print(f"{Colors.CYAN}🔄 Workflow learning & automation{Colors.ENDC}")
-        print(f"{Colors.GREEN}✅ NEW: Behavioral Intelligence - 4 specialized handlers!{Colors.ENDC}")
-        print(f"{Colors.GREEN}✅ NEW: Smart Message Classification - Urgent vs Routine!{Colors.ENDC}")
-        print(f"{Colors.BOLD}🔧 v3.8.1: Meeting prep, security alerts, workspace organization!{Colors.ENDC}")
-        print(f"{Colors.CYAN}🎤 Smart microphone & extended voice timeouts{Colors.ENDC}")
-        print(f"{Colors.BOLD}🧠 INTELLIGENCE: <3s response time, <$0.05 per query!{Colors.ENDC}")
-        print(f"{Colors.GREEN}✅ v3.8.1: Handles 200+ windows efficiently!{Colors.ENDC}")
-        print(f"{Colors.CYAN}📅 'Enable autonomous mode' - JARVIS acts independently{Colors.ENDC}")
-        print(f"{Colors.YELLOW}🔒 Priority system - Critical security always first!{Colors.ENDC}")
+        print(f"{Colors.BLUE}👁️  Vision System: Real-time screen monitoring & OCR{Colors.ENDC}")
+        print(f"{Colors.HEADER}🛡️  Enterprise-grade error recovery & monitoring{Colors.ENDC}")
+        print(f"{Colors.CYAN}🔄 State management with health tracking{Colors.ENDC}")
+        print(f"{Colors.GREEN}✅ NEW: Full Vision Pipeline - Screen → OCR → Decisions!{Colors.ENDC}")
+        print(f"{Colors.GREEN}✅ NEW: Priority Action Queue with Safety Controls!{Colors.ENDC}")
+        print(f"{Colors.BOLD}🔧 v4.0: Complete autonomous operation capability!{Colors.ENDC}")
+        print(f"{Colors.CYAN}🎤 Voice + Vision = True AI Assistant{Colors.ENDC}")
+        print(f"{Colors.BOLD}🧠 AUTONOMOUS: Monitors, decides, and acts independently!{Colors.ENDC}")
+        print(f"{Colors.GREEN}✅ Real-time WebSocket updates every 2 seconds!{Colors.ENDC}")
+        print(f"{Colors.CYAN}📅 'Enable autonomous mode' - JARVIS monitors everything{Colors.ENDC}")
+        print(f"{Colors.YELLOW}🔒 User approval workflow for sensitive actions!{Colors.ENDC}")
         if self.is_m1_mac:
             print(f"{Colors.GREEN}✨ Optimized for Apple Silicon with native AppleScript{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}\n")
@@ -285,17 +285,17 @@ class AsyncSystemManager:
                     
                     # Check if Claude API is available for enhanced vision
                     if os.getenv("ANTHROPIC_API_KEY"):
-                        print(f"{Colors.BOLD}✨ Intelligent Workspace Analysis Active!{Colors.ENDC}")
-                        print(f"{Colors.GREEN}   • Window Relationships: Detects IDE + Terminal + Docs connections{Colors.ENDC}")
-                        print(f"{Colors.GREEN}   • Smart Routing: Only captures windows relevant to your query{Colors.ENDC}")
-                        print(f"{Colors.GREEN}   • Project Groups: Understands which windows work together{Colors.ENDC}")
-                        print(f"{Colors.CYAN}   • Try: 'Any messages?' - Routes to communication apps only{Colors.ENDC}")
-                        print(f"{Colors.CYAN}   • Try: 'Show errors' - Scans terminals and error logs{Colors.ENDC}")
-                        print(f"\n{Colors.BOLD}🤖 Autonomous Agent System Ready!{Colors.ENDC}")
-                        print(f"{Colors.GREEN}   • Decision Engine: Makes intelligent choices without hardcoding{Colors.ENDC}")
-                        print(f"{Colors.GREEN}   • Permission Manager: Learns your preferences over time{Colors.ENDC}")
-                        print(f"{Colors.GREEN}   • Context Engine: Understands when to act or wait{Colors.ENDC}")
-                        print(f"{Colors.GREEN}   • Action Executor: Safely executes with rollback capability{Colors.ENDC}")
+                        print(f"{Colors.BOLD}✨ Full Autonomy System Active!{Colors.ENDC}")
+                        print(f"{Colors.GREEN}   • Vision Pipeline: Continuous screen monitoring (2s updates){Colors.ENDC}")
+                        print(f"{Colors.GREEN}   • OCR Processing: Extracts and classifies all text{Colors.ENDC}")
+                        print(f"{Colors.GREEN}   • Window Analysis: Understands app states and content{Colors.ENDC}")
+                        print(f"{Colors.CYAN}   • Decision Engine: Context-aware autonomous decisions{Colors.ENDC}")
+                        print(f"{Colors.CYAN}   • Action Queue: Priority-based execution with safety{Colors.ENDC}")
+                        print(f"\n{Colors.BOLD}🤖 Autonomous Features Ready!{Colors.ENDC}")
+                        print(f"{Colors.GREEN}   • Real-time Monitoring: Detects notifications instantly{Colors.ENDC}")
+                        print(f"{Colors.GREEN}   • Smart Actions: Handles urgent items automatically{Colors.ENDC}")
+                        print(f"{Colors.GREEN}   • Error Recovery: Self-healing with retry strategies{Colors.ENDC}")
+                        print(f"{Colors.GREEN}   • Health Monitoring: Tracks system performance{Colors.ENDC}")
             except ImportError:
                 print(f"{Colors.WARNING}⚠️  Vision dependencies not installed{Colors.ENDC}")
                 print(f"   Install: pip install opencv-python pytesseract Pillow pyobjc-framework-Quartz")
@@ -312,7 +312,9 @@ class AsyncSystemManager:
             self.backend_dir / "models" / "voice_ml",
             self.backend_dir / "system_control",
             self.backend_dir / "data",  # For autonomous permissions
-            self.backend_dir / "autonomy"  # Autonomous system modules
+            self.backend_dir / "autonomy",  # Autonomous system modules
+            self.backend_dir / "vision",  # Vision system modules
+            self.backend_dir / "logs"  # System logs
         ]
         
         for directory in directories:
@@ -610,17 +612,17 @@ class AsyncSystemManager:
         print(f"  • Workflows: 'Start my morning routine', 'Development setup'")
         print(f"  • Mode: 'Switch to system control mode' for better accuracy")
         
-        print(f"\n{Colors.BOLD}🤖 Autonomous Agent Commands (v3.8.1 - Enhanced!):{Colors.ENDC}")
-        print(f"  • {Colors.GREEN}'Enable autonomous mode' - JARVIS acts independently{Colors.ENDC}")
-        print(f"  • {Colors.GREEN}'What's your autonomous status?' - Check current state{Colors.ENDC}")
-        print(f"  • {Colors.CYAN}'Show permission statistics' - See learning progress{Colors.ENDC}")
-        print(f"  • {Colors.CYAN}'Rollback last action' - Undo autonomous actions{Colors.ENDC}")
-        print(f"  • {Colors.YELLOW}'Disable autonomous mode' - Return to manual control{Colors.ENDC}")
-        print(f"\n{Colors.BOLD}🧠 Behavioral Intelligence (NEW!):{Colors.ENDC}")
-        print(f"  • {Colors.GREEN}Message Handler: Auto-classifies urgent, meetings, security{Colors.ENDC}")
-        print(f"  • {Colors.GREEN}Meeting Prep: Hides passwords, mutes distractions{Colors.ENDC}")
-        print(f"  • {Colors.CYAN}Workspace Organizer: Groups windows, fixes overlaps{Colors.ENDC}")
-        print(f"  • {Colors.YELLOW}Security Handler: Protects during suspicious activity{Colors.ENDC}")
+        print(f"\n{Colors.BOLD}🤖 Full Autonomy Commands (v4.0 - Production Ready!):{Colors.ENDC}")
+        print(f"  • {Colors.GREEN}'Enable autonomous mode' - Start full autonomous operation{Colors.ENDC}")
+        print(f"  • {Colors.GREEN}'Show autonomous actions' - View pending/executed actions{Colors.ENDC}")
+        print(f"  • {Colors.CYAN}'Check system health' - View component status & metrics{Colors.ENDC}")
+        print(f"  • {Colors.CYAN}'Show monitoring report' - Detailed performance data{Colors.ENDC}")
+        print(f"  • {Colors.YELLOW}'Pause autonomous mode' - Temporarily stop actions{Colors.ENDC}")
+        print(f"\n{Colors.BOLD}🧠 Autonomous Capabilities:{Colors.ENDC}")
+        print(f"  • {Colors.GREEN}Notification Detection: Monitors all apps for alerts{Colors.ENDC}")
+        print(f"  • {Colors.GREEN}Action Execution: Handles routine tasks automatically{Colors.ENDC}")
+        print(f"  • {Colors.CYAN}Smart Prioritization: Critical items first{Colors.ENDC}")
+        print(f"  • {Colors.YELLOW}User Approval: Confirms sensitive actions{Colors.ENDC}")
         
         print(f"\n{Colors.BOLD}🧠 Intelligent Workspace Commands (v3.8.0 - Enhanced!):{Colors.ENDC}")
         print(f"  • {Colors.GREEN}Smart Routing: 'Any messages?' - ONLY checks Discord, Slack, Mail{Colors.ENDC}")
@@ -647,15 +649,15 @@ class AsyncSystemManager:
             print(f"  🔊 Backend speech: {Colors.GREEN}Enabled{Colors.ENDC} (macOS native)")
             print(f"  🎵 Browser speech: Fallback mode")
             
-        print(f"\n{Colors.GREEN}✨ AI Agent Features (v3.8.1):{Colors.ENDC}")
-        print(f"  • 🤖 Autonomous decision-making engine {Colors.GREEN}[ENHANCED]{Colors.ENDC}")
-        print(f"  • 🧠 Behavioral intelligence system {Colors.GREEN}[NEW]{Colors.ENDC}")
-        print(f"  • 📧 Smart message classification {Colors.GREEN}[NEW]{Colors.ENDC}")
-        print(f"  • 🗓️ Intelligent meeting preparation {Colors.GREEN}[NEW]{Colors.ENDC}")
-        print(f"  • 🔒 Advanced security handling {Colors.GREEN}[NEW]{Colors.ENDC}")
-        print(f"  • 📊 Workspace organization {Colors.GREEN}[NEW]{Colors.ENDC}")
-        print(f"  • ⏰ Context-aware action timing")
-        print(f"  • 🔄 Safe action execution with rollback")
+        print(f"\n{Colors.GREEN}✨ Full Autonomy Features (v4.0):{Colors.ENDC}")
+        print(f"  • 👁️ Real-time Vision System {Colors.GREEN}[PRODUCTION]{Colors.ENDC}")
+        print(f"  • 🧠 OCR Text Extraction {Colors.GREEN}[PRODUCTION]{Colors.ENDC}")
+        print(f"  • 📊 Window Analysis Engine {Colors.GREEN}[PRODUCTION]{Colors.ENDC}")
+        print(f"  • 🤖 Autonomous Decision Pipeline {Colors.GREEN}[PRODUCTION]{Colors.ENDC}")
+        print(f"  • 📋 Priority Action Queue {Colors.GREEN}[PRODUCTION]{Colors.ENDC}")
+        print(f"  • 🛡️ Error Recovery System {Colors.GREEN}[PRODUCTION]{Colors.ENDC}")
+        print(f"  • 📈 Performance Monitoring {Colors.GREEN}[PRODUCTION]{Colors.ENDC}")
+        print(f"  • 🔄 State Management {Colors.GREEN}[PRODUCTION]{Colors.ENDC}")
         print(f"  • 🖥️  Voice-activated macOS control {Colors.GREEN}[WORKING]{Colors.ENDC}")
         print(f"  • 🎯 Natural language command interpretation {Colors.GREEN}[FIXED]{Colors.ENDC}") 
         print(f"  • 🛡️  Built-in safety features & confirmations")
@@ -680,9 +682,9 @@ class AsyncSystemManager:
         print(f"  • 🎯 Smart Query Routing - 'Any messages?' checks ONLY communication apps")
         print(f"  • 🔍 Window Relationships - Detects IDE + Terminal + Documentation connections")
         print(f"  • ⚡ Efficient Capture - Only 2-5 relevant windows instead of all 50+")
-        print(f"  • ✅ v3.7.1: Intelligent Vision - Works with ANY app, even ones JARVIS has never seen!")
-        print(f"  • ✅ v3.8.0: Autonomous Agent - Proactively handles notifications, meetings, and workspace!")
-        print(f"  • ✅ v3.8.1: Behavioral Intelligence - 4 specialized handlers with priority system!")
+        print(f"  • ✅ v4.0: Full Autonomy - Complete vision → decision → action pipeline!")
+        print(f"  • ✅ Real-time Monitoring - Updates every 2 seconds via WebSocket!")
+        print(f"  • ✅ Production Ready - Enterprise-grade reliability & monitoring!")
         
         print(f"\n{Colors.WARNING}Press Ctrl+C to stop all services{Colors.ENDC}")
         

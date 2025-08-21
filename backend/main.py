@@ -597,6 +597,14 @@ if JARVIS_VOICE_AVAILABLE:
     except Exception as e:
         logger.warning(f"Failed to initialize JARVIS Voice API: {e}")
 
+# Include Vision WebSocket API for real-time monitoring
+try:
+    from api import vision_websocket
+    app.include_router(vision_websocket.router, prefix="/vision")
+    logger.info("Vision WebSocket API routes added - Real-time monitoring enabled!")
+except Exception as e:
+    logger.warning(f"Failed to initialize Vision WebSocket API: {e}")
+
 
 # Update root endpoint
 @app.get("/")
