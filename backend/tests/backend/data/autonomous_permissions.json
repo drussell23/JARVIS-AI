@@ -1,0 +1,702 @@
+{
+  "maintenance:arrange_windows:workspace": {
+    "approved_count": 50,
+    "denied_count": 50,
+    "last_decision": false,
+    "last_decision_time": "2025-08-21T11:23:23.164615",
+    "context_history": [
+      {
+        "timestamp": "2025-08-21T11:23:23.082510",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.084177",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.087024",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.088760",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.090367",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.092100",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.093718",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.095791",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.097450",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.099055",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.100621",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.102257",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.103880",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.105486",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.107055",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.108619",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.110323",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.112000",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.113596",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.115354",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.116939",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.118524",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.120071",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.121615",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.123684",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.125684",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.128600",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.130481",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.132399",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.134074",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.135762",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.137396",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.138975",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.140787",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.142417",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.143993",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.145561",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.147108",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.148665",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.150207",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.151857",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.153483",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.155067",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.156634",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.158000",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.159342",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.160677",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.161992",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.163303",
+        "approved": true,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      },
+      {
+        "timestamp": "2025-08-21T11:23:23.164616",
+        "approved": false,
+        "context": {
+          "action_type": "arrange_windows",
+          "priority": "LOW",
+          "confidence": 0.8,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Detected overlapping windows - suggesting tiled layout",
+          "user_reason": null
+        }
+      }
+    ]
+  },
+  "security:minimize_window:1Password": {
+    "approved_count": 1,
+    "denied_count": 0,
+    "last_decision": true,
+    "last_decision_time": "2025-08-21T11:23:23.200277",
+    "context_history": [
+      {
+        "timestamp": "2025-08-21T11:23:23.200278",
+        "approved": true,
+        "context": {
+          "action_type": "minimize_window",
+          "priority": "HIGH",
+          "confidence": 0.95,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Hiding sensitive app before meeting: 1Password",
+          "user_reason": null
+        }
+      }
+    ]
+  },
+  "communication:highlight_urgent_message:Mail": {
+    "approved_count": 1,
+    "denied_count": 0,
+    "last_decision": true,
+    "last_decision_time": "2025-08-21T11:23:23.201875",
+    "context_history": [
+      {
+        "timestamp": "2025-08-21T11:23:23.201876",
+        "approved": true,
+        "context": {
+          "action_type": "highlight_urgent_message",
+          "priority": "HIGH",
+          "confidence": 0.85,
+          "time_of_day": 11,
+          "day_of_week": 3,
+          "reasoning": "Urgent message requiring attention",
+          "user_reason": null
+        }
+      }
+    ]
+  }
+}
