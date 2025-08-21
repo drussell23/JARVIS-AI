@@ -73,7 +73,7 @@ class AsyncSystemManager:
     def print_header(self):
         """Print system header"""
         print(f"\n{Colors.HEADER}{'='*60}")
-        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v3.7.1 - Enhanced Intelligence Edition 🏆{Colors.ENDC}")
+        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v3.7.1 - Intelligent Vision Edition 🏆{Colors.ENDC}")
         print(f"{Colors.CYAN}🎯 Voice-activated macOS control powered by Claude{Colors.ENDC}")
         print(f"{Colors.GREEN}⚡ 100% PRD Complete with 87.5% Test Coverage{Colors.ENDC}")
         print(f"{Colors.YELLOW}🖥️  World's First Workspace Intelligence Agent{Colors.ENDC}")
@@ -82,10 +82,10 @@ class AsyncSystemManager:
         print(f"{Colors.CYAN}🔄 Workflow learning & automation{Colors.ENDC}")
         print(f"{Colors.GREEN}✅ NEW: Meeting Assistant - Auto-hides sensitive windows!{Colors.ENDC}")
         print(f"{Colors.GREEN}✅ NEW: Privacy Modes - normal, meeting, focused, private!{Colors.ENDC}")
-        print(f"{Colors.BOLD}🔧 v3.7.1 FIXES: Message detection & robust window capture!{Colors.ENDC}")
+        print(f"{Colors.BOLD}🔧 v3.7.1: Dynamic app detection - sees ANY app without hardcoding!{Colors.ENDC}")
         print(f"{Colors.CYAN}🎤 Smart microphone & extended voice timeouts{Colors.ENDC}")
         print(f"{Colors.BOLD}🧠 INTELLIGENCE: <3s response time, <$0.05 per query!{Colors.ENDC}")
-        print(f"{Colors.GREEN}✅ v3.7.1: Enhanced Reliability - Message detection & window capture fixed{Colors.ENDC}")
+        print(f"{Colors.GREEN}✅ v3.7.1: Intelligent Vision - Detects ANY app dynamically!{Colors.ENDC}")
         print(f"{Colors.CYAN}📅 'Prepare for meeting' - Detects Zoom, hides passwords{Colors.ENDC}")
         print(f"{Colors.YELLOW}🔒 'Set privacy mode' - Protect banking, passwords, personal{Colors.ENDC}")
         if self.is_m1_mac:
@@ -281,7 +281,7 @@ class AsyncSystemManager:
                     print(f"{Colors.GREEN}✓ Screen Recording permission granted{Colors.ENDC}")
                     print(f"{Colors.GREEN}✓ Vision features ready to use{Colors.ENDC}")
                     print(f"{Colors.GREEN}✓ Claude Vision integration available{Colors.ENDC}")
-                    print(f"{Colors.GREEN}✓ v3.7.1 fix applied - graceful window capture fallback{Colors.ENDC}")
+                    print(f"{Colors.GREEN}✓ v3.7.1: Intelligent vision - understands ANY app dynamically{Colors.ENDC}")
                     
                     # Check if Claude API is available for enhanced vision
                     if os.getenv("ANTHROPIC_API_KEY"):
@@ -646,7 +646,7 @@ class AsyncSystemManager:
         print(f"  • 🎯 Smart Query Routing - 'Any messages?' checks ONLY communication apps")
         print(f"  • 🔍 Window Relationships - Detects IDE + Terminal + Documentation connections")
         print(f"  • ⚡ Efficient Capture - Only 2-5 relevant windows instead of all 50+")
-        print(f"  • ✅ v3.7.1: Enhanced - Fixed message detection & window capture!")
+        print(f"  • ✅ v3.7.1: Intelligent Vision - Works with ANY app, even ones JARVIS has never seen!")
         
         print(f"\n{Colors.WARNING}Press Ctrl+C to stop all services{Colors.ENDC}")
         

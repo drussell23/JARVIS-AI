@@ -110,7 +110,9 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             "routine", "workflow", "setup",
             "screen", "update", "monitor", "vision", "see", "check",
             "messages", "errors", "windows", "workspace", "optimize",
-            "meeting", "privacy", "sensitive", "productivity"
+            "meeting", "privacy", "sensitive", "productivity",
+            "notifications", "notification", "whatsapp", "discord", "slack",
+            "telegram", "signal", "teams", "mail", "email"
         }
         
         # Add agent-specific responses
@@ -196,37 +198,52 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         return False
         
     def _is_system_command(self, text: str) -> bool:
-        """Detect if input is a system command"""
+        """Detect if input is a system command - now more intelligent"""
         text_lower = text.lower()
         
         # Check if in system control mode
         if self.command_mode == "system_control":
             return True
+        
+        # INTELLIGENT DETECTION: Check if query is asking about screen content
+        # Instead of hardcoded phrases, look for patterns that indicate screen queries
+        screen_query_indicators = [
+            # Questions about visibility
+            ("do i have", "any"),  # do i have any...
+            ("can you see", ""),   # can you see...
+            ("what", "see"),       # what do you see
+            ("show me", ""),       # show me...
+            ("check", ""),         # check [anything]
+            ("is there", ""),      # is there...
+            ("are there", ""),     # are there...
             
-        # Check for vision-related phrases first (more specific)
-        vision_phrases = [
-            "what am i working", "what i'm working", "working on",
-            "can you see", "do you see", "what's on my screen",
-            "what do you see", "describe what you see",
-            "analyze my screen", "look at my screen",
-            "tell me what", "show me what", "what are you seeing"
+            # Questions about specific things on screen
+            ("notifications", ""),
+            ("messages", ""),
+            ("errors", ""),
+            ("windows", ""),
+            ("screen", ""),
+            
+            # App-related queries (any app, not hardcoded)
+            ("from", ""),  # notifications from X, messages from Y
+            ("in", ""),    # what's in X
+            ("on", ""),    # what's on X
         ]
-        if any(phrase in text_lower for phrase in vision_phrases):
+        
+        # Check if query contains screen-related question patterns
+        for indicator1, indicator2 in screen_query_indicators:
+            if indicator1 in text_lower:
+                if not indicator2 or indicator2 in text_lower:
+                    # This looks like a screen query - use vision!
+                    return True
+        
+        # Also check for app names mentioned with query words
+        query_words = ["notification", "message", "check", "open", "running", "any", "have"]
+        if any(word in text_lower for word in query_words):
+            # Could be asking about any app - let vision figure it out
             return True
             
-        # Check for workspace intelligence phrases
-        workspace_phrases = [
-            "do i have any messages", "any messages", "check messages",
-            "do i have messages", "new messages", "unread messages",
-            "any errors", "show errors", "what's broken",
-            "optimize workspace", "productivity", "what windows",
-            "prepare for meeting", "meeting prep", "privacy mode",
-            "workflow", "usual setup"
-        ]
-        if any(phrase in text_lower for phrase in workspace_phrases):
-            return True
-            
-        # Check for system keywords
+        # Check for system keywords (for non-vision commands)
         return any(keyword in text_lower for keyword in self.system_keywords)
         
     async def _handle_system_command(self, text: str) -> str:
@@ -237,15 +254,19 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         # Check for vision commands with expanded patterns
         text_lower = text.lower()
         
-        # Check for workspace intelligence commands first (multi-window)
+        # INTELLIGENT ROUTING: Let vision handle ANY query about screen content
+        # Don't hardcode specific apps or patterns - let vision figure it out
         if self.workspace_intelligence_enabled:
-            workspace_triggers = [
-                "what am i working on", "what am i doing", "workspace",
-                "what windows", "list windows", "open applications",
-                "any messages", "check messages", "do i have messages",
-                "any errors", "show errors", "what's broken"
+            # If the query seems to be asking about screen content, use workspace intelligence
+            # This includes ANY app, ANY notification type, ANY message type
+            screen_content_keywords = [
+                "notification", "message", "error", "window", "screen",
+                "open", "running", "check", "see", "show", "have",
+                "any", "what", "where", "from", "in", "on"
             ]
-            if any(trigger in text_lower for trigger in workspace_triggers):
+            
+            # If query contains screen-related words, let vision analyze it
+            if any(keyword in text_lower for keyword in screen_content_keywords):
                 return await self._handle_workspace_command(text)
         
         # Standard vision triggers

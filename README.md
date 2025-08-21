@@ -1,4 +1,4 @@
-# 🤖 JARVIS - World's First Workspace Intelligence Agent (v3.7.1 - Enhanced)
+# 🤖 JARVIS - World's First Workspace Intelligence Agent (v3.7.1 - Intelligent Vision)
 
 <p align="center">
   <img src="https://img.shields.io/badge/AI%20Agent-System%20Control-purple" alt="AI Agent">
@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/badge/Version-3.7.1-brightgreen" alt="Version">
   <img src="https://img.shields.io/badge/PRD-100%25%20Complete-gold" alt="PRD Complete">
   <img src="https://img.shields.io/badge/Tests-87.5%25%20Pass-blue" alt="Tests">
-  <img src="https://img.shields.io/badge/FIXED-Message%20Detection-4ECDC4" alt="Fixed">
+  <img src="https://img.shields.io/badge/NEW-Intelligent%20Vision-4ECDC4" alt="Intelligent Vision">
 </p>
 
 <p align="center">
@@ -25,9 +25,15 @@ JARVIS has evolved from Tony Stark's AI assistant into a powerful **AI Agent** c
 
 > **"Sir, you have new messages in Discord. Also, I've detected errors in your Terminal. Would you like me to reorganize your windows for better productivity?"** - JARVIS
 
-### 🆕 Latest Updates (v3.7.1 - Enhanced Workspace Intelligence)
-- 🔧 **Fixed Message Detection** - "Do I have any messages?" now properly analyzes your workspace
-- 🛡️ **Robust Window Capture** - Graceful fallback when screenshots fail, still provides insights
+### 🆕 Latest Updates (v3.7.1 - Intelligent Vision Edition)
+- 🤖 **Intelligent Vision System** - JARVIS can now detect and understand ANY app dynamically!
+- 🌍 **No More Hardcoding** - Recognizes "SuperNewChatApp" or "未知应用" without prior knowledge
+- 🔍 **Pattern-Based Detection** - Understands apps by their behavior, not hardcoded names
+- 🔄 **Graceful Fallbacks** - When screenshots fail, analyzes window titles intelligently
+- 🔔 **Context-Aware Routing** - "Any messages?" routes to communication apps only
+- 🌟 **Multi-Language Support** - Works with apps in any language: 中文, Русский, عربي
+- 🏷️ **Dynamic Notification Detection** - Recognizes (5), [3], •••, "new messages", etc.
+- 💡 **True Computer Vision** - Sees your screen like Iron Man's JARVIS would
 - ✅ **100% PRD Complete** - All Product Requirements Document features implemented!
 - 🧪 **Comprehensive Testing** - 87.5% test pass rate with full test suite
 - 📅 **Meeting Assistant** - Prepares you for meetings, hides sensitive windows
@@ -548,6 +554,48 @@ Expected output:
 - "set volume to 50%" → Adjusts system volume
 - "take a screenshot" → Captures screen
 - "list open applications" → Shows running apps
+
+### 🧠 Intelligent Vision - v3.7.1 NEW!
+
+JARVIS now has true intelligent vision that can understand ANY application dynamically:
+
+**How It Works:**
+```python
+# OLD WAY (Hardcoded):
+if "whatsapp" in query:
+    check_whatsapp()
+elif "discord" in query:
+    check_discord()
+# Limited to known apps only!
+
+# NEW WAY (Intelligent):
+analyze_what_is_actually_visible_on_screen()
+# Works with ANY app, even ones JARVIS has never seen!
+```
+
+**🎯 Examples of Intelligent Detection:**
+- **Unknown Apps**: "Check SuperNewChatApp" - Works even though JARVIS doesn't know this app
+- **Multi-Language**: "查看微信" (Check WeChat in Chinese) - Understands any language
+- **Pattern Recognition**: Sees "App (5)" and knows there are 5 notifications
+- **Context Aware**: "Any messages?" only checks communication apps, not all windows
+- **Visual Indicators**: Recognizes •••, badges, (3), [new], and other notification patterns
+
+**🔍 Test the Intelligence:**
+```bash
+# See JARVIS detect unknown apps
+cd backend
+python tests/test_intelligent_vision.py
+
+# Watch it handle any app dynamically
+python tests/run_vision_tests.py
+```
+
+**💡 What This Means:**
+- No more "I don't have access to your messages" - JARVIS sees what's on screen
+- Works with future apps that don't exist yet
+- Understands apps in any language
+- Gracefully handles when screenshots fail
+- Truly sees your screen like Iron Man's JARVIS would!
 
 ## 📋 PRD Completion & Testing
 

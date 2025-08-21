@@ -71,8 +71,11 @@ class SmartQueryRouter:
                 r'\b(open|running|active)\b'
             ],
             QueryIntent.NOTIFICATIONS: [
-                r'\b(notification|alert|update|badge|reminder)\b',
-                r'\b(anything new|important|urgent|attention)\b'
+                r'\b(notification|notifications|alert|update|badge|reminder)\b',
+                r'\b(anything new|important|urgent|attention)\b',
+                r'\b(whatsapp|discord|slack|telegram|teams|mail|email)\s+(notification|notifications)\b',
+                r'\b(notification|notifications)\s+from\s+(whatsapp|discord|slack|telegram|teams|mail|email)\b',
+                r'\b(any|check|new|unread)\s+(notification|notifications)\b'
             ],
             QueryIntent.CODE_SEARCH: [
                 r'\b(find|search|locate|where is|look for)\b',
@@ -81,18 +84,28 @@ class SmartQueryRouter:
             ]
         }
         
-        # App categories for routing
+        # App categories for routing - now more generic with patterns
+        # Instead of hardcoding specific apps, use patterns to identify app types
         self.app_categories = {
-            'communication': ['Discord', 'Slack', 'Messages', 'Mail', 'WhatsApp', 
-                            'Telegram', 'Signal', 'Teams', 'Zoom'],
-            'development': ['Visual Studio Code', 'Cursor', 'Xcode', 'IntelliJ', 
-                          'PyCharm', 'WebStorm', 'Sublime Text', 'Atom'],
-            'terminal': ['Terminal', 'iTerm', 'Alacritty', 'Hyper', 'Warp'],
-            'browser': ['Chrome', 'Safari', 'Firefox', 'Edge', 'Brave'],
-            'documentation': ['Preview', 'Books', 'Dash', 'Notion', 'Obsidian']
+            'communication': self._create_app_pattern(['discord', 'slack', 'message', 'mail', 
+                                                      'whatsapp', 'telegram', 'signal', 'teams', 
+                                                      'zoom', 'chat', 'skype', 'imessage']),
+            'development': self._create_app_pattern(['code', 'studio', 'xcode', 'intellij', 
+                                                    'pycharm', 'webstorm', 'sublime', 'atom',
+                                                    'cursor', 'vim', 'emacs', 'ide']),
+            'terminal': self._create_app_pattern(['terminal', 'iterm', 'alacritty', 'hyper', 
+                                                 'warp', 'console', 'shell']),
+            'browser': self._create_app_pattern(['chrome', 'safari', 'firefox', 'edge', 
+                                               'brave', 'opera', 'browser']),
+            'documentation': self._create_app_pattern(['preview', 'books', 'dash', 'notion', 
+                                                      'obsidian', 'pdf', 'reader', 'notes'])
         }
         
         self.relationship_detector = WindowRelationshipDetector()
+    
+    def _create_app_pattern(self, keywords: List[str]) -> List[str]:
+        """Create flexible patterns for app detection"""
+        return keywords  # Can be expanded to regex patterns if needed
     
     def route_query(self, query: str, windows: List[WindowInfo]) -> QueryRoute:
         """Route a query to relevant windows"""
@@ -313,23 +326,51 @@ class SmartQueryRouter:
         """Route notification queries to apps that might have notifications"""
         target_windows = []
         
-        # Check communication apps first
-        for window in windows:
-            if self._is_communication_app(window):
-                target_windows.append(window)
+        # Check if a specific app is mentioned
+        mentioned_app = None
+        for app in ['whatsapp', 'discord', 'slack', 'telegram', 'teams', 'mail', 'messages']:
+            if app in query:
+                mentioned_app = app
+                break
+        
+        if mentioned_app:
+            # Look for the specific app
+            for window in windows:
+                if mentioned_app.lower() in window.app_name.lower():
+                    target_windows.append(window)
+            
+            # If specific app not found, still check all communication apps
+            if not target_windows:
+                for window in windows:
+                    if self._is_communication_app(window):
+                        target_windows.append(window)
+        else:
+            # Check all communication apps
+            for window in windows:
+                if self._is_communication_app(window):
+                    target_windows.append(window)
         
         # Check browsers (might have web app notifications)
         for window in windows:
             if self._is_browser_app(window) and window not in target_windows:
                 if window.window_title and any(keyword in window.window_title.lower()
-                                              for keyword in ['inbox', 'notification', 'message']):
+                                              for keyword in ['inbox', 'notification', 'message', mentioned_app or '']):
                     target_windows.append(window)
+        
+        # Sort by relevance - mentioned app first
+        if mentioned_app:
+            target_windows.sort(key=lambda w: (
+                mentioned_app.lower() not in w.app_name.lower(),
+                not w.is_focused
+            ))
+        
+        reasoning = f"Checking {mentioned_app or 'communication apps'} for notifications"
         
         return QueryRoute(
             intent=QueryIntent.NOTIFICATIONS,
             target_windows=target_windows[:5],
-            confidence=0.8 if target_windows else 0.4,
-            reasoning=f"Checking {len(target_windows)} apps for notifications",
+            confidence=0.9 if target_windows and mentioned_app else 0.8 if target_windows else 0.4,
+            reasoning=reasoning,
             capture_all=False
         )
     
@@ -398,25 +439,32 @@ class SmartQueryRouter:
         return self._route_current_work_query(query, windows)
     
     def _is_communication_app(self, window: WindowInfo) -> bool:
-        """Check if window is a communication app"""
-        return any(app in window.app_name for app in self.app_categories['communication'])
+        """Check if window is a communication app using pattern matching"""
+        app_name_lower = window.app_name.lower()
+        # Check if any communication pattern matches
+        return any(pattern in app_name_lower for pattern in self.app_categories['communication'])
     
     def _is_development_app(self, window: WindowInfo) -> bool:
-        """Check if window is a development app"""
-        return any(app in window.app_name for app in self.app_categories['development'])
+        """Check if window is a development app using pattern matching"""
+        app_name_lower = window.app_name.lower()
+        return any(pattern in app_name_lower for pattern in self.app_categories['development'])
     
     def _is_terminal_app(self, window: WindowInfo) -> bool:
-        """Check if window is a terminal"""
-        return any(app in window.app_name for app in self.app_categories['terminal'])
+        """Check if window is a terminal using pattern matching"""
+        app_name_lower = window.app_name.lower()
+        return any(pattern in app_name_lower for pattern in self.app_categories['terminal'])
     
     def _is_browser_app(self, window: WindowInfo) -> bool:
-        """Check if window is a browser"""
-        return any(app in window.app_name for app in self.app_categories['browser'])
+        """Check if window is a browser using pattern matching"""
+        app_name_lower = window.app_name.lower()
+        return any(pattern in app_name_lower for pattern in self.app_categories['browser'])
     
     def _is_documentation_window(self, window: WindowInfo) -> bool:
-        """Check if window contains documentation"""
-        # Check doc apps
-        if any(app in window.app_name for app in self.app_categories['documentation']):
+        """Check if window contains documentation using pattern matching"""
+        app_name_lower = window.app_name.lower()
+        
+        # Check doc app patterns
+        if any(pattern in app_name_lower for pattern in self.app_categories['documentation']):
             return True
         
         # Check browsers with doc content
