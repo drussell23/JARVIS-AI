@@ -16,6 +16,7 @@ import asyncio
 import re
 
 from .macos_controller import MacOSController, CommandCategory, SafetyLevel
+from .dynamic_app_controller import get_dynamic_app_controller
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ class ClaudeCommandInterpreter:
     def __init__(self, api_key: str):
         self.client = Anthropic(api_key=api_key)
         self.controller = MacOSController()
+        self.dynamic_controller = get_dynamic_app_controller()
         self.conversation_history = []
         self.system_state = {}
         
@@ -344,7 +346,11 @@ class ClaudeCommandInterpreter:
                 all_success = True
                 
                 for app in apps:
-                    success, msg = self.controller.open_application(app)
+                    # Use dynamic controller for better app detection
+                    success, msg = await self.dynamic_controller.open_app_intelligently(app)
+                    if not success:
+                        # Fallback to standard controller
+                        success, msg = self.controller.open_application(app)
                     results.append(f"{app}: {msg}")
                     if not success:
                         all_success = False
@@ -354,7 +360,11 @@ class ClaudeCommandInterpreter:
                     message="; ".join(results)
                 )
             else:
-                success, message = self.controller.open_application(intent.target)
+                # Use dynamic controller for better app detection
+                success, message = await self.dynamic_controller.open_app_intelligently(intent.target)
+                if not success:
+                    # Fallback to standard controller
+                    success, message = self.controller.open_application(intent.target)
                 
         elif intent.action == "close_app":
             # Check if target contains multiple apps separated by "and"
@@ -364,7 +374,11 @@ class ClaudeCommandInterpreter:
                 all_success = True
                 
                 for app in apps:
-                    success, msg = self.controller.close_application(app)
+                    # Use dynamic controller for better app detection
+                    success, msg = await self.dynamic_controller.close_app_intelligently(app)
+                    if not success:
+                        # Fallback to standard controller
+                        success, msg = self.controller.close_application(app)
                     results.append(f"{app}: {msg}")
                     if not success:
                         all_success = False
@@ -374,7 +388,11 @@ class ClaudeCommandInterpreter:
                     message="; ".join(results)
                 )
             else:
-                success, message = self.controller.close_application(intent.target)
+                # Use dynamic controller for better app detection
+                success, message = await self.dynamic_controller.close_app_intelligently(intent.target)
+                if not success:
+                    # Fallback to standard controller
+                    success, message = self.controller.close_application(intent.target)
                 
         elif intent.action == "switch_to_app":
             success, message = self.controller.switch_to_application(intent.target)

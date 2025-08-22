@@ -1,4 +1,4 @@
-# 🤖 JARVIS - Claude-Powered Iron Man AI Agent (v5.3)
+# 🤖 JARVIS - Claude-Powered Iron Man AI Agent (v5.4)
 
 <p align="center">
   <img src="https://img.shields.io/badge/AI%20Agent-100%25%20Claude%20Powered-purple" alt="Claude AI">
@@ -8,30 +8,40 @@
   <img src="https://img.shields.io/badge/UI-Iron%20Man%20Inspired-red" alt="Iron Man UI">
   <img src="https://img.shields.io/badge/ML-Predictive%20Audio%20Recovery-yellow" alt="Machine Learning">
   <img src="https://img.shields.io/badge/Status-FULLY%20AUTONOMOUS-success" alt="Production">
-  <img src="https://img.shields.io/badge/Version-5.3-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Version-5.4-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/App%20Control-Dynamic%20Detection-cyan" alt="Dynamic Apps">
 </p>
 
 <p align="center">
   <em>"JARVIS, sometimes you gotta run before you can walk." - Tony Stark</em>
 </p>
 
-## 🚀 What's New in v5.3
+## 🚀 What's New in v5.4
 
-### **🤖 ML-Powered Self-Healing Voice System**
+### **🎯 Dynamic App Control - Works with ANY macOS App**
+- **Zero Hardcoding** - Dynamically detects and controls any application
+- **Fuzzy Name Matching** - "whatsapp", "WhatsApp", "whats app" all work
+- **Intelligent Detection** - Finds exact process names automatically
+- **Multi-Method Closure** - Graceful quit → Keyboard shortcut → Force close
+- **Real-Time Discovery** - No pre-configured app list needed
+
+### **All v5.3 Features Included**
+
+#### **🤖 ML-Powered Self-Healing Voice System**
 - **Zero Audio Errors** - ML predicts and prevents microphone issues
 - **Adaptive Recovery** - Learns optimal strategies for your browser
 - **Predictive Warnings** - Alerts you before errors occur (>70% probability)
 - **No Configuration** - Works out of the box, improves over time
 
-### **🧠 Machine Learning Features**
+#### **🧠 Machine Learning Features**
 - ✅ **RandomForest Predictor** - Forecasts audio issues before they happen
 - ✅ **Anomaly Detection** - Identifies unusual error patterns
 - ✅ **Pattern Clustering** - Groups similar issues for better solutions
 - ✅ **Strategy Optimization** - Continuously improves recovery methods
 - ✅ **Browser Adaptation** - Custom strategies for Chrome/Safari/Firefox
 
-### **All v5.2 Features Included**
-- ✅ **App Control** - "Open Safari" actually opens Safari
+#### **All Previous Features**
+- ✅ **App Control** - Now works with ANY macOS application
 - ✅ **System Integration** - Commands execute instantly
 - ✅ **Vision System** - Multi-window Claude analysis
 - ✅ **Continuous Monitoring** - 2-second workspace scans
@@ -44,25 +54,28 @@
 - [Architecture](#-architecture)
 - [Claude AI Integration](#-claude-ai-integration)
 - [ML Audio System](#-ml-audio-system)
+- [Dynamic App Control](#-dynamic-app-control)
 - [Troubleshooting](#-troubleshooting)
 - [API Documentation](#-api-documentation)
 - [Contributing](#-contributing)
 
 ## 🎯 Overview
 
-JARVIS v5.3 achieves **Self-Healing Voice Intelligence** through advanced machine learning. Audio errors that once frustrated users are now predicted and prevented before they occur. The system learns from every interaction, continuously improving its recovery strategies.
+JARVIS v5.4 introduces **Universal App Control** - the ability to control ANY macOS application without hardcoding. Combined with v5.3's **Self-Healing Voice Intelligence**, JARVIS now provides seamless control over your entire system while predicting and preventing issues before they occur.
 
-### What Makes JARVIS v5.3 Revolutionary
+### What Makes JARVIS v5.4 Revolutionary
 
-Unlike any previous version, JARVIS v5.3:
+Unlike any previous version, JARVIS v5.4:
+- **Universal App Control** - Works with ANY macOS app, no hardcoding needed
+- **Dynamic App Detection** - Discovers running apps in real-time
+- **Fuzzy Name Matching** - Handles variations like "whatsapp" or "WhatsApp"
 - **Self-Healing Audio** - ML predicts and prevents microphone errors
 - **Zero Configuration** - Adapts to your browser and environment automatically
 - **Predictive Intelligence** - Warns you before issues occur
-- **Commands That Execute** - "Open Safari" actually opens Safari instantly
+- **Commands That Execute** - "Close WhatsApp" works with any app instantly
 - **System Control Integration** - AppleScript execution for all macOS apps
 - **Claude + Actions** - AI understanding paired with real system control
 - **Natural Language** - Speak naturally, JARVIS executes precisely
-- **All v5.1 Features** - Plus the ability to actually control your Mac
 
 ## 📋 Manual Mode vs Autonomous Mode
 
@@ -295,6 +308,8 @@ python start_system.py
 python diagnose_vision.py        # Check vision system
 ./fix-microphone.sh             # Fix microphone issues
 python test_autonomy_activation.py  # Test autonomy
+python test_dynamic_app_control.py  # Test app control
+python test_ml_audio_system.py  # Test ML audio
 
 # Check system status
 curl http://localhost:8000/health
@@ -310,18 +325,25 @@ curl http://localhost:8000/voice/jarvis/status
 4. **Enable autonomy**: "Hey JARVIS, activate full autonomy"
 5. **Experience the difference**: JARVIS begins proactive assistance
 
-### App Control Commands (NEW in v5.2)
+### App Control Commands (ENHANCED in v5.4)
 
 ```bash
-# Voice Commands That Actually Work:
-"Open Safari"          # Opens Safari browser
-"Close Chrome"         # Closes Chrome if running
-"Switch to Mail"       # Switches to Mail app
-"Open Visual Studio Code"  # Opens VS Code
-"Close all windows"    # Minimizes everything
+# Voice Commands Work with ANY App - No Configuration Needed:
+"Open WhatsApp"        # Opens WhatsApp
+"Close Discord"        # Closes Discord  
+"Open Notion"          # Opens Notion
+"Close Microsoft Teams"  # Closes Teams
+"Open any-app-name"    # Works with ANY installed app!
 
-# Test the fix:
-python backend/test_jarvis_safari.py
+# Fuzzy Matching Examples:
+"Close whatsapp"       # Works (case insensitive)
+"Close whats app"      # Works (handles spaces)
+"Open vscode"          # Opens Visual Studio Code
+"Close MS teams"       # Closes Microsoft Teams
+
+# Test dynamic app control:
+python backend/test_dynamic_app_control.py
+python backend/test_dynamic_app_control.py WhatsApp
 ```
 
 ### Verify Everything is Working
@@ -820,9 +842,105 @@ The ML system is fully configurable via `backend/config/ml_audio_config.json`:
 4. **Predictive**: Prevents errors before they occur
 5. **Privacy First**: All learning happens locally
 
+## 🎯 Dynamic App Control
+
+### Overview
+
+JARVIS v5.4 introduces revolutionary Dynamic App Control that works with ANY macOS application without hardcoding. No more maintaining app aliases or mappings - JARVIS dynamically discovers and controls applications in real-time.
+
+### Core Features
+
+#### Dynamic App Detection
+```python
+# Automatically discovers all running applications
+running_apps = controller.get_all_running_apps()
+# Returns: [{"name": "WhatsApp", "pid": "12345", "visible": true}, ...]
+```
+
+#### Fuzzy Name Matching
+All these commands work for the same app:
+- "Close WhatsApp"
+- "Close whatsapp" 
+- "Close whats app"
+- "Close what's app"
+
+#### Multi-Method Control
+1. **Graceful Quit**: Sends quit command via AppleScript
+2. **Keyboard Shortcut**: Uses Cmd+Q if quit fails
+3. **Force Close**: Uses pkill as last resort
+
+### How It Works
+
+1. **Real-Time Discovery**: Queries System Events for running processes
+2. **Intelligent Matching**: Uses fuzzy logic to match user input to actual app names
+3. **Adaptive Execution**: Tries multiple methods to ensure success
+4. **No Hardcoding**: Works with any app, even newly installed ones
+
+### API Usage
+
+```python
+from system_control.dynamic_app_controller import get_dynamic_app_controller
+
+controller = get_dynamic_app_controller()
+
+# Close any app intelligently
+success, message = await controller.close_app_intelligently("whatsapp")
+# Returns: (True, "WhatsApp has been closed, Sir.")
+
+# Open any app intelligently  
+success, message = await controller.open_app_intelligently("discord")
+# Returns: (True, "Discord is now active")
+
+# Get app suggestions
+suggestions = controller.get_app_suggestions("spot")
+# Returns: ["Spotify", "Spotlight"]
+```
+
+### Voice Commands
+
+```bash
+# All of these work without configuration:
+"Hey JARVIS, close WhatsApp"
+"Hey JARVIS, close Discord"  
+"Hey JARVIS, close Notion"
+"Hey JARVIS, close any-app-name"
+
+# Open commands:
+"Hey JARVIS, open Figma"
+"Hey JARVIS, open Zoom"
+"Hey JARVIS, open any-installed-app"
+```
+
+### Testing Dynamic App Control
+
+```bash
+# Test the dynamic app control system
+python backend/test_dynamic_app_control.py
+
+# Test closing a specific app
+python backend/test_dynamic_app_control.py WhatsApp
+
+# Test with any app name
+python backend/test_dynamic_app_control.py "Microsoft Teams"
+```
+
+### Benefits
+
+1. **Universal Compatibility**: Works with ANY macOS application
+2. **Zero Configuration**: No need to maintain app lists
+3. **Intelligent Matching**: Handles name variations automatically
+4. **Future Proof**: Works with apps installed after JARVIS
+5. **Graceful Degradation**: Multiple fallback methods ensure success
+
 ## 🗺️ Engineering Roadmap
 
-### Current State (v5.3 - Latest)
+### Current State (v5.4 - Latest)
+
+✅ **Dynamic App Control (v5.4)**
+- Universal app control without hardcoding
+- Fuzzy name matching for any app
+- Real-time app discovery
+- Multi-method execution strategies
 
 ✅ **ML Audio System (v5.3)**
 - Self-healing voice with ML error prediction
@@ -1219,34 +1337,44 @@ If speech recognition shows "already started" errors:
    - Look for SpeechDebug component output
    - Check for browser autoplay policies
 
-### App Control Not Working (Fixed in v5.2)
+### App Control Not Working (Enhanced in v5.4)
 
-If commands like "Open Safari" don't execute:
+If commands like "Close WhatsApp" don't execute:
 
-1. **Verify System Integration**
+1. **Test Dynamic App Control**
    ```bash
-   python backend/test_jarvis_safari.py
+   # Test the new dynamic app control
+   python backend/test_dynamic_app_control.py
+   
+   # Test specific app
+   python backend/test_dynamic_app_control.py WhatsApp
    ```
 
-2. **Check Permissions**
+2. **Verify App Detection**
+   ```python
+   from backend.system_control.dynamic_app_controller import get_dynamic_app_controller
+   controller = get_dynamic_app_controller()
+   
+   # List all running apps
+   apps = controller.get_all_running_apps()
+   for app in apps:
+       print(f"{app['name']} - PID: {app['pid']}")
+   
+   # Find specific app
+   found = controller.find_app_by_fuzzy_name("whatsapp")
+   print(f"Found: {found}")
+   ```
+
+3. **Check Permissions**
    - macOS System Preferences → Security & Privacy
    - Enable Accessibility for Terminal/Python
    - Enable Automation permissions
 
-3. **Test Direct Control**
-   ```python
-   # Test AppleScript execution
-   from backend.system_control.macos_controller import MacOSController
-   controller = MacOSController()
-   success, msg = controller.open_application("Safari")
-   print(msg)
-   ```
-
-4. **Common Issues Fixed in v5.2**
-   - AI Core now connected to system control
-   - Commands execute through AppleScript
-   - Natural language properly interpreted
-   - All macOS apps supported
+4. **Common Issues Fixed in v5.4**
+   - Dynamic app detection without hardcoding
+   - Fuzzy name matching for any app
+   - Multiple closure methods (graceful → force)
+   - Works with ANY macOS application
 
 ## 📄 License
 

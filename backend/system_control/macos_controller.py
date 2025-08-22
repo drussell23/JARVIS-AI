@@ -481,3 +481,27 @@ class MacOSController:
             return SafetyLevel.SAFE
             
         return SafetyLevel.CAUTION
+    
+    def find_installed_application(self, partial_name: str) -> Optional[str]:
+        """Find installed application by partial name"""
+        # Common application directories
+        app_dirs = [
+            "/Applications",
+            "~/Applications",
+            "/System/Applications"
+        ]
+        
+        partial_lower = partial_name.lower()
+        
+        for app_dir in app_dirs:
+            expanded_dir = os.path.expanduser(app_dir)
+            if not os.path.exists(expanded_dir):
+                continue
+                
+            for app in os.listdir(expanded_dir):
+                if app.endswith('.app'):
+                    app_name = app[:-4]  # Remove .app extension
+                    if partial_lower in app_name.lower():
+                        return app_name
+        
+        return None

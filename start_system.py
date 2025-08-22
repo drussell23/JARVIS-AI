@@ -18,6 +18,7 @@ import psutil
 import aiohttp
 import time
 from datetime import datetime
+import subprocess
 
 # Set up logging
 import logging
@@ -72,8 +73,8 @@ class AsyncSystemManager:
     def print_header(self):
         """Print system header"""
         print(f"\n{Colors.HEADER}{'='*60}")
-        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v5.3 - ML-Enhanced Audio Intelligence 🚀{Colors.ENDC}")
-        print(f"{Colors.CYAN}🧠 CLAUDE AI + ML AUDIO • Self-Healing Voice System{Colors.ENDC}")
+        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v5.4 - Universal App Control 🚀{Colors.ENDC}")
+        print(f"{Colors.CYAN}🧠 CLAUDE AI + DYNAMIC APPS • Control ANY macOS Application{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}")
         
         # AI Integration
@@ -101,11 +102,11 @@ class AsyncSystemManager:
         print(f"   • Self-learning from your patterns")
         
         # System Capabilities
-        print(f"\n{Colors.BOLD}🚀 ENHANCED CAPABILITIES (v5.3):{Colors.ENDC}")
-        print(f"{Colors.YELLOW}🎯 ML Audio:{Colors.ENDC} Self-healing voice • Predictive error prevention • Zero config")
-        print(f"{Colors.BLUE}🔊 Voice:{Colors.ENDC} ML-powered recovery • Browser-adaptive • Pattern learning")
+        print(f"\n{Colors.BOLD}🚀 ENHANCED CAPABILITIES (v5.4):{Colors.ENDC}")
+        print(f"{Colors.YELLOW}🎯 App Control:{Colors.ENDC} Works with ANY app • Fuzzy matching • No hardcoding")
+        print(f"{Colors.BLUE}🔊 ML Audio:{Colors.ENDC} Self-healing voice • Predictive errors • Pattern learning")
         print(f"{Colors.HEADER}👁️  Vision:{Colors.ENDC} Enhanced WebSocket • Multi-window analysis • Notification detection")
-        print(f"{Colors.CYAN}💻 System:{Colors.ENDC} AppleScript execution • Natural language to actions")
+        print(f"{Colors.CYAN}💻 System:{Colors.ENDC} Dynamic app discovery • Multi-method execution • Real-time detection")
         print(f"{Colors.GREEN}🔒 Privacy:{Colors.ENDC} One-click privacy mode • Camera/mic control")
         
         # Activation
@@ -852,15 +853,15 @@ class AsyncSystemManager:
             print(f"  🔊 Backend speech: {Colors.GREEN}Enabled{Colors.ENDC} (macOS native)")
             print(f"  🎵 Browser speech: Fallback mode")
             
-        print(f"\n{Colors.GREEN}✨ Enhanced Features (v5.3 - ML Audio Intelligence):{Colors.ENDC}")
-        print(f"  • 🤖 ML Audio Recovery {Colors.GREEN}[NEW]{Colors.ENDC} - Self-healing voice system")
-        print(f"  • 🔮 Predictive Detection {Colors.GREEN}[NEW]{Colors.ENDC} - Prevents audio errors before they happen")
-        print(f"  • 📊 Pattern Learning {Colors.GREEN}[NEW]{Colors.ENDC} - Adapts to your browser & environment")
-        print(f"  • 🎯 App Control {Colors.GREEN}[WORKING]{Colors.ENDC} - 'Open Safari' actually works!")
-        print(f"  • 🧠 Claude AI Brain {Colors.GREEN}[ENHANCED]{Colors.ENDC} - Connected to ML audio system")
-        print(f"  • 🔊 Voice Recovery {Colors.GREEN}[INTELLIGENT]{Colors.ENDC} - No more permission headaches")
+        print(f"\n{Colors.GREEN}✨ Enhanced Features (v5.4 - Universal App Control):{Colors.ENDC}")
+        print(f"  • 🎯 Dynamic App Control {Colors.GREEN}[NEW]{Colors.ENDC} - Works with ANY macOS app")
+        print(f"  • 🔍 Fuzzy Matching {Colors.GREEN}[NEW]{Colors.ENDC} - 'whatsapp' or 'WhatsApp' both work")
+        print(f"  • 🚀 Real-Time Discovery {Colors.GREEN}[NEW]{Colors.ENDC} - No hardcoded app lists")
+        print(f"  • 🤖 ML Audio Recovery {Colors.GREEN}[v5.3]{Colors.ENDC} - Self-healing voice system")
+        print(f"  • 🔮 Predictive Detection {Colors.GREEN}[v5.3]{Colors.ENDC} - Prevents audio errors")
+        print(f"  • 🧠 Claude AI Brain {Colors.GREEN}[ENHANCED]{Colors.ENDC} - Connected to all systems")
         print(f"  • 👁️ Vision System {Colors.GREEN}[ENHANCED]{Colors.ENDC} - Multi-window Claude analysis")
-        print(f"  • 💻 macOS Integration {Colors.GREEN}[CONNECTED]{Colors.ENDC} - AppleScript execution")
+        print(f"  • 💻 macOS Integration {Colors.GREEN}[UNIVERSAL]{Colors.ENDC} - Any app, any time")
         print(f"  • 🔧 Hardware Control {Colors.GREEN}[ACTIVE]{Colors.ENDC} - Camera/mic management")
         print(f"  • 🎯 Continuous Monitoring {Colors.GREEN}[NEW]{Colors.ENDC} - 2-second workspace scans")
         print(f"  • 🔔 Notification Detection {Colors.GREEN}[NEW]{Colors.ENDC} - WhatsApp, Discord, Messages")
@@ -874,6 +875,11 @@ class AsyncSystemManager:
         print(f"  • Check WebSocket: ws://localhost:{self.ports['main_api']}/vision/ws/vision")
         print(f"  • Verify backend: curl http://localhost:{self.ports['main_api']}/vision/status")
         
+        print(f"\n{Colors.CYAN}Dynamic App Control (v5.4):{Colors.ENDC}")
+        print(f"  • Test app control: {Colors.YELLOW}python test_dynamic_app_control.py{Colors.ENDC}")
+        print(f"  • {Colors.GREEN}Universal control{Colors.ENDC} - Works with ANY macOS app")
+        print(f"  • {Colors.GREEN}Fuzzy matching{Colors.ENDC} - 'whatsapp' or 'WhatsApp' both work")
+        
         print(f"\n{Colors.CYAN}ML Audio System (Auto-Recovery):{Colors.ENDC}")
         print(f"  • Test ML system: {Colors.YELLOW}python test_ml_audio_system.py{Colors.ENDC}")
         print(f"  • {Colors.GREEN}Automatic recovery{Colors.ENDC} - ML handles permission errors")
@@ -885,10 +891,11 @@ class AsyncSystemManager:
         print(f"  • ML system handles most issues automatically")
         print(f"  • Browser-specific permissions guide")
         
-        print(f"\n{Colors.CYAN}App Control Commands:{Colors.ENDC}")
-        print(f"  • Test Safari: {Colors.YELLOW}python test_jarvis_safari.py{Colors.ENDC}")
-        print(f"  • Voice: 'Open Safari', 'Close Chrome', 'Switch to Mail'")
-        print(f"  • All macOS apps supported via AppleScript")
+        print(f"\n{Colors.CYAN}App Control Commands (Works with ANY App!):{Colors.ENDC}")
+        print(f"  • Test control: {Colors.YELLOW}python test_dynamic_app_control.py{Colors.ENDC}")
+        print(f"  • Voice: 'Open WhatsApp', 'Close Discord', 'Open Notion'")
+        print(f"  • Fuzzy: 'Close whatsapp', 'Open MS teams', 'Close slack'")
+        print(f"  • ANY macOS app works - no configuration needed!")
         
         print(f"\n{Colors.CYAN}Autonomy Activation:{Colors.ENDC}")
         print(f"  • Test script: {Colors.YELLOW}python test_autonomy_activation.py{Colors.ENDC}")
@@ -1203,11 +1210,13 @@ async def main():
     """Main entry point"""
     global _manager
     
-    parser = argparse.ArgumentParser(description="JARVIS System Launcher - Iron Man AI Assistant")
+    parser = argparse.ArgumentParser(description="JARVIS AI Agent v5.4 - Universal App Control")
     parser.add_argument("--no-browser", action="store_true", help="Don't open browser")
     parser.add_argument("--check-only", action="store_true", help="Check setup and exit")
     parser.add_argument("--backend-only", action="store_true", help="Start only the backend server")
     parser.add_argument("--frontend-only", action="store_true", help="Start only the frontend")
+    parser.add_argument("--test-app-control", action="store_true", help="Test dynamic app control and exit")
+    parser.add_argument("--test-ml-audio", action="store_true", help="Test ML audio system and exit")
     
     args = parser.parse_args()
     
@@ -1216,6 +1225,29 @@ async def main():
     _manager.no_browser = args.no_browser
     _manager.backend_only = args.backend_only
     _manager.frontend_only = args.frontend_only
+    
+    # Handle test options
+    if args.test_app_control:
+        print(f"{Colors.CYAN}Running Dynamic App Control Tests...{Colors.ENDC}")
+        os.chdir('backend')
+        result = await asyncio.create_subprocess_exec(
+            sys.executable, 'test_dynamic_app_control.py',
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        await result.communicate()
+        return
+    
+    if args.test_ml_audio:
+        print(f"{Colors.CYAN}Running ML Audio System Tests...{Colors.ENDC}")
+        os.chdir('backend')
+        result = await asyncio.create_subprocess_exec(
+            sys.executable, 'test_ml_audio_system.py',
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        await result.communicate()
+        return
     
     if args.check_only:
         _manager.print_header()

@@ -264,6 +264,7 @@ const JarvisVoice = () => {
   const [visionConnected, setVisionConnected] = useState(false);
   const [workspaceData, setWorkspaceData] = useState(null);
   const [autonomousMode, setAutonomousMode] = useState(false);
+  const [micStatus, setMicStatus] = useState('unknown');
   
   const wsRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -429,18 +430,22 @@ const JarvisVoice = () => {
       stream.getTracks().forEach(track => track.stop());
       
       setMicrophonePermission('granted');
+      setMicStatus('ready');
       // Initialize speech recognition after permission granted
       initializeSpeechRecognition();
     } catch (error) {
       console.error('Microphone permission error:', error);
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
         setMicrophonePermission('denied');
+        setMicStatus('error');
         setError('Microphone access denied. Please grant permission to use JARVIS.');
       } else if (error.name === 'NotFoundError') {
         setMicrophonePermission('no-device');
+        setMicStatus('error');
         setError('No microphone found. Please connect a microphone.');
       } else {
         setMicrophonePermission('error');
+        setMicStatus('error');
         setError('Error accessing microphone: ' + error.message);
       }
     }
@@ -1107,6 +1112,7 @@ const JarvisVoice = () => {
         <MicrophonePermissionHelper 
           onPermissionGranted={() => {
             setMicrophonePermission('granted');
+            setMicStatus('ready');
             initializeSpeechRecognition();
           }}
         />
@@ -1122,7 +1128,12 @@ const JarvisVoice = () => {
       <div className="jarvis-status">
         <div className={`status-indicator ${jarvisStatus}`}></div>
         <span>JARVIS {jarvisStatus.toUpperCase()}</span>
-        {continuousListening && !isWaitingForCommand && (
+        {micStatus === 'error' && (
+          <span className="mic-status error">
+            <span className="error-dot"></span> MIC ERROR
+          </span>
+        )}
+        {micStatus === 'ready' && continuousListening && !isWaitingForCommand && (
           <span className="listening-mode">
             <span className="pulse-dot"></span> LISTENING FOR "HEY JARVIS"
           </span>
