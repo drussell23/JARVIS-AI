@@ -255,14 +255,38 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         # Check for vision commands with expanded patterns
         text_lower = text.lower()
         
+        # CHECK FOR ACTION COMMANDS FIRST - these should execute, not analyze
+        action_commands = {
+            "close": ["close", "quit", "exit", "terminate"],
+            "open": ["open", "launch", "start", "run"],
+            "switch": ["switch to", "activate", "focus on"],
+            "system": ["set volume", "mute", "unmute", "screenshot", "restart", "shutdown"],
+            "file": ["create", "delete", "move", "copy", "rename"]
+        }
+        
+        # Check if this is a direct action command
+        is_action_command = False
+        for action_type, keywords in action_commands.items():
+            if any(keyword in text_lower for keyword in keywords):
+                # This looks like an action command
+                # But make sure it's not a question about the action
+                question_words = ["what", "which", "do i have", "are there", "show me", "tell me", "list"]
+                if not any(q_word in text_lower for q_word in question_words):
+                    is_action_command = True
+                    break
+        
+        # If it's an action command, skip vision and execute directly
+        if is_action_command:
+            logger.info(f"Detected action command: {text}")
+            # Skip to command execution below
         # INTELLIGENT ROUTING: Let vision handle ANY query about screen content
         # Don't hardcode specific apps or patterns - let vision figure it out
-        if self.workspace_intelligence_enabled:
+        elif self.workspace_intelligence_enabled:
             # If the query seems to be asking about screen content, use workspace intelligence
             # This includes ANY app, ANY notification type, ANY message type
             screen_content_keywords = [
                 "notification", "message", "error", "window", "screen",
-                "open", "running", "check", "see", "show", "have",
+                "running", "check", "see", "show", "have",
                 "any", "what", "where", "from", "in", "on"
             ]
             
