@@ -1,4 +1,4 @@
-# 🤖 JARVIS - Claude-Powered Iron Man AI Agent (v5.1)
+# 🤖 JARVIS - Claude-Powered Iron Man AI Agent (v5.2)
 
 <p align="center">
   <img src="https://img.shields.io/badge/AI%20Agent-100%25%20Claude%20Powered-purple" alt="Claude AI">
@@ -8,26 +8,27 @@
   <img src="https://img.shields.io/badge/UI-Iron%20Man%20Inspired-red" alt="Iron Man UI">
   <img src="https://img.shields.io/badge/Learning-Pattern%20Recognition-yellow" alt="Machine Learning">
   <img src="https://img.shields.io/badge/Status-FULLY%20AUTONOMOUS-success" alt="Production">
-  <img src="https://img.shields.io/badge/Version-5.1-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Version-5.2-brightgreen" alt="Version">
 </p>
 
 <p align="center">
   <em>"JARVIS, sometimes you gotta run before you can walk." - Tony Stark</em>
 </p>
 
-## 🚀 What's New in v5.1
+## 🚀 What's New in v5.2
 
-### **100% Claude AI Integration**
-- **All AI operations now use Claude Opus 4** - No more simple chatbot fallbacks
-- **Enhanced Vision System** - Claude analyzes your entire workspace
-- **Intelligent Task Execution** - Claude plans and executes complex tasks
-- **Pattern Learning** - Learns from your behavior and adapts
+### **🎯 App Control Actually Works!**
+- **"Open Safari" opens Safari** - Commands execute through AppleScript
+- **System Control Integration** - JARVIS AI Core connected to macOS controller
+- **Natural Language to Actions** - Say it, and it happens instantly
+- **All Apps Supported** - Chrome, Mail, Spotify, VS Code, any macOS app
 
-### **Critical Fixes**
-- ✅ **Vision WebSocket** - Fixed connection issues, now stable
-- ✅ **Speech Recognition** - Enhanced state management, no more conflicts
-- ✅ **Multi-Window Analysis** - Can see and understand all 50+ windows
-- ✅ **Continuous Monitoring** - Scans workspace every 2 seconds in autonomous mode
+### **Enhanced from v5.1**
+- ✅ **100% Claude AI Integration** - Now with system control
+- ✅ **Vision WebSocket** - Stable multi-window analysis
+- ✅ **Speech Recognition** - Commands that execute
+- ✅ **Continuous Monitoring** - 2-second workspace scans
+- ✅ **Pattern Learning** - Adapts to your behavior
 
 ## Table of Contents
 - [Overview](#-overview)
@@ -42,16 +43,16 @@
 
 ## 🎯 Overview
 
-JARVIS v5.1 achieves **True Iron Man-level Autonomy** powered entirely by Claude AI. Every decision, analysis, and action is processed through Claude Opus 4, ensuring consistent, intelligent responses. This isn't just an assistant; it's your personal AI that truly understands your workspace, anticipates needs, and acts autonomously.
+JARVIS v5.2 achieves **True Iron Man-level Control** with full system integration. When you say "Open Safari," Safari actually opens. Every command is not just understood but executed through direct system control, powered by Claude AI for intelligent decision-making.
 
-### What Makes JARVIS v5.1 Different
+### What Makes JARVIS v5.2 Revolutionary
 
-Unlike v5.0, JARVIS v5.1:
-- **Claude-Powered Everything** - Vision, speech, and task execution all use Claude API
-- **Multi-Window Understanding** - Analyzes all windows simultaneously  
-- **Continuous Learning** - Patterns recognized and adapted in real-time
-- **Enhanced Stability** - Fixed WebSocket issues and speech recognition conflicts
-- **True Autonomy** - Makes intelligent decisions based on workspace context
+Unlike any previous version, JARVIS v5.2:
+- **Commands That Execute** - "Open Safari" actually opens Safari instantly
+- **System Control Integration** - AppleScript execution for all macOS apps
+- **Claude + Actions** - AI understanding paired with real system control
+- **Natural Language** - Speak naturally, JARVIS executes precisely
+- **All v5.1 Features** - Plus the ability to actually control your Mac
 
 ## 📋 Manual Mode vs Autonomous Mode
 
@@ -295,8 +296,23 @@ curl http://localhost:8000/voice/jarvis/status
 
 1. **JARVIS starts in Manual Mode** (privacy-first)
 2. **Test voice**: Say "Hey JARVIS" → "What time is it?"
-3. **Enable autonomy**: "Hey JARVIS, activate full autonomy"
-4. **Experience the difference**: JARVIS begins proactive assistance
+3. **Test app control**: "Hey JARVIS, open Safari" → Safari opens!
+4. **Enable autonomy**: "Hey JARVIS, activate full autonomy"
+5. **Experience the difference**: JARVIS begins proactive assistance
+
+### App Control Commands (NEW in v5.2)
+
+```bash
+# Voice Commands That Actually Work:
+"Open Safari"          # Opens Safari browser
+"Close Chrome"         # Closes Chrome if running
+"Switch to Mail"       # Switches to Mail app
+"Open Visual Studio Code"  # Opens VS Code
+"Close all windows"    # Minimizes everything
+
+# Test the fix:
+python backend/test_jarvis_safari.py
+```
 
 ### Verify Everything is Working
 
@@ -1058,6 +1074,35 @@ If speech recognition shows "already started" errors:
    - Open browser console
    - Look for SpeechDebug component output
    - Check for browser autoplay policies
+
+### App Control Not Working (Fixed in v5.2)
+
+If commands like "Open Safari" don't execute:
+
+1. **Verify System Integration**
+   ```bash
+   python backend/test_jarvis_safari.py
+   ```
+
+2. **Check Permissions**
+   - macOS System Preferences → Security & Privacy
+   - Enable Accessibility for Terminal/Python
+   - Enable Automation permissions
+
+3. **Test Direct Control**
+   ```python
+   # Test AppleScript execution
+   from backend.system_control.macos_controller import MacOSController
+   controller = MacOSController()
+   success, msg = controller.open_application("Safari")
+   print(msg)
+   ```
+
+4. **Common Issues Fixed in v5.2**
+   - AI Core now connected to system control
+   - Commands execute through AppleScript
+   - Natural language properly interpreted
+   - All macOS apps supported
 
 ## 📄 License
 

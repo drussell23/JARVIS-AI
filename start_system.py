@@ -72,8 +72,8 @@ class AsyncSystemManager:
     def print_header(self):
         """Print system header"""
         print(f"\n{Colors.HEADER}{'='*60}")
-        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v5.1 - Claude-Powered Autonomy 🚀{Colors.ENDC}")
-        print(f"{Colors.CYAN}🧠 100% CLAUDE AI INTEGRATION • True Iron Man Experience{Colors.ENDC}")
+        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v5.2 - Full System Control 🚀{Colors.ENDC}")
+        print(f"{Colors.CYAN}🧠 CLAUDE AI + SYSTEM INTEGRATION • Commands That Execute{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}")
         
         # AI Integration
@@ -101,11 +101,11 @@ class AsyncSystemManager:
         print(f"   • Self-learning from your patterns")
         
         # System Capabilities
-        print(f"\n{Colors.BOLD}🚀 ENHANCED CAPABILITIES (v5.1):{Colors.ENDC}")
-        print(f"{Colors.YELLOW}🎯 AI Brain:{Colors.ENDC} Claude Opus 4 • Predictive • Contextual • Creative")
-        print(f"{Colors.BLUE}🔊 Voice:{Colors.ENDC} Natural conversations • Proactive announcements • Fixed state management")
+        print(f"\n{Colors.BOLD}🚀 ENHANCED CAPABILITIES (v5.2):{Colors.ENDC}")
+        print(f"{Colors.YELLOW}🎯 AI Brain:{Colors.ENDC} Claude + System Control • App commands execute instantly")
+        print(f"{Colors.BLUE}🔊 Voice:{Colors.ENDC} \"Open Safari\" actually opens Safari • All apps supported")
         print(f"{Colors.HEADER}👁️  Vision:{Colors.ENDC} Enhanced WebSocket • Multi-window analysis • Notification detection")
-        print(f"{Colors.CYAN}💻 System:{Colors.ENDC} macOS control • App management • Task automation")
+        print(f"{Colors.CYAN}💻 System:{Colors.ENDC} AppleScript execution • Natural language to actions")
         print(f"{Colors.GREEN}🔒 Privacy:{Colors.ENDC} One-click privacy mode • Camera/mic control")
         
         # Activation
@@ -852,11 +852,12 @@ class AsyncSystemManager:
             print(f"  🔊 Backend speech: {Colors.GREEN}Enabled{Colors.ENDC} (macOS native)")
             print(f"  🎵 Browser speech: Fallback mode")
             
-        print(f"\n{Colors.GREEN}✨ Enhanced Features (v5.1 - Claude Integration):{Colors.ENDC}")
-        print(f"  • 🧠 Claude AI Brain {Colors.GREEN}[ACTIVE]{Colors.ENDC} - Opus 4 powers all operations")
-        print(f"  • 🔊 Voice Integration {Colors.GREEN}[ENHANCED]{Colors.ENDC} - Fixed state management")
+        print(f"\n{Colors.GREEN}✨ Enhanced Features (v5.2 - System Control):{Colors.ENDC}")
+        print(f"  • 🎯 App Control {Colors.GREEN}[FIXED]{Colors.ENDC} - 'Open Safari' actually works!")
+        print(f"  • 🧠 Claude AI Brain {Colors.GREEN}[ENHANCED]{Colors.ENDC} - Connected to system control")
+        print(f"  • 🔊 Voice Commands {Colors.GREEN}[EXECUTING]{Colors.ENDC} - Natural language to actions")
         print(f"  • 👁️ Vision System {Colors.GREEN}[ENHANCED]{Colors.ENDC} - Multi-window Claude analysis")
-        print(f"  • 💻 macOS Integration {Colors.GREEN}[ACTIVE]{Colors.ENDC} - Full system control")
+        print(f"  • 💻 macOS Integration {Colors.GREEN}[CONNECTED]{Colors.ENDC} - AppleScript execution")
         print(f"  • 🔧 Hardware Control {Colors.GREEN}[ACTIVE]{Colors.ENDC} - Camera/mic management")
         print(f"  • 🎯 Continuous Monitoring {Colors.GREEN}[NEW]{Colors.ENDC} - 2-second workspace scans")
         print(f"  • 🔔 Notification Detection {Colors.GREEN}[NEW]{Colors.ENDC} - WhatsApp, Discord, Messages")
@@ -874,6 +875,11 @@ class AsyncSystemManager:
         print(f"  • Auto-fix script: {Colors.YELLOW}./fix-microphone.sh{Colors.ENDC}")
         print(f"  • Detects blocking apps automatically")
         print(f"  • Browser-specific permissions guide")
+        
+        print(f"\n{Colors.CYAN}App Control Commands:{Colors.ENDC}")
+        print(f"  • Test Safari: {Colors.YELLOW}python test_jarvis_safari.py{Colors.ENDC}")
+        print(f"  • Voice: 'Open Safari', 'Close Chrome', 'Switch to Mail'")
+        print(f"  • All macOS apps supported via AppleScript")
         
         print(f"\n{Colors.CYAN}Autonomy Activation:{Colors.ENDC}")
         print(f"  • Test script: {Colors.YELLOW}python test_autonomy_activation.py{Colors.ENDC}")

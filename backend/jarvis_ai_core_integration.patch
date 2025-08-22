@@ -1,0 +1,31 @@
+
+# Add this to jarvis_ai_core.py after imports
+
+from system_control.macos_controller import MacOSController
+from system_control.claude_command_interpreter import ClaudeCommandInterpreter
+
+# Add to __init__ method:
+        # Initialize system control
+        self.controller = MacOSController()
+        self.command_interpreter = ClaudeCommandInterpreter(api_key)
+        logger.info("System control integration initialized")
+
+# Replace execute_task method with:
+    async def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a task using Claude's intelligence and system control"""
+        try:
+            # If task has a direct command, execute it
+            if "command" in task:
+                intent = await self.command_interpreter.interpret_command(task["command"])
+                if intent.confidence > 0.5:
+                    result = await self.command_interpreter.execute_intent(intent)
+                    return {
+                        "task": task,
+                        "executed": True,
+                        "success": result.success,
+                        "message": result.message,
+                        "executed_at": datetime.now().isoformat()
+                    }
+            
+            # Otherwise use existing execution plan logic
+            # ... existing code ...

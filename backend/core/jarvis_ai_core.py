@@ -14,6 +14,8 @@ import base64
 
 from chatbots.claude_chatbot import ClaudeChatbot
 from vision.claude_vision_analyzer import ClaudeVisionAnalyzer
+from system_control.macos_controller import MacOSController
+from system_control.claude_command_interpreter import ClaudeCommandInterpreter
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +35,17 @@ class JARVISAICore:
         # Initialize Claude components
         self.claude = ClaudeChatbot(
             api_key=api_key,
-            model=os.getenv("CLAUDE_MODEL", "claude-3-opus-20240229"),  # Use Opus for best quality
+            model=os.getenv("CLAUDE_MODEL", "claude-3-haiku-20240307"),  # Use Haiku model
             max_tokens=int(os.getenv("CLAUDE_MAX_TOKENS", "4096")),
             temperature=float(os.getenv("CLAUDE_TEMPERATURE", "0.7"))
         )
         
         self.vision_analyzer = ClaudeVisionAnalyzer(api_key)
+        
+        # Initialize system control
+        self.controller = MacOSController()
+        self.command_interpreter = ClaudeCommandInterpreter(api_key)
+        logger.info("System control integration initialized")
         
         # Context management
         self.workspace_context = {}
@@ -108,15 +115,17 @@ Autonomous mode: {self.autonomous_mode}
 
 User command: "{command}"
 
-Analyze this command and provide:
-1. Intent classification (e.g., app_control, information_query, system_control, workspace_management)
-2. Specific action to take
-3. Parameters needed
-4. Confidence level (0-1)
-5. Should this trigger autonomous behavior?
-6. Response to speak to the user
+Analyze this command and provide a JSON response with these exact fields:
+{{
+  "intent": "app_control" or "information_query" or "system_control" or "workspace_management",
+  "action": "the specific action like open_app, close_app, etc.",
+  "parameters": {{"target": "app name", "other": "params"}},
+  "confidence": 0.0 to 1.0,
+  "trigger_autonomous": true or false,
+  "response": "What JARVIS should say to the user"
+}}
 
-Respond in JSON format."""
+For opening applications, use intent="app_control" and action="open_app"."""
 
             # Get Claude's analysis
             response = await self.claude.generate_response(prompt)
@@ -138,6 +147,26 @@ Respond in JSON format."""
             # Learn from this command
             await self._learn_from_command(command, analysis)
             
+            # If this is an app control command with high confidence, execute it
+            if analysis.get("intent") == "app_control" and analysis.get("confidence", 0) > 0.7:
+                try:
+                    # Interpret the command for execution
+                    intent = await self.command_interpreter.interpret_command(command)
+                    if intent.confidence > 0.5:
+                        # Execute the command
+                        result = await self.command_interpreter.execute_intent(intent)
+                        analysis["executed"] = True
+                        analysis["execution_result"] = {
+                            "success": result.success,
+                            "message": result.message
+                        }
+                        # Update the response to include execution result
+                        if result.success:
+                            analysis["response"] = f"{analysis.get('response', '')} {result.message}"
+                except Exception as e:
+                    logger.error(f"Error executing app control command: {e}")
+                    analysis["execution_error"] = str(e)
+            
             return analysis
             
         except Exception as e:
@@ -155,6 +184,24 @@ Respond in JSON format."""
             task: Task description with action, parameters, etc.
         """
         try:
+            # Check if this is a direct command that can be executed
+            if "command" in task or "action" in task:
+                command = task.get("command") or f"{task.get('action', '')} {task.get('target', '')}".strip()
+                
+                # Use command interpreter for system actions
+                if task.get("action") in ["open_app", "close_app", "switch_to_app"] or "open" in command.lower():
+                    intent = await self.command_interpreter.interpret_command(command)
+                    if intent.confidence > 0.5:
+                        result = await self.command_interpreter.execute_intent(intent)
+                        return {
+                            "task": task,
+                            "executed": True,
+                            "success": result.success,
+                            "message": result.message,
+                            "executed_at": datetime.now().isoformat(),
+                            "status": "completed" if result.success else "failed"
+                        }
+            
             # Build execution prompt
             prompt = f"""As JARVIS, execute the following task intelligently:
 
