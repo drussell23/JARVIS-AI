@@ -454,6 +454,47 @@ const JarvisVoice = () => {
         requestAnimationFrame(() => {
           speakResponse(data.text);
         });
+        
+        // Check for autonomy activation commands in response
+        const responseText = data.text.toLowerCase();
+        if (data.command_type === 'autonomy_activation' || 
+            responseText.includes('autonomous mode activated') ||
+            responseText.includes('full autonomy enabled') ||
+            responseText.includes('all systems online')) {
+          // Activate autonomous mode
+          if (!autonomousMode) {
+            setAutonomousMode(true);
+            // Connect vision system
+            if (visionConnectionRef.current && !visionConnectionRef.current.isConnected) {
+              visionConnectionRef.current.connect();
+            }
+            // Enable continuous listening
+            enableContinuousListening();
+          }
+        }
+        break;
+      case 'autonomy_status':
+        // Handle autonomy status updates
+        if (data.enabled) {
+          setAutonomousMode(true);
+          if (visionConnectionRef.current && !visionConnectionRef.current.isConnected) {
+            visionConnectionRef.current.connect();
+          }
+        } else {
+          setAutonomousMode(false);
+        }
+        break;
+      case 'vision_status':
+        // Handle vision connection status
+        setVisionConnected(data.connected);
+        break;
+      case 'mode_changed':
+        // Handle mode change confirmations
+        if (data.mode === 'autonomous') {
+          setAutonomousMode(true);
+        } else {
+          setAutonomousMode(false);
+        }
         break;
       case 'error':
         setError(data.message);
@@ -596,11 +637,24 @@ const JarvisVoice = () => {
     console.log('Command received:', command);
     setTranscript(command);
     
+    // Check for autonomy activation commands
+    const lowerCommand = command.toLowerCase();
+    if (lowerCommand.includes('activate full autonomy') || 
+        lowerCommand.includes('enable autonomous mode') ||
+        lowerCommand.includes('activate autonomy') ||
+        lowerCommand.includes('iron man mode') ||
+        lowerCommand.includes('activate all systems')) {
+      // Direct autonomy activation
+      toggleAutonomousMode();
+      return;
+    }
+    
     // Send via WebSocket instead of REST API
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'command',
-        text: command
+        text: command,
+        mode: autonomousMode ? 'autonomous' : 'manual'
       }));
       setResponse('Processing...');
     } else {
@@ -649,24 +703,46 @@ const JarvisVoice = () => {
     
     if (newMode) {
       // Enable autonomous mode
-      speakResponse("Autonomous mode activated. I'm now monitoring your workspace.");
+      speakResponse("Initiating full autonomy. All systems coming online. Vision system activating. AI brain engaged. Sir, I am now fully autonomous.");
       
       // Connect vision system
       if (visionConnectionRef.current) {
+        console.log('Connecting vision system...');
         await visionConnectionRef.current.connect();
+        // Start monitoring immediately
+        if (visionConnectionRef.current.isConnected) {
+          visionConnectionRef.current.startMonitoring();
+        }
       }
       
       // Enable continuous listening
       enableContinuousListening();
+      
+      // Notify backend about autonomy mode
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          type: 'set_mode',
+          mode: 'autonomous'
+        }));
+      }
     } else {
       // Disable autonomous mode
-      speakResponse("Autonomous mode deactivated. Standing by for manual commands.");
+      speakResponse("Disabling autonomous mode. Returning to manual control. Standing by for your commands, sir.");
       
-      // Disconnect vision system
-      if (visionConnectionRef.current) {
+      // Stop vision monitoring
+      if (visionConnectionRef.current && visionConnectionRef.current.isConnected) {
+        visionConnectionRef.current.stopMonitoring();
         visionConnectionRef.current.disconnect();
       }
       setVisionConnected(false);
+      
+      // Notify backend
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          type: 'set_mode',
+          mode: 'manual'
+        }));
+      }
       
       // Keep listening if user wants
     }

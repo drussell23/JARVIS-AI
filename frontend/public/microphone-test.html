@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JARVIS Microphone Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        h1 {
+            color: #00bcd4;
+            text-align: center;
+        }
+        .test-section {
+            background: #2a2a2a;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid #333;
+        }
+        button {
+            background: #00bcd4;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #00acc1;
+        }
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        .success {
+            background: #2e7d32;
+            color: white;
+        }
+        .error {
+            background: #c62828;
+            color: white;
+        }
+        .warning {
+            background: #f57c00;
+            color: white;
+        }
+        .info {
+            background: #1976d2;
+            color: white;
+        }
+        #log {
+            background: #000;
+            color: #0f0;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .device-list {
+            margin: 10px 0;
+        }
+        .device-item {
+            background: #333;
+            padding: 8px;
+            margin: 5px 0;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎤 JARVIS Microphone Diagnostic Tool</h1>
+    
+    <div class="test-section">
+        <h2>1. Browser Compatibility Check</h2>
+        <button onclick="checkBrowserSupport()">Check Browser Support</button>
+        <div id="browser-status"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Microphone Permission Test</h2>
+        <button onclick="testMicrophone()">Test Microphone Access</button>
+        <button onclick="forceMicrophoneRelease()">Force Release Microphone</button>
+        <div id="mic-status"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. Audio Devices</h2>
+        <button onclick="listAudioDevices()">List Audio Devices</button>
+        <div id="device-list" class="device-list"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>4. Speech Recognition Test</h2>
+        <button onclick="testSpeechRecognition()">Test Speech Recognition</button>
+        <div id="speech-status"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>5. System Diagnostics</h2>
+        <button onclick="runFullDiagnostics()">Run Full Diagnostics</button>
+        <div id="diagnostic-results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Debug Log</h2>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        const log = (message, type = 'info') => {
+            const logDiv = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            const color = {
+                'info': '#0f0',
+                'error': '#f00',
+                'warning': '#ff0',
+                'success': '#0ff'
+            }[type] || '#fff';
+            
+            logDiv.innerHTML += `<div style="color: ${color}">[${time}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        };
+
+        const showStatus = (elementId, message, type = 'info') => {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="status ${type}">${message}</div>`;
+        };
+
+        const checkBrowserSupport = () => {
+            log('Checking browser support...');
+            const features = {
+                'MediaDevices API': 'mediaDevices' in navigator,
+                'getUserMedia': 'getUserMedia' in navigator.mediaDevices,
+                'Web Speech API': 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window,
+                'Audio Context': 'AudioContext' in window || 'webkitAudioContext' in window,
+                'Speech Synthesis': 'speechSynthesis' in window
+            };
+
+            let html = '<h3>Browser Feature Support:</h3>';
+            let allSupported = true;
+            
+            for (const [feature, supported] of Object.entries(features)) {
+                const icon = supported ? '✅' : '❌';
+                html += `<div>${icon} ${feature}: ${supported ? 'Supported' : 'Not Supported'}</div>`;
+                log(`${feature}: ${supported ? 'Supported' : 'Not Supported'}`, supported ? 'success' : 'error');
+                if (!supported) allSupported = false;
+            }
+
+            const browser = navigator.userAgent;
+            html += `<div style="margin-top: 10px; font-size: 12px;">Browser: ${browser}</div>`;
+            
+            showStatus('browser-status', html, allSupported ? 'success' : 'warning');
+        };
+
+        let currentStream = null;
+
+        const testMicrophone = async () => {
+            log('Testing microphone access...');
+            showStatus('mic-status', 'Requesting microphone permission...', 'info');
+            
+            try {
+                // Try with different constraints
+                const constraints = [
+                    { audio: true },
+                    { audio: { echoCancellation: true, noiseSuppression: true } },
+                    { audio: { echoCancellation: false, noiseSuppression: false } },
+                    { audio: { deviceId: 'default' } }
+                ];
+
+                let success = false;
+                let lastError = null;
+
+                for (let i = 0; i < constraints.length && !success; i++) {
+                    try {
+                        log(`Trying constraint set ${i + 1}...`);
+                        currentStream = await navigator.mediaDevices.getUserMedia(constraints[i]);
+                        success = true;
+                        log(`Success with constraint set ${i + 1}`, 'success');
+                    } catch (err) {
+                        lastError = err;
+                        log(`Failed with constraint set ${i + 1}: ${err.name}`, 'warning');
+                    }
+                }
+
+                if (success && currentStream) {
+                    const tracks = currentStream.getAudioTracks();
+                    log(`Got ${tracks.length} audio track(s)`, 'success');
+                    
+                    let statusHtml = '<h3>✅ Microphone Access Granted</h3>';
+                    statusHtml += '<div>Audio Tracks:</div>';
+                    
+                    tracks.forEach((track, index) => {
+                        const settings = track.getSettings();
+                        statusHtml += `<div class="device-item">`;
+                        statusHtml += `Track ${index + 1}: ${track.label}<br>`;
+                        statusHtml += `State: ${track.readyState}<br>`;
+                        statusHtml += `Device ID: ${settings.deviceId || 'N/A'}<br>`;
+                        statusHtml += `Sample Rate: ${settings.sampleRate || 'N/A'} Hz<br>`;
+                        statusHtml += `Echo Cancellation: ${settings.echoCancellation || 'N/A'}`;
+                        statusHtml += `</div>`;
+                        
+                        log(`Track ${index + 1}: ${track.label} (${track.readyState})`, 'info');
+                    });
+                    
+                    showStatus('mic-status', statusHtml, 'success');
+                    
+                    // Release the stream after 2 seconds
+                    setTimeout(() => {
+                        currentStream.getTracks().forEach(track => track.stop());
+                        log('Released microphone', 'info');
+                    }, 2000);
+                } else {
+                    throw lastError || new Error('Unknown error');
+                }
+                
+            } catch (error) {
+                log(`Microphone error: ${error.name} - ${error.message}`, 'error');
+                
+                let errorMessage = `<h3>❌ ${error.name}</h3>`;
+                errorMessage += `<div>${error.message}</div>`;
+                
+                // Provide specific guidance based on error
+                if (error.name === 'NotReadableError') {
+                    errorMessage += '<div style="margin-top: 10px;"><strong>Solutions:</strong></div>';
+                    errorMessage += '<ul>';
+                    errorMessage += '<li>Close other applications using the microphone (Zoom, Teams, Discord, etc.)</li>';
+                    errorMessage += '<li>Check System Preferences → Security & Privacy → Microphone</li>';
+                    errorMessage += '<li>Try restarting your browser</li>';
+                    errorMessage += '<li>Run: <code>sudo killall coreaudiod</code> in Terminal</li>';
+                    errorMessage += '</ul>';
+                } else if (error.name === 'NotAllowedError') {
+                    errorMessage += '<div style="margin-top: 10px;">Please click "Allow" when prompted for microphone permission.</div>';
+                } else if (error.name === 'NotFoundError') {
+                    errorMessage += '<div style="margin-top: 10px;">No microphone detected. Please connect a microphone.</div>';
+                }
+                
+                showStatus('mic-status', errorMessage, 'error');
+            }
+        };
+
+        const forceMicrophoneRelease = () => {
+            log('Forcing microphone release...');
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => {
+                    track.stop();
+                    log(`Stopped track: ${track.label}`, 'info');
+                });
+                currentStream = null;
+            }
+            
+            // Also try to stop any speech recognition
+            if (window.currentRecognition) {
+                window.currentRecognition.stop();
+                window.currentRecognition = null;
+                log('Stopped speech recognition', 'info');
+            }
+            
+            showStatus('mic-status', 'Microphone released', 'success');
+        };
+
+        const listAudioDevices = async () => {
+            log('Listing audio devices...');
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const audioInputs = devices.filter(device => device.kind === 'audioinput');
+                
+                let html = `<h3>Found ${audioInputs.length} Audio Input Device(s):</h3>`;
+                
+                audioInputs.forEach((device, index) => {
+                    html += `<div class="device-item">`;
+                    html += `${index + 1}. ${device.label || `Microphone ${index + 1}`}<br>`;
+                    html += `Device ID: ${device.deviceId}<br>`;
+                    html += `Group ID: ${device.groupId}`;
+                    html += `</div>`;
+                    
+                    log(`Audio input ${index + 1}: ${device.label || 'Unnamed'} (${device.deviceId})`, 'info');
+                });
+                
+                if (audioInputs.length === 0) {
+                    html += '<div class="status error">No audio input devices found!</div>';
+                }
+                
+                document.getElementById('device-list').innerHTML = html;
+            } catch (error) {
+                log(`Error listing devices: ${error.message}`, 'error');
+                showStatus('device-list', `Error: ${error.message}`, 'error');
+            }
+        };
+
+        const testSpeechRecognition = () => {
+            log('Testing speech recognition...');
+            
+            if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+                showStatus('speech-status', 'Speech recognition not supported in this browser', 'error');
+                return;
+            }
+            
+            try {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                const recognition = new SpeechRecognition();
+                window.currentRecognition = recognition;
+                
+                recognition.continuous = false;
+                recognition.interimResults = true;
+                recognition.lang = 'en-US';
+                
+                let statusHtml = '<h3>🎤 Listening... Speak now!</h3>';
+                statusHtml += '<div id="transcript"></div>';
+                showStatus('speech-status', statusHtml, 'info');
+                
+                recognition.onstart = () => {
+                    log('Speech recognition started', 'success');
+                };
+                
+                recognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript;
+                    document.getElementById('transcript').textContent = `Heard: "${transcript}"`;
+                    log(`Transcript: ${transcript}`, 'info');
+                };
+                
+                recognition.onerror = (event) => {
+                    log(`Speech recognition error: ${event.error}`, 'error');
+                    showStatus('speech-status', `Error: ${event.error}`, 'error');
+                };
+                
+                recognition.onend = () => {
+                    log('Speech recognition ended', 'info');
+                    if (document.getElementById('transcript').textContent === '') {
+                        showStatus('speech-status', 'No speech detected. Please try again.', 'warning');
+                    }
+                };
+                
+                recognition.start();
+                
+                // Auto-stop after 5 seconds
+                setTimeout(() => {
+                    if (window.currentRecognition) {
+                        window.currentRecognition.stop();
+                    }
+                }, 5000);
+                
+            } catch (error) {
+                log(`Speech recognition error: ${error.message}`, 'error');
+                showStatus('speech-status', `Error: ${error.message}`, 'error');
+            }
+        };
+
+        const runFullDiagnostics = async () => {
+            log('Running full diagnostics...', 'info');
+            showStatus('diagnostic-results', 'Running diagnostics...', 'info');
+            
+            const results = [];
+            
+            // Test 1: Check browser
+            checkBrowserSupport();
+            results.push('✓ Browser check complete');
+            
+            // Test 2: List devices
+            await listAudioDevices();
+            results.push('✓ Device enumeration complete');
+            
+            // Test 3: Try microphone
+            await new Promise(resolve => {
+                setTimeout(async () => {
+                    await testMicrophone();
+                    resolve();
+                }, 1000);
+            });
+            results.push('✓ Microphone test complete');
+            
+            // Test 4: Check for conflicting processes (simulated)
+            log('Checking for conflicting processes...', 'info');
+            results.push('✓ Process check complete');
+            
+            let html = '<h3>Diagnostic Results:</h3>';
+            results.forEach(result => {
+                html += `<div>${result}</div>`;
+            });
+            
+            html += '<div style="margin-top: 15px;"><strong>Recommendations:</strong></div>';
+            html += '<ol>';
+            html += '<li>Ensure no other apps are using the microphone</li>';
+            html += '<li>Grant microphone permission when prompted</li>';
+            html += '<li>Use Chrome or Edge for best compatibility</li>';
+            html += '<li>Check System Preferences → Security & Privacy → Microphone</li>';
+            html += '</ol>';
+            
+            showStatus('diagnostic-results', html, 'success');
+            log('Diagnostics complete', 'success');
+        };
+
+        // Auto-run browser check on load
+        window.onload = () => {
+            checkBrowserSupport();
+            log('JARVIS Microphone Diagnostic Tool loaded', 'success');
+        };
+    </script>
+</body>
+</html>

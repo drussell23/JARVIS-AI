@@ -354,6 +354,54 @@ class JARVISVoiceAPI:
                     command_text = data.get("text", "")
                     logger.info(f"WebSocket received command: '{command_text}'")
                     
+                    # Import autonomy handler
+                    try:
+                        from .autonomy_handler import get_autonomy_handler
+                        autonomy_handler = get_autonomy_handler()
+                    except ImportError:
+                        autonomy_handler = None
+                    
+                    # Check for autonomy commands
+                    if autonomy_handler:
+                        autonomy_action = autonomy_handler.process_autonomy_command(command_text)
+                        if autonomy_action == "activate":
+                            # Activate full autonomy
+                            result = await autonomy_handler.activate_full_autonomy()
+                            await websocket.send_json({
+                                "type": "response",
+                                "text": "Initiating full autonomy. All systems coming online. Vision system activating. AI brain engaged. Sir, I am now fully autonomous.",
+                                "command_type": "autonomy_activation",
+                                "autonomy_result": result,
+                                "timestamp": datetime.now().isoformat()
+                            })
+                            
+                            # Send status update
+                            await websocket.send_json({
+                                "type": "autonomy_status",
+                                "enabled": True,
+                                "systems": result.get("systems", {}),
+                                "timestamp": datetime.now().isoformat()
+                            })
+                            continue
+                        elif autonomy_action == "deactivate":
+                            # Deactivate autonomy
+                            result = await autonomy_handler.deactivate_autonomy()
+                            await websocket.send_json({
+                                "type": "response",
+                                "text": "Disabling autonomous mode. Returning to manual control. Standing by for your commands, sir.",
+                                "command_type": "autonomy_deactivation",
+                                "autonomy_result": result,
+                                "timestamp": datetime.now().isoformat()
+                            })
+                            
+                            # Send status update
+                            await websocket.send_json({
+                                "type": "autonomy_status",
+                                "enabled": False,
+                                "timestamp": datetime.now().isoformat()
+                            })
+                            continue
+                    
                     # Ensure JARVIS is active for WebSocket commands
                     if not self.jarvis.running:
                         self.jarvis.running = True
@@ -421,6 +469,34 @@ class JARVISVoiceAPI:
                         "timestamp": datetime.now().isoformat()
                     })
                     
+                elif data.get("type") == "set_mode":
+                    # Handle mode change from frontend
+                    mode = data.get("mode", "manual")
+                    logger.info(f"Mode change requested: {mode}")
+                    
+                    # Update autonomy handler if available
+                    try:
+                        from .autonomy_handler import get_autonomy_handler
+                        autonomy_handler = get_autonomy_handler()
+                        
+                        if mode == "autonomous":
+                            result = await autonomy_handler.activate_full_autonomy()
+                        else:
+                            result = await autonomy_handler.deactivate_autonomy()
+                            
+                        await websocket.send_json({
+                            "type": "mode_changed",
+                            "mode": mode,
+                            "result": result,
+                            "timestamp": datetime.now().isoformat()
+                        })
+                    except Exception as e:
+                        logger.error(f"Error changing mode: {e}")
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": f"Failed to change mode: {str(e)}"
+                        })
+                        
                 elif data.get("type") == "ping":
                     # Heartbeat
                     await websocket.send_json({
