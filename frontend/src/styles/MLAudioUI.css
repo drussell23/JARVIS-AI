@@ -1,0 +1,403 @@
+/* ML Audio UI Styles */
+
+/* ML Instructions Container */
+.ml-audio-instructions {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.9);
+  opacity: 0;
+  transition: all 0.3s ease;
+  z-index: 10000;
+  max-width: 500px;
+  width: 90%;
+}
+
+.ml-audio-instructions.ml-show {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
+
+.ml-instructions-container {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  border: 2px solid #0f9d58;
+  border-radius: 20px;
+  box-shadow: 0 10px 40px rgba(15, 157, 88, 0.3);
+  overflow: hidden;
+  animation: mlPulse 2s ease-in-out infinite;
+}
+
+@keyframes mlPulse {
+  0%, 100% {
+    box-shadow: 0 10px 40px rgba(15, 157, 88, 0.3);
+  }
+  50% {
+    box-shadow: 0 15px 50px rgba(15, 157, 88, 0.5);
+  }
+}
+
+.ml-instructions-header {
+  background: linear-gradient(90deg, #0f9d58 0%, #4285f4 100%);
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ml-instructions-header .ml-icon {
+  font-size: 28px;
+  animation: bounce 1s infinite;
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+.ml-instructions-header h3 {
+  margin: 0;
+  color: white;
+  font-family: 'Orbitron', monospace;
+  font-weight: 600;
+  flex: 1;
+  text-align: center;
+}
+
+.ml-close {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.ml-close:hover {
+  transform: rotate(90deg);
+}
+
+.ml-instructions-body {
+  padding: 30px;
+  color: #e0e0e0;
+}
+
+.ml-instructions-body p {
+  margin: 0 0 20px 0;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.ml-instructions-body ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.ml-instructions-body li {
+  margin: 10px 0;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.ml-browser-specific {
+  margin-top: 20px;
+  padding: 15px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.ml-browser-specific img {
+  width: 40px;
+  height: 40px;
+  filter: brightness(0) invert(1);
+}
+
+.ml-instructions-footer {
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+}
+
+.ml-retry-button,
+.ml-text-mode-button {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 25px;
+  font-family: 'Orbitron', monospace;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 14px;
+}
+
+.ml-retry-button {
+  background: linear-gradient(45deg, #0f9d58, #4285f4);
+  color: white;
+}
+
+.ml-retry-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 20px rgba(15, 157, 88, 0.5);
+}
+
+.ml-text-mode-button {
+  background: transparent;
+  border: 2px solid #4285f4;
+  color: #4285f4;
+}
+
+.ml-text-mode-button:hover {
+  background: #4285f4;
+  color: white;
+}
+
+/* ML Prediction Alert */
+.ml-prediction-alert {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: linear-gradient(135deg, #ff9800 0%, #ff5722 100%);
+  color: white;
+  padding: 15px 20px;
+  border-radius: 10px;
+  box-shadow: 0 5px 20px rgba(255, 87, 34, 0.3);
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  max-width: 400px;
+  animation: slideIn 0.3s ease;
+  z-index: 9999;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.ml-prediction-alert .icon {
+  font-size: 24px;
+}
+
+.ml-prediction-alert .content {
+  flex: 1;
+}
+
+.ml-prediction-alert .title {
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+.ml-prediction-alert .message {
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.ml-prediction-alert .action {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ml-prediction-alert .action:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* ML Metrics Display */
+.ml-audio-metrics {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 15px;
+  font-family: monospace;
+  font-size: 12px;
+  color: #0f9d58;
+  max-width: 300px;
+}
+
+.ml-audio-metrics.hidden {
+  display: none;
+}
+
+.ml-audio-metrics .metric {
+  display: flex;
+  justify-content: space-between;
+  margin: 5px 0;
+}
+
+.ml-audio-metrics .metric .label {
+  opacity: 0.7;
+}
+
+.ml-audio-metrics .metric .value {
+  font-weight: bold;
+}
+
+.ml-audio-metrics .metric.good .value {
+  color: #0f9d58;
+}
+
+.ml-audio-metrics .metric.warning .value {
+  color: #ff9800;
+}
+
+.ml-audio-metrics .metric.error .value {
+  color: #f44336;
+}
+
+/* ML Recovery Progress */
+.ml-recovery-progress {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.9);
+  border: 2px solid #4285f4;
+  border-radius: 15px;
+  padding: 30px;
+  min-width: 300px;
+  text-align: center;
+  z-index: 10001;
+}
+
+.ml-recovery-progress .title {
+  color: #4285f4;
+  font-size: 18px;
+  margin-bottom: 20px;
+  font-family: 'Orbitron', monospace;
+}
+
+.ml-recovery-progress .spinner {
+  width: 50px;
+  height: 50px;
+  border: 3px solid rgba(66, 133, 244, 0.3);
+  border-top: 3px solid #4285f4;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 20px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.ml-recovery-progress .status {
+  color: #e0e0e0;
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+.ml-recovery-progress .attempts {
+  color: #999;
+  font-size: 12px;
+}
+
+/* Integration with JarvisVoice */
+.jarvis-voice-container.ml-enhanced .arc-reactor {
+  position: relative;
+}
+
+.jarvis-voice-container.ml-enhanced .arc-reactor::after {
+  content: '';
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 15px;
+  height: 15px;
+  background: #0f9d58;
+  border-radius: 50%;
+  animation: mlStatusPulse 2s infinite;
+  display: none;
+}
+
+.jarvis-voice-container.ml-enhanced.ml-active .arc-reactor::after {
+  display: block;
+}
+
+@keyframes mlStatusPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 0.5;
+  }
+}
+
+/* ML Debug Panel */
+.ml-debug-panel {
+  position: fixed;
+  top: 100px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.9);
+  border: 1px solid #0f9d58;
+  border-radius: 10px;
+  padding: 15px;
+  font-family: monospace;
+  font-size: 11px;
+  color: #0f9d58;
+  max-width: 350px;
+  max-height: 400px;
+  overflow-y: auto;
+  transition: all 0.3s ease;
+}
+
+.ml-debug-panel.collapsed {
+  height: 40px;
+  overflow: hidden;
+}
+
+.ml-debug-panel .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+
+.ml-debug-panel .toggle {
+  font-size: 16px;
+}
+
+.ml-debug-panel .log-entry {
+  margin: 5px 0;
+  padding: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+}
+
+.ml-debug-panel .log-entry.error {
+  border-left: 3px solid #f44336;
+}
+
+.ml-debug-panel .log-entry.success {
+  border-left: 3px solid #0f9d58;
+}
+
+.ml-debug-panel .log-entry.prediction {
+  border-left: 3px solid #ff9800;
+}
+
+.ml-debug-panel .timestamp {
+  opacity: 0.5;
+  font-size: 10px;
+}

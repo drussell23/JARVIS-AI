@@ -1,0 +1,92 @@
+{
+  "ml_audio": {
+    "enable_ml": true,
+    "auto_recovery": true,
+    "max_retries": 5,
+    "retry_delays": [100, 500, 1000, 2000, 5000],
+    "anomaly_threshold": 0.8,
+    "prediction_threshold": 0.7,
+    "learning_rate": 0.1,
+    "model_update_frequency": 100,
+    "telemetry_enabled": true,
+    "debug_mode": false
+  },
+  "recovery_strategies": {
+    "audio-capture": {
+      "primary": "request_permission",
+      "fallback": ["browser_settings", "system_settings", "text_fallback"]
+    },
+    "not-allowed": {
+      "primary": "system_settings",
+      "fallback": ["browser_settings", "text_fallback"]
+    },
+    "network": {
+      "primary": "retry_with_backoff",
+      "fallback": ["restart_audio", "text_fallback"]
+    },
+    "no-speech": {
+      "primary": "silent_retry",
+      "fallback": []
+    },
+    "aborted": {
+      "primary": "check_context",
+      "fallback": ["restart_audio"]
+    }
+  },
+  "browser_specific": {
+    "chrome": {
+      "preferred_sample_rate": 16000,
+      "echo_cancellation": true,
+      "noise_suppression": true,
+      "auto_gain_control": true,
+      "permission_prompt_delay": 500
+    },
+    "safari": {
+      "preferred_sample_rate": 44100,
+      "echo_cancellation": false,
+      "noise_suppression": false,
+      "auto_gain_control": false,
+      "permission_prompt_delay": 1000
+    },
+    "firefox": {
+      "preferred_sample_rate": 16000,
+      "echo_cancellation": true,
+      "noise_suppression": true,
+      "auto_gain_control": true,
+      "permission_prompt_delay": 300
+    }
+  },
+  "ml_models": {
+    "error_predictor": {
+      "type": "RandomForestClassifier",
+      "n_estimators": 100,
+      "max_depth": 10,
+      "min_samples_split": 5,
+      "features": [
+        "time_of_day",
+        "day_of_week",
+        "error_history_count",
+        "browser_type",
+        "session_duration",
+        "retry_count",
+        "permission_state"
+      ]
+    },
+    "anomaly_detector": {
+      "type": "IsolationForest",
+      "contamination": 0.1,
+      "n_estimators": 100
+    },
+    "pattern_clusterer": {
+      "type": "DBSCAN",
+      "eps": 0.5,
+      "min_samples": 5
+    }
+  },
+  "performance_targets": {
+    "recovery_success_rate": 0.85,
+    "avg_recovery_time_ms": 2000,
+    "prediction_accuracy": 0.75,
+    "anomaly_detection_precision": 0.8
+  }
+}

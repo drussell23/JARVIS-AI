@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './JarvisVoice.css';
+import '../styles/JarvisVoiceError.css';
 import MicrophonePermissionHelper from './MicrophonePermissionHelper';
 import SpeechDebug from './SpeechDebug'; // Temporary debug panel
+import mlAudioHandler from '../utils/MLAudioHandler'; // ML-enhanced audio handling
 
 // VisionConnection class for real-time workspace monitoring
 class VisionConnection {
@@ -280,6 +282,46 @@ const JarvisVoice = () => {
     // Check microphone permission first
     checkMicrophonePermission();
     
+    // Predict potential audio issues
+    mlAudioHandler.predictAudioIssue();
+    
+    // Set up ML event listeners
+    const handleAudioPrediction = (event) => {
+      const { prediction, suggestedAction } = event.detail;
+      if (prediction.probability > 0.7) {
+        console.warn('High probability of audio issue:', prediction);
+        // Take proactive action
+        if (suggestedAction === 'preemptive_permission_check') {
+          checkMicrophonePermission();
+        }
+      }
+    };
+    
+    const handleAudioAnomaly = (event) => {
+      console.warn('Audio anomaly detected:', event.detail);
+      setError('Audio anomaly detected. System is adapting...');
+    };
+    
+    const handleAudioMetrics = (event) => {
+      console.log('Audio metrics update:', event.detail);
+    };
+    
+    const handleTextFallback = (event) => {
+      console.log('Enabling text fallback mode');
+      // Focus on text input
+      const textInput = document.querySelector('.voice-input input');
+      if (textInput) {
+        textInput.focus();
+        textInput.placeholder = 'Voice unavailable - type your command here...';
+      }
+    };
+    
+    // Add ML event listeners
+    window.addEventListener('audioIssuePredicted', handleAudioPrediction);
+    window.addEventListener('audioAnomaly', handleAudioAnomaly);
+    window.addEventListener('audioMetricsUpdate', handleAudioMetrics);
+    window.addEventListener('enableTextFallback', handleTextFallback);
+    
     // Load voices for speech synthesis
     if ('speechSynthesis' in window) {
       // Load voices
@@ -335,15 +377,23 @@ const JarvisVoice = () => {
     }
     
     return () => {
+      // Clean up WebSocket
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.close();
       }
+      // Stop speech recognition
       if (recognitionRef.current) {
         recognitionRef.current.stop();
       }
+      // Disconnect vision
       if (visionConnectionRef.current) {
         visionConnectionRef.current.disconnect();
       }
+      // Remove ML event listeners
+      window.removeEventListener('audioIssuePredicted', handleAudioPrediction);
+      window.removeEventListener('audioAnomaly', handleAudioAnomaly);
+      window.removeEventListener('audioMetricsUpdate', handleAudioMetrics);
+      window.removeEventListener('enableTextFallback', handleTextFallback);
     };
   }, [autonomousMode]);
 
@@ -569,27 +619,59 @@ const JarvisVoice = () => {
         }
       };
       
-      recognitionRef.current.onerror = (event) => {
-        // Only log actual errors, not timeouts
-        if (event.error !== 'no-speech') {
-          console.error('Speech recognition error:', event.error);
-        }
+      recognitionRef.current.onerror = async (event) => {
+        console.error('Speech recognition error:', event.error, event);
         
-        if (event.error === 'no-speech') {
-          // Silently restart recognition if no speech detected
-          if (continuousListening) {
-            setTimeout(() => {
-              try {
-                recognitionRef.current.start();
-              } catch (e) {
-                // Ignore restart errors
-              }
-            }, 100);
+        // Use ML-enhanced error handling
+        const mlResult = await mlAudioHandler.handleAudioError(event, recognitionRef.current);
+        
+        if (mlResult.success) {
+          console.log('ML audio recovery successful:', mlResult);
+          setError('');
+          setMicStatus('ready');
+          
+          // Restart recognition if needed
+          if (mlResult.newContext || mlResult.message.includes('granted')) {
+            startListening();
           }
-        } else if (event.error === 'aborted' || event.error === 'network') {
-          // More serious errors - notify user
-          console.error('Recognition stopped:', event.error);
-          setError('Speech recognition stopped. Please reload the page.');
+        } else {
+          // Fallback to basic error handling
+          switch(event.error) {
+            case 'audio-capture':
+              setError('🎤 Microphone access denied. ML recovery failed.');
+              setMicStatus('error');
+              break;
+              
+            case 'not-allowed':
+              setError('🚫 Microphone permission denied. Please enable in browser settings.');
+              setMicStatus('error');
+              break;
+              
+            case 'no-speech':
+              // Silently restart for no-speech
+              if (continuousListening && isListening) {
+                setTimeout(() => {
+                  try {
+                    recognitionRef.current.start();
+                  } catch (e) {
+                    console.log('Restarting recognition...');
+                  }
+                }, 100);
+              }
+              break;
+              
+            case 'network':
+              setError('🌐 Network error. Check your connection.');
+              break;
+              
+            case 'aborted':
+              // Don't show error for aborted (usually intentional)
+              console.log('Recognition aborted');
+              break;
+              
+            default:
+              setError(`Speech recognition error: ${event.error}`);
+          }
         }
       };
       
@@ -1056,6 +1138,22 @@ const JarvisVoice = () => {
           </span>
         )}
       </div>
+      
+      {/* Error Display */}
+      {error && (
+        <div className="jarvis-error">
+          <div className="error-icon">⚠️</div>
+          <div className="error-text" style={{ whiteSpace: 'pre-line' }}>{error}</div>
+          {error.includes('Microphone') && (
+            <button 
+              onClick={checkMicrophonePermission}
+              className="jarvis-button retry-button" 
+            >
+              🎤 Retry Microphone Access
+            </button>
+          )}
+        </div>
+      )}
       
       {/* Vision Status */}
       {autonomousMode && (

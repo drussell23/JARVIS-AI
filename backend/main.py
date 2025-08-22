@@ -637,6 +637,16 @@ except Exception as e:
     logger.warning(f"Failed to initialize Navigation API: {e}")
     NAVIGATION_API_AVAILABLE = False
 
+# Include ML Audio API for intelligent error recovery
+try:
+    from api.ml_audio_api import router as ml_audio_router
+    app.include_router(ml_audio_router)
+    logger.info("ML Audio API routes added - Intelligent audio error recovery enabled!")
+    ML_AUDIO_API_AVAILABLE = True
+except Exception as e:
+    logger.warning(f"Failed to initialize ML Audio API: {e}")
+    ML_AUDIO_API_AVAILABLE = False
+
 
 # Update root endpoint
 @app.get("/")

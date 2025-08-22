@@ -1,0 +1,87 @@
+/* JARVIS Voice Error Styles */
+
+.jarvis-error {
+  background: rgba(255, 0, 0, 0.1);
+  border: 2px solid #ff4444;
+  border-radius: 10px;
+  padding: 20px;
+  margin: 20px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  animation: errorPulse 2s ease-in-out infinite;
+}
+
+@keyframes errorPulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(255, 68, 68, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(255, 68, 68, 0.8);
+  }
+}
+
+.jarvis-error .error-icon {
+  font-size: 32px;
+  animation: shake 0.5s ease-in-out;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+.jarvis-error .error-text {
+  color: #ff6666;
+  font-family: 'Orbitron', monospace;
+  font-size: 14px;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.jarvis-error .retry-button {
+  background: linear-gradient(45deg, #ff4444, #ff6666);
+  border: none;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 25px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 10px;
+}
+
+.jarvis-error .retry-button:hover {
+  background: linear-gradient(45deg, #ff6666, #ff8888);
+  transform: scale(1.05);
+  box-shadow: 0 5px 20px rgba(255, 68, 68, 0.5);
+}
+
+/* Microphone permission specific styles */
+.jarvis-voice-container.permission-error .arc-reactor {
+  filter: grayscale(100%) brightness(0.5);
+}
+
+.jarvis-voice-container.permission-error .jarvis-status {
+  opacity: 0.5;
+}
+
+/* Browser-specific permission instructions */
+.permission-instructions {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 15px;
+  margin: 10px 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.permission-instructions code {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: monospace;
+}

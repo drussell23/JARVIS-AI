@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>JARVIS Microphone Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        .status {
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-size: 18px;
+        }
+        .success { background: #27ae60; }
+        .error { background: #e74c3c; }
+        .warning { background: #f39c12; }
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover { background: #2980b9; }
+        #audioLevel {
+            width: 100%;
+            height: 30px;
+            background: #333;
+            border-radius: 15px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        #audioBar {
+            height: 100%;
+            background: #3498db;
+            width: 0%;
+            transition: width 0.1s;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎤 JARVIS Microphone Test</h1>
+    
+    <div id="status" class="status warning">
+        Click "Test Microphone" to check permissions
+    </div>
+    
+    <button onclick="testMicrophone()">Test Microphone</button>
+    
+    <div id="audioLevel" style="display: none;">
+        <div id="audioBar"></div>
+    </div>
+    
+    <div id="instructions" style="display: none; margin-top: 30px;">
+        <h2>✅ Microphone Working!</h2>
+        <p>Audio level indicator shows your microphone input.</p>
+        <p>You can now use JARVIS voice commands!</p>
+    </div>
+    
+    <script>
+        let audioContext;
+        let analyser;
+        let microphone;
+        let javascriptNode;
+        
+        async function testMicrophone() {
+            const statusDiv = document.getElementById('status');
+            
+            try {
+                // Request microphone access
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    } 
+                });
+                
+                statusDiv.className = 'status success';
+                statusDiv.textContent = '✅ Microphone access granted!';
+                
+                // Set up audio visualization
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                microphone = audioContext.createMediaStreamSource(stream);
+                javascriptNode = audioContext.createScriptProcessor(2048, 1, 1);
+                
+                analyser.smoothingTimeConstant = 0.8;
+                analyser.fftSize = 1024;
+                
+                microphone.connect(analyser);
+                analyser.connect(javascriptNode);
+                javascriptNode.connect(audioContext.destination);
+                
+                javascriptNode.onaudioprocess = function() {
+                    const array = new Uint8Array(analyser.frequencyBinCount);
+                    analyser.getByteFrequencyData(array);
+                    const average = array.reduce((a, b) => a + b) / array.length;
+                    
+                    // Update audio level bar
+                    const audioBar = document.getElementById('audioBar');
+                    audioBar.style.width = Math.min(100, average * 2) + '%';
+                }
+                
+                document.getElementById('audioLevel').style.display = 'block';
+                document.getElementById('instructions').style.display = 'block';
+                
+                // Test speech recognition
+                if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                    statusDiv.textContent += ' Speech recognition available!';
+                } else {
+                    statusDiv.textContent += ' (Speech recognition not supported in this browser)';
+                }
+                
+            } catch (error) {
+                console.error('Microphone error:', error);
+                statusDiv.className = 'status error';
+                
+                if (error.name === 'NotAllowedError') {
+                    statusDiv.innerHTML = `
+                        ❌ Microphone access denied<br><br>
+                        Please grant permission:<br>
+                        1. Click the 🔒 icon in the address bar<br>
+                        2. Set Microphone to "Allow"<br>
+                        3. Reload the page
+                    `;
+                } else if (error.name === 'NotFoundError') {
+                    statusDiv.textContent = '❌ No microphone found. Please connect a microphone.';
+                } else {
+                    statusDiv.textContent = '❌ Error: ' + error.message;
+                }
+            }
+        }
+        
+        // Check current permission status
+        if (navigator.permissions) {
+            navigator.permissions.query({ name: 'microphone' }).then(result => {
+                const statusDiv = document.getElementById('status');
+                if (result.state === 'granted') {
+                    statusDiv.className = 'status success';
+                    statusDiv.textContent = '✅ Microphone permission already granted. Click to test.';
+                } else if (result.state === 'denied') {
+                    statusDiv.className = 'status error';
+                    statusDiv.textContent = '❌ Microphone permission denied. Please enable in browser settings.';
+                }
+            });
+        }
+    </script>
+</body>
+</html>

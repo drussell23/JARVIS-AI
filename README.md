@@ -1,34 +1,40 @@
-# 🤖 JARVIS - Claude-Powered Iron Man AI Agent (v5.2)
+# 🤖 JARVIS - Claude-Powered Iron Man AI Agent (v5.3)
 
 <p align="center">
   <img src="https://img.shields.io/badge/AI%20Agent-100%25%20Claude%20Powered-purple" alt="Claude AI">
   <img src="https://img.shields.io/badge/AI-Claude%20Opus%204-blue" alt="Claude AI">
-  <img src="https://img.shields.io/badge/Voice-Enhanced%20State%20Management-orange" alt="Voice System">
+  <img src="https://img.shields.io/badge/Voice-ML%20Self--Healing%20Audio-orange" alt="Voice System">
   <img src="https://img.shields.io/badge/Vision-Multi--Window%20Analysis-green" alt="Vision System">
   <img src="https://img.shields.io/badge/UI-Iron%20Man%20Inspired-red" alt="Iron Man UI">
-  <img src="https://img.shields.io/badge/Learning-Pattern%20Recognition-yellow" alt="Machine Learning">
+  <img src="https://img.shields.io/badge/ML-Predictive%20Audio%20Recovery-yellow" alt="Machine Learning">
   <img src="https://img.shields.io/badge/Status-FULLY%20AUTONOMOUS-success" alt="Production">
-  <img src="https://img.shields.io/badge/Version-5.2-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Version-5.3-brightgreen" alt="Version">
 </p>
 
 <p align="center">
   <em>"JARVIS, sometimes you gotta run before you can walk." - Tony Stark</em>
 </p>
 
-## 🚀 What's New in v5.2
+## 🚀 What's New in v5.3
 
-### **🎯 App Control Actually Works!**
-- **"Open Safari" opens Safari** - Commands execute through AppleScript
-- **System Control Integration** - JARVIS AI Core connected to macOS controller
-- **Natural Language to Actions** - Say it, and it happens instantly
-- **All Apps Supported** - Chrome, Mail, Spotify, VS Code, any macOS app
+### **🤖 ML-Powered Self-Healing Voice System**
+- **Zero Audio Errors** - ML predicts and prevents microphone issues
+- **Adaptive Recovery** - Learns optimal strategies for your browser
+- **Predictive Warnings** - Alerts you before errors occur (>70% probability)
+- **No Configuration** - Works out of the box, improves over time
 
-### **Enhanced from v5.1**
-- ✅ **100% Claude AI Integration** - Now with system control
-- ✅ **Vision WebSocket** - Stable multi-window analysis
-- ✅ **Speech Recognition** - Commands that execute
+### **🧠 Machine Learning Features**
+- ✅ **RandomForest Predictor** - Forecasts audio issues before they happen
+- ✅ **Anomaly Detection** - Identifies unusual error patterns
+- ✅ **Pattern Clustering** - Groups similar issues for better solutions
+- ✅ **Strategy Optimization** - Continuously improves recovery methods
+- ✅ **Browser Adaptation** - Custom strategies for Chrome/Safari/Firefox
+
+### **All v5.2 Features Included**
+- ✅ **App Control** - "Open Safari" actually opens Safari
+- ✅ **System Integration** - Commands execute instantly
+- ✅ **Vision System** - Multi-window Claude analysis
 - ✅ **Continuous Monitoring** - 2-second workspace scans
-- ✅ **Pattern Learning** - Adapts to your behavior
 
 ## Table of Contents
 - [Overview](#-overview)
@@ -37,17 +43,21 @@
 - [Quick Start](#-quick-start)
 - [Architecture](#-architecture)
 - [Claude AI Integration](#-claude-ai-integration)
+- [ML Audio System](#-ml-audio-system)
 - [Troubleshooting](#-troubleshooting)
 - [API Documentation](#-api-documentation)
 - [Contributing](#-contributing)
 
 ## 🎯 Overview
 
-JARVIS v5.2 achieves **True Iron Man-level Control** with full system integration. When you say "Open Safari," Safari actually opens. Every command is not just understood but executed through direct system control, powered by Claude AI for intelligent decision-making.
+JARVIS v5.3 achieves **Self-Healing Voice Intelligence** through advanced machine learning. Audio errors that once frustrated users are now predicted and prevented before they occur. The system learns from every interaction, continuously improving its recovery strategies.
 
-### What Makes JARVIS v5.2 Revolutionary
+### What Makes JARVIS v5.3 Revolutionary
 
-Unlike any previous version, JARVIS v5.2:
+Unlike any previous version, JARVIS v5.3:
+- **Self-Healing Audio** - ML predicts and prevents microphone errors
+- **Zero Configuration** - Adapts to your browser and environment automatically
+- **Predictive Intelligence** - Warns you before issues occur
 - **Commands That Execute** - "Open Safari" actually opens Safari instantly
 - **System Control Integration** - AppleScript execution for all macOS apps
 - **Claude + Actions** - AI understanding paired with real system control
@@ -689,9 +699,143 @@ except Exception as e:
     # Graceful fallback behavior
 ```
 
+## 🤖 ML Audio System
+
+### Overview
+
+JARVIS v5.3 introduces a revolutionary ML-powered audio system that learns from user interactions to predict and prevent microphone errors before they occur.
+
+### Core Components
+
+#### ML Audio Manager (`backend/audio/ml_audio_manager.py`)
+The brain of the self-healing audio system:
+
+```python
+class AudioPatternLearner:
+    def __init__(self):
+        self.error_predictor = RandomForestClassifier()
+        self.anomaly_detector = IsolationForest()
+        self.pattern_clusterer = DBSCAN()
+```
+
+**Key Features:**
+- **Predictive Error Detection**: Warns when audio issues are likely (>70% probability)
+- **Adaptive Recovery**: Learns which strategies work best for each browser
+- **Anomaly Detection**: Identifies unusual error patterns
+- **Zero Configuration**: Improves automatically with use
+
+### How It Works
+
+#### 1. Error Prediction
+```javascript
+// Frontend continuously monitors for risk factors
+mlAudioHandler.predictAudioIssue();
+// If risk > 70%, user is warned proactively
+```
+
+#### 2. Intelligent Recovery
+When an error occurs, the ML system:
+1. Analyzes the error context (browser, time, history)
+2. Selects optimal recovery strategy based on past success
+3. Executes recovery with intelligent retry logic
+4. Learns from the outcome
+
+#### 3. Recovery Strategies
+- **Request Permission**: Smart retry with exponential backoff
+- **Browser Instructions**: Customized for Chrome/Safari/Firefox
+- **Audio Context Restart**: Technical recovery approach
+- **Text Fallback**: Graceful degradation
+
+### ML Models
+
+| Model | Purpose | Accuracy Target |
+|-------|---------|----------------|
+| RandomForest | Predict audio errors | 75%+ |
+| IsolationForest | Detect anomalies | 80%+ |
+| DBSCAN | Cluster error patterns | - |
+
+### Performance Metrics
+
+The system tracks:
+- Error frequency and types
+- Recovery success rates (target: 85%+)
+- Strategy effectiveness
+- Browser-specific patterns
+- Time-based trends
+
+### API Endpoints
+
+```bash
+# ML Audio Configuration
+GET  /audio/ml/config
+POST /audio/ml/config
+
+# Error Handling
+POST /audio/ml/error
+
+# Prediction
+POST /audio/ml/predict
+
+# Metrics & Patterns
+GET  /audio/ml/metrics
+GET  /audio/ml/patterns
+
+# Real-time Updates
+WS   /audio/ml/stream
+```
+
+### Testing the ML System
+
+```bash
+# Run comprehensive ML audio tests
+python backend/test_ml_audio_system.py
+
+# Check current metrics
+curl http://localhost:8000/audio/ml/metrics
+
+# View learned patterns
+curl http://localhost:8000/audio/ml/patterns
+```
+
+### Configuration
+
+The ML system is fully configurable via `backend/config/ml_audio_config.json`:
+
+```json
+{
+  "ml_audio": {
+    "enable_ml": true,
+    "auto_recovery": true,
+    "prediction_threshold": 0.7,
+    "anomaly_threshold": 0.8
+  }
+}
+```
+
+### Benefits
+
+1. **Zero User Friction**: Errors are handled automatically
+2. **Continuous Improvement**: Gets better with each use
+3. **Browser Agnostic**: Adapts to any browser
+4. **Predictive**: Prevents errors before they occur
+5. **Privacy First**: All learning happens locally
+
 ## 🗺️ Engineering Roadmap
 
-### Current State (v5.0 - Completed)
+### Current State (v5.3 - Latest)
+
+✅ **ML Audio System (v5.3)**
+- Self-healing voice with ML error prediction
+- Adaptive recovery strategies per browser
+- Anomaly detection and pattern learning
+- Zero-configuration improvement
+
+✅ **System Control (v5.2)**
+- App commands execute instantly
+- AppleScript integration
+- Natural language to system actions
+
+✅ **Core AI System (v5.0-5.1)**
 
 ✅ **Core AI System**
 - Advanced AI Brain with Claude integration

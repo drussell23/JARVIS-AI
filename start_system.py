@@ -72,8 +72,8 @@ class AsyncSystemManager:
     def print_header(self):
         """Print system header"""
         print(f"\n{Colors.HEADER}{'='*60}")
-        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v5.2 - Full System Control 🚀{Colors.ENDC}")
-        print(f"{Colors.CYAN}🧠 CLAUDE AI + SYSTEM INTEGRATION • Commands That Execute{Colors.ENDC}")
+        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v5.3 - ML-Enhanced Audio Intelligence 🚀{Colors.ENDC}")
+        print(f"{Colors.CYAN}🧠 CLAUDE AI + ML AUDIO • Self-Healing Voice System{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}")
         
         # AI Integration
@@ -101,9 +101,9 @@ class AsyncSystemManager:
         print(f"   • Self-learning from your patterns")
         
         # System Capabilities
-        print(f"\n{Colors.BOLD}🚀 ENHANCED CAPABILITIES (v5.2):{Colors.ENDC}")
-        print(f"{Colors.YELLOW}🎯 AI Brain:{Colors.ENDC} Claude + System Control • App commands execute instantly")
-        print(f"{Colors.BLUE}🔊 Voice:{Colors.ENDC} \"Open Safari\" actually opens Safari • All apps supported")
+        print(f"\n{Colors.BOLD}🚀 ENHANCED CAPABILITIES (v5.3):{Colors.ENDC}")
+        print(f"{Colors.YELLOW}🎯 ML Audio:{Colors.ENDC} Self-healing voice • Predictive error prevention • Zero config")
+        print(f"{Colors.BLUE}🔊 Voice:{Colors.ENDC} ML-powered recovery • Browser-adaptive • Pattern learning")
         print(f"{Colors.HEADER}👁️  Vision:{Colors.ENDC} Enhanced WebSocket • Multi-window analysis • Notification detection")
         print(f"{Colors.CYAN}💻 System:{Colors.ENDC} AppleScript execution • Natural language to actions")
         print(f"{Colors.GREEN}🔒 Privacy:{Colors.ENDC} One-click privacy mode • Camera/mic control")
@@ -852,10 +852,13 @@ class AsyncSystemManager:
             print(f"  🔊 Backend speech: {Colors.GREEN}Enabled{Colors.ENDC} (macOS native)")
             print(f"  🎵 Browser speech: Fallback mode")
             
-        print(f"\n{Colors.GREEN}✨ Enhanced Features (v5.2 - System Control):{Colors.ENDC}")
-        print(f"  • 🎯 App Control {Colors.GREEN}[FIXED]{Colors.ENDC} - 'Open Safari' actually works!")
-        print(f"  • 🧠 Claude AI Brain {Colors.GREEN}[ENHANCED]{Colors.ENDC} - Connected to system control")
-        print(f"  • 🔊 Voice Commands {Colors.GREEN}[EXECUTING]{Colors.ENDC} - Natural language to actions")
+        print(f"\n{Colors.GREEN}✨ Enhanced Features (v5.3 - ML Audio Intelligence):{Colors.ENDC}")
+        print(f"  • 🤖 ML Audio Recovery {Colors.GREEN}[NEW]{Colors.ENDC} - Self-healing voice system")
+        print(f"  • 🔮 Predictive Detection {Colors.GREEN}[NEW]{Colors.ENDC} - Prevents audio errors before they happen")
+        print(f"  • 📊 Pattern Learning {Colors.GREEN}[NEW]{Colors.ENDC} - Adapts to your browser & environment")
+        print(f"  • 🎯 App Control {Colors.GREEN}[WORKING]{Colors.ENDC} - 'Open Safari' actually works!")
+        print(f"  • 🧠 Claude AI Brain {Colors.GREEN}[ENHANCED]{Colors.ENDC} - Connected to ML audio system")
+        print(f"  • 🔊 Voice Recovery {Colors.GREEN}[INTELLIGENT]{Colors.ENDC} - No more permission headaches")
         print(f"  • 👁️ Vision System {Colors.GREEN}[ENHANCED]{Colors.ENDC} - Multi-window Claude analysis")
         print(f"  • 💻 macOS Integration {Colors.GREEN}[CONNECTED]{Colors.ENDC} - AppleScript execution")
         print(f"  • 🔧 Hardware Control {Colors.GREEN}[ACTIVE]{Colors.ENDC} - Camera/mic management")
@@ -871,9 +874,15 @@ class AsyncSystemManager:
         print(f"  • Check WebSocket: ws://localhost:{self.ports['main_api']}/vision/ws/vision")
         print(f"  • Verify backend: curl http://localhost:{self.ports['main_api']}/vision/status")
         
-        print(f"\n{Colors.CYAN}Microphone Issues:{Colors.ENDC}")
+        print(f"\n{Colors.CYAN}ML Audio System (Auto-Recovery):{Colors.ENDC}")
+        print(f"  • Test ML system: {Colors.YELLOW}python test_ml_audio_system.py{Colors.ENDC}")
+        print(f"  • {Colors.GREEN}Automatic recovery{Colors.ENDC} - ML handles permission errors")
+        print(f"  • {Colors.GREEN}Predictive warnings{Colors.ENDC} - Alerts before issues occur")
+        print(f"  • View metrics: curl http://localhost:{self.ports['main_api']}/audio/ml/metrics")
+        
+        print(f"\n{Colors.CYAN}Microphone Issues (Legacy):{Colors.ENDC}")
         print(f"  • Auto-fix script: {Colors.YELLOW}./fix-microphone.sh{Colors.ENDC}")
-        print(f"  • Detects blocking apps automatically")
+        print(f"  • ML system handles most issues automatically")
         print(f"  • Browser-specific permissions guide")
         
         print(f"\n{Colors.CYAN}App Control Commands:{Colors.ENDC}")
