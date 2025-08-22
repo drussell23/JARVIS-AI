@@ -73,21 +73,21 @@ class AsyncSystemManager:
     def print_header(self):
         """Print system header"""
         print(f"\n{Colors.HEADER}{'='*60}")
-        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v4.0 - Full Autonomy Edition 🚀{Colors.ENDC}")
-        print(f"{Colors.CYAN}🎯 Fully Autonomous AI Agent with Real-time Vision{Colors.ENDC}")
-        print(f"{Colors.GREEN}⚡ <2s Latency • Proactive Actions • Smart Decisions{Colors.ENDC}")
-        print(f"{Colors.YELLOW}🖥️  World's First Autonomous Workspace Intelligence Agent{Colors.ENDC}")
-        print(f"{Colors.BLUE}👁️  Vision System: Real-time screen monitoring & OCR{Colors.ENDC}")
-        print(f"{Colors.HEADER}🛡️  Enterprise-grade error recovery & monitoring{Colors.ENDC}")
-        print(f"{Colors.CYAN}🔄 State management with health tracking{Colors.ENDC}")
-        print(f"{Colors.GREEN}✅ NEW: Full Vision Pipeline - Screen → OCR → Decisions!{Colors.ENDC}")
-        print(f"{Colors.GREEN}✅ NEW: Priority Action Queue with Safety Controls!{Colors.ENDC}")
-        print(f"{Colors.BOLD}🔧 v4.0: Complete autonomous operation capability!{Colors.ENDC}")
-        print(f"{Colors.CYAN}🎤 Voice + Vision = True AI Assistant{Colors.ENDC}")
-        print(f"{Colors.BOLD}🧠 AUTONOMOUS: Monitors, decides, and acts independently!{Colors.ENDC}")
-        print(f"{Colors.GREEN}✅ Real-time WebSocket updates every 2 seconds!{Colors.ENDC}")
-        print(f"{Colors.CYAN}📅 'Enable autonomous mode' - JARVIS monitors everything{Colors.ENDC}")
-        print(f"{Colors.YELLOW}🔒 User approval workflow for sensitive actions!{Colors.ENDC}")
+        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v5.0 - 100% Iron Man Autonomy 🚀{Colors.ENDC}")
+        print(f"{Colors.CYAN}🧠 FULLY AUTONOMOUS AI with Voice, Vision & System Control{Colors.ENDC}")
+        print(f"{Colors.GREEN}⚡ Real-time • Proactive • Self-Learning • Voice-Enabled{Colors.ENDC}")
+        print(f"{Colors.YELLOW}🎯 Complete Iron Man JARVIS Experience - 100% Autonomous{Colors.ENDC}")
+        print(f"{Colors.BLUE}🔊 Voice Integration: Natural conversations & announcements{Colors.ENDC}")
+        print(f"{Colors.HEADER}👁️  Vision System: Sees, understands, and acts on your screen{Colors.ENDC}")
+        print(f"{Colors.CYAN}💻 macOS Integration: Deep system control & optimization{Colors.ENDC}")
+        print(f"{Colors.GREEN}🧠 AI Brain: Predictive, contextual, creative problem solving{Colors.ENDC}")
+        print(f"{Colors.GREEN}✅ NEW: Voice announcements for ALL notifications!{Colors.ENDC}")
+        print(f"{Colors.BOLD}🔧 v5.0: 100% Iron Man-level autonomous AI assistant!{Colors.ENDC}")
+        print(f"{Colors.CYAN}🎤 Siri-like voice interaction with personality{Colors.ENDC}")
+        print(f"{Colors.BOLD}🤖 FULL AUTONOMY: Thinks, speaks, sees, and acts!{Colors.ENDC}")
+        print(f"{Colors.GREEN}✅ Powered entirely by Anthropic's Claude API{Colors.ENDC}")
+        print(f"{Colors.CYAN}📱 Hardware control: Camera, display, audio management{Colors.ENDC}")
+        print(f"{Colors.YELLOW}🔒 Privacy mode & intelligent system optimization{Colors.ENDC}")
         if self.is_m1_mac:
             print(f"{Colors.GREEN}✨ Optimized for Apple Silicon with native AppleScript{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}\n")
@@ -191,10 +191,13 @@ class AsyncSystemManager:
             "transformers": "Hugging Face models",
             "torch": "PyTorch for ML models",
             "torchaudio": "Audio processing with PyTorch",
-            "opencv-python": "Computer vision (NEW)",
-            "pytesseract": "OCR text extraction (NEW)",
-            "Pillow": "Image processing (NEW)",
-            "pyobjc-framework-Quartz": "macOS screen capture (NEW)"
+            "opencv-python": "Computer vision",
+            "pytesseract": "OCR text extraction",
+            "Pillow": "Image processing",
+            "pyobjc-framework-Quartz": "macOS screen capture",
+            "numpy": "Numerical computing",
+            "pandas": "Data analysis",
+            "matplotlib": "Data visualization"
         }
         
         # Check all packages in parallel
@@ -285,17 +288,18 @@ class AsyncSystemManager:
                     
                     # Check if Claude API is available for enhanced vision
                     if os.getenv("ANTHROPIC_API_KEY"):
-                        print(f"{Colors.BOLD}✨ Full Autonomy System Active!{Colors.ENDC}")
-                        print(f"{Colors.GREEN}   • Vision Pipeline: Continuous screen monitoring (2s updates){Colors.ENDC}")
-                        print(f"{Colors.GREEN}   • OCR Processing: Extracts and classifies all text{Colors.ENDC}")
-                        print(f"{Colors.GREEN}   • Window Analysis: Understands app states and content{Colors.ENDC}")
-                        print(f"{Colors.CYAN}   • Decision Engine: Context-aware autonomous decisions{Colors.ENDC}")
-                        print(f"{Colors.CYAN}   • Action Queue: Priority-based execution with safety{Colors.ENDC}")
-                        print(f"\n{Colors.BOLD}🤖 Autonomous Features Ready!{Colors.ENDC}")
-                        print(f"{Colors.GREEN}   • Real-time Monitoring: Detects notifications instantly{Colors.ENDC}")
-                        print(f"{Colors.GREEN}   • Smart Actions: Handles urgent items automatically{Colors.ENDC}")
-                        print(f"{Colors.GREEN}   • Error Recovery: Self-healing with retry strategies{Colors.ENDC}")
-                        print(f"{Colors.GREEN}   • Health Monitoring: Tracks system performance{Colors.ENDC}")
+                        print(f"{Colors.BOLD}✨ 100% Iron Man Autonomy Active!{Colors.ENDC}")
+                        print(f"{Colors.GREEN}   • 🧠 AI Brain: Predictive intelligence & emotional understanding{Colors.ENDC}")
+                        print(f"{Colors.GREEN}   • 🔊 Voice System: Natural conversations & announcements{Colors.ENDC}")
+                        print(f"{Colors.GREEN}   • 👁️  Vision Pipeline: Continuous monitoring with OCR{Colors.ENDC}")
+                        print(f"{Colors.GREEN}   • 💻 macOS Control: System optimization & hardware management{Colors.ENDC}")
+                        print(f"{Colors.CYAN}   • 🎯 Decision Engine: Autonomous actions with safety{Colors.ENDC}")
+                        print(f"{Colors.CYAN}   • 🔒 Privacy Mode: Instant camera/mic control{Colors.ENDC}")
+                        print(f"\n{Colors.BOLD}🤖 Full Iron Man JARVIS Experience!{Colors.ENDC}")
+                        print(f"{Colors.GREEN}   • Voice Announcements: All notifications spoken{Colors.ENDC}")
+                        print(f"{Colors.GREEN}   • Proactive Actions: Anticipates your needs{Colors.ENDC}")
+                        print(f"{Colors.GREEN}   • Creative Solutions: Solves problems innovatively{Colors.ENDC}")
+                        print(f"{Colors.GREEN}   • Continuous Learning: Adapts to your behavior{Colors.ENDC}")
             except ImportError:
                 print(f"{Colors.WARNING}⚠️  Vision dependencies not installed{Colors.ENDC}")
                 print(f"   Install: pip install opencv-python pytesseract Pillow pyobjc-framework-Quartz")
@@ -612,17 +616,20 @@ class AsyncSystemManager:
         print(f"  • Workflows: 'Start my morning routine', 'Development setup'")
         print(f"  • Mode: 'Switch to system control mode' for better accuracy")
         
-        print(f"\n{Colors.BOLD}🤖 Full Autonomy Commands (v4.0 - Production Ready!):{Colors.ENDC}")
-        print(f"  • {Colors.GREEN}'Enable autonomous mode' - Start full autonomous operation{Colors.ENDC}")
-        print(f"  • {Colors.GREEN}'Show autonomous actions' - View pending/executed actions{Colors.ENDC}")
-        print(f"  • {Colors.CYAN}'Check system health' - View component status & metrics{Colors.ENDC}")
-        print(f"  • {Colors.CYAN}'Show monitoring report' - Detailed performance data{Colors.ENDC}")
-        print(f"  • {Colors.YELLOW}'Pause autonomous mode' - Temporarily stop actions{Colors.ENDC}")
-        print(f"\n{Colors.BOLD}🧠 Autonomous Capabilities:{Colors.ENDC}")
-        print(f"  • {Colors.GREEN}Notification Detection: Monitors all apps for alerts{Colors.ENDC}")
-        print(f"  • {Colors.GREEN}Action Execution: Handles routine tasks automatically{Colors.ENDC}")
-        print(f"  • {Colors.CYAN}Smart Prioritization: Critical items first{Colors.ENDC}")
-        print(f"  • {Colors.YELLOW}User Approval: Confirms sensitive actions{Colors.ENDC}")
+        print(f"\n{Colors.BOLD}🤖 Iron Man Commands (v5.0 - 100% Autonomous!):{Colors.ENDC}")
+        print(f"  • {Colors.GREEN}'Hey JARVIS' - Natural voice activation{Colors.ENDC}")
+        print(f"  • {Colors.GREEN}'Enable autonomous mode' - Full Iron Man experience{Colors.ENDC}")
+        print(f"  • {Colors.GREEN}'What's happening?' - Voice summary of notifications{Colors.ENDC}")
+        print(f"  • {Colors.CYAN}'Optimize my system' - AI-powered system tuning{Colors.ENDC}")
+        print(f"  • {Colors.CYAN}'Privacy mode' - Instant camera/mic disable{Colors.ENDC}")
+        print(f"  • {Colors.YELLOW}'Take a break' - JARVIS manages your workspace{Colors.ENDC}")
+        print(f"\n{Colors.BOLD}🧠 100% Autonomous Capabilities:{Colors.ENDC}")
+        print(f"  • {Colors.GREEN}Voice Announcements: Every notification spoken{Colors.ENDC}")
+        print(f"  • {Colors.GREEN}Predictive Actions: Anticipates your needs{Colors.ENDC}")
+        print(f"  • {Colors.GREEN}Emotional Intelligence: Adapts to your mood{Colors.ENDC}")
+        print(f"  • {Colors.CYAN}System Control: Hardware & software management{Colors.ENDC}")
+        print(f"  • {Colors.CYAN}Creative Solutions: Innovative problem solving{Colors.ENDC}")
+        print(f"  • {Colors.YELLOW}Continuous Learning: Gets smarter over time{Colors.ENDC}")
         
         print(f"\n{Colors.BOLD}🧠 Intelligent Workspace Commands (v3.8.0 - Enhanced!):{Colors.ENDC}")
         print(f"  • {Colors.GREEN}Smart Routing: 'Any messages?' - ONLY checks Discord, Slack, Mail{Colors.ENDC}")
@@ -649,15 +656,15 @@ class AsyncSystemManager:
             print(f"  🔊 Backend speech: {Colors.GREEN}Enabled{Colors.ENDC} (macOS native)")
             print(f"  🎵 Browser speech: Fallback mode")
             
-        print(f"\n{Colors.GREEN}✨ Full Autonomy Features (v4.0):{Colors.ENDC}")
-        print(f"  • 👁️ Real-time Vision System {Colors.GREEN}[PRODUCTION]{Colors.ENDC}")
-        print(f"  • 🧠 OCR Text Extraction {Colors.GREEN}[PRODUCTION]{Colors.ENDC}")
-        print(f"  • 📊 Window Analysis Engine {Colors.GREEN}[PRODUCTION]{Colors.ENDC}")
-        print(f"  • 🤖 Autonomous Decision Pipeline {Colors.GREEN}[PRODUCTION]{Colors.ENDC}")
-        print(f"  • 📋 Priority Action Queue {Colors.GREEN}[PRODUCTION]{Colors.ENDC}")
-        print(f"  • 🛡️ Error Recovery System {Colors.GREEN}[PRODUCTION]{Colors.ENDC}")
-        print(f"  • 📈 Performance Monitoring {Colors.GREEN}[PRODUCTION]{Colors.ENDC}")
-        print(f"  • 🔄 State Management {Colors.GREEN}[PRODUCTION]{Colors.ENDC}")
+        print(f"\n{Colors.GREEN}✨ 100% Iron Man Features (v5.0):{Colors.ENDC}")
+        print(f"  • 🧠 Advanced AI Brain {Colors.GREEN}[ACTIVE]{Colors.ENDC}")
+        print(f"  • 🔊 Voice Integration {Colors.GREEN}[ACTIVE]{Colors.ENDC}")
+        print(f"  • 👁️ Vision System {Colors.GREEN}[ACTIVE]{Colors.ENDC}")
+        print(f"  • 💻 macOS Integration {Colors.GREEN}[ACTIVE]{Colors.ENDC}")
+        print(f"  • 🔧 Hardware Control {Colors.GREEN}[ACTIVE]{Colors.ENDC}")
+        print(f"  • 🎯 Predictive Intelligence {Colors.GREEN}[ACTIVE]{Colors.ENDC}")
+        print(f"  • 💭 Contextual Understanding {Colors.GREEN}[ACTIVE]{Colors.ENDC}")
+        print(f"  • 💡 Creative Problem Solving {Colors.GREEN}[ACTIVE]{Colors.ENDC}")
         print(f"  • 🖥️  Voice-activated macOS control {Colors.GREEN}[WORKING]{Colors.ENDC}")
         print(f"  • 🎯 Natural language command interpretation {Colors.GREEN}[FIXED]{Colors.ENDC}") 
         print(f"  • 🛡️  Built-in safety features & confirmations")
@@ -682,9 +689,10 @@ class AsyncSystemManager:
         print(f"  • 🎯 Smart Query Routing - 'Any messages?' checks ONLY communication apps")
         print(f"  • 🔍 Window Relationships - Detects IDE + Terminal + Documentation connections")
         print(f"  • ⚡ Efficient Capture - Only 2-5 relevant windows instead of all 50+")
-        print(f"  • ✅ v4.0: Full Autonomy - Complete vision → decision → action pipeline!")
-        print(f"  • ✅ Real-time Monitoring - Updates every 2 seconds via WebSocket!")
-        print(f"  • ✅ Production Ready - Enterprise-grade reliability & monitoring!")
+        print(f"  • ✅ v5.0: 100% Iron Man JARVIS - Voice, vision, and control!")
+        print(f"  • ✅ Natural Voice Interaction - Siri-like conversations!")
+        print(f"  • ✅ Fully Autonomous - Thinks, speaks, sees, and acts!")
+        print(f"  • ✅ No Hardcoding - Everything powered by Claude AI!")
         
         print(f"\n{Colors.WARNING}Press Ctrl+C to stop all services{Colors.ENDC}")
         

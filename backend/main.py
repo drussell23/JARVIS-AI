@@ -605,6 +605,26 @@ try:
 except Exception as e:
     logger.warning(f"Failed to initialize Vision WebSocket API: {e}")
 
+# Include Notification Vision API for intelligent notification detection
+try:
+    from api.notification_vision_api import router as notification_router
+    app.include_router(notification_router, prefix="/api")
+    logger.info("Notification Intelligence API routes added - Autonomous notification announcements enabled!")
+    NOTIFICATION_API_AVAILABLE = True
+except Exception as e:
+    logger.warning(f"Failed to initialize Notification Intelligence API: {e}")
+    NOTIFICATION_API_AVAILABLE = False
+
+# Include Navigation API for full screen vision and workspace control
+try:
+    from api.navigation_api import router as navigation_router
+    app.include_router(navigation_router, prefix="/api")
+    logger.info("Navigation API routes added - Full workspace vision and autonomous control enabled!")
+    NAVIGATION_API_AVAILABLE = True
+except Exception as e:
+    logger.warning(f"Failed to initialize Navigation API: {e}")
+    NAVIGATION_API_AVAILABLE = False
+
 
 # Update root endpoint
 @app.get("/")
@@ -651,6 +671,8 @@ async def root():
             "automation": "/automation/*",
             "knowledge": "/knowledge/*",
             "vision": "/api/vision/*" if VISION_API_AVAILABLE else None,
+            "notifications": "/api/notifications/*" if 'NOTIFICATION_API_AVAILABLE' in locals() and NOTIFICATION_API_AVAILABLE else None,
+            "navigation": "/api/navigation/*" if 'NAVIGATION_API_AVAILABLE' in locals() and NAVIGATION_API_AVAILABLE else None,
         },
     }
 
