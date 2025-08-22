@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './JarvisVoice.css';
 import MicrophonePermissionHelper from './MicrophonePermissionHelper';
+import SpeechDebug from './SpeechDebug'; // Temporary debug panel
 
 // VisionConnection class for real-time workspace monitoring
 class VisionConnection {
@@ -1199,6 +1200,8 @@ const JarvisVoice = () => {
           </button>
         </div>
       </div>
+      {/* Temporary Speech Debug Panel - Remove after fixing */}
+      <SpeechDebug />
     </div>
   );
 };

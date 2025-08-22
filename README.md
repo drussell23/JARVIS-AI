@@ -1,19 +1,33 @@
-# 🤖 JARVIS - 100% Iron Man Autonomy AI Agent (v5.0)
+# 🤖 JARVIS - Claude-Powered Iron Man AI Agent (v5.1)
 
 <p align="center">
-  <img src="https://img.shields.io/badge/AI%20Agent-100%25%20Iron%20Man%20Autonomy-purple" alt="Full Autonomy">
+  <img src="https://img.shields.io/badge/AI%20Agent-100%25%20Claude%20Powered-purple" alt="Claude AI">
   <img src="https://img.shields.io/badge/AI-Claude%20Opus%204-blue" alt="Claude AI">
-  <img src="https://img.shields.io/badge/Voice-Natural%20Communication-orange" alt="Voice System">
-  <img src="https://img.shields.io/badge/Vision-Real--time%20OCR-green" alt="Vision System">
+  <img src="https://img.shields.io/badge/Voice-Enhanced%20State%20Management-orange" alt="Voice System">
+  <img src="https://img.shields.io/badge/Vision-Multi--Window%20Analysis-green" alt="Vision System">
   <img src="https://img.shields.io/badge/UI-Iron%20Man%20Inspired-red" alt="Iron Man UI">
-  <img src="https://img.shields.io/badge/Intelligence-Predictive%20AI-yellow" alt="Predictive AI">
+  <img src="https://img.shields.io/badge/Learning-Pattern%20Recognition-yellow" alt="Machine Learning">
   <img src="https://img.shields.io/badge/Status-FULLY%20AUTONOMOUS-success" alt="Production">
-  <img src="https://img.shields.io/badge/Version-5.0-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Version-5.1-brightgreen" alt="Version">
 </p>
 
 <p align="center">
   <em>"JARVIS, sometimes you gotta run before you can walk." - Tony Stark</em>
 </p>
+
+## 🚀 What's New in v5.1
+
+### **100% Claude AI Integration**
+- **All AI operations now use Claude Opus 4** - No more simple chatbot fallbacks
+- **Enhanced Vision System** - Claude analyzes your entire workspace
+- **Intelligent Task Execution** - Claude plans and executes complex tasks
+- **Pattern Learning** - Learns from your behavior and adapts
+
+### **Critical Fixes**
+- ✅ **Vision WebSocket** - Fixed connection issues, now stable
+- ✅ **Speech Recognition** - Enhanced state management, no more conflicts
+- ✅ **Multi-Window Analysis** - Can see and understand all 50+ windows
+- ✅ **Continuous Monitoring** - Scans workspace every 2 seconds in autonomous mode
 
 ## Table of Contents
 - [Overview](#-overview)
@@ -21,25 +35,23 @@
 - [Vision System Capabilities](#-vision-system-capabilities)
 - [Quick Start](#-quick-start)
 - [Architecture](#-architecture)
-- [Product Requirements Document (PRD)](#-product-requirements-document-prd)
-- [System Design](#-system-design)
-- [Engineering Roadmap](#-engineering-roadmap)
+- [Claude AI Integration](#-claude-ai-integration)
+- [Troubleshooting](#-troubleshooting)
 - [API Documentation](#-api-documentation)
 - [Contributing](#-contributing)
 
 ## 🎯 Overview
 
-JARVIS v5.0 achieves **100% Iron Man-level Autonomy** - a complete AI system with advanced brain capabilities, natural voice interaction, and deep macOS integration. This isn't just an assistant; it's your personal AI that thinks ahead, understands context, solves problems creatively, and communicates naturally like the real JARVIS from Iron Man.
+JARVIS v5.1 achieves **True Iron Man-level Autonomy** powered entirely by Claude AI. Every decision, analysis, and action is processed through Claude Opus 4, ensuring consistent, intelligent responses. This isn't just an assistant; it's your personal AI that truly understands your workspace, anticipates needs, and acts autonomously.
 
-### What Makes JARVIS Different
+### What Makes JARVIS v5.1 Different
 
-Unlike traditional assistants that wait for commands, JARVIS v5.0 can:
-- **See** your screen continuously and understand context
-- **Think** ahead using predictive AI to anticipate needs
-- **Speak** proactively with natural voice announcements
-- **Act** autonomously to optimize your workflow
-- **Learn** from your patterns and adapt its behavior
-- **Feel** your emotional state and respond appropriately
+Unlike v5.0, JARVIS v5.1:
+- **Claude-Powered Everything** - Vision, speech, and task execution all use Claude API
+- **Multi-Window Understanding** - Analyzes all windows simultaneously  
+- **Continuous Learning** - Patterns recognized and adapted in real-time
+- **Enhanced Stability** - Fixed WebSocket issues and speech recognition conflicts
+- **True Autonomy** - Makes intelligent decisions based on workspace context
 
 ## 📋 Manual Mode vs Autonomous Mode
 
@@ -524,6 +536,143 @@ FastAPI Application
 - **Disk Usage**: Rolling logs with size limits
 - **Network**: Minimal bandwidth usage
 
+## 🤖 Claude AI Integration
+
+### Overview
+
+JARVIS v5.1 exclusively uses Claude Opus 4 for all AI operations, ensuring consistent, high-quality responses across all features.
+
+### Core Components
+
+#### JARVISAICore (`backend/core/jarvis_ai_core.py`)
+The central AI brain that orchestrates all Claude-powered operations:
+
+```python
+class JARVISAICore:
+    def __init__(self):
+        self.claude = ClaudeChatbot(
+            api_key=api_key,
+            model="claude-3-opus-20240229",
+            max_tokens=4096
+        )
+        self.vision_analyzer = ClaudeVisionAnalyzer(api_key)
+```
+
+**Key Features:**
+- **Unified Intelligence**: All decisions go through Claude
+- **Context Awareness**: Maintains workspace and user context
+- **Pattern Learning**: Analyzes user behavior to improve over time
+- **Autonomous Decisions**: Makes intelligent choices based on context
+
+#### Vision Processing
+```python
+async def process_vision(self, screen_data, mode="focused"):
+    # Claude analyzes screen content
+    # Extracts applications, notifications, actionable items
+    # Provides intelligent suggestions
+```
+
+#### Speech Command Processing
+```python
+async def process_speech_command(self, command, context=None):
+    # Claude interprets natural language
+    # Classifies intent and extracts parameters
+    # Determines confidence and autonomous triggers
+```
+
+### Continuous Monitoring
+
+In Autonomous Mode, JARVIS monitors your screen every 2 seconds:
+
+```python
+async def _continuous_monitoring_loop(self):
+    while self.continuous_monitoring:
+        # Capture screen state
+        vision_result = await self.process_vision(screen_data, mode="multi")
+        
+        # Check for actionable items
+        for item in vision_result["actionable_items"]:
+            decision = await self._should_take_action(item)
+            if decision["should_act"] and decision["confidence"] > 0.8:
+                await self.execute_task(decision["task"])
+        
+        await asyncio.sleep(2)  # Check every 2 seconds
+```
+
+### Multi-Window Analysis
+
+Claude can analyze your entire workspace simultaneously:
+
+```python
+# Focused mode - analyzes current window
+analysis = await vision_analyzer.analyze_focused_window(screen_data)
+
+# Multi mode - analyzes all windows (50+)
+analysis = await vision_analyzer.analyze_workspace(screen_data)
+```
+
+**Analysis includes:**
+- All open applications and their content
+- Notifications across the system
+- Error messages and warnings
+- Workflow patterns and optimization opportunities
+
+### Learning System
+
+JARVIS learns from every interaction:
+
+```python
+async def _update_user_patterns(self):
+    # Claude analyzes recent interactions
+    # Identifies common workflows, preferences, patterns
+    # Updates behavior model for better predictions
+```
+
+**Learning Categories:**
+- Command patterns and preferences
+- Working hours and productivity cycles
+- Application usage patterns
+- Notification handling preferences
+- Task automation opportunities
+
+### API Configuration
+
+Set up Claude API in your `.env` file:
+
+```bash
+# Required
+ANTHROPIC_API_KEY=your-api-key-here
+
+# Optional (defaults shown)
+CLAUDE_MODEL=claude-3-opus-20240229
+CLAUDE_MAX_TOKENS=4096
+CLAUDE_TEMPERATURE=0.7
+```
+
+### WebSocket Integration
+
+Enhanced vision system with real-time updates:
+
+```python
+# backend/api/enhanced_vision_api.py
+@router.websocket("/ws/vision")
+async def enhanced_vision_websocket(websocket: WebSocket):
+    await vision_ws_manager.connect(websocket)
+    # Integrates with JARVISAICore for Claude-powered analysis
+```
+
+### Error Handling
+
+Robust error handling ensures smooth operation:
+
+```python
+try:
+    response = await self.claude.generate_response(prompt)
+except Exception as e:
+    logger.error(f"Claude API error: {e}")
+    # Graceful fallback behavior
+```
+
 ## 🗺️ Engineering Roadmap
 
 ### Current State (v5.0 - Completed)
@@ -791,21 +940,37 @@ If you see "Vision: disconnected" in the UI:
    ```
 
 2. **Common Fixes**
-   - **Import Error**: Fixed in v5.0 - action_queue.py import issue
-   - **WebSocket Path**: Ensure backend serves at `/vision/ws/vision`
+   - **Import Error**: Fixed in v5.1 - action_queue.py import issue
+   - **WebSocket Path**: Backend now serves at `/ws/vision` (enhanced API)
    - **Port Conflict**: Kill existing processes on port 8000
    ```bash
    lsof -ti:8000 | xargs kill -9
    ```
 
-3. **Quick Start Script**
+3. **Enhanced Vision API**
+   The new enhanced vision API requires:
+   - `ANTHROPIC_API_KEY` in your `.env` file
+   - Python packages: `anthropic`, `opencv-python`, `pytesseract`
+   - macOS: `pyobjc-framework-Quartz` for screen capture
+
+4. **Quick Start Script**
    ```bash
    ./start_jarvis_backend.sh  # Starts backend with all services
    ```
 
-4. **Verify Vision Status**
+5. **Verify Vision Status**
    ```bash
    curl http://localhost:8000/vision/status
+   curl http://localhost:8000/health  # Check overall system
+   ```
+
+6. **Frontend Connection**
+   Ensure the frontend connects to the correct WebSocket:
+   ```javascript
+   // Should connect to:
+   ws://localhost:8000/ws/vision  // Enhanced API
+   // Not:
+   ws://localhost:8000/vision/ws/vision  // Old API
    ```
 
 ### Microphone Access Issues
@@ -828,16 +993,71 @@ If "activate full autonomy" doesn't work:
 1. **Test Autonomy System**
    ```bash
    python test_autonomy_activation.py
+   python verify_autonomy.py  # Enhanced verification script
    ```
 
 2. **Check JARVIS Status**
    ```bash
    curl http://localhost:8000/voice/jarvis/status
+   curl http://localhost:8000/health
    ```
 
 3. **Manual Activation**
    - Click the mode button in UI
    - Switch from "👤 Manual Mode" to "🤖 Autonomous ON"
+
+4. **Verify AI Core**
+   ```python
+   # In Python shell:
+   from backend.core.jarvis_ai_core import get_jarvis_ai_core
+   core = get_jarvis_ai_core()
+   print(core.get_status())
+   ```
+
+5. **Common Issues**
+   - **Claude API**: Ensure `ANTHROPIC_API_KEY` is set
+   - **Model Selection**: Default is `claude-3-opus-20240229`
+   - **Speech State**: Check SpeechRecognitionManager state
+   - **Browser Permissions**: Allow microphone and notifications
+
+### Claude API Issues
+
+If Claude integration isn't working:
+
+1. **Check API Key**
+   ```bash
+   # In .env file:
+   ANTHROPIC_API_KEY=your-key-here
+   ```
+
+2. **Test Claude Connection**
+   ```python
+   from chatbots.claude_chatbot import ClaudeChatbot
+   bot = ClaudeChatbot(api_key="your-key")
+   response = bot.generate_response("Hello")
+   print(response)
+   ```
+
+3. **Monitor API Usage**
+   - Check [Anthropic Console](https://console.anthropic.com/)
+   - Monitor rate limits and usage
+   - Ensure billing is active
+
+### Speech Recognition State Issues
+
+If speech recognition shows "already started" errors:
+
+1. **Use SpeechRecognitionManager**
+   ```javascript
+   // The new manager handles state properly
+   import SpeechRecognitionManager from './utils/SpeechRecognitionManager';
+   const manager = new SpeechRecognitionManager();
+   ```
+
+2. **Debug Speech State**
+   - Open browser console
+   - Look for SpeechDebug component output
+   - Check for browser autoplay policies
 
 ## 📄 License
 

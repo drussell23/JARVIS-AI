@@ -546,15 +546,26 @@ logger.info("Memory management API initialized")
 chatbot_api = ChatbotAPI()
 app.include_router(chatbot_api.router)
 
-# Include vision API if available
+# Include Enhanced Vision API with Claude integration
 try:
-    from api.vision_api import router as vision_router
-    app.include_router(vision_router)  # Remove /api prefix since vision_api already has /vision prefix
-    logger.info("Vision API routes added - Screen comprehension activated!")
-    VISION_API_AVAILABLE = True
-except ImportError as e:
-    logger.warning(f"Vision API not available: {e}")
-    VISION_API_AVAILABLE = False
+    from api.enhanced_vision_api import router as enhanced_vision_router
+    app.include_router(enhanced_vision_router)
+    logger.info("Enhanced Vision API routes added - Claude-powered vision system activated!")
+    ENHANCED_VISION_AVAILABLE = True
+    VISION_API_AVAILABLE = True  # For compatibility
+except Exception as e:
+    logger.warning(f"Failed to initialize Enhanced Vision API: {e}")
+    # Fall back to original vision API
+    try:
+        from api.vision_api import router as vision_router
+        app.include_router(vision_router)
+        logger.info("Vision API routes added - Screen comprehension activated!")
+        VISION_API_AVAILABLE = True
+        ENHANCED_VISION_AVAILABLE = False
+    except ImportError as e2:
+        logger.warning(f"Vision API not available: {e2}")
+        VISION_API_AVAILABLE = False
+        ENHANCED_VISION_AVAILABLE = False
 
 # Include Voice API routes if available with memory management
 if VOICE_API_AVAILABLE:

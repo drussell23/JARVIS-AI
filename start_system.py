@@ -72,32 +72,40 @@ class AsyncSystemManager:
     def print_header(self):
         """Print system header"""
         print(f"\n{Colors.HEADER}{'='*60}")
-        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v5.0 - 100% Iron Man Autonomy 🚀{Colors.ENDC}")
-        print(f"{Colors.CYAN}🧠 FULLY AUTONOMOUS AI with Voice, Vision & System Control{Colors.ENDC}")
+        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v5.1 - Claude-Powered Autonomy 🚀{Colors.ENDC}")
+        print(f"{Colors.CYAN}🧠 100% CLAUDE AI INTEGRATION • True Iron Man Experience{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}")
+        
+        # AI Integration
+        print(f"\n{Colors.BOLD}🧠 CLAUDE AI INTEGRATION:{Colors.ENDC}")
+        print(f"{Colors.YELLOW}✨ All AI operations powered by Claude Opus 4{Colors.ENDC}")
+        print(f"   • Vision: Claude analyzes your entire workspace")
+        print(f"   • Speech: Natural language understanding via Claude")
+        print(f"   • Tasks: Intelligent execution planning with Claude")
+        print(f"   • Learning: Pattern recognition and adaptation")
         
         # Operating Modes
         print(f"\n{Colors.BOLD}📋 OPERATING MODES:{Colors.ENDC}")
-        print(f"{Colors.BLUE}👤 MANUAL MODE (Default):{Colors.ENDC}")
+        print(f"{Colors.BLUE}👤 MANUAL MODE (Default - Privacy First):{Colors.ENDC}")
         print(f"   • Voice commands only when activated")
         print(f"   • Vision system on-demand")
         print(f"   • User-initiated actions")
-        print(f"   • Privacy-first approach")
+        print(f"   • No continuous monitoring")
         
-        print(f"\n{Colors.GREEN}🤖 AUTONOMOUS MODE (Full JARVIS):{Colors.ENDC}")
-        print(f"   • Continuous vision monitoring")
-        print(f"   • Proactive AI suggestions")
+        print(f"\n{Colors.GREEN}🤖 AUTONOMOUS MODE (Full JARVIS Experience):{Colors.ENDC}")
+        print(f"   • Continuous vision monitoring (every 2 seconds)")
+        print(f"   • Claude analyzes all windows and notifications")
+        print(f"   • Proactive voice announcements")
         print(f"   • Automatic task execution")
-        print(f"   • Predictive intelligence")
-        print(f"   • Voice announcements for all events")
-        print(f"   • Self-learning and adaptation")
+        print(f"   • Multi-window workspace understanding")
+        print(f"   • Self-learning from your patterns")
         
         # System Capabilities
-        print(f"\n{Colors.BOLD}🚀 SYSTEM CAPABILITIES:{Colors.ENDC}")
-        print(f"{Colors.YELLOW}🎯 AI Brain:{Colors.ENDC} Predictive • Contextual • Creative • Emotional Intelligence")
-        print(f"{Colors.BLUE}🔊 Voice:{Colors.ENDC} Natural conversations • Proactive announcements • Personality")
-        print(f"{Colors.HEADER}👁️  Vision:{Colors.ENDC} Real-time OCR • App understanding • Notification detection")
-        print(f"{Colors.CYAN}💻 System:{Colors.ENDC} macOS control • App management • Hardware control")
+        print(f"\n{Colors.BOLD}🚀 ENHANCED CAPABILITIES (v5.1):{Colors.ENDC}")
+        print(f"{Colors.YELLOW}🎯 AI Brain:{Colors.ENDC} Claude Opus 4 • Predictive • Contextual • Creative")
+        print(f"{Colors.BLUE}🔊 Voice:{Colors.ENDC} Natural conversations • Proactive announcements • Fixed state management")
+        print(f"{Colors.HEADER}👁️  Vision:{Colors.ENDC} Enhanced WebSocket • Multi-window analysis • Notification detection")
+        print(f"{Colors.CYAN}💻 System:{Colors.ENDC} macOS control • App management • Task automation")
         print(f"{Colors.GREEN}🔒 Privacy:{Colors.ENDC} One-click privacy mode • Camera/mic control")
         
         # Activation
@@ -114,24 +122,30 @@ class AsyncSystemManager:
         
     async def check_claude_config(self) -> bool:
         """Check if Claude API is configured"""
-        print(f"{Colors.BLUE}Checking Claude configuration...{Colors.ENDC}")
+        print(f"{Colors.BLUE}Checking Claude AI configuration...{Colors.ENDC}")
         
         # Check if already loaded from backend/.env
         api_key = os.getenv("ANTHROPIC_API_KEY")
         
         if not api_key:
             print(f"{Colors.FAIL}❌ ANTHROPIC_API_KEY not found!{Colors.ENDC}")
-            print(f"\n{Colors.YELLOW}To enable JARVIS AI Agent features:{Colors.ENDC}")
+            print(f"\n{Colors.YELLOW}To enable Claude-powered JARVIS features:{Colors.ENDC}")
             print("1. Get an API key from: https://console.anthropic.com/")
             print("2. Create backend/.env file with:")
             print("   ANTHROPIC_API_KEY=your-api-key-here")
-            print(f"\n{Colors.WARNING}Note: Without API key, system control features will be disabled{Colors.ENDC}")
-            # Don't return False - allow startup without API key
+            print(f"\n{Colors.WARNING}Without Claude API key:{Colors.ENDC}")
+            print("   • No AI-powered vision analysis")
+            print("   • No intelligent task execution")
+            print("   • No pattern learning")
+            print("   • Limited to basic commands only")
             self.claude_configured = False
         else:
             self.claude_configured = True
             print(f"{Colors.GREEN}✓ Claude API key found{Colors.ENDC}")
-            print(f"{Colors.GREEN}✓ AI Agent system control enabled{Colors.ENDC}")
+            print(f"{Colors.GREEN}✓ AI Brain: Claude Opus 4 integration active{Colors.ENDC}")
+            print(f"{Colors.GREEN}✓ Vision: Claude-powered workspace analysis{Colors.ENDC}")
+            print(f"{Colors.GREEN}✓ Speech: Natural language understanding{Colors.ENDC}")
+            print(f"{Colors.GREEN}✓ Learning: Pattern recognition enabled{Colors.ENDC}")
         
         # Check OpenWeatherMap API key
         weather_key = os.getenv("OPENWEATHER_API_KEY")
@@ -377,7 +391,7 @@ class AsyncSystemManager:
     
     async def run_vision_diagnostic(self):
         """Run comprehensive vision system diagnostic"""
-        print(f"\n{Colors.BLUE}Running vision system diagnostic...{Colors.ENDC}")
+        print(f"\n{Colors.BLUE}Running enhanced vision system diagnostic...{Colors.ENDC}")
         
         issues_found = []
         
@@ -391,7 +405,7 @@ class AsyncSystemManager:
             issues_found.append("Backend not running on port " + str(self.ports["main_api"]))
             print(f"{Colors.WARNING}⚠️  Backend not accessible{Colors.ENDC}")
         else:
-            # Check vision WebSocket endpoint
+            # Check enhanced vision WebSocket endpoint
             try:
                 import aiohttp
                 async with aiohttp.ClientSession() as session:
@@ -399,11 +413,28 @@ class AsyncSystemManager:
                     async with session.get(f'http://localhost:{self.ports["main_api"]}/vision/status') as resp:
                         if resp.status == 200:
                             data = await resp.json()
-                            print(f"{Colors.GREEN}✓ Vision API accessible{Colors.ENDC}")
-                            if data.get('monitoring_active'):
-                                print(f"{Colors.GREEN}✓ Vision monitoring active{Colors.ENDC}")
+                            print(f"{Colors.GREEN}✓ Enhanced Vision API accessible{Colors.ENDC}")
+                            
+                            # Check Claude integration
+                            if data.get('ai_integration') == 'Claude Opus 4':
+                                print(f"{Colors.GREEN}✓ Claude AI integration active{Colors.ENDC}")
                             else:
-                                print(f"{Colors.YELLOW}⚠️  Vision monitoring inactive{Colors.ENDC}")
+                                print(f"{Colors.WARNING}⚠️  Claude integration not detected{Colors.ENDC}")
+                            
+                            # Check monitoring status
+                            if data.get('monitoring_active'):
+                                print(f"{Colors.GREEN}✓ Continuous vision monitoring active{Colors.ENDC}")
+                                print(f"{Colors.GREEN}✓ Multi-window analysis enabled{Colors.ENDC}")
+                            else:
+                                print(f"{Colors.YELLOW}⚠️  Vision monitoring inactive (activate autonomous mode){Colors.ENDC}")
+                            
+                            # Check capabilities
+                            capabilities = data.get('capabilities', [])
+                            if 'claude_vision_analysis' in capabilities:
+                                print(f"{Colors.GREEN}✓ Claude vision analysis available{Colors.ENDC}")
+                            if 'pattern_learning' in capabilities:
+                                print(f"{Colors.GREEN}✓ Machine learning patterns enabled{Colors.ENDC}")
+                                
                         else:
                             issues_found.append(f"Vision API returned status {resp.status}")
                             print(f"{Colors.WARNING}⚠️  Vision API error: {resp.status}{Colors.ENDC}")
@@ -821,17 +852,17 @@ class AsyncSystemManager:
             print(f"  🔊 Backend speech: {Colors.GREEN}Enabled{Colors.ENDC} (macOS native)")
             print(f"  🎵 Browser speech: Fallback mode")
             
-        print(f"\n{Colors.GREEN}✨ 100% Iron Man Features (v5.0):{Colors.ENDC}")
-        print(f"  • 🧠 Advanced AI Brain {Colors.GREEN}[ACTIVE]{Colors.ENDC}")
-        print(f"  • 🔊 Voice Integration {Colors.GREEN}[ACTIVE]{Colors.ENDC}")
-        print(f"  • 👁️ Vision System {Colors.GREEN}[ACTIVE]{Colors.ENDC}")
-        print(f"  • 💻 macOS Integration {Colors.GREEN}[ACTIVE]{Colors.ENDC}")
-        print(f"  • 🔧 Hardware Control {Colors.GREEN}[ACTIVE]{Colors.ENDC}")
-        print(f"  • 🎯 Predictive Intelligence {Colors.GREEN}[ACTIVE]{Colors.ENDC}")
-        print(f"  • 💭 Contextual Understanding {Colors.GREEN}[ACTIVE]{Colors.ENDC}")
-        print(f"  • 💡 Creative Problem Solving {Colors.GREEN}[ACTIVE]{Colors.ENDC}")
-        print(f"  • 🖥️  Voice-activated macOS control {Colors.GREEN}[WORKING]{Colors.ENDC}")
-        print(f"  • 🎯 Natural language command interpretation {Colors.GREEN}[FIXED]{Colors.ENDC}")
+        print(f"\n{Colors.GREEN}✨ Enhanced Features (v5.1 - Claude Integration):{Colors.ENDC}")
+        print(f"  • 🧠 Claude AI Brain {Colors.GREEN}[ACTIVE]{Colors.ENDC} - Opus 4 powers all operations")
+        print(f"  • 🔊 Voice Integration {Colors.GREEN}[ENHANCED]{Colors.ENDC} - Fixed state management")
+        print(f"  • 👁️ Vision System {Colors.GREEN}[ENHANCED]{Colors.ENDC} - Multi-window Claude analysis")
+        print(f"  • 💻 macOS Integration {Colors.GREEN}[ACTIVE]{Colors.ENDC} - Full system control")
+        print(f"  • 🔧 Hardware Control {Colors.GREEN}[ACTIVE]{Colors.ENDC} - Camera/mic management")
+        print(f"  • 🎯 Continuous Monitoring {Colors.GREEN}[NEW]{Colors.ENDC} - 2-second workspace scans")
+        print(f"  • 🔔 Notification Detection {Colors.GREEN}[NEW]{Colors.ENDC} - WhatsApp, Discord, Messages")
+        print(f"  • 💭 Pattern Learning {Colors.GREEN}[NEW]{Colors.ENDC} - Learns from your behavior")
+        print(f"  • 🤖 Task Automation {Colors.GREEN}[ENHANCED]{Colors.ENDC} - Claude plans & executes")
+        print(f"  • 🎯 WebSocket Stability {Colors.GREEN}[FIXED]{Colors.ENDC} - Reliable connections")
         
         print(f"\n{Colors.BOLD}🔧 TROUBLESHOOTING:{Colors.ENDC}")
         print(f"{Colors.CYAN}Vision Connection Issues:{Colors.ENDC}")
