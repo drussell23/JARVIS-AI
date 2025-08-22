@@ -77,3 +77,38 @@ backend/knowledge_base/
 # Archived local model files (no longer used)
 backend/chatbots/_archived_local_models/
 archived_local_models/
+
+# Swift build artifacts
+backend/swift_bridge/.build/
+backend/swift_bridge/.swiftpm/
+backend/swift_bridge/Package.resolved
+*.xcodeproj
+*.xcworkspace
+DerivedData/
+
+# Swift/Xcode specific
+*.moved-aside
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+
+# Native extensions build artifacts
+backend/native_extensions/build/
+backend/native_extensions/*.so
+backend/native_extensions/*.dylib
+backend/native_extensions/*.dll
+backend/native_extensions/__pycache__/
+
+# Python compiled files from Swift bridge
+backend/swift_bridge/__pycache__/
+backend/swift_bridge/*.pyc
+
+# Command pattern cache
+.jarvis/
+*.json.cache
