@@ -231,7 +231,13 @@ In Autonomous Mode, vision becomes JARVIS's eyes:
 - 8GB RAM minimum (16GB recommended for Autonomous Mode)
 - Anthropic API key
 
-### Installation
+### One-Line Install
+
+```bash
+curl -sSL https://raw.githubusercontent.com/yourusername/JARVIS-AI-Agent/main/install.sh | bash
+```
+
+### Manual Installation
 
 ```bash
 # 1. Clone the repository
@@ -253,12 +259,40 @@ cd frontend && npm install && cd ..
 python start_system.py
 ```
 
+### Quick Start Commands
+
+```bash
+# Start everything
+python start_system.py
+
+# Start backend only (for development)
+./start_jarvis_backend.sh
+
+# Run diagnostics
+python diagnose_vision.py        # Check vision system
+./fix-microphone.sh             # Fix microphone issues
+python test_autonomy_activation.py  # Test autonomy
+
+# Check system status
+curl http://localhost:8000/health
+curl http://localhost:8000/vision/status
+curl http://localhost:8000/voice/jarvis/status
+```
+
 ### First Run
 
 1. **JARVIS starts in Manual Mode** (privacy-first)
 2. **Test voice**: Say "Hey JARVIS" → "What time is it?"
 3. **Enable autonomy**: "Hey JARVIS, activate full autonomy"
 4. **Experience the difference**: JARVIS begins proactive assistance
+
+### Verify Everything is Working
+
+When JARVIS is fully operational, you should see:
+- ✅ "System Status: All systems operational" in the UI
+- ✅ "Voice: Ready" indicator
+- ✅ "Vision: Connected" (in Autonomous Mode)
+- ✅ Mode toggle shows "🤖 Autonomous ON" when activated
 
 ## 🏗️ Architecture
 
@@ -744,6 +778,66 @@ eslint frontend/src/
 - **Documentation**: Expand guides
 - **Testing**: Increase coverage
 - **Performance**: Optimize bottlenecks
+
+## 🔧 Troubleshooting
+
+### Vision WebSocket Connection Issues
+
+If you see "Vision: disconnected" in the UI:
+
+1. **Check Backend is Running**
+   ```bash
+   python diagnose_vision.py  # Run diagnostic tool
+   ```
+
+2. **Common Fixes**
+   - **Import Error**: Fixed in v5.0 - action_queue.py import issue
+   - **WebSocket Path**: Ensure backend serves at `/vision/ws/vision`
+   - **Port Conflict**: Kill existing processes on port 8000
+   ```bash
+   lsof -ti:8000 | xargs kill -9
+   ```
+
+3. **Quick Start Script**
+   ```bash
+   ./start_jarvis_backend.sh  # Starts backend with all services
+   ```
+
+4. **Verify Vision Status**
+   ```bash
+   curl http://localhost:8000/vision/status
+   ```
+
+### Microphone Access Issues
+
+Run the enhanced diagnostic:
+```bash
+./fix-microphone.sh
+```
+
+This will:
+- Detect apps blocking microphone access
+- Provide browser-specific fixes
+- Test microphone configurations
+- Automatically resolve common issues
+
+### Autonomy Activation Issues
+
+If "activate full autonomy" doesn't work:
+
+1. **Test Autonomy System**
+   ```bash
+   python test_autonomy_activation.py
+   ```
+
+2. **Check JARVIS Status**
+   ```bash
+   curl http://localhost:8000/voice/jarvis/status
+   ```
+
+3. **Manual Activation**
+   - Click the mode button in UI
+   - Switch from "👤 Manual Mode" to "🤖 Autonomous ON"
 
 ## 📄 License
 

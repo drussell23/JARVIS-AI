@@ -375,6 +375,67 @@ class AsyncSystemManager:
                 print(f"   Install: pip install opencv-python pytesseract Pillow pyobjc-framework-Quartz")
                 print(f"   Also run: brew install tesseract")
     
+    async def run_vision_diagnostic(self):
+        """Run comprehensive vision system diagnostic"""
+        print(f"\n{Colors.BLUE}Running vision system diagnostic...{Colors.ENDC}")
+        
+        issues_found = []
+        
+        # Check if backend is accessible
+        import socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        backend_running = sock.connect_ex(('localhost', self.ports["main_api"])) == 0
+        sock.close()
+        
+        if not backend_running:
+            issues_found.append("Backend not running on port " + str(self.ports["main_api"]))
+            print(f"{Colors.WARNING}⚠️  Backend not accessible{Colors.ENDC}")
+        else:
+            # Check vision WebSocket endpoint
+            try:
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    # Check vision status endpoint
+                    async with session.get(f'http://localhost:{self.ports["main_api"]}/vision/status') as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            print(f"{Colors.GREEN}✓ Vision API accessible{Colors.ENDC}")
+                            if data.get('monitoring_active'):
+                                print(f"{Colors.GREEN}✓ Vision monitoring active{Colors.ENDC}")
+                            else:
+                                print(f"{Colors.YELLOW}⚠️  Vision monitoring inactive{Colors.ENDC}")
+                        else:
+                            issues_found.append(f"Vision API returned status {resp.status}")
+                            print(f"{Colors.WARNING}⚠️  Vision API error: {resp.status}{Colors.ENDC}")
+            except Exception as e:
+                issues_found.append(f"Vision API check failed: {str(e)}")
+                print(f"{Colors.WARNING}⚠️  Could not check vision API: {e}{Colors.ENDC}")
+        
+        # Check vision dependencies
+        vision_deps = {
+            'cv2': 'opencv-python',
+            'PIL': 'Pillow',
+            'pytesseract': 'pytesseract'
+        }
+        
+        for module, package in vision_deps.items():
+            try:
+                __import__(module)
+                print(f"{Colors.GREEN}✓ {package} installed{Colors.ENDC}")
+            except ImportError:
+                issues_found.append(f"{package} not installed")
+                print(f"{Colors.WARNING}⚠️  {package} not installed{Colors.ENDC}")
+        
+        # Summary
+        if not issues_found:
+            print(f"\n{Colors.GREEN}✅ Vision system ready!{Colors.ENDC}")
+            print(f"{Colors.CYAN}WebSocket endpoint: ws://localhost:{self.ports['main_api']}/vision/ws/vision{Colors.ENDC}")
+        else:
+            print(f"\n{Colors.YELLOW}⚠️  Vision system issues found:{Colors.ENDC}")
+            for issue in issues_found:
+                print(f"   • {issue}")
+            print(f"\n{Colors.CYAN}Run 'python diagnose_vision.py' for detailed diagnostics{Colors.ENDC}")
+    
     async def create_directories(self):
         """Create necessary directories"""
         print(f"\n{Colors.BLUE}Creating directories...{Colors.ENDC}")
@@ -607,6 +668,25 @@ class AsyncSystemManager:
                                 print(f"{Colors.GREEN}✓ JARVIS Voice System ready{Colors.ENDC}")
                 except Exception as e:
                     print(f"{Colors.WARNING}⚠️  JARVIS status check failed: {e}{Colors.ENDC}")
+                
+                # Check Vision System
+                try:
+                    async with session.get(f"http://localhost:{self.ports['main_api']}/vision/status") as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            if data.get('vision_enabled'):
+                                print(f"{Colors.GREEN}✓ Vision System ready{Colors.ENDC}")
+                                if data.get('monitoring_active'):
+                                    print(f"{Colors.GREEN}✓ Vision monitoring active{Colors.ENDC}")
+                                else:
+                                    print(f"{Colors.CYAN}  • Vision monitoring available - activate autonomous mode{Colors.ENDC}")
+                                if data.get('claude_vision_available'):
+                                    print(f"{Colors.GREEN}✓ Claude Vision AI integration active{Colors.ENDC}")
+                            else:
+                                print(f"{Colors.WARNING}⚠️  Vision System not fully enabled{Colors.ENDC}")
+                except Exception as e:
+                    print(f"{Colors.WARNING}⚠️  Vision status check failed: {e}{Colors.ENDC}")
+                    
         else:
             print(f"{Colors.FAIL}❌ Backend API failed to start!{Colors.ENDC}")
             print(f"{Colors.YELLOW}Try running manually: cd backend && python main.py{Colors.ENDC}")
@@ -673,6 +753,7 @@ class AsyncSystemManager:
         print(f"  🔌 API Documentation: http://localhost:{self.ports['main_api']}/docs")
         print(f"  💬 Basic Chat:        http://localhost:{self.ports['main_api']}/")
         print(f"  🎤 JARVIS Status:     http://localhost:{self.ports['main_api']}/voice/jarvis/status")
+        print(f"  👁️  Vision Status:     http://localhost:{self.ports['main_api']}/vision/status")
         
         if self.frontend_dir.exists():
             print(f"  🎯 JARVIS Interface:  http://localhost:{self.ports['frontend']}/ {Colors.GREEN}← Iron Man UI{Colors.ENDC}")
@@ -750,7 +831,23 @@ class AsyncSystemManager:
         print(f"  • 💭 Contextual Understanding {Colors.GREEN}[ACTIVE]{Colors.ENDC}")
         print(f"  • 💡 Creative Problem Solving {Colors.GREEN}[ACTIVE]{Colors.ENDC}")
         print(f"  • 🖥️  Voice-activated macOS control {Colors.GREEN}[WORKING]{Colors.ENDC}")
-        print(f"  • 🎯 Natural language command interpretation {Colors.GREEN}[FIXED]{Colors.ENDC}") 
+        print(f"  • 🎯 Natural language command interpretation {Colors.GREEN}[FIXED]{Colors.ENDC}")
+        
+        print(f"\n{Colors.BOLD}🔧 TROUBLESHOOTING:{Colors.ENDC}")
+        print(f"{Colors.CYAN}Vision Connection Issues:{Colors.ENDC}")
+        print(f"  • Run diagnostic: {Colors.YELLOW}python diagnose_vision.py{Colors.ENDC}")
+        print(f"  • Check WebSocket: ws://localhost:{self.ports['main_api']}/vision/ws/vision")
+        print(f"  • Verify backend: curl http://localhost:{self.ports['main_api']}/vision/status")
+        
+        print(f"\n{Colors.CYAN}Microphone Issues:{Colors.ENDC}")
+        print(f"  • Auto-fix script: {Colors.YELLOW}./fix-microphone.sh{Colors.ENDC}")
+        print(f"  • Detects blocking apps automatically")
+        print(f"  • Browser-specific permissions guide")
+        
+        print(f"\n{Colors.CYAN}Autonomy Activation:{Colors.ENDC}")
+        print(f"  • Test script: {Colors.YELLOW}python test_autonomy_activation.py{Colors.ENDC}")
+        print(f"  • Voice: 'Hey JARVIS, activate full autonomy'")
+        print(f"  • Button: Click mode toggle in UI") 
         print(f"  • 🛡️  Built-in safety features & confirmations")
         print(f"  • 🔄 Complex workflow automation")
         print(f"  • 🌍 Weather for ANY location worldwide")
@@ -1020,6 +1117,10 @@ class AsyncSystemManager:
         
         # Verify services
         await self.verify_services()
+        
+        # Run vision diagnostic if backend is running
+        if not getattr(self, 'frontend_only', False):
+            await self.run_vision_diagnostic()
         
         # Print access info
         self.print_access_info()

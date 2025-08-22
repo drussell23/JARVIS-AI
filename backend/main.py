@@ -549,7 +549,7 @@ app.include_router(chatbot_api.router)
 # Include vision API if available
 try:
     from api.vision_api import router as vision_router
-    app.include_router(vision_router, prefix="/api")
+    app.include_router(vision_router)  # Remove /api prefix since vision_api already has /vision prefix
     logger.info("Vision API routes added - Screen comprehension activated!")
     VISION_API_AVAILABLE = True
 except ImportError as e:
@@ -598,12 +598,13 @@ if JARVIS_VOICE_AVAILABLE:
         logger.warning(f"Failed to initialize JARVIS Voice API: {e}")
 
 # Include Vision WebSocket API for real-time monitoring
-try:
-    from api import vision_websocket
-    app.include_router(vision_websocket.router, prefix="/vision")
-    logger.info("Vision WebSocket API routes added - Real-time monitoring enabled!")
-except Exception as e:
-    logger.warning(f"Failed to initialize Vision WebSocket API: {e}")
+# Commented out - vision_api.py already includes WebSocket at /vision/ws/vision
+# try:
+#     from api import vision_websocket
+#     app.include_router(vision_websocket.router, prefix="/vision")
+#     logger.info("Vision WebSocket API routes added - Real-time monitoring enabled!")
+# except Exception as e:
+#     logger.warning(f"Failed to initialize Vision WebSocket API: {e}")
 
 # Include Notification Vision API for intelligent notification detection
 try:

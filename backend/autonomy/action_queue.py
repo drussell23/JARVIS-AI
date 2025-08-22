@@ -16,7 +16,7 @@ from collections import defaultdict
 
 from .autonomous_decision_engine import AutonomousAction, ActionPriority, ActionCategory
 from .action_executor import ActionExecutor, ExecutionResult, ExecutionStatus
-from .permission_manager import PermissionManager, PermissionRequest
+from .permission_manager import PermissionManager
 
 logger = logging.getLogger(__name__)
 
