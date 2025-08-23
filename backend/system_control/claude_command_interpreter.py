@@ -17,6 +17,7 @@ import re
 
 from .macos_controller import MacOSController, CommandCategory, SafetyLevel
 from .dynamic_app_controller import get_dynamic_app_controller
+from .fast_app_launcher import get_fast_app_launcher
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ class ClaudeCommandInterpreter:
         self.client = Anthropic(api_key=api_key)
         self.controller = MacOSController()
         self.dynamic_controller = get_dynamic_app_controller()
+        self.fast_launcher = get_fast_app_launcher()
         self.conversation_history = []
         self.system_state = {}
         
@@ -346,11 +348,15 @@ class ClaudeCommandInterpreter:
                 all_success = True
                 
                 for app in apps:
-                    # Use dynamic controller for better app detection
-                    success, msg = await self.dynamic_controller.open_app_intelligently(app)
-                    if not success:
-                        # Fallback to standard controller
-                        success, msg = self.controller.open_application(app)
+                    # Try fast launcher first for common apps
+                    if self.fast_launcher.is_common_app(app):
+                        success, msg = await self.fast_launcher.quick_open_app(app)
+                    else:
+                        # Use dynamic controller for better app detection
+                        success, msg = await self.dynamic_controller.open_app_intelligently(app)
+                        if not success:
+                            # Fallback to standard controller
+                            success, msg = self.controller.open_application(app)
                     results.append(f"{app}: {msg}")
                     if not success:
                         all_success = False
@@ -360,11 +366,15 @@ class ClaudeCommandInterpreter:
                     message="; ".join(results)
                 )
             else:
-                # Use dynamic controller for better app detection
-                success, message = await self.dynamic_controller.open_app_intelligently(intent.target)
-                if not success:
-                    # Fallback to standard controller
-                    success, message = self.controller.open_application(intent.target)
+                # Try fast launcher first for common apps
+                if self.fast_launcher.is_common_app(intent.target):
+                    success, message = await self.fast_launcher.quick_open_app(intent.target)
+                else:
+                    # Use dynamic controller for better app detection
+                    success, message = await self.dynamic_controller.open_app_intelligently(intent.target)
+                    if not success:
+                        # Fallback to standard controller
+                        success, message = self.controller.open_application(intent.target)
                 
         elif intent.action == "close_app":
             # Check if target contains multiple apps separated by "and"

@@ -89,7 +89,7 @@ class MacOSController:
                 ["osascript", "-e", script],
                 capture_output=True,
                 text=True,
-                timeout=15
+                timeout=5
             )
             if result.returncode == 0:
                 return True, result.stdout.strip()

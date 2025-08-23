@@ -46,7 +46,7 @@ class DynamicAppController:
                 ["osascript", "-e", script],
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=3
             )
             
             if result.returncode == 0:
@@ -143,7 +143,7 @@ class DynamicAppController:
                 ["osascript", "-e", script],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=2
             )
             
             if result.returncode == 0:
@@ -173,7 +173,7 @@ class DynamicAppController:
                 ["open", "-a", app_name],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=2
             )
             
             if result.returncode == 0:

@@ -1,0 +1,33 @@
+{
+  "timeouts": {
+    "applescript_execution": 5,
+    "app_info_query": 3,
+    "app_launch": 2,
+    "fast_launch": 1,
+    "command_execution": 30
+  },
+  "fast_launcher": {
+    "enabled": true,
+    "common_apps": [
+      "safari",
+      "chrome",
+      "whatsapp",
+      "spotify",
+      "slack",
+      "zoom",
+      "mail",
+      "messages",
+      "finder",
+      "notes",
+      "calendar",
+      "music",
+      "photos"
+    ]
+  },
+  "optimization": {
+    "use_fast_launcher_first": true,
+    "skip_claude_for_simple_commands": false,
+    "cache_app_locations": true,
+    "parallel_app_launch": true
+  }
+}

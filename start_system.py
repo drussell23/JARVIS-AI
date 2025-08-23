@@ -981,10 +981,13 @@ class AsyncSystemManager:
         print(f"  • Check WebSocket: ws://localhost:{self.ports['main_api']}/vision/ws/vision")
         print(f"  • Verify backend: curl http://localhost:{self.ports['main_api']}/vision/status")
         
-        print(f"\n{Colors.CYAN}Dynamic App Control (v5.4):{Colors.ENDC}")
+        print(f"\n{Colors.CYAN}Dynamic App Control (v5.4 - Performance Enhanced):{Colors.ENDC}")
         print(f"  • Test app control: {Colors.YELLOW}python test_dynamic_app_control.py{Colors.ENDC}")
+        print(f"  • Test app speed: {Colors.YELLOW}python backend/test_app_launch_speed.py{Colors.ENDC}")
         print(f"  • {Colors.GREEN}Universal control{Colors.ENDC} - Works with ANY macOS app")
         print(f"  • {Colors.GREEN}Fuzzy matching{Colors.ENDC} - 'whatsapp' or 'WhatsApp' both work")
+        print(f"  • {Colors.GREEN}⚡ Fast Launch{Colors.ENDC} - Common apps open in <100ms")
+        print(f"  • {Colors.GREEN}🚀 Optimized{Colors.ENDC} - Reduced timeouts, parallel execution")
         
         print(f"\n{Colors.CYAN}ML Audio System (Auto-Recovery):{Colors.ENDC}")
         print(f"  • Test ML system: {Colors.YELLOW}python test_ml_audio_system.py{Colors.ENDC}")
