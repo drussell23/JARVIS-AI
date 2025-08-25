@@ -26,6 +26,7 @@ struct CommandClassifierCLI {
         }
     }
     
+    // TODO: Implement this function to run the interactive mode
     static func runInteractiveMode(classifier: CommandClassifier) {
         print("🤖 JARVIS Command Classifier - Interactive Mode")
         print("Type commands to see how they're classified. Type 'quit' to exit.")
