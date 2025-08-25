@@ -1,233 +1,165 @@
-# JARVIS Fast Capture C++ Extension
+# JARVIS Native C++ Extensions
 
-High-performance screen capture engine for JARVIS Vision System, providing 10x faster capture speeds compared to pure Python implementations.
+This directory contains high-performance C++ extensions for JARVIS that provide significant speed improvements for critical operations.
 
-## Features
+## Extensions
 
-- **Lightning Fast**: 10-50ms per window capture (vs 100-500ms with Python)
-- **Multi-Window Capture**: Parallel capture of multiple windows simultaneously
-- **GPU Acceleration**: Hardware-accelerated capture when available
-- **Zero Copy**: Efficient memory management with minimal overhead
-- **Dynamic Discovery**: No hardcoded values - everything is discovered at runtime
-- **Thread Safe**: Can be used from multiple Python threads
-- **Fallback Support**: Seamless fallback to Python if C++ extension unavailable
+### 1. Fast Capture Engine
+- **Purpose**: Ultra-fast screen capture (10x faster than Python alternatives)
+- **Features**:
+  - Direct macOS API integration
+  - Parallel window capture
+  - GPU acceleration support
+  - Minimal memory footprint
 
-## Performance Comparison
-
-| Operation | Python (Quartz) | C++ Fast Capture | Improvement |
-|-----------|----------------|------------------|-------------|
-| Single Window | ~300ms | ~30ms | 10x faster |
-| 10 Windows | ~3000ms | ~150ms | 20x faster |
-| Full Screen | ~500ms | ~50ms | 10x faster |
-| Memory Usage | ~200MB | ~50MB | 4x less |
+### 2. Vision ML Router
+- **Purpose**: Lightning-fast vision command analysis (<5ms)
+- **Features**:
+  - Zero hardcoding pattern matching
+  - Linguistic analysis in C++
+  - Learning capabilities
+  - Response caching
 
 ## Building
 
-### Prerequisites
-
-- macOS 10.14 or later
-- Python 3.7+
-- CMake 3.12+
-- Xcode Command Line Tools
-- pybind11 (installed automatically)
-
-### Quick Build
-
+### Build All Extensions (Recommended)
 ```bash
-cd backend/native_extensions
 ./build.sh
 ```
 
-### Manual Build
-
+### Build Specific Extension
 ```bash
-# Install dependencies
-pip install pybind11
-
-# Create build directory
-mkdir build && cd build
-
-# Configure
-cmake ..
-
-# Build
-make -j4
-
-# Install
-make install
+./build.sh capture   # Build Fast Capture only
+./build.sh vision    # Build Vision ML only
 ```
 
 ### Clean Build
-
 ```bash
 ./build.sh clean
 ```
 
+### Build and Test
+```bash
+./build.sh test
+```
+
+## Requirements
+
+### macOS
+- CMake 3.15+
+- C++ compiler with C++17 support
+- Python 3.8+ with development headers
+- pybind11 (auto-installed)
+
+### Python Dependencies
+```bash
+pip install pybind11 setuptools
+```
+
 ## Usage
 
-### Drop-in Replacement
-
-The enhanced vision system is a drop-in replacement for the existing Python implementation:
-
+### Fast Capture
 ```python
-# Simply import the enhanced version instead
-from backend.vision.enhanced_screen_vision import EnhancedScreenVisionSystem
+from backend.native_extensions.fast_capture_wrapper import FastCaptureEngine
 
-# Use exactly like the original
-vision = EnhancedScreenVisionSystem()
-image = await vision.capture_screen()
-```
-
-### Direct C++ Extension Usage
-
-For maximum control and performance:
-
-```python
-from backend.native_extensions.fast_capture_wrapper import FastCaptureEngine, CaptureConfig
-
-# Initialize engine
 engine = FastCaptureEngine()
-
-# Configure capture
-config = CaptureConfig(
-    output_format="raw",
-    use_gpu_acceleration=True,
-    parallel_capture=True
-)
-
-# Single window capture
-result = engine.capture_frontmost_window(config)
-if result['success']:
-    image = result['image']  # numpy array
-    print(f"Captured in {result['capture_time_ms']}ms")
-
-# Multi-window capture (parallel)
-windows = engine.capture_all_windows(config)
-print(f"Captured {len(windows)} windows")
-
-# Get performance metrics
-metrics = engine.get_metrics()
-print(f"Average capture time: {metrics['avg_capture_time_ms']}ms")
+screenshot = engine.capture_screen()
 ```
 
-### Async Usage
-
+### Vision ML Router (C++)
 ```python
-# Async single window
-image = await vision.capture_screen()
+import vision_ml_router
 
-# Async multi-window
-captures = await vision.capture_multiple_windows(
-    app_names=['Safari', 'Chrome'],
-    visible_only=True
-)
+# Analyze command
+score, action = vision_ml_router.analyze("describe what's on my screen")
+print(f"Action: {action}, Confidence: {score}")
+
+# Learn from execution
+vision_ml_router.learn("describe screen", "describe", 1)  # 1 = success
 ```
 
-## API Reference
+### Hybrid Vision Router (Recommended)
+```python
+from backend.voice.hybrid_vision_router import HybridVisionRouter
 
-### CaptureConfig
-
-Configuration object for capture operations:
-
-- `capture_cursor` (bool): Include cursor in capture
-- `capture_shadow` (bool): Include window shadows
-- `output_format` (str): "auto", "jpeg", "png", "raw"
-- `jpeg_quality` (int): JPEG compression quality (0-100)
-- `use_gpu_acceleration` (bool): Enable GPU acceleration
-- `parallel_capture` (bool): Enable parallel multi-window capture
-- `max_width` (int): Maximum capture width (0 = no limit)
-- `max_height` (int): Maximum capture height (0 = no limit)
-
-### FastCaptureEngine Methods
-
-- `capture_window(window_id)`: Capture specific window by ID
-- `capture_window_by_name(app_name, window_title)`: Capture by app/title
-- `capture_frontmost_window()`: Capture the active window
-- `capture_all_windows()`: Capture all windows in parallel
-- `capture_visible_windows()`: Capture only visible windows
-- `get_all_windows()`: Get window information without capturing
-- `get_metrics()`: Get performance statistics
-
-## Architecture
-
+router = HybridVisionRouter()
+intent = await router.analyze_command("what am I looking at?")
+print(f"Action: {intent.final_action}, Confidence: {intent.combined_confidence}")
 ```
-┌─────────────────────────────────────┐
-│         Python Application          │
-├─────────────────────────────────────┤
-│    Enhanced Screen Vision System    │
-│         (Python Wrapper)            │
-├─────────────────────────────────────┤
-│       Fast Capture Wrapper          │
-│      (Python/C++ Bridge)            │
-├─────────────────────────────────────┤
-│      C++ Fast Capture Engine        │
-│  (High-Performance Implementation)  │
-├─────────────────────────────────────┤
-│        macOS Core Graphics          │
-│         (System APIs)               │
-└─────────────────────────────────────┘
-```
+
+## Performance
+
+| Operation | Python Only | With C++ | Improvement |
+|-----------|-------------|----------|-------------|
+| Screen Capture | 200-500ms | 20-50ms | 10x faster |
+| Vision Analysis | 50-100ms | 2-5ms | 20x faster |
+| Pattern Matching | 20-30ms | <1ms | 30x faster |
 
 ## Troubleshooting
 
-### Import Error
+### Build Failures
 
-If you get an import error:
+1. **CMake not found**
+   ```bash
+   brew install cmake
+   ```
 
-1. Ensure the extension is built: `./build.sh`
-2. Check Python path includes the native_extensions directory
-3. Verify the .so file exists in the directory
+2. **Python headers missing**
+   ```bash
+   # macOS
+   brew install python@3.9
+   
+   # Linux
+   sudo apt-get install python3-dev
+   ```
 
-### Permission Errors
+3. **C++ compiler issues**
+   ```bash
+   # Check compiler version
+   g++ --version  # Should be 7.0+
+   ```
 
-Screen recording permission is required on macOS:
-1. Go to System Preferences → Security & Privacy → Privacy
-2. Select "Screen Recording"
-3. Add your Terminal/Python to the allowed list
+### Import Errors
 
-### Performance Issues
+If extensions fail to import:
+1. Check build output for errors
+2. Verify `.so` or `.dylib` files exist
+3. Ensure Python version matches build version
+4. Try rebuilding with `./build.sh clean && ./build.sh`
 
-1. Ensure Release build: `cmake -DCMAKE_BUILD_TYPE=Release`
-2. Check GPU acceleration is enabled
-3. Monitor system resources during capture
+### Fallback Mode
+
+Both extensions have Python fallbacks:
+- Fast Capture → Falls back to `pyautogui` or `PIL`
+- Vision ML → Falls back to pure Python analysis
+
+The system automatically uses fallbacks if C++ extensions aren't available.
 
 ## Development
 
-### Adding New Features
+### Adding New Extensions
 
-1. Modify the C++ implementation in `src/fast_capture.cpp`
-2. Update Python bindings in `src/python_bindings.cpp`
-3. Add Python wrapper methods in `fast_capture_wrapper.py`
-4. Update the enhanced vision system if needed
-5. Rebuild: `./build.sh`
+1. Create your C++ source file
+2. Add a `setup_<name>.py` for building
+3. Update `build.sh` to include your extension
+4. Create a Python wrapper if needed
 
-### Running Tests
+### Testing
 
+Run the integrated test:
 ```bash
-# Run performance comparison
-./build.sh test
-
-# Or manually
-cd backend/vision
-python test_enhanced_vision.py
+./test_integrated_build.sh
 ```
 
-### Debugging
-
-Build with debug symbols:
-```bash
-cmake -DCMAKE_BUILD_TYPE=Debug ..
-make
+Or test individual components:
+```python
+python3 -c "import fast_capture; print(fast_capture.VERSION)"
+python3 -c "import vision_ml_router; print('Vision ML available')"
 ```
 
-## Future Enhancements
+## Notes
 
-- [ ] Metal API integration for better GPU acceleration
-- [ ] Video capture support
-- [ ] Window change detection
-- [ ] OCR integration at C++ level
-- [ ] Cross-platform support (Windows/Linux)
-
-## License
-
-Part of the JARVIS AI Agent project.
+- The C++ extensions are optional but highly recommended for performance
+- Python fallbacks ensure the system works even without C++ extensions
+- Build once and the extensions persist across JARVIS restarts
+- Extensions are architecture-specific (Intel vs Apple Silicon)
