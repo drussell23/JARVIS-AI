@@ -20,7 +20,11 @@ logger = logging.getLogger(__name__)
 try:
     from voice.jarvis_voice import EnhancedJARVISVoiceAssistant, EnhancedJARVISPersonality, VoiceCommand
     from voice.jarvis_agent_voice import JARVISAgentVoice
+    from voice.jarvis_agent_voice_fix import patch_jarvis_voice_agent
     JARVIS_IMPORTS_AVAILABLE = True
+    # Apply the intelligent routing fix
+    patch_jarvis_voice_agent(JARVISAgentVoice)
+    logger.info("Applied intelligent command routing patch to JARVISAgentVoice")
 except (ImportError, OSError, AttributeError) as e:
     logger.warning(f"Failed to import JARVIS voice components: {e}")
     JARVIS_IMPORTS_AVAILABLE = False
