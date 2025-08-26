@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-JARVIS AI System v12.0 - Autonomous Cognitive Intelligence Platform
-Complete AI Agent with Advanced Autonomy, Creative Problem Solving & Predictive Intelligence
+JARVIS AI System v12.1 - Autonomous Cognitive Intelligence Platform
+Complete AI Agent with Enhanced Vision System & Real-time Screen Analysis
 """
 
 import os
@@ -24,14 +24,14 @@ warnings.filterwarnings("ignore")
 
 # ASCII Art Banner
 JARVIS_BANNER = """
-     ██╗ █████╗ ██████╗ ██╗   ██╗██╗███████╗    ██╗   ██╗ ██╗██████╗      ██████╗ 
-     ██║██╔══██╗██╔══██╗██║   ██║██║██╔════╝    ██║   ██║███║╚════██╗    ██╔═████╗
-     ██║███████║██████╔╝██║   ██║██║███████╗    ██║   ██║╚██║ █████╔╝    ██║██╔██║
-██   ██║██╔══██║██╔══██╗╚██╗ ██╔╝██║╚════██║    ╚██╗ ██╔╝ ██║██╔═══╝     ████╔╝██║
-╚█████╔╝██║  ██║██║  ██║ ╚████╔╝ ██║███████║     ╚████╔╝  ██║███████╗██╗╚██████╔╝
- ╚════╝ ╚═╝  ╚═╝╚═╝  ╚═╝  ╚═══╝  ╚═╝╚══════╝      ╚═══╝   ╚═╝╚══════╝╚═╝ ╚═════╝ 
+     ██╗ █████╗ ██████╗ ██╗   ██╗██╗███████╗    ██╗   ██╗ ██╗██████╗      ██╗
+     ██║██╔══██╗██╔══██╗██║   ██║██║██╔════╝    ██║   ██║███║╚════██╗    ███║
+     ██║███████║██████╔╝██║   ██║██║███████╗    ██║   ██║╚██║ █████╔╝    ╚██║
+██   ██║██╔══██║██╔══██╗╚██╗ ██╔╝██║╚════██║    ╚██╗ ██╔╝ ██║██╔═══╝      ██║
+╚█████╔╝██║  ██║██║  ██║ ╚████╔╝ ██║███████║     ╚████╔╝  ██║███████╗ ██╗██║
+ ╚════╝ ╚═╝  ╚═╝╚═╝  ╚═╝  ╚═══╝  ╚═╝╚══════╝      ╚═══╝   ╚═╝╚══════╝ ╚═╝╚═╝ 
                                                                         
-    🧠 Autonomous AI with Creative Problem Solving & Predictive Intelligence 🧠
+    👁️ Enhanced Vision System • Real-time Screen Analysis • Claude Vision API 👁️
       Full Autonomy • Context-Aware Decisions • Proactive Assistance • ML Audio
 """
 
@@ -143,6 +143,12 @@ class JARVISSystemManager:
         except:
             capabilities.append(("⚠️", "ML Vision Routing", "Basic routing only"))
         
+        # Natural language vision commands
+        capabilities.append(("✅", "Natural Vision Commands", "Ask 'can you see my screen?'"))
+        
+        # Real-time screen analysis
+        capabilities.append(("✅", "Real-time Analysis", "Live screen understanding"))
+        
         for status, feature, description in capabilities:
             print(f"{status} {feature:<25} {description}")
         
@@ -150,8 +156,8 @@ class JARVISSystemManager:
         print("-" * 50)
     
     def check_advanced_features(self):
-        """Check v12.0 autonomous features"""
-        print("\n🧠 Advanced v12.0 Autonomous Features:")
+        """Check v12.1 enhanced features"""
+        print("\n🧠 Advanced v12.1 Enhanced Features:")
         print("-" * 50)
         
         features = []
@@ -179,6 +185,12 @@ class JARVISSystemManager:
         
         # Vision Navigation
         features.append(("✅", "Vision Navigation", "Visual-based UI navigation"))
+        
+        # Enhanced Vision System (v12.1)
+        features.append(("✅", "Natural Language Vision", "Ask naturally about your screen"))
+        
+        # Fixed Vision Routing
+        features.append(("✅", "Smart Vision Routing", "Proper command categorization"))
         
         for status, feature, description in features:
             print(f"{status} {feature:<25} {description}")

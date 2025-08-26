@@ -112,7 +112,7 @@ class ClaudeCommandInterpreter:
         5. Safety assessment (safe, caution, dangerous)
         6. Confidence level (0-1)
         
-        For vision commands about describing or analyzing the screen, use category="system" and action="describe_screen"
+        For vision commands about describing or analyzing the screen, use category="vision" and action="describe_screen"
         
         For multiple targets (e.g., "close whatsapp and preview"), set target as "whatsapp and preview".
         
@@ -337,6 +337,8 @@ class ClaudeCommandInterpreter:
                 if intent.action in ["describe_screen", "analyze_window", "check_screen"]:
                     return await self._execute_vision_command(intent)
                 return await self._execute_system_command(intent)
+            elif intent.category == CommandCategory.VISION:
+                return await self._execute_vision_command(intent)
             elif intent.category == CommandCategory.WEB:
                 return await self._execute_web_command(intent)
             elif intent.category == CommandCategory.WORKFLOW:
@@ -524,6 +526,10 @@ class ClaudeCommandInterpreter:
     async def _execute_vision_command(self, intent: CommandIntent) -> CommandResult:
         """Execute vision commands"""
         try:
+            # Add the raw command as query parameter if not already present
+            if 'query' not in intent.parameters:
+                intent.parameters['query'] = intent.raw_command
+            
             if intent.action == "describe_screen":
                 result = await self.vision_handler.describe_screen(intent.parameters)
                 return CommandResult(
@@ -546,12 +552,15 @@ class ClaudeCommandInterpreter:
                     data=result.data
                 )
             else:
+                # Try to handle any vision command through describe_screen
+                result = await self.vision_handler.describe_screen(intent.parameters)
                 return CommandResult(
-                    success=False,
-                    message=f"Unknown vision action: {intent.action}"
+                    success=result.success,
+                    message=result.description,
+                    data=result.data
                 )
         except Exception as e:
-            logger.error(f"Vision command error: {e}")
+            logger.error(f"Vision command error: {e}", exc_info=True)
             return CommandResult(
                 success=False,
                 message=f"Error executing vision command: {str(e)}"

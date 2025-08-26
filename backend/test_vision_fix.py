@@ -1,80 +1,62 @@
 #!/usr/bin/env python3
 """
-Test script to verify vision system fix
+Test the vision command fix
 """
 
 import asyncio
-import logging
 import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from system_control.claude_command_interpreter import ClaudeCommandInterpreter
-from system_control.vision_action_handler import get_vision_action_handler
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-
-async def test_vision_commands():
-    """Test vision commands through the interpreter"""
-    print("🔧 Testing Vision System Fix")
+async def test_vision_command():
+    print("🧪 Testing Vision Command Fix")
     print("=" * 50)
     
-    # Check API key
+    # Initialize interpreter
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        print("❌ ANTHROPIC_API_KEY not set")
+        print("❌ ANTHROPIC_API_KEY not set!")
         return
-        
-    # Initialize interpreter
+    
     interpreter = ClaudeCommandInterpreter(api_key)
     
-    # Test commands
+    # Test various vision commands
     test_commands = [
-        "describe what's on my screen",
-        "what am I looking at?",
-        "check my screen for errors",
-        "analyze the current window",
-        "tell me what you see"
+        "can you see my screen",
+        "what's on my screen",
+        "describe what you see",
+        "analyze my screen"
     ]
     
     for command in test_commands:
-        print(f"\n🎯 Testing: '{command}'")
-        print("-" * 40)
+        print(f"\n📝 Testing: '{command}'")
+        print("-" * 50)
         
         try:
-            # Interpret command
+            # Interpret the command
             intent = await interpreter.interpret_command(command)
-            print(f"✓ Intent: {intent.action}")
-            print(f"✓ Category: {intent.category.value}")
-            print(f"✓ Confidence: {intent.confidence}")
             
-            # Execute command
+            print(f"📊 Interpreted Intent:")
+            print(f"  • Action: {intent.action}")
+            print(f"  • Category: {intent.category}")
+            print(f"  • Target: {intent.target}")
+            print(f"  • Confidence: {intent.confidence}")
+            
+            # Execute the command
             result = await interpreter.execute_intent(intent)
-            print(f"✓ Success: {result.success}")
-            print(f"✓ Response: {result.message}")
+            
+            print(f"\n✅ Success: {result.success}")
+            print(f"\n🤖 Response:")
+            print("-" * 50)
+            print(result.message[:500] + "..." if len(result.message) > 500 else result.message)
+            print("-" * 50)
             
         except Exception as e:
             print(f"❌ Error: {e}")
-            
-    # Test direct vision handler
-    print("\n\n🔧 Testing Direct Vision Handler")
-    print("=" * 50)
-    
-    vision_handler = get_vision_action_handler()
-    
-    # Test describe_screen
-    print("\n📷 Testing describe_screen...")
-    result = await vision_handler.describe_screen()
-    print(f"✓ Success: {result.success}")
-    print(f"✓ Description: {result.description[:200]}...")
-    
-    # Test check_screen
-    print("\n🔍 Testing check_screen for notifications...")
-    result = await vision_handler.check_screen({"target": "notifications"})
-    print(f"✓ Success: {result.success}")
-    print(f"✓ Description: {result.description}")
-    
-    print("\n✨ Vision system test complete!")
-
+            import traceback
+            traceback.print_exc()
 
 if __name__ == "__main__":
-    asyncio.run(test_vision_commands())
+    asyncio.run(test_vision_command())

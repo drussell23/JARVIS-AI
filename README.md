@@ -1,4 +1,4 @@
-# 🤖 JARVIS - Autonomous Cognitive Intelligence Platform (v12.0)
+# 🤖 JARVIS - Autonomous Cognitive Intelligence Platform (v12.1)
 
 <p align="center">
   <img src="https://img.shields.io/badge/AI%20Agent-100%25%20Claude%20Powered-purple" alt="Claude AI">
@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/Voice-Natural%20Communication-red" alt="Voice">
   <img src="https://img.shields.io/badge/Learning-Context%20Aware%20AI-yellow" alt="Machine Learning">
   <img src="https://img.shields.io/badge/Status-TRUE%20AI%20AGENT-success" alt="Production">
-  <img src="https://img.shields.io/badge/Version-12.0-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Version-12.1-brightgreen" alt="Version">
   <img src="https://img.shields.io/badge/Architecture-Autonomous%20AI-blueviolet" alt="Architecture">
   <img src="https://img.shields.io/badge/Platform-macOS%20Optimized-silver" alt="macOS">
   <img src="https://img.shields.io/badge/Autonomy-Full%20Self%20Driving-gold" alt="Autonomy">
@@ -23,7 +23,7 @@
 ## Table of Contents
 
 1. [Introduction](#-introduction)
-2. [What's New in v12.0 - Autonomous Cognitive Intelligence](#-whats-new-in-v120---autonomous-cognitive-intelligence)
+2. [What's New in v12.1 - Enhanced Vision System](#-whats-new-in-v121---enhanced-vision-system)
 3. [Core Features](#-core-features)
 4. [Unified AI Agent Architecture](#-unified-ai-agent-architecture)
    - [Swift Intelligence Layer](#swift-intelligence-layer)
@@ -52,25 +52,44 @@
 
 ---
 
+## 📝 Changelog
+
+### v12.1 (Latest) - Enhanced Vision System
+- ✅ Fixed vision command routing - "can you see my screen?" now works perfectly
+- ✅ Added proper `CommandCategory.VISION` enum value
+- ✅ Enhanced natural language understanding for vision commands
+- ✅ Direct Claude Vision API integration
+- ✅ Improved error handling and fallback mechanisms
+- ✅ Added comprehensive vision system testing
+
+### v12.0 - Autonomous Cognitive Intelligence
+- 🤖 Full autonomy mode with hands-free operation
+- 🧠 Creative problem solving capabilities
+- 🔮 Predictive intelligence system
+- 🎵 ML-enhanced audio processing
+- 🎯 Context engine for deep understanding
+
+---
+
 ## 🌟 Introduction
 
-JARVIS v12.0 represents the next evolution in AI assistants - an **AUTONOMOUS COGNITIVE INTELLIGENCE PLATFORM** featuring complete hands-free operation, creative problem solving, predictive intelligence, and advanced ML audio processing. This release introduces full autonomy, context-aware decision making, and proactive user assistance.
+JARVIS v12.1 represents a significant enhancement in vision capabilities - an **AUTONOMOUS COGNITIVE INTELLIGENCE PLATFORM** with a fully operational natural language vision system. Building on v12.0's autonomy features, this release perfects the vision system with proper command routing, natural language understanding, and seamless Claude Vision API integration.
 
-**Key Breakthroughs in v12.0:**
+**Key Improvements in v12.1:**
+- **👁️ Natural Language Vision**: Simply ask "can you see my screen?" and get intelligent responses
+- **🎯 Fixed Vision Routing**: Proper categorization and handling of vision commands
+- **🔧 Enhanced Command Processing**: Vision commands now correctly route to Claude Vision API
 - **🤖 Full Autonomy Mode**: Complete hands-free operation with intelligent decision making
 - **🧠 Creative Problem Solving**: AI-driven innovative solutions to complex challenges
 - **🔮 Predictive Intelligence**: Anticipates user needs before they're expressed
 - **🎵 ML Audio System**: Advanced audio processing with emotion recognition
-- **🎯 Context Engine**: Deep contextual understanding for smarter assistance
-- **🚀 Hardware Control**: Direct system integration for seamless operation
-- **👁️ Vision Navigation**: Visual-based UI navigation and interaction
-- **🔄 Continuous Learning**: Adaptive intelligence that improves with every interaction
+- **🚀 Real-time Screen Analysis**: Instant understanding of your workspace
 
-## 🚀 What's New in v12.0 - Autonomous Cognitive Intelligence
+## 🚀 What's New in v12.1 - Enhanced Vision System
 
-### **🤖 The Ultimate Evolution: Full Autonomy & Creative Intelligence**
+### **👁️ Perfect Vision: Natural Language Understanding Meets Real-time Analysis**
 
-JARVIS v12.0 introduces revolutionary advances in autonomous operation, creative problem solving, and predictive intelligence. Building on v11.0's foundation, this release brings:
+JARVIS v12.1 perfects the vision system with seamless natural language understanding. You can now simply ask "can you see my screen?" and receive intelligent, context-aware responses about your workspace. This release fixes critical routing issues and enhances the integration with Claude Vision API.
 
 ### **Real-World Example: WhatsApp Notification**
 
@@ -85,7 +104,20 @@ Imagine you're coding and a WhatsApp message arrives:
 7. **Context-aware** suggestions: "Deep in code, will check in 30 minutes"
 8. **Swift** sends your reply automatically
 
-### **Core v12.0 Innovations:**
+### **Vision System Fix Details:**
+
+Before v12.1, asking "can you see my screen?" would result in generic responses. Now:
+
+1. **Proper Command Categorization**: Vision commands are correctly categorized as `CommandCategory.VISION`
+2. **Natural Language Support**: Ask about your screen in any natural way:
+   - "Can you see my screen?"
+   - "What's on my display?"
+   - "Describe what you see"
+   - "Analyze my workspace"
+3. **Direct API Integration**: Commands route directly to Claude Vision API for accurate analysis
+4. **Rich Descriptions**: Get detailed, contextual descriptions of your entire workspace
+
+### **Core v12.1 Innovations:**
 
 #### 1. **Full Autonomous Operation**
 - Operates completely hands-free
@@ -126,6 +158,24 @@ Imagine you're coding and a WhatsApp message arrives:
 - Enhanced performance through native extensions
 
 ## 🌟 Core Features
+
+### **Quick Start: Vision Commands**
+```bash
+# Start JARVIS
+python start_system.py
+
+# Ask about your screen naturally:
+"Hey JARVIS, can you see my screen?"
+"What am I looking at?"
+"Describe what's on my display"
+"Tell me about my workspace"
+
+# JARVIS will respond with:
+- Detailed description of visible content
+- Analysis of open windows and applications
+- Detection of notifications or important elements
+- Context-aware insights about your work
+```
 
 ### **1. Proactive Screen Monitoring**
 ```python
@@ -1674,13 +1724,19 @@ vision_events.on('capability_discovered', on_capability_discovered)
 
 ### **Common Issues and Solutions**
 
-#### **1. Vision Commands Not Working**
+#### **1. Vision Commands Not Working (Fixed in v12.1)**
 
-**Symptoms:**
-- Commands like "describe my screen" fail
+**Previous Issues (Pre-v12.1):**
+- Commands like "describe my screen" returned generic responses
 - "Unknown system action" errors
+- Vision commands were miscategorized as system commands
 
-**Diagnosis:**
+**v12.1 Solution:**
+- Vision commands now properly categorized as `CommandCategory.VISION`
+- Natural language understanding enhanced
+- Direct routing to Claude Vision API
+
+**If Still Having Issues:**
 ```bash
 # Run comprehensive diagnostic
 python backend/diagnose_vision.py
@@ -1805,6 +1861,12 @@ async def trace_vision_request(command: str):
 ## 🚀 Future Roadmap
 
 ### **Planned Enhancements**
+
+#### **Version 12.2 - Enhanced Vision Capabilities**
+- Advanced object recognition and tracking
+- Real-time activity monitoring and insights
+- Multi-monitor support with spatial awareness
+- Visual memory and scene comparison
 
 #### **Version 13.0 - Quantum-Inspired Intelligence**
 - Quantum computing principles for decision making

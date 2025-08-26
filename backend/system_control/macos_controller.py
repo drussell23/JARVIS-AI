@@ -25,6 +25,7 @@ class CommandCategory(Enum):
     SYSTEM = "system"
     WEB = "web"
     WORKFLOW = "workflow"
+    VISION = "vision"
     DANGEROUS = "dangerous"
 
 
