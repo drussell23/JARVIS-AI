@@ -73,8 +73,8 @@ class AsyncSystemManager:
     def print_header(self):
         """Print system header"""
         print(f"\n{Colors.HEADER}{'='*60}")
-        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v5.8 - Zero-Hardcoding Dynamic Vision System 🚀{Colors.ENDC}")
-        print(f"{Colors.CYAN}⚡ ZERO HARDCODING • Dynamic ML Vision • Self-Learning Intelligence{Colors.ENDC}")
+        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v5.9 - TypeScript-Enhanced Dynamic WebSocket System 🚀{Colors.ENDC}")
+        print(f"{Colors.CYAN}⚡ ZERO HARDCODING • Multi-Language Integration • Self-Healing Connections{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}")
         
         # AI Integration
@@ -102,7 +102,7 @@ class AsyncSystemManager:
         print(f"   • Self-learning from your patterns")
         
         # System Capabilities
-        print(f"\n{Colors.BOLD}🚀 REVOLUTIONARY v5.8 - ZERO-HARDCODING DYNAMIC VISION:{Colors.ENDC}")
+        print(f"\n{Colors.BOLD}🚀 REVOLUTIONARY v5.9 - TYPESCRIPT-ENHANCED WEBSOCKET SYSTEM:{Colors.ENDC}")
         print(f"{Colors.HEADER}🧠 Dynamic Vision Engine:{Colors.ENDC} Zero hardcoding • ML-based intent classification • Self-learning")
         print(f"{Colors.CYAN}🔌 Plugin Architecture:{Colors.ENDC} Extensible vision providers • Auto-discovery • Performance routing")
         print(f"{Colors.YELLOW}🎯 Unified Vision:{Colors.ENDC} Intelligent request routing • Multi-provider fusion • Context aware")
@@ -112,6 +112,13 @@ class AsyncSystemManager:
         print(f"{Colors.CYAN}🔄 Self-Improving:{Colors.ENDC} Learns from every command • Builds pattern database • No maintenance")
         print(f"{Colors.GREEN}🌐 Extensible:{Colors.ENDC} Drop-in plugin support • Custom providers • Hot-reload capable")
         print(f"{Colors.YELLOW}🔍 Intent Analysis:{Colors.ENDC} NLP-based routing • Fuzzy matching • Suggestion system")
+        
+        print(f"\n{Colors.BOLD}🔗 NEW - TYPESCRIPT WEBSOCKET INTEGRATION:{Colors.ENDC}")
+        print(f"{Colors.HEADER}🌐 Dynamic WebSocket:{Colors.ENDC} Auto-discovery • Self-healing • Zero hardcoding")
+        print(f"{Colors.CYAN}🔄 Smart Reconnection:{Colors.ENDC} Exponential backoff • Network adaptation • Connection pooling")
+        print(f"{Colors.YELLOW}🌉 Language Bridge:{Colors.ENDC} TypeScript-Python integration • Type safety • Seamless conversion")
+        print(f"{Colors.GREEN}📊 Real-time Metrics:{Colors.ENDC} Connection health • Message statistics • Performance tracking")
+        print(f"{Colors.BLUE}🧩 Multi-Protocol:{Colors.ENDC} WebSocket discovery • Capability routing • Protocol negotiation")
         
         # Activation
         print(f"\n{Colors.BOLD}🎤 ACTIVATION COMMANDS:{Colors.ENDC}")

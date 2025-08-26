@@ -39,10 +39,11 @@ def capture_screen_fallback():
             os.unlink(tmp_path)
 
             # Convert RGBA to RGB if needed
-            if img_array.shape[2] == 4:
+            if len(img_array.shape) == 3 and img_array.shape[2] == 4:
                 img_array = img_array[:, :, :3]
 
-            return img_array
+            # Return PIL Image instead of numpy array for compatibility
+            return image
         else:
             return None
 
@@ -103,7 +104,7 @@ def capture_with_intelligence(query: Optional[str] = None,
         }
 
 
-def analyze_with_claude_vision(screenshot_array: np.ndarray, 
+def analyze_with_claude_vision(screenshot_array, 
                               query: str) -> str:
     """
     Send screenshot to Claude for intelligent analysis.
@@ -119,8 +120,13 @@ def analyze_with_claude_vision(screenshot_array: np.ndarray,
         if not api_key:
             return "Claude Vision requires ANTHROPIC_API_KEY in environment"
         
-        # Convert numpy array to base64
-        image = Image.fromarray(screenshot_array)
+        # Handle both PIL Image and numpy array
+        if isinstance(screenshot_array, np.ndarray):
+            image = Image.fromarray(screenshot_array)
+        elif isinstance(screenshot_array, Image.Image):
+            image = screenshot_array
+        else:
+            raise ValueError(f"Unsupported image type: {type(screenshot_array)}")
         buffer = io.BytesIO()
         image.save(buffer, format='PNG')
         img_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
@@ -188,7 +194,11 @@ if __name__ == "__main__":
     print("\n1. Testing basic capture...")
     result = capture_with_intelligence(use_claude=False)
     if result["success"]:
-        print(f"✅ Captured screen: {result['image'].shape}")
+        img = result['image']
+        if isinstance(img, Image.Image):
+            print(f"✅ Captured screen: {img.size}")
+        else:
+            print(f"✅ Captured screen: {img.shape}")
     else:
         print(f"❌ Failed: {result['error']}")
     

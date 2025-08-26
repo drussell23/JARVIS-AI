@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Vision WebSocket Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #1a1a1a;
+            color: #ffffff;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .connected { background-color: #2d5a2d; }
+        .disconnected { background-color: #5a2d2d; }
+        .messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #444;
+            padding: 10px;
+            background-color: #0a0a0a;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            background-color: #2a4a7a;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #3a5a8a;
+        }
+    </style>
+</head>
+<body>
+    <h1>Vision WebSocket Test</h1>
+    
+    <div id="status" class="status disconnected">
+        WebSocket: Disconnected
+    </div>
+    
+    <div>
+        <button onclick="connect()">Connect</button>
+        <button onclick="disconnect()">Disconnect</button>
+        <button onclick="requestAnalysis()">Request Analysis</button>
+        <button onclick="toggleMonitoring()">Toggle Monitoring</button>
+    </div>
+    
+    <h3>Messages:</h3>
+    <div id="messages" class="messages"></div>
+    
+    <script>
+        let ws = null;
+        let monitoring = false;
+        
+        function log(message) {
+            const messages = document.getElementById('messages');
+            const timestamp = new Date().toLocaleTimeString();
+            messages.innerHTML += `[${timestamp}] ${message}\n`;
+            messages.scrollTop = messages.scrollHeight;
+        }
+        
+        function updateStatus(connected) {
+            const status = document.getElementById('status');
+            if (connected) {
+                status.className = 'status connected';
+                status.textContent = 'WebSocket: Connected';
+            } else {
+                status.className = 'status disconnected';
+                status.textContent = 'WebSocket: Disconnected';
+            }
+        }
+        
+        function connect() {
+            if (ws) {
+                log('Already connected');
+                return;
+            }
+            
+            log('Connecting to WebSocket...');
+            ws = new WebSocket('ws://localhost:8000/vision/ws/vision');
+            
+            ws.onopen = () => {
+                log('✅ Connected to Vision WebSocket');
+                updateStatus(true);
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                log(`📥 Received: ${JSON.stringify(data, null, 2)}`);
+                
+                if (data.type === 'initial_state') {
+                    log(`📊 Initial state received - Monitoring: ${data.monitoring_active}`);
+                    monitoring = data.monitoring_active;
+                }
+            };
+            
+            ws.onerror = (error) => {
+                log(`❌ WebSocket error: ${error}`);
+            };
+            
+            ws.onclose = () => {
+                log('🔌 WebSocket disconnected');
+                updateStatus(false);
+                ws = null;
+            };
+        }
+        
+        function disconnect() {
+            if (!ws) {
+                log('Not connected');
+                return;
+            }
+            ws.close();
+        }
+        
+        function requestAnalysis() {
+            if (!ws) {
+                log('❌ Not connected');
+                return;
+            }
+            
+            log('📤 Requesting vision analysis...');
+            ws.send(JSON.stringify({
+                type: 'request_analysis'
+            }));
+        }
+        
+        function toggleMonitoring() {
+            if (!ws) {
+                log('❌ Not connected');
+                return;
+            }
+            
+            monitoring = !monitoring;
+            log(`📤 ${monitoring ? 'Enabling' : 'Disabling'} monitoring...`);
+            ws.send(JSON.stringify({
+                type: 'set_monitoring',
+                enabled: monitoring
+            }));
+        }
+        
+        // Auto-connect on load
+        window.onload = () => {
+            setTimeout(connect, 500);
+        };
+    </script>
+</body>
+</html>

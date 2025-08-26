@@ -1,4 +1,4 @@
-# 🤖 JARVIS - Claude-Powered Iron Man AI Agent (v5.8)
+# 🤖 JARVIS - Claude-Powered Iron Man AI Agent (v5.9)
 
 <p align="center">
   <img src="https://img.shields.io/badge/AI%20Agent-100%25%20Claude%20Powered-purple" alt="Claude AI">
@@ -8,10 +8,10 @@
   <img src="https://img.shields.io/badge/UI-Iron%20Man%20Inspired-red" alt="Iron Man UI">
   <img src="https://img.shields.io/badge/Learning-Self%20Improving%20AI-yellow" alt="Machine Learning">
   <img src="https://img.shields.io/badge/Status-FULLY%20AUTONOMOUS-success" alt="Production">
-  <img src="https://img.shields.io/badge/Version-5.8-brightgreen" alt="Version">
-  <img src="https://img.shields.io/badge/Intent-🧠%20ML%20Classification-purple" alt="Intent Analysis">
-  <img src="https://img.shields.io/badge/Routing-🎯%20Dynamic%20Provider%20Selection-cyan" alt="Routing">
-  <img src="https://img.shields.io/badge/Performance-⚡%20Self%20Optimizing-ff69b4" alt="Performance">
+  <img src="https://img.shields.io/badge/Version-5.9-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/WebSocket-🔗%20TypeScript%20Enhanced-blueviolet" alt="WebSocket">
+  <img src="https://img.shields.io/badge/Bridge-🌉%20Multi%20Language%20Integration-teal" alt="Language Bridge">
+  <img src="https://img.shields.io/badge/Connection-⚡%20Self%20Healing-gold" alt="Self-Healing">
 </p>
 
 <p align="center">
@@ -21,35 +21,73 @@
 ## Table of Contents
 
 1. [Introduction](#-introduction)
-2. [What's New in v5.8](#-whats-new-in-v58---zero-hardcoding-dynamic-vision-system)
-3. [JARVIS Vision System Architecture](#-jarvis-vision-system-architecture)
+2. [What's New in v5.9](#-whats-new-in-v59---typescript-enhanced-websocket-system)
+3. [What's New in v5.8](#-whats-new-in-v58---zero-hardcoding-dynamic-vision-system)
+4. [TypeScript WebSocket Integration](#-typescript-websocket-integration)
+   - [Dynamic WebSocket Client](#dynamic-websocket-client)
+   - [Language Bridge](#language-bridge)
+   - [Self-Healing Connections](#self-healing-connections)
+5. [JARVIS Vision System Architecture](#-jarvis-vision-system-architecture)
    - [System Overview](#system-overview)
    - [Core Components Deep Dive](#core-components-deep-dive)
    - [Data Flow Architecture](#data-flow-architecture)
    - [ML Pipeline Details](#ml-pipeline-details)
-4. [Zero-Hardcoding Philosophy](#-zero-hardcoding-philosophy)
-5. [Implementation Details](#-implementation-details)
+6. [Zero-Hardcoding Philosophy](#-zero-hardcoding-philosophy)
+7. [Implementation Details](#-implementation-details)
    - [Dynamic Vision Engine](#dynamic-vision-engine)
    - [Vision Plugin System](#vision-plugin-system)
    - [Unified Vision System](#unified-vision-system)
-6. [Machine Learning Architecture](#-machine-learning-architecture)
-7. [Performance & Optimization](#-performance--optimization)
-8. [Advanced Features](#-advanced-features)
-9. [Developer Guide](#-developer-guide)
-10. [System Integration](#-system-integration)
-11. [Troubleshooting](#-troubleshooting)
-12. [Future Roadmap](#-future-roadmap)
+8. [Machine Learning Architecture](#-machine-learning-architecture)
+9. [Performance & Optimization](#-performance--optimization)
+10. [Advanced Features](#-advanced-features)
+11. [Developer Guide](#-developer-guide)
+12. [System Integration](#-system-integration)
+13. [Troubleshooting](#-troubleshooting)
+14. [Future Roadmap](#-future-roadmap)
 
 ---
 
 ## 🌟 Introduction
 
-JARVIS v5.8 represents a paradigm shift in AI assistant technology. By completely eliminating hardcoded patterns and embracing a pure machine learning approach, we've created a vision system that truly understands intent rather than matching keywords. This revolutionary architecture allows JARVIS to:
+JARVIS v5.9 builds upon the revolutionary zero-hardcoding vision system with a powerful TypeScript WebSocket integration layer. This multi-language approach creates unprecedented stability and dynamic capabilities while maintaining our philosophy of zero hardcoding. The system now features self-healing connections, automatic endpoint discovery, and seamless TypeScript-Python bridging.
 
-- **Understand Any Command**: No predefined patterns means infinite possibilities
-- **Learn Continuously**: Every interaction makes the system smarter
-- **Adapt Dynamically**: New capabilities can be added without code changes
-- **Scale Infinitely**: Plugin architecture supports unlimited extensions
+Key achievements in v5.9:
+- **Self-Healing WebSockets**: Automatic reconnection with intelligent backoff strategies
+- **Multi-Language Integration**: TypeScript and Python work together seamlessly
+- **Dynamic Discovery**: WebSocket endpoints are discovered, not hardcoded
+- **Real-time Metrics**: Connection health and performance monitoring
+
+## 🚀 What's New in v5.9 - TypeScript-Enhanced WebSocket System
+
+### **🔗 Revolutionary WebSocket Enhancement**
+
+JARVIS v5.9 introduces a TypeScript layer that enhances WebSocket stability without replacing existing functionality. This creates a robust, self-healing communication system that adapts to network conditions dynamically.
+
+### **Key Innovations:**
+
+#### 1. **Dynamic WebSocket Client**
+- **Auto-Discovery**: Finds available endpoints through API, DOM, and network scanning
+- **Smart Routing**: Routes messages based on capabilities, not hardcoded paths
+- **Self-Healing**: Implements exponential, linear, and Fibonacci reconnection strategies
+- **Type Safety**: Optional TypeScript for better stability and developer experience
+
+#### 2. **TypeScript-Python Bridge**
+- **Seamless Integration**: Automatic type conversion between languages
+- **Correlation Tracking**: Manages async request-response pairs
+- **Error Resilience**: Intelligent retry mechanisms with fallbacks
+- **Message Transformation**: Handles Python types like datetime, numpy arrays, PIL Images
+
+#### 3. **Real-time Monitoring**
+- **Connection Health**: Tracks latency, reliability, and success rates
+- **Message Analytics**: Learns message patterns for optimization
+- **Performance Metrics**: Monitors and reports on all connections
+- **Visual Dashboard**: Enhanced test interfaces for monitoring
+
+#### 4. **Zero-Hardcoding WebSockets**
+- **No Fixed Endpoints**: All endpoints discovered dynamically
+- **No Message Type Definitions**: Learns message schemas from actual traffic
+- **No Static Routing**: ML-based routing to best available endpoint
+- **No Manual Configuration**: Self-configuring based on environment
 
 ## 🚀 What's New in v5.8 - Zero-Hardcoding Dynamic Vision System
 
@@ -82,6 +120,123 @@ JARVIS v5.8 introduces a completely dynamic vision system with **ZERO hardcoded 
 - **Confidence Scoring**: Multi-factor analysis for routing decisions
 - **Performance Tracking**: Monitors success rates and execution times
 - **Adaptive Routing**: Automatically optimizes based on performance data
+
+## 🔗 TypeScript WebSocket Integration
+
+### **Dynamic WebSocket Client**
+
+The TypeScript WebSocket client represents a paradigm shift in real-time communication. Instead of hardcoded endpoints, it discovers them. Instead of fixed reconnection delays, it adapts. Instead of static message types, it learns.
+
+#### **Auto-Discovery Methods**
+
+```typescript
+// The client discovers endpoints through multiple methods
+const client = new DynamicWebSocketClient({
+    autoDiscover: true,  // Enable all discovery methods
+    reconnectStrategy: 'exponential',
+    maxReconnectAttempts: 10
+});
+
+// Discovery methods include:
+// 1. API Discovery - Queries /api/websocket/endpoints
+// 2. DOM Discovery - Scans HTML for data-websocket attributes  
+// 3. Network Scan - Tests common WebSocket paths
+// 4. Config Discovery - Reads from configuration files
+```
+
+#### **Smart Connection Management**
+
+```javascript
+// Connect to best available endpoint
+await client.connect();
+
+// Or connect by capability
+await client.connect('vision');  // Finds endpoint with vision capability
+
+// Messages are routed intelligently
+client.on('workspace_update', (data) => {
+    console.log('Workspace updated:', data);
+});
+
+// Send to specific capability
+await client.send({
+    type: 'request_analysis'
+}, 'vision');
+```
+
+### **Language Bridge**
+
+The TypeScript-Python bridge enables seamless communication between frontend and backend:
+
+```typescript
+import { WebSocketBridge } from './bridges/WebSocketBridge';
+
+const bridge = new WebSocketBridge();
+
+// Call Python functions from TypeScript
+const result = await bridge.callPythonFunction(
+    'vision.unified_vision_system',
+    'process_vision_request',
+    ['describe my screen']
+);
+
+// Automatic type conversion
+// - Python datetime → JavaScript Date
+// - numpy arrays → JavaScript arrays
+// - PIL Images → base64 data URLs
+```
+
+### **Self-Healing Connections**
+
+The system implements intelligent reconnection strategies:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Connection Failure Detected                   │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Calculate Reconnect Delay                     │
+│                                                                  │
+│  • Exponential: 1s, 2s, 4s, 8s, 16s...                         │
+│  • Linear: 1s, 2s, 3s, 4s, 5s...                               │
+│  • Fibonacci: 1s, 1s, 2s, 3s, 5s, 8s...                        │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Attempt Reconnection                          │
+│                                                                  │
+│  • Update connection metrics                                     │
+│  • Adjust endpoint reliability scores                            │
+│  • Route to next best endpoint if needed                        │
+│  • Maintain message queue during reconnection                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### **Real-time Metrics**
+
+The system continuously monitors and optimizes connections:
+
+```javascript
+const stats = client.getStats();
+console.log(stats);
+// {
+//   connections: [...],
+//   discoveredEndpoints: [...],
+//   learnedMessageTypes: ['initial_state', 'workspace_update', ...],
+//   totalMessages: 1337,
+//   connectionMetrics: {
+//     '/vision/ws/vision': {
+//       messages: 500,
+//       errors: 2,
+//       latency: 45,
+//       reliability: 0.996
+//     }
+//   }
+// }
+```
 
 ## 🏗️ JARVIS Vision System Architecture
 

@@ -1,0 +1,30 @@
+{
+  "name": "jarvis-websocket-enhanced",
+  "version": "1.0.0",
+  "description": "Enhanced WebSocket system with TypeScript for JARVIS AI Agent",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "dev": "tsc --watch & node dist/index.js",
+    "test": "echo \"No tests yet\"",
+    "compile-websocket": "tsc websocket/DynamicWebSocketClient.ts --outDir static/js --module es2022 --target es2022"
+  },
+  "keywords": [
+    "websocket",
+    "typescript",
+    "jarvis",
+    "ai",
+    "dynamic"
+  ],
+  "author": "JARVIS AI Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.5.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.13.0"
+  }
+}

@@ -647,6 +647,16 @@ except Exception as e:
     logger.warning(f"Failed to initialize ML Audio API: {e}")
     ML_AUDIO_API_AVAILABLE = False
 
+# Include WebSocket Discovery API for TypeScript integration
+try:
+    from api.websocket_discovery_api import router as ws_discovery_router
+    app.include_router(ws_discovery_router)
+    logger.info("WebSocket Discovery API routes added - Dynamic endpoint discovery enabled!")
+    WEBSOCKET_DISCOVERY_AVAILABLE = True
+except Exception as e:
+    logger.warning(f"Failed to initialize WebSocket Discovery API: {e}")
+    WEBSOCKET_DISCOVERY_AVAILABLE = False
+
 
 # Update root endpoint
 @app.get("/")

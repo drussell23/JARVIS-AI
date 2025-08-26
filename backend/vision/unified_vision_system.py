@@ -137,8 +137,13 @@ class UnifiedVisionSystem:
         responses = []
         errors = []
         
+        # Debug logging
+        logger.info(f"Routing analysis for '{request.command}': {routing_analysis}")
+        
         for component_name, score in routing_analysis['component_scores'].items():
+            logger.info(f"Component {component_name} score: {score}")
             if score < 0.3:  # Skip low-scoring components
+                logger.info(f"Skipping {component_name} due to low score")
                 continue
                 
             try:

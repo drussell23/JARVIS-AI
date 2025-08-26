@@ -105,6 +105,48 @@ class DynamicVisionEngine:
             'capability_patterns': defaultdict(list)
         }
         
+    def _register_basic_capabilities(self):
+        """Register basic built-in vision capabilities"""
+        # Screen capture capability
+        async def describe_screen_capability(**kwargs):
+            """Describe what's on the screen"""
+            try:
+                from vision.screen_capture_fallback import capture_screen_fallback
+                from PIL import Image
+                screenshot = capture_screen_fallback()
+                if screenshot is not None:
+                    if isinstance(screenshot, Image.Image):
+                        return f"I captured the screen. The screen shows a {screenshot.size[0]}x{screenshot.size[1]} display with your current application."
+                    else:
+                        return "I captured the screen. The screen shows your desktop or current application."
+                else:
+                    return "Unable to capture screen at the moment. Please check screen recording permissions in System Preferences."
+            except Exception as e:
+                return f"Error capturing screen: {e}"
+        
+        self.register_capability("basic_describe_screen", VisionCapability(
+            name="basic_describe_screen",
+            description="Describe what's on the screen",
+            handler=describe_screen_capability,
+            confidence_threshold=0.6,
+            examples=["describe my screen", "what's on my screen", "tell me what you see"]
+        ))
+        
+        # Window analysis capability
+        async def analyze_window_capability(**kwargs):
+            """Analyze the current window"""
+            return "I'm analyzing the current window. This would show window details and content."
+        
+        self.register_capability("basic_analyze_window", VisionCapability(
+            name="basic_analyze_window",
+            description="Analyze the current window",
+            handler=analyze_window_capability,
+            confidence_threshold=0.6,
+            examples=["analyze this window", "check current window", "what window is open"]
+        ))
+        
+        logger.info("Registered basic vision capabilities")
+    
     def _discover_vision_providers(self):
         """Dynamically discover available vision providers"""
         # Check for available vision modules
@@ -113,16 +155,21 @@ class DynamicVisionEngine:
             'screen_vision',
             'jarvis_workspace_integration',
             'enhanced_monitoring',
-            'screen_capture_fallback'
+            'screen_capture_fallback',
+            'claude_vision_analyzer'
         ]
+        
+        # Also register some basic built-in capabilities
+        self._register_basic_capabilities()
         
         for module_name in vision_modules:
             try:
                 module = __import__(f'vision.{module_name}', fromlist=[''])
                 # Dynamically inspect the module for vision capabilities
                 self._register_module_capabilities(module_name, module)
-            except ImportError:
-                logger.debug(f"Vision module {module_name} not available")
+                logger.info(f"Discovered vision module: {module_name}")
+            except ImportError as e:
+                logger.debug(f"Vision module {module_name} not available: {e}")
                 
     def _register_module_capabilities(self, module_name: str, module):
         """Dynamically register capabilities from a vision module"""

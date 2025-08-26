@@ -1,0 +1,49 @@
+{
+  "compilerOptions": {
+    // Target modern JavaScript for better performance
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "node",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    
+    // Enable strict type checking for stability
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    
+    // Dynamic features
+    "allowJs": true,
+    "checkJs": false,
+    "resolveJsonModule": true,
+    
+    // Output configuration
+    "outDir": "./dist/typescript",
+    "rootDir": "./",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    
+    // Interop with existing code
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    
+    // Advanced features
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    
+    // Skip lib check for faster builds
+    "skipLibCheck": true
+  },
+  "include": [
+    "websocket/**/*.ts",
+    "static/**/*.ts",
+    "bridges/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts"
+  ]
+}

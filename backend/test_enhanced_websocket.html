@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Enhanced Dynamic WebSocket Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #ffffff;
+            min-height: 100vh;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #00d4ff;
+            text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+        }
+        
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .panel {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 10px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .status {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.3s ease;
+        }
+        
+        .status.connected {
+            background: linear-gradient(135deg, #2d5a2d, #3d7a3d);
+            box-shadow: 0 0 20px rgba(45, 90, 45, 0.5);
+        }
+        
+        .status.disconnected {
+            background: linear-gradient(135deg, #5a2d2d, #7a3d3d);
+            box-shadow: 0 0 20धan rgba(90, 45, 45, 0.5);
+        }
+        
+        .status.discovering {
+            background: linear-gradient(135deg, #5a5a2d, #7a7a3d);
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 0.8; }
+            50% { opacity: 1; }
+            100% { opacity: 0.8; }
+        }
+        
+        .messages {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.3);
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        
+        .endpoints {
+            max-height: 200px;
+            overflow-y: auto;
+            margin: 10px 0;
+        }
+        
+        .endpoint-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            border-left: 3px solid #00d4ff;
+            font-size: 12px;
+        }
+        
+        .endpoint-item.connected {
+            border-left-color: #00ff00;
+            background: rgba(0, 255, 0, 0.1);
+        }
+        
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin: 20px 0;
+        }
+        
+        button {
+            padding: 12px 20px;
+            background: linear-gradient(135deg, #2a4a7a, #3a5a8a);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+        
+        button:hover {
+            background: linear-gradient(135deg, #3a5a8a, #4a6a9a);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(58, 90, 138, 0.5);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin: 20px 0;
+        }
+        
+        .stat-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #00d4ff;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-top: 5px;
+        }
+        
+        .log-entry {
+            padding: 2px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .log-time {
+            color: #00d4ff;
+        }
+        
+        .log-type {
+            color: #00ff00;
+        }
+        
+        .log-error {
+            color: #ff4444;
+        }
+        
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body>
+    <h1>🚀 Enhanced Dynamic WebSocket System</h1>
+    <div id="mainStatus" class="status disconnected">
+        <span class="status-icon">🔌</span>
+        <span class="status-text">Initializing Dynamic WebSocket Client...</span>
+    </div>
+    
+    <div class="container">
+        <div class="panel">
+            <h3>🎮 Controls</h3>
+            <div class="controls">
+                <button onclick="discoverEndpoints()">🔍 Discover Endpoints</button>
+                <button onclick="connectBest()">⚡ Auto Connect</button>
+                <button onclick="connectVision()">👁️ Connect Vision</button>
+                <button onclick="testVision()">📷 Test Vision</button>
+                <button onclick="toggleMonitoring()">📊 Toggle Monitor</button>
+                <button onclick="showStats()">📈 Show Stats</button>
+            </div>
+            
+            <h4>📡 Discovered Endpoints</h4>
+            <div id="endpoints" class="endpoints"></div>
+            
+            <h4>📊 Statistics</h4>
+            <div id="stats" class="stats">
+                <div class="stat-item">
+                    <div class="stat-value" id="totalMessages">0</div>
+                    <div class="stat-label">Messages</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="activeConnections">0</div>
+                    <div class="stat-label">Connections</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="messageTypes">0</div>
+                    <div class="stat-label">Message Types</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h3>📜 Message Log</h3>
+            <div id="messages" class="messages"></div>
+        </div>
+    </div>
+    
+    <script src="/static/js/dynamic-websocket.js"></script>
+    <script>
+        let client = null;
+        let monitoring = false;
+        
+        function updateStatus(text, type = 'disconnected') {
+            const status = document.getElementById('mainStatus');
+            status.className = `status ${type}`;
+            const icon = type === 'connected' ? '✅' : type === 'discovering' ? '🔍' : '🔌';
+            status.innerHTML = `<span class="status-icon">${icon}</span><span class="status-text">${text}</span>`;
+        }
+        
+        function log(message, type = 'info') {
+            const messages = document.getElementById('messages');
+            const timestamp = new Date().toLocaleTimeString();
+            const typeClass = type === 'error' ? 'log-error' : 'log-type';
+            
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="log-time">[${timestamp}]</span> <span class="${typeClass}">[${type.toUpperCase()}]</span> ${message}`;
+            
+            messages.appendChild(entry);
+            messages.scrollTop = messages.scrollHeight;
+        }
+        
+        async function initializeClient() {
+            log('Initializing Dynamic WebSocket Client...');
+            updateStatus('Discovering WebSocket endpoints...', 'discovering');
+            
+            client = new DynamicWebSocketClient({
+                autoDiscover: true,
+                reconnectStrategy: 'exponential',
+                maxReconnectAttempts: 10,
+                heartbeatInterval: 30000,
+                dynamicRouting: true,
+                messageValidation: true
+            });
+            
+            // Set up message handlers
+            client.on('*', (message, endpoint) => {
+                log(`Message from ${endpoint}: ${JSON.stringify(message, null, 2)}`);
+                updateStats();
+            });
+            
+            client.on('initial_state', (message) => {
+                log(`Initial state received: Monitoring=${message.monitoring_active}, AI=${message.ai_status?.mode || 'unknown'}`);
+                monitoring = message.monitoring_active;
+            });
+            
+            client.on('workspace_update', (message) => {
+                log(`Workspace update: ${message.workspace.context}`, 'vision');
+            });
+            
+            // Wait for discovery to complete
+            setTimeout(() => {
+                updateEndpointsList();
+                updateStatus('WebSocket Client Ready', 'disconnected');
+            }, 2000);
+        }
+        
+        async function discoverEndpoints() {
+            updateStatus('Re-discovering endpoints...', 'discovering');
+            await client.discoverEndpoints();
+            updateEndpointsList();
+            updateStatus('Discovery complete', 'disconnected');
+        }
+        
+        function updateEndpointsList() {
+            const container = document.getElementById('endpoints');
+            const stats = client.getStats();
+            
+            container.innerHTML = stats.discoveredEndpoints.map(ep => {
+                const isConnected = stats.connections.some(conn => 
+                    conn.endpoint === ep.path && conn.state === 1
+                );
+                
+                return `
+                    <div class="endpoint-item ${isConnected ? 'connected' : ''}">
+                        <strong>${ep.path}</strong><br>
+                        Capabilities: ${ep.capabilities.join(', ')}<br>
+                        Priority: ${ep.priority} | 
+                        Reliability: ${ep.reliability ? (ep.reliability * 100).toFixed(1) + '%' : 'N/A'} |
+                        Latency: ${ep.latency ? ep.latency + 'ms' : 'N/A'}
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        async function connectBest() {
+            try {
+                log('Auto-connecting to best available endpoint...');
+                await client.connect();
+                updateStatus('Connected to best endpoint', 'connected');
+                updateStats();
+            } catch (error) {
+                log(`Connection failed: ${error.message}`, 'error');
+                updateStatus('Connection failed', 'disconnected');
+            }
+        }
+        
+        async function connectVision() {
+            try {
+                log('Connecting to vision endpoint...');
+                await client.connect('vision');
+                updateStatus('Connected to Vision WebSocket', 'connected');
+                updateStats();
+            } catch (error) {
+                log(`Vision connection failed: ${error.message}`, 'error');
+                updateStatus('Vision connection failed', 'disconnected');
+            }
+        }
+        
+        async function testVision() {
+            try {
+                log('Requesting vision analysis...');
+                await client.send({
+                    type: 'request_analysis'
+                }, 'vision');
+                log('Vision analysis request sent');
+            } catch (error) {
+                log(`Vision test failed: ${error.message}`, 'error');
+            }
+        }
+        
+        async function toggleMonitoring() {
+            monitoring = !monitoring;
+            try {
+                log(`${monitoring ? 'Enabling' : 'Disabling'} monitoring...`);
+                await client.send({
+                    type: 'set_monitoring',
+                    enabled: monitoring
+                }, 'vision');
+            } catch (error) {
+                log(`Monitoring toggle failed: ${error.message}`, 'error');
+            }
+        }
+        
+        function showStats() {
+            const stats = client.getStats();
+            log(`<pre>${JSON.stringify(stats, null, 2)}</pre>`, 'stats');
+            updateStats();
+        }
+        
+        function updateStats() {
+            const stats = client.getStats();
+            document.getElementById('totalMessages').textContent = stats.totalMessages;
+            document.getElementById('activeConnections').textContent = 
+                stats.connections.filter(c => c.state === 1).length;
+            document.getElementById('messageTypes').textContent = stats.learnedMessageTypes.length;
+            
+            updateEndpointsList();
+        }
+        
+        // Initialize on load
+        window.onload = () => {
+            initializeClient();
+            
+            // Update stats periodically
+            setInterval(updateStats, 5000);
+        };
+        
+        // Cleanup on unload
+        window.onbeforeunload = () => {
+            if (client) {
+                client.destroy();
+            }
+        };
+    </script>
+</body>
+</html>
