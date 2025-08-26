@@ -18,6 +18,7 @@ import re
 from .macos_controller import MacOSController, CommandCategory, SafetyLevel
 from .dynamic_app_controller import get_dynamic_app_controller
 from .fast_app_launcher import get_fast_app_launcher
+from .vision_action_handler import get_vision_action_handler
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ class ClaudeCommandInterpreter:
         self.controller = MacOSController()
         self.dynamic_controller = get_dynamic_app_controller()
         self.fast_launcher = get_fast_app_launcher()
+        self.vision_handler = get_vision_action_handler()
         self.conversation_history = []
         self.system_state = {}
         
@@ -87,6 +89,13 @@ class ClaudeCommandInterpreter:
                 "Start my morning routine",
                 "Set up my development environment",
                 "Prepare for a meeting"
+            ],
+            "vision": [
+                "Describe what's on my screen",
+                "What am I looking at",
+                "Check my screen for errors",
+                "Analyze the current window",
+                "Tell me what you see"
             ]
         }
         
@@ -99,9 +108,11 @@ class ClaudeCommandInterpreter:
         1. The action to perform
         2. The target (application, file, URL, etc.) - if multiple targets use "and" between them
         3. Any parameters needed
-        4. The command category (application, file, system, web, workflow)
+        4. The command category (application, file, system, web, workflow, vision)
         5. Safety assessment (safe, caution, dangerous)
         6. Confidence level (0-1)
+        
+        For vision commands about describing or analyzing the screen, use category="system" and action="describe_screen"
         
         For multiple targets (e.g., "close whatsapp and preview"), set target as "whatsapp and preview".
         
@@ -120,6 +131,7 @@ class ClaudeCommandInterpreter:
         - Applications: open_app, close_app, switch_to_app, list_apps
         - Files: open_file, create_file, delete_file, search_files
         - System: set_volume, mute, screenshot, sleep_display, toggle_wifi
+        - Vision: describe_screen, analyze_window, check_screen
         - Web: open_url, web_search
         - Workflows: morning_routine, development_setup, meeting_prep
         
@@ -321,6 +333,9 @@ class ClaudeCommandInterpreter:
             elif intent.category == CommandCategory.FILE:
                 return await self._execute_file_command(intent)
             elif intent.category == CommandCategory.SYSTEM:
+                # Check if this is actually a vision command
+                if intent.action in ["describe_screen", "analyze_window", "check_screen"]:
+                    return await self._execute_vision_command(intent)
                 return await self._execute_system_command(intent)
             elif intent.category == CommandCategory.WEB:
                 return await self._execute_web_command(intent)
@@ -505,6 +520,42 @@ class ClaudeCommandInterpreter:
         workflow_name = intent.target or intent.action
         success, message = await self.controller.execute_workflow(workflow_name)
         return CommandResult(success=success, message=message)
+        
+    async def _execute_vision_command(self, intent: CommandIntent) -> CommandResult:
+        """Execute vision commands"""
+        try:
+            if intent.action == "describe_screen":
+                result = await self.vision_handler.describe_screen(intent.parameters)
+                return CommandResult(
+                    success=result.success,
+                    message=result.description,
+                    data=result.data
+                )
+            elif intent.action == "analyze_window":
+                result = await self.vision_handler.analyze_window(intent.parameters)
+                return CommandResult(
+                    success=result.success,
+                    message=result.description,
+                    data=result.data
+                )
+            elif intent.action == "check_screen":
+                result = await self.vision_handler.check_screen(intent.parameters)
+                return CommandResult(
+                    success=result.success,
+                    message=result.description,
+                    data=result.data
+                )
+            else:
+                return CommandResult(
+                    success=False,
+                    message=f"Unknown vision action: {intent.action}"
+                )
+        except Exception as e:
+            logger.error(f"Vision command error: {e}")
+            return CommandResult(
+                success=False,
+                message=f"Error executing vision command: {str(e)}"
+            )
         
     def get_suggestions(self, partial_command: str) -> List[str]:
         """Get command suggestions based on partial input"""

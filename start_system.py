@@ -73,8 +73,8 @@ class AsyncSystemManager:
     def print_header(self):
         """Print system header"""
         print(f"\n{Colors.HEADER}{'='*60}")
-        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v5.7 - Hybrid C++ ML Vision Intelligence 🚀{Colors.ENDC}")
-        print(f"{Colors.CYAN}⚡ C++ ACCELERATION • Hybrid ML Analysis • Dynamic Vision Routing{Colors.ENDC}")
+        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v5.8 - Zero-Hardcoding Dynamic Vision System 🚀{Colors.ENDC}")
+        print(f"{Colors.CYAN}⚡ ZERO HARDCODING • Dynamic ML Vision • Self-Learning Intelligence{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}")
         
         # AI Integration
@@ -102,16 +102,16 @@ class AsyncSystemManager:
         print(f"   • Self-learning from your patterns")
         
         # System Capabilities
-        print(f"\n{Colors.BOLD}🚀 REVOLUTIONARY v5.7 - HYBRID C++ ML VISION:{Colors.ENDC}")
-        print(f"{Colors.HEADER}⚡ C++ Vision ML:{Colors.ENDC} <5ms analysis • Zero hardcoding • Learning cache • 20x faster routing")
-        print(f"{Colors.CYAN}🧠 Hybrid Routing:{Colors.ENDC} C++ speed + Python flexibility • 4-level analysis • 99.9% accuracy")
-        print(f"{Colors.YELLOW}📚 Linguistics:{Colors.ENDC} Advanced POS tagging • 500+ verb/noun patterns • Context aware")
-        print(f"{Colors.GREEN}🎓 Dynamic Learning:{Colors.ENDC} Pattern database • Neural network • Continuous improvement")
-        print(f"{Colors.BLUE}🔊 ML Audio:{Colors.ENDC} Self-healing voice • Predictive errors • Pattern learning")
-        print(f"{Colors.HEADER}👁️  Vision:{Colors.ENDC} C++ Fast Capture (10x) + ML Router (20x) • GPU acceleration")
-        print(f"{Colors.CYAN}⚡ Performance:{Colors.ENDC} Vision routing <5ms • ML classification <50ms • Zero maintenance")
-        print(f"{Colors.GREEN}💻 System:{Colors.ENDC} Dynamic app discovery • Multi-method execution • Real-time detection")
-        print(f"{Colors.GREEN}🔒 Privacy:{Colors.ENDC} One-click privacy mode • Camera/mic control")
+        print(f"\n{Colors.BOLD}🚀 REVOLUTIONARY v5.8 - ZERO-HARDCODING DYNAMIC VISION:{Colors.ENDC}")
+        print(f"{Colors.HEADER}🧠 Dynamic Vision Engine:{Colors.ENDC} Zero hardcoding • ML-based intent classification • Self-learning")
+        print(f"{Colors.CYAN}🔌 Plugin Architecture:{Colors.ENDC} Extensible vision providers • Auto-discovery • Performance routing")
+        print(f"{Colors.YELLOW}🎯 Unified Vision:{Colors.ENDC} Intelligent request routing • Multi-provider fusion • Context aware")
+        print(f"{Colors.GREEN}📚 Semantic Understanding:{Colors.ENDC} Sentence transformers • Intent analysis • Pattern learning")
+        print(f"{Colors.BLUE}🎓 Continuous Learning:{Colors.ENDC} Usage patterns • Success tracking • Adaptive confidence")
+        print(f"{Colors.HEADER}⚡ Performance:{Colors.ENDC} Dynamic capability discovery • Parallel execution • Smart caching")
+        print(f"{Colors.CYAN}🔄 Self-Improving:{Colors.ENDC} Learns from every command • Builds pattern database • No maintenance")
+        print(f"{Colors.GREEN}🌐 Extensible:{Colors.ENDC} Drop-in plugin support • Custom providers • Hot-reload capable")
+        print(f"{Colors.YELLOW}🔍 Intent Analysis:{Colors.ENDC} NLP-based routing • Fuzzy matching • Suggestion system")
         
         # Activation
         print(f"\n{Colors.BOLD}🎤 ACTIVATION COMMANDS:{Colors.ENDC}")
@@ -976,15 +976,15 @@ class AsyncSystemManager:
             print(f"  🔊 Backend speech: {Colors.GREEN}Enabled{Colors.ENDC} (macOS native)")
             print(f"  🎵 Browser speech: Fallback mode")
             
-        print(f"\n{Colors.GREEN}✨ v5.7 - Hybrid C++ ML Vision Intelligence:{Colors.ENDC}")
-        print(f"  • ⚡ C++ Vision ML {Colors.GREEN}[NEW]{Colors.ENDC} - <5ms command analysis with learning")
-        print(f"  • 🤝 Hybrid Routing {Colors.GREEN}[NEW]{Colors.ENDC} - C++ speed + Python flexibility")
-        print(f"  • 🌊 4-Level Analysis {Colors.GREEN}[NEW]{Colors.ENDC} - C++, ML, Linguistic, Pattern DB")
-        print(f"  • 🧠 Dynamic Handlers {Colors.GREEN}[NEW]{Colors.ENDC} - Adapts to any vision command")
-        print(f"  • 📚 POS Tagging {Colors.GREEN}[ENHANCED]{Colors.ENDC} - 500+ linguistic patterns")
-        print(f"  • 🎓 Self-Improving {Colors.GREEN}[ENHANCED]{Colors.ENDC} - Multi-source learning")
-        print(f"  • 🚀 Neural Network {Colors.GREEN}[ENHANCED]{Colors.ENDC} - Weighted signal fusion")
-        print(f"  • 🔄 Real-Time Cache {Colors.GREEN}[NEW]{Colors.ENDC} - 30s intelligent caching")
+        print(f"\n{Colors.GREEN}✨ v5.8 - Zero-Hardcoding Dynamic Vision System:{Colors.ENDC}")
+        print(f"  • 🧠 Dynamic Vision Engine {Colors.GREEN}[NEW]{Colors.ENDC} - Zero hardcoding, pure ML intelligence")
+        print(f"  • 🔌 Plugin Architecture {Colors.GREEN}[NEW]{Colors.ENDC} - Extensible vision provider system")
+        print(f"  • 🎯 Intent Classification {Colors.GREEN}[NEW]{Colors.ENDC} - ML-based command understanding")
+        print(f"  • 📊 Performance Routing {Colors.GREEN}[NEW]{Colors.ENDC} - Routes to best provider dynamically")
+        print(f"  • 🔄 Self-Learning {Colors.GREEN}[ENHANCED]{Colors.ENDC} - Learns from every interaction")
+        print(f"  • 🌐 Auto-Discovery {Colors.GREEN}[NEW]{Colors.ENDC} - Finds capabilities at runtime")
+        print(f"  • 💡 Semantic Matching {Colors.GREEN}[NEW]{Colors.ENDC} - Understands intent, not keywords")
+        print(f"  • 🚀 Zero Maintenance {Colors.GREEN}[NEW]{Colors.ENDC} - Self-improving, self-healing")
         print(f"  • 🎯 Dynamic App Control - Works with ANY macOS app")
         print(f"  • 🤖 ML Audio Recovery - Self-healing voice system")
         print(f"  • 🧠 Claude AI Brain - Connected to all systems")
@@ -1342,7 +1342,7 @@ async def main():
     """Main entry point"""
     global _manager
     
-    parser = argparse.ArgumentParser(description="JARVIS AI Agent v5.7 - Hybrid C++ ML Vision Intelligence")
+    parser = argparse.ArgumentParser(description="JARVIS AI Agent v5.8 - Zero-Hardcoding Dynamic Vision System")
     parser.add_argument("--no-browser", action="store_true", help="Don't open browser")
     parser.add_argument("--check-only", action="store_true", help="Check setup and exit")
     parser.add_argument("--backend-only", action="store_true", help="Start only the backend server")

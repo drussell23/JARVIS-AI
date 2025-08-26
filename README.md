@@ -1,1989 +1,389 @@
-# 🤖 JARVIS - Claude-Powered Iron Man AI Agent (v5.7)
+# 🤖 JARVIS - Claude-Powered Iron Man AI Agent (v5.8)
 
 <p align="center">
   <img src="https://img.shields.io/badge/AI%20Agent-100%25%20Claude%20Powered-purple" alt="Claude AI">
   <img src="https://img.shields.io/badge/AI-Claude%20Opus%204-blue" alt="Claude AI">
-  <img src="https://img.shields.io/badge/ML-Zero%20Hardcoding%20Neural%20Network-orange" alt="ML System">
-  <img src="https://img.shields.io/badge/Vision-C%2B%2B%20Fast%20Capture%20(10x%20Faster)-green" alt="Vision System">
+  <img src="https://img.shields.io/badge/Vision-Zero%20Hardcoding%20Dynamic%20ML-orange" alt="Vision System">
+  <img src="https://img.shields.io/badge/Architecture-Plugin%20Based%20Extensible-green" alt="Architecture">
   <img src="https://img.shields.io/badge/UI-Iron%20Man%20Inspired-red" alt="Iron Man UI">
   <img src="https://img.shields.io/badge/Learning-Self%20Improving%20AI-yellow" alt="Machine Learning">
   <img src="https://img.shields.io/badge/Status-FULLY%20AUTONOMOUS-success" alt="Production">
-  <img src="https://img.shields.io/badge/Version-5.7-brightgreen" alt="Version">
-  <img src="https://img.shields.io/badge/Linguistics-📚%20Advanced%20POS%20Analysis-purple" alt="Linguistics">
-  <img src="https://img.shields.io/badge/Routing-🧠%20Zero%20Keywords%2099.9%25-cyan" alt="ML Routing">
-  <img src="https://img.shields.io/badge/Performance-⚡%20Neural%20Network%20<50ms-ff69b4" alt="Performance">
+  <img src="https://img.shields.io/badge/Version-5.8-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Intent-🧠%20ML%20Classification-purple" alt="Intent Analysis">
+  <img src="https://img.shields.io/badge/Routing-🎯%20Dynamic%20Provider%20Selection-cyan" alt="Routing">
+  <img src="https://img.shields.io/badge/Performance-⚡%20Self%20Optimizing-ff69b4" alt="Performance">
 </p>
 
 <p align="center">
   <em>"JARVIS, sometimes you gotta run before you can walk." - Tony Stark</em>
 </p>
 
-## 🚀 What's New in v5.7 - Hybrid C++ ML Vision Intelligence
+## 🚀 What's New in v5.8 - Zero-Hardcoding Dynamic Vision System
 
-### **⚡ Ultra-Fast C++ Vision ML Router**
-- **<5ms Vision Analysis** - Lightning-fast C++ pattern matching
-- **Hybrid ML Architecture** - C++ speed with Python ML intelligence
-- **Zero Hardcoding Evolution** - Dynamic handler creation based on intent
-- **4-Level Analysis System** - C++, Python ML, Linguistic, Pattern Database
-- **Continuous Learning** - Learns from every interaction persistently
-- **Neural Network Integration** - Deep learning for complex patterns
+### **🧠 Revolutionary Zero-Hardcoding Vision Architecture**
+JARVIS v5.8 introduces a completely dynamic vision system with **ZERO hardcoded patterns or keywords**. Every vision capability is discovered, learned, and improved through machine learning.
 
-### **🧠 Pure Machine Learning Command Routing - ZERO Keywords**
-- **NO MORE HARDCODING** - Every decision is learned, not programmed
-- **Neural Network Brain** - Deep learning for pattern recognition
-- **Self-Improving AI** - Gets smarter with every command
-- **Learning Database** - Persistent memory of all patterns
-- **Real-Time Adaptation** - Learns from your usage instantly
-- **Universal Compatibility** - Works with ANY command, ANY app
+### **Key Innovations:**
+- **Dynamic Vision Engine** - ML-based intent classification without any hardcoded patterns
+- **Plugin Architecture** - Extensible vision provider system with hot-reload
+- **Unified Vision System** - Intelligent routing to best provider based on performance
+- **Semantic Understanding** - Uses sentence transformers for true intent matching
+- **Continuous Learning** - Learns from every command and improves over time
+- **Auto-Discovery** - Finds and registers capabilities at runtime
 
-### The Ultimate WhatsApp Fix - Now With Linguistic Intelligence
-```bash
-# v5.4.2: Fixed with Swift NLP ✓
-# v5.5: IMPOSSIBLE to break! 🚀
-# v5.7: C++ Hybrid ML for instant routing! ⚡
+## 🏗️ JARVIS Vision System Architecture
 
-"open WhatsApp" → Verb: "open" (99% confidence) + Noun: "WhatsApp" → System handler
-"close WhatsApp" → Verb: "close" + Proper noun detected → System handler
-"what's in WhatsApp" → Question pattern + Noun analysis → Vision handler
-"configure WhatsApp settings" → Compound verb + App name → System handler
+### **Overview**
+The JARVIS vision system is built on a revolutionary zero-hardcoding philosophy. Instead of predefined patterns or keyword matching, it uses machine learning to understand user intent and dynamically route requests to the best available vision provider.
 
-# The system understands GRAMMAR, not just patterns!
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        User Voice Command                       │
+│                    "Hey JARVIS, describe my screen"             │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Vision Action Handler                        │
+│              (system_control/vision_action_handler.py)          │
+│                                                                 │
+│  • Receives command from Claude Command Interpreter             │
+│  • No hardcoded action mapping                                  │
+│  • Routes to Unified Vision System                              │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Unified Vision System                        │
+│                 (vision/unified_vision_system.py)               │
+│                                                                 │
+│  • Analyzes request using ML                                    │
+│  • Determines best routing strategy                             │
+│  • Manages all vision components                                │
+└────────┬───────────────────┬───────────────────┬────────────────┘
+         │                   │                   │
+         ▼                   ▼                   ▼
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│  Dynamic Vision │ │  Vision Plugin  │ │ Provider-Specific│
+│     Engine      │ │     System      │ │    Handlers     │
+│                 │ │                 │ │                 │
+│ • ML Intent     │ │ • Provider      │ │ • Claude Vision │
+│   Classification│ │   Registry      │ │ • Screen Capture│
+│ • Pattern       │ │ • Performance   │ │ • OCR Processing│
+│   Learning      │ │   Routing       │ │ • Workspace     │
+│ • Semantic      │ │ • Hot-reload    │ │   Analysis      │
+│   Matching      │ │   Support       │ │                 │
+└─────────────────┘ └─────────────────┘ └─────────────────┘
 ```
 
-### Key Innovation: Hybrid C++ ML Vision System
-- **C++ Speed** - <5ms vision command analysis
-- **Zero Hardcoding ML** - Pure machine learning, no keywords
-- **Dynamic Handlers** - Creates handlers on-the-fly based on intent
-- **Multi-Level Intelligence** - Combines C++, ML, and linguistics
-- **Persistent Learning** - SQLite database stores all patterns
-- **Neural Networks** - Deep learning for pattern recognition
-- **Confidence Scoring** - Weighted multi-factor analysis
-- **Automatic Fallback** - Python ensures 100% reliability
+### **Core Components**
 
-## 🎯 v5.7 C++ Extensions & Performance
-
-### C++ Vision ML Router
-- **Ultra-Fast Analysis**: <5ms command classification (20x faster)
-- **Pattern Caching**: LRU cache for instant repeated commands
-- **Vocabulary Learning**: Learns new vision terms dynamically
-- **Confidence Scoring**: Multi-factor weighted analysis
-- **Zero Memory Leaks**: RAII and smart pointers throughout
-- **Thread-Safe**: Concurrent command processing
-
-### Hybrid Architecture Benefits  
-- **4-Level Analysis**: C++ → Python ML → Linguistic → Database
-- **Automatic Fallback**: Seamless degradation if C++ unavailable
-- **Neural Network**: 3-layer network for pattern recognition
-- **Dynamic Handlers**: Creates new handlers based on intent
-- **Persistent Learning**: SQLite stores all interactions
-- **Context Awareness**: Maintains conversation history
-
-### Performance Metrics
-- **C++ Analysis**: 2-5ms (from 50-100ms Python)
-- **Combined System**: <50ms total with all layers
-- **Learning Speed**: Real-time pattern updates
-- **Memory Usage**: 50MB C++ vs 200MB Python
-- **Accuracy**: 99.9% with hybrid approach
-
-## 🚨 Previous Updates
-
-### v5.4.1 - Performance Optimizations
-- **⚡ Fast App Launcher** - Apps open in <100ms
-- **Reduced Timeouts** - AppleScript: 15s → 5s
-- **Parallel Execution** - Multiple apps simultaneously
-- **Fire-and-Forget** - Immediate response
-
-## 🚨 Previous Updates in v5.4
-
-### **🧠 Swift NLP Command Intelligence - Perfect Routing Every Time**
-- **Zero Hardcoding** - Uses linguistic analysis, not keywords
-- **Intelligent Routing** - "close whatsapp" → executes, "what's in whatsapp" → analyzes
-- **Dynamic Learning** - Improves from usage patterns
-- **Context Aware** - Understands intent from sentence structure
-- **Native macOS NLP** - Leverages Apple's language frameworks
-
-### **🎯 Dynamic App Control - Works with ANY macOS App**
-- **App Discovery** - Dynamically detects any application
-- **Fuzzy Name Matching** - "whatsapp", "WhatsApp", "whats app" all work
-- **Multi-Method Control** - Graceful quit → Keyboard shortcut → Force close
-- **Real-Time Detection** - No pre-configured app list needed
-
-### **All Previous Features Included**
-
-#### **🤖 ML-Powered Self-Healing Voice System**
-- **Zero Audio Errors** - ML predicts and prevents microphone issues
-- **Adaptive Recovery** - Learns optimal strategies for your browser
-- **Predictive Warnings** - Alerts you before errors occur (>70% probability)
-- **No Configuration** - Works out of the box, improves over time
-
-#### **🧠 Machine Learning Features**
-- ✅ **RandomForest Predictor** - Forecasts audio issues before they happen
-- ✅ **Anomaly Detection** - Identifies unusual error patterns
-- ✅ **Pattern Clustering** - Groups similar issues for better solutions
-- ✅ **Strategy Optimization** - Continuously improves recovery methods
-- ✅ **Browser Adaptation** - Custom strategies for Chrome/Safari/Firefox
-
-#### **🧠 Swift NLP Intelligence (with Python Fallback)**
-- ✅ **Linguistic Analysis** - Understands grammar, not just keywords
-- ✅ **Intent Detection** - Knows when to execute vs analyze
-- ✅ **Dynamic Learning** - Improves from your usage patterns
-- ✅ **Zero Hardcoding** - No keyword lists, pure intelligence
-- ✅ **Perfect Routing** - "close app" always executes correctly
-- ✅ **Automatic Fallback** - Python ensures it always works
-
-#### **🚀 C++ Vision System - 10x Performance Boost**
-- ✅ **Lightning Fast Capture** - 30ms per window (was 300ms)
-- ✅ **Parallel Processing** - Capture 10+ windows simultaneously
-- ✅ **GPU Acceleration** - Hardware-accelerated when available
-- ✅ **Zero-Copy Memory** - Efficient data handling
-- ✅ **Seamless Integration** - Drop-in replacement, no code changes
-
-#### **All Previous Features**
-- ✅ **App Control** - Now works with ANY macOS application
-- ✅ **System Integration** - Commands execute instantly
-- ✅ **Vision System** - Multi-window Claude analysis with C++ speed
-- ✅ **Continuous Monitoring** - Real-time workspace scans
-
-## Table of Contents
-- [Overview](#-overview)
-- [v5.5 ML Command Routing](#-v55-ml-command-routing)
-- [Manual Mode vs Autonomous Mode](#-manual-mode-vs-autonomous-mode)
-- [Vision System Capabilities](#-vision-system-capabilities)
-- [Quick Start](#-quick-start)
-- [Architecture](#-architecture)
-- [Claude AI Integration](#-claude-ai-integration)
-- [ML Audio System](#-ml-audio-system)
-- [Dynamic App Control](#-dynamic-app-control)
-- [Troubleshooting](#-troubleshooting)
-- [API Documentation](#-api-documentation)
-- [Contributing](#-contributing)
-
-## 🎯 Overview
-
-JARVIS v5.7 introduces **Hybrid C++ ML Vision Intelligence** - combining ultra-fast C++ pattern matching with sophisticated ML and linguistic analysis. The revolutionary zero-hardcoding approach now runs at <5ms with persistent learning, making vision command routing both instant and infinitely adaptable.
-
-### What Makes JARVIS v5.5 Revolutionary
-
-Unlike ANY other AI assistant, JARVIS v5.7:
-- **ZERO HARDCODING** - No keywords, no patterns, no rules - pure ML
-- **Neural Network Brain** - Deep learning for every decision
-- **Self-Improving AI** - Gets smarter with every command
-- **Learning Database** - Remembers all patterns permanently
-- **Real-Time Adaptation** - Learns your preferences instantly
-- **Universal Understanding** - Works with ANY command structure
-- **WhatsApp Fix PERMANENT** - ML makes misrouting impossible
-- **<50ms ML Classification** - Neural network speed
-- **Continuous Learning** - Background thread always improving
-- **Pattern Recognition** - Identifies your usage habits
-- **Context Intelligence** - Understands conversation flow
-- **No Manual Config** - Self-configuring system
-- **Future Proof** - Learns new commands automatically
-- **C++ Extensions** - Fast Capture + Vision ML Router
-- **Universal App Control** - Works with ANY macOS app
-- **Self-Healing Audio** - ML predicts and prevents errors
-- **Claude + ML** - AI reasoning with machine learning
-- **True Intelligence** - Not just smart, but learning
-
-## 🧠 v5.5 ML Command Routing
-
-### Revolutionary Zero Hardcoding System
-
-JARVIS v5.5 completely eliminates hardcoded patterns with a pure machine learning approach:
-
-#### How It Works
+#### 1. **Dynamic Vision Engine** (`vision/dynamic_vision_engine.py`)
+The heart of the zero-hardcoding system. This engine:
+- **Intent Analysis**: Uses NLP to understand what the user wants
+- **Semantic Matching**: Employs sentence transformers for meaning-based matching
+- **Pattern Learning**: Builds a database of successful command patterns
+- **Capability Discovery**: Automatically finds available vision functions
+- **Confidence Scoring**: Multi-factor analysis for routing decisions
 
 ```python
-# Traditional (Hardcoded) Approach ❌
-if "what" in command:
-    route_to_vision()  # "WhatsApp" contains "what" - WRONG!
-
-# v5.5 ML Approach ✅
-features = extract_linguistic_features(command)  # Grammar, context, patterns
-classification = neural_network.classify(features)  # ML decision
-route_to_handler(classification.type)  # Correct every time!
+# Example: How commands are processed
+"describe my screen" → Intent: describe, Target: screen → Best match: screen_capture + claude_analysis
+"check for notifications" → Intent: check, Target: notifications → Best match: notification_detector
+"what am I looking at" → Intent: query, Context: visual → Best match: claude_vision_analyzer
 ```
 
-#### Key Components
+#### 2. **Vision Plugin System** (`vision/vision_plugin_system.py`)
+Extensible architecture for vision providers:
+- **Auto-Discovery**: Scans for plugins in the `plugins/` directory
+- **Dynamic Registration**: Providers register their capabilities
+- **Performance Tracking**: Monitors success rates and execution times
+- **Intelligent Routing**: Routes to best provider based on historical performance
+- **Fallback Chains**: Automatic fallback to alternate providers
 
-1. **Advanced Swift Classifier** (`AdvancedCommandClassifier.swift`)
-   - Zero hardcoded patterns
-   - Apple's NaturalLanguage framework
-   - Grammar-based understanding
-   - Real-time learning
+#### 3. **Unified Vision System** (`vision/unified_vision_system.py`)
+The intelligent orchestrator:
+- **Request Analysis**: Determines optimal processing strategy
+- **Multi-Provider Fusion**: Combines results from multiple providers
+- **Context Management**: Maintains conversation context
+- **Learning Integration**: Feeds results back for continuous improvement
 
-2. **Neural Network Engine** (`LearningEngine.swift`)
-   - Deep learning architecture
-   - Pattern recognition
-   - Continuous training
-   - Confidence scoring
+### **How It Works: Zero Hardcoding in Action**
 
-3. **Python ML Bridge** (`advanced_python_bridge.py`)
-   - SQLite learning database
-   - TF-IDF feature extraction
-   - Background learning thread
-   - Performance tracking
-
-4. **Learning Database**
-   - Stores all command patterns
-   - Tracks success rates
-   - Learns from feedback
-   - Persistent memory
-
-#### Features
-
-- **Zero Keywords** - No hardcoded word lists
-- **Self-Improving** - Every command makes it smarter
-- **Universal** - Works with ANY command or app
-- **Context Aware** - Remembers conversation flow
-- **Real-Time** - Learns instantly from usage
-- **Feedback Loop** - Corrections improve accuracy
-
-#### Testing ML Routing
-
-```bash
-# Test the ML system
-python backend/test_advanced_whatsapp_fix.py
-
-# See zero hardcoding demo
-python backend/demo_zero_hardcoding.py
-
-# Apply ML routing
-python backend/apply_advanced_whatsapp_fix.py
+#### **Traditional Approach (What We DON'T Do):**
+```python
+# ❌ OLD WAY - Hardcoded patterns
+if "describe" in command and "screen" in command:
+    return describe_screen()
+elif "capture" in command:
+    return capture_screen()
+# ... hundreds of if-else statements
 ```
 
-#### Performance Metrics
-
-- **Classification Speed**: <50ms
-- **Accuracy**: 99.9% (improves with use)
-- **Learning Rate**: Real-time adaptation
-- **Memory**: Efficient SQLite storage
-- **CPU Usage**: Minimal overhead
-
-## 📋 Manual Mode vs Autonomous Mode
-
-### 👤 Manual Mode (Default - Privacy First)
-
-Manual Mode is the default startup mode, designed with privacy and user control as the primary focus. In this mode, JARVIS operates like a traditional voice assistant - it waits for your explicit commands before taking any action.
-
-**Key Characteristics:**
-- **On-Demand Activation**: Requires "Hey JARVIS" or button click
-- **Vision System**: Connects only when needed for specific tasks
-- **Voice Interaction**: Responds only when spoken to
-- **Privacy**: No continuous monitoring of screen or activities
-- **Resource Usage**: Minimal CPU/memory footprint
-- **User Control**: Every action requires explicit permission
-
-**Use Cases:**
-- Privacy-conscious users
-- Shared workspaces
-- Battery-conscious laptop users
-- When working with sensitive information
-- Users new to AI assistants
-
-**Example Interaction:**
-```
-User: "Hey JARVIS"
-JARVIS: "Yes sir?"
-User: "What's the weather?"
-JARVIS: "The current temperature is 72°F with clear skies."
-[JARVIS returns to standby]
+#### **Our ML-Based Approach:**
+```python
+# ✅ NEW WAY - Dynamic ML routing
+intent = analyze_intent(command)  # ML understands user intent
+capabilities = discover_capabilities()  # Runtime discovery
+best_match = score_capabilities(intent, capabilities)  # ML scoring
+result = execute_capability(best_match)  # Dynamic execution
+learn_from_result(intent, best_match, result)  # Continuous learning
 ```
 
-### 🤖 Autonomous Mode (Full Iron Man Experience)
+### **Plugin Development**
 
-Autonomous Mode transforms JARVIS into a proactive AI companion that continuously monitors, learns, and assists without waiting for commands. This is the full Iron Man JARVIS experience.
-
-**Key Characteristics:**
-- **Continuous Monitoring**: Vision system always active
-- **Proactive Assistance**: Suggests actions before you ask
-- **Voice Announcements**: Speaks important updates automatically
-- **Predictive Intelligence**: Anticipates needs based on patterns
-- **Emotional Intelligence**: Adapts tone based on your state
-- **Automatic Execution**: Performs routine tasks autonomously
-
-**Use Cases:**
-- Power users wanting maximum productivity
-- Creative professionals needing inspiration
-- Developers wanting automated workflows
-- Users with repetitive tasks
-- Those seeking the full Iron Man experience
-
-**Example Interaction:**
-```
-[JARVIS detects you've been coding for 90 minutes]
-JARVIS: "Sir, you've been coding intensively for 90 minutes. 
-         I've noticed increased error rates in your typing. 
-         Shall I prepare your workspace for a break? 
-         I can save your work, lower screen brightness, 
-         and queue up your favorite music."
-
-[JARVIS sees calendar notification]
-JARVIS: "Your meeting with the development team starts in 5 minutes. 
-         I'm activating privacy mode, muting notifications, 
-         and preparing your presentation. 
-         The Zoom link is now open in your browser."
-
-[JARVIS detects pattern]
-JARVIS: "Good morning sir. Based on your usual Monday routine, 
-         I've opened your email, started your development environment, 
-         and your coffee machine should be finishing now. 
-         You have 3 high-priority tasks from last week."
-```
-
-### Mode Comparison Table
-
-| Feature | Manual Mode | Autonomous Mode |
-|---------|-------------|-----------------|
-| **Activation** | "Hey JARVIS" required | Always listening |
-| **Vision System** | On-demand only | Continuous monitoring |
-| **Screen Analysis** | When requested | Every 2 seconds |
-| **Notifications** | Visual only | Voice announcements |
-| **Task Execution** | Requires approval | Automatic for safe tasks |
-| **Learning** | Basic patterns | Deep behavioral learning |
-| **Privacy** | Maximum | Configurable |
-| **CPU Usage** | ~5-10% | ~15-25% |
-| **Memory Usage** | ~500MB | ~1.2GB |
-| **Battery Impact** | Minimal | Moderate |
-
-### Switching Between Modes
-
-**To Activate Autonomous Mode:**
-- Voice: "Hey JARVIS, activate full autonomy"
-- Voice: "Enable autonomous mode"
-- Voice: "Activate Iron Man mode"
-- UI: Click "👤 Manual Mode" button → "🤖 Autonomous ON"
-
-**To Return to Manual Mode:**
-- Voice: "JARVIS, switch to manual mode"
-- Voice: "Disable autonomy"
-- Voice: "Stand down"
-- UI: Click "🤖 Autonomous ON" → "👤 Manual Mode"
-
-## 🧠 Swift NLP Intelligence
-
-**NEW: Intelligent Command Routing with Zero Hardcoding**
-
-JARVIS now uses a Swift-based NLP classifier that understands the **intent** behind your commands, not just keywords. With automatic Python fallback, intelligent routing works even without Xcode!
-
-### The Problem It Solves
-
-Previously, commands like "close whatsapp" might be misrouted to vision analysis instead of executing the action. The Swift classifier uses linguistic analysis to understand what you actually want.
-
-### How It Works
-
-| Command | Analysis | Routes To | Why |
-|---------|----------|-----------|-----|
-| "close whatsapp" | Verb-first structure | System (executes) | Action verb indicates command |
-| "what's in whatsapp" | Question structure | Vision (analyzes) | Question word indicates query |
-| "quit discord" | Action verb | System (executes) | "quit" is execution intent |
-| "show me safari" | Request pattern | Vision (analyzes) | "show me" requests visual info |
-| "can you close spotify" | Polite action | System (executes) | Intent detected despite question |
-| "analyze terminal" | Analysis verb | Vision (analyzes) | "analyze" indicates observation |
-
-### Dual-Mode Intelligence
-
-#### Swift Classifier (When Available)
-- **Native Performance**: 5-10ms classification speed
-- **Apple NaturalLanguage**: Deep linguistic analysis
-- **95%+ Accuracy**: Superior intent detection
-- **Xcode Required**: Needs full Xcode installation
-
-#### Python Fallback (Always Available)
-- **No Dependencies**: Works out of the box
-- **Smart Routing**: 60-80% accuracy immediately
-- **Learning Capability**: Improves with usage
-- **Instant Availability**: No setup required
-
-### Key Features
-
-- **Linguistic Analysis**: Grammar and structure, not keywords
-- **Dynamic Learning**: Improves from your corrections
-- **Context Awareness**: Considers command history
-- **Zero Hardcoding**: No keyword lists or patterns
-- **Confidence Scores**: Explains routing decisions
-- **Automatic Fallback**: Python ensures it always works
-
-### Setup
-
-```bash
-# Check current status
-python backend/swift_classifier_status.py
-
-# For Swift classifier (optional, better performance)
-# 1. Install Xcode from Mac App Store
-# 2. Build the classifier
-cd backend/swift_bridge
-./build.sh
-
-# Test intelligent routing
-cd ..
-python test_intelligent_routing.py
-
-# Or run the demo
-python demo_intelligent_routing.py
-```
-
-### Installation Notes
-
-**Swift Classifier (Optional)**
-- Requires Xcode from Mac App Store (~7GB)
-- Provides best performance and accuracy
-- Falls back to Python if unavailable
-
-**Python Fallback (Default)**
-- Works immediately, no setup needed
-- Provides intelligent routing out of the box
-- Continuously learns from usage
-
-### Examples
+Creating a custom vision provider is simple:
 
 ```python
-# Before (hardcoded routing - often wrong)
-if "close" in command:  # Misses variations
-    route_to_system()
-    
-# After (intelligent routing - always correct)
-# Swift analyzes: "please close whatsapp"
-# Detects: polite request + action verb + app name
-# Routes: System command with high confidence
+# vision/plugins/my_custom_provider.py
+from vision.vision_plugin_system import BaseVisionProvider
+
+class MyCustomProvider(BaseVisionProvider):
+    def _initialize(self):
+        # Register what your provider can do
+        self.register_capability("custom_analysis", confidence=0.9)
+        self.register_capability("special_detection", confidence=0.85)
+        
+    async def execute(self, capability: str, **kwargs):
+        if capability == "custom_analysis":
+            # Your custom implementation
+            return await self.analyze_custom(**kwargs)
 ```
 
-The classifier learns from corrections, so it gets better over time at understanding your specific command patterns.
+Drop this file in `backend/vision/plugins/` and it's automatically discovered!
 
-## 👁️ Vision System Capabilities
+### **Learning System**
 
-**NEW: C++ Fast Capture Engine - 10x Performance Improvement**
+The system continuously improves through:
 
-The vision system is now powered by a high-performance C++ extension that dramatically improves capture speed and efficiency:
+1. **Success Tracking**: Records which capabilities work best for which intents
+2. **Pattern Database**: Stores successful command → capability mappings
+3. **Confidence Adjustment**: Updates provider confidence based on performance
+4. **User Feedback**: Learns from corrections and preferences
+5. **Semantic Embeddings**: Builds understanding of command variations
 
-### Performance Comparison
+### **Performance Optimizations**
 
-| Operation | Python (Before) | C++ (Now) | Improvement |
-|-----------|----------------|-----------|-------------|
-| Single Window Capture | ~300ms | ~30ms | **10x faster** |
-| Multi-Window (10 windows) | ~3000ms | ~150ms | **20x faster** |
-| Full Screen Capture | ~500ms | ~50ms | **10x faster** |
-| Memory Usage | ~200MB | ~50MB | **4x less** |
-| Max FPS | 3-4 FPS | 30+ FPS | **10x higher** |
+- **Parallel Execution**: Multiple providers can run simultaneously
+- **Smart Caching**: Recent results cached for repeated queries
+- **Lazy Loading**: Providers loaded only when needed
+- **Performance-Based Routing**: Fastest providers preferred
+- **Adaptive Timeouts**: Adjusts based on provider history
 
-### C++ Vision Features
+## 🎯 System Design Philosophy
 
-- **Parallel Capture**: Capture multiple windows simultaneously using thread pools
-- **GPU Acceleration**: Hardware-accelerated capture when available
-- **Zero-Copy Architecture**: Direct memory access without unnecessary copies
-- **Dynamic Discovery**: No hardcoded values - everything discovered at runtime
-- **Automatic Fallback**: Seamlessly falls back to Python if C++ unavailable
+### **Zero Hardcoding Principles**
 
-### Building the C++ Extension
+1. **No Keywords**: The system doesn't look for specific words
+2. **No Fixed Patterns**: No regex or string matching
+3. **No Predefined Actions**: Actions discovered at runtime
+4. **No Static Mappings**: All routing is dynamic
+5. **No Manual Updates**: System self-improves
 
-```bash
-# Quick build (recommended)
-cd backend/native_extensions
-./build.sh
+### **Machine Learning Architecture**
 
-# The extension will be automatically used by JARVIS
 ```
-
-### Vision in Manual Mode
-
-In Manual Mode, vision activates only for specific requests:
-
-**Capabilities:**
-- **Screenshot Analysis**: "What's on my screen?"
-- **Window Detection**: "What applications are open?"
-- **Text Extraction**: "Read the error message"
-- **UI Navigation**: "Click the submit button"
-
-**Privacy Features:**
-- No continuous capture
-- Images processed and immediately discarded
-- No storage of screen content
-- Explicit user consent for each capture
-
-### Vision in Autonomous Mode
-
-In Autonomous Mode, vision becomes JARVIS's eyes:
-
-**Continuous Monitoring:**
-- Captures screen every 2 seconds
-- Tracks window changes and movements
-- Detects new notifications instantly
-- Monitors user activity patterns
-
-**Intelligent Analysis:**
-- **OCR Everything**: Reads all visible text
-- **Context Understanding**: Knows what app you're using
-- **Notification Detection**: Catches popups/badges
-- **Error Recognition**: Spots error messages
-- **Pattern Learning**: Recognizes workflows
-
-**Proactive Actions:**
-- Auto-reads important notifications
-- Detects and announces meetings
-- Spots errors before you do
-- Suggests relevant actions
-- Manages window layouts
-
-**Example Scenarios:**
-
-1. **Error Detection**:
-   ```
-   [JARVIS sees red error popup]
-   JARVIS: "Sir, I've detected a compilation error in your code. 
-           The error indicates a missing semicolon on line 42. 
-           Shall I highlight the location?"
-   ```
-
-2. **Meeting Preparation**:
-   ```
-   [JARVIS sees calendar notification]
-   JARVIS: "I see your design review starts in 5 minutes. 
-           I'm hiding your code editor, opening the Figma file, 
-           and muting Slack notifications."
-   ```
-
-3. **Workflow Optimization**:
-   ```
-   [JARVIS detects repetitive action]
-   JARVIS: "I've noticed you're copying data from Excel to the web form. 
-           I can automate this process. Would you like me to 
-           complete the remaining 20 entries?"
-   ```
-
-### Vision Technical Specifications
-
-| Aspect | Manual Mode | Autonomous Mode |
-|--------|-------------|-----------------|
-| **Capture Rate** | On-demand | Every 2 seconds |
-| **Processing** | Synchronous | Asynchronous queue |
-| **OCR Coverage** | Requested region | Full screen |
-| **Storage** | None | Temporary (5 min) |
-| **GPU Usage** | Minimal | Optimized batching |
-| **Accuracy** | 95%+ | 95%+ with learning |
+┌─────────────────────────────────────────┐
+│          User Command Input              │
+└────────────────┬────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────┐
+│         NLP Intent Extraction            │
+│   • Verb/Action identification           │
+│   • Target/Object detection              │
+│   • Modifier extraction                  │
+│   • Context understanding                │
+└────────────────┬────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────┐
+│      Semantic Embedding Generation       │
+│   • Sentence transformers                │
+│   • Contextual embeddings                │
+│   • Similarity scoring                   │
+└────────────────┬────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────┐
+│      Capability Scoring & Matching       │
+│   • Semantic similarity                  │
+│   • Historical performance               │
+│   • Context relevance                    │
+│   • Confidence thresholds                │
+└────────────────┬────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────┐
+│         Dynamic Execution                │
+│   • Provider selection                   │
+│   • Parameter preparation                │
+│   • Result processing                    │
+│   • Learning feedback                    │
+└─────────────────────────────────────────┘
+```
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- macOS 10.15+ (Catalina or newer)
 - Python 3.8+
-- Node.js 14+
-- CMake 3.12+ (for C++ vision extension)
-- Xcode Command Line Tools
-- Xcode (optional, for Swift classifier - Python fallback available)
-- 8GB RAM minimum (16GB recommended for Autonomous Mode)
-- Anthropic API key
+- macOS (for full system control features)
+- Claude API key from [Anthropic Console](https://console.anthropic.com/)
 
-### Prerequisites Update
-- **C++ Compiler**: For vision ML extension (auto-detected)
-- **CMake 3.15+**: For building C++ components
-
-### One-Line Install
+### Installation
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/yourusername/JARVIS-AI-Agent/main/install.sh | bash
-```
-
-### Manual Installation
-
-```bash
-# 1. Clone the repository
+# Clone the repository
 git clone https://github.com/yourusername/JARVIS-AI-Agent.git
 cd JARVIS-AI-Agent
 
-# 2. Set up API key
-echo "ANTHROPIC_API_KEY=your-key-here" > backend/.env
+# Create .env file in backend/
+echo "ANTHROPIC_API_KEY=your-api-key-here" > backend/.env
 
-# 3. Install dependencies
+# Install dependencies
 pip install -r backend/requirements.txt
-cd frontend && npm install && cd ..
 
-# 4. Build C++ Extensions (Highly recommended for performance)
-cd backend/native_extensions
-./build.sh  # Builds both Fast Capture and Vision ML Router
-cd ../..
-
-# 5. Build Swift Classifier (Optional but recommended for best routing)
-# Note: Requires Xcode. If not installed, Python fallback will be used automatically
-cd backend/swift_bridge
-./build.sh
-cd ../..
-
-# 6. Grant permissions (macOS)
-# System Preferences → Security & Privacy → Privacy
-# Enable: Microphone, Screen Recording, Accessibility
-
-# 7. Start JARVIS
+# Start JARVIS
 python start_system.py
 ```
 
-### Quick Start Commands
+### First Time Setup
+1. Grant screen recording permission when prompted
+2. Allow microphone access for voice commands
+3. Say "Hey JARVIS" to activate
+4. Try: "Hey JARVIS, describe what's on my screen"
 
-```bash
-# Start everything (recommended)
-python start_system.py
+## 🎮 Using the Vision System
 
-# Start backend only (for API development)
-python start_system.py --backend-only
-# Or directly with uvicorn:
-cd backend && uvicorn main:app --reload
+### Basic Commands
+- **"Describe my screen"** - General screen analysis
+- **"What am I looking at?"** - Context-aware description
+- **"Check for notifications"** - Scans for app notifications
+- **"Analyze this window"** - Focused window analysis
+- **"What's happening in Chrome?"** - App-specific analysis
 
-# Start frontend only (for UI development)
-python start_system.py --frontend-only
+### Advanced Features
+- **"Monitor my workspace"** - Continuous monitoring mode
+- **"Learn this pattern"** - Teach JARVIS new patterns
+- **"What did you see earlier?"** - Access vision history
+- **"Compare screens"** - Before/after analysis
 
-# Run diagnostics
-python diagnose_vision.py                # Check vision system
-python backend/swift_classifier_status.py # Check Swift routing
-python backend/test_intelligent_routing.py # Test command routing
-./fix-microphone.sh                      # Fix microphone issues
-
-# Test features
-python test_autonomy_activation.py       # Test autonomy
-python test_dynamic_app_control.py       # Test app control
-python test_ml_audio_system.py          # Test ML audio
-python backend/demo_intelligent_routing.py # Demo Swift routing
-
-# Check system status
-curl http://localhost:8000/health
-curl http://localhost:8000/vision/status
-curl http://localhost:8000/voice/jarvis/status
-curl http://localhost:8000/voice/jarvis/activate -X POST -H "Content-Type: application/json" -d '{}'
+### Autonomous Mode
+Enable full autonomy for proactive vision monitoring:
+```
+"Hey JARVIS, activate full autonomy"
 ```
 
-### First Run
-
-⏱️ **Startup Times:**
-- First run: 60-90 seconds (loading ML models)
-- Subsequent runs: 15-30 seconds
-- Memory warnings are normal and can be ignored
-
-1. **JARVIS starts in Manual Mode** (privacy-first)
-2. **Wait for**: "System ready in X seconds!" message
-3. **Test voice**: Say "Hey JARVIS" → "What time is it?"
-4. **Test app control**: "Hey JARVIS, open Safari" → Safari opens!
-5. **Enable autonomy**: "Hey JARVIS, activate full autonomy"
-6. **Experience the difference**: JARVIS begins proactive assistance
-
-### App Control Commands (ENHANCED in v5.4)
-
-```bash
-# Voice Commands Work with ANY App - No Configuration Needed:
-"Open WhatsApp"        # Opens WhatsApp
-"Close Discord"        # Closes Discord  
-"Open Notion"          # Opens Notion
-"Close Microsoft Teams"  # Closes Teams
-"Open any-app-name"    # Works with ANY installed app!
-
-# Fuzzy Matching Examples:
-"Close whatsapp"       # Works (case insensitive)
-"Close whats app"      # Works (handles spaces)
-"Open vscode"          # Opens Visual Studio Code
-"Close MS teams"       # Closes Microsoft Teams
-
-# Test dynamic app control:
-python backend/test_dynamic_app_control.py
-python backend/test_dynamic_app_control.py WhatsApp
-```
-
-### Verify Everything is Working
-
-When JARVIS is fully operational, you should see:
-- ✅ "System Status: All systems operational" in the UI
-- ✅ "Voice: Ready" indicator
-- ✅ "Vision: Connected" (in Autonomous Mode)
-- ✅ Mode toggle shows "🤖 Autonomous ON" when activated
-
-## 🔧 Troubleshooting
-
-### Backend Startup Issues
-
-**503 Service Unavailable Error**
-```bash
-# Backend not running. Start it:
-python start_system.py --backend-only
-# Or directly:
-cd backend && uvicorn main:app --reload
-```
-
-### App Launch Performance Issues (v5.4.1 Fixes)
-
-**Apps Opening Slowly**
-- **Fixed in v5.4.1**: Reduced timeouts and added fast launcher
-- Test performance: `python backend/test_app_launch_speed.py`
-- Common apps now open in <100ms
-
-**Voice Commands Taking Too Long**
-- **Fixed in v5.4.1**: Total time now <1 second
-- Fast launcher bypasses complex routing for common apps
-- Parallel execution for multiple apps
-
-**Port Already in Use**
-```bash
-# Find and kill process on port 8000:
-lsof -i :8000
-kill -9 <PID>
-# Or let start_system.py handle it automatically
-```
-
-**Memory Warnings**
-- **Normal**: "Memory warning: 0.8% used" - System has plenty of memory
-- These warnings can be safely ignored
-- The system monitors memory but has optimizations for M1 Macs
-
-**Slow Startup (60-90 seconds)**
-- **Normal**: First startup loads ML models
-- Subsequent startups are faster
-- Watch for "Application startup complete" in logs
-
-### Swift Classifier Issues
-
-**"Swift classifier not available"**
-```bash
-# Check status:
-python backend/swift_classifier_status.py
-
-# If Xcode not installed:
-# 1. Install Xcode from Mac App Store
-# 2. cd backend/swift_bridge && ./build.sh
-
-# Python fallback is automatic and works well!
-```
-
-**Command Routing Issues**
-```bash
-# Test routing:
-python backend/test_intelligent_routing.py
-
-# "close whatsapp" should route to SYSTEM
-# If not, the classifier will learn from usage
-```
-
-### Common API Errors
-
-**"Anthropic API key not found"**
-```bash
-# Add to backend/.env:
-echo "ANTHROPIC_API_KEY=your-key-here" > backend/.env
-```
-
-**Missing Dependencies**
-```bash
-# Install all requirements:
-pip install -r backend/requirements.txt
-```
-
-## 🏗️ Architecture
-
-### High-Level Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Frontend (React)                       │
-│  ┌─────────────┐  ┌─────────────┐  ┌────────────────────┐  │
-│  │   Voice UI   │  │  Vision UI   │  │  Control Panel    │  │
-│  └─────────────┘  └─────────────┘  └────────────────────┘  │
-└────────────────────────┬────────────────────────────────────┘
-                         │ WebSocket
-┌────────────────────────┴────────────────────────────────────┐
-│                    Backend (FastAPI)                         │
-│  ┌─────────────┐  ┌─────────────┐  ┌────────────────────┐  │
-│  │   AI Brain   │  │Vision System │  │  Voice Engine     │  │
-│  │  (Claude AI) │  │  (OCR+CV)    │  │  (TTS+STT)       │  │
-│  └─────────────┘  └─────────────┘  └────────────────────┘  │
-│  ┌─────────────┐  ┌─────────────┐  ┌────────────────────┐  │
-│  │System Control│  │Hardware Mgmt │  │Learning System    │  │
-│  │ (AppleScript)│  │(Camera/Mic)  │  │  (Patterns)      │  │
-│  └─────────────┘  └─────────────┘  └────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Component Deep Dive
-
-#### 1. AI Brain (Powered by Claude Opus 4)
-- **Predictive Intelligence**: 10 types of predictions
-- **Contextual Understanding**: Emotional + work context
-- **Creative Problem Solving**: Multiple solution approaches
-- **Continuous Learning**: Adapts to user patterns
-
-#### 2. Voice System
-- **Natural Language**: No rigid commands
-- **Proactive Speech**: Announces without prompting
-- **Personality Engine**: Adapts tone/style
-- **Multi-language**: Supports 20+ languages
-
-#### 3. Vision System
-- **Real-time OCR**: Tesseract + ML enhancement
-- **Window Analysis**: Understands UI context
-- **Notification Detection**: Cross-application
-- **Performance**: 500ms full-screen processing
-
-#### 4. System Integration
-- **macOS Control**: AppleScript + CLI tools
-- **Hardware Access**: Camera, mic, display control
-- **App Management**: Launch, switch, control
-- **Security**: Sandboxed operations
-
-## 📄 Product Requirements Document (PRD)
-
-### Product Vision
-
-**Mission**: Create an AI assistant that matches the capabilities of JARVIS from Iron Man - a proactive, intelligent, and naturally conversant AI that enhances human productivity through autonomous operation.
-
-**Vision**: By 2025, JARVIS will be the definitive AI assistant platform, setting the standard for human-AI collaboration in personal computing.
-
-### User Personas
-
-#### 1. The Developer (Primary)
-- **Demographics**: 25-45, technical professional
-- **Needs**: Automated workflows, intelligent debugging, focus protection
-- **Pain Points**: Context switching, repetitive tasks, missing notifications
-- **JARVIS Value**: 40% productivity increase through automation
-
-#### 2. The Creative Professional
-- **Demographics**: 22-50, designers, writers, artists
-- **Needs**: Inspiration, organization, distraction management
-- **Pain Points**: Creative blocks, file management, client communications
-- **JARVIS Value**: Proactive creative assistance and workflow optimization
-
-#### 3. The Business Executive
-- **Demographics**: 30-60, management roles
-- **Needs**: Meeting preparation, email management, schedule optimization
-- **Pain Points**: Information overload, double-booking, preparation time
-- **JARVIS Value**: Intelligent prioritization and meeting assistance
-
-### Core Features
-
-#### P0 - Must Have (Current)
-1. **Voice Interaction**: Natural conversation without wake words
-2. **Vision System**: Screen understanding and OCR
-3. **Mode Switching**: Manual/Autonomous operation
-4. **System Control**: App and file management
-5. **Privacy Controls**: Instant camera/mic disable
-
-#### P1 - Should Have (Q1 2025)
-1. **Multi-monitor Support**: Vision across displays
-2. **Custom Personalities**: User-defined interaction styles
-3. **Plugin System**: Third-party integrations
-4. **Team Collaboration**: Shared workspace awareness
-5. **Mobile Companion**: iOS/Android apps
-
-#### P2 - Nice to Have (Q2-Q3 2025)
-1. **AR/VR Integration**: Spatial computing support
-2. **IoT Control**: Smart home integration
-3. **Biometric Monitoring**: Stress/fatigue detection
-4. **Predictive Scheduling**: AI-driven calendar management
-5. **Cross-platform**: Windows/Linux support
-
-### Success Metrics
-
-#### User Engagement
-- **Daily Active Users**: Target 100k by end of 2025
-- **Session Duration**: Average 6+ hours in Autonomous Mode
-- **Mode Adoption**: 60% users activate Autonomous within first week
-- **Retention**: 80% 30-day retention rate
-
-#### Performance Metrics
-- **Response Time**: <1s for voice commands
-- **Vision Accuracy**: 98%+ OCR accuracy
-- **Uptime**: 99.9% availability
-- **Resource Usage**: <2GB RAM in Autonomous Mode
-
-#### Business Metrics
-- **Revenue**: $10M ARR by end of 2025
-- **Customer Satisfaction**: NPS score >70
-- **Market Share**: 15% of AI assistant market
-- **Enterprise Adoption**: 500+ companies
-
-## 🏛️ System Design
-
-### Design Principles
-
-1. **Privacy First**: User data never leaves device without consent
-2. **Modularity**: Each component independently scalable
-3. **Extensibility**: Plugin architecture for custom features
-4. **Reliability**: Graceful degradation on component failure
-5. **Performance**: Real-time response with minimal latency
-
-### Technical Architecture
-
-#### Frontend Architecture
-```
-React App
-├── Voice Components
-│   ├── SpeechRecognition (WebAPI)
-│   ├── SpeechSynthesis (WebAPI + Backend)
-│   └── AudioVisualization (Canvas)
-├── Vision Components
-│   ├── ScreenCapture (Electron)
-│   ├── AnnotationLayer (Canvas)
-│   └── RegionSelector (Interactive)
-├── Control Components
-│   ├── ModeToggle (State Management)
-│   ├── PrivacyControls (Hardware)
-│   └── SystemMonitor (Metrics)
-└── Communication
-    ├── WebSocket (Real-time)
-    ├── REST API (Commands)
-    └── EventBus (Internal)
-```
-
-#### Backend Architecture
-```
-FastAPI Application
-├── Core Services
-│   ├── AI Brain Service
-│   │   ├── Predictive Engine
-│   │   ├── Context Manager
-│   │   └── Decision Maker
-│   ├── Voice Service
-│   │   ├── STT Engine
-│   │   ├── TTS Engine
-│   │   └── Personality Module
-│   └── Vision Service
-│       ├── Capture Engine
-│       ├── OCR Pipeline
-│       └── Analysis Engine
-├── Integration Layer
-│   ├── macOS Integration
-│   ├── Hardware Control
-│   └── App Connectors
-└── Data Layer
-    ├── Pattern Storage
-    ├── User Preferences
-    └── Learning Cache
-```
-
-### Data Flow
-
-#### Voice Command Flow
-```
-1. User speaks "Hey JARVIS, open Chrome"
-2. Frontend captures audio → WebSocket → Backend
-3. STT processes → Intent extraction
-4. AI Brain validates → Decision made
-5. System Control executes → AppleScript
-6. Response generated → TTS → User
-```
-
-#### Vision Processing Flow
-```
-1. Screen captured every 2s (Autonomous Mode)
-2. Image compressed → OCR pipeline
-3. Text extracted → Context analysis
-4. Changes detected → AI Brain notified
-5. Decisions made → Actions queued
-6. User notified → Voice announcement
-```
-
-### Security Architecture
-
-#### Authentication & Authorization
-- **Local First**: No cloud dependency for core features
-- **API Keys**: Encrypted storage in system keychain
-- **Permission Model**: Granular control per feature
-
-#### Data Protection
-- **Encryption**: AES-256 for stored preferences
-- **No Cloud Storage**: Screen data never uploaded
-- **Temporary Cache**: Auto-cleared after 5 minutes
-- **Audit Trail**: All actions logged locally
-
-### Scalability Considerations
-
-#### Performance Optimization
-- **Lazy Loading**: Components load on-demand
-- **Queue Management**: Priority-based processing
-- **Caching**: Frequently used patterns cached
-- **GPU Acceleration**: Metal/CUDA for vision
-
-#### Resource Management
-- **CPU Throttling**: Adaptive based on system load
-- **Memory Limits**: Automatic garbage collection
-- **Disk Usage**: Rolling logs with size limits
-- **Network**: Minimal bandwidth usage
-
-## 🤖 Claude AI Integration
-
-### Overview
-
-JARVIS v5.1 exclusively uses Claude Opus 4 for all AI operations, ensuring consistent, high-quality responses across all features.
-
-### Core Components
-
-#### JARVISAICore (`backend/core/jarvis_ai_core.py`)
-The central AI brain that orchestrates all Claude-powered operations:
-
-```python
-class JARVISAICore:
-    def __init__(self):
-        self.claude = ClaudeChatbot(
-            api_key=api_key,
-            model="claude-3-opus-20240229",
-            max_tokens=4096
-        )
-        self.vision_analyzer = ClaudeVisionAnalyzer(api_key)
-```
-
-**Key Features:**
-- **Unified Intelligence**: All decisions go through Claude
-- **Context Awareness**: Maintains workspace and user context
-- **Pattern Learning**: Analyzes user behavior to improve over time
-- **Autonomous Decisions**: Makes intelligent choices based on context
-
-#### Vision Processing
-```python
-async def process_vision(self, screen_data, mode="focused"):
-    # Claude analyzes screen content
-    # Extracts applications, notifications, actionable items
-    # Provides intelligent suggestions
-```
-
-#### Speech Command Processing
-```python
-async def process_speech_command(self, command, context=None):
-    # Claude interprets natural language
-    # Classifies intent and extracts parameters
-    # Determines confidence and autonomous triggers
-```
-
-### Continuous Monitoring
-
-In Autonomous Mode, JARVIS monitors your screen every 2 seconds:
-
-```python
-async def _continuous_monitoring_loop(self):
-    while self.continuous_monitoring:
-        # Capture screen state
-        vision_result = await self.process_vision(screen_data, mode="multi")
-        
-        # Check for actionable items
-        for item in vision_result["actionable_items"]:
-            decision = await self._should_take_action(item)
-            if decision["should_act"] and decision["confidence"] > 0.8:
-                await self.execute_task(decision["task"])
-        
-        await asyncio.sleep(2)  # Check every 2 seconds
-```
-
-### Multi-Window Analysis
-
-Claude can analyze your entire workspace simultaneously:
-
-```python
-# Focused mode - analyzes current window
-analysis = await vision_analyzer.analyze_focused_window(screen_data)
-
-# Multi mode - analyzes all windows (50+)
-analysis = await vision_analyzer.analyze_workspace(screen_data)
-```
-
-**Analysis includes:**
-- All open applications and their content
-- Notifications across the system
-- Error messages and warnings
-- Workflow patterns and optimization opportunities
-
-### Learning System
-
-JARVIS learns from every interaction:
-
-```python
-async def _update_user_patterns(self):
-    # Claude analyzes recent interactions
-    # Identifies common workflows, preferences, patterns
-    # Updates behavior model for better predictions
-```
-
-**Learning Categories:**
-- Command patterns and preferences
-- Working hours and productivity cycles
-- Application usage patterns
-- Notification handling preferences
-- Task automation opportunities
-
-### API Configuration
-
-Set up Claude API in your `.env` file:
-
-```bash
-# Required
-ANTHROPIC_API_KEY=your-api-key-here
-
-# Optional (defaults shown)
-CLAUDE_MODEL=claude-3-opus-20240229
-CLAUDE_MAX_TOKENS=4096
-CLAUDE_TEMPERATURE=0.7
-```
-
-### WebSocket Integration
-
-Enhanced vision system with real-time updates:
-
-```python
-# backend/api/enhanced_vision_api.py
-@router.websocket("/ws/vision")
-async def enhanced_vision_websocket(websocket: WebSocket):
-    await vision_ws_manager.connect(websocket)
-    # Integrates with JARVISAICore for Claude-powered analysis
-```
-
-### Error Handling
-
-Robust error handling ensures smooth operation:
-
-```python
-try:
-    response = await self.claude.generate_response(prompt)
-except Exception as e:
-    logger.error(f"Claude API error: {e}")
-    # Graceful fallback behavior
-```
-
-## 🚀 C++ Vision ML Router
-
-### Overview
-
-JARVIS v5.7 introduces a revolutionary C++ Vision ML Router that provides <5ms vision command analysis through a sophisticated hybrid architecture combining C++, Python ML, linguistic analysis, and pattern databases.
-
-### Architecture
-
-```cpp
-class VisionMLRouter {
-    // C++ for ultra-fast pattern matching
-    double calculate_vision_score(const std::string& command);
-    
-    // Learning capabilities
-    void learn_pattern(const std::string& command, 
-                      const std::string& action, 
-                      int success);
-};
-```
-
-### Key Features
-
-1. **Lightning Fast**: <5ms analysis (20x faster than Python)
-2. **Zero Hardcoding**: Pure ML-based routing
-3. **Persistent Learning**: SQLite database for patterns
-4. **Hybrid Intelligence**: 4-level analysis system
-5. **Dynamic Handlers**: Creates handlers on-the-fly
-
-### Building
-
-```bash
-cd backend/native_extensions
-./build.sh         # Builds all extensions
-./build.sh vision  # Build Vision ML only
-```
-
-### Usage
-
-```python
-# C++ Module (if available)
-import vision_ml_router
-score, action = vision_ml_router.analyze("describe my screen")
-
-# Hybrid Router (recommended)
-from backend.voice.hybrid_vision_router import HybridVisionRouter
-router = HybridVisionRouter()
-intent = await router.analyze_command("what am I looking at?")
-```
-
-## 🤖 ML Audio System
-
-### Overview
-
-JARVIS v5.3 introduces a revolutionary ML-powered audio system that learns from user interactions to predict and prevent microphone errors before they occur.
-
-### Core Components
-
-#### ML Audio Manager (`backend/audio/ml_audio_manager.py`)
-The brain of the self-healing audio system:
-
-```python
-class AudioPatternLearner:
-    def __init__(self):
-        self.error_predictor = RandomForestClassifier()
-        self.anomaly_detector = IsolationForest()
-        self.pattern_clusterer = DBSCAN()
-```
-
-**Key Features:**
-- **Predictive Error Detection**: Warns when audio issues are likely (>70% probability)
-- **Adaptive Recovery**: Learns which strategies work best for each browser
-- **Anomaly Detection**: Identifies unusual error patterns
-- **Zero Configuration**: Improves automatically with use
-
-### How It Works
-
-#### 1. Error Prediction
-```javascript
-// Frontend continuously monitors for risk factors
-mlAudioHandler.predictAudioIssue();
-// If risk > 70%, user is warned proactively
-```
-
-#### 2. Intelligent Recovery
-When an error occurs, the ML system:
-1. Analyzes the error context (browser, time, history)
-2. Selects optimal recovery strategy based on past success
-3. Executes recovery with intelligent retry logic
-4. Learns from the outcome
-
-#### 3. Recovery Strategies
-- **Request Permission**: Smart retry with exponential backoff
-- **Browser Instructions**: Customized for Chrome/Safari/Firefox
-- **Audio Context Restart**: Technical recovery approach
-- **Text Fallback**: Graceful degradation
-
-### ML Models
-
-| Model | Purpose | Accuracy Target |
-|-------|---------|----------------|
-| RandomForest | Predict audio errors | 75%+ |
-| IsolationForest | Detect anomalies | 80%+ |
-| DBSCAN | Cluster error patterns | - |
-| Neural Network | Vision pattern recognition | 95%+ |
-
-### Performance Metrics
-
-The system tracks:
-- Error frequency and types
-- Recovery success rates (target: 85%+)
-- Strategy effectiveness
-- Browser-specific patterns
-- Time-based trends
-
-### API Endpoints
-
-```bash
-# ML Audio Configuration
-GET  /audio/ml/config
-POST /audio/ml/config
-
-# Error Handling
-POST /audio/ml/error
-
-# Prediction
-POST /audio/ml/predict
-
-# Metrics & Patterns
-GET  /audio/ml/metrics
-GET  /audio/ml/patterns
-
-# Real-time Updates
-WS   /audio/ml/stream
-```
-
-### Testing the ML System
-
-```bash
-# Run comprehensive ML audio tests
-python backend/test_ml_audio_system.py
-
-# Check current metrics
-curl http://localhost:8000/audio/ml/metrics
-
-# View learned patterns
-curl http://localhost:8000/audio/ml/patterns
-```
+JARVIS will then:
+- Monitor your screen continuously
+- Alert you to important changes
+- Proactively offer assistance
+- Learn your patterns and preferences
+
+## 🔧 Customization & Extension
+
+### Adding Custom Vision Providers
+
+1. Create a new file in `backend/vision/plugins/`
+2. Extend `BaseVisionProvider`
+3. Register your capabilities
+4. Implement the execute method
+
+### Training the System
+
+The system learns automatically, but you can accelerate learning:
+- Provide feedback on results
+- Use consistent command patterns
+- Correct misunderstandings
+- The more you use it, the smarter it gets!
 
 ### Configuration
 
-The ML system is fully configurable via `backend/config/ml_audio_config.json`:
-
+Vision system configuration in `backend/vision/config.json`:
 ```json
 {
-  "ml_audio": {
-    "enable_ml": true,
-    "auto_recovery": true,
-    "prediction_threshold": 0.7,
-    "anomaly_threshold": 0.8
-  }
+  "semantic_model": "all-MiniLM-L6-v2",
+  "confidence_threshold": 0.7,
+  "learning_rate": 0.1,
+  "cache_duration": 30,
+  "parallel_providers": true
 }
 ```
 
-### Benefits
+## 📊 Architecture Benefits
 
-1. **Zero User Friction**: Errors are handled automatically
-2. **Continuous Improvement**: Gets better with each use
-3. **Browser Agnostic**: Adapts to any browser
-4. **Predictive**: Prevents errors before they occur
-5. **Privacy First**: All learning happens locally
+### **Advantages of Zero-Hardcoding Design**
 
-## 🛠️ Native C++ Extensions
+1. **Infinite Extensibility**: Add new capabilities without changing core code
+2. **Natural Language**: Understands variations and synonyms automatically
+3. **Self-Improving**: Gets better with use, no manual updates needed
+4. **Language Agnostic**: Works with any language (ML-based understanding)
+5. **Future Proof**: Adapts to new use cases automatically
 
-### Performance Comparison
+### **Performance Characteristics**
 
-| Operation | Python Only | With C++ | Improvement |
-|-----------|-------------|----------|-------------|
-| Screen Capture | 200-500ms | 20-50ms | 10x faster |
-| Vision Analysis | 50-100ms | 2-5ms | 20x faster |
-| Pattern Matching | 20-30ms | <1ms | 30x faster |
+- **Intent Analysis**: 10-50ms (with semantic embeddings)
+- **Capability Scoring**: 5-20ms (with caching)
+- **Provider Execution**: Varies by provider (typically 50-500ms)
+- **Learning Updates**: Asynchronous, non-blocking
+- **Memory Usage**: ~200MB for ML models, scales with usage
 
-### Available Extensions
+## 🛠️ Troubleshooting
 
-1. **Fast Capture Engine** - Ultra-fast screen capture
-2. **Vision ML Router** - Lightning-fast command analysis
-
-### Building Instructions
-
+### Vision System Not Responding
 ```bash
-cd backend/native_extensions
-./build.sh          # Build all extensions
-./build.sh capture  # Fast Capture only
-./build.sh vision   # Vision ML only
-./build.sh clean    # Clean all builds
-./build.sh test     # Build and test
+# Run diagnostic
+python backend/diagnose_vision.py
+
+# Check specific component
+python backend/test_vision_simple.py
 ```
 
-## 🎯 Dynamic App Control
-
-### Overview
-
-JARVIS v5.4.1 introduces revolutionary Dynamic App Control with **⚡ Lightning-Fast Performance**. Works with ANY macOS application without hardcoding. No more maintaining app aliases or mappings - JARVIS dynamically discovers and controls applications in real-time.
-
-### Performance Enhancements (v5.4.1)
-
-#### ⚡ Fast App Launcher
-- **<100ms Launch Time** - Common apps open instantly
-- **Direct System Calls** - Bypasses complex routing for speed
-- **Fire-and-Forget** - Responds immediately while apps launch
-- **Smart Caching** - Common apps cached for instant access
-
-#### 🚀 Optimized Timeouts
-- **AppleScript**: 15s → 5s (66% faster)
-- **App Info**: 10s → 3s (70% faster)  
-- **Direct Launch**: 5s → 2s (60% faster)
-- **Fast Launch**: New 1s timeout for common apps
-
-### Core Features
-
-#### Dynamic App Detection
-```python
-# Automatically discovers all running applications
-running_apps = controller.get_all_running_apps()
-# Returns: [{"name": "WhatsApp", "pid": "12345", "visible": true}, ...]
-```
-
-#### Fuzzy Name Matching
-All these commands work for the same app:
-- "Close WhatsApp"
-- "Close whatsapp" 
-- "Close whats app"
-- "Close what's app"
-
-#### Multi-Method Control
-1. **Graceful Quit**: Sends quit command via AppleScript
-2. **Keyboard Shortcut**: Uses Cmd+Q if quit fails
-3. **Force Close**: Uses pkill as last resort
-
-### How It Works
-
-1. **Real-Time Discovery**: Queries System Events for running processes
-2. **Intelligent Matching**: Uses fuzzy logic to match user input to actual app names
-3. **Adaptive Execution**: Tries multiple methods to ensure success
-4. **No Hardcoding**: Works with any app, even newly installed ones
-
-### API Usage
-
-```python
-from system_control.dynamic_app_controller import get_dynamic_app_controller
-
-controller = get_dynamic_app_controller()
-
-# Close any app intelligently
-success, message = await controller.close_app_intelligently("whatsapp")
-# Returns: (True, "WhatsApp has been closed, Sir.")
-
-# Open any app intelligently  
-success, message = await controller.open_app_intelligently("discord")
-# Returns: (True, "Discord is now active")
-
-# Get app suggestions
-suggestions = controller.get_app_suggestions("spot")
-# Returns: ["Spotify", "Spotlight"]
-```
-
-### Voice Commands
-
+### Learning System Issues
 ```bash
-# All of these work without configuration:
-"Hey JARVIS, close WhatsApp"
-"Hey JARVIS, close Discord"  
-"Hey JARVIS, close Notion"
-"Hey JARVIS, close any-app-name"
+# Reset learning database
+rm backend/data/vision_learning.json
 
-# Open commands:
-"Hey JARVIS, open Figma"
-"Hey JARVIS, open Zoom"
-"Hey JARVIS, open any-installed-app"
+# View learning statistics
+curl http://localhost:8000/vision/stats
 ```
 
-### Testing Dynamic App Control
+### Plugin Not Loading
+- Check file is in `backend/vision/plugins/`
+- Ensure class extends `BaseVisionProvider`
+- Check logs for import errors
 
-```bash
-# Test the dynamic app control system
-python backend/test_dynamic_app_control.py
+## 🚀 Future Roadmap
 
-# Test closing a specific app
-python backend/test_dynamic_app_control.py WhatsApp
-
-# Test with any app name
-python backend/test_dynamic_app_control.py "Microsoft Teams"
-
-# NEW: Test app launch performance
-python backend/test_app_launch_speed.py
-```
-
-### Benefits
-
-1. **Zero Hardcoding ML (v5.5)**: Pure machine learning, no keywords anywhere
-2. **Self-Improving AI**: Gets smarter with every single command
-3. **Neural Network Brain**: Deep learning for pattern recognition
-4. **Learning Database**: Persistent memory of all interactions
-5. **Real-Time Adaptation**: Learns your preferences instantly
-6. **99.9% Routing Accuracy**: ML ensures perfect classification
-7. **<50ms ML Speed**: Neural network classification
-8. **Universal Understanding**: Works with ANY command structure
-9. **Context Intelligence**: Full conversation awareness
-10. **No Configuration**: Self-adapting system
-11. **Future Proof**: Learns new commands automatically
-12. **WhatsApp Fix Permanent**: ML makes misrouting impossible
-
-### Performance Metrics (v5.4.1)
-
-| Operation | v5.4 | v5.4.1 | Improvement |
-|-----------|------|--------|-------------|
-| Open Safari | 715ms | 90ms | **87.5% faster** |
-| Open WhatsApp | 3.2s | 640ms | **80% faster** |
-| Open Notes | 377ms | 79ms | **79% faster** |
-| Voice Command Total | 2-3s | <1s | **66% faster** |
-| Multiple Apps | Sequential | Parallel | **2-3x faster** |
-
-## 🗺️ Engineering Roadmap
-
-### Current State (v5.7 - Latest)
-
-✅ **Hybrid C++ ML Vision (v5.7)**
-- <5ms vision command analysis with C++
-- 4-level hybrid intelligence system
-- Dynamic handler creation
-- Persistent learning database
-
-✅ **Enhanced Linguistic ML (v5.6)**
-- Advanced POS tagging with 500+ patterns
-- Weighted linguistic scoring
-- Technical pattern recognition
-- Modal verb support
-
-✅ **Zero Hardcoding ML (v5.5)**
-- Pure machine learning routing
-- Neural network classification
-- Self-improving with usage
-- Real-time adaptation
-
-✅ **Dynamic App Control (v5.4)**
-- Universal app control without hardcoding
-- Fuzzy name matching for any app
-- Real-time app discovery
-- Multi-method execution strategies
-
-✅ **ML Audio System (v5.3)**
-- Self-healing voice with ML error prediction
-- Adaptive recovery strategies per browser
-- Anomaly detection and pattern learning
-- Zero-configuration improvement
-
-✅ **System Control (v5.2)**
-- App commands execute instantly
-- AppleScript integration
-- Natural language to system actions
-
-✅ **Core AI System (v5.0-5.1)**
-
-✅ **Core AI System**
-- Advanced AI Brain with Claude integration
-- Predictive Intelligence Engine
-- Contextual Understanding with EQ
-- Creative Problem Solving
-
-✅ **Voice & Interaction**
-- Natural voice conversations
-- Proactive announcements
-- Personality system
-- Continuous listening mode
-
-✅ **Vision & Monitoring**
-- Real-time screen capture
-- OCR text extraction
-- Window analysis
-- Notification detection
-
-✅ **System Control**
-- macOS app management
-- Hardware control (camera/mic)
-- Privacy mode
-- System optimization
-
-### Q1 2025 - Enhanced Intelligence
-
-🚧 **Advanced Learning System**
-- [ ] Deep behavioral pattern recognition
-- [ ] Predictive task automation
-- [ ] Personalized workflow optimization
-- [ ] Cross-application context awareness
-
-🚧 **Multi-Modal Integration**
-- [ ] Multi-monitor support
-- [ ] Gesture recognition
-- [ ] Eye tracking integration
-- [ ] Haptic feedback support
-
-🚧 **Collaboration Features**
-- [ ] Team workspace sharing
-- [ ] AI meeting assistant
-- [ ] Collaborative task management
-- [ ] Knowledge base building
-
-### Q2 2025 - Platform Expansion
-
-📋 **Cross-Platform Support**
-- [ ] Windows 11 compatibility
-- [ ] Linux (Ubuntu/Fedora) support
-- [ ] Web-based interface option
-- [ ] Progressive Web App (PWA)
-
-📋 **Mobile Ecosystem**
-- [ ] iOS companion app
-- [ ] Android companion app
-- [ ] Cross-device synchronization
-- [ ] Remote desktop control
-
-📋 **Developer Platform**
-- [ ] Plugin SDK release
-- [ ] API marketplace
-- [ ] Custom skill creation
-- [ ] Integration templates
-
-### Q3 2025 - Enterprise & Scale
-
-📅 **Enterprise Features**
-- [ ] Active Directory integration
-- [ ] Compliance mode (HIPAA/GDPR)
-- [ ] Audit trail system
-- [ ] Role-based access control
-
-📅 **Performance Optimization**
-- [ ] Distributed processing
-- [ ] Edge AI deployment
-- [ ] Quantum-resistant encryption
-- [ ] 10x scale capacity
-
-📅 **Advanced Capabilities**
-- [ ] AR/VR workspace management
-- [ ] Biometric stress detection
-- [ ] Predictive health monitoring
-- [ ] Ambient computing mode
-
-### Q4 2025 - Future Vision
-
-🔮 **Next-Gen Features**
-- [ ] Brain-computer interface ready
-- [ ] Holographic projection support
-- [ ] Quantum AI processing
-- [ ] Swarm intelligence mode
-
-🔮 **Ecosystem Integration**
-- [ ] Smart home full control
-- [ ] Vehicle integration
-- [ ] Wearable device sync
-- [ ] IoT orchestration
-
-### Development Priorities
-
-#### High Priority
-1. Multi-monitor support (User request #1)
-2. Plugin system (Enable ecosystem)
-3. Performance optimization (Scale requirement)
-4. Enterprise features (Market expansion)
-
-#### Medium Priority
-1. Mobile apps (User convenience)
-2. Cross-platform (Market reach)
-3. Advanced learning (Differentiation)
-4. Collaboration (Team features)
-
-#### Low Priority
-1. AR/VR (Future-proofing)
-2. Biometrics (Nice-to-have)
-3. Quantum features (Research)
-4. BCI support (Experimental)
-
-### Technical Debt Roadmap
-
-#### Immediate (This Quarter)
-- [ ] Refactor vision pipeline for modularity
-- [ ] Implement proper dependency injection
-- [ ] Add comprehensive error recovery
-- [ ] Improve test coverage to 80%
-
-#### Short-term (Next Quarter)
-- [ ] Migrate to async/await throughout
-- [ ] Implement proper logging system
-- [ ] Add performance profiling
-- [ ] Create integration test suite
-
-#### Long-term (This Year)
-- [ ] Microservices architecture
-- [ ] Kubernetes deployment ready
-- [ ] GraphQL API migration
-- [ ] Event-driven architecture
-
-## 📡 API Documentation
-
-### REST Endpoints
-
-#### Core APIs
-```
-GET  /health                    # System health check
-GET  /status                    # Detailed status
-POST /mode                      # Switch between Manual/Autonomous
-GET  /metrics                   # Performance metrics
-```
-
-#### Voice APIs
-```
-POST /voice/command             # Send voice command
-GET  /voice/status              # Voice system status
-POST /voice/speak               # Text-to-speech
-WS   /voice/stream              # Real-time voice stream
-```
-
-#### Vision APIs
-```
-GET  /vision/capture            # Capture screen
-POST /vision/analyze            # Analyze image
-GET  /vision/monitor/status     # Monitor status
-POST /vision/monitor/start      # Start monitoring
-```
-
-#### System APIs
-```
-POST /system/app/open           # Open application
-POST /system/app/close          # Close application
-GET  /system/apps               # List applications
-POST /system/privacy            # Privacy mode toggle
-```
-
-### WebSocket Events
-
-#### Client → Server
-```javascript
-// Command message
-{
-  "type": "command",
-  "text": "activate full autonomy",
-  "mode": "manual"
-}
-
-// Mode change
-{
-  "type": "set_mode",
-  "mode": "autonomous"
-}
-```
-
-#### Server → Client
-```javascript
-// Response message
-{
-  "type": "response",
-  "text": "Initiating full autonomy...",
-  "command_type": "autonomy_activation",
-  "timestamp": "2024-01-20T10:30:00Z"
-}
-
-// Status update
-{
-  "type": "autonomy_status",
-  "enabled": true,
-  "systems": {
-    "ai_brain": true,
-    "voice": true,
-    "vision": true,
-    "hardware": true
-  }
-}
-```
+### Coming Soon
+- **Visual GUI for Training** - Teach JARVIS visually
+- **Multi-Modal Fusion** - Combine vision with other senses
+- **Distributed Learning** - Share learned patterns (opt-in)
+- **Real-time Collaboration** - Multiple users training together
+- **Vision Transformers** - State-of-the-art vision models
 
 ## 🤝 Contributing
 
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+We welcome contributions! The plugin architecture makes it easy:
 
-### Development Setup
-
-```bash
-# Clone repo
-git clone https://github.com/yourusername/JARVIS-AI-Agent.git
-cd JARVIS-AI-Agent
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # or `venv\Scripts\activate` on Windows
-
-# Install dev dependencies
-pip install -r requirements-dev.txt
-
-# Run tests
-pytest
-
-# Run linting
-flake8 backend/
-eslint frontend/src/
-```
-
-### Contribution Areas
-
-- **AI/ML**: Improve prediction algorithms
-- **Voice**: Add language support
-- **Vision**: Enhance OCR accuracy
-- **UI/UX**: Improve interface design
-- **Documentation**: Expand guides
-- **Testing**: Increase coverage
-- **Performance**: Optimize bottlenecks
-
-## 🔧 Troubleshooting
-
-### Vision WebSocket Connection Issues
-
-If you see "Vision: disconnected" in the UI:
-
-1. **Check Backend is Running**
-   ```bash
-   python diagnose_vision.py  # Run diagnostic tool
-   ```
-
-2. **Common Fixes**
-   - **Import Error**: Fixed in v5.1 - action_queue.py import issue
-   - **WebSocket Path**: Backend now serves at `/ws/vision` (enhanced API)
-   - **Port Conflict**: Kill existing processes on port 8000
-   ```bash
-   lsof -ti:8000 | xargs kill -9
-   ```
-
-3. **Enhanced Vision API**
-   The new enhanced vision API requires:
-   - `ANTHROPIC_API_KEY` in your `.env` file
-   - Python packages: `anthropic`, `opencv-python`, `pytesseract`
-   - macOS: `pyobjc-framework-Quartz` for screen capture
-
-4. **Quick Start Script**
-   ```bash
-   ./start_jarvis_backend.sh  # Starts backend with all services
-   ```
-
-5. **Verify Vision Status**
-   ```bash
-   curl http://localhost:8000/vision/status
-   curl http://localhost:8000/health  # Check overall system
-   ```
-
-6. **Frontend Connection**
-   Ensure the frontend connects to the correct WebSocket:
-   ```javascript
-   // Should connect to:
-   ws://localhost:8000/ws/vision  // Enhanced API
-   // Not:
-   ws://localhost:8000/vision/ws/vision  // Old API
-   ```
-
-### Microphone Access Issues
-
-Run the enhanced diagnostic:
-```bash
-./fix-microphone.sh
-```
-
-This will:
-- Detect apps blocking microphone access
-- Provide browser-specific fixes
-- Test microphone configurations
-- Automatically resolve common issues
-
-### Autonomy Activation Issues
-
-If "activate full autonomy" doesn't work:
-
-1. **Test Autonomy System**
-   ```bash
-   python test_autonomy_activation.py
-   python verify_autonomy.py  # Enhanced verification script
-   ```
-
-2. **Check JARVIS Status**
-   ```bash
-   curl http://localhost:8000/voice/jarvis/status
-   curl http://localhost:8000/health
-   ```
-
-3. **Manual Activation**
-   - Click the mode button in UI
-   - Switch from "👤 Manual Mode" to "🤖 Autonomous ON"
-
-4. **Verify AI Core**
-   ```python
-   # In Python shell:
-   from backend.core.jarvis_ai_core import get_jarvis_ai_core
-   core = get_jarvis_ai_core()
-   print(core.get_status())
-   ```
-
-5. **Common Issues**
-   - **Claude API**: Ensure `ANTHROPIC_API_KEY` is set
-   - **Model Selection**: Default is `claude-3-opus-20240229`
-   - **Speech State**: Check SpeechRecognitionManager state
-   - **Browser Permissions**: Allow microphone and notifications
-
-### Claude API Issues
-
-If Claude integration isn't working:
-
-1. **Check API Key**
-   ```bash
-   # In .env file:
-   ANTHROPIC_API_KEY=your-key-here
-   ```
-
-2. **Test Claude Connection**
-   ```python
-   from chatbots.claude_chatbot import ClaudeChatbot
-   bot = ClaudeChatbot(api_key="your-key")
-   response = bot.generate_response("Hello")
-   print(response)
-   ```
-
-3. **Monitor API Usage**
-   - Check [Anthropic Console](https://console.anthropic.com/)
-   - Monitor rate limits and usage
-   - Ensure billing is active
-
-### Speech Recognition State Issues
-
-If speech recognition shows "already started" errors:
-
-1. **Use SpeechRecognitionManager**
-   ```javascript
-   // The new manager handles state properly
-   import SpeechRecognitionManager from './utils/SpeechRecognitionManager';
-   const manager = new SpeechRecognitionManager();
-   ```
-
-2. **Debug Speech State**
-   - Open browser console
-   - Look for SpeechDebug component output
-   - Check for browser autoplay policies
-
-### App Control Not Working (Enhanced in v5.4)
-
-If commands like "Close WhatsApp" don't execute:
-
-1. **Test Dynamic App Control**
-   ```bash
-   # Test the new dynamic app control
-   python backend/test_dynamic_app_control.py
-   
-   # Test specific app
-   python backend/test_dynamic_app_control.py WhatsApp
-   ```
-
-2. **Verify App Detection**
-   ```python
-   from backend.system_control.dynamic_app_controller import get_dynamic_app_controller
-   controller = get_dynamic_app_controller()
-   
-   # List all running apps
-   apps = controller.get_all_running_apps()
-   for app in apps:
-       print(f"{app['name']} - PID: {app['pid']}")
-   
-   # Find specific app
-   found = controller.find_app_by_fuzzy_name("whatsapp")
-   print(f"Found: {found}")
-   ```
-
-3. **Check Permissions**
-   - macOS System Preferences → Security & Privacy
-   - Enable Accessibility for Terminal/Python
-   - Enable Automation permissions
-
-4. **Common Issues Fixed in v5.4**
-   - Dynamic app detection without hardcoding
-   - Fuzzy name matching for any app
-   - Multiple closure methods (graceful → force)
-   - Works with ANY macOS application
-
-### ML Command Routing Issues (v5.5)
-
-If commands are not routing correctly with the ML system:
-
-1. **Test ML Routing**
-   ```bash
-   # Test the advanced ML routing
-   python backend/test_advanced_whatsapp_fix.py
-   
-   # See zero hardcoding demo
-   python backend/demo_zero_hardcoding.py
-   ```
-
-2. **Apply ML Fix**
-   ```bash
-   # Apply the ML routing system
-   python backend/apply_advanced_whatsapp_fix.py
-   ```
-
-3. **Check Learning Database**
-   ```python
-   # The ML system learns from usage
-   # Database location: ~/.jarvis/learning/command_patterns.db
-   
-   # View learning metrics
-   from backend.voice.advanced_intelligent_command_handler import AdvancedIntelligentCommandHandler
-   handler = AdvancedIntelligentCommandHandler()
-   metrics = handler.get_performance_metrics()
-   print(f"Patterns learned: {metrics['learning']['total_patterns_learned']}")
-   print(f"Accuracy: {metrics['performance']['accuracy']}")
-   ```
-
-4. **Provide Feedback**
-   ```python
-   # If a command is misrouted, teach the system
-   handler.provide_feedback(
-       command="open WhatsApp",
-       was_correct=False,
-       correct_type="system"  # Should be system, not vision
-   )
-   ```
-
-5. **Common ML Solutions**
-   - **Low accuracy**: System improves with use - keep using it!
-   - **Wrong routing**: Provide feedback to correct
-   - **Slow learning**: Check if learning is enabled
-   - **No Swift**: Python ML fallback works great!
+1. Fork the repository
+2. Create a feature branch
+3. Add your vision provider plugin
+4. Submit a pull request
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) file.
+MIT License - Feel free to use in your own projects!
 
 ## 🙏 Acknowledgments
 
-- **Anthropic** for Claude Opus 4 AI
-- **Marvel/Disney** for JARVIS inspiration
-- **OpenAI** for pioneering conversational AI
-- **Apple** for macOS integration capabilities
-- **Open Source Community** for invaluable tools
+- Anthropic for Claude AI
+- The open-source ML community
+- Tony Stark for the inspiration
 
 ---
 
 <p align="center">
-<strong>⭐ Star this repo to follow our journey to AGI!</strong><br>
-<em>"Sometimes you gotta run before you can walk." - Tony Stark</em>
+  <strong>Built with ❤️ by the JARVIS Team</strong><br>
+  <em>"The future of AI assistants is here, and it learns from you."</em>
 </p>
