@@ -317,14 +317,16 @@ class ClaudeCommandInterpreter:
                 follow_up_needed=False
             )
             
-        # Check if confirmation needed
+        # Check if confirmation needed (but not for vision commands)
         if intent.requires_confirmation or intent.safety_level == SafetyLevel.DANGEROUS:
-            return CommandResult(
-                success=False,
-                message=f"This command requires confirmation: {intent.action} {intent.target}",
-                data={"intent": intent},
-                follow_up_needed=True
-            )
+            # Exception for vision commands - they're always safe to execute
+            if intent.category != CommandCategory.VISION and intent.action not in ["describe_screen", "analyze_window", "check_screen"]:
+                return CommandResult(
+                    success=False,
+                    message=f"This command requires confirmation: {intent.action} {intent.target}",
+                    data={"intent": intent},
+                    follow_up_needed=True
+                )
             
         # Execute based on category
         try:

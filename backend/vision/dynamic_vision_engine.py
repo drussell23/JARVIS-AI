@@ -285,11 +285,24 @@ class DynamicVisionEngine:
             'context': context or {}
         })
         
-        # Analyze intent using ML
-        intent = self._analyze_intent(command, context)
+        # Check if this is a vision capability confirmation question
+        confirmation_phrases = ['can you see', 'do you see', 'are you able to see', 'can you view']
+        is_confirmation = any(phrase in command.lower() for phrase in confirmation_phrases)
         
-        # Find best matching capability
-        capability_scores = self._score_capabilities_for_intent(intent)
+        if is_confirmation:
+            # For confirmation questions, route to screen description with high confidence
+            intent = self._analyze_intent("describe my screen", context)
+            # Override confidence scores to ensure proper execution
+            capability_scores = {'basic_describe_screen': 0.95}
+            
+            # Also set a flag in context to format response as confirmation
+            if context is None:
+                context = {}
+            context['is_vision_confirmation'] = True
+        else:
+            # Normal intent analysis
+            intent = self._analyze_intent(command, context)
+            capability_scores = self._score_capabilities_for_intent(intent)
         
         if not capability_scores:
             # No capabilities found - try to learn what the user wants

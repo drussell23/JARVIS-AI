@@ -118,20 +118,61 @@ class IntelligentCommandHandler:
     
     async def _handle_vision_command(self, text: str, classification: Dict[str, Any]) -> str:
         """Handle vision analysis commands"""
-        # This would integrate with your vision system
-        # For now, return a placeholder that indicates vision handling
-        entities = classification.get('entities', {})
-        intent = classification.get('intent', 'analyze_screen')
-        
-        if intent == 'check_notifications':
-            return f"Let me check for notifications, {self.user_name}..."
-        elif intent == 'analyze_screen':
-            return f"I'll analyze your screen now, {self.user_name}..."
-        elif intent == 'find_element':
-            element = entities.get('element', 'that')
-            return f"Let me look for {element} on your screen..."
-        else:
-            return f"I'll examine your workspace, {self.user_name}..."
+        try:
+            # Build context with classification insights
+            context = {
+                "classification": classification,
+                "entities": classification.get('entities', {}),
+                "intent": classification.get('intent', 'unknown'),
+                "user": self.user_name,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+            # Use command interpreter for vision commands too
+            intent = await self.command_interpreter.interpret_command(text, context)
+            
+            # For "can you see my screen?" type questions, ensure we get a proper response
+            if any(phrase in text.lower() for phrase in ['can you see', 'do you see', 'are you able to see']):
+                # This is a yes/no question about vision capability
+                # Add confirmation flag to context
+                context['is_vision_confirmation'] = True
+                
+                # Re-interpret with the updated context
+                intent = await self.command_interpreter.interpret_command(text, context)
+                
+                # Execute the vision command to get screen content
+                result = await self.command_interpreter.execute_intent(intent)
+                
+                if result.success and result.message:
+                    # Check if we got the unwanted "options" response
+                    if "I'm not quite sure what you'd like me to do" in result.message:
+                        # Force a direct screen analysis instead
+                        direct_intent = await self.command_interpreter.interpret_command("describe my screen", context)
+                        direct_result = await self.command_interpreter.execute_intent(direct_intent)
+                        if direct_result.success and direct_result.message:
+                            return f"Yes {self.user_name}, I can see your screen. {direct_result.message}"
+                    else:
+                        # Format as a confirmation with description
+                        return f"Yes {self.user_name}, I can see your screen. {result.message}"
+                else:
+                    return f"I'm having trouble accessing the screen right now, {self.user_name}."
+            
+            # For other vision commands, execute normally
+            if intent.confidence >= 0.6:
+                result = await self.command_interpreter.execute_intent(intent)
+                
+                if result.success:
+                    # Learn from successful execution
+                    await self.router.provide_feedback(text, 'vision', True)
+                    return result.message  # Return the actual vision analysis
+                else:
+                    return f"I couldn't analyze the screen: {result.message}"
+            else:
+                return f"I'm not confident about that vision command, {self.user_name}. Could you rephrase?"
+                
+        except Exception as e:
+            logger.error(f"Vision command error: {e}")
+            return f"I encountered an error with the vision system, {self.user_name}."
     
     async def _handle_conversation(self, text: str, classification: Dict[str, Any]) -> str:
         """Handle conversational queries"""
@@ -163,6 +204,12 @@ class IntelligentCommandHandler:
             return f"I've opened {intent.target} for you, {self.user_name}."
         elif intent.action == "switch_app":
             return f"Switched to {intent.target}, {self.user_name}."
+        elif intent.action in ["describe_screen", "analyze_window", "check_screen"]:
+            # For vision commands, return the actual analysis result
+            if hasattr(result, 'message') and result.message:
+                return result.message
+            else:
+                return f"I've analyzed your screen, {self.user_name}."
         else:
             return f"Command executed successfully, {self.user_name}."
     
