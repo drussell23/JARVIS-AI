@@ -49,9 +49,18 @@ class VisionActionHandler:
         self.discovered_actions: Dict[str, DynamicAction] = {}
         self.learning_data = {"patterns": {}, "feedback": [], "success_rates": {}}
         self.vision_modules = {}
+        self.workspace_analyzer = None
         
         # Initialize system
         self._init_dynamic_system()
+        
+        # Initialize workspace analyzer for multi-window support
+        try:
+            from vision.workspace_analyzer import WorkspaceAnalyzer
+            self.workspace_analyzer = WorkspaceAnalyzer()
+            logger.info("Multi-window workspace analyzer initialized")
+        except Exception as e:
+            logger.warning(f"Workspace analyzer not available: {e}")
         
     def _init_dynamic_system(self):
         """Initialize dynamic vision system"""
@@ -225,6 +234,10 @@ class VisionActionHandler:
             logger.info(f"Fuzzy matched '{action_name}' to '{best_match}'")
             return await self._execute_action(best_match, params)
             
+        # Check if it's a multi-window query
+        if self.workspace_analyzer and self._is_multi_window_query(params):
+            return await self.analyze_multi_windows(params)
+        
         # No match found
         alternatives = self._suggest_alternatives(action_name)
         return VisionActionResult(
@@ -477,6 +490,83 @@ class VisionActionHandler:
         except:
             # Fallback to direct processing
             return await self.process_vision_action("check_screen", params)
+    
+    def _is_multi_window_query(self, params: Dict[str, Any]) -> bool:
+        """Check if the query is asking about multiple windows"""
+        query = params.get('query', '').lower()
+        multi_window_keywords = [
+            'other window', 'other screen', 'all window', 'all screen',
+            'multiple window', 'multiple screen', 'every window', 'every screen',
+            'workspace', 'everything', 'all application', 'other application',
+            'besides', 'except', 'not looking at', 'not focused', 'entire desktop',
+            'all my monitors', 'other monitors', 'different windows'
+        ]
+        
+        return any(keyword in query for keyword in multi_window_keywords)
+    
+    async def analyze_multi_windows(self, params: Dict[str, Any] = None) -> VisionActionResult:
+        """Analyze multiple windows using workspace analyzer"""
+        params = params or {}
+        query = params.get('query', 'What is happening on all my screens and windows?')
+        
+        try:
+            logger.info(f"Analyzing multi-window workspace with query: {query}")
+            
+            # Use workspace analyzer for comprehensive analysis
+            result = await self.workspace_analyzer.analyze_workspace(query)
+            
+            # Build comprehensive description
+            description_parts = []
+            
+            # Add primary task
+            description_parts.append(result.focused_task)
+            
+            # Add workspace context
+            if result.workspace_context:
+                description_parts.append(f"\n\nWorkspace: {result.workspace_context}")
+            
+            # Add window relationships
+            if result.window_relationships:
+                description_parts.append("\n\nWindow Relationships:")
+                for rel, details in list(result.window_relationships.items())[:3]:
+                    if details:
+                        description_parts.append(f"- {details[0]}")
+            
+            # Add notifications
+            if result.important_notifications:
+                description_parts.append("\n\nNotifications:")
+                for notif in result.important_notifications[:3]:
+                    description_parts.append(f"- {notif}")
+            
+            # Add suggestions
+            if result.suggestions:
+                description_parts.append("\n\nSuggestions:")
+                for suggestion in result.suggestions[:2]:
+                    description_parts.append(f"- {suggestion}")
+            
+            description = "\n".join(description_parts)
+            
+            return VisionActionResult(
+                success=True,
+                confidence=result.confidence,
+                description=description,
+                data={
+                    'analysis_type': 'multi_window',
+                    'windows_analyzed': len(result.window_relationships) if result.window_relationships else 0,
+                    'focused_task': result.focused_task,
+                    'has_notifications': len(result.important_notifications) > 0
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in multi-window analysis: {e}", exc_info=True)
+            return VisionActionResult(
+                success=False,
+                confidence=0.0,
+                description=f"I encountered an error analyzing multiple windows: {str(e)}",
+                error=str(e),
+                data={'analysis_type': 'multi_window'}
+            )
 
 
 # Import os for env vars

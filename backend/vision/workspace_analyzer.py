@@ -74,26 +74,59 @@ class WorkspaceAnalyzer:
         if blocked:
             logger.info(f"Privacy: Blocked {len(blocked)} windows from analysis")
         
-        # Use smart query routing to select relevant windows
-        route = self.query_router.route_query(query, filtered_windows)
-        
-        # Capture only the relevant windows
-        if route.capture_all:
-            # For overview queries, capture representative sample
-            captures = await self.capture_system.capture_multiple_windows()
-        else:
-            # Capture specific windows based on routing
+        # Use dynamic multi-window engine for intelligent window selection
+        try:
+            from .dynamic_multi_window_engine import get_dynamic_multi_window_engine
+            dynamic_engine = get_dynamic_multi_window_engine()
+            
+            # Get dynamic analysis
+            analysis = dynamic_engine.analyze_windows_for_query(query, filtered_windows)
+            
+            # Capture windows based on dynamic analysis
             captures = []
-            for window in route.target_windows[:5]:  # Limit to 5
+            
+            # Capture primary windows with full resolution
+            for window in analysis.primary_windows:
                 try:
                     capture = await self.capture_system._async_capture_window(
-                        window, 
-                        1.0 if window.is_focused else 0.5
+                        window, 1.0  # Full resolution for primary windows
                     )
                     captures.append(capture)
                 except Exception as e:
-                    logger.warning(f"Failed to capture {window.app_name}: {e}")
-                    # Continue with other windows instead of failing entirely
+                    logger.warning(f"Failed to capture primary window {window.app_name}: {e}")
+            
+            # Capture context windows with reduced resolution
+            for window in analysis.context_windows[:3]:  # Limit context windows
+                try:
+                    capture = await self.capture_system._async_capture_window(
+                        window, 0.5  # Half resolution for context
+                    )
+                    captures.append(capture)
+                except Exception as e:
+                    logger.warning(f"Failed to capture context window {window.app_name}: {e}")
+                    
+        except Exception as e:
+            logger.warning(f"Dynamic analysis failed, using fallback: {e}")
+            # Fallback to smart query routing
+            route = self.query_router.route_query(query, filtered_windows)
+            
+            # Capture only the relevant windows
+            if route.capture_all:
+                # For overview queries, capture representative sample
+                captures = await self.capture_system.capture_multiple_windows()
+            else:
+                # Capture specific windows based on routing
+                captures = []
+                for window in route.target_windows[:5]:  # Limit to 5
+                    try:
+                        capture = await self.capture_system._async_capture_window(
+                            window, 
+                            1.0 if window.is_focused else 0.5
+                        )
+                        captures.append(capture)
+                    except Exception as e:
+                        logger.warning(f"Failed to capture {window.app_name}: {e}")
+                        # Continue with other windows instead of failing entirely
         
         if not captures:
             # Fall back to basic window info without screenshots
@@ -101,7 +134,7 @@ class WorkspaceAnalyzer:
             filtered_windows, _ = self.privacy_controls.filter_windows(all_windows)
             
             # Still try to provide useful info based on window titles
-            return self._analyze_from_window_info_only(filtered_windows, query, route)
+            return self._analyze_from_window_info_only(filtered_windows, query)
         
         # Use Claude for analysis if available
         if self.claude_client and len(captures) > 0:
@@ -209,7 +242,7 @@ Keep the ENTIRE response under 100 words. Focus on the primary window."""
             return self._analyze_basic(captures)
     
     def _analyze_from_window_info_only(self, windows: List[WindowInfo], 
-                                       query: str, route: QueryRoute) -> WorkspaceAnalysis:
+                                       query: str, route: Optional[QueryRoute] = None) -> WorkspaceAnalysis:
         """Analyze workspace using only window titles when captures fail"""
         # Find focused window
         focused_window = next((w for w in windows if w.is_focused), None)
@@ -225,17 +258,23 @@ Keep the ENTIRE response under 100 words. Focus on the primary window."""
         # Detect window relationships
         relationships = self.relationship_detector.detect_relationships(windows)
         
-        # Build context based on query type
-        if route.intent == QueryIntent.MESSAGES:
-            # Look for communication apps
-            comm_apps = ['Discord', 'Slack', 'Messages', 'Mail', 'WhatsApp', 'Telegram']
-            comm_windows = [w for w in windows if any(app in w.app_name for app in comm_apps)]
-            if comm_windows:
-                context = f"Communication apps open: {', '.join(w.app_name for w in comm_windows)}"
+        # Build context using dynamic analysis
+        try:
+            from .dynamic_multi_window_engine import get_dynamic_multi_window_engine
+            dynamic_engine = get_dynamic_multi_window_engine()
+            
+            # Get dynamic analysis for context
+            analysis = dynamic_engine.analyze_windows_for_query(query, windows)
+            
+            if analysis.primary_windows:
+                primary_apps = [w.app_name for w in analysis.primary_windows]
+                context = f"Primary focus on: {', '.join(primary_apps)}"
+                if analysis.context_windows:
+                    context += f" with {len(analysis.context_windows)} related windows"
             else:
-                context = "No communication apps detected"
-        else:
-            # General context
+                context = f"{len(windows)} windows open across {len(set(w.app_name for w in windows))} applications"
+        except:
+            # Fallback context
             context = f"{len(windows)} windows open across {len(set(w.app_name for w in windows))} applications"
         
         # Check for important notifications in window titles

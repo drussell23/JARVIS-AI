@@ -255,35 +255,44 @@ class MultiWindowCapture:
     
     def _select_windows_for_query(self, windows: List[WindowInfo], 
                                 query_type: Optional[str]) -> List[WindowInfo]:
-        """Select relevant windows based on query type"""
+        """Select relevant windows using dynamic ML-based analysis"""
         
-        # Always include focused window first
-        focused = [w for w in windows if w.is_focused]
-        others = [w for w in windows if not w.is_focused]
-        
-        if query_type == "messages":
-            # Prioritize communication apps
-            comm_apps = ['Discord', 'Slack', 'Messages', 'Mail', 'Telegram']
-            comm_windows = [w for w in others 
-                          if any(app in w.app_name for app in comm_apps)]
-            return focused + comm_windows + others
+        # Use dynamic multi-window engine for intelligent selection
+        try:
+            from .dynamic_multi_window_engine import get_dynamic_multi_window_engine
             
-        elif query_type == "errors":
-            # Prioritize terminals and logs
-            dev_apps = ['Terminal', 'iTerm', 'Console', 'Activity Monitor']
-            dev_windows = [w for w in others 
-                         if any(app in w.app_name for app in dev_apps)]
-            return focused + dev_windows + others
+            # Create a query based on the query type
+            if query_type:
+                query = f"Show me windows related to {query_type}"
+            else:
+                query = "Show me all relevant windows"
             
-        elif query_type == "documentation":
-            # Prioritize browsers and doc apps
-            doc_apps = ['Chrome', 'Safari', 'Firefox', 'Preview', 'Notes']
-            doc_windows = [w for w in others 
-                         if any(app in w.app_name for app in doc_apps)]
-            return focused + doc_windows + others
+            # Get dynamic analysis
+            engine = get_dynamic_multi_window_engine()
+            analysis = engine.analyze_windows_for_query(query, windows)
             
-        else:
-            # Default: focused window + largest windows
+            # Combine primary and context windows
+            selected_windows = analysis.primary_windows + analysis.context_windows
+            
+            # If no windows selected by ML, fall back to basic selection
+            if not selected_windows:
+                # Always include focused window first
+                focused = [w for w in windows if w.is_focused]
+                others = [w for w in windows if not w.is_focused]
+                
+                # Sort others by size (larger windows likely more important)
+                others.sort(key=lambda w: w.bounds['width'] * w.bounds['height'], 
+                           reverse=True)
+                
+                selected_windows = focused + others
+            
+            return selected_windows
+            
+        except Exception as e:
+            logger.warning(f"Dynamic window selection failed: {e}")
+            # Fallback: focused window + largest windows
+            focused = [w for w in windows if w.is_focused]
+            others = [w for w in windows if not w.is_focused]
             others.sort(key=lambda w: w.bounds['width'] * w.bounds['height'], 
                        reverse=True)
             return focused + others

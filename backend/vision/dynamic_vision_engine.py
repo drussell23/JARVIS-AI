@@ -111,25 +111,45 @@ class DynamicVisionEngine:
         async def describe_screen_capability(**kwargs):
             """Describe what's on the screen"""
             try:
-                from vision.screen_capture_fallback import capture_screen_fallback
-                from PIL import Image
-                screenshot = capture_screen_fallback()
-                if screenshot is not None:
-                    if isinstance(screenshot, Image.Image):
-                        return f"I captured the screen. The screen shows a {screenshot.size[0]}x{screenshot.size[1]} display with your current application."
+                from vision.screen_capture_fallback import capture_with_intelligence
+                import os
+                
+                # Check if Claude API is available
+                api_key = os.getenv("ANTHROPIC_API_KEY")
+                use_claude = api_key is not None
+                
+                # Get the query from kwargs or use default
+                query = kwargs.get('query', 'Please describe in detail what you see on my screen. Include any applications, windows, icons, or content visible.')
+                
+                # Use intelligent capture with Claude
+                result = capture_with_intelligence(query=query, use_claude=use_claude)
+                
+                if result['success']:
+                    if result.get('intelligence_used') and result.get('analysis'):
+                        # Return Claude's analysis
+                        return result['analysis']
                     else:
-                        return "I captured the screen. The screen shows your desktop or current application."
+                        # Fallback without Claude
+                        return "I captured the screen but Claude Vision is not available. To enable intelligent screen analysis, please ensure ANTHROPIC_API_KEY is set."
                 else:
-                    return "Unable to capture screen at the moment. Please check screen recording permissions in System Preferences."
+                    return result.get('error', 'Unable to capture screen. Please check screen recording permissions.')
             except Exception as e:
-                return f"Error capturing screen: {e}"
+                return f"Error analyzing screen: {e}"
         
         self.register_capability("basic_describe_screen", VisionCapability(
             name="basic_describe_screen",
             description="Describe what's on the screen",
             handler=describe_screen_capability,
-            confidence_threshold=0.6,
-            examples=["describe my screen", "what's on my screen", "tell me what you see"]
+            confidence_threshold=0.3,
+            examples=[
+                "describe my screen", 
+                "what's on my screen", 
+                "tell me what you see",
+                "describe what you see on my screen",
+                "what am I looking at",
+                "can you describe what I'm looking at",
+                "describe what is on my screen"
+            ]
         ))
         
         # Window analysis capability
@@ -279,7 +299,7 @@ class DynamicVisionEngine:
         best_capability = max(capability_scores, key=capability_scores.get)
         confidence = capability_scores[best_capability]
         
-        if confidence < 0.5:
+        if confidence < 0.3:
             # Low confidence - ask for clarification
             return await self._clarify_intent(intent, capability_scores)
             
