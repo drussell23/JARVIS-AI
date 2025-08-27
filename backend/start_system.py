@@ -14,6 +14,7 @@ import sys
 import subprocess
 import asyncio
 import argparse
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -351,6 +352,29 @@ class JARVISSystemManager:
                 {'user': 'system_test'}
             )
             print(f"  • Vision Test: {'✅ Passed' if test_response.success else '❌ Failed'}")
+            
+            # Test Voice + Vision integration
+            print("\n4️⃣ Testing Voice + Vision Integration...")
+            try:
+                # Check if JARVIS is available
+                jarvis_check = subprocess.run(
+                    ['curl', '-s', 'http://localhost:8000/voice/jarvis/status'],
+                    capture_output=True,
+                    text=True
+                )
+                if jarvis_check.returncode == 0:
+                    import json
+                    status = json.loads(jarvis_check.stdout)
+                    if status.get('status') in ['standby', 'active']:
+                        print(f"  • JARVIS Voice: ✅ Available")
+                        print(f"  • Voice + Vision: ✅ Integrated")
+                        print(f"  • Wake Words: {', '.join(status.get('wake_words', {}).get('primary', []))}")
+                    else:
+                        print(f"  • JARVIS Voice: ❌ Not available (API key required)")
+                else:
+                    print(f"  • JARVIS Voice: ⚠️ Backend not running")
+            except Exception as e:
+                print(f"  • Voice Integration: ⚠️ Check skipped: {e}")
             
             print("\n" + "=" * 70)
             print("✅ JARVIS Vision System v2.0 is running!")

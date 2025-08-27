@@ -366,6 +366,72 @@ await vision_system.provide_feedback(
 └─────────────────────────────────────────────────────────┘
 ```
 
+## 🎙️ Voice + Vision Integration
+
+The Vision System v2.0 seamlessly integrates with JARVIS Voice for natural interaction:
+
+### Voice Command Flow
+```
+┌─────────────────────────────────────────────────────────┐
+│             Voice Input: "Hey JARVIS..."                │
+└────────────────────────┬────────────────────────────────┘
+                         │
+┌────────────────────────▼────────────────────────────────┐
+│                 JARVIS Voice System                      │
+│  • Wake Word Detection    • Natural Language Processing │
+│  • Voice Activity Detection • Emotion Recognition       │
+└────────────────────────┬────────────────────────────────┘
+                         │
+┌────────────────────────▼────────────────────────────────┐
+│              Vision System v2.0 Integration             │
+│  • ML Intent Classification • Zero Hardcoding           │
+│  • Automatic Vision Routing • Context Awareness         │
+└────────────────────────┬────────────────────────────────┘
+                         │
+┌────────────────────────▼────────────────────────────────┐
+│                 Vision Processing                        │
+│  • Screen Capture         • Claude Vision API           │
+│  • ML Analysis            • Intelligent Response        │
+└────────────────────────┬────────────────────────────────┘
+                         │
+┌────────────────────────▼────────────────────────────────┐
+│              Voice Response Generation                   │
+│  • Personalized Style     • Confidence Indication      │
+│  • Natural Language       • Learning from Interaction   │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Example Voice Commands
+```bash
+# Vision queries through voice
+"Hey JARVIS, what do you see on my screen?"
+"JARVIS, can you see what I'm working on?"
+"Hey JARVIS, describe my workspace"
+"JARVIS, analyze the error messages"
+"Hey JARVIS, what applications are open?"
+
+# The system will:
+# 1. Detect wake word and process natural language
+# 2. Route to Vision System v2.0 automatically
+# 3. Capture and analyze screen with ML
+# 4. Generate personalized voice response
+# 5. Learn from the interaction
+```
+
+### Setting Up Voice + Vision
+1. **Enable JARVIS Voice**:
+   ```bash
+   export ANTHROPIC_API_KEY="your-key"
+   python main.py
+   ```
+
+2. **Activate Voice Interface**:
+   ```bash
+   curl -X POST http://localhost:8000/voice/jarvis/activate
+   ```
+
+3. **Use Natural Commands**: Speak naturally - the ML system understands variations!
+
 ## 📊 Performance Benchmarks
 
 ### Response Time Distribution

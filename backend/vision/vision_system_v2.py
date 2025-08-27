@@ -29,7 +29,6 @@ try:
     PHASE4_AVAILABLE = True
 except ImportError:
     PHASE4_AVAILABLE = False
-    logger.warning("Phase 4 components not available")
 
 # Phase 5 imports
 try:
@@ -41,13 +40,18 @@ try:
     PHASE5_AVAILABLE = True
 except ImportError:
     PHASE5_AVAILABLE = False
-    logger.warning("Phase 5 components not available")
 
 # Import existing components for backward compatibility
 from .screen_capture_fallback import capture_with_intelligence
 from system_control.vision_action_handler import get_vision_action_handler
 
 logger = logging.getLogger(__name__)
+
+# Log import status
+if not PHASE4_AVAILABLE:
+    logger.warning("Phase 4 components not available")
+if not PHASE5_AVAILABLE:
+    logger.warning("Phase 5 components not available")
 
 
 @dataclass
@@ -108,7 +112,6 @@ class VisionSystemV2:
                 logger.info("Phase 4 advanced learning components initialized")
             except Exception as e:
                 logger.warning(f"Failed to initialize Phase 4 components: {e}")
-                PHASE4_AVAILABLE = False
         
         # Phase 5 components (if available)
         self.capability_generator = None
@@ -126,7 +129,6 @@ class VisionSystemV2:
                 logger.info("Phase 5 autonomous capability components initialized")
             except Exception as e:
                 logger.warning(f"Failed to initialize Phase 5 components: {e}")
-                PHASE5_AVAILABLE = False
         
         # Register vision handlers with routers
         self._register_neural_handlers()

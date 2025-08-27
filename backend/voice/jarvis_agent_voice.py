@@ -16,6 +16,15 @@ from voice.jarvis_personality_adapter import PersonalityAdapter
 from system_control import ClaudeCommandInterpreter, CommandCategory, SafetyLevel
 from chatbots.claude_chatbot import ClaudeChatbot
 
+
+# Vision System v2.0 Integration
+try:
+    from voice.vision_v2_integration import VisionV2Integration
+    VISION_V2_AVAILABLE = True
+except ImportError:
+    VISION_V2_AVAILABLE = False
+    logger.warning('Vision System v2.0 not available')
+
 logger = logging.getLogger(__name__)
 
 
@@ -65,7 +74,23 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
                     logger.info(f"[Voice]: {text}")
             self.voice_engine = MockVoiceEngine()
             
-        # Initialize vision integration if available
+                # Try Vision System v2.0 first (newest and best)
+        try:
+            if VISION_V2_AVAILABLE:
+                self.vision_v2 = VisionV2Integration()
+                if self.vision_v2.enabled:
+                    self.vision_enabled = True
+                    self.vision_v2_enabled = True
+                    logger.info("Vision System v2.0 initialized - ML-powered vision active")
+                else:
+                    self.vision_v2_enabled = False
+            else:
+                self.vision_v2_enabled = False
+        except Exception as e:
+            logger.error(f"Failed to initialize Vision System v2.0: {e}")
+            self.vision_v2_enabled = False
+            
+# Initialize vision integration if available
         self.vision_enabled = False
         self.intelligent_vision_enabled = False
         self.workspace_intelligence_enabled = False
@@ -414,6 +439,15 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             return f"Vision capabilities are not available, {self.user_name}. Please install the required dependencies."
             
         try:
+
+            # Use Vision System v2.0 if available (highest priority)
+            if hasattr(self, 'vision_v2_enabled') and self.vision_v2_enabled:
+                response = await self.vision_v2.handle_vision_command(text, {
+                    'user': self.user_name,
+                    'mode': self.command_mode
+                })
+                return response
+            
             # Use intelligent vision if available
             if self.intelligent_vision_enabled:
                 # Map common queries to intelligent analysis
