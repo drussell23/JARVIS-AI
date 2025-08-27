@@ -139,9 +139,15 @@ class IntelligentCommandHandler:
                 
                 # Re-interpret with the updated context
                 intent = await self.command_interpreter.interpret_command(text, context)
-                
-                # Execute the vision command to get screen content
-                result = await self.command_interpreter.execute_intent(intent)
+                's '                # Execute the vision command to get screen content with timeout
+                try:
+                    result = await asyncio.wait_for(
+                        self.command_interpreter.execute_intent(intent),
+                        timeout=30.0
+                    )
+                except asyncio.TimeoutError:
+                    logger.error("Vision command timed out after 30 seconds")
+                    return f"I'm sorry {self.user_name}, the vision analysis is taking too long. Please try again."
                 
                 if result.success and result.message:
                     # Check if we got the unwanted "options" response
@@ -159,7 +165,14 @@ class IntelligentCommandHandler:
             
             # For other vision commands, execute normally
             if intent.confidence >= 0.6:
-                result = await self.command_interpreter.execute_intent(intent)
+                try:
+                    result = await asyncio.wait_for(
+                        self.command_interpreter.execute_intent(intent),
+                        timeout=30.0
+                    )
+                except asyncio.TimeoutError:
+                    logger.error("Vision command timed out after 30 seconds")
+                    return f"I'm sorry {self.user_name}, the vision analysis is taking too long. Please try again."
                 
                 if result.success:
                     # Learn from successful execution
@@ -172,7 +185,19 @@ class IntelligentCommandHandler:
                 
         except Exception as e:
             logger.error(f"Vision command error: {e}")
-            return f"I encountered an error with the vision system, {self.user_name}."
+            error_msg = str(e).lower()
+            
+            # Provide specific error messages based on the error type
+            if "503" in error_msg or "service unavailable" in error_msg:
+                return f"The vision system is temporarily unavailable, {self.user_name}. Please try again in a moment."
+            elif "timeout" in error_msg:
+                return f"The vision analysis is taking too long, {self.user_name}. Please try again."
+            elif "connection" in error_msg or "connect" in error_msg:
+                return f"I'm having trouble connecting to the vision system, {self.user_name}. Please check if the service is running."
+            elif "permission" in error_msg or "denied" in error_msg:
+                return f"I don't have permission to access the screen, {self.user_name}. Please check the system permissions."
+            else:
+                return f"I encountered an error analyzing the screen: {str(e)[:100]}. Please try again, {self.user_name}."
     
     async def _handle_conversation(self, text: str, classification: Dict[str, Any]) -> str:
         """Handle conversational queries"""

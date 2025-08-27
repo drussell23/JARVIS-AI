@@ -1,10 +1,50 @@
 #!/usr/bin/env python3
 """
 Advanced Continuous Learning System for Vision System v2.0
-Integrates experience replay, meta-learning, and distributed capabilities
+This now uses the robust implementation if available
 """
 
-import torch
+# Try to use robust implementation first
+_ROBUST_AVAILABLE = False
+try:
+    from .integrate_robust_learning import (
+        get_advanced_continuous_learning as _get_robust,
+        AdvancedContinuousLearning as _RobustAdvancedContinuousLearning,
+        LearningTask as _RobustLearningTask,
+        FederatedUpdate as _RobustFederatedUpdate,
+        AdaptiveLearningRateAdjuster as _RobustAdaptiveLearningRateAdjuster,
+        PerformanceMonitor as _RobustPerformanceMonitor
+    )
+    _ROBUST_AVAILABLE = True
+except ImportError:
+    # Continue with original implementation below
+    pass
+
+# If robust is available, use those imports
+if _ROBUST_AVAILABLE:
+    get_advanced_continuous_learning = _get_robust
+    AdvancedContinuousLearning = _RobustAdvancedContinuousLearning
+    LearningTask = _RobustLearningTask
+    FederatedUpdate = _RobustFederatedUpdate
+    AdaptiveLearningRateAdjuster = _RobustAdaptiveLearningRateAdjuster
+    PerformanceMonitor = _RobustPerformanceMonitor
+    
+    # Set __all__ and skip the rest 
+    __all__ = [
+        'get_advanced_continuous_learning',
+        'AdvancedContinuousLearning',
+        'LearningTask',
+        'FederatedUpdate', 
+        'AdaptiveLearningRateAdjuster',
+        'PerformanceMonitor'
+    ]
+else:
+    # Continue with original implementation
+    pass
+
+# Only define original implementation if robust is not available
+if not _ROBUST_AVAILABLE:
+    import torch
 import torch.nn as nn
 import numpy as np
 from typing import Dict, List, Optional, Any, Tuple
@@ -18,6 +58,7 @@ from collections import defaultdict, deque
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
+import time
 
 from .experience_replay_system import get_experience_replay_system, Experience, ReplayBatch
 from .meta_learning_framework import get_meta_learning_framework, MetaLearningFramework
@@ -91,21 +132,32 @@ class AdvancedContinuousLearning:
         self.learning_thread: Optional[threading.Thread] = None
         self.running = True
         
-        # Start continuous learning
-        self._start_continuous_learning()
-        
-        logger.info("Advanced Continuous Learning System initialized")
+        # Start continuous learning (unless disabled)
+        import os
+        if os.getenv('DISABLE_CONTINUOUS_LEARNING', '').lower() != 'true':
+            self._start_continuous_learning()
+            logger.info("Advanced Continuous Learning System initialized")
+        else:
+            self.running = False
+            logger.warning("Continuous Learning DISABLED via environment variable")
     
     def _start_continuous_learning(self):
         """Start background learning threads"""
         def learning_loop():
+            # Create a new event loop for this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
             while self.running:
                 try:
-                    asyncio.run(self._learning_cycle())
-                    asyncio.sleep(60)  # Run cycle every minute
+                    # Run the learning cycle in the thread's event loop
+                    loop.run_until_complete(self._learning_cycle())
+                    time.sleep(60)  # Use time.sleep, not asyncio.sleep
                 except Exception as e:
                     logger.error(f"Learning cycle error: {e}")
-                    asyncio.sleep(300)  # Wait 5 minutes on error
+                    time.sleep(300)  # Wait 5 minutes on error
+            
+            loop.close()
         
         self.learning_thread = threading.Thread(target=learning_loop, daemon=True)
         self.learning_thread.start()

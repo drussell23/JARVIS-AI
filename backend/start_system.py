@@ -65,6 +65,56 @@ class JARVISSystemManager:
         print(f"🕐 System Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("=" * 70)
     
+    async def run_diagnostics(self):
+        """Run comprehensive system diagnostics"""
+        print("\n🔬 Running System Diagnostics...")
+        print("-" * 50)
+        
+        diagnostics = []
+        
+        # Check backend health
+        try:
+            import requests
+            response = requests.get("http://localhost:8000/health", timeout=5)
+            if response.status_code == 200:
+                health = response.json()
+                diagnostics.append(("✅", "Backend Health", f"Status: {health.get('status', 'unknown')}"))
+                memory = health.get('memory', {})
+                diagnostics.append(("ℹ️", "Memory Usage", f"{memory.get('percent_used', 0):.1f}% used"))
+            else:
+                diagnostics.append(("❌", "Backend Health", f"HTTP {response.status_code}"))
+        except Exception as e:
+            diagnostics.append(("❌", "Backend Health", f"Not responding: {str(e)[:50]}"))
+        
+        # Check learning system
+        try:
+            from vision.vision_system_v2 import get_vision_system_v2
+            vision = get_vision_system_v2()
+            stats = await vision.get_system_stats()
+            cl = stats.get('continuous_learner', {})
+            if cl:
+                diagnostics.append(("✅", "Learning System", cl.get('status', 'unknown')))
+            else:
+                diagnostics.append(("⚠️", "Learning System", "Not initialized"))
+        except Exception as e:
+            diagnostics.append(("❌", "Learning System", f"Error: {str(e)[:50]}"))
+        
+        # Check resources
+        try:
+            import psutil
+            cpu_percent = psutil.cpu_percent(interval=0.1)
+            memory = psutil.virtual_memory()
+            diagnostics.append(("ℹ️", "CPU Usage", f"{cpu_percent:.1f}%"))
+            diagnostics.append(("ℹ️", "Available Memory", f"{memory.available / (1024**3):.1f}GB"))
+        except:
+            pass
+        
+        # Display diagnostics
+        for status, component, details in diagnostics:
+            print(f"{status} {component:<20} {details}")
+        
+        print("-" * 50)
+    
     def check_requirements(self):
         """Check all system requirements"""
         print("\n🔍 Checking System Requirements...")
@@ -310,12 +360,26 @@ class JARVISSystemManager:
         print("5. Start Autonomous Mode")
         print("6. Run Tests")
         print("7. Start ML Audio System")
-        print("8. Exit")
+        print("8. Run System Diagnostics")
+        print("9. Exit")
         print("-" * 50)
     
     async def start_full_system(self):
         """Start the complete JARVIS Vision System v2.0"""
         print("\n🚀 Starting JARVIS Vision System v2.0...")
+        
+        # Apply robust continuous learning if available
+        print("\n🧠 Configuring Robust Continuous Learning...")
+        try:
+            result = subprocess.run([sys.executable, "apply_robust_learning.py"], 
+                                  capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                print("✅ Robust continuous learning configured successfully")
+                self.components['vision']['features'].append('robust_learning')
+            else:
+                print("⚠️  Standard continuous learning will be used")
+        except Exception as e:
+            print(f"⚠️  Could not configure robust learning: {e}")
         
         # Start backend with Vision System v2.0
         print("\n1️⃣ Starting FastAPI Backend with Vision v2.0...")
@@ -344,6 +408,19 @@ class JARVISSystemManager:
             print(f"  • Learned Patterns: {stats['learned_patterns']}")
             print(f"  • Success Rate: {stats['success_rate']:.1%}")
             print(f"  • Transformer Routing: {'✅' if stats['transformer_routing']['enabled'] else '❌'}")
+            print(f"  • Robust Learning: {'✅ Active' if 'robust_learning' in self.components['vision']['features'] else '⚠️  Standard'}")
+            
+            # Show continuous learning status
+            if 'continuous_learner' in stats and stats['continuous_learner']:
+                cl = stats['continuous_learner']
+                print(f"\n🧠 Continuous Learning Status:")
+                print(f"  • Status: {'✅ Healthy' if cl.get('status') == 'healthy' else '⚠️  ' + cl.get('status', 'unknown')}")
+                if cl.get('resources'):
+                    res = cl['resources']
+                    print(f"  • CPU Usage: {res.get('cpu_percent', 0):.1f}% / {res.get('max_cpu_percent', 40)}%")
+                    print(f"  • Memory: {res.get('memory_percent', 0):.1f}% / {res.get('max_memory_percent', 25)}%")
+                    print(f"  • Load Factor: {res.get('load_factor', 0):.2f}")
+                    print(f"  • Throttled: {'Yes' if res.get('throttled', False) else 'No'}")
             
             # Test vision capability
             print("\n3️⃣ Testing Vision Capabilities...")
@@ -405,6 +482,19 @@ class JARVISSystemManager:
     async def start_backend_only(self):
         """Start only the backend API"""
         print("\n🎯 Starting Backend API...")
+        
+        # Apply robust continuous learning if available
+        print("\n🧠 Configuring Robust Continuous Learning...")
+        try:
+            result = subprocess.run([sys.executable, "apply_robust_learning.py"], 
+                                  capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                print("✅ Robust continuous learning configured successfully")
+            else:
+                print("⚠️  Standard continuous learning will be used")
+        except Exception as e:
+            print(f"⚠️  Could not configure robust learning: {e}")
+        
         subprocess.run([sys.executable, "main.py", "--port", "8000"])
     
     async def start_unified_agent(self):
@@ -636,7 +726,7 @@ async def main():
     if args.mode == 'full':
         # Interactive mode
         manager.display_startup_options()
-        choice = input("\n👉 Select option (1-8): ")
+        choice = input("\n👉 Select option (1-9): ")
         
         if choice == '1':
             await manager.start_full_system()
@@ -653,6 +743,8 @@ async def main():
             await manager.run_tests()
         elif choice == '7':
             await manager.start_ml_audio_system()
+        elif choice == '8':
+            await manager.run_diagnostics()
         else:
             print("👋 Goodbye!")
     

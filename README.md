@@ -54,12 +54,15 @@
 - ✅ Capability Combination: Complex task composition
 
 ### Phase 4 Complete - Continuous Learning with Experience Replay
+- ✅ **Robust Continuous Learning**: Resource-aware learning with adaptive scheduling
 - ✅ Experience Replay System: 10,000+ interaction buffer
 - ✅ Pattern Mining: Automatic pattern extraction
-- ✅ Model Retraining: Periodic performance improvement
+- ✅ Model Retraining: Periodic performance improvement  
 - ✅ Meta-Learning: Strategy selection and adaptation
 - ✅ Catastrophic Forgetting Prevention
 - ✅ Privacy-Preserving Federated Learning
+- ✅ **CPU/Memory Limits**: Automatic throttling under high load
+- ✅ **Health Monitoring**: Self-healing with graceful degradation
 
 ### Phase 3 Complete - Production Neural Routing (<100ms)
 - ✅ Transformer-based routing with <100ms latency
@@ -179,9 +182,14 @@ Lightning-fast command routing for production readiness.
 - Handler accuracy: 98.2%
 
 ### Phase 4: Continuous Learning
-Self-improving system that gets smarter over time.
+Self-improving system that gets smarter over time with **robust resource management**.
 
 **Key Components:**
+- **Robust Learning System**: Resource-aware continuous learning
+  - CPU limit: 40% (configurable)
+  - Memory limit: 25% (configurable)
+  - Automatic throttling under load
+  - Health monitoring & self-healing
 - **Experience Replay**: 10,000+ interaction buffer
 - **Pattern Mining**: Extracts common patterns
 - **Model Retraining**: Periodic performance updates
@@ -189,9 +197,12 @@ Self-improving system that gets smarter over time.
 
 **Capabilities:**
 - Learns from failures and successes
-- Prevents catastrophic forgetting
+- Prevents catastrophic forgetting  
 - Privacy-preserving federated learning
 - Automatic hyperparameter tuning
+- **Adaptive Scheduling**: Adjusts learning based on system load
+- **Graceful Degradation**: Maintains system responsiveness
+- **Resource Monitoring**: Real-time CPU/memory tracking
 
 ### Phase 5: Autonomous Capabilities
 Self-generating system that creates new features.
@@ -492,12 +503,18 @@ python test_vision_v2_phase5.py  # Comprehensive test
 # Required
 ANTHROPIC_API_KEY="your-api-key"
 
-# Optional
+# Optional - Vision & Learning
 VISION_MODEL="sentence-transformers/all-MiniLM-L6-v2"
 CONFIDENCE_THRESHOLD="0.7"
 MAX_CACHE_SIZE="1000"
 ENABLE_LEARNING="true"
 ROLLOUT_STRATEGY="percentage"  # or "user_group", "canary"
+
+# Optional - Robust Continuous Learning
+DISABLE_CONTINUOUS_LEARNING="false"  # Set to "true" to disable
+LEARNING_MAX_CPU_PERCENT="40"        # Maximum CPU % for learning
+LEARNING_MAX_MEMORY_PERCENT="25"     # Maximum memory % for learning
+LEARNING_MIN_FREE_MEMORY_MB="1500"   # Minimum free memory required
 ```
 
 ### Configuration File (config.json)
@@ -2244,7 +2261,34 @@ curl http://localhost:8000/vision/status
 - Verify all vision dependencies are installed
 - Look for import errors in logs
 
-#### **2. Slow Performance**
+#### **2. High CPU Usage from Continuous Learning**
+
+**Symptoms:**
+- CPU usage near 100%
+- Backend becomes unresponsive
+- 503 errors on vision commands
+
+**Solutions:**
+```bash
+# Solution 1: Enable robust learning (automatic in latest version)
+python apply_robust_learning.py
+
+# Solution 2: Temporarily disable continuous learning
+export DISABLE_CONTINUOUS_LEARNING=true
+python main.py
+
+# Solution 3: Adjust resource limits
+export LEARNING_MAX_CPU_PERCENT=30  # Lower CPU limit
+export LEARNING_MAX_MEMORY_PERCENT=20  # Lower memory limit
+```
+
+**Monitor Learning Status:**
+```python
+# Check learning system health
+curl http://localhost:8000/api/learning/status
+```
+
+#### **3. Slow Performance**
 
 **Symptoms:**
 - Vision commands take too long

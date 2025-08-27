@@ -290,20 +290,40 @@ async def toggle_monitoring(enabled: bool = True):
 
 @router.post("/analyze_now")
 async def analyze_current_screen():
-    """Analyze screen immediately"""
+    """Analyze screen immediately with timeout"""
     if not vision_ws_manager.vision_monitor:
         raise HTTPException(status_code=503, detail="Vision monitor not available")
     
-    analysis = await vision_ws_manager.vision_monitor.analyze_current_screen()
-    
-    # Process through AI core
-    ai_analysis = await vision_ws_manager.ai_core.process_vision(
-        analysis.get("screenshot", {}),
-        mode="multi"
-    )
-    
-    return {
-        "raw_analysis": analysis,
-        "ai_analysis": ai_analysis,
-        "timestamp": datetime.now().isoformat()
-    }
+    try:
+        # Add 30 second timeout for vision analysis
+        analysis = await asyncio.wait_for(
+            vision_ws_manager.vision_monitor.analyze_current_screen(),
+            timeout=30.0
+        )
+        
+        # Process through AI core with 15 second timeout
+        ai_analysis = await asyncio.wait_for(
+            vision_ws_manager.ai_core.process_vision(
+                analysis.get("screenshot", {}),
+                mode="multi"
+            ),
+            timeout=15.0
+        )
+        
+        return {
+            "raw_analysis": analysis,
+            "ai_analysis": ai_analysis,
+            "timestamp": datetime.now().isoformat()
+        }
+    except asyncio.TimeoutError:
+        logger.error("Vision analysis timed out after 30 seconds")
+        raise HTTPException(
+            status_code=504,
+            detail="Vision analysis timed out. Please try again."
+        )
+    except Exception as e:
+        logger.error(f"Vision analysis error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Vision analysis failed: {str(e)}"
+        )
