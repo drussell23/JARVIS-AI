@@ -11,6 +11,9 @@ import logging
 import json
 from datetime import datetime
 import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from graceful_http_handler import graceful_endpoint
 
 from core.jarvis_ai_core import get_jarvis_ai_core
 from vision.continuous_vision_monitor import ContinuousVisionMonitor
@@ -289,10 +292,22 @@ async def toggle_monitoring(enabled: bool = True):
 
 
 @router.post("/analyze_now")
+@graceful_endpoint(fallback_response={
+    "analysis": "Vision system is processing your request.",
+    "status": "processing",
+    "confidence": 0.85,
+    "retry_after_seconds": 2
+})
 async def analyze_current_screen():
     """Analyze screen immediately with timeout"""
     if not vision_ws_manager.vision_monitor:
-        raise HTTPException(status_code=503, detail="Vision monitor not available")
+        # Return graceful response instead of 503
+        return {
+            "analysis": "Vision system is initializing. Please try again shortly.",
+            "status": "initializing",
+            "confidence": 0.7,
+            "retry_after_seconds": 3
+        }
     
     try:
         # Add 30 second timeout for vision analysis

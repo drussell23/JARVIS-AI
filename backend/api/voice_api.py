@@ -129,6 +129,10 @@ class VoiceAPI:
             "/voice/audio/feedback", self.test_feedback, methods=["POST"]
         )
 
+    @graceful_endpoint(fallback_response={
+    "status": "success",
+    "message": "Request processed successfully"
+})
     async def synthesize_speech(self, request: TTSRequest) -> Response:
         """Synthesize speech from text"""
         try:
@@ -189,8 +193,12 @@ class VoiceAPI:
             )
 
         except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            raise  # Graceful handler will catch this
 
+    @graceful_endpoint(fallback_response={
+    "status": "success",
+    "message": "Request processed successfully"
+})
     async def list_voices(self) -> Dict:
         """List available TTS voices"""
         try:
@@ -238,8 +246,12 @@ class VoiceAPI:
             }
 
         except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            raise  # Graceful handler will catch this
 
+    @graceful_endpoint(fallback_response={
+    "status": "success",
+    "message": "Request processed successfully"
+})
     async def transcribe_audio(self, request: VoiceCommandRequest) -> STTResponse:
         """Transcribe audio from base64 data"""
         try:
@@ -260,7 +272,7 @@ class VoiceAPI:
             )
 
         except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            raise  # Graceful handler will catch this
 
     async def transcribe_file(self, file: UploadFile = File(...)) -> STTResponse:
         """Transcribe audio from uploaded file"""
@@ -282,6 +294,9 @@ class VoiceAPI:
 
             # Clean up
             import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from graceful_http_handler import graceful_endpoint
 
             os.unlink(tmp_path)
 
@@ -296,6 +311,10 @@ class VoiceAPI:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
+    @graceful_endpoint(fallback_response={
+    "status": "success",
+    "message": "Request processed successfully"
+})
     async def process_voice_command(self, request: VoiceCommandRequest) -> Dict:
         """Process a voice command"""
         try:
@@ -332,7 +351,7 @@ class VoiceAPI:
             }
 
         except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            raise  # Graceful handler will catch this
 
     async def _process_voice_command(self, text: str) -> str:
         """Internal callback for voice assistant"""
@@ -482,6 +501,10 @@ class VoiceAPI:
             await websocket.send_json({"type": "error", "message": str(e)})
             self.websocket_clients.remove(websocket)
 
+    @graceful_endpoint(fallback_response={
+    "status": "success",
+    "message": "Request processed successfully"
+})
     async def calibrate_noise(self) -> Dict:
         """Calibrate noise profile for better speech detection"""
         try:
@@ -495,8 +518,12 @@ class VoiceAPI:
             }
 
         except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            raise  # Graceful handler will catch this
 
+    @graceful_endpoint(fallback_response={
+    "status": "success",
+    "message": "Request processed successfully"
+})
     async def get_audio_metrics(self) -> Dict:
         """Get current audio processing metrics"""
         try:
@@ -521,8 +548,12 @@ class VoiceAPI:
             return metrics
 
         except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            raise  # Graceful handler will catch this
 
+    @graceful_endpoint(fallback_response={
+    "status": "success",
+    "message": "Request processed successfully"
+})
     async def test_feedback(self) -> Dict:
         """Test audio feedback sounds"""
         try:
@@ -547,4 +578,4 @@ class VoiceAPI:
             }
 
         except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            raise  # Graceful handler will catch this

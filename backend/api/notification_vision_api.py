@@ -22,6 +22,9 @@ from autonomy.notification_intelligence import (
 )
 from autonomy.vision_decision_pipeline import VisionDecisionPipeline
 from api.vision_api import vision_pipeline, ws_manager
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from graceful_http_handler import graceful_endpoint
 
 logger = logging.getLogger(__name__)
 

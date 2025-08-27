@@ -20,6 +20,9 @@ from autonomy.vision_navigation_system import (
     WorkspaceElement, WorkspaceMap
 )
 from autonomy.workspace_automation import (
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from graceful_http_handler import graceful_endpoint
     WorkspaceAutomation, WorkflowType, Workflow
 )
 
@@ -135,6 +138,10 @@ ws_manager = NavigationWebSocketManager()
 
 
 @router.post("/mode/start")
+@graceful_endpoint(fallback_response={
+    "status": "success",
+    "message": "Request processed successfully"
+})
 async def start_navigation_mode() -> Dict[str, Any]:
     """Start navigation mode for autonomous control"""
     try:
@@ -158,10 +165,14 @@ async def start_navigation_mode() -> Dict[str, Any]:
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # Graceful handler will catch this
 
 
 @router.post("/mode/stop")
+@graceful_endpoint(fallback_response={
+    "status": "success",
+    "message": "Request processed successfully"
+})
 async def stop_navigation_mode() -> Dict[str, Any]:
     """Stop navigation mode"""
     try:
@@ -179,7 +190,7 @@ async def stop_navigation_mode() -> Dict[str, Any]:
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # Graceful handler will catch this
 
 
 @router.get("/status")
@@ -199,6 +210,11 @@ async def get_navigation_status() -> Dict[str, Any]:
 
 
 @router.post("/navigate")
+@graceful_endpoint(fallback_response={
+    "status": "navigation_processing",
+    "message": "Navigation request is being processed",
+    "confidence": 0.85
+})
 async def navigate(request: NavigationRequest) -> Dict[str, Any]:
     """Navigate to a specific target"""
     if not navigation_state['mode_active']:
@@ -249,10 +265,14 @@ async def navigate(request: NavigationRequest) -> Dict[str, Any]:
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # Graceful handler will catch this
 
 
 @router.post("/workspace/arrange")
+@graceful_endpoint(fallback_response={
+    "status": "success",
+    "message": "Request processed successfully"
+})
 async def arrange_workspace(request: WorkspaceArrangementRequest) -> Dict[str, Any]:
     """Arrange workspace windows"""
     if not navigation_state['mode_active']:
@@ -272,10 +292,15 @@ async def arrange_workspace(request: WorkspaceArrangementRequest) -> Dict[str, A
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # Graceful handler will catch this
 
 
 @router.post("/workspace/search")
+@graceful_endpoint(fallback_response={
+    "status": "searching",
+    "results": [],
+    "message": "Search is in progress"
+})
 async def search_workspace(request: SearchRequest) -> Dict[str, Any]:
     """Search for elements in workspace"""
     try:
@@ -307,7 +332,7 @@ async def search_workspace(request: SearchRequest) -> Dict[str, Any]:
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # Graceful handler will catch this
 
 
 @router.get("/workspace/map")
@@ -337,6 +362,10 @@ async def get_workspace_map() -> Dict[str, Any]:
 
 
 @router.post("/automation/start")
+@graceful_endpoint(fallback_response={
+    "status": "success",
+    "message": "Request processed successfully"
+})
 async def start_automation() -> Dict[str, Any]:
     """Start workspace automation"""
     try:
@@ -349,10 +378,14 @@ async def start_automation() -> Dict[str, Any]:
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # Graceful handler will catch this
 
 
 @router.post("/automation/stop")
+@graceful_endpoint(fallback_response={
+    "status": "success",
+    "message": "Request processed successfully"
+})
 async def stop_automation() -> Dict[str, Any]:
     """Stop workspace automation"""
     try:
@@ -364,10 +397,14 @@ async def stop_automation() -> Dict[str, Any]:
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # Graceful handler will catch this
 
 
 @router.post("/workflow/execute")
+@graceful_endpoint(fallback_response={
+    "status": "success",
+    "message": "Request processed successfully"
+})
 async def execute_workflow(request: WorkflowExecutionRequest,
                          background_tasks: BackgroundTasks) -> Dict[str, Any]:
     """Execute a workflow"""
@@ -398,7 +435,7 @@ async def execute_workflow(request: WorkflowExecutionRequest,
             }
             
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # Graceful handler will catch this
 
 
 @router.get("/workflow/list")

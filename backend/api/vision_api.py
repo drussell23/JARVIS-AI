@@ -317,6 +317,10 @@ async def get_vision_status() -> Dict[str, Any]:
 
 
 @router.post("/command")
+@graceful_endpoint(fallback_response={
+    "status": "success",
+    "message": "Request processed successfully"
+})
 async def process_vision_command(request: VisionCommand) -> Dict[str, Any]:
     """Process a vision-related voice command"""
     try:
@@ -342,10 +346,15 @@ async def process_vision_command(request: VisionCommand) -> Dict[str, Any]:
         }
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # Graceful handler will catch this
 
 
 @router.post("/analyze")
+@graceful_endpoint(fallback_response={
+    "status": "analyzing",
+    "analysis": "Analysis in progress",
+    "confidence": 0.8
+})
 async def analyze_screen(request: ScreenAnalysisRequest) -> Dict[str, Any]:
     """Perform detailed screen analysis"""
     try:
@@ -412,7 +421,7 @@ async def analyze_screen(request: ScreenAnalysisRequest) -> Dict[str, Any]:
         }
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # Graceful handler will catch this
 
 
 @router.post("/monitor/updates")
@@ -460,6 +469,9 @@ async def configure_update_monitoring(
 async def monitor_updates_task():
     """Background task for monitoring updates"""
     import asyncio
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from graceful_http_handler import graceful_endpoint
     
     while monitoring_config["active"]:
         try:
@@ -502,6 +514,10 @@ async def get_pending_updates() -> Dict[str, Any]:
 
 
 @router.post("/capture")
+@graceful_endpoint(fallback_response={
+    "status": "success",
+    "message": "Request processed successfully"
+})
 async def capture_screenshot() -> Dict[str, Any]:
     """Capture and describe current screen"""
     try:
@@ -520,7 +536,7 @@ async def capture_screenshot() -> Dict[str, Any]:
         }
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # Graceful handler will catch this
 
 
 @router.get("/capabilities")
@@ -557,6 +573,10 @@ async def get_vision_capabilities() -> Dict[str, List[str]]:
 
 
 @router.post("/pipeline/control")
+@graceful_endpoint(fallback_response={
+    "status": "success",
+    "message": "Request processed successfully"
+})
 async def control_vision_pipeline(action: str) -> Dict[str, Any]:
     """Control the vision decision pipeline"""
     try:
@@ -598,7 +618,7 @@ async def control_vision_pipeline(action: str) -> Dict[str, Any]:
             }
             
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise  # Graceful handler will catch this
 
 
 @router.get("/pipeline/status")

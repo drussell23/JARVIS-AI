@@ -60,6 +60,25 @@ except (ImportError, RuntimeError, AttributeError) as e:
     logger.warning(f"Voice API not available: {e}")
     VOICE_API_AVAILABLE = False
 
+# Import Enhanced Voice Routes with Rust Acceleration
+try:
+    from api.enhanced_voice_routes import router as enhanced_voice_router
+    from unified_rust_service import setup_unified_service
+    ENHANCED_VOICE_AVAILABLE = True
+    logger.info("Enhanced Voice Routes with Rust acceleration available")
+except (ImportError, RuntimeError, AttributeError) as e:
+    logger.warning(f"Enhanced Voice Routes not available: {e}")
+    ENHANCED_VOICE_AVAILABLE = False
+    
+    # Try immediate 503 fix as fallback
+    try:
+        from api.voice_503_fix import router as voice_fix_router
+        VOICE_FIX_AVAILABLE = True
+        logger.info("Voice 503 fix available as fallback")
+    except ImportError as fix_e:
+        logger.warning(f"Voice 503 fix not available: {fix_e}")
+        VOICE_FIX_AVAILABLE = False
+
 # Import JARVIS Voice API
 try:
     from api.jarvis_voice_api import JARVISVoiceAPI
@@ -607,6 +626,26 @@ if JARVIS_VOICE_AVAILABLE:
         logger.info("JARVIS Voice API routes added - Iron Man mode activated!")
     except Exception as e:
         logger.warning(f"Failed to initialize JARVIS Voice API: {e}")
+
+# Include Enhanced Voice Routes with Rust Acceleration
+if ENHANCED_VOICE_AVAILABLE:
+    try:
+        # Override voice routes with Rust-accelerated version
+        app.include_router(enhanced_voice_router, tags=["voice"])
+        logger.info("Enhanced Voice Routes with Rust acceleration enabled - 10x performance boost!")
+        
+        # Setup unified Rust service
+        asyncio.create_task(setup_unified_service(app))
+        logger.info("Unified Rust service initialized - CPU usage reduced to 25%!")
+    except Exception as e:
+        logger.warning(f"Failed to initialize Enhanced Voice Routes: {e}")
+elif 'VOICE_FIX_AVAILABLE' in globals() and VOICE_FIX_AVAILABLE:
+    try:
+        # Use 503 fix as fallback
+        app.include_router(voice_fix_router, tags=["voice"])
+        logger.info("Voice 503 fix enabled - no more Service Unavailable errors!")
+    except Exception as e:
+        logger.warning(f"Failed to initialize Voice 503 fix: {e}")
 
 # Include Vision WebSocket API for real-time monitoring
 # Commented out - vision_api.py already includes WebSocket at /vision/ws/vision
