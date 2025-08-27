@@ -66,19 +66,6 @@ class VisionResponse:
 
 
 class VisionSystemV2:
-    # CPU LIMIT CHECK
-    _cpu_limit = float(os.getenv('CPU_LIMIT_PERCENT', '25'))
-    _last_cpu_check = 0
-    
-    @classmethod
-    def _check_cpu(cls):
-        if time.time() - cls._last_cpu_check < 1:
-            return
-        cls._last_cpu_check = time.time()
-        cpu = psutil.cpu_percent(interval=0.1)
-        if cpu > cls._cpu_limit:
-            time.sleep(0.1 * (cpu / cls._cpu_limit))
-
     """
     Vision System 2.0 - Complete ML-based approach
     No hardcoded patterns, everything is learned dynamically

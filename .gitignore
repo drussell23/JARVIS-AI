@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
 __pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
 *.pyd
@@ -112,3 +113,62 @@ backend/swift_bridge/*.pyc
 # Command pattern cache
 .jarvis/
 *.json.cache
+
+# Rust build artifacts
+backend/vision/jarvis-rust-core/target/
+backend/rust_performance/target/
+backend/native_extensions/rust_processor/target/
+**/target/
+backend/vision/jarvis-rust-core/Cargo.lock
+backend/vision/jarvis-rust-core/.cargo/
+backend/vision/jarvis-rust-core/**/*.rs.bk
+*.rlib
+*.so
+*.dylib
+*.dll
+
+# Rust workspace
+backend/vision/jarvis-rust-core/.idea/
+backend/vision/jarvis-rust-core/.vscode/
+
+# Python build artifacts from Rust
+backend/vision/jarvis-rust-core/*.pyd
+backend/vision/jarvis-rust-core/*.so
+backend/vision/jarvis-rust-core/jarvis_rust_core.egg-info/
+
+# Performance test outputs
+backend/vision/*.pdf
+backend/vision/test_performance_report.pdf
+backend/vision/phase3_performance_report.pdf
+
+# Checkpoint and cache files
+backend/vision/checkpoints/
+backend/vision/*.pkl
+/tmp/jarvis_checkpoints/
+
+# Memory mapped files
+*.mmap
+
+# Test artifacts
+backend/vision/__pycache__/
+backend/vision/*.pyc
+backend/vision/test_*.tmp
+.pytest_cache/
+**/.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+*.cover
+
+# Profiling data
+*.prof
+*.perf
+*.trace
+
+# Core dumps
+core
+core.*
+
+# Benchmark results
+benchmark_results/
+*.bench

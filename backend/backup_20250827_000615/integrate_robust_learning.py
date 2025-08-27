@@ -180,19 +180,7 @@ class AdvancedContinuousLearning:
         return getattr(self._impl, name)
 
 
-def get_advanced_continuous_learning(model):
-    """Get instance of continuous learning (optimized version)"""
-    try:
-        # Try optimized version first
-        from .optimized_continuous_learning import get_optimized_continuous_learning
-        return get_optimized_continuous_learning(model)
-    except ImportError:
-        pass
-    
-    # Original implementation
-    _original_get_advanced_continuous_learning(model)
-
-def _original_get_advanced_continuous_learning(model: nn.Module) -> AdvancedContinuousLearning:
+def get_advanced_continuous_learning(model: nn.Module) -> AdvancedContinuousLearning:
     """Get instance of advanced continuous learning (robust if available)"""
     if ROBUST_AVAILABLE:
         return get_robust_continuous_learning(model)

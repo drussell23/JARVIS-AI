@@ -1,0 +1,74 @@
+[package]
+name = "jarvis-rust-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["JARVIS AI Team"]
+
+[lib]
+name = "jarvis_rust_core"
+crate-type = ["cdylib", "rlib"]  # Both C-compatible and Rust library
+
+[dependencies]
+# Core dependencies
+anyhow = "1.0"
+thiserror = "1.0"
+log = "0.4"
+
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+futures = "0.3"
+
+# Numerical computing
+ndarray = { version = "0.15", features = ["rayon", "serde"] }
+num-traits = "0.2"
+half = "2.3"  # For FP16 support
+
+# Memory management
+crossbeam = "0.8"
+parking_lot = "0.12"
+memmap2 = "0.9"
+
+# SIMD operations (for M1 optimization)
+packed_simd_2 = "0.3"
+portable-simd = "0.3"
+
+# Python bindings
+pyo3 = { version = "0.20", features = ["extension-module", "abi3-py37"] }
+numpy = { version = "0.20", optional = true }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bincode = "1.3"
+
+# Image processing
+image = "0.24"
+imageproc = "0.23"
+
+# Neural network operations
+candle-core = { version = "0.3", optional = true }
+ort = { version = "1.16", optional = true }  # ONNX Runtime
+
+# Compression
+lz4 = "1.24"
+zstd = "0.13"
+
+[dev-dependencies]
+criterion = "0.5"
+proptest = "1.4"
+
+[features]
+default = ["python-bindings"]
+python-bindings = ["numpy", "pyo3/auto-initialize"]
+neural = ["candle-core", "ort"]
+simd = ["packed_simd_2"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+# M1-specific optimizations
+[target.'cfg(target_arch = "aarch64")']
+rustflags = ["-C", "target-cpu=native"]
