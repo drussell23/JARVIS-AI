@@ -45,11 +45,20 @@ class VisionActionHandler:
     """Dynamic vision action handler with ML-based routing"""
     
     def __init__(self):
+        self.vision_system_v2 = None
         self.dynamic_engine = None
         self.discovered_actions: Dict[str, DynamicAction] = {}
         self.learning_data = {"patterns": {}, "feedback": [], "success_rates": {}}
         self.vision_modules = {}
         self.workspace_analyzer = None
+        
+        # Initialize Vision System v2.0
+        try:
+            from vision.vision_system_v2 import get_vision_system_v2
+            self.vision_system_v2 = get_vision_system_v2()
+            logger.info("Vision System v2.0 initialized with ML-based understanding")
+        except ImportError:
+            logger.warning("Vision System v2.0 not available, using legacy approach")
         
         # Initialize system
         self._init_dynamic_system()
@@ -211,8 +220,21 @@ class VisionActionHandler:
         """Process any vision action dynamically"""
         params = params or {}
         
+        # If Vision System v2.0 is available, use it
+        if self.vision_system_v2:
+            # Convert action_name to natural language for ML processing
+            command = self._action_to_natural_language(action_name, params)
+            response = await self.vision_system_v2.process_command(command, params)
+            
+            return VisionActionResult(
+                success=response.success,
+                description=response.message,
+                data=response.data,
+                confidence=response.confidence
+            )
+        
         # If using dynamic engine, route through it
-        if self.dynamic_engine:
+        elif self.dynamic_engine:
             # Convert action_name to natural language for ML processing
             command = self._action_to_natural_language(action_name, params)
             response, metadata = await self.dynamic_engine.process_vision_command(command, params)
@@ -430,7 +452,22 @@ class VisionActionHandler:
             
     # Compatibility methods for existing code
     async def describe_screen(self, params: Dict[str, Any] = None) -> VisionActionResult:
-        """Describe screen - routes through unified vision system"""
+        """Describe screen - routes through Vision System v2.0"""
+        params = params or {}
+        
+        # Use Vision System v2.0 if available
+        if self.vision_system_v2:
+            command = params.get('query', 'describe what is on my screen')
+            response = await self.vision_system_v2.process_command(command, params)
+            
+            return VisionActionResult(
+                success=response.success,
+                description=response.message,
+                data=response.data,
+                confidence=response.confidence
+            )
+        
+        # Try unified vision system
         try:
             from vision.unified_vision_system import get_unified_vision_system
             unified = get_unified_vision_system()
@@ -450,7 +487,23 @@ class VisionActionHandler:
             return await self.process_vision_action("describe_screen", params)
         
     async def analyze_window(self, params: Dict[str, Any] = None) -> VisionActionResult:
-        """Analyze window - routes through unified vision system"""
+        """Analyze window - routes through Vision System v2.0"""
+        params = params or {}
+        
+        # Use Vision System v2.0 if available
+        if self.vision_system_v2:
+            window = params.get('target', 'current')
+            command = f"analyze the {window} window"
+            response = await self.vision_system_v2.process_command(command, params)
+            
+            return VisionActionResult(
+                success=response.success,
+                description=response.message,
+                data=response.data,
+                confidence=response.confidence
+            )
+        
+        # Try unified vision system
         try:
             from vision.unified_vision_system import get_unified_vision_system
             unified = get_unified_vision_system()
@@ -471,7 +524,23 @@ class VisionActionHandler:
             return await self.process_vision_action("analyze_window", params)
         
     async def check_screen(self, params: Dict[str, Any] = None) -> VisionActionResult:
-        """Check screen - routes through unified vision system"""
+        """Check screen - routes through Vision System v2.0"""
+        params = params or {}
+        
+        # Use Vision System v2.0 if available
+        if self.vision_system_v2:
+            target = params.get('target', 'notifications')
+            command = f"check my screen for {target}"
+            response = await self.vision_system_v2.process_command(command, params)
+            
+            return VisionActionResult(
+                success=response.success,
+                description=response.message,
+                data=response.data,
+                confidence=response.confidence
+            )
+        
+        # Try unified vision system
         try:
             from vision.unified_vision_system import get_unified_vision_system
             unified = get_unified_vision_system()
