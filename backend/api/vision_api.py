@@ -468,11 +468,6 @@ async def configure_update_monitoring(
 
 async def monitor_updates_task():
     """Background task for monitoring updates"""
-    import asyncio
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from graceful_http_handler import graceful_endpoint
-    
     while monitoring_config["active"]:
         try:
             # Scan for updates

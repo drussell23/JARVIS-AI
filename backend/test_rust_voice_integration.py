@@ -245,7 +245,7 @@ async def main():
 
 
 if __name__ == "__main__":
-    logger.info("Make sure the backend is running: python backend/start_system.py")
+    logger.info("Make sure the backend is running: python start_system.py")
     logger.info("Starting tests in 3 seconds...\n")
     time.sleep(3)
     

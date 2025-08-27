@@ -13,7 +13,18 @@ import asyncio
 import json
 import base64
 import io
+import os
+import sys
 from datetime import datetime
+
+# Add graceful handler import
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:
+    from graceful_http_handler import graceful_endpoint
+except ImportError:
+    # Fallback if graceful handler is not available
+    def graceful_endpoint(func):
+        return func
 
 from engines.voice_engine import (
     VoiceAssistant,
@@ -293,11 +304,6 @@ class VoiceAPI:
             result = self.voice_assistant.stt.transcribe(tmp_path)
 
             # Clean up
-            import os
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from graceful_http_handler import graceful_endpoint
-
             os.unlink(tmp_path)
 
             return STTResponse(

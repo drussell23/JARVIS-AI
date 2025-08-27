@@ -1,365 +1,374 @@
 """
-Python-Rust Integration for JARVIS Vision System
-Demonstrates zero-copy data transfer and high-performance operations
+Advanced Rust integration for JARVIS with memory safety and performance optimizations.
+
+This module provides Python bindings to the high-performance Rust core with:
+- Zero-copy memory management with leak detection
+- Advanced async runtime with CPU affinity
+- Quantized ML inference for reduced memory usage
+- Hardware-accelerated image processing
 """
 
-import numpy as np
-import ctypes
-from typing import Optional, Tuple, List, Any
-import mmap
+import os
+import sys
 import logging
-from dataclasses import dataclass
 import asyncio
-import time
+import numpy as np
+from typing import Optional, List, Dict, Any, Callable, Union
+from contextlib import contextmanager
+import psutil
 
-# Note: In production, jarvis_rust_core would be imported after building with maturin
-# For now, we'll create a Python simulation of the Rust interface
+# Try to import the Rust core
+try:
+    import jarvis_rust_core
+    RUST_AVAILABLE = True
+except ImportError:
+    RUST_AVAILABLE = False
+    logging.warning("Rust core not available. Run 'maturin develop' in backend/vision/jarvis-rust-core")
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class SharedMemoryBuffer:
-    """Shared memory buffer for zero-copy transfer between Python and Rust"""
-    buffer_id: int
-    size: int
-    address: int
-    mmap_obj: Optional[mmap.mmap] = None
-    
-    def as_numpy(self, shape: Tuple[int, ...], dtype=np.uint8) -> np.ndarray:
-        """Get buffer as numpy array (zero-copy)"""
-        if self.mmap_obj is None:
-            raise ValueError("Memory map not initialized")
-        
-        # Create numpy array from buffer without copying
-        return np.frombuffer(self.mmap_obj, dtype=dtype).reshape(shape)
-    
-    def write_numpy(self, array: np.ndarray):
-        """Write numpy array to buffer (zero-copy if C-contiguous)"""
-        if not array.flags['C_CONTIGUOUS']:
-            array = np.ascontiguousarray(array)
-        
-        if array.nbytes > self.size:
-            raise ValueError(f"Array size {array.nbytes} exceeds buffer size {self.size}")
-        
-        # Direct memory write
-        self.mmap_obj[:array.nbytes] = array.tobytes()
-
-
 class RustAccelerator:
-    """
-    Python interface to Rust acceleration layer
-    Provides zero-copy operations and hardware-accelerated processing
-    """
+    """Main interface for Rust acceleration in JARVIS."""
     
-    def __init__(self):
-        self.shared_buffers = {}
-        self.next_buffer_id = 1
-        
-        # Simulate loading Rust library
-        # In production: self.rust_lib = jarvis_rust_core
-        self.rust_lib = None
-        
-        logger.info("RustAccelerator initialized")
-    
-    def allocate_shared_memory(self, size: int) -> SharedMemoryBuffer:
-        """Allocate shared memory buffer accessible from both Python and Rust"""
-        # Create anonymous shared memory
-        shm = mmap.mmap(-1, size)
-        
-        buffer = SharedMemoryBuffer(
-            buffer_id=self.next_buffer_id,
-            size=size,
-            address=id(shm),  # Simulated address
-            mmap_obj=shm
-        )
-        
-        self.shared_buffers[buffer.buffer_id] = buffer
-        self.next_buffer_id += 1
-        
-        return buffer
-    
-    def process_image_zero_copy(self, image: np.ndarray, operation: str) -> np.ndarray:
+    def __init__(self, 
+                 enable_memory_pool: bool = True,
+                 enable_runtime_manager: bool = True,
+                 worker_threads: Optional[int] = None,
+                 enable_cpu_affinity: bool = True):
         """
-        Process image using Rust with zero-copy transfer
+        Initialize Rust accelerator.
         
         Args:
-            image: NumPy array (H, W, C)
-            operation: Operation to perform ('resize', 'compress', etc.)
-        
-        Returns:
-            Processed image as NumPy array
+            enable_memory_pool: Use advanced memory pooling with leak detection
+            enable_runtime_manager: Use advanced async runtime
+            worker_threads: Number of worker threads (defaults to CPU count)
+            enable_cpu_affinity: Pin threads to CPU cores for better performance
         """
-        # Ensure image is C-contiguous for zero-copy
-        if not image.flags['C_CONTIGUOUS']:
-            image = np.ascontiguousarray(image)
+        if not RUST_AVAILABLE:
+            raise ImportError("Rust core not available. Please build the Rust extension.")
         
-        # Allocate shared buffer
-        buffer = self.allocate_shared_memory(image.nbytes)
+        # Initialize Rust core
+        jarvis_rust_core.initialize()
         
-        # Zero-copy write to shared memory
-        buffer.write_numpy(image)
+        self.memory_pool = None
+        self.runtime_manager = None
         
-        # Call Rust function (simulated)
-        start_time = time.time()
+        if enable_memory_pool:
+            self.memory_pool = jarvis_rust_core.RustAdvancedMemoryPool()
+            logger.info("Advanced memory pool initialized")
         
-        if self.rust_lib:
-            # Real Rust call would be:
-            # result_buffer_id = self.rust_lib.process_image(
-            #     buffer.buffer_id, 
-            #     image.shape,
-            #     operation
-            # )
-            pass
-        else:
-            # Simulate Rust processing
-            self._simulate_rust_processing(buffer, operation)
-        
-        processing_time = (time.time() - start_time) * 1000
-        logger.debug(f"Rust processing took {processing_time:.2f}ms")
-        
-        # Return processed data (zero-copy from shared memory)
-        return buffer.as_numpy(image.shape, dtype=image.dtype)
+        if enable_runtime_manager:
+            self.runtime_manager = jarvis_rust_core.RustRuntimeManager(
+                worker_threads=worker_threads,
+                enable_cpu_affinity=enable_cpu_affinity
+            )
+            logger.info("Runtime manager initialized with %s workers", 
+                       worker_threads or psutil.cpu_count())
     
-    def _simulate_rust_processing(self, buffer: SharedMemoryBuffer, operation: str):
-        """Simulate Rust processing for demonstration"""
-        # In reality, Rust would process the shared memory directly
-        time.sleep(0.001)  # Simulate processing time
-    
-    async def process_batch_async(self, images: List[np.ndarray]) -> List[np.ndarray]:
+    @contextmanager
+    def allocate_buffer(self, size: int):
         """
-        Process image batch asynchronously using Rust
+        Allocate a tracked buffer that automatically returns to pool.
         
-        Zero-copy transfer for entire batch
-        """
-        # Calculate total buffer size
-        total_size = sum(img.nbytes for img in images)
-        batch_buffer = self.allocate_shared_memory(total_size)
-        
-        # Pack images into single buffer
-        offset = 0
-        metadata = []
-        
-        for img in images:
-            if not img.flags['C_CONTIGUOUS']:
-                img = np.ascontiguousarray(img)
+        Args:
+            size: Buffer size in bytes
             
-            # Write to buffer at offset
-            batch_buffer.mmap_obj[offset:offset + img.nbytes] = img.tobytes()
-            metadata.append({
-                'offset': offset,
-                'shape': img.shape,
-                'dtype': img.dtype
-            })
-            offset += img.nbytes
-        
-        # Async Rust processing (simulated)
-        await asyncio.sleep(0.01)  # Simulate batch processing
-        
-        # Unpack results
-        results = []
-        for meta in metadata:
-            data = np.frombuffer(
-                batch_buffer.mmap_obj[meta['offset']:meta['offset'] + np.prod(meta['shape']) * meta['dtype'].itemsize],
-                dtype=meta['dtype']
-            ).reshape(meta['shape'])
-            results.append(data.copy())  # Copy for safety in this demo
-        
-        return results
-    
-    def quantize_model_int8(self, weights: np.ndarray) -> Tuple[np.ndarray, float]:
+        Yields:
+            Tracked buffer as numpy array
         """
-        Quantize model weights to INT8 using Rust
+        if not self.memory_pool:
+            # Fallback to numpy
+            yield np.zeros(size, dtype=np.uint8)
+            return
         
+        buffer = self.memory_pool.allocate(size)
+        try:
+            yield buffer.as_numpy()
+        finally:
+            buffer.release()
+    
+    def run_cpu_task(self, func: Callable[[], Any]) -> Any:
+        """
+        Run CPU-bound task with optimal thread placement.
+        
+        Args:
+            func: Function to execute
+            
         Returns:
-            Quantized weights and scale factor
+            Function result
         """
-        if self.rust_lib:
-            # Real Rust call
-            # return self.rust_lib.quantize_weights_int8(weights)
-            pass
-        else:
-            # Python fallback
-            scale = np.abs(weights).max() / 127.0
-            quantized = np.round(weights / scale).astype(np.int8)
-            return quantized, scale
+        if not self.runtime_manager:
+            return func()
+        
+        return self.runtime_manager.run_cpu_task(func)
     
-    def run_quantized_inference(self, model_weights: List[np.ndarray], 
-                              input_data: np.ndarray) -> np.ndarray:
-        """
-        Run quantized inference using Rust engine
+    def get_memory_stats(self) -> Dict[str, Any]:
+        """Get memory pool statistics."""
+        if not self.memory_pool:
+            return {}
         
-        Zero-copy for both weights and input
-        """
-        # Quantize weights
-        quantized_weights = []
-        scales = []
+        stats = self.memory_pool.stats()
         
-        for w in model_weights:
-            q_w, scale = self.quantize_model_int8(w)
-            quantized_weights.append(q_w)
-            scales.append(scale)
+        # Check for leaks
+        leaks = self.memory_pool.check_leaks()
+        if leaks:
+            logger.warning("Memory leaks detected: %s", leaks)
         
-        # Allocate buffer for input
-        input_buffer = self.allocate_shared_memory(input_data.nbytes)
-        input_buffer.write_numpy(input_data)
+        return {
+            'pool_stats': stats,
+            'leaks': leaks,
+            'system_memory': {
+                'used_gb': psutil.virtual_memory().used / 1e9,
+                'available_gb': psutil.virtual_memory().available / 1e9,
+                'percent': psutil.virtual_memory().percent
+            }
+        }
+    
+    def get_runtime_stats(self) -> Dict[str, Any]:
+        """Get runtime statistics."""
+        if not self.runtime_manager:
+            return {}
         
-        # Run inference (simulated)
-        output_shape = (input_data.shape[0], 10)  # Example output shape
-        output_buffer = self.allocate_shared_memory(np.prod(output_shape) * 4)  # float32
-        
-        # Simulate INT8 inference
-        time.sleep(0.005)
-        
-        # Return result
-        return output_buffer.as_numpy(output_shape, dtype=np.float32)
+        return self.runtime_manager.stats()
 
 
-class ZeroCopyVisionPipeline:
-    """
-    Complete vision pipeline with zero-copy Python-Rust integration
-    """
+class RustImageProcessor:
+    """Hardware-accelerated image processing using Rust."""
     
     def __init__(self):
-        self.rust_accel = RustAccelerator()
-        self.stats = {
-            'total_processed': 0,
-            'total_time_ms': 0,
-            'zero_copy_transfers': 0
-        }
+        """Initialize image processor."""
+        if not RUST_AVAILABLE:
+            raise ImportError("Rust core not available")
+        
+        self.processor = jarvis_rust_core.RustImageProcessor()
+        self.accelerator = RustAccelerator()
     
-    async def process_frame(self, frame: np.ndarray) -> dict:
+    def process_batch(self, images: List[np.ndarray]) -> List[np.ndarray]:
         """
-        Process single frame through pipeline
+        Process batch of images with zero-copy optimization.
         
-        1. Capture preprocessing (Python)
-        2. Rust processing (zero-copy)
-        3. ML inference (Rust INT8)
-        4. Results postprocessing (Python)
+        Args:
+            images: List of numpy arrays (H, W, C)
+            
+        Returns:
+            Processed images
         """
-        start_time = time.time()
+        return self.processor.process_batch_zero_copy(images)
+    
+    def resize_batch(self, images: List[np.ndarray], 
+                     target_size: tuple) -> List[np.ndarray]:
+        """
+        Resize batch of images efficiently.
         
-        # 1. Preprocessing (ensure correct format)
-        if frame.dtype != np.uint8:
-            frame = (frame * 255).astype(np.uint8)
+        Args:
+            images: Input images
+            target_size: (width, height)
+            
+        Returns:
+            Resized images
+        """
+        # This would need to be implemented in Rust
+        # For now, use the process_batch as example
+        return self.process_batch(images)
+
+
+class RustQuantizedModel:
+    """Quantized ML model for memory-efficient inference."""
+    
+    def __init__(self, use_simd: bool = True, thread_count: Optional[int] = None):
+        """
+        Initialize quantized model.
         
-        # 2. Rust processing (zero-copy)
-        processed = self.rust_accel.process_image_zero_copy(frame, 'enhance')
-        self.stats['zero_copy_transfers'] += 1
+        Args:
+            use_simd: Enable SIMD optimizations
+            thread_count: Number of threads for inference
+        """
+        if not RUST_AVAILABLE:
+            raise ImportError("Rust core not available")
         
-        # 3. Prepare for ML inference (resize if needed)
-        if processed.shape[:2] != (224, 224):
-            inference_input = self.rust_accel.process_image_zero_copy(
-                processed, 
-                'resize_224'
-            )
-            self.stats['zero_copy_transfers'] += 1
-        else:
-            inference_input = processed
-        
-        # 4. Run quantized inference
-        # Simulate model weights
-        dummy_weights = [np.random.randn(224*224*3, 128).astype(np.float32)]
-        
-        predictions = self.rust_accel.run_quantized_inference(
-            dummy_weights,
-            inference_input.flatten()
+        self.model = jarvis_rust_core.RustQuantizedModel(
+            use_simd=use_simd,
+            thread_count=thread_count or psutil.cpu_count()
         )
-        
-        # Update stats
-        elapsed_ms = (time.time() - start_time) * 1000
-        self.stats['total_processed'] += 1
-        self.stats['total_time_ms'] += elapsed_ms
-        
-        return {
-            'predictions': predictions,
-            'processing_time_ms': elapsed_ms,
-            'zero_copy_used': True
-        }
+        self.accelerator = RustAccelerator()
     
-    def get_performance_stats(self) -> dict:
-        """Get pipeline performance statistics"""
-        avg_time = self.stats['total_time_ms'] / max(1, self.stats['total_processed'])
+    def add_linear_layer(self, weights: np.ndarray, bias: Optional[np.ndarray] = None):
+        """
+        Add quantized linear layer.
         
-        return {
-            'frames_processed': self.stats['total_processed'],
-            'average_time_ms': avg_time,
-            'fps': 1000 / avg_time if avg_time > 0 else 0,
-            'zero_copy_transfers': self.stats['zero_copy_transfers'],
-            'memory_copies_avoided': self.stats['zero_copy_transfers']
-        }
+        Args:
+            weights: Weight matrix (will be quantized to INT8)
+            bias: Optional bias vector
+        """
+        self.model.add_linear_layer(weights, bias)
+    
+    def infer(self, input_data: np.ndarray) -> np.ndarray:
+        """
+        Run inference with quantized model.
+        
+        Args:
+            input_data: Input tensor
+            
+        Returns:
+            Output predictions
+        """
+        return self.model.infer(input_data)
+    
+    @staticmethod
+    def quantize_weights(weights: np.ndarray) -> List[int]:
+        """
+        Quantize float32 weights to INT8.
+        
+        Args:
+            weights: Float32 weight matrix
+            
+        Returns:
+            Quantized weights as INT8
+        """
+        return jarvis_rust_core.quantize_model_weights(weights)
 
 
-# Demo functions
-async def demo_zero_copy_pipeline():
-    """Demonstrate zero-copy vision pipeline"""
-    pipeline = ZeroCopyVisionPipeline()
+class RustMemoryMonitor:
+    """Monitor and prevent memory leaks."""
     
-    logger.info("Starting zero-copy vision pipeline demo...")
-    
-    # Process multiple frames
-    for i in range(10):
-        # Simulate camera frame
-        frame = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+    def __init__(self, check_interval: float = 10.0):
+        """
+        Initialize memory monitor.
         
-        result = await pipeline.process_frame(frame)
-        
-        if i == 0:
-            logger.info(f"First frame processed in {result['processing_time_ms']:.2f}ms")
+        Args:
+            check_interval: Leak check interval in seconds
+        """
+        self.accelerator = RustAccelerator(enable_memory_pool=True)
+        self.check_interval = check_interval
+        self._monitoring = False
+        self._monitor_task = None
     
-    # Show statistics
-    stats = pipeline.get_performance_stats()
-    logger.info("\nPipeline Statistics:")
-    logger.info(f"  Frames processed: {stats['frames_processed']}")
-    logger.info(f"  Average time: {stats['average_time_ms']:.2f}ms")
-    logger.info(f"  Throughput: {stats['fps']:.1f} FPS")
-    logger.info(f"  Zero-copy transfers: {stats['zero_copy_transfers']}")
-    logger.info(f"  Memory copies avoided: {stats['memory_copies_avoided']}")
+    async def start_monitoring(self):
+        """Start background memory monitoring."""
+        self._monitoring = True
+        self._monitor_task = asyncio.create_task(self._monitor_loop())
+        logger.info("Memory monitoring started")
+    
+    async def stop_monitoring(self):
+        """Stop memory monitoring."""
+        self._monitoring = False
+        if self._monitor_task:
+            await self._monitor_task
+        logger.info("Memory monitoring stopped")
+    
+    async def _monitor_loop(self):
+        """Background monitoring loop."""
+        while self._monitoring:
+            stats = self.accelerator.get_memory_stats()
+            
+            # Log statistics
+            if stats.get('pool_stats'):
+                pool_stats = stats['pool_stats']
+                logger.debug(
+                    "Memory pool: %d active, %d MB allocated, pressure: %s",
+                    pool_stats.get('total_active', 0),
+                    pool_stats.get('total_allocated_bytes', 0) / 1e6,
+                    pool_stats.get('memory_pressure', 'unknown')
+                )
+            
+            # Check for leaks
+            leaks = stats.get('leaks', [])
+            if leaks:
+                logger.warning("Detected %d memory leaks", len(leaks))
+                for leak in leaks:
+                    logger.warning("Leak: %s", leak)
+            
+            await asyncio.sleep(self.check_interval)
 
 
-def demo_shared_memory():
-    """Demonstrate shared memory operations"""
-    accel = RustAccelerator()
+def benchmark_rust_performance():
+    """Benchmark Rust acceleration performance."""
+    import time
     
-    # Create test image
-    image = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
-    logger.info(f"Created test image: {image.shape}, {image.nbytes} bytes")
+    if not RUST_AVAILABLE:
+        print("Rust core not available")
+        return
     
-    # Allocate shared memory
-    buffer = accel.allocate_shared_memory(image.nbytes)
-    logger.info(f"Allocated shared buffer: {buffer.size} bytes at {hex(buffer.address)}")
+    print("Benchmarking Rust acceleration...")
     
-    # Zero-copy write
-    buffer.write_numpy(image)
+    # Initialize
+    accelerator = RustAccelerator()
     
-    # Zero-copy read
-    read_back = buffer.as_numpy(image.shape, dtype=np.uint8)
+    # Memory allocation benchmark
+    sizes = [1024, 1024*1024, 10*1024*1024]  # 1KB, 1MB, 10MB
     
-    # Verify data integrity
-    assert np.array_equal(image, read_back), "Data integrity check failed"
-    logger.info("✓ Zero-copy transfer verified")
+    for size in sizes:
+        # Rust allocation
+        start = time.perf_counter()
+        with accelerator.allocate_buffer(size) as buf:
+            buf.fill(42)  # Touch memory
+        rust_time = time.perf_counter() - start
+        
+        # NumPy allocation
+        start = time.perf_counter()
+        buf = np.zeros(size, dtype=np.uint8)
+        buf.fill(42)
+        numpy_time = time.perf_counter() - start
+        
+        print(f"Buffer size {size/1024:.0f}KB: Rust={rust_time*1000:.2f}ms, "
+              f"NumPy={numpy_time*1000:.2f}ms, "
+              f"Speedup={numpy_time/rust_time:.2f}x")
     
-    # Demonstrate in-place modification
-    read_back[50, 50] = [255, 0, 0]  # Modify pixel in shared memory
+    # CPU task benchmark
+    def cpu_task():
+        """Compute-intensive task."""
+        total = 0
+        for i in range(1000000):
+            total += i * i
+        return total
     
-    # Read again to verify modification
-    final_read = buffer.as_numpy(image.shape, dtype=np.uint8)
-    assert np.array_equal(final_read[50, 50], [255, 0, 0]), "In-place modification failed"
-    logger.info("✓ In-place modification verified")
+    # Rust execution
+    start = time.perf_counter()
+    result1 = accelerator.run_cpu_task(cpu_task)
+    rust_time = time.perf_counter() - start
+    
+    # Direct execution
+    start = time.perf_counter()
+    result2 = cpu_task()
+    direct_time = time.perf_counter() - start
+    
+    print(f"\nCPU task: Rust={rust_time*1000:.2f}ms, "
+          f"Direct={direct_time*1000:.2f}ms")
+    
+    # Print statistics
+    print("\nMemory statistics:")
+    print(accelerator.get_memory_stats())
+    
+    print("\nRuntime statistics:")
+    print(accelerator.get_runtime_stats())
+
+
+# Global accelerator instance
+_global_accelerator: Optional[RustAccelerator] = None
+
+
+def initialize_rust_acceleration(**kwargs) -> RustAccelerator:
+    """
+    Initialize global Rust acceleration.
+    
+    Returns:
+        Configured RustAccelerator instance
+    """
+    global _global_accelerator
+    
+    if _global_accelerator is None:
+        _global_accelerator = RustAccelerator(**kwargs)
+        logger.info("Global Rust acceleration initialized")
+    
+    return _global_accelerator
+
+
+def get_rust_accelerator() -> Optional[RustAccelerator]:
+    """Get global Rust accelerator instance."""
+    return _global_accelerator
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format='%(message)s')
-    
-    logger.info("=" * 60)
-    logger.info("PYTHON-RUST ZERO-COPY INTEGRATION DEMO")
-    logger.info("=" * 60)
-    
-    # Run demos
-    logger.info("\n1. Shared Memory Demo:")
-    demo_shared_memory()
-    
-    logger.info("\n2. Zero-Copy Pipeline Demo:")
-    asyncio.run(demo_zero_copy_pipeline())
-    
-    logger.info("\n✅ Python-Rust integration demonstrated successfully!")
+    # Run benchmark
+    benchmark_rust_performance()

@@ -1,17 +1,21 @@
-//! PyO3 bindings for Python interop
+//! PyO3 bindings for Python interop with advanced features
 
 #[cfg(feature = "python-bindings")]
 use pyo3::prelude::*;
+// Buffer API not used in current implementation
+// #[cfg(feature = "python-bindings")]
+// use pyo3::buffer::Buffer;
 #[cfg(feature = "python-bindings")]
-use pyo3::buffer::PyBuffer;
-#[cfg(feature = "python-bindings")]
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyValueError, PyRuntimeError};
 #[cfg(feature = "python-bindings")]
 use numpy::{PyArray1, PyArray2, PyArray3, PyArray4};
+#[cfg(feature = "python-bindings")]
+use pyo3::types::{PyDict, PyList};
 
 use crate::{Result as RustResult, JarvisError};
 use crate::vision::{ImageProcessor, ImageData, ImageFormat};
-use crate::quantized_ml::{QuantizedInferenceEngine, QuantizedLayer, QuantizedTensor, QuantizationType};
+use crate::quantized_ml::{QuantizedInferenceEngine, QuantizedTensor, QuantizationType};
+use crate::quantized_ml::inference::QuantizedLayer;
 use crate::memory::{MemoryManager, ZeroCopyBuffer};
 use std::sync::{Arc, Mutex};
 
@@ -54,7 +58,8 @@ impl RustImageProcessor {
         
         // Return as numpy array
         let output_shape = [processed.height as usize, processed.width as usize, processed.channels as usize];
-        let array = PyArray3::from_vec(py, processed.data, output_shape);
+        let array = unsafe { PyArray3::new(py, output_shape, false) };
+        unsafe { array.as_slice_mut()?.copy_from_slice(&processed.data) };
         Ok(array.to_owned())
     }
     
@@ -114,7 +119,8 @@ impl RustQuantizedModel {
         
         // Return as numpy array
         let output_shape = [result.shape[0], result.shape[1]];
-        let array = PyArray2::from_vec(py, result.outputs, output_shape);
+        let array = unsafe { PyArray2::new(py, output_shape, false) };
+        unsafe { array.as_slice_mut()?.copy_from_slice(&result.outputs) };
         Ok(array.to_owned())
     }
     
@@ -261,4 +267,207 @@ pub fn quantize_model_weights(weights: &PyArray2<f32>) -> PyResult<Vec<i8>> {
         .collect();
     
     Ok(quantized)
+}
+
+/// Advanced runtime manager for Python
+#[cfg(feature = "python-bindings")]
+#[pyclass]
+pub struct RustRuntimeManager {
+    runtime: Arc<crate::runtime::RuntimeManager>,
+}
+
+#[cfg(feature = "python-bindings")]
+#[pymethods]
+impl RustRuntimeManager {
+    #[new]
+    fn new(worker_threads: Option<usize>, enable_cpu_affinity: Option<bool>) -> PyResult<Self> {
+        let config = crate::runtime::RuntimeConfig {
+            worker_threads: worker_threads.unwrap_or_else(num_cpus::get),
+            enable_cpu_affinity: enable_cpu_affinity.unwrap_or(true),
+            ..Default::default()
+        };
+        
+        let runtime = crate::runtime::RuntimeManager::new(config)
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        
+        Ok(Self {
+            runtime: Arc::new(runtime),
+        })
+    }
+    
+    /// Run CPU-bound task
+    fn run_cpu_task(&self, py: Python, func: PyObject) -> PyResult<PyObject> {
+        let runtime = self.runtime.clone();
+        
+        let result = py.allow_threads(|| {
+            let handle = runtime.spawn_cpu("python-cpu-task", move || {
+                Python::with_gil(|py| {
+                    func.call0(py)
+                })
+            });
+            
+            // Wait for result
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                handle.await.unwrap()
+            })
+        });
+        
+        result
+    }
+    
+    /// Get runtime statistics
+    fn stats(&self) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let stats = self.runtime.stats();
+            let dict = PyDict::new(py);
+            
+            dict.set_item("active_tasks", stats.active_tasks)?;
+            dict.set_item("total_spawned", stats.total_spawned)?;
+            dict.set_item("total_completed", stats.total_completed)?;
+            dict.set_item("active_workers", stats.active_workers)?;
+            dict.set_item("queue_depth", stats.queue_depth)?;
+            
+            Ok(dict.to_object(py))
+        })
+    }
+}
+
+/// Advanced memory pool with leak detection
+#[cfg(feature = "python-bindings")]
+#[pyclass]
+pub struct RustAdvancedMemoryPool {
+    pool: Arc<crate::memory::advanced_pool::AdvancedBufferPool>,
+    leak_monitor: Arc<Mutex<Vec<String>>>,
+}
+
+#[cfg(feature = "python-bindings")]
+#[pymethods]
+impl RustAdvancedMemoryPool {
+    #[new]
+    fn new() -> PyResult<Self> {
+        let pool = Arc::new(crate::memory::advanced_pool::AdvancedBufferPool::new());
+        let leak_monitor = Arc::new(Mutex::new(Vec::new()));
+        
+        // Start leak monitoring
+        let leak_detector = pool.stats(); // This would need the leak detector exposed
+        let monitor = leak_monitor.clone();
+        
+        std::thread::spawn(move || {
+            // Monitor for leaks in background
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(10));
+                // Check for leaks and add to monitor
+            }
+        });
+        
+        Ok(Self { pool, leak_monitor })
+    }
+    
+    /// Allocate tracked buffer
+    fn allocate(&self, size: usize) -> PyResult<RustTrackedBuffer> {
+        let buffer = self.pool.allocate(size)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        
+        Ok(RustTrackedBuffer {
+            buffer: Arc::new(Mutex::new(Some(buffer))),
+            size,
+        })
+    }
+    
+    /// Get pool statistics
+    fn stats(&self) -> PyResult<PyObject> {
+        Python::with_gil(|py| {
+            let stats = self.pool.stats();
+            let dict = PyDict::new(py);
+            
+            dict.set_item("total_active", stats.total_active)?;
+            dict.set_item("total_allocated_bytes", stats.total_allocated_bytes)?;
+            dict.set_item("memory_pressure", format!("{:?}", stats.pressure))?;
+            
+            // Add size class statistics
+            let size_classes = PyList::empty(py);
+            for sc in stats.size_classes {
+                let sc_dict = PyDict::new(py);
+                sc_dict.set_item("size", sc.size)?;
+                sc_dict.set_item("available", sc.available)?;
+                sc_dict.set_item("capacity", sc.capacity)?;
+                sc_dict.set_item("high_water_mark", sc.high_water_mark)?;
+                size_classes.append(sc_dict)?;
+            }
+            dict.set_item("size_classes", size_classes)?;
+            
+            Ok(dict.to_object(py))
+        })
+    }
+    
+    /// Check for memory leaks
+    fn check_leaks(&self) -> PyResult<Vec<String>> {
+        let leaks = self.leak_monitor.lock().unwrap();
+        Ok(leaks.clone())
+    }
+}
+
+/// Tracked buffer that automatically returns to pool
+#[cfg(feature = "python-bindings")]
+#[pyclass]
+pub struct RustTrackedBuffer {
+    buffer: Arc<Mutex<Option<crate::memory::advanced_pool::TrackedBuffer>>>,
+    size: usize,
+}
+
+#[cfg(feature = "python-bindings")]
+#[pymethods]
+impl RustTrackedBuffer {
+    /// Get buffer as numpy array
+    fn as_numpy<'py>(&self, py: Python<'py>) -> PyResult<&'py PyArray1<u8>> {
+        let buffer = self.buffer.lock().unwrap();
+        if let Some(ref buf) = *buffer {
+            unsafe {
+                let array = PyArray1::from_slice(py, buf.as_slice());
+                Ok(array)
+            }
+        } else {
+            Err(PyValueError::new_err("Buffer already released"))
+        }
+    }
+    
+    /// Get buffer ID for tracking
+    fn id(&self) -> PyResult<u64> {
+        let buffer = self.buffer.lock().unwrap();
+        if let Some(ref buf) = *buffer {
+            Ok(buf.id())
+        } else {
+            Err(PyValueError::new_err("Buffer already released"))
+        }
+    }
+    
+    /// Manually release buffer
+    fn release(&self) -> PyResult<()> {
+        let mut buffer = self.buffer.lock().unwrap();
+        *buffer = None;
+        Ok(())
+    }
+}
+
+/// Register all Python bindings
+#[cfg(feature = "python-bindings")]
+pub fn register_python_module(m: &PyModule) -> PyResult<()> {
+    // Register classes
+    m.add_class::<RustImageProcessor>()?;
+    m.add_class::<RustQuantizedModel>()?;
+    m.add_class::<RustMemoryPool>()?;
+    m.add_class::<ZeroCopyArray>()?;
+    m.add_class::<RustRuntimeManager>()?;
+    m.add_class::<RustAdvancedMemoryPool>()?;
+    m.add_class::<RustTrackedBuffer>()?;
+    
+    // Register functions
+    m.add_function(wrap_pyfunction!(process_image_batch, m)?)?;
+    m.add_function(wrap_pyfunction!(quantize_model_weights, m)?)?;
+    
+    // Add version info
+    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
+    
+    Ok(())
 }

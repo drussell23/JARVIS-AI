@@ -10,6 +10,8 @@ from typing import Dict, Any, Optional, Tuple, List
 from dataclasses import dataclass
 from datetime import datetime
 import os
+import time
+import psutil
 from .dynamic_response_composer import ResponseContext
 
 # Import new ML components
@@ -195,18 +197,22 @@ class VisionSystemV2:
     
     def _register_transformer_handlers(self):
         """Register vision handlers with the transformer router for <100ms latency"""
-        # Discover and register existing handlers
-        asyncio.create_task(self.transformer_router.discover_handler(
-            self._handle_capability_confirmation_fast,
-            auto_analyze=True
-        ))
+        # Store handlers for async registration later
+        self._pending_handler_registrations = [
+            (self._handle_capability_confirmation_fast, True),
+            (self._handle_general_vision_fast, True),
+        ]
         
-        asyncio.create_task(self.transformer_router.discover_handler(
-            self._handle_general_vision_fast,
-            auto_analyze=True
-        ))
-        
-        logger.info("Registered handlers with transformer router")
+        logger.info("Prepared handlers for transformer router registration")
+    
+    async def _complete_async_initialization(self):
+        """Complete async initialization when event loop is available"""
+        if hasattr(self, '_pending_handler_registrations'):
+            for handler_info in self._pending_handler_registrations:
+                if isinstance(handler_info, tuple):
+                    handler, auto_analyze = handler_info
+                    await self.transformer_router.discover_handler(handler, auto_analyze=auto_analyze)
+            delattr(self, '_pending_handler_registrations')
     
     async def _handle_capability_confirmation_fast(self, command: str, context: Optional[Dict] = None):
         """Fast capability confirmation handler for transformer router"""
@@ -224,6 +230,10 @@ class VisionSystemV2:
         Process any vision command using pure ML approach
         No hardcoding, no patterns - just intelligence
         """
+        # Ensure async initialization is complete
+        if getattr(self, '_needs_async_init', False):
+            await self._complete_async_initialization()
+            self._needs_async_init = False
         try:
             # Extract user ID for personalization
             user_id = context.get('user', 'default') if context else 'default'
@@ -713,7 +723,17 @@ def get_vision_system_v2() -> VisionSystemV2:
     global _vision_system_v2
     if _vision_system_v2 is None:
         _vision_system_v2 = VisionSystemV2()
+        # Mark that async initialization is needed
+        _vision_system_v2._needs_async_init = True
     return _vision_system_v2
+
+async def ensure_vision_system_v2_initialized() -> VisionSystemV2:
+    """Ensure Vision System v2.0 is fully initialized including async parts"""
+    system = get_vision_system_v2()
+    if getattr(system, '_needs_async_init', False):
+        await system._complete_async_initialization()
+        system._needs_async_init = False
+    return system
 
 
 # Compatibility layer for existing code

@@ -13,55 +13,98 @@ crate-type = ["cdylib", "rlib"]  # Both C-compatible and Rust library
 anyhow = "1.0"
 thiserror = "1.0"
 log = "0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Async runtime
-tokio = { version = "1.35", features = ["full"] }
+tokio = { version = "1.35", features = ["full", "tracing"] }
 futures = "0.3"
+async-trait = "0.1"
+rayon = "1.8"
+num_cpus = "1.16"
+rand = "0.8"
 
 # Numerical computing
-ndarray = { version = "0.15", features = ["rayon", "serde"] }
+ndarray = { version = "0.15", features = ["rayon", "serde", "blas"] }
 num-traits = "0.2"
 half = "2.3"  # For FP16 support
+nalgebra = "0.32"  # Advanced linear algebra
+ndarray-stats = "0.5"
 
 # Memory management
 crossbeam = "0.8"
 parking_lot = "0.12"
 memmap2 = "0.9"
+mimalloc = { version = "0.1", default-features = false, optional = true }  # High-performance allocator
+bytes = "1.5"
+smallvec = "1.11"  # Stack-allocated small vectors
 
-# SIMD operations (for M1 optimization)
-packed_simd_2 = "0.3"
-portable-simd = "0.3"
+# SIMD operations
+wide = "0.7"  # Portable SIMD
+simdeez = "1.0"  # SIMD abstraction layer
 
 # Python bindings
-pyo3 = { version = "0.20", features = ["extension-module", "abi3-py37"] }
+pyo3 = { version = "0.20", features = ["extension-module", "abi3-py37", "multiple-pymethods"] }
 numpy = { version = "0.20", optional = true }
+pythonize = "0.20"  # Better Python serialization
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 bincode = "1.3"
+rmp-serde = "1.1"  # MessagePack
+flexbuffers = "2.0"  # Zero-copy serialization
 
 # Image processing
-image = "0.24"
+image = { version = "0.24", features = ["webp", "jpeg_rayon"] }
 imageproc = "0.23"
+fast_image_resize = "3.0"  # Hardware-accelerated resize
 
 # Neural network operations
-candle-core = { version = "0.3", optional = true }
-ort = { version = "1.16", optional = true }  # ONNX Runtime
+# candle-core = { version = "0.3", optional = true }
+# ort = { version = "1.16", optional = true }  # ONNX Runtime
+# tch = { version = "0.14", optional = true }  # PyTorch bindings
+# burn = { version = "0.13", optional = true }  # Rust-native deep learning
 
 # Compression
 lz4 = "1.24"
 zstd = "0.13"
+snap = "1.1"  # Snappy compression
+brotli = "3.4"
+
+# Performance monitoring
+metrics = "0.21"
+metrics-exporter-prometheus = "0.12"
+sysinfo = "0.30"
+
+# Concurrency utilities
+dashmap = "5.5"  # Concurrent hashmap
+flume = "0.11"  # Fast MPMC channels
+once_cell = "1.19"
+
+# Platform-specific
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.9"
+metal = "0.27"  # Metal compute shaders
+objc = "0.2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+vulkano = { version = "0.34", optional = true }  # Vulkan compute
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.52", features = ["Win32_System_Memory", "Win32_System_Threading"] }
 
 [dev-dependencies]
 criterion = "0.5"
 proptest = "1.4"
 
 [features]
-default = ["python-bindings"]
+default = ["python-bindings", "simd"]
 python-bindings = ["numpy", "pyo3/auto-initialize"]
-neural = ["candle-core", "ort"]
-simd = ["packed_simd_2"]
+# neural = ["candle-core", "ort", "tch", "burn"]
+simd = []
+gpu-compute = ["vulkano"]
+# full = ["neural", "gpu-compute"]
 
 [profile.release]
 opt-level = 3

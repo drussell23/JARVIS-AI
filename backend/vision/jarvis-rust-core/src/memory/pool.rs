@@ -9,14 +9,14 @@ use crate::{Result, JarvisError};
 pub struct BufferPool {
     buffer_size: usize,
     capacity: usize,
-    pool: ArrayQueue<Vec<u8>>,
+    pool: Arc<ArrayQueue<Vec<u8>>>,
     allocated: Arc<Mutex<usize>>,
 }
 
 impl BufferPool {
     /// Create new buffer pool
     pub fn new(buffer_size: usize, capacity: usize) -> Self {
-        let pool = ArrayQueue::new(capacity);
+        let pool = Arc::new(ArrayQueue::new(capacity));
         
         // Pre-allocate some buffers
         let preallocate = capacity / 2;
@@ -41,7 +41,7 @@ impl BufferPool {
     /// Acquire buffer from pool
     pub fn acquire(&self) -> Result<PooledBuffer> {
         // Try to get from pool
-        if let Ok(mut buffer) = self.pool.pop() {
+        if let Some(mut buffer) = self.pool.pop() {
             // Clear buffer for security
             buffer.fill(0);
             return Ok(PooledBuffer {
@@ -91,8 +91,17 @@ pub struct PoolStats {
 /// Buffer that returns to pool when dropped
 pub struct PooledBuffer {
     buffer: Vec<u8>,
-    pool: Option<ArrayQueue<Vec<u8>>>,
+    pool: Option<Arc<ArrayQueue<Vec<u8>>>>,
     size: usize,
+}
+
+impl std::fmt::Debug for PooledBuffer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PooledBuffer")
+            .field("size", &self.size)
+            .field("has_pool", &self.pool.is_some())
+            .finish()
+    }
 }
 
 impl PooledBuffer {

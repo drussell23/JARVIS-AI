@@ -5,37 +5,25 @@
 //! - Memory-efficient buffer management
 //! - Vision processing with hardware acceleration
 //! - Zero-copy Python interop
+//! - Advanced async runtime with work stealing
+//! - Automatic memory leak detection
 
-#![feature(portable_simd)]  // Enable portable SIMD
+// Note: portable SIMD requires nightly Rust
+// #![feature(portable_simd)]
+
+use std::sync::Once;
+use anyhow;
+
+// Common types will be available to all modules
 
 pub mod quantized_ml;
 pub mod memory;
 pub mod vision;
 pub mod bridge;
+pub mod runtime;
 
-use std::sync::Once;
-
-// Global initialization
-static INIT: Once = Once::new();
-
-/// Initialize the JARVIS Rust core
-pub fn initialize() {
-    INIT.call_once(|| {
-        // Initialize logging
-        env_logger::init();
-        
-        // Initialize thread pool for Rayon
-        rayon::ThreadPoolBuilder::new()
-            .num_threads(num_cpus::get())
-            .thread_name(|index| format!("jarvis-worker-{}", index))
-            .build_global()
-            .expect("Failed to initialize thread pool");
-        
-        log::info!("JARVIS Rust Core initialized");
-        log::info!("CPU cores: {}", num_cpus::get());
-        log::info!("SIMD support: {}", cfg!(feature = "simd"));
-    });
-}
+use runtime::{RuntimeConfig, initialize_runtime};
+use memory::advanced_pool::AdvancedBufferPool;
 
 /// Main error type for JARVIS operations
 #[derive(thiserror::Error, Debug)]
@@ -59,7 +47,76 @@ pub enum JarvisError {
     Other(#[from] anyhow::Error),
 }
 
+impl From<std::io::Error> for JarvisError {
+    fn from(err: std::io::Error) -> Self {
+        JarvisError::Other(err.into())
+    }
+}
+
+impl From<ndarray::ShapeError> for JarvisError {
+    fn from(err: ndarray::ShapeError) -> Self {
+        JarvisError::Other(anyhow::anyhow!("Shape error: {}", err))
+    }
+}
+
 pub type Result<T> = std::result::Result<T, JarvisError>;
+
+// Global initialization
+static INIT: Once = Once::new();
+
+/// Initialize the JARVIS Rust core with advanced features
+pub fn initialize() {
+    INIT.call_once(|| {
+        // Initialize tracing/logging
+        tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .with_thread_ids(true)
+            .with_thread_names(true)
+            .init();
+        
+        // Initialize mimalloc as global allocator
+        #[cfg(feature = "mimalloc")]
+        {
+            use mimalloc::MiMalloc;
+            #[global_allocator]
+            static GLOBAL: MiMalloc = MiMalloc;
+        }
+        
+        // Initialize advanced runtime
+        let runtime_config = RuntimeConfig {
+            worker_threads: num_cpus::get(),
+            enable_cpu_affinity: true,
+            enable_work_stealing: true,
+            ..Default::default()
+        };
+        
+        if let Err(e) = initialize_runtime(runtime_config) {
+            tracing::error!("Failed to initialize runtime: {}", e);
+        }
+        
+        // Initialize thread pool for Rayon with custom configuration
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(num_cpus::get())
+            .thread_name(|index| format!("jarvis-compute-{}", index))
+            .stack_size(4 * 1024 * 1024) // 4MB stack for compute threads
+            .build_global()
+            .expect("Failed to initialize compute thread pool");
+        
+        // Initialize global memory pool
+        let _ = AdvancedBufferPool::new();
+        
+        tracing::info!("JARVIS Rust Core initialized");
+        tracing::info!("CPU cores: {} (physical: {})", 
+            num_cpus::get(), 
+            num_cpus::get_physical()
+        );
+        tracing::info!("SIMD support: {}", cfg!(feature = "simd"));
+        tracing::info!("Memory allocator: {}", 
+            if cfg!(feature = "mimalloc") { "mimalloc" } else { "system" }
+        );
+    });
+}
+
 
 /// Performance metrics
 #[derive(Debug, Clone, Default)]

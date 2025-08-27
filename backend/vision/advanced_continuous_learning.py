@@ -6,30 +6,27 @@ This now uses the robust implementation if available
 
 # Try to use robust implementation first
 _ROBUST_AVAILABLE = False
-try:
-    from .integrate_robust_learning import (
-        get_advanced_continuous_learning as _get_robust,
-        AdvancedContinuousLearning as _RobustAdvancedContinuousLearning,
-        LearningTask as _RobustLearningTask,
-        FederatedUpdate as _RobustFederatedUpdate,
-        AdaptiveLearningRateAdjuster as _RobustAdaptiveLearningRateAdjuster,
-        PerformanceMonitor as _RobustPerformanceMonitor
-    )
-    _ROBUST_AVAILABLE = True
-except ImportError:
-    # Continue with original implementation below
-    pass
+# Disabled until integrate_robust_learning.py is created
+# try:
+#     # Import only the essentials to avoid circular import
+#     from .integrate_robust_learning import (
+#         get_advanced_continuous_learning as _get_robust,
+#         LearningTask as _RobustLearningTask,
+#         FederatedUpdate as _RobustFederatedUpdate,
+#     )
+#     _ROBUST_AVAILABLE = True
+# except ImportError:
+#     # Continue with original implementation below
+#     pass
 
 # If robust is available, use those imports
 if _ROBUST_AVAILABLE:
     get_advanced_continuous_learning = _get_robust
-    AdvancedContinuousLearning = _RobustAdvancedContinuousLearning
     LearningTask = _RobustLearningTask
     FederatedUpdate = _RobustFederatedUpdate
-    AdaptiveLearningRateAdjuster = _RobustAdaptiveLearningRateAdjuster
-    PerformanceMonitor = _RobustPerformanceMonitor
     
-    # Set __all__ and skip the rest 
+    # We'll define the other classes below to avoid circular imports
+    # Set __all__ and skip some definitions
     __all__ = [
         'get_advanced_continuous_learning',
         'AdvancedContinuousLearning',

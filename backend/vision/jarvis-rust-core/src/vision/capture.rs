@@ -4,6 +4,7 @@ use super::{ImageData, ImageFormat};
 use crate::{Result, JarvisError};
 use crate::memory::{MemoryManager, ZeroCopyBuffer};
 use std::time::{Instant, Duration};
+use std::sync::Arc;
 
 /// Capture configuration
 #[derive(Debug, Clone)]

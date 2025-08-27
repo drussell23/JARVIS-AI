@@ -147,8 +147,8 @@ impl Drop for RecyclableBuffer {
             if !self.buffer.is_empty() {
                 let buffer = std::mem::take(&mut self.buffer);
                 unsafe {
-                    let recycler = &**recycler_ptr;
-                    (*recycler).recycle(buffer, self.original_capacity);
+                    let recycler_raw = **recycler_ptr;
+                    (*recycler_raw).recycle(buffer, self.original_capacity);
                 }
             }
         }

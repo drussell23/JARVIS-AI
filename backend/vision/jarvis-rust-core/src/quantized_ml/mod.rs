@@ -163,7 +163,7 @@ impl Dequantize for QuantizedTensor<u8> {
 impl Dequantize for QuantizedTensor<f16> {
     fn dequantize(&self) -> Vec<f32> {
         self.data.iter()
-            .map(|&val| f32::from(val))
+            .map(|&val| val.to_f32())
             .collect()
     }
 }

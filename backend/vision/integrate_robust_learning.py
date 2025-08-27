@@ -190,18 +190,15 @@ def get_advanced_continuous_learning(model):
         pass
     
     # Original implementation
-    _original_get_advanced_continuous_learning(model)
+    return _original_get_advanced_continuous_learning(model)
 
 def _original_get_advanced_continuous_learning(model: nn.Module) -> AdvancedContinuousLearning:
     """Get instance of advanced continuous learning (robust if available)"""
     if ROBUST_AVAILABLE:
         return get_robust_continuous_learning(model)
     else:
-        # Import original only when needed
-        from .advanced_continuous_learning import (
-            get_advanced_continuous_learning as get_original
-        )
-        return get_original(model)
+        # Create a basic wrapper with the AdvancedContinuousLearning interface
+        return AdvancedContinuousLearning(model)
 
 
 def apply_robust_learning_patch():

@@ -3,6 +3,7 @@
 pub mod allocator;
 pub mod pool;
 pub mod recycler;
+pub mod advanced_pool;
 
 use std::sync::Arc;
 use parking_lot::Mutex;
@@ -112,7 +113,7 @@ unsafe impl Sync for ZeroCopyBuffer {}
 
 impl ZeroCopyBuffer {
     /// Create from Rust-owned buffer
-    pub fn from_rust(buffer: PooledBuffer) -> Self {
+    pub fn from_rust(mut buffer: PooledBuffer) -> Self {
         let data = buffer.as_mut_ptr();
         let size = buffer.len();
         

@@ -17,7 +17,7 @@ impl FakeQuantizer {
     
     /// Apply fake quantization (straight-through estimator)
     pub fn fake_quantize(&self, tensor: &Array2<f32>) -> Array2<f32> {
-        let (scale, zero_point) = self.compute_params(tensor);
+        let (scale, zero_point) = self.compute_params(&tensor.view());
         
         // Quantize
         let quantized = tensor.mapv(|val| {

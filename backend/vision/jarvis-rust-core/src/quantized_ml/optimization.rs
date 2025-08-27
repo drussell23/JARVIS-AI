@@ -28,7 +28,7 @@ impl Default for OptimizationConfig {
 }
 
 /// Layer statistics for optimization
-#define[derive(Debug)]
+#[derive(Debug)]
 struct LayerStats {
     min_val: f32,
     max_val: f32,
