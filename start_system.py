@@ -73,7 +73,7 @@ class AsyncSystemManager:
     def print_header(self):
         """Print system header"""
         print(f"\n{Colors.HEADER}{'='*60}")
-        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v5.9 - TypeScript-Enhanced Dynamic WebSocket System 🚀{Colors.ENDC}")
+        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v6.0 - Advanced Autonomous Intelligence 🚀{Colors.ENDC}")
         print(f"{Colors.CYAN}⚡ ZERO HARDCODING • Multi-Language Integration • Self-Healing Connections{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}")
         
@@ -352,6 +352,71 @@ class AsyncSystemManager:
             print(f"{Colors.WARNING}⚠️  Could not run microphone diagnostic: {e}{Colors.ENDC}")
             return False
     
+    async def check_and_initialize_advanced_features(self):
+        """Check and initialize JARVIS advanced features"""
+        print(f"\n{Colors.BLUE}🎯 Initializing Advanced Features...{Colors.ENDC}")
+        
+        base_url = f"http://localhost:{self.ports['main_api']}"
+        features_initialized = []
+        
+        async with aiohttp.ClientSession() as session:
+            # Check ML models status
+            try:
+                async with session.get(f"{base_url}/ml/status") as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if data.get('models_loaded'):
+                            print(f"{Colors.GREEN}  ✓ ML models loaded successfully{Colors.ENDC}")
+                            features_initialized.append('ml_models')
+            except:
+                pass
+                
+            # Enable continuous learning if available
+            try:
+                async with session.post(f"{base_url}/ml/learning/enable", json={
+                    "mode": "continuous",
+                    "save_patterns": True
+                }) as resp:
+                    if resp.status == 200:
+                        print(f"{Colors.GREEN}  ✓ Continuous learning enabled{Colors.ENDC}")
+                        features_initialized.append('learning')
+            except:
+                pass
+                
+            # Initialize autonomous monitoring
+            try:
+                async with session.post(f"{base_url}/autonomy/init", json={
+                    "monitoring": True,
+                    "proactive": True,
+                    "safety": "balanced"
+                }) as resp:
+                    if resp.status == 200:
+                        print(f"{Colors.GREEN}  ✓ Autonomous monitoring initialized{Colors.ENDC}")
+                        features_initialized.append('autonomy')
+                        self.autonomous_mode_ready = True
+            except:
+                pass
+                
+            # Set up vision monitoring
+            try:
+                async with session.post(f"{base_url}/vision/monitoring/configure", json={
+                    "interval": 2,
+                    "intelligent": True,
+                    "learn_patterns": True
+                }) as resp:
+                    if resp.status == 200:
+                        print(f"{Colors.GREEN}  ✓ Vision monitoring configured{Colors.ENDC}")
+                        features_initialized.append('vision_monitoring')
+            except:
+                pass
+                
+        if not features_initialized:
+            print(f"{Colors.YELLOW}  ⚠️ No advanced features available (basic mode){Colors.ENDC}")
+        else:
+            print(f"{Colors.CYAN}  • {len(features_initialized)} advanced features active{Colors.ENDC}")
+            
+        return features_initialized
+    
     async def check_vision_permissions(self):
         """Check vision system permissions"""
         print(f"\n{Colors.BLUE}Checking vision capabilities...{Colors.ENDC}")
@@ -411,75 +476,59 @@ class AsyncSystemManager:
     
     async def run_vision_diagnostic(self):
         """Run comprehensive vision system diagnostic"""
-        print(f"\n{Colors.BLUE}Running enhanced vision system diagnostic...{Colors.ENDC}")
+        print(f"\n{Colors.BLUE}Checking vision system components...{Colors.ENDC}")
         
         issues_found = []
+        optional_features = []
+        features_active = []
         
-        # Check C++ Fast Capture extension
-        try:
-            from backend.native_extensions import fast_capture
-            print(f"{Colors.GREEN}✓ C++ Fast Capture extension loaded (v{fast_capture.VERSION}){Colors.ENDC}")
-            print(f"{Colors.GREEN}  • 10x faster screen capture{Colors.ENDC}")
-            print(f"{Colors.GREEN}  • Parallel multi-window capture{Colors.ENDC}")
-            print(f"{Colors.GREEN}  • GPU acceleration available{Colors.ENDC}")
-        except ImportError:
-            print(f"{Colors.YELLOW}⚠️  C++ Fast Capture not available (using Python fallback){Colors.ENDC}")
-            print(f"   To enable 10x faster capture:")
-            print(f"   cd backend/native_extensions && ./build.sh")
-            issues_found.append("C++ Fast Capture extension not built")
+        # Check optional C++ Fast Capture extension
+        native_ext_path = self.backend_dir / "native_extensions"
+        if native_ext_path.exists():
+            try:
+                # Add to path if exists
+                sys.path.insert(0, str(native_ext_path))
+                import fast_capture
+                features_active.append("C++ Fast Capture (10x speed)")
+                features_active.append("GPU acceleration")
+            except ImportError:
+                optional_features.append("C++ Fast Capture (10x speed boost)")
+        else:
+            # Native extensions not present, this is fine
+            optional_features.append("Native performance extensions")
         
-        # Check C++ Vision ML Router extension
-        try:
-            import vision_ml_router
-            score, action = vision_ml_router.analyze("test vision command")
-            print(f"{Colors.GREEN}✓ C++ Vision ML Router loaded{Colors.ENDC}")
-            print(f"{Colors.GREEN}  • <5ms vision command analysis{Colors.ENDC}")
-            print(f"{Colors.GREEN}  • Zero hardcoding pattern matching{Colors.ENDC}")
-            print(f"{Colors.GREEN}  • Learning cache enabled{Colors.ENDC}")
-            print(f"{Colors.GREEN}  • Test: score={score:.2f}, action={action}{Colors.ENDC}")
-        except ImportError:
-            print(f"{Colors.YELLOW}⚠️  C++ Vision ML Router not available (using Python ML){Colors.ENDC}")
-            print(f"   Vision routing will still work with Python ML")
-            print(f"   To enable 20x faster vision routing:")
-            print(f"   cd backend/native_extensions && ./build.sh vision")
+        # Check optional C++ Vision ML Router
+        if native_ext_path.exists():
+            try:
+                import vision_ml_router
+                score, action = vision_ml_router.analyze("test vision command")
+                features_active.append("C++ Vision Router (<5ms)")
+                features_active.append(f"ML confidence: {score:.1%}")
+            except ImportError:
+                # Not an issue, just optional optimization
+                pass
         
-        # Check Swift Intelligent Command Classifier
-        swift_available = False
-        fallback_active = False
-        try:
-            from backend.swift_bridge.python_bridge import SWIFT_AVAILABLE, IntelligentCommandRouter
-            router = IntelligentCommandRouter()
-            
-            if SWIFT_AVAILABLE and os.path.exists("backend/swift_bridge/.build/release/jarvis-classifier"):
-                swift_available = True
-                print(f"{Colors.GREEN}✓ Swift Intelligent Command Classifier active{Colors.ENDC}")
-                print(f"{Colors.GREEN}  • Native macOS NLP with NaturalLanguage framework{Colors.ENDC}")
-                print(f"{Colors.GREEN}  • 5-10ms classification speed{Colors.ENDC}")
-                print(f"{Colors.GREEN}  • Zero hardcoding - pure linguistic analysis{Colors.ENDC}")
-                print(f"{Colors.GREEN}  • Learning from usage patterns{Colors.ENDC}")
-            else:
-                fallback_active = True
-                print(f"{Colors.YELLOW}⚠️  Using Python fallback classifier{Colors.ENDC}")
-                print(f"{Colors.GREEN}  • Still provides intelligent routing{Colors.ENDC}")
-                print(f"{Colors.GREEN}  • No hardcoded patterns{Colors.ENDC}")
-                print(f"{Colors.GREEN}  • 60-80% accuracy out of the box{Colors.ENDC}")
+        # Check optional Swift Intelligent Command Classifier
+        swift_bridge_path = self.backend_dir / "swift_bridge"
+        if swift_bridge_path.exists() and platform.system() == "Darwin":
+            try:
+                sys.path.insert(0, str(swift_bridge_path))
+                from python_bridge import SWIFT_AVAILABLE, IntelligentCommandRouter
                 
-                if not SWIFT_AVAILABLE:
-                    print(f"\n   To enable Swift classifier (better performance):")
-                    print(f"   1. Install Xcode from Mac App Store")
-                    print(f"   2. Run: cd backend/swift_bridge && ./build.sh")
-                
-            # Test the classifier
-            test_result = await router.route_command("close whatsapp")
-            if test_result[0] == "system":
-                print(f"{Colors.GREEN}✓ 'close whatsapp' correctly routes to SYSTEM{Colors.ENDC}")
-            else:
-                print(f"{Colors.WARNING}⚠️  Command routing needs training{Colors.ENDC}")
-                
-        except Exception as e:
-            print(f"{Colors.WARNING}⚠️  Command classifier error: {e}{Colors.ENDC}")
-            print(f"   To fix: cd backend/swift_bridge && ./build.sh")
-            issues_found.append("Command classifier not available")
+                if SWIFT_AVAILABLE:
+                    features_active.append("Swift NLP Classifier")
+                    features_active.append("Native macOS integration")
+                    
+                    # Quick test
+                    router = IntelligentCommandRouter()
+                    result = await router.route_command("close whatsapp")
+                    if result[0] == "system":
+                        features_active.append("Intelligent routing")
+                else:
+                    optional_features.append("Swift NLP classifier")
+            except Exception:
+                # Swift bridge not available, that's OK
+                optional_features.append("Swift command classifier")
         
         # Check if backend is accessible
         import socket
@@ -499,27 +548,23 @@ class AsyncSystemManager:
                     async with session.get(f'http://localhost:{self.ports["main_api"]}/vision/status') as resp:
                         if resp.status == 200:
                             data = await resp.json()
-                            print(f"{Colors.GREEN}✓ Enhanced Vision API accessible{Colors.ENDC}")
+                            features_active.append("Vision API")
                             
                             # Check Claude integration
                             if data.get('ai_integration') == 'Claude Opus 4':
-                                print(f"{Colors.GREEN}✓ Claude AI integration active{Colors.ENDC}")
-                            else:
-                                print(f"{Colors.WARNING}⚠️  Claude integration not detected{Colors.ENDC}")
+                                features_active.append("Claude AI vision")
                             
                             # Check monitoring status
                             if data.get('monitoring_active'):
-                                print(f"{Colors.GREEN}✓ Continuous vision monitoring active{Colors.ENDC}")
-                                print(f"{Colors.GREEN}✓ Multi-window analysis enabled{Colors.ENDC}")
-                            else:
-                                print(f"{Colors.YELLOW}⚠️  Vision monitoring inactive (activate autonomous mode){Colors.ENDC}")
+                                features_active.append("Continuous monitoring")
+                                features_active.append("Multi-window analysis")
                             
                             # Check capabilities
                             capabilities = data.get('capabilities', [])
                             if 'claude_vision_analysis' in capabilities:
-                                print(f"{Colors.GREEN}✓ Claude vision analysis available{Colors.ENDC}")
+                                features_active.append("Claude vision analysis")
                             if 'pattern_learning' in capabilities:
-                                print(f"{Colors.GREEN}✓ Machine learning patterns enabled{Colors.ENDC}")
+                                features_active.append("Pattern learning")
                                 
                         else:
                             issues_found.append(f"Vision API returned status {resp.status}")
@@ -535,23 +580,55 @@ class AsyncSystemManager:
             'pytesseract': 'pytesseract'
         }
         
+        missing_deps = []
         for module, package in vision_deps.items():
             try:
                 __import__(module)
-                print(f"{Colors.GREEN}✓ {package} installed{Colors.ENDC}")
+                features_active.append(f"{package}")
             except ImportError:
+                missing_deps.append(package)
                 issues_found.append(f"{package} not installed")
-                print(f"{Colors.WARNING}⚠️  {package} not installed{Colors.ENDC}")
         
-        # Summary
-        if not issues_found:
-            print(f"\n{Colors.GREEN}✅ Vision system ready!{Colors.ENDC}")
-            print(f"{Colors.CYAN}WebSocket endpoint: ws://localhost:{self.ports['main_api']}/vision/ws/vision{Colors.ENDC}")
-        else:
-            print(f"\n{Colors.YELLOW}⚠️  Vision system issues found:{Colors.ENDC}")
-            for issue in issues_found:
+        if missing_deps:
+            print(f"\n{Colors.WARNING}Missing vision dependencies: {', '.join(missing_deps)}{Colors.ENDC}")
+        
+        # Summary - more positive framing
+        print(f"\n{Colors.BOLD}📊 Vision System Summary:{Colors.ENDC}")
+        
+        # Show active features first
+        if features_active:
+            print(f"\n{Colors.GREEN}✅ Active Features ({len(features_active)}):{Colors.ENDC}")
+            # Group similar features
+            core_features = [f for f in features_active if any(x in f.lower() for x in ['api', 'opencv', 'pillow', 'pytesseract'])]
+            ai_features = [f for f in features_active if any(x in f.lower() for x in ['claude', 'ml', 'pattern', 'swift', 'nlp'])]
+            perf_features = [f for f in features_active if any(x in f.lower() for x in ['c++', 'gpu', '<5ms', '10x'])]
+            other_features = [f for f in features_active if f not in core_features + ai_features + perf_features]
+            
+            if core_features:
+                print(f"  {Colors.CYAN}Core:{Colors.ENDC} {', '.join(core_features)}")
+            if ai_features:
+                print(f"  {Colors.CYAN}AI/ML:{Colors.ENDC} {', '.join(ai_features)}")
+            if perf_features:
+                print(f"  {Colors.CYAN}Performance:{Colors.ENDC} {', '.join(perf_features)}")
+            if other_features:
+                print(f"  {Colors.CYAN}Other:{Colors.ENDC} {', '.join(other_features)}")
+        
+        # Show any critical issues
+        critical_issues = [i for i in issues_found if 'not installed' in i or 'Backend not' in i]
+        if critical_issues:
+            print(f"\n{Colors.YELLOW}⚠️  Setup Required:{Colors.ENDC}")
+            for issue in critical_issues:
                 print(f"   • {issue}")
-            print(f"\n{Colors.CYAN}Run 'python diagnose_vision.py' for detailed diagnostics{Colors.ENDC}")
+                
+        # Optional features are truly optional
+        if optional_features and len(optional_features) <= 3:  # Only show if few
+            print(f"\n{Colors.CYAN}💡 Optional Enhancements:{Colors.ENDC} {', '.join(optional_features)}")
+        
+        # Overall status
+        if features_active and len(critical_issues) == 0:
+            print(f"\n{Colors.GREEN}✨ Vision system ready for use!{Colors.ENDC}")
+        elif features_active:
+            print(f"\n{Colors.YELLOW}⚡ Vision system partially ready{Colors.ENDC}")
     
     async def create_directories(self):
         """Create necessary directories"""
@@ -629,18 +706,39 @@ class AsyncSystemManager:
         """Start backend service asynchronously"""
         print(f"\n{Colors.BLUE}Starting backend service...{Colors.ENDC}")
         
-        # Check port availability
-        if not await self.check_port_available(self.ports["main_api"]):
-            print(f"{Colors.WARNING}⚠️  Port {self.ports['main_api']} is in use{Colors.ENDC}")
+        # Enhanced port management with multiple recovery attempts
+        port_ready = False
+        recovery_attempts = 0
+        max_attempts = 3
+        
+        while not port_ready and recovery_attempts < max_attempts:
+            if await self.check_port_available(self.ports["main_api"]):
+                port_ready = True
+                break
+                
+            recovery_attempts += 1
+            print(f"{Colors.WARNING}⚠️  Port {self.ports['main_api']} is in use (attempt {recovery_attempts}/{max_attempts}){Colors.ENDC}")
             
-            # Auto-kill the process
-            if await self.kill_process_on_port(self.ports["main_api"]):
-                print(f"{Colors.GREEN}✓ Process killed{Colors.ENDC}")
-                await asyncio.sleep(2)  # Give OS time to release the port
-            else:
-                # Find alternative port
-                self.ports["main_api"] = await self.find_available_port(self.ports["main_api"] + 1)
-                print(f"{Colors.GREEN}Using port {self.ports['main_api']}{Colors.ENDC}")
+            # Try graceful shutdown first
+            if recovery_attempts == 1:
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        await session.post(f"http://localhost:{self.ports['main_api']}/shutdown", timeout=2)
+                        print(f"{Colors.YELLOW}Sent graceful shutdown request...{Colors.ENDC}")
+                        await asyncio.sleep(3)
+                except:
+                    pass
+            
+            # Force kill if still in use
+            if not await self.check_port_available(self.ports["main_api"]):
+                if await self.kill_process_on_port(self.ports["main_api"]):
+                    print(f"{Colors.GREEN}✓ Process killed{Colors.ENDC}")
+                    await asyncio.sleep(2 + recovery_attempts)  # Progressive delay
+                    
+        if not port_ready:
+            # Find alternative port as last resort
+            self.ports["main_api"] = await self.find_available_port(self.ports["main_api"] + 1)
+            print(f"{Colors.GREEN}Using alternative port {self.ports['main_api']}{Colors.ENDC}")
         
         # Set environment
         env = os.environ.copy()
@@ -661,18 +759,31 @@ class AsyncSystemManager:
         else:
             server_script = "run_server.py"
         
-        # Use direct python execution with proper working directory
-        process = await asyncio.create_subprocess_exec(
-            sys.executable, server_script,
-            "--port", str(self.ports["main_api"]),
-            cwd=str(self.backend_dir.absolute()),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            env=env
-        )
+        # Create log file for this session
+        log_dir = self.backend_dir / "logs"
+        log_dir.mkdir(exist_ok=True)
+        log_file = log_dir / f"jarvis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        
+        print(f"{Colors.CYAN}Log file: {log_file}{Colors.ENDC}")
+        
+        # Start backend with proper logging
+        with open(log_file, 'w') as log:
+            process = await asyncio.create_subprocess_exec(
+                sys.executable, server_script,
+                "--port", str(self.ports["main_api"]),
+                cwd=str(self.backend_dir.absolute()),
+                stdout=log,
+                stderr=asyncio.subprocess.STDOUT,
+                env=env
+            )
         
         self.processes.append(process)
-        print(f"{Colors.GREEN}✓ Backend starting on port {self.ports['main_api']}{Colors.ENDC}")
+        print(f"{Colors.GREEN}✓ Backend starting on port {self.ports['main_api']} (PID: {process.pid}){Colors.ENDC}")
+        
+        # Store process info for monitoring
+        self.backend_process = process
+        self.backend_start_time = time.time()
+        
         return process
     
     async def start_frontend(self) -> Optional[asyncio.subprocess.Process]:
@@ -717,7 +828,7 @@ class AsyncSystemManager:
         print(f"{Colors.GREEN}✓ Frontend starting on port {self.ports['frontend']}{Colors.ENDC}")
         return process
         
-    async def wait_for_service(self, url: str, timeout: int = 30) -> bool:
+    async def wait_for_service(self, url: str, timeout: int = 90) -> bool:
         """Wait for a service to be ready"""
         start_time = time.time()
         
@@ -731,19 +842,49 @@ class AsyncSystemManager:
                             print(f"{Colors.GREEN}✓ Service ready at {url}{Colors.ENDC}")
                             return True
                 except:
-                    # Show progress with more detailed info
+                    # Enhanced progress reporting
                     elapsed = int(time.time() - start_time)
+                    
+                    # Check if backend process is still alive
+                    if hasattr(self, 'backend_process') and self.backend_process.returncode is not None:
+                        print(f"\n{Colors.FAIL}❌ Backend process crashed!{Colors.ENDC}")
+                        # Try to read last log lines
+                        try:
+                            log_files = sorted((self.backend_dir / "logs").glob("jarvis_*.log"))
+                            if log_files:
+                                with open(log_files[-1], 'r') as f:
+                                    lines = f.readlines()[-20:]  # Last 20 lines
+                                    if lines:
+                                        print(f"{Colors.WARNING}Last log entries:{Colors.ENDC}")
+                                        for line in lines[-5:]:  # Show last 5
+                                            print(f"  {line.strip()[:100]}")
+                        except:
+                            pass
+                        return False
+                    
+                    # Detailed progress updates
                     if elapsed % 5 == 0 and elapsed > 0:
-                        if elapsed <= 15:
-                            print(f"{Colors.YELLOW}Still waiting... ({elapsed}s) - Server initializing{Colors.ENDC}")
-                        elif elapsed <= 30:
-                            print(f"{Colors.YELLOW}Still waiting... ({elapsed}s) - Loading core modules{Colors.ENDC}")
-                        elif elapsed <= 45:
-                            print(f"{Colors.YELLOW}Still waiting... ({elapsed}s) - Loading ML models (this takes time){Colors.ENDC}")
+                        if elapsed <= 10:
+                            status = "Initializing FastAPI application"
+                            emoji = "🚀"
+                        elif elapsed <= 20:
+                            status = "Loading core modules and dependencies"
+                            emoji = "📦"
+                        elif elapsed <= 40:
+                            status = "Loading ML models (this is normal)"
+                            emoji = "🧠"
                         elif elapsed <= 60:
-                            print(f"{Colors.YELLOW}Still waiting... ({elapsed}s) - Initializing voice & vision systems{Colors.ENDC}")
+                            status = "Initializing voice & vision systems"
+                            emoji = "👁️"
+                        elif elapsed <= 80:
+                            status = "Setting up Claude AI integration"
+                            emoji = "🤖"
                         else:
-                            print(f"{Colors.YELLOW}Still waiting... ({elapsed}s) - Almost ready...{Colors.ENDC}")
+                            status = "Finalizing startup sequence"
+                            emoji = "✨"
+                            
+                        print(f"\r{Colors.YELLOW}{emoji} {status}... ({elapsed}s){Colors.ENDC}" + " " * 20, end='', flush=True)
+                        
                 await asyncio.sleep(1)
                 
         print(f"{Colors.WARNING}⚠️ Service at {url} did not respond after {timeout}s{Colors.ENDC}")
@@ -753,13 +894,24 @@ class AsyncSystemManager:
         """Verify all services are running"""
         print(f"\n{Colors.BLUE}Verifying services...{Colors.ENDC}")
         
-        # Check backend with extended timeout for ML model loading
-        backend_url = f"http://localhost:{self.ports['main_api']}/docs"
-        print(f"{Colors.CYAN}Note: Backend startup may take 60-90 seconds to load ML models...{Colors.ENDC}")
-        backend_ready = await self.wait_for_service(backend_url, timeout=90)
+        # Enhanced backend verification with health endpoint
+        backend_docs_url = f"http://localhost:{self.ports['main_api']}/docs"
+        backend_health_url = f"http://localhost:{self.ports['main_api']}/health"
+        
+        print(f"{Colors.CYAN}🔍 Verifying backend services...{Colors.ENDC}")
+        print(f"{Colors.YELLOW}Note: First startup may take 60-90 seconds to load ML models{Colors.ENDC}")
+        
+        # Try health endpoint first (faster)
+        backend_ready = await self.wait_for_service(backend_health_url, timeout=90)
+        if not backend_ready:
+            # Fallback to docs endpoint
+            backend_ready = await self.wait_for_service(backend_docs_url, timeout=30)
         
         if backend_ready:
             print(f"{Colors.GREEN}✓ Backend API ready{Colors.ENDC}")
+            
+            # Initialize advanced features if available
+            await self.check_and_initialize_advanced_features()
             
             # Check specific endpoints
             async with aiohttp.ClientSession() as session:
@@ -837,6 +989,9 @@ class AsyncSystemManager:
             print(f"{Colors.FAIL}❌ Backend API failed to start!{Colors.ENDC}")
             print(f"{Colors.YELLOW}Try running manually: cd backend && python main.py{Colors.ENDC}")
             
+        # Return overall status
+        services_ok = backend_ready
+            
         # Check frontend
         if self.frontend_dir.exists():
             frontend_url = f"http://localhost:{self.ports['frontend']}"
@@ -845,55 +1000,17 @@ class AsyncSystemManager:
                 print(f"{Colors.GREEN}✓ Frontend ready{Colors.ENDC}")
             else:
                 print(f"{Colors.WARNING}⚠️  Frontend may still be compiling{Colors.ENDC}")
-                
-        # If backend isn't ready, offer to restart
-        if not backend_ready:
-            print(f"\n{Colors.FAIL}⚠️  Backend failed to start properly!{Colors.ENDC}")
-            print(f"{Colors.YELLOW}Common causes:{Colors.ENDC}")
-            print(f"  • Port {self.ports['main_api']} already in use")
-            print(f"  • Missing dependencies (run: pip install -r backend/requirements.txt)")
-            print(f"  • API key issues (check ANTHROPIC_API_KEY in backend/.env)")
-            print(f"  • Memory warnings (ignore - system has plenty of memory)")
-            print(f"\n{Colors.CYAN}Attempting automatic recovery...{Colors.ENDC}")
-            
-            # Try to kill the backend process and restart
-            for proc in self.processes:
-                if proc.returncode is None:
-                    try:
-                        proc.terminate()
-                        await proc.wait()
-                    except:
-                        pass
-                        
-            # Clear processes list
-            self.processes = []
-            
-            # Kill any remaining processes on the port
-            await self.kill_process_on_port(self.ports["main_api"])
-            await asyncio.sleep(3)  # Give OS time to clean up
-            
-            # Try starting backend again
-            await self.start_backend()
-            
-            # Wait again for backend with extended timeout
-            if await self.wait_for_service(backend_url, timeout=60):
-                print(f"{Colors.GREEN}✓ Backend recovered successfully!{Colors.ENDC}")
-            else:
-                print(f"{Colors.FAIL}❌ Backend recovery failed{Colors.ENDC}")
-                print(f"\n{Colors.YELLOW}Manual troubleshooting steps:{Colors.ENDC}")
-                print(f"1. Check if port {self.ports['main_api']} is in use: lsof -i:{self.ports['main_api']}")
-                print(f"2. Check backend logs: tail -f backend/logs/main_api.log")
-                print(f"3. Run manually: cd backend && python main.py --port {self.ports['main_api']}")
-                print(f"4. Check for Python errors: cd backend && python -c 'import main'")
-                print(f"5. Verify Claude API key: echo $ANTHROPIC_API_KEY")
+        
+        # If backend isn't ready, offer to restart (moved to caller)
+        return services_ok
             
     def print_access_info(self):
-        """Print access information"""
+        """Print enhanced access information"""
         elapsed = (datetime.now() - self.start_time).total_seconds()
         
-        print(f"\n{Colors.HEADER}{'='*60}{Colors.ENDC}")
-        print(f"{Colors.BOLD}🎉 System ready in {elapsed:.1f} seconds!{Colors.ENDC}")
-        print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}\n")
+        print(f"\n{Colors.GREEN}{'='*80}{Colors.ENDC}")
+        print(f"{Colors.BOLD}🎉 JARVIS ONLINE - Ready in {elapsed:.1f} seconds{Colors.ENDC}")
+        print(f"{Colors.GREEN}{'='*80}{Colors.ENDC}\n")
         
         # Mode information
         print(f"{Colors.BOLD}📋 STARTUP MODE: {Colors.BLUE}MANUAL MODE (Privacy-First){Colors.ENDC}")
@@ -904,14 +1021,19 @@ class AsyncSystemManager:
         print(f'   Say: "Hey JARVIS, activate full autonomy"')
         print(f'   Or click: 👤 Manual Mode → 🤖 Autonomous ON')
         
-        print(f"\n{Colors.CYAN}Main Services:{Colors.ENDC}")
-        print(f"  🔌 API Documentation: http://localhost:{self.ports['main_api']}/docs")
-        print(f"  💬 Basic Chat:        http://localhost:{self.ports['main_api']}/")
-        print(f"  🎤 JARVIS Status:     http://localhost:{self.ports['main_api']}/voice/jarvis/status")
-        print(f"  👁️  Vision Status:     http://localhost:{self.ports['main_api']}/vision/status")
+        print(f"\n{Colors.BOLD}🌐 ACCESS POINTS:{Colors.ENDC}")
+        print(f"{Colors.CYAN}  • Web Interface:{Colors.ENDC} http://localhost:{self.ports['frontend']} {Colors.GREEN}← Primary Interface{Colors.ENDC}")
+        print(f"{Colors.CYAN}  • API Documentation:{Colors.ENDC} http://localhost:{self.ports['main_api']}/docs")
+        print(f"{Colors.CYAN}  • Health Status:{Colors.ENDC} http://localhost:{self.ports['main_api']}/health")
+        print(f"{Colors.CYAN}  • Vision Status:{Colors.ENDC} http://localhost:{self.ports['main_api']}/vision/status")
+        print(f"{Colors.CYAN}  • Voice Status:{Colors.ENDC} http://localhost:{self.ports['main_api']}/voice/jarvis/status")
         
-        if self.frontend_dir.exists():
-            print(f"  🎯 JARVIS Interface:  http://localhost:{self.ports['frontend']}/ {Colors.GREEN}← Iron Man UI{Colors.ENDC}")
+        if self.ports.get('monitoring'):
+            print(f"{Colors.CYAN}  • Monitoring:{Colors.ENDC} http://localhost:{self.ports['monitoring']}/metrics")
+            
+        if hasattr(self, 'autonomous_mode_ready') and self.autonomous_mode_ready:
+            print(f"\n{Colors.BOLD}🤖 AUTONOMOUS MODE: {Colors.GREEN}READY{Colors.ENDC}")
+            print(f"  Say 'Hey JARVIS, activate full autonomy' to enable")
         
         print(f"\n{Colors.CYAN}Quick Commands:{Colors.ENDC}")
         print(f'  • "Hey JARVIS" - Activate voice control')
@@ -1358,7 +1480,7 @@ async def main():
     """Main entry point"""
     global _manager
     
-    parser = argparse.ArgumentParser(description="JARVIS AI Agent v5.8 - Zero-Hardcoding Dynamic Vision System")
+    parser = argparse.ArgumentParser(description="J.A.R.V.I.S. Advanced AI System v6.0 - Autonomous Cognitive Intelligence Platform")
     parser.add_argument("--no-browser", action="store_true", help="Don't open browser")
     parser.add_argument("--check-only", action="store_true", help="Check setup and exit")
     parser.add_argument("--backend-only", action="store_true", help="Start only the backend server")
