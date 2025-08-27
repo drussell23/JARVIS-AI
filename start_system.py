@@ -636,6 +636,7 @@ class AsyncSystemManager:
             # Auto-kill the process
             if await self.kill_process_on_port(self.ports["main_api"]):
                 print(f"{Colors.GREEN}✓ Process killed{Colors.ENDC}")
+                await asyncio.sleep(2)  # Give OS time to release the port
             else:
                 # Find alternative port
                 self.ports["main_api"] = await self.find_available_port(self.ports["main_api"] + 1)
@@ -660,25 +661,15 @@ class AsyncSystemManager:
         else:
             server_script = "run_server.py"
         
-        # Use uvicorn directly for better control
-        if server_script == "main.py":
-            process = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", "uvicorn", "main:app",
-                "--host", "127.0.0.1", "--port", str(self.ports["main_api"]),
-                "--reload",
-                cwd=self.backend_dir,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-                env=env
-            )
-        else:
-            process = await asyncio.create_subprocess_exec(
-                sys.executable, server_script, "--port", str(self.ports["main_api"]),
-                cwd=self.backend_dir,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-                env=env
-            )
+        # Use direct python execution with proper working directory
+        process = await asyncio.create_subprocess_exec(
+            sys.executable, server_script,
+            "--port", str(self.ports["main_api"]),
+            cwd=str(self.backend_dir.absolute()),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            env=env
+        )
         
         self.processes.append(process)
         print(f"{Colors.GREEN}✓ Backend starting on port {self.ports['main_api']}{Colors.ENDC}")
@@ -874,8 +865,14 @@ class AsyncSystemManager:
                     except:
                         pass
                         
-            # Clear processes list and try again
+            # Clear processes list
             self.processes = []
+            
+            # Kill any remaining processes on the port
+            await self.kill_process_on_port(self.ports["main_api"])
+            await asyncio.sleep(3)  # Give OS time to clean up
+            
+            # Try starting backend again
             await self.start_backend()
             
             # Wait again for backend with extended timeout
@@ -885,8 +882,10 @@ class AsyncSystemManager:
                 print(f"{Colors.FAIL}❌ Backend recovery failed{Colors.ENDC}")
                 print(f"\n{Colors.YELLOW}Manual troubleshooting steps:{Colors.ENDC}")
                 print(f"1. Check if port {self.ports['main_api']} is in use: lsof -i:{self.ports['main_api']}")
-                print(f"2. Check logs: tail -f backend/logs/jarvis.log")
-                print(f"3. Run manually: cd backend && python main.py")
+                print(f"2. Check backend logs: tail -f backend/logs/main_api.log")
+                print(f"3. Run manually: cd backend && python main.py --port {self.ports['main_api']}")
+                print(f"4. Check for Python errors: cd backend && python -c 'import main'")
+                print(f"5. Verify Claude API key: echo $ANTHROPIC_API_KEY")
             
     def print_access_info(self):
         """Print access information"""
@@ -1309,6 +1308,16 @@ class AsyncSystemManager:
         
         # Verify services
         await self.verify_services()
+        
+        # If backend failed, try one more time
+        backend_running = not await self.check_port_available(self.ports["main_api"])
+        if not backend_running and not getattr(self, 'frontend_only', False):
+            print(f"\n{Colors.YELLOW}Backend not detected, attempting one more restart...{Colors.ENDC}")
+            await self.kill_process_on_port(self.ports["main_api"])
+            await asyncio.sleep(2)
+            await self.start_backend()
+            await asyncio.sleep(10)
+            await self.verify_services()
         
         # Run vision diagnostic if backend is running
         if not getattr(self, 'frontend_only', False):

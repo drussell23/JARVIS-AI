@@ -214,29 +214,31 @@ Self-generating system that creates new features.
 ### 1. Clone the Repository
 ```bash
 git clone https://github.com/yourusername/JARVIS-AI-Agent.git
-cd JARVIS-AI-Agent/backend
+cd JARVIS-AI-Agent
 ```
 
-### 2. Install Dependencies
+### 2. Set Up API Key
 ```bash
-pip install -r requirements.txt
+# Create .env file in backend directory
+echo "ANTHROPIC_API_KEY=your-api-key-here" > backend/.env
 ```
 
-### 3. Set Up API Key
+### 3. Start the System
 ```bash
-export ANTHROPIC_API_KEY="your-api-key-here"
-```
-
-### 4. Start Vision System v2.0
-```bash
+# This will install dependencies, check setup, and start all services
 python start_system.py
 
-# Select option 1 for full Vision System v2.0
+# First startup takes 60-90 seconds to load ML models
 # The system will show:
+# ✅ Backend API ready at http://localhost:8000
+# ✅ Frontend ready at http://localhost:3002
 # ✅ Vision System v2.0 initialized
-# ✅ Phase 1-5 components loaded
-# ✅ ML models ready
 ```
+
+### 4. Access JARVIS
+- **Web Interface**: http://localhost:3002 (opens automatically)
+- **API Docs**: http://localhost:8000/docs
+- **Voice**: Say "Hey JARVIS" to activate
 
 ### 5. Test Vision Commands
 ```python
@@ -515,6 +517,127 @@ ROLLOUT_STRATEGY="percentage"  # or "user_group", "canary"
     "benchmark_iterations": 100
   }
 }
+```
+
+## 🔍 Troubleshooting
+
+### Common Issues and Solutions
+
+#### **Backend Fails to Start**
+```bash
+# Error: "Backend API failed to start!" or "Port 8000 is in use"
+
+# Solution 1: Kill processes on port 8000
+lsof -ti:8000 | xargs kill -9
+
+# Solution 2: Check backend logs
+tail -f backend/logs/main_api.log
+
+# Solution 3: Run backend manually to see errors
+cd backend && python main.py --port 8000
+
+# Solution 4: Verify dependencies
+cd backend && pip install -r requirements.txt
+```
+
+#### **Claude API Key Issues**
+```bash
+# Error: "ANTHROPIC_API_KEY not found"
+
+# Solution: Create backend/.env file
+echo "ANTHROPIC_API_KEY=your-api-key-here" > backend/.env
+
+# Or export temporarily:
+export ANTHROPIC_API_KEY="your-api-key-here"
+```
+
+#### **Memory Warnings**
+```bash
+# Warning: "Memory warning: 80.x% used"
+
+# These are normal and can be ignored - JARVIS monitors memory
+# but has built-in optimizations for high memory usage
+```
+
+#### **Microphone Not Working**
+```bash
+# Error: "Microphone permission denied" or no response to "Hey JARVIS"
+
+# Solution 1: Check microphone permissions
+# macOS: System Preferences → Security & Privacy → Privacy → Microphone
+
+# Solution 2: Run microphone diagnostic
+python backend/test_microphone.py
+
+# Solution 3: Check for blocking apps
+./fix-microphone.sh
+```
+
+#### **Vision System Not Working**
+```bash
+# Error: "Can't see your screen" or vision commands fail
+
+# Solution 1: Grant screen recording permission
+# macOS: System Preferences → Security & Privacy → Privacy → Screen Recording
+# Add Terminal/IDE and restart it
+
+# Solution 2: Run vision diagnostic
+python diagnose_vision.py
+
+# Solution 3: Check WebSocket connection
+curl http://localhost:8000/vision/status
+```
+
+#### **Frontend Not Loading**
+```bash
+# Error: Frontend fails to start or compile
+
+# Solution 1: Install dependencies
+cd frontend && npm install
+
+# Solution 2: Clear cache and rebuild
+cd frontend
+rm -rf node_modules package-lock.json
+npm install
+npm start
+
+# Solution 3: Use different port
+PORT=3002 npm start
+```
+
+#### **Import Errors in IDE**
+```bash
+# IDE shows import errors but code runs fine
+
+# These are false positives - the virtual environment is active
+# when running but IDE might not detect it
+
+# Solution: Configure IDE to use virtual environment
+# VS Code: Select Python interpreter from venv
+# PyCharm: Settings → Project → Python Interpreter
+```
+
+### Quick Diagnostic Commands
+
+```bash
+# Check all services status
+curl http://localhost:8000/health
+curl http://localhost:3000/  # or 3002 for frontend
+
+# Test JARVIS voice system
+curl -X POST http://localhost:8000/voice/jarvis/activate
+
+# Check vision system
+curl http://localhost:8000/vision/status
+
+# View real-time logs
+tail -f backend/logs/main_api.log
+
+# Test microphone
+cd backend && python test_microphone.py
+
+# Run full diagnostic
+python diagnose_system.py
 ```
 
 ## 🤝 Contributing
