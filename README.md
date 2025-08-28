@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/ML%20Models-Zero%20Duplicates-green" alt="No Duplicates">
   <img src="https://img.shields.io/badge/Responses-Real%20Analysis-yellow" alt="Real Analysis">
   <img src="https://img.shields.io/badge/Architecture-Centralized-purple" alt="Centralized">
-  <img src="https://img.shields.io/badge/Performance-90%25%20Faster-orange" alt="Performance">
+  <img src="https://img.shields.io/badge/Vision%20Fixed-✅-brightgreen" alt="Vision Fixed">
 </p>
 
 <p align="center">
@@ -28,6 +28,12 @@
 - **Zero Duplicates:** Centralized model manager prevents crashes
 - **Smart Loading:** Only essential models loaded on startup
 - **Real Responses:** No more generic "I can read 45 text elements"
+
+### 🐛 Critical Fixes
+- **✅ Vision "Failed to execute" Error:** Fixed async/await issues in screen capture
+- **✅ Claude Model Update:** Updated from outdated opus model to claude-3-5-sonnet-20241022
+- **✅ Image Type Conversion:** Fixed PIL Image vs numpy array conversion errors
+- **✅ Command Routing:** Vision commands now properly routed to Claude API
 
 ### 🚀 Quick Start
 ```bash
@@ -1445,6 +1451,51 @@ curl http://localhost:8010/navigation/status  # Should return navigation status
 
 # Verify fix:
 curl http://localhost:8010/notifications/status  # Should return notification status
+```
+
+### ✅ v12.6 - Vision Issues (NOW RESOLVED)
+
+#### **❌ Vision "Failed to execute vision action" (FIXED ✅)**
+```bash
+# Previous Error (v12.5 and earlier):
+# "Failed to execute vision action" when asking "can you see my screen"
+
+# ✅ STATUS: COMPLETELY RESOLVED in v12.6
+# ✅ Fixed async/await issues in capture_and_describe()
+# ✅ Fixed PIL Image vs numpy array conversion
+# ✅ Updated Claude model to claude-3-5-sonnet-20241022
+# ✅ Vision commands now properly routed to Claude API
+
+# Verify fix:
+# Ask JARVIS: "Can you see my screen?"
+# Should get real screen analysis, not generic response
+```
+
+#### **❌ Generic Vision Responses (FIXED ✅)**
+```bash
+# Previous Error (v12.5 and earlier):
+# "I can see your screen. I'm viewing your 1800x2880 display. I can read 45 text elements..."
+
+# ✅ STATUS: COMPLETELY RESOLVED in v12.6
+# ✅ Removed all hardcoded generic responses
+# ✅ Now uses Claude Vision API exclusively
+# ✅ Real-time screen analysis with actual content
+
+# Verify fix:
+# Vision responses now describe actual screen content
+```
+
+#### **❌ Vision Model Errors (FIXED ✅)**
+```bash
+# Previous Error:
+# "Error code: 404 - model: claude-3-opus-20240229"
+
+# ✅ STATUS: COMPLETELY RESOLVED in v12.6
+# ✅ Updated to current model: claude-3-5-sonnet-20241022
+# ✅ All vision endpoints use correct model
+
+# Verify fix:
+python backend/test_vision_complete.py  # Should show all tests passing
 ```
 
 ### Common Issues and Solutions
@@ -3198,35 +3249,40 @@ vision_events.on('capability_discovered', on_capability_discovered)
 
 ### **Common Issues and Solutions**
 
-#### **1. Vision Commands Not Working (Fixed in v12.1)**
+#### **1. Vision Commands Not Working (Fixed in v12.6)**
 
-**Previous Issues (Pre-v12.1):**
+**Previous Issues (Pre-v12.6):**
 - Commands like "describe my screen" returned generic responses
-- "Unknown system action" errors
+- "Failed to execute vision action" errors
 - Vision commands were miscategorized as system commands
+- "Cannot handle this data type: (1, 1), |O" errors
+- Model 404 errors with claude-3-opus-20240229
 
-**v12.1 Solution:**
-- Vision commands now properly categorized as `CommandCategory.VISION`
-- Natural language understanding enhanced
-- Direct routing to Claude Vision API
+**v12.6 Complete Fix:**
+- ✅ Fixed async/await issues in `capture_and_describe()`
+- ✅ Fixed PIL Image vs numpy array conversion errors
+- ✅ Updated to claude-3-5-sonnet-20241022 model
+- ✅ Removed all hardcoded generic responses
+- ✅ Vision commands properly routed to Claude API only
+- ✅ No more local ML vision models - 90% faster
 
-**If Still Having Issues:**
+**Verify Vision is Working:**
 ```bash
-# Run comprehensive diagnostic
-python backend/diagnose_vision.py
+# Run comprehensive test
+python backend/test_vision_complete.py
 
-# Check specific components
-python backend/test_vision_simple.py
+# Test vision action handler
+python backend/test_vision_action_handler.py
 
-# Verify WebSocket connection
+# Check vision status
 curl http://localhost:8010/vision/status
 ```
 
-**Solutions:**
-- Ensure Claude API key is set in `backend/.env`
-- Check screen recording permissions
-- Verify all vision dependencies are installed
-- Look for import errors in logs
+**If Still Having Issues:**
+- Ensure `ANTHROPIC_API_KEY` is set in `backend/.env`
+- Check screen recording permissions (grant to your IDE, not Terminal)
+- Update to latest code with vision fixes
+- Check logs for specific error messages
 
 #### **2. High CPU Usage from Continuous Learning**
 

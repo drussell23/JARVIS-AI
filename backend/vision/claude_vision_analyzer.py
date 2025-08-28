@@ -17,7 +17,7 @@ class ClaudeVisionAnalyzer:
     def __init__(self, api_key: str):
         """Initialize Claude vision analyzer"""
         self.client = Anthropic(api_key=api_key)
-        self.model = "claude-3-opus-20240229"  # Vision-capable model
+        self.model = "claude-3-5-sonnet-20241022"  # Current vision-capable model
         
     async def analyze_screenshot(self, image: Any, prompt: str) -> Dict[str, Any]:
         """Send screenshot to Claude for analysis

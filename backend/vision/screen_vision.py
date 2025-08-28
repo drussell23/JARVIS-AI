@@ -427,16 +427,30 @@ class ScreenVisionSystem:
     ) -> Dict[str, Any]:
         """Get comprehensive context about what's on screen"""
         # Capture screen
-        image = await self.capture_screen(region)
+        pil_image = await self.capture_screen(region)
+        
+        if pil_image is None:
+            # Return minimal context if screen capture failed
+            return {
+                "timestamp": datetime.now().isoformat(),
+                "screen_size": (100, 100),  # placeholder
+                "text_elements": [],
+                "ui_elements": [],
+                "detected_apps": [],
+                "potential_updates": 0
+            }
 
+        # Convert PIL Image to numpy array for OpenCV operations
+        image_array = np.array(pil_image)
+        
         # Extract all elements
-        text_elements = await self.detect_text_regions(image)
-        ui_elements = await self.detect_ui_elements(image)
+        text_elements = await self.detect_text_regions(image_array)
+        ui_elements = await self.detect_ui_elements(image_array)
 
         # Build context
         context = {
             "timestamp": datetime.now().isoformat(),
-            "screen_size": image.shape[:2],
+            "screen_size": pil_image.size,
             "text_elements": [
                 {
                     "text": elem.text,
@@ -449,7 +463,7 @@ class ScreenVisionSystem:
                 {"type": elem.type, "location": elem.location} for elem in ui_elements
             ],
             "detected_apps": self._detect_open_applications(text_elements),
-            "potential_updates": len(await self.analyze_for_updates(image)),
+            "potential_updates": len(await self.analyze_for_updates(image_array)),
         }
 
         return context
@@ -489,7 +503,7 @@ class ScreenVisionSystem:
     async def capture_and_describe(self) -> str:
         """Capture screen and provide a natural language description"""
         # First, try to capture the screen to test permissions
-        test_capture = self.capture_screen()
+        test_capture = await self.capture_screen()
         
         # Check if screen capture is working
         if test_capture is None:
@@ -499,16 +513,17 @@ class ScreenVisionSystem:
                 "System Preferences → Security & Privacy → Privacy → Screen Recording."
             )
             
-        # Now get the full context
-        context = await self.get_screen_context()
+        # Skip context analysis - go directly to Claude Vision
+        # context = await self.get_screen_context()
 
         # Check if we have valid screen data (100x100 is our placeholder size)
-        if context["screen_size"][0] == 100 and context["screen_size"][1] == 100:
-            return (
-                "I'm unable to see your screen at the moment. "
-                "Please ensure I have screen recording permission in "
-                "System Preferences → Security & Privacy → Privacy → Screen Recording."
-            )
+        # Skip this check since we're not using context anymore
+        # if context["screen_size"][0] == 100 and context["screen_size"][1] == 100:
+        #     return (
+        #         "I'm unable to see your screen at the moment. "
+        #         "Please ensure I have screen recording permission in "
+        #         "System Preferences → Security & Privacy → Privacy → Screen Recording."
+        #     )
 
         # ALWAYS use Claude Vision if available - no generic responses
         if self.claude_analyzer and test_capture is not None:

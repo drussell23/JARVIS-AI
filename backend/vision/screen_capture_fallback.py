@@ -143,9 +143,9 @@ def analyze_with_claude_vision(screenshot_array,
         """
         
         # Send to Claude Vision
-        # Use Opus for best vision capabilities
+        # Use Sonnet for best vision capabilities
         response = client.messages.create(
-            model="claude-3-opus-20240229",
+            model="claude-3-5-sonnet-20241022",
             max_tokens=1024,
             messages=[{
                 "role": "user",

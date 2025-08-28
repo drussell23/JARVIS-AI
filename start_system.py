@@ -5,6 +5,7 @@ Powered by Claude AI with optimized ML architecture
 - Claude Vision API for all visual analysis (no local ML models)
 - Centralized model management prevents duplicates
 - Ultra-fast <3s startup with minimal memory footprint
+- Fixed vision routing and Claude model compatibility
 """
 
 import os
@@ -1929,6 +1930,12 @@ class AsyncSystemManager:
             f"  • {Colors.GREEN}RESOLVED{Colors.ENDC} - Bridge initialization no longer blocks startup"
         )
         print(
+            f"  • {Colors.GREEN}FIXED{Colors.ENDC} - Vision 'Failed to execute' error - async/await corrected"
+        )
+        print(
+            f"  • {Colors.GREEN}FIXED{Colors.ENDC} - Claude Vision model updated to claude-3-5-sonnet-20241022"
+        )
+        print(
             f"  • {Colors.GREEN}RESOLVED{Colors.ENDC} - Dynamic port allocation prevents conflicts"
         )
         print(
@@ -2070,12 +2077,17 @@ class AsyncSystemManager:
         print(
             f"  • {Colors.GREEN}ML Audio endpoints: Now working correctly{Colors.ENDC}"
         )
+        print(f"  • {Colors.GREEN}Vision: Claude API only - no hardcoded responses{Colors.ENDC}")
         print(f"  • If JARVIS doesn't respond: Check microphone permissions")
         print(f"  • For system control errors: Grant accessibility permissions")
+        print(
+            f"  • 'Failed to execute vision action': Fixed - update to latest code"
+        )
         print(
             f"  • 'Can't see your screen': Grant permission to Cursor (not Terminal) & restart"
         )
         print(f"  • Empty responses: Ensure API key is in backend/.env")
+        print(f"  • Vision errors: Check ANTHROPIC_API_KEY is valid")
         print(f"  • Connection refused: Backend automatically handles port conflicts")
         print(
             f"  • Import errors in IDE: These are false positives - packages are installed"
