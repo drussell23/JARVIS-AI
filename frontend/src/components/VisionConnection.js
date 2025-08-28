@@ -25,7 +25,7 @@ class VisionConnection {
         try {
             console.log('🔌 Connecting to Vision WebSocket...');
 
-            const wsUrl = `ws://localhost:8000/vision/ws/vision`;
+            const wsUrl = `ws://localhost:8001/ws/vision`;
             this.visionSocket = new WebSocket(wsUrl);
 
             this.visionSocket.onopen = () => {

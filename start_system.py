@@ -809,6 +809,23 @@ class AsyncSystemManager:
                     await self.kill_process_on_port(port_num)
                     await asyncio.sleep(2)
             
+            # Ensure Node.js dependencies are installed
+            websocket_dir = self.backend_dir / "websocket"
+            node_modules = websocket_dir / "node_modules"
+            if not node_modules.exists():
+                print(f"{Colors.YELLOW}Installing TypeScript WebSocket Router dependencies...{Colors.ENDC}")
+                npm_proc = await asyncio.create_subprocess_exec(
+                    "npm", "install",
+                    cwd=str(websocket_dir),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, stderr = await npm_proc.communicate()
+                if npm_proc.returncode == 0:
+                    print(f"{Colors.GREEN}✓ Dependencies installed{Colors.ENDC}")
+                else:
+                    print(f"{Colors.WARNING}⚠️  Failed to install dependencies: {stderr.decode()}{Colors.ENDC}")
+            
             # Update frontend WebSocket URLs if needed
             update_frontend_script = self.backend_dir / "websocket" / "initialize_frontend.js"
             if update_frontend_script.exists():

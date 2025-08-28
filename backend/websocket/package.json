@@ -5,7 +5,7 @@
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node dist/websocket/server.js",
     "dev": "ts-node-dev --respawn --transpile-only server.ts",
     "watch": "tsc -w",
     "typecheck": "tsc --noEmit",

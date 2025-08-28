@@ -59,6 +59,23 @@
 - **📊 Real-time Monitoring**: Connection health, message statistics, performance metrics
 - **🎯 Zero Hardcoding**: Everything configurable and dynamic
 
+**Problem Solved:**
+Previously, three different WebSocket endpoints were competing for `/ws/vision`:
+- `backend/api/vision_websocket.py`
+- `backend/api/enhanced_vision_api.py`
+- `backend/api/vision_api.py`
+
+This caused routing conflicts and connection failures. Now, all WebSocket traffic flows through a single TypeScript router that intelligently routes messages to the appropriate Python handlers.
+
+**Quick Start:**
+```bash
+# The system automatically installs dependencies and starts both servers
+python start_system.py
+
+# TypeScript Router: ws://localhost:8001/ws/vision
+# Python Backend: http://localhost:8000
+```
+
 ### v12.2 Performance Breakthrough - From 9s to <1s Response Times!
 
 **Revolutionary Performance Improvements:**
@@ -882,7 +899,7 @@ The Vision System v2.0 seamlessly integrates with JARVIS Voice for natural inter
 
 ### Prerequisites
 - Python 3.8+
-- Node.js 16+ and npm (for TypeScript WebSocket Router)
+- Node.js 16+ and npm (required for TypeScript WebSocket Router)
 - macOS (for full vision capabilities)
 - 8GB+ RAM recommended
 - NVIDIA GPU (optional, for faster inference)
@@ -914,11 +931,14 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-**TypeScript WebSocket Router:**
+**TypeScript WebSocket Router (v12.3):**
 ```bash
+# Dependencies are automatically installed by start_system.py
+# To manually install:
 cd backend/websocket
 npm install
 npm run build
+cd ../..
 ```
 
 #### 4. Build Rust Components (Recommended for 10-100x Performance)
@@ -1065,6 +1085,33 @@ LEARNING_MIN_FREE_MEMORY_MB="1500"   # Minimum free memory required
 
 ### Common Issues and Solutions
 
+#### **Unified WebSocket System Issues (v12.3)**
+```bash
+# Error: "Backend process crashed!" or WebSocket connection fails
+
+# Solution 1: Check if Node.js dependencies are installed
+cd backend/websocket
+npm install
+npm run build
+
+# Solution 2: Verify both ports are free
+lsof -ti:8000 | xargs kill -9  # Python backend
+lsof -ti:8001 | xargs kill -9  # TypeScript router
+
+# Solution 3: Check unified backend logs
+tail -f backend/logs/unified_*.log
+
+# Solution 4: Run components manually to debug
+# Terminal 1 - TypeScript Router:
+cd backend/websocket && npm start
+
+# Terminal 2 - Python Backend:
+cd backend && python main.py
+
+# Solution 5: Verify ZeroMQ is installed (for Python-TS bridge)
+pip install pyzmq
+```
+
 #### **Backend Fails to Start**
 ```bash
 # Error: "Backend API failed to start!" or "Port 8000 is in use"
@@ -1126,8 +1173,34 @@ python backend/test_microphone.py
 # Solution 2: Run vision diagnostic
 python diagnose_vision.py
 
-# Solution 3: Check WebSocket connection
+# Solution 3: Check WebSocket connection (v12.3 - use TypeScript router)
+curl http://localhost:8001/api/websocket/endpoints
 curl http://localhost:8000/vision/status
+
+# Solution 4: Test WebSocket directly
+python backend/tests/test_unified_websocket.py
+```
+
+#### **WebSocket Connection Issues (v12.3)**
+```bash
+# Error: "WebSocket connection failed" or "Cannot find module"
+
+# Solution 1: Rebuild TypeScript
+cd backend/websocket
+npm run clean
+npm run build
+
+# Solution 2: Check TypeScript router is running
+ps aux | grep "node dist/websocket/server.js"
+
+# Solution 3: Test WebSocket connection
+wscat -c ws://localhost:8001/ws/vision
+
+# Solution 4: Check WebSocket routes configuration
+cat backend/websocket/websocket-routes.json
+
+# Solution 5: Verify frontend URLs are updated
+node backend/websocket/initialize_frontend.js
 ```
 
 #### **Frontend Not Loading**
@@ -1164,7 +1237,11 @@ PORT=3002 npm start
 ```bash
 # Check all services status
 curl http://localhost:8000/health
+curl http://localhost:8001/api/websocket/endpoints  # TypeScript router
 curl http://localhost:3000/  # or 3002 for frontend
+
+# Test unified WebSocket system (v12.3)
+python backend/test_unified_system.py
 
 # Test JARVIS voice system
 curl -X POST http://localhost:8000/voice/jarvis/activate
@@ -1173,6 +1250,7 @@ curl -X POST http://localhost:8000/voice/jarvis/activate
 curl http://localhost:8000/vision/status
 
 # View real-time logs
+tail -f backend/logs/unified_*.log  # Unified system logs
 tail -f backend/logs/main_api.log
 
 # Test microphone

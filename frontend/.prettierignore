@@ -1,0 +1,3 @@
+# Prevent prettier from changing WebSocket URLs
+src/components/VisionConnection.js
+src/components/JarvisVoice.js
