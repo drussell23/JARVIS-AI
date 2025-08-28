@@ -42,6 +42,7 @@ class PythonTypeScriptBridge:
         self.python_port = python_port
         self.typescript_port = typescript_port
         self.use_pickle = use_pickle
+        self._port_allocation_attempts = 0
         
         # ZeroMQ context
         self.context = zmq.asyncio.Context()
@@ -63,29 +64,56 @@ class PythonTypeScriptBridge:
         self._running = False
         
     async def start(self):
-        """Start the bridge"""
-        try:
-            # Setup PULL socket (receive from TypeScript)
-            self.pull_socket = self.context.socket(zmq.PULL)
-            self.pull_socket.bind(f"tcp://127.0.0.1:{self.python_port}")
-            
-            # Setup PUSH socket (send to TypeScript)
-            self.push_socket = self.context.socket(zmq.PUSH)
-            self.push_socket.connect(f"tcp://127.0.0.1:{self.typescript_port}")
-            
-            # Setup PUB socket for events
-            self.pub_socket = self.context.socket(zmq.PUB)
-            self.pub_socket.bind(f"tcp://127.0.0.1:{self.python_port + 1}")
-            
-            self._running = True
-            logger.info(f"Python-TypeScript bridge started on ports {self.python_port}/{self.typescript_port}")
-            
-            # Start message processing
-            await self._process_messages()
-            
-        except Exception as e:
-            logger.error(f"Failed to start bridge: {e}")
-            raise
+        """Start the bridge with dynamic port allocation"""
+        max_attempts = 10
+        
+        while self._port_allocation_attempts < max_attempts:
+            try:
+                # Setup PULL socket (receive from TypeScript)
+                self.pull_socket = self.context.socket(zmq.PULL)
+                self.pull_socket.bind(f"tcp://127.0.0.1:{self.python_port}")
+                
+                # Setup PUSH socket (send to TypeScript)  
+                self.push_socket = self.context.socket(zmq.PUSH)
+                self.push_socket.connect(f"tcp://127.0.0.1:{self.typescript_port}")
+                
+                # Setup PUB socket for events
+                self.pub_socket = self.context.socket(zmq.PUB)
+                self.pub_socket.bind(f"tcp://127.0.0.1:{self.python_port + 1}")
+                
+                self._running = True
+                logger.info(f"Python-TypeScript bridge started on ports {self.python_port}/{self.typescript_port}")
+                
+                # Start message processing
+                await self._process_messages()
+                break
+                
+            except zmq.error.ZMQError as e:
+                if "Address already in use" in str(e):
+                    self._port_allocation_attempts += 1
+                    logger.warning(f"Port conflict (attempt {self._port_allocation_attempts}), trying next port range...")
+                    
+                    # Close any partially opened sockets
+                    if hasattr(self, 'pull_socket') and self.pull_socket:
+                        self.pull_socket.close()
+                    if hasattr(self, 'push_socket') and self.push_socket:
+                        self.push_socket.close() 
+                    if hasattr(self, 'pub_socket') and self.pub_socket:
+                        self.pub_socket.close()
+                    
+                    # Try next port range
+                    self.python_port += 10
+                    self.typescript_port += 10
+                    
+                    if self._port_allocation_attempts >= max_attempts:
+                        logger.error(f"Failed to allocate ports after {max_attempts} attempts")
+                        raise
+                else:
+                    logger.error(f"Failed to start bridge: {e}")
+                    raise
+            except Exception as e:
+                logger.error(f"Failed to start bridge: {e}")
+                raise
             
     async def stop(self):
         """Stop the bridge"""

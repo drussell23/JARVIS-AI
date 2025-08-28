@@ -527,6 +527,28 @@ class ChatbotAPI:
             raise HTTPException(status_code=400, detail=str(e))
 
 
+async def initialize_bridge_async():
+    """Initialize the Python-TypeScript bridge asynchronously"""
+    try:
+        from bridges.python_ts_bridge import start_bridge
+        await start_bridge()
+        logger.info("Python-TypeScript bridge initialized successfully")
+    except Exception as e:
+        logger.warning(f"Failed to initialize bridge: {e}")
+        logger.info("System will continue without bridge functionality")
+
+
+async def initialize_vision_discovery_async():
+    """Initialize the vision discovery system asynchronously"""  
+    try:
+        from api.vision_status_endpoint import initialize_vision_discovery
+        await initialize_vision_discovery()
+        logger.info("Vision discovery system initialized successfully")
+    except Exception as e:
+        logger.warning(f"Failed to initialize vision discovery: {e}")
+        logger.info("System will continue without vision discovery")
+
+
 # Create FastAPI app
 app = FastAPI()
 
@@ -536,9 +558,15 @@ app = FastAPI()
 async def startup_event():
     """Initialize async components on startup"""
     logger.info("Starting up AI-Powered Chatbot...")
-    # Start memory monitoring
+    # Start memory monitoring (now safely disabled in memory manager)
     await memory_manager.start_monitoring()
     logger.info("Memory monitoring started")
+    
+    # Initialize async bridge systems after startup (non-blocking)
+    asyncio.create_task(initialize_bridge_async())
+    
+    # Initialize vision discovery system (non-blocking)
+    asyncio.create_task(initialize_vision_discovery_async())
 
 
 # Enable CORS for all origins (adjust for production)
@@ -575,9 +603,7 @@ try:
     # Register handlers with the bridge
     register_vision_handlers()
     
-    # Start the Python-TypeScript bridge
-    asyncio.create_task(start_bridge())
-    
+    # Bridge will be started during app startup event
     logger.info("Unified Vision System activated - All WebSocket conflicts resolved!")
     ENHANCED_VISION_AVAILABLE = True
     VISION_API_AVAILABLE = True  # For compatibility

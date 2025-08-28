@@ -607,5 +607,4 @@ async def initialize_vision_discovery():
     discovery.discover_vision_components()
     logger.info("Vision discovery system initialized")
 
-# Run initialization on import
-asyncio.create_task(initialize_vision_discovery())
+# Vision discovery will be initialized during app startup

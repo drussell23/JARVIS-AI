@@ -13,6 +13,15 @@ import logging
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+try:
+    from graceful_http_handler import graceful_endpoint
+except ImportError:
+    # Fallback if graceful handler is not available
+    def graceful_endpoint(fallback_response=None, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
 from vision.screen_vision import ScreenVisionSystem, JARVISVisionIntegration
 from vision.claude_vision_analyzer import ClaudeVisionAnalyzer
 from vision.workspace_analyzer import WorkspaceAnalyzer

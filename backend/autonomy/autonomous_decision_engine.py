@@ -203,6 +203,9 @@ class AutonomousDecisionEngine:
         self.learned_patterns = self._load_learned_patterns()
         self.query_router = SmartQueryRouter()
         
+        # Decision handlers for different contexts
+        self.decision_handlers = {}
+        
         # Decision thresholds (can be adjusted based on learning)
         self.thresholds = {
             'notification_action': 3,      # Act on 3+ notifications
@@ -213,6 +216,26 @@ class AutonomousDecisionEngine:
         
         # Action templates (dynamically expandable)
         self.action_templates = self._load_action_templates()
+    
+    def register_decision_handler(self, handler_name: str, handler_func):
+        """Register a decision handler for specific contexts"""
+        self.decision_handlers[handler_name] = handler_func
+        logger.info(f"Registered decision handler: {handler_name}")
+    
+    async def process_decision_handlers(self, context: Dict[str, Any]) -> List[AutonomousAction]:
+        """Process all registered decision handlers with the given context"""
+        all_actions = []
+        
+        for handler_name, handler_func in self.decision_handlers.items():
+            try:
+                handler_actions = await handler_func(context)
+                if handler_actions:
+                    all_actions.extend(handler_actions)
+                    logger.debug(f"Handler {handler_name} generated {len(handler_actions)} actions")
+            except Exception as e:
+                logger.error(f"Error in decision handler {handler_name}: {e}")
+        
+        return all_actions
     
     def _load_learned_patterns(self) -> Dict[str, Any]:
         """Load learned patterns from persistent storage"""
@@ -283,6 +306,15 @@ class AutonomousDecisionEngine:
         # Analyze temporal patterns (time-based actions)
         temporal_actions = await self._analyze_temporal_patterns(workspace_state, windows)
         actions.extend(temporal_actions)
+        
+        # Process registered decision handlers
+        context = {
+            'workspace_state': workspace_state,
+            'windows': windows,
+            'detected_notifications': []  # Will be populated by handlers
+        }
+        handler_actions = await self.process_decision_handlers(context)
+        actions.extend(handler_actions)
         
         # Apply learned optimizations
         actions = self._apply_learned_optimizations(actions)

@@ -194,6 +194,10 @@ class M1MemoryManager:
 
     async def start_monitoring(self):
         """Start the memory monitoring loop"""
+        # TEMPORARY FIX: Disable monitoring to prevent infinite loop
+        logger.info("Memory monitoring disabled to fix infinite loop issue")
+        return
+        
         if not self.is_monitoring:
             self.is_monitoring = True
             self.monitor_task = asyncio.create_task(self._monitor_loop())
@@ -237,10 +241,17 @@ class M1MemoryManager:
 
         # Determine state based on usage
         percent = mem.percent / 100.0
+        
+        # Fix: Only trigger WARNING/CRITICAL states if memory usage is actually high
+        # The 0.8% indicates very low usage, should be HEALTHY
         if percent < self.safe_threshold:
             state = MemoryState.HEALTHY
         elif percent < self.warning_threshold:
-            state = MemoryState.WARNING
+            # Add safeguard: if percent is suspiciously low (< 5%), force HEALTHY
+            if mem.percent < 5.0:  # Less than 5% usage should never be WARNING
+                state = MemoryState.HEALTHY
+            else:
+                state = MemoryState.WARNING
         elif percent < self.critical_threshold:
             state = MemoryState.CRITICAL
         else:
@@ -304,6 +315,13 @@ class M1MemoryManager:
 
     async def _optimize_memory(self):
         """Optimize memory usage (WARNING state)"""
+        # Prevent infinite optimization loop - add cooldown period
+        if hasattr(self, '_last_optimize_time'):
+            if datetime.now() - self._last_optimize_time < timedelta(minutes=1):
+                logger.debug("Skipping optimization - cooldown period active")
+                return
+        
+        self._last_optimize_time = datetime.now()
         logger.info("Optimizing memory usage...")
 
         # Force garbage collection

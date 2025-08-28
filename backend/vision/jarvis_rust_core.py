@@ -3,17 +3,26 @@ JARVIS Rust Core Python Integration
 Provides initialization and utilities for the Rust acceleration layer.
 """
 
-import jarvis_rust_core as jrc
 from typing import Dict, Any, Optional
 import logging
 
 logger = logging.getLogger(__name__)
 
+# Try to import Rust core with fallback
+try:
+    import jarvis_rust_core as jrc
+    RUST_AVAILABLE = True
+    logger.info("Rust core loaded successfully")
+except ImportError:
+    jrc = None
+    RUST_AVAILABLE = False
+    logger.warning("Rust core not available - using Python fallback")
+
 # Global references to Rust components
-_runtime_manager: Optional[jrc.RustRuntimeManager] = None
-_memory_pool: Optional[jrc.RustMemoryPool] = None
-_advanced_pool: Optional[jrc.RustAdvancedMemoryPool] = None
-_image_processor: Optional[jrc.RustImageProcessor] = None
+_runtime_manager = None
+_memory_pool = None
+_advanced_pool = None
+_image_processor = None
 
 
 def initialize_rust_runtime(config: Dict[str, Any]) -> None:
@@ -28,6 +37,10 @@ def initialize_rust_runtime(config: Dict[str, Any]) -> None:
             - enable_simd: Enable SIMD optimizations
     """
     global _runtime_manager, _memory_pool, _advanced_pool, _image_processor
+    
+    if not RUST_AVAILABLE:
+        logger.warning("Rust core not available - runtime initialization skipped")
+        return
     
     try:
         # Initialize runtime manager
@@ -55,29 +68,29 @@ def initialize_rust_runtime(config: Dict[str, Any]) -> None:
         raise
 
 
-def get_rust_runtime() -> Optional[jrc.RustRuntimeManager]:
+def get_rust_runtime():
     """Get the global Rust runtime manager."""
     return _runtime_manager
 
 
-def get_rust_memory_pool() -> Optional[jrc.RustMemoryPool]:
+def get_rust_memory_pool():
     """Get the global Rust memory pool."""
     return _memory_pool
 
 
-def get_rust_advanced_pool() -> Optional[jrc.RustAdvancedMemoryPool]:
+def get_rust_advanced_pool():
     """Get the global advanced memory pool with leak detection."""
     return _advanced_pool
 
 
-def get_rust_image_processor() -> Optional[jrc.RustImageProcessor]:
+def get_rust_image_processor():
     """Get the global Rust image processor."""
     return _image_processor
 
 
 def is_rust_available() -> bool:
     """Check if Rust core is available and initialized."""
-    return _runtime_manager is not None
+    return RUST_AVAILABLE and _runtime_manager is not None
 
 
 def process_image_with_rust(image_array):
@@ -114,9 +127,21 @@ def quantize_weights_with_rust(weights):
     """
     Quantize model weights using Rust if available.
     """
+    if not RUST_AVAILABLE or jrc is None:
+        # Fall back to Python implementation
+        try:
+            import numpy as np
+            return weights.astype('int8')
+        except Exception:
+            return weights
+            
     try:
         return jrc.quantize_model_weights(weights)
     except Exception as e:
         logger.warning(f"Rust quantization failed: {e}")
         # Fall back to Python implementation
-        return weights.astype('int8')  # Simple fallback
+        try:
+            import numpy as np
+            return weights.astype('int8')
+        except Exception:
+            return weights
