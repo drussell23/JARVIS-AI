@@ -239,7 +239,7 @@ class IntelligentCommandRouter:
         except Exception as e:
             logger.warning(f"Swift classifier unavailable: {e}")
             logger.info("Using Python fallback classifier")
-            from python_fallback_classifier import PythonCommandClassifier
+            from .python_fallback_classifier import PythonCommandClassifier
             self.classifier = PythonCommandClassifier()
             # Wrap Python classifier methods to match Swift interface
             self.classifier.classify_command = self.classifier.classify
@@ -258,7 +258,7 @@ class IntelligentCommandRouter:
             cached_time, cached_result = self.classification_cache[cache_key]
             if time.time() - cached_time < self.cache_ttl:
                 logger.info(f"Using cached classification for: {text}")
-                return self._determine_handler(cached_result), cached_result
+                return (self._determine_handler(cached_result), cached_result)
         
         # Classify command
         logger.info(f"Classifying command: {text}")

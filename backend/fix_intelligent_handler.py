@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
 """
+Fix the intelligent command handler file
+"""
+
+import os
+from pathlib import Path
+
+backend_dir = Path(__file__).parent
+
+# Restore the proper intelligent command handler
+proper_content = '''#!/usr/bin/env python3
+"""
 Intelligent Command Handler for JARVIS
 Uses Swift classifier for intelligent command routing without hardcoding
 """
@@ -57,14 +68,6 @@ class IntelligentCommandHandler:
             return "I need my API key to handle commands intelligently.", "error"
         
         try:
-            # Check for weather-related queries FIRST - route to system for Weather app workflow
-            if any(word in text.lower() for word in ['weather', 'temperature', 'forecast', 'rain', 'snow', 'sunny', 'cloudy', 'hot', 'cold', 'humid', 'windy', 'storm']):
-                logger.info(f"Detected weather query, routing to system handler for Weather app workflow")
-                # Create classification for weather
-                classification = {'type': 'system', 'confidence': 0.9, 'intent': 'weather'}
-                response = await self._handle_system_command(text, classification)
-                return response, 'system'
-            
             # Get intelligent classification from Swift
             try:
                 result = await self.router.route_command(text, context)
@@ -75,19 +78,23 @@ class IntelligentCommandHandler:
                     logger.warning(f"Unexpected router response format: {type(result)}")
                     handler_type = 'conversation'
                     classification = {'confidence': 0.5, 'type': 'conversation'}
-            except (ValueError, TypeError) as e:
+            except ValueError as e:
                 # Handle unpacking errors
                 logger.warning(f"Router unpacking error: {e}")
-                handler_type = 'conversation'
-                classification = {'confidence': 0.5, 'type': 'conversation'}
-            except Exception as e:
-                # Catch all other errors
-                logger.warning(f"Router error: {e}")
                 handler_type = 'conversation'
                 classification = {'confidence': 0.5, 'type': 'conversation'}
             
             logger.info(f"Intelligent routing: '{text}' → {handler_type} "
                        f"(confidence: {classification.get('confidence', 0):.2f})")
+            
+            # Route to appropriate handler
+            # Check for weather-related queries - route to system for Weather app workflow
+            if any(word in text.lower() for word in ['weather', 'temperature', 'forecast', 'rain', 'snow', 'sunny', 'cloudy', 'hot', 'cold']):
+                logger.info(f"Detected weather query, routing to system handler for Weather app workflow")
+                # Override classification to ensure it goes to system handler
+                classification['type'] = 'system'
+                classification['confidence'] = 0.9
+                return await self._handle_system_command(text, classification)
             
             
             if handler_type == 'system':
@@ -262,18 +269,8 @@ class IntelligentCommandHandler:
                 return result.message
             else:
                 return f"I've analyzed your screen, {self.user_name}."
-        elif intent.action == "check_weather_app" or (hasattr(intent, 'raw_command') and 'weather' in intent.raw_command.lower()):
-            # For weather commands, return the actual weather information
-            if hasattr(result, 'message') and result.message:
-                return result.message
-            else:
-                return f"I've checked the weather for you, {self.user_name}."
         else:
-            # For any other command with a message, return it
-            if hasattr(result, 'message') and result.message and not result.message.startswith("Command executed"):
-                return result.message
-            else:
-                return f"Command executed successfully, {self.user_name}."
+            return f"Command executed successfully, {self.user_name}."
     
     def _record_command(self, text: str, handler: str, 
                        classification: Dict[str, Any], response: str):
@@ -313,3 +310,11 @@ class IntelligentCommandHandler:
         """Improve classification based on user feedback"""
         await self.router.provide_feedback(command, correct_handler, was_successful)
         logger.info(f"Learned: '{command}' should use {correct_handler} handler")
+'''
+
+# Write the proper content
+handler_path = backend_dir / "voice" / "intelligent_command_handler.py"
+with open(handler_path, 'w') as f:
+    f.write(proper_content)
+
+print("✅ Restored intelligent command handler")

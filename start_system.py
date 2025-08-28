@@ -54,6 +54,7 @@ class Colors:
     ENDC = "\033[0m"
     BOLD = "\033[1m"
     UNDERLINE = "\033[4m"
+    PURPLE = "\033[95m"
 
 
 class AsyncSystemManager:
@@ -96,6 +97,7 @@ class AsyncSystemManager:
         print(f"   • Speech: Whisper STT with centralized model manager")
         print(f"   • Performance: 90% faster vision, 80% less memory")
         print(f"   • Architecture: Zero duplicate models, instant response")
+        print(f"   • {Colors.CYAN}NEW: Weather via macOS app + Vision (no API keys!){Colors.ENDC}")
 
         # Operating Modes
         print(f"\n{Colors.BOLD}📋 OPERATING MODES:{Colors.ENDC}")
@@ -159,6 +161,12 @@ class AsyncSystemManager:
         )
         print(
             f"{Colors.BLUE}💬 Real Analysis:{Colors.ENDC} No generic responses - actual screen content"
+        )
+        print(
+            f"{Colors.HEADER}🌤️ Weather App Vision:{Colors.ENDC} Opens macOS Weather • Reads with Claude • No API keys!"
+        )
+        print(
+            f"{Colors.PURPLE}🖥️ Screen Sharing:{Colors.ENDC} Continuous monitoring • Works during window switching • Native Swift"
         )
 
         print(f"\n{Colors.BOLD}🔗 v12.3 - UNIFIED WEBSOCKET ARCHITECTURE:{Colors.ENDC}")
@@ -272,7 +280,7 @@ class AsyncSystemManager:
             )
             print(f"{Colors.GREEN}✓ Learning: Pattern recognition enabled{Colors.ENDC}")
 
-        # Check OpenWeatherMap API key
+        # Check Weather Configuration
         weather_key = os.getenv("OPENWEATHER_API_KEY")
         if weather_key:
             print(
@@ -280,9 +288,17 @@ class AsyncSystemManager:
             )
         else:
             print(
-                f"{Colors.WARNING}⚠️  OpenWeatherMap API key not found - weather will use mock data{Colors.ENDC}"
+                f"{Colors.GREEN}✓ Weather via macOS app + Vision - No API key needed!{Colors.ENDC}"
             )
-            print(f"   To enable real weather: Add OPENWEATHER_API_KEY to .env file")
+            print(
+                f"{Colors.CYAN}  • Opens native Weather app automatically{Colors.ENDC}"
+            )
+            print(
+                f"{Colors.CYAN}  • Claude Vision reads current conditions{Colors.ENDC}"
+            )
+            print(
+                f"{Colors.CYAN}  • Works even when switching windows{Colors.ENDC}"
+            )
 
         return True
 
@@ -565,6 +581,20 @@ class AsyncSystemManager:
                             f"{Colors.GREEN}  ✓ Vision monitoring configured{Colors.ENDC}"
                         )
                         features_initialized.append("vision_monitoring")
+            except:
+                pass
+
+            # Initialize screen sharing
+            try:
+                async with session.post(
+                    f"{base_url}/vision/screen-sharing/enable",
+                    json={"continuous": True, "swift_bridge": True, "weather_aware": True},
+                ) as resp:
+                    if resp.status == 200:
+                        print(
+                            f"{Colors.GREEN}  ✓ Screen sharing enabled{Colors.ENDC}"
+                        )
+                        features_initialized.append("screen_sharing")
             except:
                 pass
 
@@ -1095,7 +1125,7 @@ class AsyncSystemManager:
             os.chmod(str(unified_script), 0o755)
 
             # Check both ports
-            for port_name, port_num in [
+            for _, port_num in [
                 ("main_api", self.ports["main_api"]),
                 ("websocket_router", self.ports["websocket_router"]),
             ]:
@@ -2078,8 +2108,11 @@ class AsyncSystemManager:
             f"  • {Colors.GREEN}ML Audio endpoints: Now working correctly{Colors.ENDC}"
         )
         print(f"  • {Colors.GREEN}Vision: Claude API only - no hardcoded responses{Colors.ENDC}")
+        print(f"  • {Colors.GREEN}Weather: Works even when switching windows!{Colors.ENDC}")
+        print(f"  • {Colors.GREEN}Screen Sharing: Continuous monitoring available{Colors.ENDC}")
         print(f"  • If JARVIS doesn't respond: Check microphone permissions")
         print(f"  • For system control errors: Grant accessibility permissions")
+        print(f"  • For screen sharing: Enable screen recording permission")
         print(
             f"  • 'Failed to execute vision action': Fixed - update to latest code"
         )
@@ -2088,6 +2121,7 @@ class AsyncSystemManager:
         )
         print(f"  • Empty responses: Ensure API key is in backend/.env")
         print(f"  • Vision errors: Check ANTHROPIC_API_KEY is valid")
+        print(f"  • {Colors.GREEN}Weather commands: Say 'What's the weather?' - opens Weather app{Colors.ENDC}")
         print(f"  • Connection refused: Backend automatically handles port conflicts")
         print(
             f"  • Import errors in IDE: These are false positives - packages are installed"

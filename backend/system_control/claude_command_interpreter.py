@@ -19,6 +19,7 @@ from .macos_controller import MacOSController, CommandCategory, SafetyLevel
 from .dynamic_app_controller import get_dynamic_app_controller
 from .fast_app_launcher import get_fast_app_launcher
 from .vision_action_handler import get_vision_action_handler
+from workflows.weather_app_vision import execute_weather_app_workflow
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +135,10 @@ class ClaudeCommandInterpreter:
         - Vision: describe_screen, analyze_window, check_screen
         - Web: open_url, web_search
         - Workflows: morning_routine, development_setup, meeting_prep
+        Important: Weather requests (e.g., "what's the weather today") should be handled as a workflow:
+        1. Category: "workflow" 
+        2. Action: "check_weather_app"
+        3. This will open the Weather app and use vision to read the information
         
         Safety rules:
         - File deletions always require confirmation
@@ -522,6 +527,18 @@ class ClaudeCommandInterpreter:
     async def _execute_workflow_command(self, intent: CommandIntent) -> CommandResult:
         """Execute workflow commands"""
         workflow_name = intent.target or intent.action
+        
+        # Special handling for weather workflow
+        if workflow_name == "check_weather_app" or "weather" in intent.raw_command.lower():
+            try:
+                # Use the weather app vision workflow
+                message = await execute_weather_app_workflow(self.controller, self.vision_handler)
+                return CommandResult(success=True, message=message)
+            except Exception as e:
+                logger.error(f"Weather workflow error: {e}")
+                # Fallback to regular workflow
+        
+        # Regular workflow execution
         success, message = await self.controller.execute_workflow(workflow_name)
         return CommandResult(success=success, message=message)
         

@@ -18,6 +18,12 @@
 
 ## 🎯 What's New in v12.6
 
+### 🌤️ NEW: Weather App Vision Integration
+- **Smart Weather Queries:** Ask "What's the weather today?" - JARVIS opens macOS Weather app
+- **Claude Vision Reading:** Uses vision to read current conditions directly from the app
+- **No API Keys Needed:** Leverages native macOS app, no weather service API required
+- **Natural Responses:** Get real weather data in conversational format
+
 ### ⚡ Ultra-Fast Performance
 - **Startup:** <3 seconds (was 20-30s) - 90% improvement
 - **Vision Response:** <1 second (was 3-9s) - 90% improvement  
@@ -34,6 +40,9 @@
 - **✅ Claude Model Update:** Updated from outdated opus model to claude-3-5-sonnet-20241022
 - **✅ Image Type Conversion:** Fixed PIL Image vs numpy array conversion errors
 - **✅ Command Routing:** Vision commands now properly routed to Claude API
+- **✅ MLAudioHandler TypeError:** Fixed undefined strategy.type errors
+- **✅ Weather Command Routing:** Weather queries now use app + vision workflow
+- **✅ Swift Router Unpacking:** Fixed "too many values to unpack" errors
 
 ### 🚀 Quick Start
 ```bash
@@ -41,8 +50,11 @@
 cd backend && python cleanup_ml_models.py && cd ..
 python start_system.py
 
-# Ask JARVIS: "Can you see my screen?"
-# Get: Real analysis of your actual screen content!
+# Try these commands:
+# "Can you see my screen?" → Real-time vision analysis
+# "What's the weather today?" → Opens Weather app, reads with vision
+# "Open Chrome and Safari" → Multiple app control
+# "Close WhatsApp and Preview" → Batch operations
 ```
 
 ## Table of Contents
@@ -1227,7 +1239,7 @@ cd JARVIS-AI-Agent
 # Create backend/.env file with your API keys
 cat > backend/.env << EOF
 ANTHROPIC_API_KEY=your-anthropic-api-key-here
-OPENWEATHER_API_KEY=your-openweather-api-key-here  # Optional, for weather
+# Weather API key not needed anymore! v12.6 uses macOS Weather app + Vision
 EOF
 ```
 
@@ -3284,7 +3296,42 @@ curl http://localhost:8010/vision/status
 - Update to latest code with vision fixes
 - Check logs for specific error messages
 
-#### **2. High CPU Usage from Continuous Learning**
+#### **2. Weather Commands (New in v12.6)**
+
+**How it Works:**
+- Say "What's the weather today?" or any weather-related query
+- JARVIS automatically opens macOS Weather app
+- Uses Claude Vision to read current conditions from the app
+- Returns natural language description of weather
+
+**Test Weather Feature:**
+```bash
+# Test the weather workflow
+python backend/test_weather_app_vision.py
+
+# Or just ask JARVIS
+# "What's the weather?" 
+# "Is it going to rain today?"
+# "What's the temperature?"
+```
+
+**Troubleshooting:**
+- Ensure Weather app is installed (comes with macOS)
+- Grant screen recording permissions to your IDE
+- Check ANTHROPIC_API_KEY is set for vision
+
+#### **3. MLAudioHandler Errors (Fixed in v12.6)**
+
+**Previous Issue:**
+- "Cannot read properties of undefined (reading 'type')" errors
+- Strategy object was undefined or missing properties
+
+**Fix Applied:**
+- Added null checks for strategy object
+- Implemented missing `executeLocalStrategy` method
+- Proper error handling for malformed strategies
+
+#### **4. High CPU Usage from Continuous Learning**
 
 **Symptoms:**
 - CPU usage near 100%
