@@ -199,3 +199,63 @@ class ClaudeVisionAnalyzer:
         Respond with any concerns found and recommended actions."""
         
         return await self.analyze_screenshot(screenshot, prompt)
+    
+    async def analyze_image_with_prompt(self, image_base64: str, prompt: str) -> Dict[str, Any]:
+        """Analyze a base64 encoded image with a custom prompt
+        
+        Args:
+            image_base64: Base64 encoded image string
+            prompt: Custom prompt for analysis
+            
+        Returns:
+            Analysis results from Claude
+        """
+        # Prepare message for Claude
+        message = self.client.messages.create(
+            model=self.model,
+            max_tokens=1024,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/png",
+                            "data": image_base64
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": prompt
+                    }
+                ]
+            }]
+        )
+        
+        return self._parse_claude_response(message.content[0].text)
+    
+    async def analyze_workspace_context(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyze workspace context without screenshot
+        
+        Args:
+            state: Dictionary containing workspace state information
+            
+        Returns:
+            Analysis based on workspace metadata
+        """
+        # Create a text-based analysis when no screenshot is available
+        analysis_text = f"""Based on the workspace information:
+- Focused application: {state.get('focused_app', 'Unknown')}
+- Number of windows open: {state.get('window_count', 0)}
+- Active windows: {', '.join([w.get('app', 'Unknown') for w in state.get('windows', [])[:5]])}
+
+The user appears to be working with multiple applications. Without seeing the actual screen content, I can provide general workspace information but cannot analyze specific content or provide detailed insights about what you're working on."""
+        
+        return {
+            "description": analysis_text,
+            "focused_app": state.get('focused_app'),
+            "window_count": state.get('window_count'),
+            "requires_screenshot": True,
+            "confidence": 0.3
+        }

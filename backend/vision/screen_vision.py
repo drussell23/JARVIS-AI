@@ -19,6 +19,12 @@ import numpy as np
 from dataclasses import dataclass
 from enum import Enum
 
+# Import Claude Vision Analyzer if available
+try:
+    from .claude_vision_analyzer import ClaudeVisionAnalyzer
+except ImportError:
+    ClaudeVisionAnalyzer = None
+
 
 class UpdateType(Enum):
     """Types of software updates that can be detected"""
@@ -63,6 +69,15 @@ class ScreenVisionSystem:
         self.notification_patterns = self._initialize_notification_patterns()
         self.last_scan_time = None
         self.detected_updates = []
+        
+        # Initialize Claude Vision Analyzer if API key is available
+        self.claude_analyzer = None
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if api_key and ClaudeVisionAnalyzer:
+            try:
+                self.claude_analyzer = ClaudeVisionAnalyzer(api_key)
+            except Exception as e:
+                print(f"Failed to initialize Claude Vision Analyzer: {e}")
 
     def _initialize_update_patterns(self) -> Dict[str, List[re.Pattern]]:
         """Initialize patterns for detecting software updates"""
@@ -507,9 +522,25 @@ class ScreenVisionSystem:
         if context["potential_updates"] > 0:
             description += f"I've also detected {context['potential_updates']} potential software updates that may need your attention. "
         
-        # Add Claude enhancement hint if available
-        if os.getenv("ANTHROPIC_API_KEY"):
-            description += "With Claude Vision enabled, I can provide even deeper insights about what you're working on."
+        # Use Claude Vision if available for deeper analysis
+        if self.claude_analyzer and test_capture is not None:
+            try:
+                # Convert PIL image to numpy array
+                screenshot_np = np.array(test_capture)
+                
+                # Ask Claude to analyze what the user is working on
+                prompt = "Please analyze this screenshot and describe what the user appears to be working on. Be specific about the applications open, the content visible, and any relevant details you can see."
+                claude_analysis = await self.claude_analyzer.analyze_screenshot(screenshot_np, prompt)
+                
+                # Replace the generic description with Claude's analysis
+                if claude_analysis and claude_analysis.get("description"):
+                    description = f"Yes sir, I can see your screen. {claude_analysis['description']}"
+                else:
+                    # Fallback to enhanced description if Claude fails
+                    description += "With Claude Vision enabled, I can provide even deeper insights about what you're working on."
+            except Exception as e:
+                print(f"Claude Vision analysis failed: {e}")
+                description += "Claude Vision is available for enhanced analysis."
         else:
             description += "If you add Claude Vision, I'll be able to understand context and help you more intelligently."
 

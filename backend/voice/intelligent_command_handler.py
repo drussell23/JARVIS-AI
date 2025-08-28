@@ -139,7 +139,8 @@ class IntelligentCommandHandler:
                 
                 # Re-interpret with the updated context
                 intent = await self.command_interpreter.interpret_command(text, context)
-                's '                # Execute the vision command to get screen content with timeout
+                
+                # Execute the vision command to get screen content with timeout
                 try:
                     result = await asyncio.wait_for(
                         self.command_interpreter.execute_intent(intent),
