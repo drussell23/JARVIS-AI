@@ -327,6 +327,7 @@ async def startup_notification_system():
     logger.info("Notification intelligence system started")
 
 
-# Register startup
-if __name__ != "__main__":
-    asyncio.create_task(startup_notification_system())
+# Register startup - commented out to prevent event loop error
+# The notification system will be initialized when first accessed
+# if __name__ != "__main__":
+#     asyncio.create_task(startup_notification_system())

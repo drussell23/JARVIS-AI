@@ -22,41 +22,25 @@ check_port() {
 
 # Kill any existing processes on our ports
 echo -e "${YELLOW}Checking for existing processes...${NC}"
-if check_port 8000; then
-    echo "Killing process on port 8000..."
-    lsof -ti:8000 | xargs kill -9 2>/dev/null
-fi
-if check_port 8001; then
-    echo "Killing process on port 8001..."
-    lsof -ti:8001 | xargs kill -9 2>/dev/null
-fi
+PYTHON_PORT=${PYTHON_BACKEND_PORT:-8010}
+WEBSOCKET_PORT=${WEBSOCKET_PORT:-8001}
 
-# Install TypeScript dependencies if needed
-echo -e "${YELLOW}Checking TypeScript dependencies...${NC}"
-cd websocket
-if [ ! -d "node_modules" ]; then
-    echo "Installing TypeScript dependencies..."
-    npm install
+if check_port $PYTHON_PORT; then
+    echo "Killing process on port $PYTHON_PORT..."
+    lsof -ti:$PYTHON_PORT | xargs kill -9 2>/dev/null
+fi
+if check_port $WEBSOCKET_PORT; then
+    echo "Killing process on port $WEBSOCKET_PORT..."
+    lsof -ti:$WEBSOCKET_PORT | xargs kill -9 2>/dev/null
 fi
 
-# Build TypeScript
-echo -e "${YELLOW}Building TypeScript WebSocket Router...${NC}"
-npm run build
-
-# Start TypeScript WebSocket Router
-echo -e "${GREEN}Starting TypeScript WebSocket Router on port 8001...${NC}"
-npm start &
-TS_PID=$!
-
-# Give it a moment to start
-sleep 2
-
-# Go back to backend directory
-cd ..
+# Skip TypeScript for now - it's not properly configured
+echo -e "${YELLOW}Note: TypeScript WebSocket router disabled (not configured)${NC}"
+TS_PID=0
 
 # Start Python backend
-echo -e "${GREEN}Starting Python FastAPI backend on port 8000...${NC}"
-python main.py &
+echo -e "${GREEN}Starting Python FastAPI backend on port $PYTHON_PORT...${NC}"
+python main.py --port $PYTHON_PORT &
 PY_PID=$!
 
 # Create a PID file for clean shutdown
@@ -64,14 +48,14 @@ echo $TS_PID > .typescript.pid
 echo $PY_PID > .python.pid
 
 echo -e "${GREEN}✅ Unified Backend System Started!${NC}"
-echo "Python Backend PID: $PY_PID (port 8000)"
-echo "TypeScript Router PID: $TS_PID (port 8001)"
+echo "Python Backend PID: $PY_PID (port $PYTHON_PORT)"
+echo "TypeScript Router PID: $TS_PID (port $WEBSOCKET_PORT)"
 echo ""
 echo "WebSocket endpoints available at:"
-echo "  - ws://localhost:8001/ws/vision (unified vision)"
-echo "  - ws://localhost:8001/ws/voice (voice commands)"
-echo "  - ws://localhost:8001/ws/automation (automation)"
-echo "  - ws://localhost:8001/ws (general)"
+echo "  - ws://localhost:$WEBSOCKET_PORT/ws/vision (unified vision)"
+echo "  - ws://localhost:$WEBSOCKET_PORT/ws/voice (voice commands)"
+echo "  - ws://localhost:$WEBSOCKET_PORT/ws/automation (automation)"
+echo "  - ws://localhost:$WEBSOCKET_PORT/ws (general)"
 echo ""
 echo "Press Ctrl+C to stop both servers"
 

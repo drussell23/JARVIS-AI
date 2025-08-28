@@ -390,11 +390,11 @@ async def create_memory_alert_callback(websocket_manager=None):
             ),
         )
 
-        # Log the alert
+        # Log the alert - only log critical alerts to avoid spam
         import logging
 
         logger = logging.getLogger(__name__)
-        if alert.severity != "info":
+        if alert.severity == "critical":
             logger.warning(f"Memory alert: {alert.message}")
 
         # Send to websocket if available
