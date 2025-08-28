@@ -88,7 +88,7 @@ class UnifiedDynamicSystem:
             logger.warning(f"Rust components unavailable: {e}")
             RUST_AVAILABLE = False
     
-    @graceful_endpoint(fallback_response={
+    @graceful_endpoint#{
         "status": "activated",
         "message": "JARVIS activated with full optimization",
         "mode": "unified_dynamic"

@@ -70,7 +70,7 @@ def wrap_endpoints_with_decorator(content: str) -> str:
                 
                 fallback = generate_fallback_for_function(func_name)
                 
-                new_lines.append(f'{indent}@graceful_endpoint(fallback_response={fallback})')
+                new_lines.append(f'{indent}@graceful_endpoint#{fallback})')
                 new_lines.append(line)
                 
                 # Also replace the HTTPException with a simple raise

@@ -292,12 +292,7 @@ async def toggle_monitoring(enabled: bool = True):
 
 
 @router.post("/analyze_now")
-@graceful_endpoint(fallback_response={
-    "analysis": "Vision system is processing your request.",
-    "status": "processing",
-    "confidence": 0.85,
-    "retry_after_seconds": 2
-})
+@graceful_endpoint
 async def analyze_current_screen():
     """Analyze screen immediately with timeout"""
     if not vision_ws_manager.vision_monitor:

@@ -140,10 +140,7 @@ class VoiceAPI:
             "/voice/audio/feedback", self.test_feedback, methods=["POST"]
         )
 
-    @graceful_endpoint(fallback_response={
-    "status": "success",
-    "message": "Request processed successfully"
-})
+    @graceful_endpoint
     async def synthesize_speech(self, request: TTSRequest) -> Response:
         """Synthesize speech from text"""
         try:
@@ -206,10 +203,7 @@ class VoiceAPI:
         except Exception as e:
             raise  # Graceful handler will catch this
 
-    @graceful_endpoint(fallback_response={
-    "status": "success",
-    "message": "Request processed successfully"
-})
+    @graceful_endpoint
     async def list_voices(self) -> Dict:
         """List available TTS voices"""
         try:
@@ -259,10 +253,7 @@ class VoiceAPI:
         except Exception as e:
             raise  # Graceful handler will catch this
 
-    @graceful_endpoint(fallback_response={
-    "status": "success",
-    "message": "Request processed successfully"
-})
+    @graceful_endpoint
     async def transcribe_audio(self, request: VoiceCommandRequest) -> STTResponse:
         """Transcribe audio from base64 data"""
         try:
@@ -317,10 +308,7 @@ class VoiceAPI:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
-    @graceful_endpoint(fallback_response={
-    "status": "success",
-    "message": "Request processed successfully"
-})
+    @graceful_endpoint
     async def process_voice_command(self, request: VoiceCommandRequest) -> Dict:
         """Process a voice command"""
         try:
@@ -507,10 +495,7 @@ class VoiceAPI:
             await websocket.send_json({"type": "error", "message": str(e)})
             self.websocket_clients.remove(websocket)
 
-    @graceful_endpoint(fallback_response={
-    "status": "success",
-    "message": "Request processed successfully"
-})
+    @graceful_endpoint
     async def calibrate_noise(self) -> Dict:
         """Calibrate noise profile for better speech detection"""
         try:
@@ -526,10 +511,7 @@ class VoiceAPI:
         except Exception as e:
             raise  # Graceful handler will catch this
 
-    @graceful_endpoint(fallback_response={
-    "status": "success",
-    "message": "Request processed successfully"
-})
+    @graceful_endpoint
     async def get_audio_metrics(self) -> Dict:
         """Get current audio processing metrics"""
         try:
@@ -556,10 +538,7 @@ class VoiceAPI:
         except Exception as e:
             raise  # Graceful handler will catch this
 
-    @graceful_endpoint(fallback_response={
-    "status": "success",
-    "message": "Request processed successfully"
-})
+    @graceful_endpoint
     async def test_feedback(self) -> Dict:
         """Test audio feedback sounds"""
         try:

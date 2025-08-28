@@ -84,8 +84,8 @@ class PythonTypeScriptBridge:
                 self._running = True
                 logger.info(f"Python-TypeScript bridge started on ports {self.python_port}/{self.typescript_port}")
                 
-                # Start message processing
-                await self._process_messages()
+                # Start message processing in background
+                asyncio.create_task(self._process_messages())
                 break
                 
             except zmq.error.ZMQError as e:

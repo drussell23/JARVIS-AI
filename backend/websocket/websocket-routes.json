@@ -1,11 +1,28 @@
 {
+  "port": 8001,
+  "pythonBackendUrl": "http://localhost:8010",
+  "enableAuthentication": false,
+  "enableRateLimiting": true,
+  "enableDynamicRouting": true,
   "routes": [
     {
       "path": "/ws/vision",
-      "capabilities": ["vision", "monitoring", "claude", "pattern_learning", "autonomous_actions"],
+      "capabilities": ["vision", "monitoring", "analysis", "autonomous", "claude", "pattern_learning"],
+      "priority": 10,
       "pythonModule": "backend.api.unified_vision_handler",
-      "pythonHandler": "UnifiedVisionHandler",
-      "description": "Unified vision WebSocket endpoint handling all vision-related operations",
+      "handlers": {
+        "set_monitoring_interval": "handle_monitoring_interval",
+        "request_workspace_analysis": "handle_workspace_analysis",
+        "execute_action": "handle_action_execution",
+        "vision_command": "handle_vision_command",
+        "claude_vision": "handle_claude_vision",
+        "set_autonomous_mode": "handle_websocket_message",
+        "autonomous_action": "handle_autonomous_action",
+        "learn_pattern": "handle_pattern_learning",
+        "get_learned_patterns": "handle_websocket_message",
+        "get_status": "handle_websocket_message",
+        "ping": "handle_websocket_message"
+      },
       "rateLimit": {
         "maxRequests": 100,
         "windowMs": 60000
@@ -13,24 +30,101 @@
     },
     {
       "path": "/ws/voice",
-      "capabilities": ["voice", "tts", "stt", "natural_language"],
-      "pythonModule": "backend.api.voice_handler",
-      "pythonHandler": "VoiceHandler",
-      "description": "Voice interaction and speech processing endpoint"
+      "capabilities": ["voice", "speech", "commands", "jarvis", "tts", "stt"],
+      "priority": 8,
+      "pythonModule": "backend.api.voice_websocket_handler",
+      "handlers": {
+        "start_listening": "handle_start_listening",
+        "stop_listening": "handle_stop_listening",
+        "process_audio": "handle_process_audio",
+        "voice_command": "handle_voice_command",
+        "set_voice": "handle_set_voice",
+        "get_voices": "handle_get_voices"
+      }
     },
     {
       "path": "/ws/automation",
-      "capabilities": ["automation", "workflow", "task_execution"],
+      "capabilities": ["automation", "workflow", "tasks", "scheduling"],
+      "priority": 7,
       "pythonModule": "backend.api.automation_handler",
-      "pythonHandler": "AutomationHandler",
-      "description": "Task automation and workflow management endpoint"
+      "handlers": {
+        "create_workflow": "handle_create_workflow",
+        "execute_workflow": "handle_execute_workflow",
+        "list_workflows": "handle_list_workflows",
+        "schedule_task": "handle_schedule_task",
+        "cancel_task": "handle_cancel_task",
+        "get_task_status": "handle_get_task_status"
+      }
+    },
+    {
+      "path": "/ws/ml_audio",
+      "capabilities": ["ml_audio", "streaming", "real_time_processing", "emotion_detection"],
+      "priority": 9,
+      "pythonModule": "backend.api.ml_audio_api",
+      "handlers": {
+        "start_stream": "handle_start_stream",
+        "process_chunk": "handle_process_chunk",
+        "end_stream": "handle_end_stream",
+        "get_audio_status": "handle_get_status",
+        "analyze_emotion": "handle_emotion_analysis"
+      }
+    },
+    {
+      "path": "/ws/navigation",
+      "capabilities": ["navigation", "ui_control", "element_detection", "automation"],
+      "priority": 8,
+      "pythonModule": "backend.api.navigation_api",
+      "handlers": {
+        "find_element": "handle_find_element",
+        "click_element": "handle_click_element",
+        "navigate_to": "handle_navigate_to",
+        "get_ui_state": "handle_get_ui_state",
+        "take_screenshot": "handle_take_screenshot"
+      }
+    },
+    {
+      "path": "/ws/notifications",
+      "capabilities": ["notifications", "alerts", "monitoring", "intelligence"],
+      "priority": 7,
+      "pythonModule": "backend.api.notification_vision_api",
+      "handlers": {
+        "check_notifications": "handle_check_notifications",
+        "acknowledge_notification": "handle_acknowledge_notification",
+        "get_notification_history": "handle_get_history",
+        "set_notification_rules": "handle_set_rules"
+      }
+    },
+    {
+      "path": "/ws/models",
+      "capabilities": ["model_status", "loading_progress", "performance", "management"],
+      "priority": 6,
+      "pythonModule": "backend.api.model_status_api",
+      "handlers": {
+        "get_loading_progress": "handle_get_progress",
+        "get_model_status": "handle_get_status",
+        "reload_model": "handle_reload_model",
+        "unload_model": "handle_unload_model"
+      }
     },
     {
       "path": "/ws",
-      "capabilities": ["general", "system", "health"],
-      "pythonModule": "backend.api.general_handler",
-      "pythonHandler": "GeneralHandler",
-      "description": "General WebSocket endpoint for system communication"
+      "capabilities": ["general", "chat", "status", "health"],
+      "priority": 5,
+      "pythonModule": "backend.api.general_websocket_handler",
+      "handlers": {
+        "chat": "handle_chat",
+        "get_status": "handle_get_status",
+        "echo": "handle_echo",
+        "health_check": "handle_health_check"
+      }
+    },
+    {
+      "path": "/api/websocket/endpoints",
+      "capabilities": ["discovery"],
+      "priority": 1,
+      "handlers": {
+        "GET": "handleDiscoveryRequest"
+      }
     }
   ],
   "config": {
@@ -40,6 +134,18 @@
     "pythonBridgePort": 5555,
     "maxConnectionsPerClient": 5,
     "messageTimeout": 30000,
-    "reconnectInterval": 5000
+    "reconnectInterval": 5000,
+    "heartbeatInterval": 30000,
+    "circuitBreaker": {
+      "failureThreshold": 5,
+      "resetTimeout": 60000,
+      "halfOpenRequests": 3
+    },
+    "retry": {
+      "maxRetries": 3,
+      "baseDelay": 1000,
+      "maxDelay": 30000,
+      "backoffMultiplier": 2
+    }
   }
 }

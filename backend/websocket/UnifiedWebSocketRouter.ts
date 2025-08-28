@@ -7,7 +7,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { createServer, Server } from 'http';
 import { parse } from 'url';
 import { EventEmitter } from 'events';
-import { WebSocketBridge } from '../bridges/WebSocketBridge';
+import { PythonHTTPBridge } from './bridges/PythonHTTPBridge';
 import ErrorHandlingMiddleware from './middleware/ErrorHandlingMiddleware';
 
 interface RouteHandler {
@@ -32,7 +32,7 @@ interface MessageContext {
   route: string;
   clientId: string;
   metadata: Map<string, any>;
-  pythonBridge?: WebSocketBridge;
+  pythonBridge?: PythonHTTPBridge;
 }
 
 interface RouterConfig {
@@ -49,7 +49,7 @@ export class UnifiedWebSocketRouter extends EventEmitter {
   private wss: WebSocketServer;
   private routes: Map<string, RouteHandler> = new Map();
   private clients: Map<string, WebSocket> = new Map();
-  private pythonBridge?: WebSocketBridge;
+  private pythonBridge?: PythonHTTPBridge;
   private config: RouterConfig;
   private messageQueue: Map<string, any[]> = new Map();
   private rateLimiters: Map<string, RateLimiter> = new Map();
@@ -79,9 +79,11 @@ export class UnifiedWebSocketRouter extends EventEmitter {
 
     // Initialize Python bridge if enabled
     if (this.config.pythonIntegration) {
-      this.pythonBridge = new WebSocketBridge({
-        errorHandling: 'retry',
-        messageTransformation: true
+      this.pythonBridge = new PythonHTTPBridge({
+        pythonBackendUrl: 'http://localhost:8010',
+        timeout: 30000,
+        retryAttempts: 3,
+        retryDelay: 1000
       });
     }
 

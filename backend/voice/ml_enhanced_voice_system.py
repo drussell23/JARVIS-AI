@@ -187,12 +187,17 @@ class MLEnhancedVoiceSystem:
         # Load existing models
         self._load_models()
         
-        # Initialize deep learning if available
-        if DEEP_LEARNING_AVAILABLE:
-            self._init_deep_models()
+        # Deep learning models will be initialized lazily
+        self.wake_word_nn = None
+        self.anomaly_detector = None
+        self._deep_models_initialized = False
     
     def _init_deep_models(self):
         """Initialize deep learning models"""
+        if self._deep_models_initialized or not DEEP_LEARNING_AVAILABLE:
+            return
+            
+        self._deep_models_initialized = True
         try:
             # Wake word neural network
             self.wake_word_nn = WakeWordNeuralNet()
@@ -347,6 +352,12 @@ class MLEnhancedVoiceSystem:
             # Prepare for neural network
             mel_tensor = torch.FloatTensor(mel_spec_db).unsqueeze(0)
             
+            # Ensure deep models are initialized
+            self._init_deep_models()
+            
+            if not self.wake_word_nn:
+                return None
+                
             # Get embedding (before final classification layer)
             with torch.no_grad():
                 self.wake_word_nn.eval()
@@ -559,6 +570,12 @@ class MLEnhancedVoiceSystem:
             return True
         
         try:
+            # Ensure models are loaded
+            self._load_models()
+            
+            if not self.anomaly_detector:
+                return True  # No anomaly detection available
+                
             feature_vector = self._prepare_feature_vector(features)
             prediction = self.anomaly_detector.predict([feature_vector])
             return prediction[0] == 1  # 1 = normal, -1 = anomaly

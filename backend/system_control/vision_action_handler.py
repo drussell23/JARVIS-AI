@@ -52,7 +52,19 @@ class VisionActionHandler:
         self.vision_modules = {}
         self.workspace_analyzer = None
         
-        # Initialize Vision System v2.0
+        # Lazy load Vision System v2.0 to prevent circular imports
+        self.vision_system_v2 = None
+        self._vision_v2_initialized = False
+        
+        # Initialize system
+        self._init_dynamic_system()
+        
+    def _ensure_vision_v2_initialized(self):
+        """Lazy initialize Vision System v2.0"""
+        if self._vision_v2_initialized:
+            return
+            
+        self._vision_v2_initialized = True
         try:
             from vision.vision_system_v2 import get_vision_system_v2
             self.vision_system_v2 = get_vision_system_v2()
@@ -60,10 +72,15 @@ class VisionActionHandler:
         except ImportError:
             logger.warning("Vision System v2.0 not available, using legacy approach")
         
-        # Initialize system
-        self._init_dynamic_system()
+        # Workspace analyzer will be loaded lazily when needed
+        self._workspace_analyzer_initialized = False
         
-        # Initialize workspace analyzer for multi-window support
+    def _ensure_workspace_analyzer_initialized(self):
+        """Lazy initialize workspace analyzer"""
+        if self._workspace_analyzer_initialized:
+            return
+            
+        self._workspace_analyzer_initialized = True
         try:
             from vision.workspace_analyzer import WorkspaceAnalyzer
             self.workspace_analyzer = WorkspaceAnalyzer()
@@ -73,19 +90,28 @@ class VisionActionHandler:
         
     def _init_dynamic_system(self):
         """Initialize dynamic vision system"""
-        # Try to use the dynamic engine
-        try:
-            from vision.dynamic_vision_engine import get_dynamic_vision_engine
-            self.dynamic_engine = get_dynamic_vision_engine()
-            logger.info("Using dynamic vision engine for ML-based routing")
-        except ImportError:
-            logger.info("Dynamic engine not available, using autonomous discovery")
+        # Lazy load dynamic engine
+        self.dynamic_engine = None
+        self._dynamic_engine_initialized = False
             
         # Discover all available vision capabilities
         self._discover_all_vision_capabilities()
         
         # Load any learned data
         self._load_learning_data()
+        
+    def _ensure_dynamic_engine_initialized(self):
+        """Lazy initialize dynamic vision engine"""
+        if self._dynamic_engine_initialized:
+            return
+            
+        self._dynamic_engine_initialized = True
+        try:
+            from vision.dynamic_vision_engine import get_dynamic_vision_engine
+            self.dynamic_engine = get_dynamic_vision_engine()
+            logger.info("Using dynamic vision engine for ML-based routing")
+        except ImportError:
+            logger.info("Dynamic engine not available, using autonomous discovery")
         
     def _discover_all_vision_capabilities(self):
         """Discover all vision capabilities from available modules"""
@@ -224,6 +250,7 @@ class VisionActionHandler:
         if self.vision_system_v2:
             # Convert action_name to natural language for ML processing
             command = self._action_to_natural_language(action_name, params)
+            self._ensure_vision_v2_initialized()
             response = await self.vision_system_v2.process_command(command, params)
             
             return VisionActionResult(
@@ -237,6 +264,7 @@ class VisionActionHandler:
         elif self.dynamic_engine:
             # Convert action_name to natural language for ML processing
             command = self._action_to_natural_language(action_name, params)
+            self._ensure_dynamic_engine_initialized()
             response, metadata = await self.dynamic_engine.process_vision_command(command, params)
             
             return VisionActionResult(
@@ -458,6 +486,7 @@ class VisionActionHandler:
         # Use Vision System v2.0 if available
         if self.vision_system_v2:
             command = params.get('query', 'describe what is on my screen')
+            self._ensure_vision_v2_initialized()
             response = await self.vision_system_v2.process_command(command, params)
             
             return VisionActionResult(
@@ -494,6 +523,7 @@ class VisionActionHandler:
         if self.vision_system_v2:
             window = params.get('target', 'current')
             command = f"analyze the {window} window"
+            self._ensure_vision_v2_initialized()
             response = await self.vision_system_v2.process_command(command, params)
             
             return VisionActionResult(
@@ -531,6 +561,7 @@ class VisionActionHandler:
         if self.vision_system_v2:
             target = params.get('target', 'notifications')
             command = f"check my screen for {target}"
+            self._ensure_vision_v2_initialized()
             response = await self.vision_system_v2.process_command(command, params)
             
             return VisionActionResult(
@@ -582,6 +613,7 @@ class VisionActionHandler:
             logger.info(f"Analyzing multi-window workspace with query: {query}")
             
             # Use workspace analyzer for comprehensive analysis
+            self._ensure_workspace_analyzer_initialized()
             result = await self.workspace_analyzer.analyze_workspace(query)
             
             # Build comprehensive description

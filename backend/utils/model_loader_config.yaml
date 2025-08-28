@@ -1,0 +1,98 @@
+# Progressive Model Loader Configuration
+# This file allows dynamic configuration without code changes
+
+# System resource limits
+resources:
+  max_workers: auto # auto, or specific number
+  max_memory_percent: 80 # Maximum memory usage percentage
+  gpu_enabled: true
+  cache_enabled: true
+  cache_dir: "model_cache"
+
+# Model discovery settings
+discovery:
+  enabled: true
+  scan_paths:
+    - vision
+    - voice
+    - autonomy
+    - api
+    - system_control
+  exclude_patterns:
+    - "*_test.py"
+    - "*_demo.py"
+    - "__pycache__"
+
+# Model loading strategies
+loading:
+  parallel_threshold: 4 # Number of models to trigger parallel loading
+  timeout_multiplier: 3 # Multiply estimated load time for timeout
+  retry_attempts: 3
+  retry_delay: 2 # seconds
+  max_models_per_phase: # Limit models per loading phase
+    critical: 10 # Max critical models
+    essential: 20 # Max essential models
+    enhancement: 50 # Max enhancement models
+
+# Priority definitions (override auto-detection)
+priorities:
+  critical: # Priority 1 - Must load for basic functionality
+    patterns:
+      - "*Core"
+      - "*Base"
+      - "Main*"
+    modules:
+      - vision.vision_system_v2
+      - voice.jarvis_agent_voice
+      - vision.workspace_analyzer
+
+  essential: # Priority 2 - Important features
+    patterns:
+      - "*Manager"
+      - "*System"
+      - "*Engine"
+      - "*Handler"
+    modules:
+      - vision.neural_command_router
+      - voice.ml_enhanced_voice_system
+      - autonomy.autonomous_behaviors
+
+  enhancement: # Priority 3 - Advanced features
+    patterns:
+      - "*Learning*"
+      - "*Optimizer"
+      - "*Generator"
+      - "*Framework"
+
+# Model-specific configurations
+models:
+  vision_core:
+    memory_requirement: 300
+    estimated_load_time: 2.0
+    gpu_required: false
+
+  wav2vec2:
+    memory_requirement: 800
+    estimated_load_time: 5.0
+    gpu_required: true
+    fallback: voice_core
+
+  claude_vision:
+    memory_requirement: 200
+    estimated_load_time: 1.5
+    dependencies:
+      - vision_core
+
+# Performance optimization
+optimization:
+  use_process_pool_for_heavy_models: true
+  heavy_model_threshold: 500 # MB
+  enable_model_quantization: false
+  enable_lazy_loading: true
+
+# Monitoring and logging
+monitoring:
+  log_level: INFO
+  performance_tracking: true
+  failure_analysis: true
+  metrics_export: false

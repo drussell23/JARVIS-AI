@@ -113,11 +113,29 @@ class DynamicModelLoader:
                         
         logger.info(f"✅ Discovered {discovered} ML models/components")
         
+        # Add vision engine for parallel loading
+        try:
+            from vision.lazy_vision_engine import initialize_vision_engine_models
+            
+            # Create a special model info for vision engine
+            vision_model = ModelInfo(
+                name="vision.lazy_vision_engine",
+                module_path="vision.lazy_vision_engine",
+                init_function="initialize_vision_engine_models",
+                priority=10  # High priority
+            )
+            
+            self.models[vision_model.name] = vision_model
+            logger.info("Registered lazy vision engine for parallel loading")
+            discovered += 1
+        except ImportError:
+            logger.warning("Could not import lazy vision engine")
+        
         # Resolve dependencies
         await self._resolve_dependencies()
         
         return self.models
-        
+
     def _matches_pattern(self, filename: str, pattern: str) -> bool:
         """Check if filename matches pattern (supports wildcards)"""
         import fnmatch
@@ -131,8 +149,19 @@ class DynamicModelLoader:
         models = []
         
         try:
-            # Get module path relative to backend
-            rel_path = py_file.relative_to(Path.cwd())
+            # Get module path relative to current directory
+            # Try to make it relative to the current working directory
+            try:
+                rel_path = py_file.relative_to(Path.cwd())
+            except ValueError:
+                # If that fails, try to make the path relative to backend
+                backend_path = Path(__file__).parent
+                try:
+                    rel_path = py_file.relative_to(backend_path)
+                except ValueError:
+                    # If still fails, use the absolute path
+                    rel_path = py_file
+                    
             module_path = str(rel_path).replace('/', '.').replace('.py', '')
             
             # Try to load module metadata without executing
@@ -299,7 +328,11 @@ class DynamicModelLoader:
             if self.progress_callback:
                 loaded = sum(1 for m in self.models.values() if m.status == ModelStatus.LOADED)
                 total = len(self.models)
-                self.progress_callback(loaded, total)
+                # Check if callback is async
+                if asyncio.iscoroutinefunction(self.progress_callback):
+                    await self.progress_callback(loaded, total)
+                else:
+                    self.progress_callback(loaded, total)
                 
         total_time = time.time() - start_time
         
@@ -345,6 +378,22 @@ class DynamicModelLoader:
                 model
             )
             
+            # Check if this is an async init that needs to be called
+            if isinstance(instance, dict) and 'async_init' in instance:
+                async_init = instance['async_init']
+                logger.info(f"Running async initialization for {model_name}")
+                # Pass the executor to the async init function if it accepts it
+                try:
+                    import inspect
+                    sig = inspect.signature(async_init)
+                    if 'executor' in sig.parameters:
+                        instance = await async_init(executor=self.executor)
+                    else:
+                        instance = await async_init()
+                except Exception as e:
+                    logger.warning(f"Async init failed for {model_name}: {e}")
+                    instance = None
+            
             model.instance = instance
             model.status = ModelStatus.LOADED
             model.load_time = time.time() - start_time
@@ -387,7 +436,13 @@ class DynamicModelLoader:
             elif model.init_function:
                 # Call initialization function
                 init_func = getattr(module, model.init_function)
-                return init_func()
+                # Check if it's an async function
+                if asyncio.iscoroutinefunction(init_func):
+                    # For async init functions, we need to handle them specially
+                    # Since we're in a sync context, we'll return a placeholder
+                    return {'async_init': init_func, 'model_name': model.name}
+                else:
+                    return init_func()
                 
         except Exception as e:
             raise Exception(f"Failed to load model: {e}")

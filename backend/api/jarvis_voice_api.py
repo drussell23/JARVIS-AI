@@ -15,9 +15,16 @@ import logging
 from datetime import datetime
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from graceful_http_handler import graceful_endpoint
 
 logger = logging.getLogger(__name__)
+
+# Try to import graceful handler, but don't fail if it's not available
+try:
+    from graceful_http_handler import graceful_endpoint
+except ImportError:
+    logger.warning("Graceful HTTP handler not available, using passthrough")
+    def graceful_endpoint(func):
+        return func
 
 # Import JARVIS voice components with error handling
 try:
@@ -230,11 +237,7 @@ class JARVISVoiceAPI:
             "message": "JARVIS going into standby mode. Call when you need me."
         }
         
-    @graceful_endpoint(fallback_response={
-        "response": "I'm processing your request. Please try again in a moment.",
-        "status": "processing",
-        "confidence": 0.8
-    })
+    @graceful_endpoint
     async def process_command(self, command: JARVISCommand) -> Dict:
         """Process a JARVIS command"""
         if not self.jarvis_available:
@@ -277,11 +280,7 @@ class JARVISVoiceAPI:
             # Graceful handler will catch this and return a successful response
             raise
             
-    @graceful_endpoint(fallback_response={
-        "status": "success",
-        "message": "Speech request processed",
-        "audio_generated": True
-    })
+    @graceful_endpoint
     async def speak(self, request: Dict[str, str]) -> Response:
         """Make JARVIS speak the given text"""
         if not self.jarvis_available:

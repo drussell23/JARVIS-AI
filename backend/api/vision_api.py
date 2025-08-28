@@ -326,10 +326,7 @@ async def get_vision_status() -> Dict[str, Any]:
 
 
 @router.post("/command")
-@graceful_endpoint(fallback_response={
-    "status": "success",
-    "message": "Request processed successfully"
-})
+@graceful_endpoint
 async def process_vision_command(request: VisionCommand) -> Dict[str, Any]:
     """Process a vision-related voice command"""
     try:
@@ -359,11 +356,7 @@ async def process_vision_command(request: VisionCommand) -> Dict[str, Any]:
 
 
 @router.post("/analyze")
-@graceful_endpoint(fallback_response={
-    "status": "analyzing",
-    "analysis": "Analysis in progress",
-    "confidence": 0.8
-})
+@graceful_endpoint
 async def analyze_screen(request: ScreenAnalysisRequest) -> Dict[str, Any]:
     """Perform detailed screen analysis"""
     try:
@@ -518,10 +511,7 @@ async def get_pending_updates() -> Dict[str, Any]:
 
 
 @router.post("/capture")
-@graceful_endpoint(fallback_response={
-    "status": "success",
-    "message": "Request processed successfully"
-})
+@graceful_endpoint
 async def capture_screenshot() -> Dict[str, Any]:
     """Capture and describe current screen"""
     try:
@@ -577,10 +567,7 @@ async def get_vision_capabilities() -> Dict[str, List[str]]:
 
 
 @router.post("/pipeline/control")
-@graceful_endpoint(fallback_response={
-    "status": "success",
-    "message": "Request processed successfully"
-})
+@graceful_endpoint
 async def control_vision_pipeline(action: str) -> Dict[str, Any]:
     """Control the vision decision pipeline"""
     try:

@@ -95,21 +95,32 @@ class VoiceMLTrainer:
         # Load existing models
         self._load_models()
         
-        # Voice embeddings model (if available)
-        if DEEP_LEARNING_AVAILABLE:
-            self._init_deep_models()
+        # Voice embeddings model (lazy loading)
+        self.wav2vec_processor = None
+        self.wav2vec_model = None
+        self._deep_models_initialized = False
         
     def _init_deep_models(self):
         """Initialize deep learning models for voice embeddings"""
+        if self._deep_models_initialized:
+            return
+            
+        if not DEEP_LEARNING_AVAILABLE:
+            logger.warning("Deep learning not available - skipping Wav2Vec2 initialization")
+            return
+            
         try:
+            logger.info("Initializing deep learning models for voice analysis...")
             self.wav2vec_processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base")
             self.wav2vec_model = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base")
             self.wav2vec_model.eval()
+            self._deep_models_initialized = True
             logger.info("Deep learning models initialized for advanced voice analysis")
         except Exception as e:
             logger.error(f"Failed to initialize deep models: {e}")
             self.wav2vec_processor = None
             self.wav2vec_model = None
+            self._deep_models_initialized = False
     
     def _load_models(self):
         """Load existing ML models"""
@@ -223,7 +234,14 @@ class VoiceMLTrainer:
     
     def get_voice_embedding(self, audio_data: np.ndarray, sample_rate: int = 16000) -> Optional[np.ndarray]:
         """Get deep voice embedding using Wav2Vec2"""
-        if not DEEP_LEARNING_AVAILABLE or not self.wav2vec_processor:
+        if not DEEP_LEARNING_AVAILABLE:
+            return None
+            
+        # Lazy initialize deep models
+        if not self._deep_models_initialized:
+            self._init_deep_models()
+            
+        if not self.wav2vec_processor:
             return None
         
         try:

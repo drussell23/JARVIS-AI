@@ -172,8 +172,8 @@ class ExperienceReplaySystem:
         self.pattern_extraction_thread: Optional[threading.Thread] = None
         self.running = True
         
-        # Start background tasks
-        self._start_background_tasks()
+        # Start background tasks - DISABLED temporarily to prevent infinite loop
+        # self._start_background_tasks()
         
         logger.info(f"Experience Replay System initialized with capacity: {capacity}")
     
@@ -191,11 +191,21 @@ class ExperienceReplaySystem:
         """Start background pattern extraction"""
         def extraction_loop():
             import time
+            # Wait before first extraction
+            time.sleep(300)  # Wait 5 minutes before first extraction
+            
             while self.running:
                 try:
                     # Extract patterns every 5 minutes
-                    asyncio.run(self._extract_all_patterns())
-                    time.sleep(300)  # Use time.sleep in thread
+                    # Create new event loop for thread
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        loop.run_until_complete(self._extract_all_patterns())
+                    finally:
+                        loop.close()
+                    
+                    time.sleep(300)  # Wait 5 minutes before next extraction
                 except Exception as e:
                     logger.error(f"Pattern extraction error: {e}")
                     time.sleep(600)  # Wait longer on error

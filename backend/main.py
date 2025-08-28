@@ -3,20 +3,22 @@ import os
 import sys
 
 # Fix TensorFlow import issues before any other imports
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Disable TF warnings
-os.environ['USE_TORCH'] = '1'  # Use PyTorch backend for transformers
-os.environ['USE_TF'] = '0'     # Disable TensorFlow in transformers
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # Disable TF warnings
+os.environ["USE_TORCH"] = "1"  # Use PyTorch backend for transformers
+os.environ["USE_TF"] = "0"  # Disable TensorFlow in transformers
 
 # Apply TensorFlow fixes
 try:
     import tensorflow as tf
-    if not hasattr(tf, 'data'):
+
+    if not hasattr(tf, "data"):
         # Create a mock data module to prevent import errors
         class MockData:
             class Dataset:
                 @staticmethod
                 def from_tensor_slices(*args, **kwargs):
                     return None
+
         tf.data = MockData()
 except:
     pass  # TensorFlow not required for core functionality
@@ -48,6 +50,16 @@ logger = logging.getLogger(__name__)
 from memory.memory_manager import M1MemoryManager, ComponentPriority
 from memory.memory_api import MemoryAPI, create_memory_alert_callback
 
+# Apply model loader patch to prevent loading 197 models
+try:
+    from utils.model_loader_patch import patch_model_discovery
+    logger.info("Model loader patch applied")
+except Exception as e:
+    logger.warning(f"Could not apply model loader patch: {e}")
+
+# Import progressive model loader to prevent blocking
+from utils.progressive_model_loader import model_loader
+
 # Import ML model loader for parallel initialization
 from ml_model_loader import initialize_models, get_loader_status
 from api.model_status_api import router as model_status_router, broadcast_model_status
@@ -68,15 +80,17 @@ except (ImportError, RuntimeError, AttributeError) as e:
 try:
     from api.enhanced_voice_routes import router as enhanced_voice_router
     from unified_rust_service import setup_unified_service
+
     ENHANCED_VOICE_AVAILABLE = True
     logger.info("Enhanced Voice Routes with Rust acceleration available")
 except (ImportError, RuntimeError, AttributeError) as e:
     logger.warning(f"Enhanced Voice Routes not available: {e}")
     ENHANCED_VOICE_AVAILABLE = False
-    
+
     # Try immediate 503 fix as fallback
     try:
         from api.voice_503_fix import router as voice_fix_router
+
         VOICE_FIX_AVAILABLE = True
         logger.info("Voice 503 fix available as fallback")
     except ImportError as fix_e:
@@ -86,6 +100,7 @@ except (ImportError, RuntimeError, AttributeError) as e:
 # Import JARVIS Voice API
 try:
     from api.jarvis_voice_api import JARVISVoiceAPI
+
     JARVIS_VOICE_AVAILABLE = True
 except (ImportError, RuntimeError, AttributeError) as e:
     logger.warning(f"JARVIS Voice API not available: {e}")
@@ -325,10 +340,10 @@ class ChatbotAPI:
             "note": "Claude provides contextual understanding natively",
             "capabilities": [
                 "Intent detection",
-                "Entity recognition", 
+                "Entity recognition",
                 "Sentiment analysis",
-                "Context awareness"
-            ]
+                "Context awareness",
+            ],
         }
 
     async def get_capabilities(self):
@@ -390,13 +405,17 @@ class ChatbotAPI:
         Request: {message.user_input}
         
         Format the response as a numbered list of tasks."""
-        
+
         response = await self.bot.get_response(task_prompt)
-        
+
         return {
             "task_plan": response,
             "source": "claude",
-            "capabilities": ["Task breakdown", "Priority assessment", "Dependency analysis"]
+            "capabilities": [
+                "Task breakdown",
+                "Priority assessment",
+                "Dependency analysis",
+            ],
         }
 
     # RAG endpoints
@@ -535,6 +554,7 @@ async def initialize_bridge_async():
     """Initialize the Python-TypeScript bridge asynchronously"""
     try:
         from bridges.python_ts_bridge import start_bridge
+
         await start_bridge()
         logger.info("Python-TypeScript bridge initialized successfully")
     except Exception as e:
@@ -543,9 +563,10 @@ async def initialize_bridge_async():
 
 
 async def initialize_vision_discovery_async():
-    """Initialize the vision discovery system asynchronously"""  
+    """Initialize the vision discovery system asynchronously"""
     try:
         from api.vision_status_endpoint import initialize_vision_discovery
+
         await initialize_vision_discovery()
         logger.info("Vision discovery system initialized successfully")
     except Exception as e:
@@ -560,50 +581,29 @@ app = FastAPI()
 # Startup event
 @app.on_event("startup")
 async def startup_event():
-    """Initialize async components on startup"""
-    logger.info("🚀 Starting up AI-Powered Chatbot...")
-    
-    # Start memory monitoring (now safely disabled in memory manager)
-    await memory_manager.start_monitoring()
-    logger.info("✅ Memory monitoring started")
-    
-    # Initialize ML models in parallel with progress tracking
-    logger.info("🧠 Starting parallel ML model initialization...")
-    
-    async def progress_callback(loaded: int, total: int):
-        percentage = (loaded / total * 100) if total > 0 else 0
-        logger.info(f"📊 Model Loading Progress: {loaded}/{total} ({percentage:.1f}%)")
-        
-        # Broadcast progress to any connected clients
-        try:
-            await broadcast_model_status()
-        except:
-            pass  # Ignore if no clients connected
-    
+    """Initialize async components on startup with smart resource management"""
+    logger.info("🚀 Starting up AI-Powered Chatbot with smart startup manager...")
+
     try:
-        start_time = asyncio.get_event_loop().time()
-        loaded_models = await initialize_models(progress_callback=progress_callback)
-        elapsed = asyncio.get_event_loop().time() - start_time
+        # Import and use the smart startup manager
+        from smart_startup_manager import startup_manager
         
-        logger.info(f"""
-✨ ML Model Initialization Complete!
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📦 Total models loaded: {len(loaded_models)}
-⏱️  Total initialization time: {elapsed:.2f}s
-⚡ Parallel loading saved approximately {elapsed * 0.7:.2f}s
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        """)
+        # Start smart progressive loading
+        await startup_manager.progressive_model_loading()
+        
+        # Start memory monitoring (now safely disabled in memory manager)
+        await memory_manager.start_monitoring()
+        logger.info("✅ Memory monitoring started")
+        
+        # Continue with resource monitoring in background
+        asyncio.create_task(startup_manager.resource_monitor())
+        
+        logger.info("✅ Server ready to handle requests with smart resource management!")
+
     except Exception as e:
-        logger.error(f"❌ Error during ML model initialization: {e}")
-        logger.warning("⚠️  System will continue with limited ML capabilities")
-    
-    logger.info("✅ Startup complete - all systems operational!")
-    
-    # Initialize async bridge systems after startup (non-blocking)
-    asyncio.create_task(initialize_bridge_async())
-    
-    # Initialize vision discovery system (non-blocking)
-    asyncio.create_task(initialize_vision_discovery_async())
+        logger.error(f"❌ Startup failed: {e}")
+        # Don't raise - let the server start anyway with minimal functionality
+        logger.info("⚡ Starting with minimal functionality...")
 
 
 # Enable CORS for all origins (adjust for production)
@@ -636,24 +636,33 @@ try:
     # The TypeScript WebSocket server will handle routing
     from api.unified_vision_handler import unified_handler
     from bridges.python_ts_bridge import register_vision_handlers, start_bridge
-    
+
     # Register handlers with the bridge
     register_vision_handlers()
-    
+
     # Bridge will be started during app startup event
     logger.info("Unified Vision System activated - All WebSocket conflicts resolved!")
     ENHANCED_VISION_AVAILABLE = True
     VISION_API_AVAILABLE = True  # For compatibility
-    
+
     # Include only non-WebSocket routes from vision APIs
-    from api.enhanced_vision_api import router as enhanced_vision_router
+    # Use lazy version to prevent eager loading
+    try:
+        from api.lazy_enhanced_vision_api import router as enhanced_vision_router
+
+        logger.info("Using lazy enhanced vision API")
+    except ImportError:
+        logger.warning("Lazy vision API not available, falling back to original")
+        from api.enhanced_vision_api import router as enhanced_vision_router
+
     # Remove WebSocket route to prevent conflicts
     enhanced_vision_router.routes = [
-        route for route in enhanced_vision_router.routes 
+        route
+        for route in enhanced_vision_router.routes
         if not route.path.endswith("/ws/vision")
     ]
     app.include_router(enhanced_vision_router)
-    
+
 except Exception as e:
     logger.warning(f"Failed to initialize Unified Vision System: {e}")
     VISION_API_AVAILABLE = False
@@ -662,6 +671,7 @@ except Exception as e:
 # Include Vision Status Endpoint - Always available
 try:
     from api.vision_status_endpoint import router as vision_status_router
+
     app.include_router(vision_status_router)
     logger.info("Vision status endpoint added - /vision/status available")
     VISION_API_AVAILABLE = True  # At least status is available
@@ -714,14 +724,16 @@ if ENHANCED_VOICE_AVAILABLE:
     try:
         # Override voice routes with Rust-accelerated version
         app.include_router(enhanced_voice_router, tags=["voice"])
-        logger.info("Enhanced Voice Routes with Rust acceleration enabled - 10x performance boost!")
-        
+        logger.info(
+            "Enhanced Voice Routes with Rust acceleration enabled - 10x performance boost!"
+        )
+
         # Setup unified Rust service
         asyncio.create_task(setup_unified_service(app))
         logger.info("Unified Rust service initialized - CPU usage reduced to 25%!")
     except Exception as e:
         logger.warning(f"Failed to initialize Enhanced Voice Routes: {e}")
-elif 'VOICE_FIX_AVAILABLE' in globals() and VOICE_FIX_AVAILABLE:
+elif "VOICE_FIX_AVAILABLE" in globals() and VOICE_FIX_AVAILABLE:
     try:
         # Use 503 fix as fallback
         app.include_router(voice_fix_router, tags=["voice"])
@@ -741,8 +753,11 @@ elif 'VOICE_FIX_AVAILABLE' in globals() and VOICE_FIX_AVAILABLE:
 # Include Notification Vision API for intelligent notification detection
 try:
     from api.notification_vision_api import router as notification_router
+
     app.include_router(notification_router, prefix="/api")
-    logger.info("Notification Intelligence API routes added - Autonomous notification announcements enabled!")
+    logger.info(
+        "Notification Intelligence API routes added - Autonomous notification announcements enabled!"
+    )
     NOTIFICATION_API_AVAILABLE = True
 except Exception as e:
     logger.warning(f"Failed to initialize Notification Intelligence API: {e}")
@@ -751,8 +766,11 @@ except Exception as e:
 # Include Navigation API for full screen vision and workspace control
 try:
     from api.navigation_api import router as navigation_router
+
     app.include_router(navigation_router, prefix="/api")
-    logger.info("Navigation API routes added - Full workspace vision and autonomous control enabled!")
+    logger.info(
+        "Navigation API routes added - Full workspace vision and autonomous control enabled!"
+    )
     NAVIGATION_API_AVAILABLE = True
 except Exception as e:
     logger.warning(f"Failed to initialize Navigation API: {e}")
@@ -761,6 +779,7 @@ except Exception as e:
 # Include ML Audio API for intelligent error recovery
 try:
     from api.ml_audio_api import router as ml_audio_router
+
     app.include_router(ml_audio_router)
     logger.info("ML Audio API routes added - Intelligent audio error recovery enabled!")
     ML_AUDIO_API_AVAILABLE = True
@@ -771,7 +790,9 @@ except Exception as e:
 # Include Model Status API for real-time loading progress
 try:
     app.include_router(model_status_router)
-    logger.info("Model Status API routes added - Real-time ML model loading tracking enabled!")
+    logger.info(
+        "Model Status API routes added - Real-time ML model loading tracking enabled!"
+    )
     MODEL_STATUS_API_AVAILABLE = True
 except Exception as e:
     logger.warning(f"Failed to initialize Model Status API: {e}")
@@ -780,12 +801,26 @@ except Exception as e:
 # Include WebSocket Discovery API for TypeScript integration
 try:
     from api.websocket_discovery_api import router as ws_discovery_router
+
     app.include_router(ws_discovery_router)
-    logger.info("WebSocket Discovery API routes added - Dynamic endpoint discovery enabled!")
+    logger.info(
+        "WebSocket Discovery API routes added - Dynamic endpoint discovery enabled!"
+    )
     WEBSOCKET_DISCOVERY_AVAILABLE = True
 except Exception as e:
     logger.warning(f"Failed to initialize WebSocket Discovery API: {e}")
     WEBSOCKET_DISCOVERY_AVAILABLE = False
+
+# Include WebSocket HTTP handlers for TypeScript router
+try:
+    from api.websocket_http_handlers import router as ws_http_router
+
+    app.include_router(ws_http_router)
+    logger.info("WebSocket HTTP handlers added - TypeScript bridge enabled!")
+    WEBSOCKET_HTTP_HANDLERS_AVAILABLE = True
+except Exception as e:
+    logger.warning(f"Failed to initialize WebSocket HTTP handlers: {e}")
+    WEBSOCKET_HTTP_HANDLERS_AVAILABLE = False
 
 
 # Update root endpoint
@@ -798,9 +833,12 @@ async def root():
     jarvis_status = "offline"
     if JARVIS_VOICE_AVAILABLE:
         try:
-            if hasattr(app.state, 'jarvis_api') and app.state.jarvis_api.jarvis_available:
+            if (
+                hasattr(app.state, "jarvis_api")
+                and app.state.jarvis_api.jarvis_available
+            ):
                 jarvis_status = "online"
-            elif 'jarvis_api' in locals() and jarvis_api.jarvis_available:
+            elif "jarvis_api" in locals() and jarvis_api.jarvis_available:
                 jarvis_status = "standby"
         except:
             pass
@@ -812,7 +850,11 @@ async def root():
             "memory_management": "Proactive AI-driven memory management for M1 Macs",
             "chat": "Advanced conversational AI with NLP",
             "voice": "Speech recognition and synthesis",
-            "jarvis": "Iron Man-style AI assistant with personality" if JARVIS_VOICE_AVAILABLE else "Not available",
+            "jarvis": (
+                "Iron Man-style AI assistant with personality"
+                if JARVIS_VOICE_AVAILABLE
+                else "Not available"
+            ),
             "nlp": "Intent recognition, entity extraction, sentiment analysis",
             "automation": "Calendar, weather, information services, task automation",
             "rag": "Retrieval-Augmented Generation with knowledge base",
@@ -833,8 +875,17 @@ async def root():
             "automation": "/automation/*",
             "knowledge": "/knowledge/*",
             "vision": "/api/vision/*" if VISION_API_AVAILABLE else None,
-            "notifications": "/api/notifications/*" if 'NOTIFICATION_API_AVAILABLE' in locals() and NOTIFICATION_API_AVAILABLE else None,
-            "navigation": "/api/navigation/*" if 'NAVIGATION_API_AVAILABLE' in locals() and NAVIGATION_API_AVAILABLE else None,
+            "notifications": (
+                "/api/notifications/*"
+                if "NOTIFICATION_API_AVAILABLE" in locals()
+                and NOTIFICATION_API_AVAILABLE
+                else None
+            ),
+            "navigation": (
+                "/api/navigation/*"
+                if "NAVIGATION_API_AVAILABLE" in locals() and NAVIGATION_API_AVAILABLE
+                else None
+            ),
         },
     }
 
@@ -866,6 +917,17 @@ async def redirect_llm_demo():
 @app.get("/memory_dashboard.html")
 async def redirect_memory_dashboard():
     return RedirectResponse(url="/static/demos/memory_dashboard.html")
+
+
+# Model status endpoint
+@app.get("/models/status")
+async def get_model_status():
+    """Get current model loading status"""
+    try:
+        from smart_startup_manager import get_startup_status
+        return await get_startup_status()
+    except ImportError:
+        return model_loader.get_status()
 
 
 # Health check endpoint
@@ -926,15 +988,15 @@ async def health_check():
 if __name__ == "__main__":
     import uvicorn
     import argparse
-    
+
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="AI-Powered Chatbot Server")
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8010, help="Port to bind to")
     args = parser.parse_args()
-    
+
     # Also check environment variable for port
     port = int(os.getenv("PORT", args.port))
-    
+
     logger.info(f"Starting M1-optimized chatbot server on {args.host}:{port}...")
     uvicorn.run(app, host=args.host, port=port)

@@ -4,7 +4,7 @@
     "module": "commonjs",
     "lib": ["ES2020", "DOM"],
     "outDir": "./dist",
-    "rootDir": "../",
+    "rootDir": "./",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -27,7 +27,7 @@
   },
   "include": [
     "*.ts",
-    "../bridges/**/*.ts"
+    "**/*.ts"
   ],
   "exclude": [
     "node_modules",

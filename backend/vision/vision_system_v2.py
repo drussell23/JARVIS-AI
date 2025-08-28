@@ -68,6 +68,11 @@ class VisionResponse:
 
 
 class VisionSystemV2:
+    """
+    Vision System 2.0 - Complete ML-based approach
+    No hardcoded patterns, everything is learned dynamically
+    """
+    
     # CPU LIMIT CHECK
     _cpu_limit = float(os.getenv('CPU_LIMIT_PERCENT', '25'))
     _last_cpu_check = 0
@@ -80,74 +85,40 @@ class VisionSystemV2:
         cpu = psutil.cpu_percent(interval=0.1)
         if cpu > cls._cpu_limit:
             time.sleep(0.1 * (cpu / cls._cpu_limit))
-
-    """
-    Vision System 2.0 - Complete ML-based approach
-    No hardcoded patterns, everything is learned dynamically
-    """
     
     def __init__(self):
-        # Initialize ML components
-        self.intent_classifier = get_ml_intent_classifier()
-        self.semantic_engine = get_semantic_understanding_engine()
-        self.vision_engine = get_dynamic_vision_engine()
+        # Initialize lazy loading attributes
+        self._ml_router = None
+        self._semantic_engine = None
+        self._transformer_router = None
+        self._neural_router = None
         
-        # Phase 2 components
-        self.response_composer = get_response_composer()
-        self.neural_router = get_neural_router()
-        self.personalization_engine = get_personalization_engine()
+        # Initialize ML components - defer loading
+        self._intent_classifier = None
+        self._vision_engine = None
+        self._response_composer = None
+        self._personalization_engine = None
+        self._learning_pipeline = None
         
-        # Phase 3 components
-        self.transformer_router = get_transformer_router()
-        self.learning_pipeline = get_learning_pipeline()
+        # Settings
         self.use_transformer_routing = True  # Enable by default for <100ms latency
         
-        # Phase 4 components (if available)
+        # Phase 4 components (if available) - defer initialization
+        self._phase4_initialized = False
         self.advanced_learning = None
         self.experience_replay = None
-        if PHASE4_AVAILABLE:
-            try:
-                # Create a simple model for learning (in production, use actual vision model)
-                import torch.nn as nn
-                class SimpleModel(nn.Module):
-                    def __init__(self):
-                        super().__init__()
-                        self.fc1 = nn.Linear(768, 256)
-                        self.fc2 = nn.Linear(256, 128)
-                        self.fc3 = nn.Linear(128, 100)  # 100 intent classes
-                    
-                    def forward(self, x):
-                        x = nn.functional.relu(self.fc1(x))
-                        x = nn.functional.relu(self.fc2(x))
-                        return self.fc3(x)
-                
-                self.learning_model = SimpleModel()
-                self.advanced_learning = get_advanced_continuous_learning(self.learning_model)
-                self.experience_replay = get_experience_replay_system()
-                logger.info("Phase 4 advanced learning components initialized")
-            except Exception as e:
-                logger.warning(f"Failed to initialize Phase 4 components: {e}")
+        self.learning_model = None
         
-        # Phase 5 components (if available)
+        # Phase 5 components (if available) - defer initialization
+        self._phase5_initialized = False
         self.capability_generator = None
         self.capability_synthesizer = None
         self.safety_verifier = None
         self.performance_benchmark = None
         self.rollout_system = None
-        if PHASE5_AVAILABLE:
-            try:
-                self.capability_generator = get_capability_generator()
-                self.capability_synthesizer = get_capability_synthesizer()
-                self.safety_verifier = get_safety_verification_framework()
-                self.performance_benchmark = get_performance_benchmark()
-                self.rollout_system = get_gradual_rollout_system()
-                logger.info("Phase 5 autonomous capability components initialized")
-            except Exception as e:
-                logger.warning(f"Failed to initialize Phase 5 components: {e}")
         
-        # Register vision handlers with routers
-        self._register_neural_handlers()
-        self._register_transformer_handlers()
+        # Defer handler registration until first use
+        self._handlers_registered = False
         
         # Legacy handler for backward compatibility (disabled to avoid circular dependency)
         self.legacy_handler = None
@@ -163,7 +134,135 @@ class VisionSystemV2:
         # API availability
         self.claude_available = os.getenv("ANTHROPIC_API_KEY") is not None
         
-        logger.info("Vision System v2.0 initialized - Phase 3 with transformer routing and continuous learning")
+        logger.info("Vision System v2.0 initialized with lazy loading")
+    
+    @property
+    def ml_router(self):
+        if self._ml_router is None:
+            from .ml_intent_classifier import MLIntentClassifier
+            self._ml_router = MLIntentClassifier()
+        return self._ml_router
+        
+    @property
+    def semantic_engine(self):
+        if self._semantic_engine is None:
+            from .semantic_understanding_engine import SemanticUnderstandingEngine
+            self._semantic_engine = SemanticUnderstandingEngine()
+        return self._semantic_engine
+        
+    @property
+    def transformer_router(self):
+        if self._transformer_router is None:
+            try:
+                from .transformer_command_router import TransformerCommandRouter
+                self._transformer_router = TransformerCommandRouter()
+            except ImportError:
+                self._transformer_router = None
+        return self._transformer_router
+        
+    @property
+    def neural_router(self):
+        if self._neural_router is None:
+            try:
+                from .neural_command_router import NeuralCommandRouter
+                self._neural_router = NeuralCommandRouter()
+            except ImportError:
+                self._neural_router = None
+        return self._neural_router
+        
+    @property
+    def intent_classifier(self):
+        if self._intent_classifier is None:
+            self._intent_classifier = get_ml_intent_classifier()
+        return self._intent_classifier
+        
+    @property
+    def vision_engine(self):
+        if self._vision_engine is None:
+            self._vision_engine = get_dynamic_vision_engine()
+        return self._vision_engine
+        
+    @property
+    def response_composer(self):
+        if self._response_composer is None:
+            self._response_composer = get_response_composer()
+        return self._response_composer
+        
+    @property
+    def personalization_engine(self):
+        if self._personalization_engine is None:
+            self._personalization_engine = get_personalization_engine()
+        return self._personalization_engine
+        
+    @property
+    def learning_pipeline(self):
+        if self._learning_pipeline is None:
+            self._learning_pipeline = get_learning_pipeline()
+        return self._learning_pipeline
+    
+    async def _ensure_handlers_registered(self):
+        """Ensure handlers are registered on first use"""
+        if not self._handlers_registered:
+            # Initialize Phase 4 components if available
+            if PHASE4_AVAILABLE and not self._phase4_initialized:
+                await self._initialize_phase4_components()
+                
+            # Initialize Phase 5 components if available
+            if PHASE5_AVAILABLE and not self._phase5_initialized:
+                await self._initialize_phase5_components()
+            
+            # Register handlers with routers
+            if self.neural_router:
+                self._register_neural_handlers()
+            
+            if self.transformer_router:
+                self._register_transformer_handlers()
+                # Complete async registration
+                if hasattr(self, '_pending_handler_registrations'):
+                    await self._complete_async_initialization()
+            
+            self._handlers_registered = True
+            logger.info("Vision handlers registered on first use")
+    
+    async def _initialize_phase4_components(self):
+        """Initialize Phase 4 components lazily"""
+        try:
+            # Create a simple model for learning (in production, use actual vision model)
+            import torch.nn as nn
+            class SimpleModel(nn.Module):
+                def __init__(self):
+                    super().__init__()
+                    self.fc1 = nn.Linear(768, 256)
+                    self.fc2 = nn.Linear(256, 128)
+                    self.fc3 = nn.Linear(128, 100)  # 100 intent classes
+                
+                def forward(self, x):
+                    x = nn.functional.relu(self.fc1(x))
+                    x = nn.functional.relu(self.fc2(x))
+                    return self.fc3(x)
+            
+            self.learning_model = SimpleModel()
+            self.advanced_learning = get_advanced_continuous_learning(self.learning_model)
+            self.experience_replay = get_experience_replay_system()
+            self._phase4_initialized = True
+            logger.info("Phase 4 advanced learning components initialized lazily")
+        except Exception as e:
+            logger.warning(f"Failed to initialize Phase 4 components: {e}")
+            self._phase4_initialized = True  # Don't try again
+    
+    async def _initialize_phase5_components(self):
+        """Initialize Phase 5 components lazily"""
+        try:
+            self.capability_generator = get_capability_generator()
+            self.capability_synthesizer = get_capability_synthesizer()
+            self.safety_verifier = get_safety_verification_framework()
+            self.performance_benchmark = get_performance_benchmark()
+            self.rollout_system = get_gradual_rollout_system()
+            self._phase5_initialized = True
+            logger.info("Phase 5 autonomous capability components initialized lazily")
+        except Exception as e:
+            logger.warning(f"Failed to initialize Phase 5 components: {e}")
+            self._phase5_initialized = True  # Don't try again
     
     def _register_neural_handlers(self):
         """Register vision handlers with the neural router"""
@@ -230,6 +329,9 @@ class VisionSystemV2:
         Process any vision command using pure ML approach
         No hardcoding, no patterns - just intelligence
         """
+        # Ensure handlers are registered on first use
+        await self._ensure_handlers_registered()
+        
         # Ensure async initialization is complete
         if getattr(self, '_needs_async_init', False):
             await self._complete_async_initialization()

@@ -4,7 +4,7 @@
  */
 
 import UnifiedWebSocketRouter from './UnifiedWebSocketRouter';
-import { WebSocketBridge } from '../bridges/WebSocketBridge';
+import { WebSocketBridge } from './bridges/WebSocketBridge';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';

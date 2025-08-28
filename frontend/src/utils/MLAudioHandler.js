@@ -124,11 +124,19 @@ class MLAudioHandler {
         // Send to ML backend
         const response = await this.sendErrorToBackend(context);
         
-        if (response && response.strategy) {
-            // Execute ML-recommended strategy
-            return await this.executeStrategy(response.strategy, error, recognition);
+        if (response) {
+            // Check if response contains a strategy object with action
+            if (response.strategy && response.strategy.action) {
+                // Execute ML-recommended strategy
+                return await this.executeStrategy(response.strategy, error, recognition);
+            } else if (response.success === false) {
+                // Backend couldn't provide a strategy, log the response
+                console.log('ML backend response:', response);
+                // Fallback to local strategy
+                return await this.executeLocalStrategy(error, recognition);
+            }
         } else {
-            // Fallback to local strategy
+            // No response from backend, fallback to local strategy
             return await this.executeLocalStrategy(error, recognition);
         }
     }
@@ -153,7 +161,19 @@ class MLAudioHandler {
     async executeStrategy(strategy, error, recognition) {
         console.log('Executing ML strategy:', strategy);
         
+        // Handle case where strategy doesn't have an action property
+        if (!strategy || !strategy.action) {
+            console.warn('Invalid strategy format:', strategy);
+            return { success: false, message: 'Invalid strategy format' };
+        }
+        
         const action = strategy.action;
+        
+        // Ensure action has a type
+        if (!action.type) {
+            console.warn('Strategy action missing type:', action);
+            return { success: false, message: 'Strategy action missing type' };
+        }
         
         switch (action.type) {
             case 'request_media_permission':
@@ -174,6 +194,43 @@ class MLAudioHandler {
             default:
                 console.warn('Unknown strategy action:', action.type);
                 return { success: false };
+        }
+    }
+    
+    async executeLocalStrategy(error, recognition) {
+        console.log('Executing local fallback strategy for error:', error.error);
+        
+        // Local strategy based on error type
+        switch (error.error) {
+            case 'not-allowed':
+            case 'permission-denied':
+                return await this.requestPermissionWithRetry({});
+                
+            case 'no-speech':
+                // No speech detected is often not a critical error
+                return { 
+                    success: true, 
+                    message: 'No speech detected - continuing to listen' 
+                };
+                
+            case 'audio-capture':
+                // Try to restart audio context
+                return await this.restartAudioContext(recognition);
+                
+            case 'network':
+            case 'service-not-allowed':
+                // Network errors might resolve on their own
+                return {
+                    success: false,
+                    message: 'Network or service error - will retry automatically'
+                };
+                
+            default:
+                console.warn('No local strategy for error type:', error.error);
+                return { 
+                    success: false, 
+                    message: `Unhandled error type: ${error.error}` 
+                };
         }
     }
     

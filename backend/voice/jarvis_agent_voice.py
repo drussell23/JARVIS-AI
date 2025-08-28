@@ -16,6 +16,7 @@ from voice.jarvis_personality_adapter import PersonalityAdapter
 from system_control import ClaudeCommandInterpreter, CommandCategory, SafetyLevel
 from chatbots.claude_chatbot import ClaudeChatbot
 
+logger = logging.getLogger(__name__)
 
 # Vision System v2.0 Integration
 try:
@@ -24,8 +25,6 @@ try:
 except ImportError:
     VISION_V2_AVAILABLE = False
     logger.warning('Vision System v2.0 not available')
-
-logger = logging.getLogger(__name__)
 
 
 class JARVISAgentVoice(MLEnhancedVoiceSystem):
@@ -74,7 +73,35 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
                     logger.info(f"[Voice]: {text}")
             self.voice_engine = MockVoiceEngine()
             
-                # Try Vision System v2.0 first (newest and best)
+        # Lazy load vision v2 to prevent startup hang
+        self.vision_v2 = None
+        self.vision_v2_enabled = False
+        self._vision_v2_initialized = False
+        self.workspace_intelligence_enabled = False
+        
+        # Try to initialize workspace intelligence first (Phase 1)
+        try:
+            from vision.jarvis_workspace_integration import JARVISWorkspaceIntelligence
+            self.workspace_intelligence = JARVISWorkspaceIntelligence()
+            self.workspace_intelligence_enabled = True
+            logger.info("Workspace intelligence (multi-window) initialized successfully")
+        except ImportError:
+            logger.info("Workspace intelligence not available")
+            
+        # Lazy load vision to prevent startup hang
+        self.vision_integration = None
+        self.vision_system = None
+        self.vision_enabled = False
+        self.intelligent_vision_enabled = False
+        self._vision_initialized = False
+            
+    def _ensure_vision_v2_initialized(self):
+        """Lazy initialize Vision System v2.0 when needed"""
+        if self._vision_v2_initialized:
+            return
+            
+        self._vision_v2_initialized = True
+        
         try:
             if VISION_V2_AVAILABLE:
                 self.vision_v2 = VisionV2Integration()
@@ -90,20 +117,13 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             logger.error(f"Failed to initialize Vision System v2.0: {e}")
             self.vision_v2_enabled = False
             
-# Initialize vision integration if available
-        self.vision_enabled = False
-        self.intelligent_vision_enabled = False
-        self.workspace_intelligence_enabled = False
-        
-        # Try to initialize workspace intelligence first (Phase 1)
-        try:
-            from vision.jarvis_workspace_integration import JARVISWorkspaceIntelligence
-            self.workspace_intelligence = JARVISWorkspaceIntelligence()
-            self.workspace_intelligence_enabled = True
-            logger.info("Workspace intelligence (multi-window) initialized successfully")
-        except ImportError:
-            logger.info("Workspace intelligence not available")
+    def _ensure_vision_initialized(self):
+        """Lazy initialize vision system when needed"""
+        if self._vision_initialized:
+            return
             
+        self._vision_initialized = True
+        
         try:
             # Try to use intelligent vision first
             from vision.intelligent_vision_integration import IntelligentJARVISVision
@@ -435,12 +455,16 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
     
     async def _handle_vision_command(self, text: str) -> str:
         """Handle vision-related commands"""
+        # Lazy initialize vision when needed
+        self._ensure_vision_initialized()
+        
         if not self.vision_enabled:
             return f"Vision capabilities are not available, {self.user_name}. Please install the required dependencies."
             
         try:
 
             # Use Vision System v2.0 if available (highest priority)
+            self._ensure_vision_v2_initialized()
             if hasattr(self, 'vision_v2_enabled') and self.vision_v2_enabled:
                 response = await self.vision_v2.handle_vision_command(text, {
                     'user': self.user_name,

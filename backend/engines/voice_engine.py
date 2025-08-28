@@ -1,5 +1,3 @@
-import whisper
-import torch
 import numpy as np
 from typing import Optional, Dict, List, Tuple, Union, BinaryIO
 import sounddevice as sd
@@ -21,7 +19,44 @@ import queue
 from gtts import gTTS
 import pyttsx3
 import edge_tts
-from transformers import pipeline
+
+# Fix TensorFlow before importing transformers
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['USE_TORCH'] = '1'
+os.environ['USE_TF'] = '0'
+
+# Try to import whisper and torch
+try:
+    import whisper
+    WHISPER_AVAILABLE = True
+except ImportError:
+    WHISPER_AVAILABLE = False
+    
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+
+# Try to import transformers with TF fix
+try:
+    # Fix TensorFlow if needed
+    import tensorflow as tf
+    if not hasattr(tf, 'data'):
+        class MockData:
+            class Dataset:
+                @staticmethod
+                def from_tensor_slices(*args, **kwargs):
+                    return None
+        tf.data = MockData()
+except:
+    pass
+
+try:
+    from transformers import pipeline
+    TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    TRANSFORMERS_AVAILABLE = False
 from utils.audio_processor import (
     AudioStreamProcessor, VoiceActivityDetector, AudioFeedbackGenerator,
     AudioConfig, AudioMetrics, StreamingAudioProcessor
@@ -89,8 +124,21 @@ class WhisperSTT:
         Args:
             model_size: Size of Whisper model (tiny, base, small, medium, large)
         """
-        self.model = whisper.load_model(model_size)
+        self.model_size = model_size
+        self.model = None
+        self._model_loaded = False
         self.sample_rate = 16000
+        
+    def _ensure_model_loaded(self):
+        """Lazy load the Whisper model"""
+        if not self._model_loaded and WHISPER_AVAILABLE:
+            try:
+                self.model = whisper.load_model(self.model_size)
+                self._model_loaded = True
+            except Exception as e:
+                print(f"Failed to load Whisper model: {e}")
+                self.model = None
+                self._model_loaded = True  # Don't retry
         
     def transcribe(self, audio_data: Union[np.ndarray, bytes, str], language: Optional[str] = None) -> TranscriptionResult:
         """
@@ -103,6 +151,17 @@ class WhisperSTT:
         Returns:
             TranscriptionResult with transcribed text and metadata
         """
+        # Lazy load model
+        self._ensure_model_loaded()
+        
+        if not self.model:
+            return TranscriptionResult(
+                text="[Whisper model not available]",
+                language="en",
+                confidence=0.0,
+                segments=[],
+                processing_time=0.0
+            )
         # Convert input to proper format
         if isinstance(audio_data, bytes):
             # Convert bytes to numpy array
@@ -333,7 +392,18 @@ class WakeWordDetector:
         self.is_listening = False
         self.detection_callback = None
         self.audio_queue = queue.Queue()
-        self.whisper_model = whisper.load_model("tiny")  # Fast model for wake word
+        self.whisper_model = None
+        self._model_loaded = False
+        
+    def _ensure_model_loaded(self):
+        """Lazy load the Whisper model for wake word detection"""
+        if not self._model_loaded and WHISPER_AVAILABLE:
+            try:
+                self.whisper_model = whisper.load_model("tiny")  # Fast model for wake word
+                self._model_loaded = True
+            except Exception as e:
+                print(f"Failed to load wake word Whisper model: {e}")
+                self._model_loaded = True  # Don't retry
         
     def start_listening(self, callback):
         """Start listening for wake word"""
@@ -408,6 +478,12 @@ class WakeWordDetector:
                         audio_data = b''.join(audio_buffer)
                         audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
                         
+                        # Lazy load model
+                        self._ensure_model_loaded()
+                        
+                        if not self.whisper_model:
+                            continue
+                            
                         # Transcribe
                         result = self.whisper_model.transcribe(
                             audio_array,

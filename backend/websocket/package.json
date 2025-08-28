@@ -5,16 +5,17 @@
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/websocket/server.js",
+    "start": "node dist/server.js",
     "dev": "ts-node-dev --respawn --transpile-only server.ts",
     "watch": "tsc -w",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "ws": "^8.14.2",
+    "axios": "^1.11.0",
     "dotenv": "^16.3.1",
-    "url": "^0.11.3"
+    "url": "^0.11.3",
+    "ws": "^8.14.2"
   },
   "devDependencies": {
     "@types/node": "^20.8.0",
