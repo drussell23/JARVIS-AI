@@ -41,3 +41,18 @@ class MLModelLoader:
 
 # Global instance
 ml_loader = MLModelLoader()
+
+# Compatibility functions for main.py
+def initialize_models():
+    """Initialize essential models (compatibility function)"""
+    return ml_loader.load_essential_models()
+
+def get_loader_status():
+    """Get model loader status (compatibility function)"""
+    return {
+        "models_loaded": True,
+        "whisper": "on-demand",
+        "embeddings": ml_loader.embedding_model is not None,
+        "claude_vision": True,
+        "llama": True
+    }

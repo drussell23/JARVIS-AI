@@ -119,7 +119,9 @@ class SemanticUnderstandingEngine:
         """Initialize language-specific NLP models"""
         # Start with English, dynamically add others as needed
         try:
-            self.nlp_models['en'] =         except:
+            import spacy
+            self.nlp_models['en'] = spacy.load('en_core_web_sm')
+        except:
             logger.warning("English spacy model not available")
             
     async def understand_intent(self, text: str, context: Optional[Dict] = None) -> IntentUnderstanding:
@@ -243,7 +245,9 @@ class SemanticUnderstandingEngine:
             
             if language in model_map:
                 try:
-                    self.nlp_models[language] =                 except:
+                    import spacy
+                    self.nlp_models[language] = spacy.load(model_map[language])
+                except:
                     logger.warning(f"Could not load NLP model for {language}")
                     return None
                     

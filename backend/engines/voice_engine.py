@@ -44,7 +44,7 @@ except ImportError:
 # Try to import transformers with TF fix
 try:
     # Fix TensorFlow if needed
-        if not hasattr(tf, 'data'):
+    if not hasattr(tf, 'data'):
         class MockData:
             class Dataset:
                 @staticmethod
