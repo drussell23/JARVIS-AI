@@ -19,18 +19,28 @@ class ClaudeVisionAnalyzer:
         self.client = Anthropic(api_key=api_key)
         self.model = "claude-3-opus-20240229"  # Vision-capable model
         
-    async def analyze_screenshot(self, image: np.ndarray, prompt: str) -> Dict[str, Any]:
+    async def analyze_screenshot(self, image: Any, prompt: str) -> Dict[str, Any]:
         """Send screenshot to Claude for analysis
         
         Args:
-            image: Screenshot as numpy array
+            image: Screenshot as PIL Image or numpy array
             prompt: What to analyze in the image
             
         Returns:
             Analysis results from Claude
         """
-        # Convert numpy array to PIL Image
-        pil_image = Image.fromarray(image)
+        # Handle both PIL Image and numpy array inputs
+        if isinstance(image, np.ndarray):
+            # Ensure it's the right dtype for PIL
+            if image.dtype == object:
+                raise ValueError("Invalid numpy array dtype. Expected uint8 array.")
+            # Convert numpy array to PIL Image
+            pil_image = Image.fromarray(image.astype(np.uint8))
+        elif isinstance(image, Image.Image):
+            # Already a PIL Image
+            pil_image = image
+        else:
+            raise ValueError(f"Unsupported image type: {type(image)}")
         
         # Convert to base64
         buffer = io.BytesIO()

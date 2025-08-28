@@ -110,12 +110,14 @@ class VoiceMLTrainer:
             return
             
         try:
-            logger.info("Initializing deep learning models for voice analysis...")
-            self.wav2vec_processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base")
-            self.wav2vec_model = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base")
-            self.wav2vec_model.eval()
-            self._deep_models_initialized = True
-            logger.info("Deep learning models initialized for advanced voice analysis")
+            logger.info("Skipping Wav2Vec2 initialization - using shared model from ml_enhanced_voice_system")
+            # REMOVED DUPLICATE: Wav2Vec2 models are already loaded in ml_enhanced_voice_system.py
+            # This prevents loading the same 360MB model twice
+            # self.wav2vec_processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base")
+            # self.wav2vec_model = Wav2Vec2Model.from_pretrained("facebook/wav2vec2-base")
+            # self.wav2vec_model.eval()
+            self._deep_models_initialized = False  # Set to False since we're not loading here
+            logger.info("Will use shared Wav2Vec2 models to save memory")
         except Exception as e:
             logger.error(f"Failed to initialize deep models: {e}")
             self.wav2vec_processor = None

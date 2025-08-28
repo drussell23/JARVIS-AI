@@ -7,6 +7,7 @@ import base64
 import io
 import os
 import re
+import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
 import Quartz
@@ -18,6 +19,8 @@ import cv2
 import numpy as np
 from dataclasses import dataclass
 from enum import Enum
+
+logger = logging.getLogger(__name__)
 
 # Import Claude Vision Analyzer if available
 try:
@@ -121,8 +124,8 @@ class ScreenVisionSystem:
 
     async def capture_screen(
         self, region: Optional[Tuple[int, int, int, int]] = None
-    ) -> np.ndarray:
-        """Capture the screen or a specific region"""
+    ) -> Optional[Image.Image]:
+        """Capture the screen or a specific region and return as PIL Image"""
         # Use Quartz to capture screen
         if region:
             x, y, width, height = region
@@ -150,7 +153,7 @@ class ScreenVisionSystem:
             except Exception as e:
                 print(f"Fallback also failed: {e}")
 
-            # Return a placeholder image if capture failed
+            # Return None if capture failed
             print(
                 "Warning: Screen capture failed - please grant screen recording permission"
             )
@@ -158,7 +161,7 @@ class ScreenVisionSystem:
                 "Go to: System Preferences → Security & Privacy → Privacy → Screen Recording"
             )
             print("Then check the box next to Terminal (or your Python/IDE)")
-            return np.zeros((100, 100, 3), dtype=np.uint8)
+            return None
 
         # Convert to numpy array
         width = Quartz.CGImageGetWidth(screenshot)
@@ -172,7 +175,7 @@ class ScreenVisionSystem:
         # Check if pixel data was retrieved successfully
         if pixel_data is None:
             print("Warning: Could not get pixel data from screenshot")
-            return np.zeros((100, 100, 3), dtype=np.uint8)
+            return None
 
         try:
             # Convert pixel data to numpy array
@@ -190,7 +193,7 @@ class ScreenVisionSystem:
                 print(
                     f"Warning: Insufficient pixel data. Expected {expected_size}, got {actual_size}"
                 )
-                return np.zeros((100, 100, 3), dtype=np.uint8)
+                return None
 
             # First reshape to get rows
             image = image_data.reshape((height, bytes_per_row))
@@ -204,15 +207,17 @@ class ScreenVisionSystem:
 
             # Convert BGRA to RGB (skip alpha channel)
             image = image[:, :, [2, 1, 0]]  # BGR to RGB
-
-            return image
+            
+            # Convert numpy array to PIL Image
+            pil_image = Image.fromarray(image)
+            return pil_image
         except Exception as e:
-            print(f"Error converting screenshot to numpy array: {e}")
+            print(f"Error converting screenshot to PIL Image: {e}")
             print(
                 f"Debug info: height={height}, width={width}, bytes_per_row={bytes_per_row}"
             )
             print(f"Data size: {len(pixel_data) if pixel_data else 'None'}")
-            return np.zeros((100, 100, 3), dtype=np.uint8)
+            return None
 
     async def detect_text_regions(self, image: np.ndarray) -> List[ScreenElement]:
         """Detect and extract text regions from screen image"""
@@ -505,46 +510,28 @@ class ScreenVisionSystem:
                 "System Preferences → Security & Privacy → Privacy → Screen Recording."
             )
 
-        # Build an intelligent response
-        description = f"Yes sir, I can see your screen. "
-        
-        # Add screen details
-        width, height = context["screen_size"]
-        description += f"I'm viewing your {width}x{height} display. "
-
-        # Describe what's visible
-        if context["detected_apps"]:
-            description += f"You have {', '.join(context['detected_apps'])} open. "
-        
-        if len(context['text_elements']) > 0:
-            description += f"I can read {len(context['text_elements'])} text elements on your screen. "
-
-        if context["potential_updates"] > 0:
-            description += f"I've also detected {context['potential_updates']} potential software updates that may need your attention. "
-        
-        # Use Claude Vision if available for deeper analysis
+        # ALWAYS use Claude Vision if available - no generic responses
         if self.claude_analyzer and test_capture is not None:
             try:
-                # Convert PIL image to numpy array
-                screenshot_np = np.array(test_capture)
-                
-                # Ask Claude to analyze what the user is working on
+                # Pass PIL Image directly to Claude analyzer (it handles conversion)
                 prompt = "Please analyze this screenshot and describe what the user appears to be working on. Be specific about the applications open, the content visible, and any relevant details you can see."
-                claude_analysis = await self.claude_analyzer.analyze_screenshot(screenshot_np, prompt)
+                claude_analysis = await self.claude_analyzer.analyze_screenshot(test_capture, prompt)
                 
-                # Replace the generic description with Claude's analysis
+                # Return ONLY Claude's analysis - no generic fallbacks
                 if claude_analysis and claude_analysis.get("description"):
-                    description = f"Yes sir, I can see your screen. {claude_analysis['description']}"
+                    return f"Yes sir, I can see your screen. {claude_analysis['description']}"
                 else:
-                    # Fallback to enhanced description if Claude fails
-                    description += "With Claude Vision enabled, I can provide even deeper insights about what you're working on."
+                    # If Claude doesn't return a description, ask for more specific analysis
+                    return "I'm processing your screen. Please ask me something specific about what you'd like to know."
             except Exception as e:
-                print(f"Claude Vision analysis failed: {e}")
-                description += "Claude Vision is available for enhanced analysis."
+                logger.error(f"Claude Vision analysis failed: {e}")
+                return f"I encountered an error analyzing your screen: {str(e)}. Please ensure Claude Vision is properly configured."
         else:
-            description += "If you add Claude Vision, I'll be able to understand context and help you more intelligently."
-
-        return description
+            # No Claude analyzer available
+            if not os.getenv("ANTHROPIC_API_KEY"):
+                return "I need an Anthropic API key to analyze your screen. Please configure ANTHROPIC_API_KEY in your environment."
+            else:
+                return "Claude Vision analyzer is not initialized. Please check the system logs."
 
 
 # Integration with JARVIS

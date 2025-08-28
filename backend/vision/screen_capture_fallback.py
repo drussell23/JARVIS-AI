@@ -143,9 +143,9 @@ def analyze_with_claude_vision(screenshot_array,
         """
         
         # Send to Claude Vision
-        # Note: Using haiku model which supports vision and is widely available
+        # Use Opus for best vision capabilities
         response = client.messages.create(
-            model="claude-3-haiku-20240307",
+            model="claude-3-opus-20240229",
             max_tokens=1024,
             messages=[{
                 "role": "user",

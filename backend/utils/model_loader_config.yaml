@@ -22,6 +22,25 @@ discovery:
     - "*_test.py"
     - "*_demo.py"
     - "__pycache__"
+    # Excluded vision models (using Claude API instead)
+    - "ml_intent_classifier.py"
+    - "lazy_vision_engine.py"
+    - "semantic_understanding_engine.py"
+    - "neural_command_router.py"
+    - "meta_learning_framework.py"
+    - "continuous_learning_pipeline.py"
+
+# Model blocklist - These specific models will NOT be loaded
+model_blocklist:
+  # Vision models replaced by Claude API
+  - "all-MiniLM-L6-v2"  # Sentence transformers
+  - "xlm-roberta-base"  # Multilingual model
+  - "bert-base-NER"  # Named entity recognition
+  
+  # Duplicate prevention
+  - "facebook/wav2vec2-base:voice_ml_trainer"  # Only load in ml_enhanced_voice_system
+  - "en_core_web_sm:semantic_understanding"  # Only load in nlp_engine
+  - "en_core_web_sm:swift_bridge"  # Only load in nlp_engine
 
 # Model loading strategies
 loading:

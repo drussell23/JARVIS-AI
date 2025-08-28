@@ -25,6 +25,9 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['USE_TORCH'] = '1'
 os.environ['USE_TF'] = '0'
 
+# Import centralized model manager
+from utils.centralized_model_manager import model_manager
+
 # Try to import whisper and torch
 try:
     import whisper
@@ -133,7 +136,8 @@ class WhisperSTT:
         """Lazy load the Whisper model"""
         if not self._model_loaded and WHISPER_AVAILABLE:
             try:
-                self.model = whisper.load_model(self.model_size)
+                # Use centralized model manager to prevent duplicate loading
+                self.model = model_manager.get_whisper_model(self.model_size)
                 self._model_loaded = True
             except Exception as e:
                 print(f"Failed to load Whisper model: {e}")
@@ -399,7 +403,8 @@ class WakeWordDetector:
         """Lazy load the Whisper model for wake word detection"""
         if not self._model_loaded and WHISPER_AVAILABLE:
             try:
-                self.whisper_model = whisper.load_model("tiny")  # Fast model for wake word
+                # Use centralized model manager - shares the same tiny model instance
+                self.whisper_model = model_manager.get_whisper_tiny()
                 self._model_loaded = True
             except Exception as e:
                 print(f"Failed to load wake word Whisper model: {e}")

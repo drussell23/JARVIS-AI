@@ -35,56 +35,34 @@ class IntelligentJARVISVision:
         command_lower = command.lower()
         
         # Special handling for "can you see my screen?"
-        if "can you see my screen" in command_lower:
-            # Test screen capture permission
-            result = capture_with_intelligence(use_claude=False)
-            
-            if not result["success"]:
-                return (
-                    "I'm unable to see your screen at the moment, sir. "
-                    "Please grant me screen recording permission in "
-                    "System Preferences → Security & Privacy → Privacy → Screen Recording. "
-                    "Once granted, I'll be able to help you with visual tasks."
-                )
-            
-            # Permission is granted! Build intelligent response
-            response = "Yes sir, I can see your screen perfectly. "
-            
-            # Get screen details
-            screenshot = result["image"]
-            width, height = screenshot.shape[1], screenshot.shape[0]
-            response += f"I'm viewing your {width}x{height} display. "
-            
-            # If Claude is available, add intelligent analysis
-            if self.api_key and self.claude_analyzer:
+        if "can you see my screen" in command_lower or "what's on my screen" in command_lower:
+            # If Claude is available, use it directly
+            if self.api_key:
                 try:
-                    # Get Claude's analysis
+                    # Get Claude's analysis directly
                     claude_result = capture_with_intelligence(
-                        query="Briefly describe what applications are open and what the user appears to be working on",
+                        query="Please analyze this screenshot and describe what the user appears to be working on. Be specific about the applications open, the content visible, and any relevant details you can see.",
                         use_claude=True
                     )
                     
                     if claude_result.get("intelligence_used") and claude_result.get("analysis"):
-                        response += claude_result["analysis"]
+                        return f"Yes sir, I can see your screen. {claude_result['analysis']}"
+                    elif not claude_result["success"]:
+                        return (
+                            "I'm unable to see your screen at the moment, sir. "
+                            "Please grant me screen recording permission in "
+                            "System Preferences → Security & Privacy → Privacy → Screen Recording."
+                        )
                     else:
-                        response += "I can provide basic screen analysis. "
-                except:
-                    response += "I can provide basic screen analysis. "
+                        return "I can see your screen but encountered an error analyzing it. Please try again."
+                except Exception as e:
+                    return f"I encountered an error accessing your screen: {str(e)}"
             else:
-                # No Claude API - provide basic info
-                basic_analysis = await self.jarvis_vision.vision.capture_and_describe()
-                # Extract the relevant part after "Yes sir, I can see your screen."
-                if "You have" in basic_analysis:
-                    apps_info = basic_analysis[basic_analysis.find("You have"):]
-                    response += apps_info
-                else:
-                    response += (
-                        "I can capture your screen and perform basic text extraction. "
-                        "To unlock my full visual intelligence capabilities, "
-                        "consider adding an Anthropic API key for Claude Vision."
-                    )
-            
-            return response
+                # No Claude API key
+                return (
+                    "I need an Anthropic API key to analyze your screen. "
+                    "Please configure ANTHROPIC_API_KEY in your environment."
+                )
             
         # For other vision commands, use enhanced processing
         elif any(phrase in command_lower for phrase in [
