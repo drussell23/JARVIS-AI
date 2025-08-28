@@ -34,7 +34,6 @@ try:
 except ImportError as e:
     logging.warning(f"Some macOS dependencies not available: {e}")
 
-
 class UpdateType(Enum):
     """Types of software updates that can be detected"""
     MACOS_UPDATE = "macos_update"
@@ -42,7 +41,6 @@ class UpdateType(Enum):
     BROWSER_UPDATE = "browser_update"
     SECURITY_UPDATE = "security_update"
     SYSTEM_NOTIFICATION = "system_notification"
-
 
 @dataclass
 class ScreenElement:
@@ -52,7 +50,6 @@ class ScreenElement:
     location: Tuple[int, int, int, int]  # x, y, width, height
     confidence: float
     metadata: Optional[Dict] = None
-
 
 @dataclass
 class UpdateNotification:
@@ -64,7 +61,6 @@ class UpdateNotification:
     urgency: str  # "critical", "recommended", "optional"
     detected_at: datetime
     screenshot_region: Optional[Tuple[int, int, int, int]] = None
-
 
 class EnhancedScreenVisionSystem:
     """
@@ -438,7 +434,6 @@ class EnhancedScreenVisionSystem:
 
     # All other methods from the original ScreenVisionSystem would be copied here
     # with the same signatures to ensure drop-in compatibility
-
 
 # Create alias for backward compatibility
 ScreenVisionSystem = EnhancedScreenVisionSystem

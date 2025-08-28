@@ -25,12 +25,10 @@ try:
     LANGDETECT_AVAILABLE = True
 except ImportError:
     LANGDETECT_AVAILABLE = False
-import spacy
 from pathlib import Path
 import json
 
 logger = logging.getLogger(__name__)
-
 
 @dataclass
 class SemanticContext:
@@ -45,7 +43,6 @@ class SemanticContext:
     confidence_markers: List[str]
     embedding: np.ndarray
 
-
 @dataclass
 class IntentUnderstanding:
     """Complete understanding of user intent"""
@@ -56,7 +53,6 @@ class IntentUnderstanding:
     ambiguity_score: float
     clarification_needed: bool
     suggested_responses: List[str]
-
 
 class SemanticUnderstandingEngine:
     """
@@ -123,8 +119,7 @@ class SemanticUnderstandingEngine:
         """Initialize language-specific NLP models"""
         # Start with English, dynamically add others as needed
         try:
-            self.nlp_models['en'] = spacy.load('en_core_web_sm')
-        except:
+            self.nlp_models['en'] =         except:
             logger.warning("English spacy model not available")
             
     async def understand_intent(self, text: str, context: Optional[Dict] = None) -> IntentUnderstanding:
@@ -248,8 +243,7 @@ class SemanticUnderstandingEngine:
             
             if language in model_map:
                 try:
-                    self.nlp_models[language] = spacy.load(model_map[language])
-                except:
+                    self.nlp_models[language] =                 except:
                     logger.warning(f"Could not load NLP model for {language}")
                     return None
                     
@@ -464,7 +458,6 @@ class SemanticUnderstandingEngine:
             except Exception as e:
                 logger.error(f"Error loading semantic patterns: {e}")
 
-
 class ContextExtractor:
     """Extract rich context from various sources"""
     
@@ -495,10 +488,8 @@ class ContextExtractor:
             'timestamp': now.isoformat()
         }
 
-
 # Singleton instance
 _engine_instance: Optional[SemanticUnderstandingEngine] = None
-
 
 def get_semantic_understanding_engine() -> SemanticUnderstandingEngine:
     """Get singleton instance of semantic understanding engine"""

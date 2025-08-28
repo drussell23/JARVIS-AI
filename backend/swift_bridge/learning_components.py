@@ -19,7 +19,6 @@ import threading
 
 logger = logging.getLogger(__name__)
 
-
 class LearningDatabase:
     """
     Database for storing and retrieving learned patterns
@@ -520,7 +519,6 @@ class LearningDatabase:
             "conversation": {"state": "multitasking", "confidence": 0.6}
         }
 
-
 class PatternLearner:
     """
     Machine learning component for pattern recognition and learning
@@ -933,7 +931,6 @@ class PatternLearner:
         if patterns:
             self._retrain_vectorizer()
 
-
 class AdvancedContextManager:
     """
     Advanced context management with learning capabilities
@@ -995,7 +992,6 @@ class AdvancedContextManager:
                 alpha * rate + (1 - alpha) * self.context_weights.get(context_type, 0.5)
             )
 
-
 class UserProfile:
     """
     User profile for personalized learning
@@ -1051,7 +1047,6 @@ class UserProfile:
             return "multitasking"
         else:
             return "automating"
-
 
 class PerformanceTracker:
     """

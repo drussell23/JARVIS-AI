@@ -25,7 +25,6 @@ import lz4.frame
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class Experience:
     """Single experience in the replay buffer"""
@@ -49,7 +48,6 @@ class Experience:
     def __hash__(self):
         return hash(self.experience_id)
 
-
 @dataclass
 class Pattern:
     """Extracted pattern from experiences"""
@@ -63,14 +61,12 @@ class Pattern:
     last_seen: datetime
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class ReplayBatch:
     """Batch of experiences for training"""
     experiences: List[Experience]
     sampling_method: str  # uniform, prioritized, recent, pattern_based
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class PrioritizedReplayBuffer:
     """
@@ -134,7 +130,6 @@ class PrioritizedReplayBuffer:
         for idx, priority in zip(indices, priorities):
             self.priorities[idx] = priority ** self.alpha
             self.max_priority = max(self.max_priority, priority)
-
 
 class ExperienceReplaySystem:
     """
@@ -765,10 +760,8 @@ class ExperienceReplaySystem:
         
         logger.info("Experience Replay System shutdown complete")
 
-
 # Singleton instance
 _replay_system: Optional[ExperienceReplaySystem] = None
-
 
 def get_experience_replay_system() -> ExperienceReplaySystem:
     """Get singleton instance of experience replay system"""

@@ -6,7 +6,6 @@ Customize which apps to target and how aggressively to free memory
 from typing import Dict, List, Set, Optional
 from dataclasses import dataclass, field
 
-
 @dataclass
 class AppProfile:
     """Profile for a specific application"""
@@ -17,7 +16,6 @@ class AppProfile:
     can_suspend: bool = True
     graceful_close: bool = True  # Try graceful close before force
     min_memory_percent: float = 1.0  # Only target if using this much memory
-
 
 class OptimizationConfig:
     """Configuration for memory optimization"""
@@ -189,7 +187,6 @@ class OptimizationConfig:
                 return True
         
         return False
-
 
 # Global config instance
 optimization_config = OptimizationConfig()

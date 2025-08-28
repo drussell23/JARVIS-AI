@@ -45,7 +45,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-
 class CalculatorTool:
     """Safe calculator tool for mathematical operations"""
     
@@ -112,7 +111,6 @@ class CalculatorTool:
         """Async execution"""
         return self._run(query)
 
-
 class M1OptimizedLangChainConfig:
     """Optimal LangChain configuration for M1 Macs"""
     
@@ -156,7 +154,6 @@ class M1OptimizedLangChainConfig:
             return cls.CONFIGS["balanced"]
         else:
             return cls.CONFIGS["performance"]
-
 
 class LangChainChatbot(IntelligentChatbot):
     """
@@ -534,7 +531,6 @@ Thought:"""
         
         # Call parent cleanup
         await super().cleanup()
-
 
 # Example usage
 if __name__ == "__main__":

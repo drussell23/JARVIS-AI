@@ -9,7 +9,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 def apply_quantized_patch():
     """Apply patch to use quantized models in LangChain"""
     
@@ -32,7 +31,6 @@ def apply_quantized_patch():
         
     except Exception as e:
         logger.warning(f"Could not apply quantized patch: {e}")
-
 
 # Auto-apply patch on import
 apply_quantized_patch()

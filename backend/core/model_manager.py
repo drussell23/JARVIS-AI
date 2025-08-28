@@ -15,7 +15,6 @@ import json
 
 logger = logging.getLogger(__name__)
 
-
 class ModelTier(Enum):
     """Model tiers for different complexity levels"""
     TINY = "tiny"      # TinyLlama - 1GB - Always loaded

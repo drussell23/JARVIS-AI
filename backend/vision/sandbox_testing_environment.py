@@ -27,7 +27,6 @@ import uuid
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class SandboxConfig:
     """Configuration for sandbox environment"""
@@ -53,7 +52,6 @@ class SandboxConfig:
     docker_memory_limit: str = "512m"
     docker_cpu_quota: int = 50000  # 50% of one CPU
 
-
 @dataclass
 class TestCase:
     """Test case for capability validation"""
@@ -65,7 +63,6 @@ class TestCase:
     timeout: float = 10.0
     validation_func: Optional[Callable] = None
 
-
 @dataclass
 class TestResult:
     """Result of a test execution"""
@@ -76,7 +73,6 @@ class TestResult:
     error: Optional[str] = None
     resource_usage: Dict[str, Any] = field(default_factory=dict)
     logs: List[str] = field(default_factory=list)
-
 
 class ProcessSandbox:
     """Process-based sandbox for lightweight isolation"""
@@ -218,7 +214,6 @@ asyncio.run(run_test())
                 error=str(e),
                 logs=[traceback.format_exc()]
             )
-
 
 class DockerSandbox:
     """Docker-based sandbox for stronger isolation"""
@@ -385,7 +380,6 @@ asyncio.run(run_test())
         tar.close()
         
         return tar_stream.getvalue()
-
 
 class SandboxTestRunner:
     """Manages sandbox testing for capabilities"""
@@ -562,7 +556,6 @@ class SandboxTestRunner:
                 'error': 'All benchmark iterations failed'
             }
 
-
 class MockScreenCapture:
     """Mock screen capture for testing vision capabilities"""
     
@@ -592,10 +585,8 @@ class MockScreenCapture:
         
         return scenarios.get(scenario, scenarios["default"])
 
-
 # Singleton instance
 _sandbox_runner: Optional[SandboxTestRunner] = None
-
 
 def get_sandbox_test_runner(config: Optional[SandboxConfig] = None) -> SandboxTestRunner:
     """Get singleton instance of sandbox test runner"""

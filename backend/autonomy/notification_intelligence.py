@@ -32,7 +32,6 @@ from autonomy.vision_decision_pipeline import VisionDecisionPipeline
 
 logger = logging.getLogger(__name__)
 
-
 class NotificationContext(Enum):
     """Context of detected notifications"""
 
@@ -42,7 +41,6 @@ class NotificationContext(Enum):
     SOCIAL_UPDATE = "social_update"
     WORK_UPDATE = "work_update"
     URGENT_ALERT = "urgent_alert"
-
 
 @dataclass
 class IntelligentNotification:
@@ -61,7 +59,6 @@ class IntelligentNotification:
         """Convert to natural speech using AI understanding"""
         # This will be dynamically generated based on content
         return ""
-
 
 class NotificationIntelligence:
     """
@@ -562,7 +559,6 @@ class NotificationIntelligence:
         if len(self.announcement_history) > 1000:
             self.announcement_history = self.announcement_history[-1000:]
 
-
 # Integration with existing vision pipeline
 class NotificationVisionIntegration:
     """
@@ -622,7 +618,6 @@ class NotificationVisionIntegration:
 
         return actions
 
-
 async def test_intelligent_notifications():
     """Test the intelligent notification system"""
     print("🧠 Testing Intelligent Notification System")
@@ -642,7 +637,6 @@ async def test_intelligent_notifications():
     await notif_intel.stop_monitoring()
 
     print("\n✅ Intelligent notification test complete!")
-
 
 if __name__ == "__main__":
     asyncio.run(test_intelligent_notifications())

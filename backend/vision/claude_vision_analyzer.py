@@ -10,7 +10,6 @@ import numpy as np
 from anthropic import Anthropic
 import json
 
-
 class ClaudeVisionAnalyzer:
     """Use Claude's vision capabilities for advanced screen understanding"""
     

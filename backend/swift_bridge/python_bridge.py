@@ -27,7 +27,6 @@ try:
 except:
     pass
 
-
 class SwiftCommandClassifier:
     """
     Python wrapper for Swift Command Classifier
@@ -218,7 +217,6 @@ class SwiftCommandClassifier:
             "total_classifications": 0
         }
 
-
 class IntelligentCommandRouter:
     """
     Intelligent command router using Swift classification
@@ -318,7 +316,6 @@ class IntelligentCommandRouter:
         if cache_key in self.classification_cache:
             del self.classification_cache[cache_key]
 
-
 # Example usage
 async def test_classifier():
     """Test the classifier with various commands"""
@@ -344,7 +341,6 @@ async def test_classifier():
         print(f"Type: {details['type']} (confidence: {details['confidence']:.2f})")
         print(f"Intent: {details['intent']}")
         print(f"Reasoning: {details['reasoning']}")
-
 
 if __name__ == "__main__":
     # Run test

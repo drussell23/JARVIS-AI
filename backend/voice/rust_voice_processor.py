@@ -23,7 +23,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class VoiceProcessingConfig:
     """ML-learned configuration for voice processing"""
@@ -45,7 +44,6 @@ class VoiceProcessingConfig:
             vad_threshold=audio_profile.get('vad_threshold', 0.02),
             noise_gate=audio_profile.get('noise_gate', 0.01)
         )
-
 
 class RustVoiceProcessor:
     """
@@ -279,7 +277,6 @@ class RustVoiceProcessor:
             'rust_acceleration_factor': 10.5  # Estimated from benchmarks
         }
 
-
 class RustMLAudioBridge:
     """
     Bridge between MLAudioHandler and Rust processing
@@ -335,7 +332,6 @@ class RustMLAudioBridge:
         ml_handler.process_audio = rust_accelerated_process
         logger.info("Integrated Rust acceleration with MLAudioHandler")
 
-
 # Demo function
 async def demo_rust_voice_processing():
     """Demonstrate Rust-accelerated voice processing"""
@@ -368,7 +364,6 @@ async def demo_rust_voice_processing():
     logger.info(f"  Average time: {stats['avg_processing_time_ms']:.2f}ms")
     logger.info(f"  Throughput: {stats['throughput']:.1f} chunks/sec")
     logger.info(f"  Rust acceleration: {stats['rust_acceleration_factor']}x faster")
-
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(message)s')

@@ -31,7 +31,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class WorkspaceAnalysis:
     """Complete workspace analysis result"""
@@ -41,7 +40,6 @@ class WorkspaceAnalysis:
     suggestions: List[str]
     important_notifications: List[str]
     confidence: float
-
 
 class WorkspaceAnalyzer:
     """Analyzes multi-window workspace using Claude Vision"""
@@ -546,7 +544,6 @@ Keep the ENTIRE response under 100 words. Focus on the primary window."""
             confidence=0.9
         )
 
-
 async def test_workspace_analyzer():
     """Test workspace analysis"""
     print("🧠 Testing Workspace Analyzer")
@@ -590,7 +587,6 @@ async def test_workspace_analyzer():
         print("\n" + "-" * 50)
     
     print("\n✅ Workspace analysis test complete!")
-
 
 if __name__ == "__main__":
     asyncio.run(test_workspace_analyzer())

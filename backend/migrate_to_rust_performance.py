@@ -18,7 +18,6 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-
 def check_rust_installed():
     """Check if Rust is installed"""
     try:
@@ -34,7 +33,6 @@ def check_rust_installed():
     logger.info("Please install Rust first:")
     logger.info("  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh")
     return False
-
 
 def build_rust_layer():
     """Build the Rust performance layer"""
@@ -86,7 +84,6 @@ def build_rust_layer():
             logger.error(f"Rust build failed: {result.stderr}")
     
     return False
-
 
 def update_imports():
     """Update Python code to use Rust-accelerated modules"""
@@ -147,7 +144,6 @@ def update_imports():
     
     logger.info(f"✅ Backups saved to {backup_dir}/")
 
-
 def verify_performance():
     """Verify the performance improvements"""
     logger.info("\n🔍 Verifying performance improvements...")
@@ -163,7 +159,6 @@ def verify_performance():
         
     except ImportError as e:
         logger.warning(f"⚠️  Could not verify performance: {e}")
-
 
 def print_migration_summary():
     """Print migration summary and next steps"""
@@ -188,7 +183,6 @@ def print_migration_summary():
     print("   4. Run 'python -m vision.rust_accelerated_learning' for benchmarks")
     print("\n🚀 Your JARVIS is now turbocharged with Rust!")
     print("="*60)
-
 
 def main():
     """Main migration process"""
@@ -222,7 +216,6 @@ def main():
     print_migration_summary()
     
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

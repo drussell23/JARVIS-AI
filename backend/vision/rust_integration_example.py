@@ -22,7 +22,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-
 class OptimizedVisionSystem:
     """Vision system with Rust optimization for reduced CPU usage"""
 
@@ -240,7 +239,6 @@ class OptimizedVisionSystem:
             and self.rust_processor.rust_available,
         }
 
-
 # Example usage
 async def main():
     """Example of using the optimized vision system"""
@@ -288,7 +286,6 @@ async def main():
     print(f"  Rust available: {benchmark['rust_available']}")
 
     print(f"\n🎉 Rust integration test completed!")
-
 
 if __name__ == "__main__":
     asyncio.run(main())

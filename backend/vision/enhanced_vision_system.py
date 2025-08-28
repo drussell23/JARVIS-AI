@@ -19,7 +19,6 @@ import os
 from .screen_vision import ScreenVisionSystem
 from .screen_capture_fallback import capture_screen_fallback
 
-
 class EnhancedVisionSystem:
     """
     Revolutionary vision system that combines local screen capture
@@ -254,7 +253,6 @@ class EnhancedVisionSystem:
             "suggestion": "Enable Claude Vision for advanced understanding"
         }
 
-
 class IntelligentVisionCommands:
     """
     Revolutionary command system that leverages Claude's understanding.
@@ -384,7 +382,6 @@ class IntelligentVisionCommands:
             return f"I can see the screen but with limited understanding. {understanding}"
         else:
             return f"{understanding}"
-
 
 # Example usage and integration points
 async def main():

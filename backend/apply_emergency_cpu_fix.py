@@ -15,7 +15,6 @@ backend_path = os.path.dirname(os.path.abspath(__file__))
 if backend_path not in sys.path:
     sys.path.insert(0, backend_path)
 
-
 def kill_high_cpu_processes():
     """Kill any Python processes using high CPU"""
     print("🔍 Searching for high CPU processes...")
@@ -44,7 +43,6 @@ def kill_high_cpu_processes():
         print("   No high-CPU processes found")
     
     return killed
-
 
 def apply_immediate_fixes():
     """Apply immediate configuration fixes"""
@@ -94,7 +92,6 @@ def apply_immediate_fixes():
     
     print("✅ Applied environment limits")
 
-
 def patch_learning_module():
     """Patch the learning module to use emergency throttling"""
     print("\n🔧 Patching learning module...")
@@ -122,7 +119,6 @@ def patch_learning_module():
     except Exception as e:
         print(f"⚠️  Could not patch learning module: {e}")
         return False
-
 
 def restart_with_limits():
     """Restart JARVIS with CPU limits"""
@@ -161,7 +157,6 @@ def restart_with_limits():
             break
     
     return process
-
 
 def monitor_performance(duration=30):
     """Monitor performance after fixes"""
@@ -216,7 +211,6 @@ def monitor_performance(duration=30):
     else:
         print("⚠️  Could not monitor performance")
 
-
 def main():
     """Main emergency fix process"""
     print("\n🚨 JARVIS EMERGENCY CPU FIX")
@@ -250,7 +244,6 @@ def main():
     print("   • Learning cycles throttled 5x")
     print("   • Skip cycles when CPU > 60%")
     print("="*50)
-
 
 if __name__ == "__main__":
     main()

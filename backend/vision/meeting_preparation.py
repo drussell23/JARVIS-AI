@@ -18,7 +18,6 @@ from .workspace_optimizer import WorkspaceOptimizer, WindowLayout
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class MeetingContext:
     """Context about an upcoming meeting"""
@@ -39,7 +38,6 @@ class MeetingContext:
         """Check if user has any meeting materials open"""
         return bool(self.notes_apps or self.document_windows or self.presentation_windows)
 
-
 @dataclass
 class MeetingAlert:
     """Alert about meeting preparation"""
@@ -48,7 +46,6 @@ class MeetingAlert:
     message: str
     affected_windows: List[WindowInfo] = field(default_factory=list)
     suggestions: List[str] = field(default_factory=list)
-
 
 class MeetingPreparationSystem:
     """Helps users prepare for meetings with intelligent window analysis"""
@@ -413,7 +410,6 @@ class MeetingPreparationSystem:
         
         return conflicts
 
-
 async def test_meeting_preparation():
     """Test meeting preparation system"""
     print("📅 Testing Meeting Preparation System")
@@ -459,7 +455,6 @@ async def test_meeting_preparation():
             print(f"   • {window.app_name} - {window.window_title or 'Untitled'}")
     
     print("\n✅ Meeting preparation test complete!")
-
 
 if __name__ == "__main__":
     import asyncio

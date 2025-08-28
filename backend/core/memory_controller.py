@@ -16,7 +16,6 @@ from collections import deque
 
 logger = logging.getLogger(__name__)
 
-
 class MemoryPressure(Enum):
     """Memory pressure levels"""
     LOW = "low"          # < 40% - Can load anything

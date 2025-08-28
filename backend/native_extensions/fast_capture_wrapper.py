@@ -21,7 +21,6 @@ except ImportError:
     # Try direct import if running as script
     import fast_capture
 
-
 @dataclass
 class CaptureConfig:
     """Python-friendly capture configuration"""
@@ -63,7 +62,6 @@ class CaptureConfig:
             cpp_config.set_custom_filter(self.custom_filter)
             
         return cpp_config
-
 
 class FastCaptureEngine:
     """
@@ -328,7 +326,6 @@ class FastCaptureEngine:
             'metadata': dict(window.metadata) if window.metadata else {}
         }
 
-
 # ===== Convenience Functions =====
 
 def create_size_filter(min_width: int, min_height: int) -> Callable:
@@ -336,7 +333,6 @@ def create_size_filter(min_width: int, min_height: int) -> Callable:
     def filter_func(window_info):
         return window_info.width >= min_width and window_info.height >= min_height
     return filter_func
-
 
 def create_app_filter(apps: List[str]) -> Callable:
     """Create a filter for specific applications"""
@@ -346,7 +342,6 @@ def create_app_filter(apps: List[str]) -> Callable:
                 return True
         return False
     return filter_func
-
 
 # ===== Example Usage =====
 

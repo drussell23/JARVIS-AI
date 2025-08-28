@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-
 class ComponentState:
     """Track component loading state"""
 
@@ -24,7 +23,6 @@ class ComponentState:
     LOADED = "loaded"
     UNLOADING = "unloading"
     ERROR = "error"
-
 
 class MemorySafeComponent(Generic[T], ABC):
     """
@@ -184,7 +182,6 @@ class MemorySafeComponent(Generic[T], ABC):
             "is_available": self._state == ComponentState.LOADED,
         }
 
-
 def memory_safe_method(method: Callable) -> Callable:
     """
     Decorator for methods that require a loaded component
@@ -213,7 +210,6 @@ def memory_safe_method(method: Callable) -> Callable:
         return await method(self, component, *args, **kwargs)
 
     return wrapper
-
 
 class MemorySafeNLPEngine(MemorySafeComponent):
     """Memory-safe wrapper for NLP Engine"""
@@ -260,7 +256,6 @@ class MemorySafeNLPEngine(MemorySafeComponent):
         """Extract entities from text"""
         analysis = await self.analyze_text(component, text)
         return analysis.entities if analysis else []
-
 
 class MemorySafeRAGEngine(MemorySafeComponent):
     """Memory-safe wrapper for RAG Engine"""
@@ -334,7 +329,6 @@ class MemorySafeRAGEngine(MemorySafeComponent):
                 "response": "I apologize, but I'm unable to access my knowledge base at the moment.",
             }
 
-
 class MemorySafeVoiceEngine(MemorySafeComponent):
     """Memory-safe wrapper for Voice Engine"""
 
@@ -376,7 +370,6 @@ class MemorySafeVoiceEngine(MemorySafeComponent):
         except Exception as e:
             logger.error(f"Error synthesizing speech: {e}")
             return {"success": False, "error": str(e), "audio": None}
-
 
 class IntelligentComponentManager:
     """

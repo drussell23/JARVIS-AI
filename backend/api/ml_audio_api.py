@@ -71,7 +71,6 @@ class AudioErrorRequest(BaseModel):
     audio_context_state: Optional[str] = None
     previous_errors: Optional[List[Dict[str, Any]]] = []
 
-
 class AudioPredictionRequest(BaseModel):
     browser: str
     time_of_day: int
@@ -80,12 +79,10 @@ class AudioPredictionRequest(BaseModel):
     session_duration: int
     permission_state: str
 
-
 class AudioTelemetryRequest(BaseModel):
     event: str
     data: Dict[str, Any]
     timestamp: str
-
 
 class AudioConfigUpdate(BaseModel):
     enable_ml: Optional[bool] = None
@@ -95,14 +92,12 @@ class AudioConfigUpdate(BaseModel):
     anomaly_threshold: Optional[float] = None
     prediction_threshold: Optional[float] = None
 
-
 # API Endpoints
 @router.get("/config")
 async def get_ml_config():
     """Get ML audio configuration"""
     audio_manager = get_audio_manager()
     return JSONResponse(content=audio_manager.config)
-
 
 @router.post("/config")
 async def update_ml_config(config: AudioConfigUpdate):
@@ -124,7 +119,6 @@ async def update_ml_config(config: AudioConfigUpdate):
         "updated": update_dict,
         "config": audio_manager.config
     })
-
 
 @router.post("/error")
 async def handle_audio_error(request: AudioErrorRequest):
@@ -149,7 +143,6 @@ async def handle_audio_error(request: AudioErrorRequest):
         "strategy": result,
         "ml_confidence": result.get("ml_confidence", 0)
     })
-
 
 @router.post("/predict")
 async def predict_audio_issue(request: AudioPredictionRequest):
@@ -186,7 +179,6 @@ async def predict_audio_issue(request: AudioPredictionRequest):
     
     return JSONResponse(content=prediction_result)
 
-
 @router.post("/telemetry")
 async def receive_telemetry(request: AudioTelemetryRequest):
     """Receive telemetry data from client"""
@@ -207,7 +199,6 @@ async def receive_telemetry(request: AudioTelemetryRequest):
     
     return JSONResponse(content={"success": True})
 
-
 @router.get("/metrics")
 async def get_ml_metrics():
     """Get ML audio system metrics"""
@@ -218,7 +209,6 @@ async def get_ml_metrics():
     metrics["insights"] = _generate_insights(metrics, audio_manager)
     
     return JSONResponse(content=metrics)
-
 
 @router.get("/patterns")
 async def get_audio_patterns():
@@ -272,7 +262,6 @@ async def get_audio_patterns():
     
     return JSONResponse(content=patterns)
 
-
 @router.websocket("/stream")
 async def ml_audio_websocket(websocket: WebSocket):
     """WebSocket endpoint for real-time ML audio updates"""
@@ -323,7 +312,6 @@ async def ml_audio_websocket(websocket: WebSocket):
         logger.error(f"WebSocket error: {e}")
         ws_manager.disconnect(websocket)
 
-
 # Helper functions
 def _analyze_risk_factors(context: Dict[str, Any], audio_manager) -> List[str]:
     """Analyze risk factors for audio issues"""
@@ -349,7 +337,6 @@ def _analyze_risk_factors(context: Dict[str, Any], audio_manager) -> List[str]:
         factors.append("New session (permission not established)")
     
     return factors
-
 
 def _generate_insights(metrics: Dict[str, Any], audio_manager) -> List[str]:
     """Generate insights from metrics"""
@@ -377,7 +364,6 @@ def _generate_insights(metrics: Dict[str, Any], audio_manager) -> List[str]:
     
     return insights
 
-
 def _count_browsers(events: List[AudioEvent]) -> Dict[str, int]:
     """Count events by browser"""
     browser_counts = {}
@@ -385,7 +371,6 @@ def _count_browsers(events: List[AudioEvent]) -> Dict[str, int]:
         browser = event.browser or 'unknown'
         browser_counts[browser] = browser_counts.get(browser, 0) + 1
     return browser_counts
-
 
 def _find_peak_hours(events: List[AudioEvent]) -> List[int]:
     """Find peak hours for events"""
@@ -398,7 +383,6 @@ def _find_peak_hours(events: List[AudioEvent]) -> List[int]:
     sorted_hours = sorted(hour_counts.items(), key=lambda x: x[1], reverse=True)
     return [hour for hour, count in sorted_hours[:3]]
 
-
 def _avg_retry_count(events: List[AudioEvent]) -> float:
     """Calculate average retry count"""
     retry_counts = []
@@ -408,7 +392,6 @@ def _avg_retry_count(events: List[AudioEvent]) -> float:
     
     return np.mean(retry_counts) if retry_counts else 0
 
-
 def _avg_resolution_time(events: List[AudioEvent]) -> float:
     """Calculate average resolution time"""
     times = []
@@ -417,7 +400,6 @@ def _avg_resolution_time(events: List[AudioEvent]) -> float:
             times.append(event.duration_ms)
     
     return np.mean(times) if times else 0
-
 
 # Register router
 __all__ = ['router']

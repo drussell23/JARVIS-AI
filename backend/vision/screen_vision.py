@@ -28,7 +28,6 @@ try:
 except ImportError:
     ClaudeVisionAnalyzer = None
 
-
 class UpdateType(Enum):
     """Types of software updates that can be detected"""
 
@@ -37,7 +36,6 @@ class UpdateType(Enum):
     BROWSER_UPDATE = "browser_update"
     SECURITY_UPDATE = "security_update"
     SYSTEM_NOTIFICATION = "system_notification"
-
 
 @dataclass
 class ScreenElement:
@@ -48,7 +46,6 @@ class ScreenElement:
     location: Tuple[int, int, int, int]  # x, y, width, height
     confidence: float
     metadata: Optional[Dict] = None
-
 
 @dataclass
 class UpdateNotification:
@@ -61,7 +58,6 @@ class UpdateNotification:
     urgency: str  # "critical", "recommended", "optional"
     detected_at: datetime
     screenshot_region: Optional[Tuple[int, int, int, int]] = None
-
 
 class ScreenVisionSystem:
     """Computer vision system for understanding macOS screen content"""
@@ -547,7 +543,6 @@ class ScreenVisionSystem:
                 return "I need an Anthropic API key to analyze your screen. Please configure ANTHROPIC_API_KEY in your environment."
             else:
                 return "Claude Vision analyzer is not initialized. Please check the system logs."
-
 
 # Integration with JARVIS
 class JARVISVisionIntegration:

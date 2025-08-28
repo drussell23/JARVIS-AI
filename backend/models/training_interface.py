@@ -9,8 +9,7 @@ os.environ['USE_TF'] = '0'     # Disable TensorFlow in transformers
 
 # Apply TensorFlow fixes
 try:
-    import tensorflow as tf
-    if not hasattr(tf, 'data'):
+        if not hasattr(tf, 'data'):
         # Create a mock data module to prevent import errors
         class MockData:
             class Dataset:
@@ -38,7 +37,6 @@ from models.training_pipeline import TrainingConfig, ModelTrainer
 from models.fine_tuning import FineTuneConfig, FineTuner, DomainSpecificFineTuner
 from utils.evaluation_metrics import ModelEvaluator, EvaluationResult
 from utils.domain_knowledge import DomainKnowledgeBank, DomainKnowledge
-
 
 class TrainingRequest(BaseModel):
     """Request model for training"""
@@ -82,7 +80,6 @@ class DomainKnowledgeRequest(BaseModel):
     terminology: Dict[str, str] = Field(default_factory=dict, description="Domain terminology")
     constraints: List[str] = Field(default_factory=list, description="Domain constraints")
 
-
 class TrainingStatus(BaseModel):
     """Training status response"""
     job_id: str
@@ -96,7 +93,6 @@ class TrainingStatus(BaseModel):
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     output_path: Optional[str] = None
-
 
 class TrainingInterface:
     """API interface for model training and fine-tuning"""
@@ -603,7 +599,6 @@ class TrainingInterface:
             "path": file_path,
             "examples": num_examples
         }
-
 
 # Example usage
 # Create interface

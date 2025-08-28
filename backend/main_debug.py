@@ -9,8 +9,7 @@ os.environ['USE_TF'] = '0'     # Disable TensorFlow in transformers
 
 # Apply TensorFlow fixes
 try:
-    import tensorflow as tf
-    if not hasattr(tf, 'data'):
+        if not hasattr(tf, 'data'):
         # Create a mock data module to prevent import errors
         class MockData:
             class Dataset:
@@ -99,11 +98,9 @@ except (ImportError, RuntimeError, AttributeError) as e:
     logger.warning(f"Automation API not available: {e}")
     AUTOMATION_API_AVAILABLE = False
 
-
 # Define request models
 class Message(BaseModel):
     user_input: str
-
 
 class ChatConfig(BaseModel):
     model_name: Optional[str] = "distilgpt2"  # Default to smaller model
@@ -113,23 +110,19 @@ class ChatConfig(BaseModel):
 
     model_config = {"protected_namespaces": ()}
 
-
 class KnowledgeRequest(BaseModel):
     content: str
     metadata: Optional[Dict[str, Any]] = {}
-
 
 class SearchRequest(BaseModel):
     query: str
     k: Optional[int] = 5
     strategy: Optional[str] = "hybrid"  # semantic, keyword, hybrid
 
-
 class FeedbackRequest(BaseModel):
     query: str
     response: str
     score: float  # 0.0 to 1.0
-
 
 class ChatbotAPI:
     def __init__(self):
@@ -530,7 +523,6 @@ class ChatbotAPI:
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
-
 async def initialize_bridge_async():
     """Initialize the Python-TypeScript bridge asynchronously"""
     try:
@@ -540,7 +532,6 @@ async def initialize_bridge_async():
     except Exception as e:
         logger.warning(f"Failed to initialize bridge: {e}")
         logger.info("System will continue without bridge functionality")
-
 
 async def initialize_vision_discovery_async():
     """Initialize the vision discovery system asynchronously"""  
@@ -552,10 +543,8 @@ async def initialize_vision_discovery_async():
         logger.warning(f"Failed to initialize vision discovery: {e}")
         logger.info("System will continue without vision discovery")
 
-
 # Create FastAPI app
 app = FastAPI()
-
 
 # Startup event
 @app.on_event("startup")
@@ -604,7 +593,6 @@ async def startup_event():
     
     # Initialize vision discovery system (non-blocking)
     asyncio.create_task(initialize_vision_discovery_async())
-
 
 # Enable CORS for all origins (adjust for production)
 app.add_middleware(
@@ -678,7 +666,6 @@ sys.stdout.flush()
     VISION_API_AVAILABLE = True  # At least status is available
 except Exception as e:
     logger.warning(f"Failed to initialize vision status endpoint: {e}")
-
 
 print("\n>>> DEBUG: About to check VOICE_API_AVAILABLE")
 sys.stdout.flush()
@@ -801,7 +788,6 @@ except Exception as e:
     logger.warning(f"Failed to initialize WebSocket Discovery API: {e}")
     WEBSOCKET_DISCOVERY_AVAILABLE = False
 
-
 # Update root endpoint
 @app.get("/")
 async def root():
@@ -852,35 +838,28 @@ async def root():
         },
     }
 
-
 # Redirect old demo URLs to new locations
 from fastapi.responses import RedirectResponse
-
 
 @app.get("/voice_demo.html")
 async def redirect_voice_demo():
     return RedirectResponse(url="/static/demos/voice_demo.html")
 
-
 @app.get("/automation_demo.html")
 async def redirect_automation_demo():
     return RedirectResponse(url="/static/demos/automation_demo.html")
-
 
 @app.get("/rag_demo.html")
 async def redirect_rag_demo():
     return RedirectResponse(url="/static/demos/rag_demo.html")
 
-
 @app.get("/llm_demo.html")
 async def redirect_llm_demo():
     return RedirectResponse(url="/static/demos/llm_demo.html")
 
-
 @app.get("/memory_dashboard.html")
 async def redirect_memory_dashboard():
     return RedirectResponse(url="/static/demos/memory_dashboard.html")
-
 
 # Health check endpoint
 @app.get("/health")
@@ -935,7 +914,6 @@ async def health_check():
         }
     except Exception as e:
         return {"status": "unhealthy", "error": str(e)}
-
 
 if __name__ == "__main__":
     import uvicorn

@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 # Lazy imports
 _chatbot = None
 
-
 def get_chatbot():
     """Get chatbot instance lazily"""
     global _chatbot
@@ -32,7 +31,6 @@ def get_chatbot():
         except ImportError:
             logger.warning("Claude chatbot not available")
     return _chatbot
-
 
 async def handle_websocket_message(message: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
     """
@@ -67,7 +65,6 @@ async def handle_websocket_message(message: Dict[str, Any], context: Dict[str, A
             'original_message_type': message.get('type', 'unknown')
         }
 
-
 async def handle_chat(message: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
     """Handle chat messages"""
     chatbot = get_chatbot()
@@ -99,7 +96,6 @@ async def handle_chat(message: Dict[str, Any], context: Dict[str, Any] = None) -
             'success': False,
             'error': str(e)
         }
-
 
 async def handle_get_status(message: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
     """Get system status"""
@@ -152,7 +148,6 @@ async def handle_get_status(message: Dict[str, Any], context: Dict[str, Any] = N
             'error': str(e)
         }
 
-
 async def handle_echo(message: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
     """Echo back the message"""
     return {
@@ -161,7 +156,6 @@ async def handle_echo(message: Dict[str, Any], context: Dict[str, Any] = None) -
         'context': context,
         'success': True
     }
-
 
 async def handle_health_check(message: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
     """Perform health check"""
@@ -198,14 +192,12 @@ async def handle_health_check(message: Dict[str, Any], context: Dict[str, Any] =
         'success': True
     }
 
-
 async def handle_ping(message: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
     """Handle ping"""
     return {
         'type': 'pong',
         'success': True
     }
-
 
 async def handle_unknown(message: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
     """Handle unknown message types"""
@@ -216,7 +208,6 @@ async def handle_unknown(message: Dict[str, Any], context: Dict[str, Any] = None
         'supported_types': ['chat', 'get_status', 'echo', 'health_check', 'ping'],
         'success': False
     }
-
 
 # Export for WebSocket integration
 __all__ = ['handle_websocket_message']

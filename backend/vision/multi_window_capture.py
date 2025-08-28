@@ -19,7 +19,6 @@ from .simple_capture import capture_screen_simple, capture_window_area
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class WindowCapture:
     """Captured window data"""
@@ -27,7 +26,6 @@ class WindowCapture:
     image: np.ndarray
     resolution_scale: float
     capture_time: float
-
 
 class MultiWindowCapture:
     """Captures multiple windows with intelligent optimization"""
@@ -424,7 +422,6 @@ class MultiWindowCapture:
             logger.error(f"Simple capture also failed: {e}")
             return None
 
-
 async def test_multi_window_capture():
     """Test multi-window capture system"""
     print("📸 Testing Multi-Window Capture System")
@@ -461,7 +458,6 @@ async def test_multi_window_capture():
         print(f"   Captured: {[c.window_info.app_name for c in captures[:3]]}")
     
     print("\n✅ Multi-window capture test complete!")
-
 
 if __name__ == "__main__":
     asyncio.run(test_multi_window_capture())

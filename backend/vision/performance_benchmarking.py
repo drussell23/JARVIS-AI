@@ -21,7 +21,6 @@ import statistics
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class BenchmarkConfig:
     """Configuration for performance benchmarking"""
@@ -42,7 +41,6 @@ class BenchmarkConfig:
     # Output configuration
     generate_plots: bool = True
     output_dir: Path = field(default_factory=lambda: Path("backend/data/benchmarks"))
-
 
 @dataclass
 class PerformanceMetrics:
@@ -107,7 +105,6 @@ class BenchmarkResult:
     # Raw metrics
     raw_metrics: List[PerformanceMetrics] = field(default_factory=list)
 
-
 class ResourceMonitor:
     """Monitors system resources during benchmarking"""
     
@@ -163,7 +160,6 @@ class ResourceMonitor:
             'monitoring_duration': self.metrics_history[-1]['timestamp'] - self.metrics_history[0]['timestamp']
         }
 
-
 class LatencyProfiler:
     """Profiles latency characteristics"""
     
@@ -216,7 +212,6 @@ class LatencyProfiler:
         plt.tight_layout()
         plt.savefig(output_path / 'latency_distribution.png')
         plt.close()
-
 
 class LoadTester:
     """Performs load testing on capabilities"""
@@ -339,7 +334,6 @@ class LoadTester:
             'p99_latency_ms': np.percentile(latencies, 99) if latencies else 0,
             'error_rate': len(errors) / completed if completed > 0 else 1.0
         }
-
 
 class PerformanceBenchmark:
     """Main performance benchmarking system"""
@@ -708,10 +702,8 @@ class PerformanceBenchmark:
         
         return comparison
 
-
 # Singleton instance
 _performance_benchmark: Optional[PerformanceBenchmark] = None
-
 
 def get_performance_benchmark(config: Optional[BenchmarkConfig] = None) -> PerformanceBenchmark:
     """Get singleton instance of performance benchmark"""

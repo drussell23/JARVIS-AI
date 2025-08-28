@@ -25,7 +25,6 @@ from autonomy.autonomous_behaviors import AutonomousBehaviorManager
 from vision.window_detector import WindowInfo
 from vision.workspace_analyzer import WorkspaceAnalysis
 
-
 class TestEdgeCaseScenarios:
     """Test complex edge case scenarios"""
     
@@ -524,7 +523,6 @@ class TestEdgeCaseScenarios:
         assert all(not isinstance(r, Exception) for r in results)
         assert all(r.status in [ExecutionStatus.SUCCESS, ExecutionStatus.DRY_RUN] for r in results)
 
-
 class TestSystemIntegration:
     """Test full system integration scenarios"""
     
@@ -616,7 +614,6 @@ class TestSystemIntegration:
         meeting_actions = [a for a, _ in executed_actions 
                           if "meeting" in a.reasoning.lower()]
         assert len(meeting_actions) > 0
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])

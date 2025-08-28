@@ -26,7 +26,6 @@ import shutil
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class SystemCheckpoint:
     """System state checkpoint"""
@@ -38,7 +37,6 @@ class SystemCheckpoint:
     configuration: Dict[str, Any]
     partial_results: Optional[List[Any]] = None
 
-
 @dataclass
 class ErrorReport:
     """Error/panic report"""
@@ -49,7 +47,6 @@ class ErrorReport:
     system_state: Dict[str, Any]
     recovery_action: str
     recovered: bool
-
 
 class FaultToleranceSystem:
     """
@@ -491,7 +488,6 @@ class FaultToleranceSystem:
                 ]
             }
 
-
 def fault_tolerant(func: Callable) -> Callable:
     """Decorator for fault-tolerant function execution"""
     @wraps(func)
@@ -505,7 +501,6 @@ def fault_tolerant(func: Callable) -> Callable:
     
     return wrapper
 
-
 # Test functions
 @fault_tolerant
 def risky_operation(should_fail: bool = False):
@@ -513,7 +508,6 @@ def risky_operation(should_fail: bool = False):
     if should_fail:
         raise RuntimeError("Simulated failure in risky operation")
     return "Success"
-
 
 def test_fault_tolerance():
     """Test fault tolerance system"""
@@ -566,7 +560,6 @@ def test_fault_tolerance():
             logger.info(f"   {key}: {value}")
     
     logger.info("\n✅ Fault tolerance test complete")
-
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

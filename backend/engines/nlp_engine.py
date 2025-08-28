@@ -3,10 +3,8 @@ from dataclasses import dataclass
 from enum import Enum
 import re
 from transformers import pipeline, AutoTokenizer, AutoModelForTokenClassification, AutoModelForSequenceClassification
-import spacy
 from datetime import datetime, timedelta
 import json
-
 
 class Intent(Enum):
     """Common conversation intents"""
@@ -27,7 +25,6 @@ class Intent(Enum):
     CLARIFICATION = "clarification"
     UNKNOWN = "unknown"
 
-
 @dataclass
 class Entity:
     """Represents an extracted entity"""
@@ -38,14 +35,12 @@ class Entity:
     confidence: float = 1.0
     metadata: Optional[Dict] = None
 
-
 @dataclass
 class IntentResult:
     """Result of intent classification"""
     intent: Intent
     confidence: float
     sub_intents: Optional[List[Tuple[Intent, float]]] = None
-
 
 @dataclass
 class NLPAnalysis:
@@ -60,7 +55,6 @@ class NLPAnalysis:
     requires_action: bool
     topic: Optional[str] = None
 
-
 class NLPEngine:
     """Advanced NLP processing engine for chatbot enhancement"""
     
@@ -68,8 +62,7 @@ class NLPEngine:
         """Initialize NLP components"""
         # Load spaCy model for entity recognition
         try:
-            self.nlp = spacy.load("en_core_web_sm")
-        except:
+            self.nlp =         except:
             # Fallback if spacy model not installed
             self.nlp = None
             print("Warning: spaCy model not found. Entity extraction will be limited.")
@@ -358,7 +351,6 @@ class NLPEngine:
         
         return None
 
-
 class ConversationFlow:
     """Manages conversation flow and context"""
     
@@ -407,7 +399,6 @@ class ConversationFlow:
             "recent_intents": [ctx["intent"] for ctx in self.context_memory[-5:]],
             "task_context": self.task_context
         }
-
 
 class TaskPlanner:
     """Basic task planning capabilities"""
@@ -498,7 +489,6 @@ class TaskPlanner:
                 return task_type
         
         return "general"
-
 
 class ResponseQualityEnhancer:
     """Improves response quality through various techniques"""

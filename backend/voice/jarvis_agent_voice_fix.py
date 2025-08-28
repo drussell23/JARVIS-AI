@@ -13,7 +13,6 @@ from .intelligent_command_handler import IntelligentCommandHandler
 
 logger = logging.getLogger(__name__)
 
-
 class IntelligentVoiceCommandMixin:
     """
     Mixin to replace keyword-based command routing with intelligent classification
@@ -68,7 +67,6 @@ class IntelligentVoiceCommandMixin:
         """
         logger.warning("_is_system_command called - this should use intelligent routing instead")
         return False
-
 
 def patch_jarvis_voice_agent(agent_class):
     """
@@ -141,7 +139,6 @@ def patch_jarvis_voice_agent(agent_class):
     logger.info("Successfully patched JARVISVoiceAgent with intelligent routing")
     return agent_class
 
-
 # Test the fix
 async def test_intelligent_routing():
     """Test that problematic commands are now routed correctly"""
@@ -166,7 +163,6 @@ async def test_intelligent_routing():
             print(f"   Response: {response[:100]}...")
     
     print("\n✨ The fix resolves the 'open WhatsApp' misrouting issue!")
-
 
 if __name__ == "__main__":
     # Run the test

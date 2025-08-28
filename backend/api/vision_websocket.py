@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-
 class VisionWebSocketManager:
     """Manages WebSocket connections for vision system"""
     
@@ -239,10 +238,8 @@ class VisionWebSocketManager:
             except Exception as e:
                 logger.error(f"Error executing autonomous action: {e}")
 
-
 # Global manager instance
 vision_manager = VisionWebSocketManager()
-
 
 @router.websocket("/ws/vision")
 async def vision_websocket_endpoint(websocket: WebSocket):
@@ -306,7 +303,6 @@ async def vision_websocket_endpoint(websocket: WebSocket):
         logger.error(f"WebSocket error: {e}")
         vision_manager.disconnect(websocket)
 
-
 @router.get("/vision/status")
 async def get_vision_status():
     """Get current vision system status"""
@@ -317,7 +313,6 @@ async def get_vision_status():
         "autonomous_enabled": await vision_manager.jarvis_intelligence.is_autonomous_enabled()
     })
 
-
 @router.post("/vision/start_monitoring")
 async def start_monitoring():
     """Manually start vision monitoring"""
@@ -325,7 +320,6 @@ async def start_monitoring():
         asyncio.create_task(vision_manager.start_monitoring())
         return JSONResponse({"status": "monitoring_started"})
     return JSONResponse({"status": "already_monitoring"})
-
 
 @router.post("/vision/stop_monitoring")
 async def stop_monitoring():

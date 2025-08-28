@@ -22,7 +22,6 @@ from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class RouteMetrics:
     """Performance metrics for a route"""
@@ -35,7 +34,6 @@ class RouteMetrics:
     last_used: Optional[datetime] = None
     confidence_history: List[float] = field(default_factory=list)
     error_types: Dict[str, int] = field(default_factory=dict)
-
 
 @dataclass
 class LearningRecord:
@@ -50,7 +48,6 @@ class LearningRecord:
     context: Dict[str, Any]
     timestamp: datetime
     user_feedback: Optional[Dict[str, Any]] = None
-
 
 class OptimizedTransformerRouter(nn.Module):
     """
@@ -130,7 +127,6 @@ class OptimizedTransformerRouter(nn.Module):
         confidence = self.confidence_head(x_pooled)  # [batch_size, 1]
         
         return route_embedding, confidence.squeeze(), attention_weights
-
 
 class TransformerCommandRouter:
     """
@@ -896,10 +892,8 @@ class TransformerCommandRouter:
         torch.save(state, state_path)
         logger.info("Router state saved")
 
-
 # Singleton instance
 _transformer_router: Optional[TransformerCommandRouter] = None
-
 
 def get_transformer_router() -> TransformerCommandRouter:
     """Get singleton instance of transformer router"""

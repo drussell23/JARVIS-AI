@@ -18,7 +18,6 @@ sys.path.insert(0, str(backend_dir))
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
 def build_cpp_extension():
     """Build the C++ vision ML extension"""
     print("\n🔨 Building C++ Vision ML Extension...")
@@ -50,7 +49,6 @@ def build_cpp_extension():
         print(f"⚠️  Could not build C++ extension: {e}")
         print("   Continuing with Python-only mode...")
         return False
-
 
 def update_command_handlers():
     """Update command handlers to use hybrid vision routing"""
@@ -136,7 +134,6 @@ from .ml_vision_integration import MLVisionIntegration
         
     print("✅ Updated advanced_intelligent_command_handler.py")
 
-
 def update_system_controller():
     """Update system controller to handle misrouted vision commands"""
     print("\n📝 Updating System Controller...")
@@ -190,7 +187,6 @@ def update_system_controller():
         
     print("✅ Updated claude_command_interpreter.py")
 
-
 def create_integration_test():
     """Create comprehensive test for the hybrid system"""
     test_content = '''#!/usr/bin/env python3
@@ -207,7 +203,6 @@ backend_dir = Path(__file__).parent / "backend"
 sys.path.insert(0, str(backend_dir))
 
 from voice.hybrid_vision_router import HybridVisionRouter, DynamicVisionExecutor
-
 
 async def test_hybrid_routing():
     """Test hybrid vision routing system"""
@@ -316,7 +311,6 @@ async def test_hybrid_routing():
     else:
         print("⚠️  Learning did not increase confidence")
 
-
 if __name__ == "__main__":
     asyncio.run(test_hybrid_routing())
 '''
@@ -326,7 +320,6 @@ if __name__ == "__main__":
         f.write(test_content)
         
     print(f"\n📝 Created test script: {test_file}")
-
 
 def main():
     """Apply the complete hybrid vision fix"""
@@ -375,7 +368,6 @@ def main():
     print("  python test_hybrid_vision_fix.py")
     
     print("\n🎯 Restart JARVIS to activate all enhancements!")
-
 
 if __name__ == "__main__":
     main()

@@ -20,7 +20,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-
 class OptimizedLangChainChatbot:
     """Memory-efficient LangChain chatbot using quantized models"""
     
@@ -204,7 +203,6 @@ class OptimizedLangChainChatbot:
                 self.llm.n_ctx = 2048
                 
             logger.info(f"Optimized for {available_gb:.1f}GB available memory")
-
 
 # Create a compatibility wrapper
 class LangChainChatbot(OptimizedLangChainChatbot):

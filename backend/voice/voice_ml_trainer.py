@@ -16,7 +16,6 @@ import asyncio
 import logging
 
 # ML libraries
-from sklearn.ensemble import RandomForestClassifier, IsolationForest
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.cluster import DBSCAN
@@ -740,7 +739,6 @@ Provide 3-5 specific, actionable tips to help this user improve their voice inte
         
         return profile
 
-
 # Integration example
 async def demo_ml_training():
     """Demonstrate ML training system"""
@@ -786,7 +784,6 @@ async def demo_ml_training():
     test_command = "play sum musik"
     predicted = trainer.predict_correction(test_command, 0.6)
     print(f"\nPrediction for '{test_command}': {predicted}")
-
 
 if __name__ == "__main__":
     asyncio.run(demo_ml_training())

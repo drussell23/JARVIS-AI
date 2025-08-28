@@ -15,14 +15,12 @@ import json
 
 logger = logging.getLogger(__name__)
 
-
 class ErrorSeverity(Enum):
     """Severity levels for errors"""
     LOW = auto()      # Minor issues, can be ignored
     MEDIUM = auto()   # Should be addressed but not critical
     HIGH = auto()     # Important errors that affect functionality
     CRITICAL = auto() # System-breaking errors requiring immediate action
-
 
 class ErrorCategory(Enum):
     """Categories of errors"""
@@ -36,7 +34,6 @@ class ErrorCategory(Enum):
     RESOURCE = "resource"
     UNKNOWN = "unknown"
 
-
 class RecoveryStrategy(Enum):
     """Recovery strategies for different error types"""
     RETRY = "retry"                   # Simple retry
@@ -46,7 +43,6 @@ class RecoveryStrategy(Enum):
     SKIP = "skip"                     # Skip the operation
     ALERT_USER = "alert"              # Alert user for manual intervention
     SHUTDOWN = "shutdown"             # Shutdown the system
-
 
 @dataclass
 class ErrorRecord:
@@ -77,7 +73,6 @@ class ErrorRecord:
             'resolution': self.resolution
         }
 
-
 @dataclass 
 class RecoveryAction:
     """Action to take for recovery"""
@@ -88,7 +83,6 @@ class RecoveryAction:
     timeout: float = 30.0
     fallback_action: Optional[Callable] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class ErrorRecoveryManager:
     """Manages error handling and recovery"""
@@ -450,10 +444,8 @@ class ErrorRecoveryManager:
         
         logger.info(f"Cleared resolved errors older than {older_than_hours} hours")
 
-
 # Global error recovery manager
 error_manager = ErrorRecoveryManager()
-
 
 async def test_error_recovery():
     """Test error recovery system"""
@@ -516,7 +508,6 @@ async def test_error_recovery():
             print(f"     {cat}: {count}")
             
     print("\n✅ Error recovery test complete!")
-
 
 if __name__ == "__main__":
     asyncio.run(test_error_recovery())

@@ -16,7 +16,6 @@ from .smart_query_router import SmartQueryRouter
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class WindowLayout:
     """Represents a suggested window layout"""
@@ -25,7 +24,6 @@ class WindowLayout:
     description: str
     benefit: str
     confidence: float
-
 
 @dataclass
 class WorkspaceOptimization:
@@ -53,7 +51,6 @@ class WorkspaceOptimization:
             messages.append(f"Consider closing {len(self.window_cleanup)} unused windows")
         
         return "Sir, " + ". ".join(messages) if messages else "Your workspace is well organized, sir"
-
 
 class WorkspaceOptimizer:
     """Optimizes window arrangements and suggests improvements"""
@@ -639,7 +636,6 @@ class WorkspaceOptimizer:
                            'YouTube', 'Netflix', 'Spotify']
         return any(app in window.app_name for app in distracting_apps)
 
-
 def test_workspace_optimizer():
     """Test workspace optimization"""
     print("🔧 Testing Workspace Optimizer")
@@ -676,7 +672,6 @@ def test_workspace_optimizer():
             print(f"   • {window.app_name} - {window.window_title or 'Untitled'}")
     
     print(f"\n🎙️ JARVIS would say: \"{optimization.to_jarvis_message()}\"")
-
 
 if __name__ == "__main__":
     test_workspace_optimizer()

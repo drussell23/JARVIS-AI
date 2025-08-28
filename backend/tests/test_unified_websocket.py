@@ -15,7 +15,6 @@ from datetime import datetime
 TYPESCRIPT_WS_URL = "ws://localhost:8001"
 PYTHON_BACKEND_URL = "http://localhost:8000"
 
-
 class TestUnifiedWebSocketSystem:
     """Test the complete unified WebSocket system"""
     
@@ -328,7 +327,6 @@ class TestUnifiedWebSocketSystem:
             print(f"Performance: {messages_per_second:.2f} messages/second")
             assert messages_per_second > 10  # Should handle at least 10 msg/sec
 
-
 def run_integration_tests():
     """Run all integration tests"""
     print("🧪 Running Unified WebSocket Integration Tests...")
@@ -361,7 +359,6 @@ def run_integration_tests():
     # Run pytest
     pytest.main([__file__, "-v", "-s"])
     return True
-
 
 if __name__ == "__main__":
     run_integration_tests()

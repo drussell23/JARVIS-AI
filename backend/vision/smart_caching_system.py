@@ -20,7 +20,6 @@ from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class CacheEntry:
     """Single cache entry with metadata"""
@@ -31,7 +30,6 @@ class CacheEntry:
     size_bytes: int = 0
     computation_time: float = 0.0
     accuracy_score: float = 1.0  # For adaptive caching
-
 
 class SmartCache:
     """
@@ -342,7 +340,6 @@ class SmartCache:
             self.stats['current_size'] = 0
             logger.info("All caches cleared")
 
-
 class CachedModel(nn.Module):
     """Wrapper to add caching to any model"""
     
@@ -403,7 +400,6 @@ class CachedModel(nn.Module):
         else:
             return self.model(x)
 
-
 # Decorator for cached functions
 def smart_cache(cache_instance: SmartCache):
     """Decorator to add caching to any function"""
@@ -429,7 +425,6 @@ def smart_cache(cache_instance: SmartCache):
         
         return wrapper
     return decorator
-
 
 # Test function
 def test_smart_cache():
@@ -464,7 +459,6 @@ def test_smart_cache():
     
     # Print stats
     print(f"\nCache stats: {cache.get_stats()}")
-
 
 if __name__ == "__main__":
     test_smart_cache()

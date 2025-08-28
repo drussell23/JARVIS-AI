@@ -18,7 +18,6 @@ import os
 
 logger = logging.getLogger(__name__)
 
-
 class VisionProvider(Protocol):
     """Protocol for vision providers - defines the interface"""
     
@@ -40,7 +39,6 @@ class VisionProvider(Protocol):
         """Get confidence score for a capability"""
         ...
 
-
 @dataclass
 class VisionPlugin:
     """Registered vision plugin"""
@@ -52,7 +50,6 @@ class VisionPlugin:
     enabled: bool = True
     priority: int = 0
     last_used: Optional[datetime] = None
-
 
 class BaseVisionProvider(ABC):
     """Base class for vision providers"""
@@ -89,7 +86,6 @@ class BaseVisionProvider(ABC):
         """Register a capability"""
         self._capabilities.append(name)
         self._confidence_scores[name] = confidence
-
 
 class VisionPluginSystem:
     """
@@ -492,10 +488,8 @@ class VisionPluginSystem:
         if name in self.plugins:
             self.plugins[name].priority = priority
 
-
 # Singleton instance
 _plugin_system = None
-
 
 def get_vision_plugin_system() -> VisionPluginSystem:
     """Get singleton plugin system"""

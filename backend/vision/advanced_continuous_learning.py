@@ -63,7 +63,6 @@ if not _ROBUST_AVAILABLE:
 
     logger = logging.getLogger(__name__)
 
-
     @dataclass
     class LearningTask:
         """Represents a learning task"""
@@ -74,7 +73,6 @@ if not _ROBUST_AVAILABLE:
         created_at: datetime
         metadata: Dict[str, Any] = field(default_factory=dict)
 
-
     @dataclass
     class FederatedUpdate:
         """Update from federated learning"""
@@ -84,7 +82,6 @@ if not _ROBUST_AVAILABLE:
         performance_metrics: Dict[str, float]
         data_statistics: Dict[str, Any]
         timestamp: datetime
-
 
     class AdvancedContinuousLearning:
         """
@@ -636,7 +633,6 @@ if not _ROBUST_AVAILABLE:
             
             logger.info("Advanced Continuous Learning shutdown complete")
 
-
     class AdaptiveLearningRateAdjuster:
         """Automatically adjusts learning rate based on performance"""
         
@@ -684,7 +680,6 @@ if not _ROBUST_AVAILABLE:
                     return self.current_lr * 0.9  # Slightly reduce
             
             return self.current_lr
-
 
     class PerformanceMonitor:
         """Monitor learning performance for decision making"""
@@ -745,10 +740,8 @@ if not _ROBUST_AVAILABLE:
                 'total_recordings': len(self.metrics_history)
             }
 
-
     # Singleton instance
     _advanced_learning: Optional[AdvancedContinuousLearning] = None
-
 
     def get_advanced_continuous_learning(model: nn.Module) -> AdvancedContinuousLearning:
         """Get singleton instance of advanced continuous learning"""

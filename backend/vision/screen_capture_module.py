@@ -31,7 +31,6 @@ else:
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class ScreenCapture:
     """Container for screen capture data"""
@@ -53,7 +52,6 @@ class ScreenCapture:
         self.image.save(buffer, format='JPEG', quality=quality)
         buffer.seek(0)
         return Image.open(buffer)
-
 
 class ScreenCaptureModule:
     """Handles continuous screen capture for JARVIS vision"""
@@ -351,7 +349,6 @@ class ScreenCaptureModule:
             'compression_quality': self.compression_quality
         }
 
-
 async def test_screen_capture():
     """Test screen capture functionality"""
     print("🖥️ Testing Screen Capture Module")
@@ -402,7 +399,6 @@ async def test_screen_capture():
     print(f"   Screens detected: {len(stats['screens'])}")
     
     print("\n✅ Screen capture test complete!")
-
 
 if __name__ == "__main__":
     asyncio.run(test_screen_capture())

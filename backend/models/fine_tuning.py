@@ -22,7 +22,6 @@ from datetime import datetime
 from models.custom_model import CustomChatbotModel, CustomChatbotConfig
 from utils.domain_knowledge import DomainKnowledgeBank, DomainAdapter
 
-
 @dataclass
 class FineTuneConfig:
     """Configuration for fine-tuning"""
@@ -72,7 +71,6 @@ class FineTuneConfig:
     prompt_length: int = 10
     adapter_tuning: bool = True
     adapter_size: int = 64
-
 
 class LoRALayer(nn.Module):
     """Low-Rank Adaptation layer for efficient fine-tuning"""
@@ -143,7 +141,6 @@ class AdapterLayer(nn.Module):
         # Residual connection
         return self.layer_norm(hidden + residual)
 
-
 class PromptTuningEmbedding(nn.Module):
     """Soft prompt embeddings for prompt tuning"""
     
@@ -175,7 +172,6 @@ class PromptTuningEmbedding(nn.Module):
         
         # Prepend prompt to input
         return torch.cat([prompt, input_embeddings], dim=1)
-
 
 class FineTuner:
     """Main class for fine-tuning chatbot models"""
@@ -496,7 +492,6 @@ class FineTuner:
         
         self.logger.info(f"Loaded fine-tuned model from {checkpoint_path}")
 
-
 class DomainSpecificFineTuner(FineTuner):
     """Fine-tuner specialized for domain-specific tasks"""
     
@@ -570,7 +565,6 @@ class DomainSpecificFineTuner(FineTuner):
         self.logger.info(f"Added {len(synthetic_examples)} synthetic examples for {self.domain}")
         
         return dataset
-
 
 # Example usage
 if __name__ == "__main__":

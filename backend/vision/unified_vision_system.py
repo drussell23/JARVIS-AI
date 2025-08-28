@@ -15,7 +15,6 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class VisionRequest:
     """Unified vision request structure"""
@@ -24,7 +23,6 @@ class VisionRequest:
     requirements: List[str] = field(default_factory=list)
     preferences: Dict[str, Any] = field(default_factory=dict)
     timestamp: datetime = field(default_factory=datetime.now)
-
 
 @dataclass
 class VisionResponse:
@@ -37,7 +35,6 @@ class VisionResponse:
     execution_time: float = 0.0
     alternative_responses: List[Dict] = field(default_factory=list)
     learning_feedback: Dict[str, Any] = field(default_factory=dict)
-
 
 class UnifiedVisionSystem:
     """
@@ -429,10 +426,8 @@ class UnifiedVisionSystem:
             }
         }
 
-
 # Singleton instance
 _unified_system = None
-
 
 def get_unified_vision_system() -> UnifiedVisionSystem:
     """Get singleton unified vision system"""

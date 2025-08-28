@@ -31,8 +31,6 @@ from scipy.stats import zscore
 import speech_recognition as sr
 
 # ML libraries
-from sklearn.svm import OneClassSVM
-from sklearn.ensemble import IsolationForest, RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.metrics import precision_recall_fscore_support
@@ -832,7 +830,6 @@ Response:"""
         
         logger.info("System stopped and models saved")
 
-
 # Demo and testing
 async def demo_ml_enhanced_system():
     """Demonstrate the ML enhanced voice system"""
@@ -918,7 +915,6 @@ async def demo_ml_enhanced_system():
     finally:
         # Stop system
         await system.stop()
-
 
 if __name__ == "__main__":
     asyncio.run(demo_ml_enhanced_system())

@@ -20,7 +20,6 @@ import re
 
 logger = logging.getLogger(__name__)
 
-
 class EmotionalState(Enum):
     """Comprehensive emotional states with nuanced understanding"""
     FOCUSED = "focused"
@@ -36,7 +35,6 @@ class EmotionalState(Enum):
     CONTEMPLATIVE = "contemplative"
     NEUTRAL = "neutral"
 
-
 class CognitiveLoad(Enum):
     """User's cognitive load levels"""
     MINIMAL = "minimal"
@@ -44,7 +42,6 @@ class CognitiveLoad(Enum):
     MODERATE = "moderate"
     HIGH = "high"
     OVERLOAD = "overload"
-
 
 class WorkContext(Enum):
     """Detailed work contexts"""
@@ -61,7 +58,6 @@ class WorkContext(Enum):
     BREAK = "break"
     TRANSITION = "transition"
 
-
 @dataclass
 class UserBehaviorSignal:
     """Behavioral signal for understanding user state"""
@@ -70,7 +66,6 @@ class UserBehaviorSignal:
     timestamp: datetime
     confidence: float
     context: Dict[str, Any] = field(default_factory=dict)
-
 
 @dataclass
 class EmotionalProfile:
@@ -82,7 +77,6 @@ class EmotionalProfile:
     coping_mechanisms: List[str] = field(default_factory=list)
     personality_traits: Dict[str, float] = field(default_factory=dict)
 
-
 @dataclass
 class ContextualInsight:
     """Deep insight about user's current context"""
@@ -92,7 +86,6 @@ class ContextualInsight:
     supporting_evidence: List[str]
     recommended_actions: List[Dict[str, Any]]
     impact_prediction: Dict[str, float]
-
 
 class ContextualUnderstandingEngine:
     """
@@ -825,7 +818,6 @@ Keep the response concise and natural."""
             stats['common_work_contexts'] = dict(context_counts)
         
         return stats
-
 
 # Export main class
 __all__ = ['ContextualUnderstandingEngine', 'EmotionalState', 'WorkContext', 

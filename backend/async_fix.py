@@ -5,7 +5,6 @@ Async fix for DynamicChatbot initialization
 import asyncio
 from functools import wraps
 
-
 def defer_async_tasks(func):
     """Decorator to defer async task creation until event loop is running"""
     @wraps(func)
@@ -26,7 +25,6 @@ def defer_async_tasks(func):
                 
         return instance
     return wrapper
-
 
 def start_monitoring_when_ready(chatbot_instance):
     """Start monitoring when the event loop is ready"""

@@ -19,7 +19,6 @@ from system_control.claude_command_interpreter import ClaudeCommandInterpreter
 
 logger = logging.getLogger(__name__)
 
-
 class JARVISAICore:
     """
     Core AI brain for JARVIS - uses Claude API exclusively
@@ -431,10 +430,8 @@ Respond in JSON format."""
             ]
         }
 
-
 # Singleton instance
 _jarvis_ai_core = None
-
 
 def get_jarvis_ai_core() -> JARVISAICore:
     """Get singleton JARVIS AI Core instance"""

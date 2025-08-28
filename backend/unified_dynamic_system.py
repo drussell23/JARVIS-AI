@@ -27,7 +27,6 @@ except ImportError:
     
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class SystemMetrics:
     """Real-time system performance metrics"""
@@ -37,7 +36,6 @@ class SystemMetrics:
     ml_inference_time_ms: float
     active_services: int
     health_score: float
-
 
 class UnifiedDynamicSystem:
     """
@@ -319,10 +317,8 @@ class UnifiedDynamicSystem:
         
         return await python_process()
 
-
 # Global instance
 _unified_system = None
-
 
 def get_unified_system() -> UnifiedDynamicSystem:
     """Get or create unified system instance"""
@@ -330,7 +326,6 @@ def get_unified_system() -> UnifiedDynamicSystem:
     if _unified_system is None:
         _unified_system = UnifiedDynamicSystem()
     return _unified_system
-
 
 # Integration with existing JARVIS APIs
 async def activate_jarvis_ultimate(context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -340,7 +335,6 @@ async def activate_jarvis_ultimate(context: Optional[Dict[str, Any]] = None) -> 
     """
     system = get_unified_system()
     return await system.activate_jarvis_unified(context)
-
 
 # Demo function
 async def demo_unified_system():
@@ -395,7 +389,6 @@ async def demo_unified_system():
     logger.info("  ✓ Always fast (Rust acceleration)")
     logger.info("  ✓ Always smart (ML optimization)")
     logger.info("  ✓ Always available (dynamic activation)")
-
 
 if __name__ == "__main__":
     import sys

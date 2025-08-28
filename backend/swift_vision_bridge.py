@@ -16,7 +16,6 @@ from system_control.dynamic_app_controller import DynamicAppController
 
 logger = logging.getLogger(__name__)
 
-
 class SwiftVisionBridge:
     """
     Bridge between Swift intelligence and Vision capabilities
@@ -297,7 +296,6 @@ class SwiftVisionBridge:
         
         return result
 
-
 async def test_bridge():
     """Test the Swift-Vision bridge"""
     print("🌉 Testing Swift-Vision Bridge")
@@ -346,7 +344,6 @@ async def test_bridge():
     print("• Swift classifies intent → Vision executes analysis")
     print("• Vision detects notifications → Swift handles app control")
     print("• Both systems enhance each other's capabilities")
-
 
 if __name__ == "__main__":
     import asyncio

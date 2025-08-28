@@ -20,7 +20,6 @@ import threading
 
 logger = logging.getLogger(__name__)
 
-
 class LazyModelLoader:
     """Lazy loading wrapper for ML models"""
     
@@ -56,7 +55,6 @@ class LazyModelLoader:
         """Explicitly preload the model"""
         return self.get()
 
-
 @dataclass
 class VisionCapability:
     """Dynamically discovered vision capability"""
@@ -71,7 +69,6 @@ class VisionCapability:
     parameters: Dict[str, Any] = field(default_factory=dict)
     examples: List[str] = field(default_factory=list)
 
-
 @dataclass
 class VisionIntent:
     """ML-analyzed vision intent"""
@@ -83,7 +80,6 @@ class VisionIntent:
     context_clues: Dict[str, Any] = field(default_factory=dict)
     semantic_embedding: Optional[np.ndarray] = None
     predicted_capability: Optional[str] = None
-
 
 class LazyDynamicVisionEngine:
     """
@@ -511,10 +507,8 @@ class LazyDynamicVisionEngine:
             'models_initialized': self._models_loaded
         }
 
-
 # Global instance for easy access
 _lazy_vision_engine = None
-
 
 def get_lazy_vision_engine() -> LazyDynamicVisionEngine:
     """Get or create the global lazy vision engine"""
@@ -522,7 +516,6 @@ def get_lazy_vision_engine() -> LazyDynamicVisionEngine:
     if _lazy_vision_engine is None:
         _lazy_vision_engine = LazyDynamicVisionEngine()
     return _lazy_vision_engine
-
 
 async def initialize_vision_engine_models(executor=None):
     """Initialize vision engine models - called by parallel loader"""

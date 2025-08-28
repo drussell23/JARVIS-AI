@@ -361,7 +361,6 @@ class EnhancedVoiceEngine:
         elif sound_type == 'success':
             print("✅ *success*")
 
-
 class EnhancedJARVISPersonality:
     """Enhanced JARVIS personality with voice-specific intelligence and ML integration"""
     
@@ -700,7 +699,6 @@ class EnhancedJARVISPersonality:
             logger.error(f"Error getting weather data: {e}")
             # Fallback to Claude
             return await self._process_clear_command(command, self._get_context_info())
-
 
 class EnhancedJARVISVoiceAssistant:
     """Enhanced JARVIS Voice Assistant with professional-grade accuracy and ML training"""
@@ -1211,7 +1209,6 @@ Your personalized thresholds have been optimized to reduce false positives by {m
         # Log detailed metrics
         logger.info(f"Detailed ML Performance Metrics: {json.dumps(metrics, indent=2)}")
 
-
 async def main():
     """Main entry point"""
     # Get API key from environment
@@ -1231,7 +1228,6 @@ async def main():
     except Exception as e:
         logger.error(f"Error: {e}")
         print(f"Error: {e}")
-
 
 if __name__ == "__main__":
     asyncio.run(main())

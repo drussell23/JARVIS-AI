@@ -21,7 +21,6 @@ from chatbots.claude_chatbot import ClaudeChatbot
 
 logger = logging.getLogger(__name__)
 
-
 class IntelligentCommandHandler:
     """
     Handles commands using Swift-based intelligent classification

@@ -30,7 +30,6 @@ from autonomy.action_executor import ActionExecutor
 
 logger = logging.getLogger(__name__)
 
-
 class JARVISWorkspaceIntelligence:
     """Integrates workspace awareness into JARVIS"""
     
@@ -728,13 +727,11 @@ class JARVISWorkspaceIntelligence:
         else:
             return "I can enable/disable autonomous mode, show status, rollback actions, or show permission statistics."
 
-
 # Integration function for JARVIS voice system
 async def process_workspace_query(query: str) -> str:
     """Process workspace-aware queries for JARVIS"""
     workspace_intel = JARVISWorkspaceIntelligence()
     return await workspace_intel.handle_workspace_command(query)
-
 
 async def test_jarvis_workspace():
     """Test JARVIS workspace integration"""
@@ -782,7 +779,6 @@ async def test_jarvis_workspace():
     workspace_intel.stop_monitoring()
     
     print("\n✅ JARVIS workspace intelligence test complete!")
-
 
 if __name__ == "__main__":
     asyncio.run(test_jarvis_workspace())

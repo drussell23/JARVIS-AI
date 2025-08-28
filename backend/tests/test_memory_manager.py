@@ -17,7 +17,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
 class MockComponent:
     """Mock component that uses specified amount of memory"""
 
@@ -32,7 +31,6 @@ class MockComponent:
         """Cleanup method called when unloading"""
         logger.info(f"Cleaning up {self.name}")
         self.data = None
-
 
 async def test_basic_functionality():
     """Test basic memory manager functionality"""
@@ -76,7 +74,6 @@ async def test_basic_functionality():
 
     # Cleanup
     await manager.cleanup()
-
 
 async def test_memory_pressure():
     """Test behavior under memory pressure"""
@@ -134,7 +131,6 @@ async def test_memory_pressure():
     # Cleanup
     await manager.cleanup()
 
-
 async def test_emergency_scenarios():
     """Test emergency memory management"""
     logger.info("\n=== Testing Emergency Scenarios ===")
@@ -181,7 +177,6 @@ async def test_emergency_scenarios():
     # Cleanup
     await manager.cleanup()
 
-
 async def test_memory_prediction():
     """Test memory prediction accuracy"""
     logger.info("\n=== Testing Memory Prediction ===")
@@ -222,7 +217,6 @@ async def test_memory_prediction():
 
     await manager.cleanup()
 
-
 async def run_all_tests():
     """Run all memory manager tests"""
     print("Starting Memory Manager Tests...\n")
@@ -254,7 +248,6 @@ async def run_all_tests():
         import traceback
 
         traceback.print_exc()
-
 
 if __name__ == "__main__":
     asyncio.run(run_all_tests())

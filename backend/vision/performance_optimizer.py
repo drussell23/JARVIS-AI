@@ -16,14 +16,12 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 class RequestComplexity(Enum):
     """Dynamically determined request complexity levels"""
     CONFIRMATION = "confirmation"  # Simple yes/no vision check
     BASIC_ANALYSIS = "basic"       # What's on screen
     DETAILED_ANALYSIS = "detailed"  # Complex analysis
     CONTINUOUS_MONITORING = "monitoring"  # Ongoing analysis
-
 
 @dataclass
 class PerformanceConfig:
@@ -56,7 +54,6 @@ class PerformanceConfig:
     enable_circuit_breaker: bool = True
     failure_threshold: int = 3
     recovery_timeout: int = 30
-
 
 class SmartCache:
     """Intelligent caching system for vision responses"""
@@ -106,7 +103,6 @@ class SmartCache:
         total = self.hits + self.misses
         return self.hits / total if total > 0 else 0.0
 
-
 class CircuitBreaker:
     """Circuit breaker for external service calls"""
     
@@ -144,7 +140,6 @@ class CircuitBreaker:
                 logger.warning(f"Circuit breaker opened for {operation_name} after {self.failure_count} failures")
             
             raise
-
 
 class VisionPerformanceOptimizer:
     """Main performance optimizer for vision system"""
@@ -484,7 +479,6 @@ class VisionPerformanceOptimizer:
                 'parallel_enabled': self.config.enable_parallel_processing
             }
         }
-
 
 # Global optimizer instance
 _optimizer = None

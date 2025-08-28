@@ -21,7 +21,6 @@ from .window_relationship_detector import WindowRelationshipDetector, WindowRela
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class WorkflowPattern:
     """Represents a learned workflow pattern"""
@@ -35,7 +34,6 @@ class WorkflowPattern:
     last_seen: datetime
     created_at: datetime
 
-
 @dataclass
 class WindowSession:
     """Represents a window configuration session"""
@@ -46,7 +44,6 @@ class WindowSession:
     duration_minutes: int = 0
     user_activity: str = "unknown"  # coding, meeting, research, etc.
 
-
 @dataclass
 class WorkflowPrediction:
     """Prediction about missing windows or relationships"""
@@ -55,7 +52,6 @@ class WorkflowPrediction:
     description: str
     suggested_apps: List[str] = field(default_factory=list)
     evidence: List[str] = field(default_factory=list)
-
 
 class WorkflowLearningSystem:
     """Learns and predicts user workflow patterns"""
@@ -539,7 +535,6 @@ class WorkflowLearningSystem:
         except Exception as e:
             logger.error(f"Error saving patterns: {e}")
 
-
 def test_workflow_learning():
     """Test workflow learning system"""
     print("🧠 Testing Workflow Learning System")
@@ -597,7 +592,6 @@ def test_workflow_learning():
         print("   No new patterns found (need more sessions)")
     
     print("\n✅ Workflow learning test complete!")
-
 
 if __name__ == "__main__":
     test_workflow_learning()

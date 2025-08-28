@@ -16,7 +16,6 @@ from vision.smart_query_router import SmartQueryRouter, QueryIntent
 from vision.multi_window_capture import MultiWindowCapture
 import platform
 
-
 class TestVisionIntegration(unittest.TestCase):
     """Integration tests with actual window detection"""
     
@@ -221,7 +220,6 @@ class TestVisionIntegration(unittest.TestCase):
         # Test passes if we handled all windows (success or graceful failure)
         self.assertEqual(captured + failed, len(windows), "All windows should be processed")
 
-
 class TestDynamicContentAnalysis(unittest.TestCase):
     """Test dynamic analysis of visual content"""
     
@@ -315,7 +313,6 @@ class TestDynamicContentAnalysis(unittest.TestCase):
         # Test passes if most intents are correct
         self.assertGreater(successes / len(results), 0.7, "At least 70% of intents should be correct")
 
-
 def run_integration_tests():
     """Run all integration tests"""
     # Create test suite
@@ -330,7 +327,6 @@ def run_integration_tests():
     result = runner.run(suite)
     
     return result.wasSuccessful()
-
 
 async def run_async_integration_tests():
     """Run async integration tests"""
@@ -351,7 +347,6 @@ async def run_async_integration_tests():
         print("⚠️  Skipping async tests (requires macOS)")
     
     return True
-
 
 if __name__ == "__main__":
     print("🧪 Running JARVIS Vision Integration Tests")

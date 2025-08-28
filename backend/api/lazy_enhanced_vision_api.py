@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/vision", tags=["vision"])
 
-
 class LazyEnhancedVisionWebSocketManager:
     """Manages WebSocket connections with lazy initialization"""
     
@@ -250,10 +249,8 @@ class LazyEnhancedVisionWebSocketManager:
                 "error": f"Unknown message type: {msg_type}"
             })
 
-
 # Create manager instance
 manager = LazyEnhancedVisionWebSocketManager()
-
 
 @router.websocket("/ws/vision")
 async def vision_websocket_endpoint(websocket: WebSocket):
@@ -274,7 +271,6 @@ async def vision_websocket_endpoint(websocket: WebSocket):
         logger.error(f"WebSocket error: {e}")
         await manager.disconnect(websocket)
 
-
 @router.post("/start_monitoring")
 async def start_monitoring():
     """Start continuous vision monitoring"""
@@ -285,7 +281,6 @@ async def start_monitoring():
     except ImportError:
         return await manager.start_monitoring()
 
-
 @router.post("/stop_monitoring") 
 async def stop_monitoring():
     """Stop continuous vision monitoring"""
@@ -295,7 +290,6 @@ async def stop_monitoring():
         return await endpoint(manager.stop_monitoring)()
     except ImportError:
         return await manager.stop_monitoring()
-
 
 @router.get("/status")
 async def get_vision_status():

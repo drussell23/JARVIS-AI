@@ -21,7 +21,6 @@ from .workspace_analyzer import WorkspaceAnalyzer
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class WindowFeatures:
     """ML features extracted from window metadata"""
@@ -34,7 +33,6 @@ class WindowFeatures:
     relevance_scores: Dict[str, float] = field(default_factory=dict)
     activity_signals: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class DynamicWindowAnalysis:
     """Result of dynamic window analysis"""
@@ -43,7 +41,6 @@ class DynamicWindowAnalysis:
     relevance_map: Dict[str, float]
     analysis_confidence: float
     reasoning: str
-
 
 class DynamicMultiWindowEngine:
     """
@@ -531,10 +528,8 @@ class DynamicMultiWindowEngine:
         except Exception as e:
             logger.error(f"Error loading learned patterns: {e}")
 
-
 # Singleton instance
 _engine = None
-
 
 def get_dynamic_multi_window_engine() -> DynamicMultiWindowEngine:
     """Get singleton dynamic multi-window engine"""
@@ -542,7 +537,6 @@ def get_dynamic_multi_window_engine() -> DynamicMultiWindowEngine:
     if _engine is None:
         _engine = DynamicMultiWindowEngine()
     return _engine
-
 
 async def test_dynamic_multi_window():
     """Test the dynamic multi-window engine"""
@@ -590,7 +584,6 @@ async def test_dynamic_multi_window():
             for window in analysis.context_windows[:3]:
                 score = analysis.relevance_map.get(window.window_id, 0)
                 print(f"    • {window.app_name}: {score:.0%} relevance")
-
 
 if __name__ == "__main__":
     import asyncio

@@ -17,7 +17,6 @@ from vision.window_detector import WindowInfo
 from vision.multi_window_capture import WindowCapture
 from vision.smart_query_router import QueryRoute, QueryIntent
 
-
 class TestDynamicVisualAnalysis(unittest.TestCase):
     """Test dynamic analysis capabilities"""
     
@@ -332,7 +331,6 @@ class TestDynamicVisualAnalysis(unittest.TestCase):
         self.assertEqual(analysis.confidence, 0.5)  # Lower confidence for fallback
         self.assertGreater(len(analysis.important_notifications), 0)  # Should detect the (3)
 
-
 class TestVisualIndicatorPatterns(unittest.TestCase):
     """Test detection of various visual indicator patterns"""
     
@@ -411,7 +409,6 @@ class TestVisualIndicatorPatterns(unittest.TestCase):
                     self.assertTrue(has_numeric or has_parens or has_arabic or has_chinese or has_russian or has_japanese or has_hindi,
                                   f"'{title}' should have some indicator")
 
-
 def run_dynamic_analysis_tests():
     """Run all dynamic visual analysis tests"""
     # Create test suite
@@ -427,7 +424,6 @@ def run_dynamic_analysis_tests():
     
     return result.wasSuccessful()
 
-
 async def run_async_tests():
     """Run async test methods"""
     test = TestDynamicVisualAnalysis()
@@ -440,7 +436,6 @@ async def run_async_tests():
     except Exception as e:
         print(f"\n❌ Async test failed: {e}")
         return False
-
 
 if __name__ == "__main__":
     print("🎨 Running Dynamic Visual Analysis Tests")

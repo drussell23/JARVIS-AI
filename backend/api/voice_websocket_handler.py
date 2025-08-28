@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 _voice_system = None
 _jarvis_voice = None
 
-
 def get_voice_system():
     """Get voice system instance lazily"""
     global _voice_system
@@ -28,7 +27,6 @@ def get_voice_system():
         except ImportError:
             logger.warning("ML Enhanced Voice System not available")
     return _voice_system
-
 
 def get_jarvis_voice():
     """Get JARVIS voice instance lazily"""
@@ -41,10 +39,8 @@ def get_jarvis_voice():
             logger.warning("JARVIS Agent Voice not available")
     return _jarvis_voice
 
-
 # Active audio streams
 audio_streams: Dict[str, Dict[str, Any]] = {}
-
 
 async def handle_websocket_message(message: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
     """
@@ -83,7 +79,6 @@ async def handle_websocket_message(message: Dict[str, Any], context: Dict[str, A
             'original_message_type': message.get('type', 'unknown')
         }
 
-
 async def handle_start_listening(message: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
     """Start listening for voice input"""
     voice_system = get_voice_system()
@@ -113,7 +108,6 @@ async def handle_start_listening(message: Dict[str, Any], context: Dict[str, Any
             'error': str(e)
         }
 
-
 async def handle_stop_listening(message: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
     """Stop listening for voice input"""
     voice_system = get_voice_system()
@@ -129,7 +123,6 @@ async def handle_stop_listening(message: Dict[str, Any], context: Dict[str, Any]
         'listening': False,
         'message': 'Stopped listening'
     }
-
 
 async def handle_process_audio(message: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
     """Process audio data"""
@@ -175,7 +168,6 @@ async def handle_process_audio(message: Dict[str, Any], context: Dict[str, Any] 
             'error': str(e)
         }
 
-
 async def handle_voice_command(message: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
     """Handle voice command"""
     jarvis = get_jarvis_voice()
@@ -208,7 +200,6 @@ async def handle_voice_command(message: Dict[str, Any], context: Dict[str, Any] 
             'success': False,
             'error': str(e)
         }
-
 
 async def handle_set_voice(message: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
     """Set voice settings"""
@@ -250,7 +241,6 @@ async def handle_set_voice(message: Dict[str, Any], context: Dict[str, Any] = No
             'error': str(e)
         }
 
-
 async def handle_get_voices(message: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
     """Get available voices"""
     voice_system = get_voice_system()
@@ -279,7 +269,6 @@ async def handle_get_voices(message: Dict[str, Any], context: Dict[str, Any] = N
             'error': str(e)
         }
 
-
 async def handle_start_stream(message: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
     """Start audio streaming session"""
     stream_id = message.get('stream_id', f"stream_{datetime.now().timestamp()}")
@@ -298,7 +287,6 @@ async def handle_start_stream(message: Dict[str, Any], context: Dict[str, Any] =
         'stream_id': stream_id,
         'success': True
     }
-
 
 async def handle_audio_chunk(message: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
     """Handle audio chunk in stream"""
@@ -343,7 +331,6 @@ async def handle_audio_chunk(message: Dict[str, Any], context: Dict[str, Any] = 
             'success': False,
             'error': str(e)
         }
-
 
 async def handle_end_stream(message: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
     """End audio streaming session and process complete audio"""
@@ -397,7 +384,6 @@ async def handle_end_stream(message: Dict[str, Any], context: Dict[str, Any] = N
             'error': str(e)
         }
 
-
 async def handle_unknown(message: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
     """Handle unknown message types"""
     logger.warning(f"Unknown voice message type: {message.get('type')}")
@@ -411,7 +397,6 @@ async def handle_unknown(message: Dict[str, Any], context: Dict[str, Any] = None
         ],
         'success': False
     }
-
 
 # Export for WebSocket integration
 __all__ = ['handle_websocket_message', 'audio_streams']

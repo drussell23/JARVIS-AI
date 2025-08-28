@@ -27,7 +27,6 @@ except ImportError as e:
 
 logger = logging.getLogger(__name__)
 
-
 class RustVisionProcessor:
     """High-performance vision processing using Rust extension"""
 
@@ -204,7 +203,6 @@ class RustVisionProcessor:
         logger.info(f"  Speedup: {speedup:.2f}x")
 
         return results
-
 
 # Test the processor
 if __name__ == "__main__":

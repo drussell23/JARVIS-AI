@@ -42,7 +42,6 @@ class RustAcceleratedConfig:
     vision_threads: int = 4
     max_buffer_pools: int = 100
 
-
 class RustAcceleratedContinuousLearning:
     """
     High-performance continuous learning using Rust acceleration
@@ -303,10 +302,8 @@ class RustAcceleratedContinuousLearning:
         
         logger.info("Rust-accelerated learning shutdown complete")
 
-
 # Singleton instance
 _rust_accelerated: Optional[RustAcceleratedContinuousLearning] = None
-
 
 def get_rust_accelerated_learning(model) -> RustAcceleratedContinuousLearning:
     """Get singleton instance of Rust-accelerated learning"""
@@ -314,7 +311,6 @@ def get_rust_accelerated_learning(model) -> RustAcceleratedContinuousLearning:
     if _rust_accelerated is None:
         _rust_accelerated = RustAcceleratedContinuousLearning(model)
     return _rust_accelerated
-
 
 def benchmark_rust_vs_python():
     """Benchmark Rust performance improvements"""
@@ -399,7 +395,6 @@ def benchmark_rust_vs_python():
     
     print("\n✅ Rust acceleration provides significant performance gains!")
     print("=" * 50)
-
 
 if __name__ == "__main__":
     # Run benchmarks if executed directly

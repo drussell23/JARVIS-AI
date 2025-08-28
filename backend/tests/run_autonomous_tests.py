@@ -22,13 +22,11 @@ class Colors:
     BOLD = '\033[1m'
     ENDC = '\033[0m'
 
-
 def print_header(title):
     """Print a formatted header"""
     print(f"\n{Colors.BLUE}{'='*60}")
     print(f"{Colors.BOLD}{title}{Colors.ENDC}")
     print(f"{Colors.BLUE}{'='*60}{Colors.ENDC}")
-
 
 async def run_behavior_tests():
     """Run autonomous behavior functionality tests"""
@@ -65,7 +63,6 @@ async def run_behavior_tests():
         print(f"{Colors.RED}❌ Error running behavior tests: {e}{Colors.ENDC}")
         return False
 
-
 async def run_edge_case_tests():
     """Run edge case integration tests"""
     print_header("🔥 EDGE CASE INTEGRATION TESTS")
@@ -96,7 +93,6 @@ async def run_edge_case_tests():
     except Exception as e:
         print(f"{Colors.RED}❌ Error running edge case tests: {e}{Colors.ENDC}")
         return False
-
 
 async def run_quick_demo():
     """Run a quick demonstration of autonomous behaviors"""
@@ -255,7 +251,6 @@ async def run_quick_demo():
         traceback.print_exc()
         return False
 
-
 async def main():
     """Main test runner"""
     print(f"\n{Colors.BOLD}🤖 JARVIS AUTONOMOUS SYSTEM TEST SUITE{Colors.ENDC}")
@@ -301,7 +296,6 @@ async def main():
     else:
         print(f"{Colors.RED}\n⚠️  Some tests failed. Please review the output above.{Colors.ENDC}")
         return 1
-
 
 if __name__ == "__main__":
     # Run tests

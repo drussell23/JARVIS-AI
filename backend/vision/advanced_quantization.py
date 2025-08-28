@@ -16,14 +16,12 @@ import struct
 
 logger = logging.getLogger(__name__)
 
-
 class QuantizationType(Enum):
     """Quantization types supported"""
     INT4 = 4
     INT8 = 8
     FP16 = 16
     DYNAMIC = -1  # Dynamic selection based on layer
-
 
 @dataclass 
 class QuantizationConfig:
@@ -33,7 +31,6 @@ class QuantizationConfig:
     pruning_sparsity: float = 0.5   # 50% sparsity target
     calibration_samples: int = 100
     optimize_for_hardware: bool = True  # M1 optimizations
-
 
 class QuantizedTensor:
     """Advanced quantized tensor with multiple precision support"""
@@ -123,7 +120,6 @@ class QuantizedTensor:
             return self.quantized.numel() * 2  # 16 bits per element
         return 0
 
-
 class QuantizedLinear(nn.Module):
     """Quantized Linear layer with mixed precision support"""
     
@@ -183,7 +179,6 @@ class QuantizedLinear(nn.Module):
         output = F.linear(x, weight_dequant, self.bias)
         
         return output
-
 
 class ModelPruner:
     """Prune model weights to reduce parameters by 50%"""
@@ -281,7 +276,6 @@ class ModelPruner:
         
         return importance_scores
 
-
 class DynamicQuantizer:
     """Dynamic quantization based on layer sensitivity"""
     
@@ -348,7 +342,6 @@ class DynamicQuantizer:
         
         return 0.0
 
-
 class QuantizationAwareTraining:
     """Quantization-aware training utilities"""
     
@@ -370,7 +363,6 @@ class QuantizationAwareTraining:
         
         # Straight-through estimator for gradients
         return tensor + (tensor_deq - tensor).detach()
-
 
 def create_quantized_model(model: nn.Module, 
                          config: QuantizationConfig,
@@ -419,7 +411,6 @@ def create_quantized_model(model: nn.Module,
     
     return model
 
-
 # Test function
 def test_quantization():
     """Test quantization system"""
@@ -449,7 +440,6 @@ def test_quantization():
     
     print(f"Output shape: {output.shape}")
     print(f"Model size reduction: ~75% (INT8 + 50% pruning)")
-
 
 if __name__ == "__main__":
     test_quantization()

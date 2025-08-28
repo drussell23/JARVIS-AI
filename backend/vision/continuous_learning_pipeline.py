@@ -22,7 +22,6 @@ import time
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class LearningEvent:
     """Single learning event in the pipeline"""
@@ -56,7 +55,6 @@ class PerformanceWindow:
     p95_latency_ms: float = 0.0
     p99_latency_ms: float = 0.0
     error_types: Dict[str, int] = field(default_factory=dict)
-
 
 class OnlineLearner(nn.Module):
     """Neural network that supports online learning"""
@@ -100,7 +98,6 @@ class OnlineLearner(nn.Module):
         
         self.loss_history.append(loss.item())
         return loss.item()
-
 
 class ContinuousLearningPipeline:
     """
@@ -674,10 +671,8 @@ class ContinuousLearningPipeline:
         
         logger.info("Continuous Learning Pipeline shutdown complete")
 
-
 # Singleton instance
 _learning_pipeline: Optional[ContinuousLearningPipeline] = None
-
 
 def get_learning_pipeline() -> ContinuousLearningPipeline:
     """Get singleton instance of learning pipeline"""

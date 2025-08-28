@@ -16,7 +16,6 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class VisionActionResult:
     """Result of a vision action"""
@@ -26,7 +25,6 @@ class VisionActionResult:
     error: Optional[str] = None
     confidence: float = 1.0
     alternative_actions: List[str] = None
-
 
 @dataclass
 class DynamicAction:
@@ -39,7 +37,6 @@ class DynamicAction:
     success_rate: float = 0.0
     usage_count: int = 0
     learned_patterns: List[str] = field(default_factory=list)
-
 
 class VisionActionHandler:
     """Dynamic vision action handler with ML-based routing"""
@@ -669,13 +666,11 @@ class VisionActionHandler:
                 data={'analysis_type': 'multi_window'}
             )
 
-
 # Import os for env vars
 import os
 
 # Singleton instance
 _vision_handler = None
-
 
 def get_vision_action_handler() -> VisionActionHandler:
     """Get singleton vision action handler"""

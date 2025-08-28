@@ -22,7 +22,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-
 class IntegratedMLAudioHandler(MLAudioHandler):
     """
     Enhanced ML Audio Handler with Rust acceleration
@@ -289,7 +288,6 @@ class IntegratedMLAudioHandler(MLAudioHandler):
         
         return stats
 
-
 # Wrapper for seamless integration
 async def create_integrated_handler(existing_handler: Optional[MLAudioHandler] = None) -> IntegratedMLAudioHandler:
     """
@@ -311,7 +309,6 @@ async def create_integrated_handler(existing_handler: Optional[MLAudioHandler] =
         logger.info("Created new IntegratedMLAudioHandler")
     
     return integrated
-
 
 # Demo function
 async def demo_integrated_processing():
@@ -361,7 +358,6 @@ async def demo_integrated_processing():
         logger.info(f"  Python baseline: {stats['performance_improvement']['baseline_ms']}ms")
     
     logger.info(f"\nRust Acceleration Factor: {stats['rust_stats']['rust_acceleration_factor']}x")
-
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(message)s')

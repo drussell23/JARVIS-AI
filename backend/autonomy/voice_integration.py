@@ -40,7 +40,6 @@ from vision.enhanced_monitoring import EnhancedWorkspaceMonitor
 
 logger = logging.getLogger(__name__)
 
-
 class VoiceInteractionType(Enum):
     """Types of voice interactions"""
     ANNOUNCEMENT = "announcement"
@@ -51,7 +50,6 @@ class VoiceInteractionType(Enum):
     PROACTIVE_SUGGESTION = "proactive_suggestion"
     EMERGENCY_ALERT = "emergency_alert"
 
-
 class VoicePersonality(Enum):
     """Voice personality modes"""
     PROFESSIONAL = "professional"
@@ -60,7 +58,6 @@ class VoicePersonality(Enum):
     DETAILED = "detailed"
     CONTEXTUAL = "contextual"
 
-
 class ApprovalResponse(Enum):
     """User approval responses"""
     APPROVED = "approved"
@@ -68,7 +65,6 @@ class ApprovalResponse(Enum):
     CLARIFICATION_NEEDED = "clarification_needed"
     DEFER = "defer"
     CANCEL = "cancel"
-
 
 @dataclass
 class VoiceContext:
@@ -81,7 +77,6 @@ class VoiceContext:
     environment_noise_level: float = 0.5
     user_availability: bool = True
     urgency_threshold: float = 0.7
-
 
 @dataclass
 class VoiceAnnouncement:
@@ -101,7 +96,6 @@ class VoiceAnnouncement:
             return datetime.now() > self.expiry_time
         return False
 
-
 @dataclass
 class ConversationState:
     """Current conversation state"""
@@ -112,7 +106,6 @@ class ConversationState:
     awaiting_response: bool = False
     conversation_id: str = ""
     personality_mode: VoicePersonality = VoicePersonality.CONTEXTUAL
-
 
 class VoiceAnnouncementSystem:
     """
@@ -361,7 +354,6 @@ Generate the announcement:"""
             logger.error(f"Error delivering approval announcement: {e}")
             return ApprovalResponse.DENIED
 
-
 class NaturalVoiceCommunication:
     """
     Natural conversational voice system with context awareness
@@ -570,7 +562,6 @@ Generate the approval request:"""
         except Exception as e:
             logger.error(f"Error listening for approval: {e}")
             return ApprovalResponse.DENIED
-
 
 class VoiceIntegrationSystem:
     """
@@ -902,7 +893,6 @@ Generate greeting:"""
             'system_active': self.is_active
         }
 
-
 # Testing and demonstration functions
 async def test_voice_integration():
     """Test the voice integration system"""
@@ -968,7 +958,6 @@ async def test_voice_integration():
     except Exception as e:
         print(f"❌ Error during test: {e}")
         logger.error(f"Voice integration test error: {e}")
-
 
 if __name__ == "__main__":
     # Set up logging

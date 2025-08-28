@@ -27,7 +27,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-
 class RustAccelerator:
     """Main interface for Rust acceleration in JARVIS."""
     
@@ -132,7 +131,6 @@ class RustAccelerator:
         
         return self.runtime_manager.stats()
 
-
 class RustImageProcessor:
     """Hardware-accelerated image processing using Rust."""
     
@@ -171,7 +169,6 @@ class RustImageProcessor:
         # This would need to be implemented in Rust
         # For now, use the process_batch as example
         return self.process_batch(images)
-
 
 class RustQuantizedModel:
     """Quantized ML model for memory-efficient inference."""
@@ -228,7 +225,6 @@ class RustQuantizedModel:
         """
         return jarvis_rust_core.quantize_model_weights(weights)
 
-
 class RustMemoryMonitor:
     """Monitor and prevent memory leaks."""
     
@@ -280,7 +276,6 @@ class RustMemoryMonitor:
                     logger.warning("Leak: %s", leak)
             
             await asyncio.sleep(self.check_interval)
-
 
 def benchmark_rust_performance():
     """Benchmark Rust acceleration performance."""
@@ -343,10 +338,8 @@ def benchmark_rust_performance():
     print("\nRuntime statistics:")
     print(accelerator.get_runtime_stats())
 
-
 # Global accelerator instance
 _global_accelerator: Optional[RustAccelerator] = None
-
 
 def initialize_rust_acceleration(**kwargs) -> RustAccelerator:
     """
@@ -363,11 +356,9 @@ def initialize_rust_acceleration(**kwargs) -> RustAccelerator:
     
     return _global_accelerator
 
-
 def get_rust_accelerator() -> Optional[RustAccelerator]:
     """Get global Rust accelerator instance."""
     return _global_accelerator
-
 
 if __name__ == "__main__":
     # Run benchmark

@@ -14,7 +14,6 @@ import json
 
 logger = logging.getLogger(__name__)
 
-
 class SystemState(Enum):
     """Overall system states"""
     INITIALIZING = auto()
@@ -27,7 +26,6 @@ class SystemState(Enum):
     PAUSED = auto()
     SHUTDOWN = auto()
 
-
 class ComponentState(Enum):
     """Individual component states"""
     NOT_INITIALIZED = auto()
@@ -36,7 +34,6 @@ class ComponentState(Enum):
     BUSY = auto()
     ERROR = auto()
     OFFLINE = auto()
-
 
 class TransitionReason(Enum):
     """Reasons for state transitions"""
@@ -47,7 +44,6 @@ class TransitionReason(Enum):
     TIMEOUT = "timeout"
     COMPLETION = "completion"
     EXTERNAL_TRIGGER = "external_trigger"
-
 
 @dataclass
 class StateTransition:
@@ -76,7 +72,6 @@ class ComponentStatus:
     @property
     def needs_attention(self) -> bool:
         return self.state == ComponentState.ERROR or self.health_score < 0.5 or self.error_count > 5
-
 
 class SystemStateManager:
     """Manages system states and transitions"""
@@ -410,10 +405,8 @@ class SystemStateManager:
             TransitionReason.USER_REQUEST
         )
 
-
 # Global state manager instance
 state_manager = SystemStateManager()
-
 
 async def test_state_system():
     """Test the state management system"""
@@ -476,7 +469,6 @@ async def test_state_system():
     print(f"   State History: {len(manager.state_history)} transitions")
     
     print("\n✅ State system test complete!")
-
 
 if __name__ == "__main__":
     asyncio.run(test_state_system())

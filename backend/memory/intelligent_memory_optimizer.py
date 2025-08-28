@@ -24,7 +24,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-
 class ProcessInfo:
     """Information about a process that can be managed"""
 
@@ -147,7 +146,6 @@ class ProcessInfo:
                 return True
 
         return False
-
 
 class IntelligentMemoryOptimizer:
     """Advanced memory optimization for JARVIS"""
@@ -648,7 +646,6 @@ class IntelligentMemoryOptimizer:
 
         return suggestions[:5]  # Return top 5 suggestions
 
-
 # Integration with JARVIS
 class MemoryOptimizationAPI:
     """API endpoints for memory optimization"""
@@ -679,7 +676,6 @@ class MemoryOptimizationAPI:
             "suggestions": suggestions,
             "current_memory_percent": psutil.virtual_memory().percent,
         }
-
 
 if __name__ == "__main__":
     # Test the optimizer

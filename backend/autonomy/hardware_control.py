@@ -19,7 +19,6 @@ import re
 
 logger = logging.getLogger(__name__)
 
-
 class HardwareComponent(Enum):
     """Hardware components that can be controlled"""
     CAMERA = "camera"
@@ -32,14 +31,12 @@ class HardwareComponent(Enum):
     TRACKPAD = "trackpad"
     EXTERNAL_DISPLAY = "external_display"
 
-
 class ControlMode(Enum):
     """Control modes for hardware"""
     AUTOMATIC = "automatic"
     MANUAL = "manual"
     SCHEDULED = "scheduled"
     CONTEXT_AWARE = "context_aware"
-
 
 @dataclass
 class HardwareState:
@@ -49,7 +46,6 @@ class HardwareState:
     settings: Dict[str, Any]
     last_changed: datetime
     controlled_by_jarvis: bool = False
-
 
 @dataclass
 class HardwareControlDecision:
@@ -61,7 +57,6 @@ class HardwareControlDecision:
     context: str
     confidence: float
     user_benefit: str
-
 
 class HardwareControlSystem:
     """
@@ -725,7 +720,6 @@ Respond with:
             }
         
         return status
-
 
 # Export main class
 __all__ = ['HardwareControlSystem', 'HardwareComponent', 'ControlMode']

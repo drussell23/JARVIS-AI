@@ -37,7 +37,6 @@ except ImportError:
     
 logger = logging.getLogger(__name__)
 
-
 class NavigationAction(Enum):
     """Types of navigation actions"""
     SWITCH_WINDOW = "switch_window"
@@ -55,7 +54,6 @@ class NavigationAction(Enum):
     SWITCH_DESKTOP = "switch_desktop"
     ARRANGE_WINDOWS = "arrange_windows"
 
-
 class WorkspaceLayout(Enum):
     """Predefined workspace layouts"""
     FOCUS = "focus"  # Single window maximized
@@ -63,7 +61,6 @@ class WorkspaceLayout(Enum):
     GRID = "grid"   # Four windows in grid
     CASCADE = "cascade"  # Windows cascaded
     CUSTOM = "custom"  # User-defined layout
-
 
 @dataclass
 class WorkspaceElement:
@@ -88,7 +85,6 @@ class WorkspaceElement:
         x, y, w, h = self.bounds
         return (x + w // 2, y + h // 2)
 
-
 @dataclass
 class WorkspaceMap:
     """Complete map of the workspace"""
@@ -110,7 +106,6 @@ class WorkspaceMap:
         """Get all elements belonging to a window"""
         return [e for e in self.elements if e.parent_window == window_id]
 
-
 @dataclass
 class NavigationPath:
     """Path for navigating between elements"""
@@ -127,7 +122,6 @@ class NavigationPath:
             'params': params or {},
             'timestamp': datetime.now()
         })
-
 
 class VisionNavigationSystem:
     """
@@ -930,7 +924,6 @@ class VisionNavigationSystem:
             } if self.current_focus else None
         }
 
-
 async def test_vision_navigation():
     """Test the vision navigation system"""
     print("🗺️ Testing Vision Navigation System")
@@ -968,7 +961,6 @@ async def test_vision_navigation():
     await nav_system.stop_navigation_mode()
     
     print("\n✅ Vision navigation test complete!")
-
 
 if __name__ == "__main__":
     asyncio.run(test_vision_navigation())

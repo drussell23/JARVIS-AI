@@ -53,9 +53,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-
 # Remove duplicate enums and dataclasses since they're imported from modules
-
 
 class AdvancedAIBrain:
     """
@@ -1014,10 +1012,8 @@ Return only one of: focused, stressed, relaxed, frustrated, energetic, tired, ne
         
         
 
-
 # Singleton instance manager
 _brain_instance: Optional[AdvancedAIBrain] = None
-
 
 def get_ai_brain(api_key: Optional[str] = None) -> AdvancedAIBrain:
     """Get or create the AI brain instance"""
@@ -1025,7 +1021,6 @@ def get_ai_brain(api_key: Optional[str] = None) -> AdvancedAIBrain:
     if _brain_instance is None:
         _brain_instance = AdvancedAIBrain(api_key)
     return _brain_instance
-
 
 async def test_ai_brain():
     """Test the advanced AI brain"""
@@ -1065,7 +1060,6 @@ async def test_ai_brain():
     await brain.stop_brain_activity()
     
     print("\n✅ AI Brain test complete!")
-
 
 if __name__ == "__main__":
     asyncio.run(test_ai_brain())

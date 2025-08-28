@@ -24,7 +24,6 @@ _memory_pool = None
 _advanced_pool = None
 _image_processor = None
 
-
 def initialize_rust_runtime(config: Dict[str, Any]) -> None:
     """
     Initialize the Rust runtime with the given configuration.
@@ -67,31 +66,25 @@ def initialize_rust_runtime(config: Dict[str, Any]) -> None:
         logger.error(f"Failed to initialize Rust runtime: {e}")
         raise
 
-
 def get_rust_runtime():
     """Get the global Rust runtime manager."""
     return _runtime_manager
-
 
 def get_rust_memory_pool():
     """Get the global Rust memory pool."""
     return _memory_pool
 
-
 def get_rust_advanced_pool():
     """Get the global advanced memory pool with leak detection."""
     return _advanced_pool
-
 
 def get_rust_image_processor():
     """Get the global Rust image processor."""
     return _image_processor
 
-
 def is_rust_available() -> bool:
     """Check if Rust core is available and initialized."""
     return RUST_AVAILABLE and _runtime_manager is not None
-
 
 def process_image_with_rust(image_array):
     """
@@ -108,7 +101,6 @@ def process_image_with_rust(image_array):
     # Python fallback
     return image_array  # Or call Python implementation
 
-
 def allocate_rust_buffer(size: int):
     """
     Allocate a buffer using Rust memory pool if available.
@@ -121,7 +113,6 @@ def allocate_rust_buffer(size: int):
     
     # Python fallback
     return bytearray(size)
-
 
 def quantize_weights_with_rust(weights):
     """

@@ -20,7 +20,6 @@ from vision.workspace_analyzer import WorkspaceAnalyzer
 
 logger = logging.getLogger(__name__)
 
-
 class ContinuousVisionMonitor:
     """
     Monitors screen continuously and uses Claude to understand what's happening

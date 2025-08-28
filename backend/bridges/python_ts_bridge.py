@@ -18,7 +18,6 @@ import base64
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class BridgeMessage:
     """Message structure for bridge communication"""
@@ -30,7 +29,6 @@ class BridgeMessage:
     kwargs: Dict[str, Any]
     timestamp: str
     correlation_id: Optional[str] = None
-
 
 class PythonTypeScriptBridge:
     """High-performance bridge between Python and TypeScript processes"""
@@ -366,10 +364,8 @@ class PythonTypeScriptBridge:
         except Exception as e:
             logger.error(f"Failed to publish event: {e}")
 
-
 # Global bridge instance
 bridge = None
-
 
 def get_bridge() -> PythonTypeScriptBridge:
     """Get or create bridge instance"""
@@ -378,18 +374,15 @@ def get_bridge() -> PythonTypeScriptBridge:
         bridge = PythonTypeScriptBridge()
     return bridge
 
-
 async def start_bridge():
     """Start the global bridge instance"""
     bridge = get_bridge()
     await bridge.start()
 
-
 async def stop_bridge():
     """Stop the global bridge instance"""
     if bridge:
         await bridge.stop()
-
 
 # Example usage for registering vision handlers
 def register_vision_handlers():

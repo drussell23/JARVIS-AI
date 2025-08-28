@@ -17,7 +17,6 @@ from .window_detector import WindowDetector, WindowInfo
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class PrivacyRule:
     """Privacy rule for window filtering"""
@@ -29,7 +28,6 @@ class PrivacyRule:
     created_at: datetime = field(default_factory=datetime.now)
     is_active: bool = True
 
-
 @dataclass
 class PrivacyMode:
     """Privacy mode configuration"""
@@ -40,7 +38,6 @@ class PrivacyMode:
     blur_content: bool = False
     exclude_from_analysis: bool = False
 
-
 @dataclass
 class SensitiveContent:
     """Detected sensitive content in a window"""
@@ -49,7 +46,6 @@ class SensitiveContent:
     confidence: float
     detected_patterns: List[str]
     recommended_action: str  # 'hide', 'blur', 'warn'
-
 
 class PrivacyControlSystem:
     """Manages privacy settings and sensitive content protection"""
@@ -532,7 +528,6 @@ class PrivacyControlSystem:
         except Exception as e:
             logger.error(f"Error saving modes: {e}")
 
-
 def test_privacy_controls():
     """Test privacy control system"""
     print("🔒 Testing Privacy Control System")
@@ -593,7 +588,6 @@ def test_privacy_controls():
             print(f"     • {rec}")
     
     print("\n✅ Privacy control test complete!")
-
 
 if __name__ == "__main__":
     test_privacy_controls()

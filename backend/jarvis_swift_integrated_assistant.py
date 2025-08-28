@@ -27,7 +27,6 @@ from vision.proactive_vision_assistant import NotificationEvent
 
 logger = logging.getLogger(__name__)
 
-
 class JARVISSwiftIntegratedAssistant(JARVISIntegratedAssistant):
     """
     Enhanced JARVIS assistant that uses Swift for command classification
@@ -218,7 +217,6 @@ class JARVISSwiftIntegratedAssistant(JARVISIntegratedAssistant):
         
         return info
 
-
 async def test_swift_integration():
     """Test Swift-integrated JARVIS"""
     print("🚀 Testing JARVIS with Swift Integration")
@@ -250,7 +248,6 @@ async def test_swift_integration():
         print(f"• Action: {swift_data.get('action')}")
     
     print("\n✅ Swift integration test complete!")
-
 
 if __name__ == "__main__":
     asyncio.run(test_swift_integration())

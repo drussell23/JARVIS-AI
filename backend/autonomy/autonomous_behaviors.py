@@ -21,7 +21,6 @@ from .autonomous_decision_engine import AutonomousAction, ActionPriority, Action
 
 logger = logging.getLogger(__name__)
 
-
 class MessageHandler:
     """Autonomous message handling behaviors"""
     
@@ -238,7 +237,6 @@ class MessageHandler:
         else:
             return "general_security"
 
-
 class MeetingHandler:
     """Autonomous meeting preparation behaviors"""
     
@@ -351,7 +349,6 @@ class MeetingHandler:
         # Simple heuristic: too many visible windows
         visible_windows = [w for w in windows if w.is_visible]
         return len(visible_windows) > 10
-
 
 class WorkspaceOrganizer:
     """Autonomous workspace organization behaviors"""
@@ -546,7 +543,6 @@ class WorkspaceOrganizer:
         
         return work_apps[:5]  # Limit to 5 primary apps
 
-
 class SecurityHandler:
     """Autonomous security-related behaviors"""
     
@@ -664,7 +660,6 @@ class SecurityHandler:
             ))
         
         return actions
-
 
 class AutonomousBehaviorManager:
     """Manages all autonomous behaviors"""
@@ -836,7 +831,6 @@ class AutonomousBehaviorManager:
         # Limit to reasonable number of actions
         return deduped[:10]
 
-
 def test_autonomous_behaviors():
     """Test the autonomous behaviors"""
     import asyncio
@@ -903,7 +897,6 @@ def test_autonomous_behaviors():
             print()
     
     asyncio.run(run_test())
-
 
 if __name__ == "__main__":
     test_autonomous_behaviors()

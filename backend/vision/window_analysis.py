@@ -19,7 +19,6 @@ from .screen_capture_module import ScreenCaptureModule, ScreenCapture
 
 logger = logging.getLogger(__name__)
 
-
 class ApplicationCategory(Enum):
     """Categories of applications"""
     BROWSER = "browser"
@@ -31,7 +30,6 @@ class ApplicationCategory(Enum):
     UTILITY = "utility"
     UNKNOWN = "unknown"
 
-
 class WindowState(Enum):
     """States a window can be in"""
     ACTIVE = "active"
@@ -39,7 +37,6 @@ class WindowState(Enum):
     WAITING = "waiting"
     ERROR = "error"
     LOADING = "loading"
-
 
 @dataclass
 class WindowContent:
@@ -64,7 +61,6 @@ class WindowContent:
         """Number of actionable items in window"""
         return len(self.action_items)
 
-
 @dataclass
 class WorkspaceLayout:
     """Analyzed workspace layout"""
@@ -73,7 +69,6 @@ class WorkspaceLayout:
     window_arrangement: Dict[str, List[WindowInfo]] = field(default_factory=dict)
     screen_utilization: float = 0.0
     overlap_detected: bool = False
-
 
 class WindowAnalyzer:
     """Analyzes windows to understand their content and purpose"""
@@ -414,7 +409,6 @@ class WindowAnalyzer:
         
         return actionable
 
-
 async def test_window_analyzer():
     """Test window analysis functionality"""
     print("🪟 Testing Window Analyzer")
@@ -463,7 +457,6 @@ async def test_window_analyzer():
             print(f"     {cat}: {count}")
             
     print("\n✅ Window analyzer test complete!")
-
 
 if __name__ == "__main__":
     asyncio.run(test_window_analyzer())

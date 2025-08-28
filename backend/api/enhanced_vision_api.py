@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/vision", tags=["vision"])
 
-
 class EnhancedVisionWebSocketManager:
     """Manages WebSocket connections for enhanced vision system"""
     
@@ -224,10 +223,8 @@ class EnhancedVisionWebSocketManager:
                 "timestamp": datetime.now().isoformat()
             })
 
-
 # Create manager instance
 vision_ws_manager = EnhancedVisionWebSocketManager()
-
 
 @router.websocket("/ws/vision")
 async def enhanced_vision_websocket(websocket: WebSocket):
@@ -247,7 +244,6 @@ async def enhanced_vision_websocket(websocket: WebSocket):
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
         vision_ws_manager.disconnect(websocket)
-
 
 @router.get("/status")
 async def get_enhanced_vision_status():
@@ -276,7 +272,6 @@ async def get_enhanced_vision_status():
         "monitor_status": monitor_status
     }
 
-
 @router.post("/toggle_monitoring")
 async def toggle_monitoring(enabled: bool = True):
     """Toggle vision monitoring"""
@@ -289,7 +284,6 @@ async def toggle_monitoring(enabled: bool = True):
         "monitoring_active": vision_ws_manager.monitoring_active,
         "status": "enabled" if vision_ws_manager.monitoring_active else "disabled"
     }
-
 
 @router.post("/analyze_now")
 @graceful_endpoint
@@ -337,7 +331,6 @@ async def analyze_current_screen():
             status_code=500,
             detail=f"Vision analysis failed: {str(e)}"
         )
-
 
 @router.get("/can_see")
 async def vision_confirmation():

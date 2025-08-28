@@ -18,7 +18,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 class MicrophoneStatus(Enum):
     """Microphone status states"""
     AVAILABLE = "available"
@@ -27,7 +26,6 @@ class MicrophoneStatus(Enum):
     NOT_FOUND = "not_found"
     ERROR = "error"
 
-
 class BrowserType(Enum):
     """Supported browsers"""
     CHROME = "chrome"
@@ -35,7 +33,6 @@ class BrowserType(Enum):
     FIREFOX = "firefox"
     EDGE = "edge"
     UNKNOWN = "unknown"
-
 
 @dataclass
 class DiagnosticResult:
@@ -46,7 +43,6 @@ class DiagnosticResult:
     fix_available: bool = False
     fix_command: Optional[str] = None
 
-
 @dataclass
 class MicrophoneDevice:
     """Microphone device information"""
@@ -54,7 +50,6 @@ class MicrophoneDevice:
     device_id: str
     is_default: bool
     is_available: bool
-
 
 class MicrophoneDiagnostic:
     """
@@ -555,7 +550,6 @@ class MicrophoneDiagnostic:
         
         print(f"\n📄 Diagnostic log saved to: {filepath}")
 
-
 def run_diagnostic_sync():
     """Run diagnostic synchronously"""
     diagnostic = MicrophoneDiagnostic()
@@ -569,7 +563,6 @@ def run_diagnostic_sync():
     diagnostic.save_diagnostic_log(results, log_path)
     
     return results
-
 
 def main():
     """Run diagnostic from command line"""
@@ -590,7 +583,6 @@ def main():
         return 0
     else:
         return 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

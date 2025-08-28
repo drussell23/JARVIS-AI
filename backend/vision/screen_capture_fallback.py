@@ -13,7 +13,6 @@ from PIL import Image
 import numpy as np
 from typing import Optional, Dict, Any
 
-
 def capture_screen_fallback():
     """
     Capture screen using macOS screencapture command as fallback
@@ -50,7 +49,6 @@ def capture_screen_fallback():
     except Exception as e:
         print(f"Fallback capture failed: {e}")
         return None
-
 
 def capture_with_intelligence(query: Optional[str] = None, 
                             use_claude: bool = True) -> Dict[str, Any]:
@@ -102,7 +100,6 @@ def capture_with_intelligence(query: Optional[str] = None,
             "intelligence_used": False,
             "error": f"Claude analysis failed: {e}"
         }
-
 
 def analyze_with_claude_vision(screenshot_array, 
                               query: str) -> str:
@@ -171,7 +168,6 @@ def analyze_with_claude_vision(screenshot_array,
     except Exception as e:
         raise Exception(f"Claude Vision analysis failed: {e}")
 
-
 # Example intelligent queries that showcase the power
 EXAMPLE_QUERIES = {
     "general": "What do you see on my screen?",
@@ -183,7 +179,6 @@ EXAMPLE_QUERIES = {
     "code": "Analyze the code on my screen and suggest improvements",
     "debug": "Help me debug the error I'm seeing"
 }
-
 
 if __name__ == "__main__":
     # Demo the enhanced capture

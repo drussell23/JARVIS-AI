@@ -12,7 +12,6 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class VisionIntent:
     """Represents a vision-related intent extracted from command"""
@@ -22,7 +21,6 @@ class VisionIntent:
     context_clues: Dict[str, float]  # Weighted context indicators
     confidence: float
     raw_command: str
-
 
 class EnhancedVisionRouter:
     """
@@ -298,7 +296,6 @@ class EnhancedVisionRouter:
             "feedback": feedback,
             "timestamp": timestamp
         })
-
 
 class DynamicVisionHandler:
     """

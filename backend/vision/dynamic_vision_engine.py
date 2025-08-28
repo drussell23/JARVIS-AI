@@ -35,7 +35,6 @@ class DynamicVisionEngine:
         """Get model loading status"""
         return self._engine.get_model_info()
 
-
 # For backward compatibility
 def get_vision_engine():
     """Get the global vision engine instance"""

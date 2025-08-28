@@ -20,7 +20,6 @@ import random
 
 logger = logging.getLogger(__name__)
 
-
 class ProblemType(Enum):
     """Types of problems the system can solve"""
     WORKFLOW_OPTIMIZATION = "workflow_optimization"
@@ -34,7 +33,6 @@ class ProblemType(Enum):
     SYSTEM_INTEGRATION = "system_integration"
     USER_EXPERIENCE = "user_experience"
 
-
 class SolutionApproach(Enum):
     """Creative approaches to problem solving"""
     LATERAL_THINKING = "lateral_thinking"
@@ -47,7 +45,6 @@ class SolutionApproach(Enum):
     DESIGN_THINKING = "design_thinking"
     SYSTEMS_THINKING = "systems_thinking"
     MORPHOLOGICAL_ANALYSIS = "morphological_analysis"
-
 
 @dataclass
 class Problem:
@@ -73,7 +70,6 @@ Context: {json.dumps(self.context, indent=2)}
 Priority: {self.priority}
 """
 
-
 @dataclass
 class CreativeSolution:
     """A creative solution to a problem"""
@@ -97,7 +93,6 @@ class CreativeSolution:
                 self.feasibility_score * 0.4 + 
                 self.impact_score * 0.3)
 
-
 @dataclass
 class IdeaNode:
     """Node in the idea generation graph"""
@@ -107,7 +102,6 @@ class IdeaNode:
     connections: List[str]
     strength: float
     metadata: Dict[str, Any] = field(default_factory=dict) 
-
 
 class CreativeProblemSolver:
     """
@@ -1142,7 +1136,6 @@ Keep the innovative aspects while improving feasibility."""
                 for problem_id, patterns in self.solution_patterns.items()
             }
         }
-
 
 # Export main classes
 __all__ = ['CreativeProblemSolver', 'Problem', 'CreativeSolution', 

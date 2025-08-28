@@ -20,14 +20,12 @@ from .permission_manager import PermissionManager
 
 logger = logging.getLogger(__name__)
 
-
 class QueueStatus(Enum):
     """Status of the action queue"""
     IDLE = "idle"
     PROCESSING = "processing"
     PAUSED = "paused"
     OVERLOADED = "overloaded"
-
 
 @dataclass(order=True)
 class QueuedAction:
@@ -70,7 +68,6 @@ class QueuedAction:
         final_score = base_score + confidence_boost + category_adjustment - age_boost
         
         return final_score
-
 
 class ActionQueueManager:
     """Manages the priority queue of autonomous actions"""
@@ -337,10 +334,8 @@ class ActionQueueManager:
         """Add callback for action executions"""
         self.execution_callbacks.append(callback)
 
-
 # Global queue instance
 action_queue = ActionQueueManager()
-
 
 async def test_action_queue():
     """Test the action queue system"""
@@ -403,7 +398,6 @@ async def test_action_queue():
     print(f"\n📈 Final Stats:")
     for key, value in final_state['stats'].items():
         print(f"   {key}: {value}")
-
 
 if __name__ == "__main__":
     asyncio.run(test_action_queue())

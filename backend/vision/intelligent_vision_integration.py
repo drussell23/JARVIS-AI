@@ -11,7 +11,6 @@ from .screen_vision import ScreenVisionSystem, JARVISVisionIntegration
 from .screen_capture_fallback import capture_with_intelligence
 from .claude_vision_analyzer import ClaudeVisionAnalyzer
 
-
 class IntelligentJARVISVision:
     """Enhanced JARVIS vision that combines permissions with intelligence"""
     
@@ -96,7 +95,6 @@ class IntelligentJARVISVision:
         # Default to standard vision handling
         return await self.jarvis_vision.handle_vision_command(command)
 
-
 async def test_intelligent_vision():
     """Test the intelligent vision responses"""
     
@@ -118,7 +116,6 @@ async def test_intelligent_vision():
         response = await vision.handle_intelligent_command(command)
         print(f"🤖 JARVIS: {response}")
         print("-" * 50)
-
 
 if __name__ == "__main__":
     asyncio.run(test_intelligent_vision())

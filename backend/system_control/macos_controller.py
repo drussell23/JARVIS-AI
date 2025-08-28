@@ -17,7 +17,6 @@ import re
 
 logger = logging.getLogger(__name__)
 
-
 class CommandCategory(Enum):
     """Categories of system commands"""
     APPLICATION = "application"
@@ -28,14 +27,12 @@ class CommandCategory(Enum):
     VISION = "vision"
     DANGEROUS = "dangerous"
 
-
 class SafetyLevel(Enum):
     """Safety levels for commands"""
     SAFE = "safe"
     CAUTION = "caution"
     DANGEROUS = "dangerous"
     FORBIDDEN = "forbidden"
-
 
 class MacOSController:
     """Controls macOS system operations with safety checks"""

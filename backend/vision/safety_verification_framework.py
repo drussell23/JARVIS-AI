@@ -23,7 +23,6 @@ from .capability_generator import GeneratedCapability
 
 logger = logging.getLogger(__name__)
 
-
 class VerificationLevel(Enum):
     """Levels of safety verification"""
     BASIC = "basic"          # Syntax and static analysis
@@ -31,14 +30,12 @@ class VerificationLevel(Enum):
     COMPREHENSIVE = "comprehensive"  # Standard + behavior analysis
     PRODUCTION = "production"  # All checks + performance validation
 
-
 class RiskLevel(Enum):
     """Risk levels for capabilities"""
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
-
 
 @dataclass
 class BehaviorTest:
@@ -49,7 +46,6 @@ class BehaviorTest:
     test_type: str  # isolation, side_effects, resource_usage, output_validation
     test_func: Callable
     severity: str = "medium"
-
 
 @dataclass
 class VerificationReport:
@@ -77,7 +73,6 @@ class VerificationReport:
     
     # Metadata
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class BehaviorAnalyzer:
     """Analyzes capability behavior for safety"""
@@ -337,7 +332,6 @@ class BehaviorAnalyzer:
         
         return list(set(risk_indicators))  # Remove duplicates
 
-
 class PerformanceValidator:
     """Validates capability performance"""
     
@@ -395,7 +389,6 @@ class PerformanceValidator:
             )
         
         return validation
-
 
 class SafetyVerificationFramework:
     """Main framework for comprehensive safety verification"""
@@ -654,10 +647,8 @@ class SafetyVerificationFramework:
         
         return summary
 
-
 # Singleton instance
 _verification_framework: Optional[SafetyVerificationFramework] = None
-
 
 def get_safety_verification_framework() -> SafetyVerificationFramework:
     """Get singleton instance of safety verification framework"""

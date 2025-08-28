@@ -13,13 +13,11 @@ from collections import defaultdict, deque
 from enum import Enum
 import json
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 import anthropic
 import hashlib
 
 logger = logging.getLogger(__name__)
-
 
 class PredictionType(Enum):
     """Types of predictions the system can make"""
@@ -33,7 +31,6 @@ class PredictionType(Enum):
     COLLABORATION_NEED = "collaboration_need"
     AUTOMATION_OPPORTUNITY = "automation_opportunity"
     DEADLINE_RISK = "deadline_risk"
-
 
 @dataclass
 class PredictionContext:
@@ -72,7 +69,6 @@ class PredictionContext:
         
         return np.array(features)
 
-
 @dataclass
 class DynamicPrediction:
     """A dynamic, context-aware prediction"""
@@ -89,7 +85,6 @@ class DynamicPrediction:
     def should_act(self, threshold: float = 0.7) -> bool:
         """Determine if prediction warrants action"""
         return self.confidence * self.urgency > threshold
-
 
 class PredictiveIntelligenceEngine:
     """
@@ -769,7 +764,6 @@ Provide: estimated_minutes, bottlenecks[], next_steps[]"""
             }
         
         return stats
-
 
 # Export main class
 __all__ = ['PredictiveIntelligenceEngine', 'PredictionContext', 'DynamicPrediction', 'PredictionType']

@@ -19,7 +19,6 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class TextRegion:
     """Represents a detected text region"""
@@ -39,7 +38,6 @@ class TextRegion:
         bbox_x, bbox_y, width, height = self.bounding_box
         return (bbox_x <= x <= bbox_x + width and 
                 bbox_y <= y <= bbox_y + height)
-
 
 @dataclass
 class OCRResult:
@@ -69,7 +67,6 @@ class OCRResult:
                 matching_regions.append(region)
                 
         return matching_regions
-
 
 class OCRProcessor:
     """Processes images to extract text using OCR"""
@@ -389,7 +386,6 @@ class OCRProcessor:
             
         return structured
 
-
 async def test_ocr_processor():
     """Test OCR processor functionality"""
     print("🔤 Testing OCR Processor")
@@ -448,7 +444,6 @@ async def test_ocr_processor():
         print(f"\n❌ Test failed: {e}")
         
     print("\n✅ OCR processor test complete!")
-
 
 if __name__ == "__main__":
     asyncio.run(test_ocr_processor())

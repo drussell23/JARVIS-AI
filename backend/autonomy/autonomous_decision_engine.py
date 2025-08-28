@@ -24,7 +24,6 @@ from vision.smart_query_router import SmartQueryRouter, QueryIntent
 
 logger = logging.getLogger(__name__)
 
-
 class ActionPriority(Enum):
     """Priority levels for autonomous actions"""
     CRITICAL = 1      # Immediate action required (security, urgent messages)
@@ -32,7 +31,6 @@ class ActionPriority(Enum):
     MEDIUM = 3        # Standard actions (routine messages, organization)
     LOW = 4           # Nice to have (cleanup, optimization)
     BACKGROUND = 5    # Can wait indefinitely
-
 
 class ActionCategory(Enum):
     """Categories of autonomous actions"""
@@ -43,7 +41,6 @@ class ActionCategory(Enum):
     SECURITY = "security"
     WORKFLOW = "workflow"
     MAINTENANCE = "maintenance"
-
 
 @dataclass
 class AutonomousAction:
@@ -86,7 +83,6 @@ class AutonomousAction:
             'requires_permission': self.requires_permission,
             'timestamp': self.timestamp.isoformat()
         }
-
 
 class PatternMatcher:
     """Dynamic pattern matching for identifying actionable situations"""
@@ -192,7 +188,6 @@ class PatternMatcher:
         """Check if text contains sensitive information"""
         text_lower = text.lower()
         return any(pattern in text_lower for pattern in self.security_patterns)
-
 
 class AutonomousDecisionEngine:
     """Makes autonomous decisions based on workspace state"""
@@ -653,7 +648,6 @@ class AutonomousDecisionEngine:
         except Exception as e:
             logger.error(f"Failed to save learned patterns: {e}")
 
-
 async def test_autonomous_decisions():
     """Test the autonomous decision engine"""
     engine = AutonomousDecisionEngine()
@@ -716,7 +710,6 @@ async def test_autonomous_decisions():
         print(f"   Reasoning: {action.reasoning}")
         print(f"   Requires Permission: {action.requires_permission}")
         print(f"   Params: {action.params}")
-
 
 if __name__ == "__main__":
     asyncio.run(test_autonomous_decisions())

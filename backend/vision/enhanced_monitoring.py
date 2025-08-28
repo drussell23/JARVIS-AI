@@ -18,7 +18,6 @@ from .workspace_analyzer import WorkspaceAnalyzer
 
 logger = logging.getLogger(__name__)
 
-
 class NotificationDetector:
     """Detects and classifies notifications across applications"""
     
@@ -109,7 +108,6 @@ class NotificationDetector:
                 
         return notifications
 
-
 class ApplicationStateTracker:
     """Tracks application states and detects changes"""
     
@@ -199,7 +197,6 @@ class ApplicationStateTracker:
             'last_active': max((e['timestamp'] for e in events), default=None)
         }
 
-
 class UIElementDetector:
     """Detects actionable UI elements in windows"""
     
@@ -266,7 +263,6 @@ class UIElementDetector:
                 
         return elements
 
-
 class ClipboardMonitor:
     """Monitors clipboard for relevant content"""
     
@@ -318,7 +314,6 @@ class ClipboardMonitor:
             return 'text_long'
         else:
             return 'text_short'
-
 
 class EnhancedWorkspaceMonitor:
     """Enhanced workspace monitoring with all capabilities"""
@@ -401,7 +396,6 @@ class EnhancedWorkspaceMonitor:
         """Add callback for workspace updates"""
         self.update_callbacks.append(callback)
 
-
 async def test_enhanced_monitoring():
     """Test enhanced monitoring capabilities"""
     monitor = EnhancedWorkspaceMonitor()
@@ -438,7 +432,6 @@ async def test_enhanced_monitoring():
         print(f"\n📋 Clipboard: {state['clipboard']['type']} ({state['clipboard']['length']} chars)")
     
     print("\n✅ Enhanced monitoring test complete!")
-
 
 if __name__ == "__main__":
     asyncio.run(test_enhanced_monitoring())

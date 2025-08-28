@@ -15,7 +15,6 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-
 class EmergencyCPUFix:
     """
     Emergency fix to immediately reduce CPU usage
@@ -86,12 +85,10 @@ class EmergencyCPUFix:
         current_cpu = self.cpu_history[-1] if self.cpu_history else 0
         return current_cpu > self.cpu_limit * 1.5  # Skip if 50% over limit
 
-
 # Global instance
 # DISABLED: This was causing excessive CPU throttling and preventing startup
 # _emergency_fix = EmergencyCPUFix()
 _emergency_fix = None
-
 
 def apply_emergency_fixes():
     """Apply all emergency fixes to reduce CPU usage"""
@@ -106,7 +103,6 @@ def apply_emergency_fixes():
 
     return DummyFix()
 
-
 def wrap_high_cpu_function(func):
     """Decorator to add CPU throttling to functions"""
 
@@ -115,7 +111,6 @@ def wrap_high_cpu_function(func):
         return func(*args, **kwargs)
 
     return wrapper
-
 
 class ThrottledContinuousLearning:
     """
@@ -159,7 +154,6 @@ class ThrottledContinuousLearning:
     def running(self, value):
         self.original.running = value
 
-
 def get_cpu_status():
     """Get current CPU status and recommendations"""
     cpu_percent = psutil.Process().cpu_percent(interval=0.5)
@@ -183,7 +177,6 @@ def get_cpu_status():
         status["recommendations"].append("✅ GOOD: CPU usage acceptable")
 
     return status
-
 
 def emergency_shutdown():
     """Emergency shutdown of high-CPU components"""
@@ -209,7 +202,6 @@ def emergency_shutdown():
     gc.collect()
 
     logger.info("✅ Emergency shutdown complete")
-
 
 if __name__ == "__main__":
     # Test emergency fixes

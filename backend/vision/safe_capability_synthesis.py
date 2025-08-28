@@ -20,7 +20,6 @@ import hashlib
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class SafetyViolation:
     """Represents a safety violation found in code"""
@@ -31,7 +30,6 @@ class SafetyViolation:
     description: str
     fix_suggestion: Optional[str] = None
 
-
 @dataclass
 class SecurityCheck:
     """Security check result"""
@@ -39,7 +37,6 @@ class SecurityCheck:
     passed: bool
     violations: List[SafetyViolation] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 @dataclass
 class SynthesisConstraints:
@@ -68,7 +65,6 @@ class SynthesisConstraints:
     # File system restrictions
     allowed_paths: List[str] = field(default_factory=lambda: ['/tmp', '/var/tmp'])
     read_only_paths: List[str] = field(default_factory=list)
-
 
 class CodeAnalyzer:
     """Analyzes code for safety and security issues"""
@@ -440,7 +436,6 @@ class CodeAnalyzer:
         calculator.visit(tree)
         return calculator.max_depth
 
-
 class SafetyValidator:
     """Validates generated capabilities for safety"""
     
@@ -531,7 +526,6 @@ class SafetyValidator:
             recommendations.append("Code appears safe for execution")
             
         return recommendations
-
 
 class CapabilitySynthesizer:
     """Safe synthesis of new capabilities with validation"""
@@ -762,11 +756,9 @@ def _safe_open(self, filepath, mode='r'):
             
         return safe_code
 
-
 # Singleton instances
 _safety_validator: Optional[SafetyValidator] = None
 _capability_synthesizer: Optional[CapabilitySynthesizer] = None
-
 
 def get_safety_validator() -> SafetyValidator:
     """Get singleton instance of safety validator"""
@@ -774,7 +766,6 @@ def get_safety_validator() -> SafetyValidator:
     if _safety_validator is None:
         _safety_validator = SafetyValidator()
     return _safety_validator
-
 
 def get_capability_synthesizer() -> CapabilitySynthesizer:
     """Get singleton instance of capability synthesizer"""

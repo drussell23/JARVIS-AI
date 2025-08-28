@@ -24,7 +24,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class EnhancedVisionIntent:
     """Enhanced vision intent with multi-level analysis"""
@@ -39,7 +38,6 @@ class EnhancedVisionIntent:
     final_action: str = ""
     reasoning: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class HybridVisionRouter:
     """
@@ -485,7 +483,6 @@ class HybridVisionRouter:
                 json.dump(self.pattern_database, f, indent=2)
         except Exception as e:
             logger.error(f"Failed to save pattern database: {e}")
-
 
 class DynamicVisionExecutor:
     """

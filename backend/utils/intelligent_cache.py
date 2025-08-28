@@ -15,7 +15,6 @@ from memory.memory_manager import M1MemoryManager
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class CacheEntry:
     """Represents a cached result"""
@@ -38,7 +37,6 @@ class CacheEntry:
         """Update access statistics"""
         self.last_accessed = datetime.now()
         self.access_count += 1
-
 
 class LRUCache:
     """
@@ -142,7 +140,6 @@ class LRUCache:
             "total_accesses": total_accesses,
             "avg_access_count": total_accesses / len(self.cache) if self.cache else 0,
         }
-
 
 class IntelligentCache:
     """
@@ -327,7 +324,6 @@ class IntelligentCache:
         await self.nlp_cache.clear()
         await self.rag_cache.clear()
         await self.response_cache.clear()
-
 
 # Decorator for automatic caching
 def cached(cache_type: str, ttl_seconds: int = 3600):

@@ -15,7 +15,6 @@ import re
 import math
 from tqdm import tqdm
 
-
 @dataclass
 class EvaluationResult:
     """Container for evaluation results"""
@@ -50,7 +49,6 @@ class EvaluationResult:
     # Additional metadata
     num_samples: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class ModelEvaluator:
     """Comprehensive evaluation suite for chatbot models"""
@@ -392,7 +390,6 @@ class ModelEvaluator:
                 
         return entities
 
-
 class HumanEvaluationMetrics:
     """Metrics that simulate human evaluation criteria"""
     
@@ -468,7 +465,6 @@ class HumanEvaluationMetrics:
                 score += 0.25
                 
         return min(score, 1.0)
-
 
 class DomainSpecificEvaluator:
     """Evaluator for domain-specific performance"""
@@ -612,7 +608,6 @@ class DomainSpecificEvaluator:
             scores.append(score)
             
         return np.mean(scores) if scores else 0.0
-
 
 # Example usage
 if __name__ == "__main__":

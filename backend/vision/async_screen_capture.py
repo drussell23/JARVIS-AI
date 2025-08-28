@@ -17,7 +17,6 @@ import hashlib
 
 logger = logging.getLogger(__name__)
 
-
 class AsyncScreenCapture:
     """High-performance async screen capture"""
     
@@ -240,7 +239,6 @@ class AsyncScreenCapture:
             logger.error(f"Failed to crop region: {e}")
             return None
 
-
 # Global instance
 _async_capture = None
 
@@ -251,12 +249,10 @@ def get_async_capture() -> AsyncScreenCapture:
         _async_capture = AsyncScreenCapture()
     return _async_capture
 
-
 async def capture_screen_optimized() -> Optional[Image.Image]:
     """Convenience function for optimized screen capture"""
     capture = get_async_capture()
     return await capture.capture_screen_async()
-
 
 async def capture_for_analysis(max_size: int = 1920) -> Optional[Dict[str, Any]]:
     """Capture and prepare screenshot for AI analysis"""

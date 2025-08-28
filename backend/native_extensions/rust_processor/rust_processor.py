@@ -23,7 +23,6 @@ except Exception as e:
     RUST_AVAILABLE = False
     print(f"Warning: Could not load Rust library: {e}")
 
-
 # For now, provide fallback implementations
 def process_vision_data(data):
     """Fallback implementation for vision data processing"""
@@ -33,7 +32,6 @@ def process_vision_data(data):
     # Simple Python implementation
     return [(x - 0.5) * 2.0 for x in data]
 
-
 def process_audio_data(data, sample_rate):
     """Fallback implementation for audio data processing"""
     if RUST_AVAILABLE:
@@ -41,7 +39,6 @@ def process_audio_data(data, sample_rate):
         pass
     # Simple Python implementation
     return [x * 0.54 * 2.0 for x in data]
-
 
 def compress_data(data, compression_factor):
     """Fallback implementation for data compression"""
@@ -51,7 +48,6 @@ def compress_data(data, compression_factor):
     # Simple Python implementation
     step = max(1, int(compression_factor))
     return data[::step]
-
 
 def quantized_inference(input_data, model_weights):
     """Fallback implementation for quantized inference"""

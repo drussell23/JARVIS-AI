@@ -25,7 +25,6 @@ from api.anthropic_client import get_anthropic_client
 
 logger = logging.getLogger(__name__)
 
-
 class AdvancedIntelligentCommandHandler:
     """
     Advanced command handler that learns and adapts with zero hardcoding
@@ -371,12 +370,10 @@ class AdvancedIntelligentCommandHandler:
             "learning_insights": self.router.get_learning_insights()
         }
 
-
 # Convenience function for backward compatibility
 def create_intelligent_handler(user_name: str = "Sir") -> AdvancedIntelligentCommandHandler:
     """Create an instance of the advanced intelligent command handler"""
     return AdvancedIntelligentCommandHandler(user_name=user_name)
-
 
 # Example usage and testing
 async def test_advanced_handler():
@@ -419,7 +416,6 @@ async def test_advanced_handler():
     handler.provide_feedback("play some music", False, "system")  # Wrong, should be system
     
     print("\n✅ Advanced handler test complete!")
-
 
 if __name__ == "__main__":
     asyncio.run(test_advanced_handler())

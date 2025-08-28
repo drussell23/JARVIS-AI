@@ -10,7 +10,6 @@ from vision.vision_system_v2 import get_vision_system_v2
 
 logger = logging.getLogger(__name__)
 
-
 class VisionV2Integration:
     """Integration layer for Vision System v2.0 with JARVIS Voice"""
     

@@ -10,7 +10,6 @@ import numpy as np
 from dataclasses import dataclass
 import json
 
-
 class CustomChatbotConfig(PretrainedConfig):
     """Configuration for custom chatbot model"""
     model_type = "custom_chatbot"
@@ -74,7 +73,6 @@ class CustomChatbotConfig(PretrainedConfig):
         self.use_knowledge_integration = use_knowledge_integration
         self.knowledge_dim = knowledge_dim
 
-
 class DomainAwareEmbedding(nn.Module):
     """Domain-aware embedding layer"""
     
@@ -122,7 +120,6 @@ class DomainAwareEmbedding(nn.Module):
         embeddings = self.dropout(embeddings)
         
         return embeddings
-
 
 class IntentAwareAttention(nn.Module):
     """Intent-aware multi-head attention"""
@@ -183,7 +180,6 @@ class IntentAwareAttention(nn.Module):
         
         return context_layer
 
-
 class KnowledgeIntegrationLayer(nn.Module):
     """Integrates external knowledge into the model"""
     
@@ -216,7 +212,6 @@ class KnowledgeIntegrationLayer(nn.Module):
         fused = self.layer_norm(fused)
         
         return fused
-
 
 class CustomTransformerBlock(nn.Module):
     """Custom transformer block with domain and intent awareness"""
@@ -262,7 +257,6 @@ class CustomTransformerBlock(nn.Module):
             hidden_states = self.knowledge_integration(hidden_states, knowledge_vectors)
             
         return hidden_states
-
 
 class CustomChatbotModel(PreTrainedModel):
     """Custom chatbot model with domain-specific enhancements"""
@@ -420,7 +414,6 @@ class CustomChatbotModel(PreTrainedModel):
         
         return outputs
 
-
 class ModelBuilder:
     """Utility class for building custom models"""
     
@@ -476,7 +469,6 @@ class ModelBuilder:
             use_knowledge_integration=add_knowledge_integration
         )
         return CustomChatbotModel(config)
-
 
 # Example usage
 if __name__ == "__main__":

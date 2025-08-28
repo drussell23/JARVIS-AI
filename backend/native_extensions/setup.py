@@ -12,12 +12,10 @@ from pathlib import Path
 from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
 
-
 class CMakeExtension(Extension):
     def __init__(self, name, sourcedir=''):
         Extension.__init__(self, name, sources=[])
         self.sourcedir = os.path.abspath(sourcedir)
-
 
 class CMakeBuild(build_ext):
     def run(self):
@@ -64,7 +62,6 @@ class CMakeBuild(build_ext):
 
         subprocess.check_call(['cmake', ext.sourcedir] + cmake_args, cwd=build_temp, env=env)
         subprocess.check_call(['cmake', '--build', '.'] + build_args, cwd=build_temp)
-
 
 setup(
     name='jarvis_fast_capture',

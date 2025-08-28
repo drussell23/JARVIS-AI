@@ -34,7 +34,6 @@ from .monitoring_metrics import SystemMonitor
 
 logger = logging.getLogger(__name__)
 
-
 class ProcessingStage(Enum):
     """Stages of vision processing pipeline"""
     CAPTURE = "capture"
@@ -43,7 +42,6 @@ class ProcessingStage(Enum):
     DECISION = "decision"
     QUEUING = "queuing"
     EXECUTION = "execution"
-
 
 @dataclass
 class PipelineContext:
@@ -66,7 +64,6 @@ class PipelineContext:
         """Add error to context"""
         self.errors.append(f"[{self.stage.value}] {error}")
         logger.error(f"Pipeline error in {self.stage.value}: {error}")
-
 
 class VisionDecisionPipeline:
     """Main pipeline for processing vision data into autonomous actions"""
@@ -625,7 +622,6 @@ class VisionDecisionPipeline:
         
         return context
 
-
 async def test_vision_pipeline():
     """Test the vision decision pipeline"""
     print("🤖 Testing Vision Decision Pipeline")
@@ -662,7 +658,6 @@ async def test_vision_pipeline():
         print(f"\n❌ Pipeline test failed: {e}")
         
     print("\n✅ Vision pipeline test complete!")
-
 
 if __name__ == "__main__":
     asyncio.run(test_vision_pipeline())

@@ -16,7 +16,6 @@ from vision.vision_plugin_system import BaseVisionProvider
 
 logger = logging.getLogger(__name__)
 
-
 class CustomAnalysisProvider(BaseVisionProvider):
     """
     Example custom provider that can be dropped into the plugins folder

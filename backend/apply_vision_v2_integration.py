@@ -80,6 +80,5 @@ def apply_vision_v2_integration():
     print("2. Restart the backend server")
     print("3. Try commands like: 'Hey JARVIS, what do you see on my screen?'")
 
-
 if __name__ == "__main__":
     apply_vision_v2_integration()

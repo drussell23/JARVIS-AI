@@ -15,7 +15,6 @@ class Colors:
     BOLD = '\033[1m'
     ENDC = '\033[0m'
 
-
 async def verify_imports():
     """Verify all imports work"""
     print(f"\n{Colors.BLUE}Verifying imports...{Colors.ENDC}")
@@ -32,7 +31,6 @@ async def verify_imports():
     except Exception as e:
         print(f"{Colors.RED}❌ Import error: {e}{Colors.ENDC}")
         return False
-
 
 async def verify_basic_functionality():
     """Verify basic functionality"""
@@ -103,7 +101,6 @@ async def verify_basic_functionality():
         traceback.print_exc()
         return False
 
-
 async def verify_edge_cases():
     """Verify edge case handling"""
     print(f"\n{Colors.BLUE}Verifying edge case handling...{Colors.ENDC}")
@@ -144,7 +141,6 @@ async def verify_edge_cases():
         print(f"{Colors.RED}❌ Edge case error: {e}{Colors.ENDC}")
         return False
 
-
 async def main():
     """Run all verifications"""
     print(f"{Colors.BOLD}\n🤖 JARVIS Autonomous System Verification{Colors.ENDC}")
@@ -172,7 +168,6 @@ async def main():
         print(f"\n{Colors.RED}❌ Some verifications failed. Please check the errors above.{Colors.ENDC}")
     
     return 0 if all_passed else 1
-
 
 if __name__ == "__main__":
     exit_code = asyncio.run(main())

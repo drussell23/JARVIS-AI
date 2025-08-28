@@ -22,7 +22,6 @@ from abc import ABC, abstractmethod
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class LearningStrategy:
     """Configuration for a specific learning strategy"""
@@ -35,7 +34,6 @@ class LearningStrategy:
     last_used: Optional[datetime] = None
     effectiveness_score: float = 0.5
 
-
 @dataclass
 class ModelSnapshot:
     """Snapshot of model state for forgetting prevention"""
@@ -46,7 +44,6 @@ class ModelSnapshot:
     task_performance: Dict[str, float]
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class TaskPerformance:
     """Track performance on specific tasks"""
@@ -56,7 +53,6 @@ class TaskPerformance:
     current_performance: float
     stability_score: float  # How stable the performance is
     last_evaluated: datetime
-
 
 class LearningStrategySelector:
     """
@@ -242,7 +238,6 @@ class LearningStrategySelector:
                 recent_performance = strategy.performance_history[-20:]
                 strategy.effectiveness_score = np.mean(recent_performance)
 
-
 class CatastrophicForgettingPrevention:
     """
     Prevents catastrophic forgetting using elastic weight consolidation
@@ -422,7 +417,6 @@ class CatastrophicForgettingPrevention:
             # Keep history bounded
             if len(task_perf.performance_history) > 100:
                 task_perf.performance_history.pop(0)
-
 
 class MetaLearningFramework:
     """
@@ -748,10 +742,8 @@ class MetaLearningFramework:
         
         logger.info(f"Loaded meta-learning state from {path}")
 
-
 # Singleton instance
 _meta_framework: Optional[MetaLearningFramework] = None
-
 
 def get_meta_learning_framework(model: nn.Module) -> MetaLearningFramework:
     """Get singleton instance of meta-learning framework"""

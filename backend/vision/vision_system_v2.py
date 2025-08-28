@@ -55,7 +55,6 @@ if not PHASE4_AVAILABLE:
 if not PHASE5_AVAILABLE:
     logger.warning("Phase 5 components not available")
 
-
 @dataclass
 class VisionResponse:
     """Unified vision response format"""
@@ -65,7 +64,6 @@ class VisionResponse:
     intent_type: str
     data: Optional[Dict[str, Any]] = None
     suggestions: Optional[List[str]] = None
-
 
 class VisionSystemV2:
     """
@@ -838,10 +836,8 @@ class VisionSystemV2:
         
         logger.info("Vision System v2.0 shutdown complete")
 
-
 # Singleton instance
 _vision_system_v2: Optional[VisionSystemV2] = None
-
 
 def get_vision_system_v2() -> VisionSystemV2:
     """Get singleton instance of Vision System v2.0"""
@@ -859,7 +855,6 @@ async def ensure_vision_system_v2_initialized() -> VisionSystemV2:
         await system._complete_async_initialization()
         system._needs_async_init = False
     return system
-
 
 # Compatibility layer for existing code
 async def process_vision_command_v2(command: str, context: Optional[Dict] = None) -> Dict[str, Any]:

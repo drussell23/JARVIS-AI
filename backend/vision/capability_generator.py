@@ -23,7 +23,6 @@ from abc import ABC, abstractmethod
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class FailedRequest:
     """Represents a failed request that needs capability generation"""
@@ -38,7 +37,6 @@ class FailedRequest:
     user_id: Optional[str] = None
     attempted_handlers: List[str] = field(default_factory=list)
     similar_failures: List[str] = field(default_factory=list)
-
 
 @dataclass
 class GeneratedCapability:
@@ -56,7 +54,6 @@ class GeneratedCapability:
     test_results: Optional[Dict[str, Any]] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class CapabilityTemplate:
     """Template for generating new capabilities"""
@@ -67,7 +64,6 @@ class CapabilityTemplate:
     parameter_slots: Dict[str, Any]
     safety_constraints: List[str]
     example_usage: str
-
 
 class CapabilityAnalyzer:
     """Analyzes failed requests to identify capability gaps"""
@@ -214,7 +210,6 @@ class CapabilityAnalyzer:
             concerns.append("bulk_operation")
             
         return concerns
-
 
 class CodeGenerator:
     """Generates code for new capabilities"""
@@ -537,7 +532,6 @@ async def {handler_name}(self, command: str, context: Optional[Dict] = None) -> 
             
         return max(0.0, score)
 
-
 class CapabilityGenerator:
     """
     Main capability generator that coordinates analysis and code generation
@@ -768,10 +762,8 @@ async def handle_combined_{"_and_".join(handler_names)}(self, command: str, cont
             }
         }
 
-
 # Singleton instance
 _capability_generator: Optional[CapabilityGenerator] = None
-
 
 def get_capability_generator() -> CapabilityGenerator:
     """Get singleton instance of capability generator"""

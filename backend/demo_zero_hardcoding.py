@@ -16,7 +16,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from voice.advanced_intelligent_command_handler import AdvancedIntelligentCommandHandler
 from swift_bridge.advanced_python_bridge import LearningFeedback
 
-
 async def main():
     """Demonstrate zero hardcoding in action"""
     
@@ -175,7 +174,6 @@ async def main():
     
     print("\n🚀 Welcome to the future of AI assistants!")
     print("   Where code writes itself through learning!")
-
 
 if __name__ == "__main__":
     asyncio.run(main())

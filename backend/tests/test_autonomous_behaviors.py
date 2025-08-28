@@ -20,7 +20,6 @@ from autonomy.autonomous_behaviors import (
 from autonomy.autonomous_decision_engine import ActionPriority, ActionCategory
 from vision.window_detector import WindowInfo
 
-
 class TestMessageHandler:
     """Test message handling behaviors"""
     
@@ -199,7 +198,6 @@ class TestMessageHandler:
         assert handler._is_security_alert("2FA verification needed")
         assert not handler._is_security_alert("Secure connection established")
 
-
 class TestMeetingHandler:
     """Test meeting preparation behaviors"""
     
@@ -305,7 +303,6 @@ class TestMeetingHandler:
         assert "Spotify" in distracting
         assert "1Password" not in distracting
         assert len(distracting) == 2
-
 
 class TestWorkspaceOrganizer:
     """Test workspace organization behaviors"""
@@ -465,7 +462,6 @@ class TestWorkspaceOrganizer:
         assert len(groups["development"]) == 1
         assert groups["development"][0].app_name == "Visual Studio Code"
 
-
 class TestSecurityHandler:
     """Test security handling behaviors"""
     
@@ -552,7 +548,6 @@ class TestSecurityHandler:
         block_actions = [a for a in actions if a.action_type == "block_phishing_site"]
         assert len(block_actions) == 1
         assert block_actions[0].params.get("url") == "http://suspicious-site.com"
-
 
 class TestAutonomousBehaviorManager:
     """Test the complete behavior management system"""
@@ -679,7 +674,6 @@ class TestAutonomousBehaviorManager:
             if critical_idx and medium_idx:
                 assert min(critical_idx) < min(medium_idx)
 
-
 @pytest.mark.asyncio
 async def test_edge_case_empty_workspace():
     """Test behavior with empty workspace"""
@@ -689,7 +683,6 @@ async def test_edge_case_empty_workspace():
     
     # Should handle gracefully
     assert actions == []
-
 
 @pytest.mark.asyncio
 async def test_edge_case_massive_workspace():
@@ -723,7 +716,6 @@ async def test_edge_case_massive_workspace():
     # Should limit actions to reasonable number
     assert len(actions) <= 10  # As defined in _prioritize_actions
 
-
 @pytest.mark.asyncio
 async def test_edge_case_rapid_changes():
     """Test behavior with rapidly changing windows"""
@@ -753,7 +745,6 @@ async def test_edge_case_rapid_changes():
         
         # Brief delay to simulate rapid changes
         await asyncio.sleep(0.1)
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

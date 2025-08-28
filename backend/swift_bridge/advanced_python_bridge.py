@@ -22,7 +22,6 @@ import queue
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class CommandClassification:
     """Represents a command classification result"""
@@ -35,7 +34,6 @@ class CommandClassification:
     context_used: Dict[str, Any]
     learned: bool = False
 
-
 @dataclass
 class LearningFeedback:
     """User feedback for improving classification"""
@@ -46,7 +44,6 @@ class LearningFeedback:
     timestamp: datetime
     context: Dict[str, Any]
 
-
 @dataclass
 class PerformanceMetrics:
     """System performance metrics"""
@@ -55,7 +52,6 @@ class PerformanceMetrics:
     total_classifications: int
     improvement_rate: float
     common_errors: List[Tuple[str, str, int]]
-
 
 class AdvancedIntelligentCommandRouter:
     """

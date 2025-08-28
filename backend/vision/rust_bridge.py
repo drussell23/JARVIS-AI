@@ -46,7 +46,6 @@ if not RUST_AVAILABLE:
     except ImportError:
         logger.warning("Rust acceleration not available")
 
-
 class RustImageProcessor:
     """Wrapper for Rust image processing functions"""
     
@@ -108,7 +107,6 @@ class RustImageProcessor:
                 logger.error(f"PyO3 processing error: {e}")
                 return image
 
-
 class RustAdvancedMemoryPool:
     """Wrapper for Rust memory pool"""
     
@@ -132,7 +130,6 @@ class RustAdvancedMemoryPool:
             return self.pool.stats()
         else:
             return {'available': False}
-
 
 class RustRuntimeManager:
     """Wrapper for Rust runtime manager"""
@@ -164,7 +161,6 @@ class RustRuntimeManager:
         else:
             return {'available': False}
 
-
 def process_image_batch(images: List[np.ndarray]) -> List[np.ndarray]:
     """Process batch of images using Rust acceleration"""
     if RUST_AVAILABLE and hasattr(jarvis_rust_core, 'process_image_batch'):
@@ -173,7 +169,6 @@ def process_image_batch(images: List[np.ndarray]) -> List[np.ndarray]:
         # Fallback to sequential processing
         processor = RustImageProcessor()
         return [processor.process_numpy_image(img) for img in images]
-
 
 # Visual feature extraction functions
 def extract_dominant_colors_rust(image: np.ndarray, num_colors: int = 5) -> List[Tuple[int, int, int]]:
@@ -189,7 +184,6 @@ def extract_dominant_colors_rust(image: np.ndarray, num_colors: int = 5) -> List
         colors = kmeans.cluster_centers_.astype(int)
         return [tuple(color) for color in colors]
 
-
 def calculate_edge_density_rust(image: np.ndarray) -> float:
     """Calculate edge density using Rust SIMD operations"""
     if RUST_AVAILABLE and hasattr(jarvis_rust_core, 'calculate_edge_density'):
@@ -200,7 +194,6 @@ def calculate_edge_density_rust(image: np.ndarray) -> float:
         gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY) if len(image.shape) > 2 else image
         edges = cv2.Canny(gray, 50, 150)
         return np.sum(edges > 0) / edges.size
-
 
 def analyze_texture_rust(image: np.ndarray) -> Dict[str, float]:
     """Analyze texture patterns using Rust"""
@@ -213,7 +206,6 @@ def analyze_texture_rust(image: np.ndarray) -> Dict[str, float]:
             'homogeneity': 1.0 / (1.0 + np.var(image)),
             'energy': float(np.sum(image ** 2)) / image.size
         }
-
 
 def analyze_spatial_layout_rust(image: np.ndarray) -> Dict[str, Any]:
     """Analyze spatial layout using Rust"""
@@ -234,7 +226,6 @@ def analyze_spatial_layout_rust(image: np.ndarray) -> Dict[str, Any]:
                 image[0, :], image[-1, :], image[:, 0], image[:, -1]
             ]).mean())
         }
-
 
 # Build Rust library if needed
 def build_rust_library():
@@ -269,7 +260,6 @@ def build_rust_library():
     except Exception as e:
         logger.error(f"Failed to build Rust library: {e}")
         return False
-
 
 # Attempt to build on import if needed
 if not RUST_AVAILABLE:

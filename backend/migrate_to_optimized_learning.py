@@ -15,7 +15,6 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-
 def kill_high_cpu_processes():
     """Kill any existing high-CPU JARVIS processes"""
     logger.info("🔍 Checking for high-CPU processes...")
@@ -44,7 +43,6 @@ def kill_high_cpu_processes():
     
     return len(killed)
 
-
 def install_optimizations():
     """Install optimization libraries"""
     logger.info("📦 Installing optimization libraries...")
@@ -63,7 +61,6 @@ def install_optimizations():
             logger.info(f"   Installing {package}...")
             subprocess.run([sys.executable, '-m', 'pip', 'install', package], 
                          capture_output=True)
-
 
 def update_learning_imports():
     """Update imports to use optimized learning"""
@@ -124,7 +121,6 @@ def _original_get_advanced_continuous_learning(model: nn.Module)'''
     
     return backup_dir
 
-
 def apply_cpu_limits():
     """Apply CPU limiting configurations"""
     logger.info("⚙️ Applying CPU limits...")
@@ -153,7 +149,6 @@ def apply_cpu_limits():
         f.write('\n'.join(env_content))
     
     logger.info("✅ CPU limits applied")
-
 
 def test_optimized_learning():
     """Test the optimized learning system"""
@@ -185,7 +180,6 @@ def test_optimized_learning():
     except Exception as e:
         logger.error(f"❌ Test failed: {e}")
         return False
-
 
 def start_optimized_backend():
     """Start backend with optimized learning"""
@@ -239,7 +233,6 @@ def start_optimized_backend():
             return None
     
     return process, cpu_samples
-
 
 def verify_performance():
     """Verify the performance improvements"""
@@ -298,7 +291,6 @@ def verify_performance():
     
     return success, avg_cpu
 
-
 def main():
     """Main migration process"""
     print("\n🚀 JARVIS Optimized Learning Migration")
@@ -355,7 +347,6 @@ def main():
     print("=" * 60)
     
     return 0 if success else 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

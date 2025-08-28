@@ -9,7 +9,6 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-
 class PersonalityAdapter:
     """Adapter to provide personality interface for JARVISAgentVoice"""
     

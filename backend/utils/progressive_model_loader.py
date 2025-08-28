@@ -23,7 +23,6 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-
 class ModelLoaderConfig:
     """Configuration loader for model loading settings"""
 
@@ -78,7 +77,6 @@ class ModelLoaderConfig:
 
         return value
 
-
 @dataclass
 class ModelInfo:
     """Enhanced model information with auto-discovery capabilities"""
@@ -125,7 +123,6 @@ class ModelInfo:
 
         except Exception:
             pass  # Use defaults if detection fails
-
 
 class DynamicModelDiscovery:
     """Automatically discover models in the codebase"""
@@ -312,7 +309,6 @@ class DynamicModelDiscovery:
         # Everything else is enhancement (Priority 3)
         return 3
 
-
 class DependencyResolver:
     """Intelligent dependency resolution for parallel loading"""
 
@@ -419,7 +415,6 @@ class DependencyResolver:
 
         return load_levels
 
-
 class AdaptiveLoadBalancer:
     """Dynamically balance load across CPU cores and memory"""
 
@@ -468,7 +463,6 @@ class AdaptiveLoadBalancer:
             return min(len(models), max(2, self.optimal_workers // 2))
         else:  # Slow loading models
             return min(2, self.optimal_workers)
-
 
 class ProgressiveModelLoader:
     """Enhanced progressive model loader with dynamic discovery and intelligent parallelization"""
@@ -1034,10 +1028,8 @@ class ProgressiveModelLoader:
 
         logger.info("✅ Model loader shutdown complete")
 
-
 # Global instance with auto-discovery enabled
 model_loader = ProgressiveModelLoader(auto_discover=True)
-
 
 # Enhanced lazy proxy with automatic loading
 class SmartLazyProxy:
@@ -1091,7 +1083,6 @@ class SmartLazyProxy:
         """Async attribute access"""
         await self._ensure_loaded()
         return getattr(self._model, name)
-
 
 # Export smart proxies for commonly used models
 vision_system = SmartLazyProxy("vision_core")

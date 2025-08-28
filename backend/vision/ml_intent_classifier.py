@@ -20,7 +20,6 @@ import pickle
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class VisionIntent:
     """Represents a classified vision intent"""
@@ -31,7 +30,6 @@ class VisionIntent:
     context: Dict[str, Any] = field(default_factory=dict)
     learned_patterns: List[str] = field(default_factory=list)
     timestamp: datetime = field(default_factory=datetime.now)
-
 
 @dataclass
 class LearnedPattern:
@@ -44,7 +42,6 @@ class LearnedPattern:
     confidence_score: float = 0.5
     last_used: datetime = field(default_factory=datetime.now)
     context_examples: List[Dict] = field(default_factory=list)
-
 
 class MLIntentClassifier:
     """
@@ -323,10 +320,8 @@ class MLIntentClassifier:
             
         return export_data
 
-
 # Singleton instance
 _classifier_instance: Optional[MLIntentClassifier] = None
-
 
 def get_ml_intent_classifier() -> MLIntentClassifier:
     """Get singleton instance of ML intent classifier"""

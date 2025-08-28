@@ -24,7 +24,6 @@ import warnings
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
 class MemoryState(Enum):
     """Memory pressure states"""
 
@@ -33,7 +32,6 @@ class MemoryState(Enum):
     CRITICAL = "critical"  # 85-95% usage
     EMERGENCY = "emergency"  # > 95% usage
 
-
 class ComponentPriority(Enum):
     """Component priority levels for memory management"""
 
@@ -41,7 +39,6 @@ class ComponentPriority(Enum):
     HIGH = 2  # Important features (NLP)
     MEDIUM = 3  # Enhanced features (RAG, Voice)
     LOW = 4  # Optional features (Training, Analytics)
-
 
 @dataclass
 class MemorySnapshot:
@@ -55,7 +52,6 @@ class MemorySnapshot:
     state: MemoryState
     components: Dict[str, int] = field(default_factory=dict)
 
-
 @dataclass
 class ComponentInfo:
     """Information about a managed component"""
@@ -68,7 +64,6 @@ class ComponentInfo:
     last_used: Optional[datetime] = None
     load_time: Optional[float] = None
     reference: Optional[weakref.ref] = None
-
 
 class MemoryPredictor:
     """AI-driven memory prediction using historical data"""
@@ -111,7 +106,6 @@ class MemoryPredictor:
             std = np.std(pattern) if len(pattern) > 1 else avg * 0.1
             return avg + (std * 1.2)  # 1.2 standard deviations for safety
         return 500  # Default fallback
-
 
 class M1MemoryManager:
     """
@@ -562,7 +556,6 @@ class M1MemoryManager:
         """Cleanup resources"""
         await self.stop_monitoring()
         tracemalloc.stop()
-
 
 # Example usage and testing
 if __name__ == "__main__":

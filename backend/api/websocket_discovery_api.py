@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/websocket", tags=["websocket"])
 
-
 @router.get("/endpoints")
 async def discover_websocket_endpoints() -> Dict[str, List[Dict[str, Any]]]:
     """
@@ -69,7 +68,6 @@ async def discover_websocket_endpoints() -> Dict[str, List[Dict[str, Any]]]:
         "discovery_method": "api",
         "dynamic": True
     }
-
 
 @router.post("/register")
 async def register_websocket_endpoint(

@@ -42,7 +42,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class ServiceHealth:
     """Health status of a service"""
@@ -53,7 +52,6 @@ class ServiceHealth:
     response_time_ms: float
     error_rate: float
     rust_accelerated: bool
-
 
 class MLServiceOrchestrator:
     """
@@ -123,7 +121,6 @@ class MLServiceOrchestrator:
         ]
         
         return torch.tensor(features, dtype=torch.float32)
-
 
 class UnifiedRustService:
     """
@@ -463,10 +460,8 @@ class UnifiedRustService:
             }
         }
 
-
 # Global service instance
 _unified_service: Optional[UnifiedRustService] = None
-
 
 async def get_unified_service() -> UnifiedRustService:
     """Get or create unified service instance"""
@@ -476,7 +471,6 @@ async def get_unified_service() -> UnifiedRustService:
         # Wait for initialization
         await asyncio.sleep(1)
     return _unified_service
-
 
 # FastAPI integration
 async def setup_unified_service(app):
@@ -493,7 +487,6 @@ async def setup_unified_service(app):
         # Cleanup if needed
     
     logger.info("Unified Rust service integrated with FastAPI")
-
 
 # Demo function
 async def demo_unified_service():
@@ -534,7 +527,6 @@ async def demo_unified_service():
     logger.info(f"Average CPU reduction: {stats['overview']['avg_cpu_reduction']}")
     logger.info(f"Average latency: {stats['overview']['avg_latency_ms']}ms")
     logger.info(f"Healthy services: {stats['overview']['services_healthy']}/{stats['overview']['services_total']}")
-
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

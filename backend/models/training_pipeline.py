@@ -26,7 +26,6 @@ import random
 
 from models.custom_model import CustomChatbotModel, CustomChatbotConfig
 
-
 @dataclass
 class TrainingConfig:
     """Configuration for training"""
@@ -80,7 +79,6 @@ class TrainingConfig:
     # Random seed
     seed: int = 42
 
-
 @dataclass
 class ConversationData:
     """Data structure for conversation"""
@@ -89,7 +87,6 @@ class ConversationData:
     domain: Optional[str] = None
     intent: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class ConversationDataset(Dataset):
     """Dataset for conversation data"""
@@ -214,7 +211,6 @@ class ConversationDataset(Dataset):
         """Replace words with synonyms (placeholder)"""
         # In practice, use WordNet or similar
         return text
-
 
 class ModelTrainer:
     """Trainer for custom chatbot model"""
@@ -569,7 +565,6 @@ class ModelTrainer:
         
         self.logger.info(f"Checkpoint loaded from step {self.global_step}")
 
-
 class CurriculumLearningScheduler:
     """Implements curriculum learning for gradual difficulty increase"""
     
@@ -589,7 +584,6 @@ class CurriculumLearningScheduler:
     def get_difficulty_weight(self) -> float:
         """Get current difficulty weight"""
         return (self.current_stage + 1) / self.num_stages
-
 
 # Example usage
 if __name__ == "__main__":

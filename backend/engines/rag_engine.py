@@ -22,7 +22,6 @@ import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-
 @dataclass
 class Document:
     """Represents a document in the knowledge base"""
@@ -66,7 +65,6 @@ class ConversationSummary:
     topics: List[str]
     sentiment: Dict[str, float]
     created_at: datetime = field(default_factory=datetime.now)
-
 
 class TextChunker:
     """Splits text into overlapping chunks for better retrieval"""
@@ -151,7 +149,6 @@ class TextChunker:
             
         return chunks
 
-
 class EmbeddingModel:
     """Handles text embeddings for semantic search"""
     
@@ -178,7 +175,6 @@ class EmbeddingModel:
             
         return np.vstack(all_embeddings)
 
-
 class VectorStore(ABC):
     """Abstract base class for vector stores"""
     
@@ -196,7 +192,6 @@ class VectorStore(ABC):
     async def delete_document(self, doc_id: str):
         """Delete a document"""
         pass
-
 
 class FAISSVectorStore(VectorStore):
     """FAISS-based vector store for efficient similarity search"""
@@ -320,7 +315,6 @@ class FAISSVectorStore(VectorStore):
             self.documents = metadata['documents']
             self.chunks = metadata['chunks']
 
-
 class ChromaVectorStore(VectorStore):
     """ChromaDB-based vector store"""
     
@@ -388,7 +382,6 @@ class ChromaVectorStore(VectorStore):
         
         if results['ids']:
             self.collection.delete(ids=results['ids'])
-
 
 class KnowledgeBase:
     """Main knowledge base system with multiple stores and retrieval strategies"""
@@ -585,13 +578,11 @@ class KnowledgeBase:
             await self.vector_store.delete_document(doc_id)
             await self._update_tfidf_index()
 
-
 class ConversationSummarizer:
     """Summarizes conversations for long-term memory"""
     
     def __init__(self, model_name: str = "facebook/bart-large-cnn"):
         from transformers import pipeline
-        self.summarizer = pipeline("summarization", model=model_name)
         self.entity_extractor = pipeline("ner", model="dslim/bert-base-NER")
         
     def summarize_conversation(self, messages: List[Dict[str, str]], max_length: int = 150) -> ConversationSummary:
@@ -733,7 +724,6 @@ class ConversationSummarizer:
         else:
             return {'positive': 0.0, 'negative': 0.0, 'neutral': 1.0}
 
-
 class LearningEngine:
     """Implements learning and adaptation capabilities"""
     
@@ -858,7 +848,6 @@ class LearningEngine:
             
         return " ".join(additions)
 
-
 class RAGEngine:
     """Main RAG engine integrating all components"""
     
@@ -978,7 +967,6 @@ class RAGEngine:
                 if i['feedback'] is not None
             ]) if any(i['feedback'] is not None for i in self.learning_engine.interaction_history) else None
         }
-
 
 # Example usage
 if __name__ == "__main__":

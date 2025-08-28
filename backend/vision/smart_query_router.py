@@ -15,7 +15,6 @@ from .window_relationship_detector import WindowRelationshipDetector, WindowGrou
 
 logger = logging.getLogger(__name__)
 
-
 class QueryIntent(Enum):
     """Types of query intents"""
     MESSAGES = "messages"
@@ -28,7 +27,6 @@ class QueryIntent(Enum):
     CODE_SEARCH = "code_search"
     GENERAL = "general"
 
-
 @dataclass
 class QueryRoute:
     """Routing decision for a query"""
@@ -37,7 +35,6 @@ class QueryRoute:
     confidence: float
     reasoning: str
     capture_all: bool = False  # Whether to capture all windows
-
 
 class SmartQueryRouter:
     """Routes queries to relevant windows intelligently"""
@@ -502,7 +499,6 @@ class SmartQueryRouter:
         
         return 999  # Low priority for unknown apps
 
-
 async def test_smart_query_router():
     """Test smart query routing"""
     from .window_detector import WindowDetector
@@ -540,7 +536,6 @@ async def test_smart_query_router():
         
         for i, window in enumerate(route.target_windows[:3]):
             print(f"   {i+1}. {window.app_name} - {window.window_title or 'Untitled'}")
-
 
 if __name__ == "__main__":
     import asyncio

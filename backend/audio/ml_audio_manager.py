@@ -14,7 +14,6 @@ from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, asdict
 from collections import defaultdict, deque
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier, IsolationForest
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import DBSCAN
 import joblib
@@ -22,7 +21,6 @@ import aiofiles
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
-
 
 @dataclass
 class AudioEvent:
@@ -81,7 +79,6 @@ class AudioEvent:
         elif 'edge' in ua_lower:
             return 'edge'
         return 'other'
-
 
 class AudioPatternLearner:
     """Learns patterns from audio events to predict and prevent issues"""
@@ -308,7 +305,6 @@ class AudioPatternLearner:
         total_confidence = sum(s['confidence'] for s in strategies)
         
         return min(total_weight / max(total_confidence, 1), 1.0)
-
 
 class AdaptiveAudioErrorHandler:
     """Handles audio errors with ML-driven adaptive strategies"""
@@ -598,10 +594,8 @@ class AdaptiveAudioErrorHandler:
         
         return correct_predictions / max(total_predictions, 1)
 
-
 # Singleton instance
 _audio_manager = None
-
 
 def get_audio_manager() -> AdaptiveAudioErrorHandler:
     """Get singleton audio manager instance"""
@@ -609,7 +603,6 @@ def get_audio_manager() -> AdaptiveAudioErrorHandler:
     if _audio_manager is None:
         _audio_manager = AdaptiveAudioErrorHandler()
     return _audio_manager
-
 
 # Export main classes
 __all__ = [

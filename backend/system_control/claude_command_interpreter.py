@@ -23,7 +23,6 @@ from workflows.weather_app_vision import execute_weather_app_workflow
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class CommandIntent:
     """Represents a parsed command intent"""
@@ -36,7 +35,6 @@ class CommandIntent:
     requires_confirmation: bool
     raw_command: str
 
-
 @dataclass
 class CommandResult:
     """Result of command execution"""
@@ -44,7 +42,6 @@ class CommandResult:
     message: str
     data: Optional[Any] = None
     follow_up_needed: bool = False
-
 
 class ClaudeCommandInterpreter:
     """Interprets natural language commands using Claude API"""

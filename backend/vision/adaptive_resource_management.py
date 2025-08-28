@@ -22,7 +22,6 @@ import os
 
 logger = logging.getLogger(__name__)
 
-
 class WorkloadLevel(Enum):
     """Workload intensity levels"""
     IDLE = 0
@@ -30,7 +29,6 @@ class WorkloadLevel(Enum):
     MODERATE = 2
     HEAVY = 3
     CRITICAL = 4
-
 
 @dataclass
 class SystemMetrics:
@@ -47,7 +45,6 @@ class SystemMetrics:
     memory_pressure: float = 0.0
     thermal_state: str = "normal"
 
-
 @dataclass
 class ResourcePrediction:
     """ML model prediction output"""
@@ -57,7 +54,6 @@ class ResourcePrediction:
     confidence: float
     recommended_threads: int
     recommended_frequency: float
-
 
 class WorkloadPredictor(nn.Module):
     """LSTM-based workload prediction model"""
@@ -101,7 +97,6 @@ class WorkloadPredictor(nn.Module):
         workload_logits = self.workload_classifier(last_hidden)
         
         return cpu_pred, mem_pred, workload_logits
-
 
 class ThermalManager:
     """Manage thermal throttling and frequency scaling"""
@@ -232,7 +227,6 @@ class ThermalManager:
         
         self.set_cpu_frequency(target_freq)
         return factor
-
 
 class AdaptiveResourceManager:
     """
@@ -461,7 +455,6 @@ class AdaptiveResourceManager:
         
         return stats
 
-
 # Test function
 def test_adaptive_resource_management():
     """Test adaptive resource management"""
@@ -509,7 +502,6 @@ def test_adaptive_resource_management():
     
     manager.stop_monitoring()
     logger.info("\n✅ Adaptive resource management test complete")
-
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

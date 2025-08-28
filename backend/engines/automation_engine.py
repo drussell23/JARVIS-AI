@@ -16,7 +16,6 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.cron import CronTrigger
 
-
 class TaskStatus(Enum):
     """Task execution status"""
     PENDING = "pending"
@@ -25,14 +24,12 @@ class TaskStatus(Enum):
     FAILED = "failed"
     CANCELLED = "cancelled"
 
-
 class TaskPriority(Enum):
     """Task priority levels"""
     CRITICAL = 1
     HIGH = 2
     MEDIUM = 3
     LOW = 4
-
 
 @dataclass
 class ScheduledEvent:
@@ -47,7 +44,6 @@ class ScheduledEvent:
     reminders: List[int] = field(default_factory=list)  # Minutes before event
     recurring: bool = False
     recurrence_rule: Optional[str] = None
-
 
 @dataclass
 class AutomationTask:
@@ -64,7 +60,6 @@ class AutomationTask:
     result: Optional[Any] = None
     error: Optional[str] = None
 
-
 class AutomationAction(ABC):
     """Base class for automation actions"""
     
@@ -77,7 +72,6 @@ class AutomationAction(ABC):
     def validate_parameters(self, parameters: Dict[str, Any]) -> bool:
         """Validate action parameters"""
         pass
-
 
 class CalendarManager:
     """Manages calendar and scheduling functionality"""
@@ -222,7 +216,6 @@ class CalendarManager:
             
         return cal.to_ical().decode('utf-8')
 
-
 class WeatherService:
     """Weather information service"""
     
@@ -338,7 +331,6 @@ class WeatherService:
             f"Wind: {weather['wind_speed']} m/s\n"
             f"Cloudiness: {weather['clouds']}%"
         )
-
 
 class InformationService:
     """General information service aggregator"""
@@ -495,7 +487,6 @@ class InformationService:
                             
         return {"error": f"No Wikipedia article found for {topic}"}
 
-
 class HomeAutomationController:
     """Basic home automation control interface"""
     
@@ -574,7 +565,6 @@ class HomeAutomationController:
             return self.devices.get(device_id, {"error": f"Device {device_id} not found"})
         else:
             return list(self.devices.values())
-
 
 class TaskExecutor:
     """Executes automation tasks with planning capabilities"""
@@ -770,7 +760,6 @@ class TaskExecutor:
             
         return tasks
 
-
 class AutomationEngine:
     """Main automation engine integrating all services"""
     
@@ -937,7 +926,6 @@ class AutomationEngine:
         """Shutdown automation engine"""
         self.calendar.stop()
         self.task_executor.scheduler.shutdown()
-
 
 # Example usage
 if __name__ == "__main__":

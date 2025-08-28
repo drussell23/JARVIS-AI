@@ -11,14 +11,12 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'swift_bridge'))
 from python_bridge import SWIFT_AVAILABLE, IntelligentCommandRouter
 import asyncio
 
-
 class Colors:
     GREEN = '\033[92m'
     YELLOW = '\033[93m'
     CYAN = '\033[96m'
     BOLD = '\033[1m'
     ENDC = '\033[0m'
-
 
 async def check_status():
     print(f"{Colors.BOLD}🚀 JARVIS Swift Classifier Status{Colors.ENDC}")
@@ -91,7 +89,6 @@ async def check_status():
         print(f"{Colors.GREEN}✅ Swift NLP provides enhanced accuracy{Colors.ENDC}")
     else:
         print(f"{Colors.YELLOW}📝 Python fallback ensures reliability{Colors.ENDC}")
-
 
 if __name__ == "__main__":
     print()

@@ -15,7 +15,6 @@ from .autonomous_decision_engine import AutonomousAction, ActionCategory, Action
 
 logger = logging.getLogger(__name__)
 
-
 class PermissionRecord:
     """Record of permission decisions for learning"""
     def __init__(self):
@@ -76,7 +75,6 @@ class PermissionRecord:
             record.last_decision_time = datetime.fromisoformat(data['last_decision_time'])
         record.context_history = data.get('context_history', [])
         return record
-
 
 class PermissionManager:
     """Manages and learns autonomous action permissions"""
@@ -389,7 +387,6 @@ class PermissionManager:
         
         return suggestions
 
-
 def test_permission_manager():
     """Test the permission manager"""
     manager = PermissionManager()
@@ -441,7 +438,6 @@ def test_permission_manager():
         print(f"\n💡 Automation Suggestions:")
         for suggestion in suggestions:
             print(f"- {suggestion['description']} (confidence: {suggestion['confidence']:.1%})")
-
 
 if __name__ == "__main__":
     test_permission_manager()

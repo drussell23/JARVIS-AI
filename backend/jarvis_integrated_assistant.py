@@ -26,7 +26,6 @@ from system_control.claude_command_interpreter import ClaudeCommandInterpreter
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class IntegratedContext:
     """Context for integrated vision-control interactions"""
@@ -38,7 +37,6 @@ class IntegratedContext:
     pending_actions: List[Dict[str, Any]] = field(default_factory=list)
     interaction_history: List[Dict[str, Any]] = field(default_factory=list)
 
-
 @dataclass
 class IntegratedResponse:
     """Response from integrated assistant"""
@@ -48,7 +46,6 @@ class IntegratedResponse:
     system_actions: List[Dict[str, Any]] = field(default_factory=list)
     follow_up_needed: bool = False
     confidence: float = 1.0
-
 
 class JARVISIntegratedAssistant:
     """
@@ -606,7 +603,6 @@ class JARVISIntegratedAssistant:
         except Exception as e:
             logger.error(f"Error loading learning data: {e}")
 
-
 async def test_integrated_assistant():
     """Test the integrated assistant"""
     print("🤖 Testing JARVIS Integrated Assistant")
@@ -661,7 +657,6 @@ async def test_integrated_assistant():
     print("• Contextual action suggestions")
     print("• Dynamic learning from interactions")
     print("• Zero hardcoding - all dynamic!")
-
 
 if __name__ == "__main__":
     asyncio.run(test_integrated_assistant())

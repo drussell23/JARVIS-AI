@@ -36,7 +36,6 @@ from .advanced_continuous_learning import (
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class SystemResources:
     """Track system resource usage"""
@@ -45,7 +44,6 @@ class SystemResources:
     available_memory_mb: float
     io_wait: float = 0.0
     timestamp: datetime = field(default_factory=datetime.now)
-
 
 @dataclass 
 class LearningConfig:
@@ -73,7 +71,6 @@ class LearningConfig:
     # Health monitoring
     health_check_interval_seconds: int = 30
     unhealthy_threshold_count: int = 3  # Mark unhealthy after 3 failed checks
-
 
 class ResourceMonitor:
     """Monitor system resources and enforce limits"""
@@ -172,7 +169,6 @@ class ResourceMonitor:
         
         return min(load_factor, 1.0)
 
-
 class AdaptiveScheduler:
     """Adaptive task scheduling based on system load"""
     
@@ -232,7 +228,6 @@ class AdaptiveScheduler:
         
         adjusted_size = int(base_batch_size * adjustment_factor)
         return max(adjusted_size, 16)  # Minimum batch size of 16
-
 
 class RobustAdvancedContinuousLearning:
     """
@@ -843,9 +838,7 @@ class RobustAdvancedContinuousLearning:
         
         logger.info("Robust Advanced Continuous Learning shutdown complete")
 
-
 # Helper classes already imported at the top
-
 
 # Factory function
 def get_robust_continuous_learning(model: nn.Module, config: Optional[LearningConfig] = None) -> RobustAdvancedContinuousLearning:

@@ -18,7 +18,6 @@ import websockets
 import json
 import base64
 
-
 class AudioFormat(Enum):
     """Audio format specifications"""
     PCM_16 = "pcm16"
@@ -31,7 +30,6 @@ class ProcessingMode(Enum):
     REALTIME = "realtime"
     BATCH = "batch"
     STREAMING = "streaming"
-
 
 @dataclass
 class AudioConfig:
@@ -59,7 +57,6 @@ class AudioConfig:
     buffer_size: int = 10  # seconds
     latency_target: float = 0.1  # seconds
 
-
 @dataclass
 class AudioMetrics:
     """Audio analysis metrics"""
@@ -70,7 +67,6 @@ class AudioMetrics:
     is_speech: bool
     frequency_centroid: float
     zero_crossing_rate: float
-
 
 class AudioStreamProcessor:
     """Real-time audio stream processing with advanced features"""
@@ -338,7 +334,6 @@ class AudioStreamProcessor:
         except queue.Empty:
             return None
 
-
 class VoiceActivityDetector:
     """Advanced Voice Activity Detection"""
     
@@ -428,7 +423,6 @@ class VoiceActivityDetector:
                     self.speech_buffer = []
                     
         return self.state, None
-
 
 class AudioFeedbackGenerator:
     """Generate audio feedback and confirmations"""
@@ -544,7 +538,6 @@ class AudioFeedbackGenerator:
             return np.concatenate([beep, silence, beep, silence, beep])
         else:
             return self._generate_beep(frequency, duration)
-
 
 class StreamingAudioProcessor:
     """WebSocket-based streaming audio processor"""
@@ -730,7 +723,6 @@ class StreamingAudioProcessor:
                 audio = self.feedback.get_feedback(feedback_type)
                 await self._send_audio(websocket, audio, "feedback")
                 await asyncio.sleep(0.5)
-
 
 # Example usage and testing
 if __name__ == "__main__":

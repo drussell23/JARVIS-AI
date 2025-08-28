@@ -13,7 +13,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class WindowInfo:
     """Information about a single window"""
@@ -25,7 +24,6 @@ class WindowInfo:
     layer: int
     is_visible: bool
     process_id: int
-
 
 class WindowDetector:
     """Detects and tracks all open windows on macOS"""
@@ -225,7 +223,6 @@ class WindowDetector:
             'window_details': windows[:10]  # Top 10 windows by relevance
         }
 
-
 # Utility functions for external use
 def list_all_windows() -> List[Dict[str, Any]]:
     """Simple function to list all windows"""
@@ -240,13 +237,11 @@ def list_all_windows() -> List[Dict[str, Any]]:
         'position': f"({w.bounds['x']}, {w.bounds['y']})"
     } for w in windows]
 
-
 def get_focused_app() -> Optional[str]:
     """Get the name of the currently focused application"""
     detector = WindowDetector()
     focused = detector.get_focused_window()
     return focused.app_name if focused else None
-
 
 async def test_window_detection():
     """Test the window detection system"""
@@ -305,7 +300,6 @@ async def test_window_detection():
     monitor_task.cancel()
     
     print("\n✅ Window detection test complete!")
-
 
 if __name__ == "__main__":
     asyncio.run(test_window_detection())

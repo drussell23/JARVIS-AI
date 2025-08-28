@@ -10,7 +10,6 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-
 class AutonomyHandler:
     """Handles autonomous mode activation and management"""
     
@@ -213,10 +212,8 @@ class AutonomyHandler:
                 
         return None
 
-
 # Singleton instance
 _autonomy_handler = None
-
 
 def get_autonomy_handler() -> AutonomyHandler:
     """Get the singleton autonomy handler instance"""

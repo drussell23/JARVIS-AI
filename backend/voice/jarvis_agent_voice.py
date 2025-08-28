@@ -26,7 +26,6 @@ except ImportError:
     VISION_V2_AVAILABLE = False
     logger.warning('Vision System v2.0 not available')
 
-
 class JARVISAgentVoice(MLEnhancedVoiceSystem):
     """JARVIS AI Agent with system control capabilities"""
     

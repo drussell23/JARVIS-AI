@@ -14,13 +14,11 @@ import asyncio
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class ConversationTurn:
     role: str  # "user" or "assistant"
     content: str
     timestamp: datetime = field(default_factory=datetime.now)
-
 
 class SimpleChatbot:
     """
@@ -343,7 +341,6 @@ class SimpleChatbot:
             "error": "Knowledge management not available in Simple mode",
             "suggestion": "Upgrade to Intelligent or LangChain mode for knowledge management"
         }
-
 
 # Test the chatbot
 if __name__ == "__main__":

@@ -14,7 +14,6 @@ from threading import Lock
 
 logger = logging.getLogger(__name__)
 
-
 class CentralizedModelManager:
     """Singleton model manager to prevent duplicate model loading"""
     
@@ -95,9 +94,7 @@ class CentralizedModelManager:
         
         if key not in self._models:
             try:
-                import spacy
-                self._models[key] = spacy.load(model_name)
-                logger.info(f"Loaded spaCy model: {model_name}")
+                                self._models[key] =                 logger.info(f"Loaded spaCy model: {model_name}")
             except Exception as e:
                 logger.error(f"Failed to load spaCy model {model_name}: {e}")
                 return None
@@ -138,7 +135,6 @@ class CentralizedModelManager:
                 total_mb += 50  # Default estimate
         
         return f"{total_mb} MB"
-
 
 # Global instance
 model_manager = CentralizedModelManager()

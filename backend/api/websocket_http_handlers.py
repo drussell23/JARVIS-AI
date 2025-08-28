@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ws", tags=["websocket"])
 
-
 class WebSocketHandlerRequest(BaseModel):
     """Request model for WebSocket handler calls"""
     module: str
@@ -23,7 +22,6 @@ class WebSocketHandlerRequest(BaseModel):
     kwargs: Dict[str, Any] = {}
     context: Dict[str, Any] = {}
 
-
 class WebSocketHandlerResponse(BaseModel):
     """Response model for WebSocket handler calls"""
     success: bool
@@ -31,10 +29,8 @@ class WebSocketHandlerResponse(BaseModel):
     error: Optional[str] = None
     traceback: Optional[str] = None
 
-
 # Cache for imported handlers
 _handler_cache: Dict[str, Any] = {}
-
 
 async def call_handler(request: WebSocketHandlerRequest) -> WebSocketHandlerResponse:
     """Call a WebSocket handler function"""
@@ -70,7 +66,6 @@ async def call_handler(request: WebSocketHandlerRequest) -> WebSocketHandlerResp
             traceback=traceback.format_exc()
         )
 
-
 @router.post("/general/handler", response_model=WebSocketHandlerResponse)
 async def handle_general_websocket(request: WebSocketHandlerRequest):
     """Handle general WebSocket messages"""
@@ -79,7 +74,6 @@ async def handle_general_websocket(request: WebSocketHandlerRequest):
         request.module = "backend.api.general_websocket_handler"
     
     return await call_handler(request)
-
 
 @router.post("/vision/handler", response_model=WebSocketHandlerResponse)
 async def handle_vision_websocket(request: WebSocketHandlerRequest):
@@ -90,7 +84,6 @@ async def handle_vision_websocket(request: WebSocketHandlerRequest):
     
     return await call_handler(request)
 
-
 @router.post("/voice/handler", response_model=WebSocketHandlerResponse)
 async def handle_voice_websocket(request: WebSocketHandlerRequest):
     """Handle voice WebSocket messages"""
@@ -99,7 +92,6 @@ async def handle_voice_websocket(request: WebSocketHandlerRequest):
         request.module = "backend.api.voice_websocket_handler"
     
     return await call_handler(request)
-
 
 @router.get("/endpoints")
 async def discover_endpoints():
@@ -137,7 +129,6 @@ async def discover_endpoints():
         logger.error(f"Failed to discover endpoints: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.post("/batch")
 async def execute_batch(operations: List[WebSocketHandlerRequest]):
     """Execute multiple handler calls in batch"""
@@ -157,7 +148,6 @@ async def execute_batch(operations: List[WebSocketHandlerRequest]):
             results.append(response)
     
     return {'results': results}
-
 
 # Specific handlers for common operations
 @router.post("/health/check")

@@ -33,7 +33,6 @@ except ImportError:
     def word_tokenize(text):
         return text.split()
 
-
 class TaskType(Enum):
     """Types of tasks JARVIS can handle"""
     CHAT = "chat"              # Simple conversation

@@ -7,7 +7,6 @@ Shows how Swift, Vision, and Control work together
 import asyncio
 from datetime import datetime
 
-
 async def demo_unified_jarvis():
     """
     Demonstrates the complete JARVIS AI Agent flow
@@ -148,7 +147,6 @@ async def demo_unified_jarvis():
     print("• Vision: proactive_vision_assistant.py (notification detection)")
     print("• Voice: jarvis_agent_voice.py (natural speech)")
     print("• Bridge: jarvis_unified_ai_agent.py (brings it all together)")
-
 
 if __name__ == "__main__":
     asyncio.run(demo_unified_jarvis())

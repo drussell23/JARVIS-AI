@@ -9,7 +9,6 @@ from engines.automation_engine import (
     TaskStatus, TaskPriority, CalendarManager
 )
 
-
 class CalendarEventRequest(BaseModel):
     title: str
     start_time: str  # ISO format
@@ -56,7 +55,6 @@ class TaskRequest(BaseModel):
 class AutomationCommandRequest(BaseModel):
     command: str
     context: Optional[Dict[str, Any]] = {}
-
 
 class AutomationAPI:
     """API for automation features"""

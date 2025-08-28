@@ -14,9 +14,7 @@ import logging
 
 # Optional NLP imports
 try:
-    import spacy
-    nlp = spacy.load("en_core_web_sm")
-    SPACY_AVAILABLE = True
+        nlp =     SPACY_AVAILABLE = True
 except:
     SPACY_AVAILABLE = False
 
@@ -29,7 +27,6 @@ except:
     NLTK_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
-
 
 class PythonCommandClassifier:
     """
@@ -296,7 +293,6 @@ class PythonCommandClassifier:
         
         return stats
 
-
 class FallbackIntelligentCommandRouter:
     """
     Fallback intelligent command router using Python NLP
@@ -323,10 +319,8 @@ class FallbackIntelligentCommandRouter:
         """Get routing statistics"""
         return self.classifier.get_stats()
 
-
 # Export the fallback router
 IntelligentCommandRouter = FallbackIntelligentCommandRouter
-
 
 if __name__ == "__main__":
     # Test the classifier

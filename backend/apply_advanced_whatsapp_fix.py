@@ -9,7 +9,6 @@ import sys
 import shutil
 from datetime import datetime
 
-
 def apply_advanced_fix():
     """Apply the advanced WhatsApp fix to JARVIS"""
     
@@ -124,7 +123,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from voice.integrate_advanced_routing import JARVISAdvancedVoiceAgent
 
-
 async def test():
     agent = JARVISAdvancedVoiceAgent()
     
@@ -144,7 +142,6 @@ async def test():
     print(f"Performance: {perf}")
     
     print("\\n✅ If WhatsApp opens, the fix is working!")
-
 
 if __name__ == "__main__":
     asyncio.run(test())
@@ -185,7 +182,6 @@ if __name__ == "__main__":
     
     return True
 
-
 def show_manual_instructions():
     """Show manual installation instructions"""
     
@@ -210,7 +206,6 @@ def show_manual_instructions():
     print("\n3. Test with: 'Hey JARVIS, open WhatsApp'")
     
     print("\nThat's it! The system will now use ML-based routing.")
-
 
 if __name__ == "__main__":
     print("🤖 JARVIS Advanced WhatsApp Fix")

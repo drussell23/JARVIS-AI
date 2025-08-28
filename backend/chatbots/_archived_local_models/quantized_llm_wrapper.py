@@ -10,7 +10,6 @@ from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
-
 class QuantizedLLMProvider:
     """Provider for quantized LLMs optimized for M1 Macs"""
     
@@ -120,15 +119,12 @@ class QuantizedLLMProvider:
             "available_memory_gb": mem.available / (1024**3)
         }
 
-
 # Singleton instance
 _quantized_provider = QuantizedLLMProvider()
-
 
 def get_quantized_llm():
     """Get the singleton quantized LLM provider"""
     return _quantized_provider
-
 
 def patch_transformers_import():
     """Patch transformers imports to use quantized models instead"""
@@ -165,7 +161,6 @@ def patch_transformers_import():
     if os.getenv("USE_QUANTIZED_MODELS", "false").lower() == "true":
         sys.modules['transformers'] = QuantizedModelPatcher()
         logger.info("Patched transformers to use quantized models")
-
 
 # Auto-patch on import if configured
 if os.getenv("AUTO_PATCH_TRANSFORMERS", "false").lower() == "true":

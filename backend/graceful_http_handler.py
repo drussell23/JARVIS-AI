@@ -22,7 +22,6 @@ _torch_module = None
 _nn_module = None
 _torch_load_attempted = False
 
-
 def _ensure_torch():
     """Lazy load torch when needed"""
     global _torch_module, _nn_module, _torch_load_attempted
@@ -41,7 +40,6 @@ def _ensure_torch():
     except ImportError:
         logger.warning("PyTorch not available - using fallback graceful handling")
         return False
-
 
 class MLResponseGenerator:
     """ML model that generates appropriate responses for any error condition"""
@@ -91,7 +89,6 @@ class MLResponseGenerator:
         
         # Fallback response distribution
         return np.array([0.7, 0.15, 0.05, 0.05, 0.03, 0.02, 0, 0])
-
 
 class GracefulResponseHandler:
     """
@@ -292,10 +289,8 @@ class GracefulResponseHandler:
             
         return result
 
-
 # Global handler instance
 _handler = None
-
 
 def get_graceful_handler() -> GracefulResponseHandler:
     """Get or create graceful handler instance"""
@@ -303,7 +298,6 @@ def get_graceful_handler() -> GracefulResponseHandler:
     if _handler is None:
         _handler = GracefulResponseHandler()
     return _handler
-
 
 def graceful_endpoint(func):
     """Decorator to make endpoints gracefully handle all errors"""
@@ -338,7 +332,6 @@ def graceful_endpoint(func):
             )
     
     return wrapper
-
 
 # Export the key components
 __all__ = ['graceful_endpoint', 'get_graceful_handler', 'GracefulResponseHandler']

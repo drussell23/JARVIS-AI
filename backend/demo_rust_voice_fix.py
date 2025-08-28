@@ -15,7 +15,6 @@ init()
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
 
-
 async def demo_rust_benefits():
     """Demonstrate the benefits of Rust integration"""
     
@@ -53,7 +52,6 @@ async def demo_rust_benefits():
     print(f"{Fore.GREEN}✅ No more 503 errors when saying 'Hey JARVIS'{Style.RESET_ALL}")
     print("=" * 60)
 
-
 async def show_code_changes():
     """Show the key code changes made"""
     
@@ -90,7 +88,6 @@ async def show_code_changes():
     print("   - Health monitoring")
     print(f"{Style.RESET_ALL}")
 
-
 async def show_usage():
     """Show how to use the new system"""
     
@@ -113,7 +110,6 @@ async def show_usage():
     print("\n4. Test the system:")
     print(f"{Fore.GRAY}   python test_rust_voice_integration.py{Style.RESET_ALL}")
 
-
 async def main():
     """Run the demo"""
     
@@ -128,7 +124,6 @@ async def main():
     
     print(f"\n{Fore.GREEN}🎉 Your JARVIS system is now using Rust acceleration!{Style.RESET_ALL}")
     print(f"{Fore.GREEN}🎉 503 errors are eliminated permanently!{Style.RESET_ALL}\n")
-
 
 if __name__ == "__main__":
     try:

@@ -40,7 +40,6 @@ performance_stats = {
     '503_errors_prevented': 0
 }
 
-
 async def get_audio_handler() -> IntegratedMLAudioHandler:
     """Get or create integrated audio handler with Rust acceleration"""
     global _audio_handler
@@ -49,7 +48,6 @@ async def get_audio_handler() -> IntegratedMLAudioHandler:
         logger.info("Created IntegratedMLAudioHandler with Rust acceleration")
     return _audio_handler
 
-
 async def get_rust_processor() -> RustVoiceProcessor:
     """Get or create Rust voice processor"""
     global _rust_processor
@@ -57,7 +55,6 @@ async def get_rust_processor() -> RustVoiceProcessor:
         _rust_processor = RustVoiceProcessor()
         logger.info("Created RustVoiceProcessor")
     return _rust_processor
-
 
 @router.post("/voice/jarvis/activate")
 async def activate_jarvis(request: Request, background_tasks: BackgroundTasks):
@@ -123,7 +120,6 @@ async def activate_jarvis(request: Request, background_tasks: BackgroundTasks):
             status_code=200  # Return 200 to prevent client-side errors
         )
 
-
 async def _process_activation_with_rust(data: Dict[str, Any], 
                                        audio_handler: IntegratedMLAudioHandler,
                                        rust_processor: RustVoiceProcessor) -> Dict[str, Any]:
@@ -154,7 +150,6 @@ async def _process_activation_with_rust(data: Dict[str, Any],
     
     return result
 
-
 async def _process_command_ml(command: str) -> Dict[str, Any]:
     """Process command using ML models"""
     # This would use trained models for command understanding
@@ -165,7 +160,6 @@ async def _process_command_ml(command: str) -> Dict[str, Any]:
         'entities': [],
         'suggested_action': 'process_with_vision'
     }
-
 
 async def _update_ml_models(cpu_before: float, cpu_after: float, result: Dict[str, Any]):
     """Background task to update ML models based on performance"""
@@ -183,7 +177,6 @@ async def _update_ml_models(cpu_before: float, cpu_after: float, result: Dict[st
         
     except Exception as e:
         logger.error(f"Error updating ML models: {e}")
-
 
 @router.get("/voice/jarvis/status")
 async def jarvis_status():
@@ -224,7 +217,6 @@ async def jarvis_status():
             status_code=200  # Still return 200 to prevent client errors
         )
 
-
 @router.post("/voice/process")
 async def process_voice(request: Request):
     """Process voice input with Rust acceleration"""
@@ -243,7 +235,6 @@ async def process_voice(request: Request):
             content={'status': 'error', 'message': str(e), 'fallback': True},
             status_code=200
         )
-
 
 @router.get("/voice/performance")
 async def get_performance_metrics():
@@ -276,7 +267,6 @@ async def get_performance_metrics():
             status_code=200
         )
 
-
 # Health check endpoint
 @router.get("/voice/health")
 async def voice_health():
@@ -302,7 +292,6 @@ async def voice_health():
             content={'status': 'error', 'message': str(e)},
             status_code=200
         )
-
 
 # Demo endpoint
 @router.post("/voice/demo")
@@ -343,7 +332,6 @@ async def demo_rust_acceleration():
             content={'status': 'error', 'message': str(e)},
             status_code=200
         )
-
 
 # Include router in main app
 def include_router(app):

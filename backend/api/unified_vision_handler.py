@@ -55,7 +55,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class VisionContext:
     """Context for vision operations"""
@@ -66,7 +65,6 @@ class VisionContext:
     monitoring_active: bool = False
     monitoring_interval: float = 2.0
     autonomous_mode: bool = False
-
 
 class MessageRouter:
     """Dynamic message routing system"""
@@ -104,7 +102,6 @@ class MessageRouter:
             return await handler(message, context)
         else:
             raise ValueError(f"No handler for message type: {message_type}")
-
 
 class UnifiedVisionHandler:
     """Unified handler for all vision WebSocket operations"""
@@ -576,10 +573,8 @@ class UnifiedVisionHandler:
                 "traceback": traceback.format_exc(),
             }
 
-
 # Global handler instance
 unified_handler = UnifiedVisionHandler()
-
 
 # Export handler functions for TypeScript bridge
 async def handle_monitoring_interval(
@@ -588,33 +583,27 @@ async def handle_monitoring_interval(
     """Handle monitoring interval updates"""
     return await unified_handler.handle_websocket_message(message, **kwargs)
 
-
 async def handle_workspace_analysis(
     message: Dict[str, Any], **kwargs
 ) -> Dict[str, Any]:
     """Handle workspace analysis requests"""
     return await unified_handler.handle_websocket_message(message, **kwargs)
 
-
 async def handle_action_execution(message: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Handle action execution requests"""
     return await unified_handler.handle_websocket_message(message, **kwargs)
-
 
 async def handle_vision_command(message: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Handle vision commands"""
     return await unified_handler.handle_websocket_message(message, **kwargs)
 
-
 async def handle_claude_vision(message: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Handle Claude vision requests"""
     return await unified_handler.handle_websocket_message(message, **kwargs)
 
-
 async def handle_autonomous_action(message: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Handle autonomous actions"""
     return await unified_handler.handle_websocket_message(message, **kwargs)
-
 
 async def handle_pattern_learning(message: Dict[str, Any], **kwargs) -> Dict[str, Any]:
     """Handle pattern learning"""

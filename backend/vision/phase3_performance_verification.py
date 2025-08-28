@@ -12,7 +12,6 @@ import psutil
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
 
-
 def calculate_phase3_performance():
     """Calculate expected Phase 3 performance based on all optimizations"""
     
@@ -57,7 +56,6 @@ def calculate_phase3_performance():
         'total_reduction': total_reduction,
         'optimizations': optimizations
     }
-
 
 def print_performance_summary():
     """Print comprehensive Phase 3 performance summary"""
@@ -154,7 +152,6 @@ def print_performance_summary():
     logger.info(f"   Std Dev: {np.std(cpu_samples):.1f}%")
     
     logger.info("\n" + "=" * 80)
-
 
 if __name__ == "__main__":
     print_performance_summary()

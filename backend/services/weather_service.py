@@ -17,7 +17,6 @@ from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
-
 class WeatherService:
     """Service for fetching real-time weather data with caching and optimization"""
 

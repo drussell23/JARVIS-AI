@@ -49,7 +49,6 @@ class LockFreeQueue:
         """Get approximate size"""
         return len(self._queue)
 
-
 @dataclass
 class ProcessingTask:
     """Task for parallel processing"""
@@ -403,7 +402,6 @@ class ParallelProcessingPipeline:
         self.update_pool.shutdown(wait=True)
         logger.info("Parallel Processing Pipeline shutdown complete")
 
-
 class CPUThrottler:
     """Advanced CPU throttling with dynamic adjustment"""
     
@@ -455,12 +453,10 @@ class CPUThrottler:
             
         self.last_error = error
 
-
 # Factory function
 def create_parallel_pipeline(**kwargs) -> ParallelProcessingPipeline:
     """Create optimized parallel processing pipeline"""
     return ParallelProcessingPipeline(**kwargs)
-
 
 # Test function
 def test_parallel_pipeline():
@@ -483,7 +479,6 @@ def test_parallel_pipeline():
     
     asyncio.run(test())
     pipeline.shutdown()
-
 
 if __name__ == "__main__":
     test_parallel_pipeline()

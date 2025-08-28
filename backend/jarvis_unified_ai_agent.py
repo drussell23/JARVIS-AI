@@ -33,7 +33,6 @@ from voice.jarvis_agent_voice import JARVISAgentVoice
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class UnifiedAgentState:
     """Unified state across all components"""
@@ -44,7 +43,6 @@ class UnifiedAgentState:
     vision_context: Dict[str, Any] = field(default_factory=dict)
     pending_actions: List[Dict[str, Any]] = field(default_factory=list)
     interaction_history: List[Dict[str, Any]] = field(default_factory=list)
-
 
 class JARVISUnifiedAIAgent:
     """
@@ -464,7 +462,6 @@ class JARVISUnifiedAIAgent:
         self.state.conversation_mode = "idle"
         self.state.active_notifications.remove(notification)
 
-
 async def demonstrate_unified_agent():
     """Demonstrate the unified AI agent"""
     print("🤖 JARVIS Unified AI Agent Demo")
@@ -528,7 +525,6 @@ async def demonstrate_unified_agent():
     print("• Control executing actions")
     
     print("\n✅ True AI Agent - Seamless Integration!")
-
 
 if __name__ == "__main__":
     asyncio.run(demonstrate_unified_agent())

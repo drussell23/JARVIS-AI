@@ -19,7 +19,6 @@ import re
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class ResponseContext:
     """Context for response generation"""
@@ -33,7 +32,6 @@ class ResponseContext:
     previous_responses: List[str] = field(default_factory=list)
     success_rate: float = 0.0
 
-
 @dataclass
 class GeneratedResponse:
     """Generated response with metadata"""
@@ -44,7 +42,6 @@ class GeneratedResponse:
     emotion_tone: Optional[str] = None
     alternatives: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
-
 
 class ResponseStyleEncoder(nn.Module):
     """Neural network for encoding response style"""
@@ -70,7 +67,6 @@ class ResponseStyleEncoder(nn.Module):
         formality = self.formality_head(style_features)
         length = self.length_head(style_features)
         return style_features, tone, formality, length
-
 
 class NeuralResponseGenerator(nn.Module):
     """Neural network for generating responses"""
@@ -121,7 +117,6 @@ class NeuralResponseGenerator(nn.Module):
         output = self.output_projection(response_features)
         
         return output, response_features
-
 
 class DynamicResponseComposer:
     """
@@ -713,10 +708,8 @@ class DynamicResponseComposer:
             'training_examples': len(self.training_examples)
         }
 
-
 # Singleton instance
 _composer_instance: Optional[DynamicResponseComposer] = None
-
 
 def get_response_composer() -> DynamicResponseComposer:
     """Get singleton instance of response composer"""

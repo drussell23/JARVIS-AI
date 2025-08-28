@@ -19,7 +19,6 @@ from voice.ml_vision_integration import patch_system_handler
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
 def apply_vision_routing_fix():
     """
     Apply the ML-based vision routing fix to JARVIS
@@ -216,7 +215,6 @@ def apply_vision_routing_fix():
     
     print("\n🚀 Restart JARVIS to activate the fix!")
 
-
 def create_test_script():
     """Create a test script for the vision routing fix"""
     test_content = '''#!/usr/bin/env python3
@@ -234,7 +232,6 @@ sys.path.insert(0, str(backend_dir))
 
 from voice.advanced_intelligent_command_handler import AdvancedIntelligentCommandHandler
 from voice.ml_vision_integration import MLVisionIntegration
-
 
 async def test_vision_routing():
     """Test vision command routing"""
@@ -295,7 +292,6 @@ async def test_vision_routing():
         print(f"  Confidence: {confidence:.2f}")
         print()
 
-
 if __name__ == "__main__":
     asyncio.run(test_vision_routing())
 '''
@@ -306,7 +302,6 @@ if __name__ == "__main__":
         
     print(f"\n📝 Created test script: {test_file}")
     print("   Run with: python test_vision_routing_fix.py")
-
 
 if __name__ == "__main__":
     apply_vision_routing_fix()

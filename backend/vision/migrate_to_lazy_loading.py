@@ -18,7 +18,6 @@ def create_backup(file_path: Path):
     print(f"✓ Created backup: {backup_path}")
     return backup_path
 
-
 def migrate_dynamic_vision_engine():
     """Update dynamic_vision_engine.py to use lazy loading"""
     file_path = Path("dynamic_vision_engine.py")
@@ -66,7 +65,6 @@ class DynamicVisionEngine:
         """Get model loading status"""
         return self._engine.get_model_info()
 
-
 # For backward compatibility
 def get_vision_engine():
     """Get the global vision engine instance"""
@@ -82,7 +80,6 @@ def get_vision_engine():
     
     print(f"✓ Migrated to lazy loading wrapper")
     return True
-
 
 def migrate_vision_system_v2():
     """Update vision_system_v2.py to use lazy initialization"""
@@ -173,7 +170,6 @@ def migrate_vision_system_v2():
     print(f"✓ Migrated to lazy loading")
     return True
 
-
 def update_ml_model_loader():
     """Update ML model loader to include vision models"""
     loader_path = Path("../ml_model_loader.py")
@@ -230,7 +226,6 @@ def update_ml_model_loader():
     print("⚠️  ML loader already updated or couldn't find insertion point")
     return True
 
-
 def create_vision_init_wrapper():
     """Create __init__.py wrapper for vision module"""
     init_path = Path("__init__.py")
@@ -280,7 +275,6 @@ __all__ = [
     print("✓ Created lazy loading wrapper")
     return True
 
-
 def main():
     """Run the migration"""
     print("🚀 Starting Vision System Lazy Loading Migration...")
@@ -315,7 +309,6 @@ def main():
     else:
         print("❌ Migration had some issues. Check the logs above.")
         print("\nYou can restore from backups if needed.")
-
 
 if __name__ == "__main__":
     main()

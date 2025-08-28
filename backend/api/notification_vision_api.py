@@ -43,7 +43,6 @@ notification_stats = {
     'last_notification': None
 }
 
-
 class NotificationPreferences(BaseModel):
     """User preferences for notifications"""
     announce_all: bool = True
@@ -54,7 +53,6 @@ class NotificationPreferences(BaseModel):
     enabled_contexts: List[str] = [
         "message_received", "meeting_reminder", "urgent_alert", "work_update"
     ]
-
 
 class NotificationWebSocketManager:
     """Manages WebSocket connections for real-time notification updates"""
@@ -116,10 +114,8 @@ class NotificationWebSocketManager:
             "timestamp": notification.timestamp.isoformat()
         }
 
-
 # Initialize WebSocket manager
 notification_ws_manager = NotificationWebSocketManager()
-
 
 # Hook into vision pipeline for notification detection
 async def vision_pipeline_notification_hook(context: Dict[str, Any]):
@@ -159,11 +155,9 @@ async def vision_pipeline_notification_hook(context: Dict[str, Any]):
     
     return context
 
-
 # Register hook with vision pipeline
 if hasattr(vision_pipeline, 'register_processing_hook'):
     vision_pipeline.register_processing_hook('notification_detection', vision_pipeline_notification_hook)
-
 
 @router.get("/status")
 async def get_notification_status() -> Dict[str, Any]:
@@ -176,7 +170,6 @@ async def get_notification_status() -> Dict[str, Any]:
         "active_websockets": len(notification_ws_manager.active_connections)
     }
 
-
 @router.post("/preferences")
 async def update_notification_preferences(preferences: NotificationPreferences) -> Dict[str, Any]:
     """Update notification preferences"""
@@ -188,7 +181,6 @@ async def update_notification_preferences(preferences: NotificationPreferences) 
         "message": "Preferences updated",
         "preferences": preferences.dict()
     }
-
 
 @router.post("/test")
 async def test_notification_announcement(
@@ -223,7 +215,6 @@ async def test_notification_announcement(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.get("/history")
 async def get_notification_history(limit: int = 50) -> Dict[str, Any]:
     """Get notification announcement history"""
@@ -242,7 +233,6 @@ async def get_notification_history(limit: int = 50) -> Dict[str, Any]:
         ]
     }
 
-
 @router.get("/learning/patterns")
 async def get_learned_patterns() -> Dict[str, Any]:
     """Get learned notification detection patterns"""
@@ -255,7 +245,6 @@ async def get_learned_patterns() -> Dict[str, Any]:
             ptype: len(plist) for ptype, plist in patterns.items()
         }
     }
-
 
 @router.websocket("/ws")
 async def notification_websocket(websocket: WebSocket):
@@ -285,7 +274,6 @@ async def notification_websocket(websocket: WebSocket):
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
         notification_ws_manager.disconnect(websocket)
-
 
 # Integration with main vision WebSocket
 async def enhance_vision_websocket_with_notifications():
@@ -318,14 +306,12 @@ async def enhance_vision_websocket_with_notifications():
     # Replace broadcast method
     ws_manager.broadcast = enhanced_broadcast
 
-
 # Auto-start notification intelligence when API loads
 async def startup_notification_system():
     """Start notification system on API startup"""
     await notification_intelligence.start_intelligent_monitoring()
     await enhance_vision_websocket_with_notifications()
     logger.info("Notification intelligence system started")
-
 
 # Register startup - commented out to prevent event loop error
 # The notification system will be initialized when first accessed

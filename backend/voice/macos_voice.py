@@ -251,7 +251,6 @@ class MacOSVoice:
             if hasattr(self, 'speech_thread') and self.speech_thread:
                 self.speech_thread.join(timeout=1)
 
-
 # Enhanced testing and demo
 if __name__ == "__main__":
     print("Testing Enhanced macOS Voice System...")

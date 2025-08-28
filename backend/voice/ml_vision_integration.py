@@ -15,7 +15,6 @@ from ..vision.intelligent_vision_integration import IntelligentVisionIntegration
 
 logger = logging.getLogger(__name__)
 
-
 class MLVisionIntegration:
     """
     Integrates ML-based vision routing with existing JARVIS command handlers
@@ -233,7 +232,6 @@ class MLVisionIntegration:
                     current = self.vision_router.vision_vocabulary["visual_verbs"][word]
                     self.vision_router.vision_vocabulary["visual_verbs"][word] = min(current + 0.05, 1.0)
 
-
 class EnhancedCommandHandler:
     """
     Enhanced command handler that properly routes vision commands
@@ -289,7 +287,6 @@ class EnhancedCommandHandler:
         except Exception as e:
             logger.error(f"Enhanced command handler error: {e}")
             raise
-
 
 def patch_system_handler(handler_instance, anthropic_api_key: Optional[str] = None):
     """

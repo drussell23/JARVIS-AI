@@ -27,7 +27,6 @@ from vision.enhanced_monitoring import EnhancedWorkspaceMonitor
 
 logger = logging.getLogger(__name__)
 
-
 class WorkflowType(Enum):
     """Types of automated workflows"""
     MEETING_PREP = "meeting_prep"
@@ -39,7 +38,6 @@ class WorkflowType(Enum):
     END_OF_DAY = "end_of_day"
     CUSTOM = "custom"
 
-
 class AutomationTrigger(Enum):
     """Triggers for automation"""
     TIME_BASED = "time_based"
@@ -47,7 +45,6 @@ class AutomationTrigger(Enum):
     CONTEXT_BASED = "context_based"
     USER_COMMAND = "user_command"
     PATTERN_DETECTED = "pattern_detected"
-
 
 @dataclass
 class WorkflowStep:
@@ -81,7 +78,6 @@ class WorkflowStep:
                 await asyncio.sleep(1)  # Wait before retry
                 
         return False
-
 
 @dataclass
 class Workflow:
@@ -127,7 +123,6 @@ class Workflow:
         
         return success_count == len(self.steps)
 
-
 @dataclass
 class AutomationPattern:
     """Detected pattern that can trigger automation"""
@@ -139,7 +134,6 @@ class AutomationPattern:
     def is_recurring(self, threshold: int = 3) -> bool:
         """Check if pattern is recurring"""
         return len(self.occurrences) >= threshold
-
 
 class WorkspaceAutomation:
     """
@@ -804,7 +798,6 @@ class WorkspaceAutomation:
         
         return success_count / len(recent)
 
-
 async def test_workspace_automation():
     """Test workspace automation"""
     print("🤖 Testing Workspace Automation")
@@ -848,7 +841,6 @@ async def test_workspace_automation():
     await automation.stop_automation()
     
     print("\n✅ Workspace automation test complete!")
-
 
 if __name__ == "__main__":
     asyncio.run(test_workspace_automation())

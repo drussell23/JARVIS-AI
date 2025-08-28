@@ -3,7 +3,6 @@
 Temporarily disable continuous learning to fix performance issues
 """
 
-
 def patch_to_disable():
     """Disable continuous learning by preventing the thread from starting"""
     try:
@@ -26,7 +25,6 @@ def patch_to_disable():
     except Exception as e:
         print(f"Failed to disable continuous learning: {e}")
         return False
-
 
 if __name__ == "__main__":
     patch_to_disable()

@@ -12,13 +12,11 @@ import tempfile
 from typing import Optional
 from dataclasses import dataclass
 
-
 @dataclass
 class SimpleCapture:
     """Simple capture result"""
     image: np.ndarray
     success: bool
-
 
 def capture_screen_simple() -> Optional[np.ndarray]:
     """Capture screen using macOS screencapture command"""
@@ -48,7 +46,6 @@ def capture_screen_simple() -> Optional[np.ndarray]:
         print(f"Simple capture error: {e}")
         return None
 
-
 def capture_window_area(x: int, y: int, width: int, height: int) -> Optional[np.ndarray]:
     """Capture a specific area of the screen"""
     try:
@@ -74,7 +71,6 @@ def capture_window_area(x: int, y: int, width: int, height: int) -> Optional[np.
         print(f"Window area capture error: {e}")
         return None
 
-
 def test_simple_capture():
     """Test the simple capture method"""
     print("Testing simple capture...")
@@ -98,7 +94,6 @@ def test_simple_capture():
             print(f"✅ Window area captured: {window_img.shape}")
         else:
             print("❌ Window area capture failed")
-
 
 if __name__ == "__main__":
     test_simple_capture()

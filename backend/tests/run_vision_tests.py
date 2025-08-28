@@ -29,7 +29,6 @@ from tests.test_dynamic_visual_analysis import (
     TestVisualIndicatorPatterns
 )
 
-
 class VisionTestRunner:
     """Comprehensive test runner for vision intelligence"""
     
@@ -282,7 +281,6 @@ class VisionTestRunner:
         
         return all_success
 
-
 def main():
     """Main entry point"""
     runner = VisionTestRunner()
@@ -315,7 +313,6 @@ def main():
     
     # Exit with appropriate code
     sys.exit(0 if success else 1)
-
 
 if __name__ == "__main__":
     main()

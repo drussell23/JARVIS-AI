@@ -21,7 +21,6 @@ from .autonomous_decision_engine import AutonomousAction, ActionPriority
 
 logger = logging.getLogger(__name__)
 
-
 class UserState(Enum):
     """User's current state"""
     FOCUSED = "focused"          # Deep work, minimal interruptions
@@ -29,7 +28,6 @@ class UserState(Enum):
     IN_MEETING = "in_meeting"    # In a meeting, no interruptions
     IDLE = "idle"               # Away from computer
     TRANSITIONING = "transitioning"  # Between tasks
-
 
 class ActivityPattern:
     """Tracks user activity patterns"""
@@ -95,7 +93,6 @@ class ActivityPattern:
         else:
             return 0.4
 
-
 @dataclass
 class ContextAnalysis:
     """Analysis of current user context"""
@@ -106,7 +103,6 @@ class ContextAnalysis:
     activity_score: float
     recommended_delay: Optional[timedelta]
     reasoning: str
-
 
 class ContextEngine:
     """Understands user context and appropriate timing for actions"""
@@ -442,7 +438,6 @@ class ContextEngine:
         
         return None
 
-
 async def test_context_engine():
     """Test the context engine"""
     engine = ContextEngine()
@@ -511,7 +506,6 @@ async def test_context_engine():
     should_act, reason = engine.should_act_now(test_action, context)
     print(f"\nShould act now: {should_act}")
     print(f"Reason: {reason}")
-
 
 if __name__ == "__main__":
     asyncio.run(test_context_engine())

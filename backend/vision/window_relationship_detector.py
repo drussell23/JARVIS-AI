@@ -15,7 +15,6 @@ from .window_detector import WindowInfo
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class WindowRelationship:
     """Represents a relationship between two windows"""
@@ -25,7 +24,6 @@ class WindowRelationship:
     confidence: float  # 0.0 to 1.0
     evidence: List[str]  # Reasons for the relationship
 
-
 @dataclass
 class WindowGroup:
     """A group of related windows"""
@@ -34,7 +32,6 @@ class WindowGroup:
     group_type: str  # 'project', 'communication', 'research', etc.
     confidence: float
     common_elements: List[str]
-
 
 class WindowRelationshipDetector:
     """Detects relationships between windows"""
@@ -421,7 +418,6 @@ class WindowRelationshipDetector:
             common_elements=common_elements[:5]  # Top 5 common elements
         )
 
-
 async def test_relationship_detection():
     """Test window relationship detection"""
     from .window_detector import WindowDetector
@@ -460,7 +456,6 @@ async def test_relationship_detection():
         print(f"   Apps: {[w.app_name for w in group.windows]}")
         print(f"   Common elements: {', '.join(group.common_elements)}")
         print(f"   Confidence: {group.confidence:.0%}")
-
 
 if __name__ == "__main__":
     import asyncio

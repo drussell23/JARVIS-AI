@@ -27,7 +27,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-
 class IntelligentChatbot(SimpleChatbot):
     """
     Enhanced chatbot that intelligently uses AI components based on memory availability
@@ -366,7 +365,6 @@ class IntelligentChatbot(SimpleChatbot):
         """Cleanup all components"""
         await self.component_manager.cleanup()
         await self._cache.cleanup()
-
 
 # Example usage
 if __name__ == "__main__":

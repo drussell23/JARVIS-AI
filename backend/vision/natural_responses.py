@@ -54,7 +54,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-
 class ConversationStyle(Enum):
     """Dynamic conversation styles based on context"""
 
@@ -63,7 +62,6 @@ class ConversationStyle(Enum):
     CASUAL = "casual"
     EDUCATIONAL = "educational"
     DIAGNOSTIC = "diagnostic"
-
 
 class ScreenRegion(Enum):
     """Screen regions for focused analysis"""
@@ -74,7 +72,6 @@ class ScreenRegion(Enum):
     DOCK_TASKBAR = "dock_taskbar"
     NOTIFICATION_AREA = "notification_area"
     CUSTOM = "custom"
-
 
 @dataclass
 class ConversationContext:
@@ -90,7 +87,6 @@ class ConversationContext:
     interaction_preferences: Dict[str, Any] = field(default_factory=dict)
     temporal_context: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class ScreenAnalysisResult:
     """Comprehensive screen analysis results"""
@@ -104,7 +100,6 @@ class ScreenAnalysisResult:
     confidence_scores: Dict[str, float]
     processing_metrics: Dict[str, float]
     rust_accelerated: bool = False
-
 
 class RustAcceleratedProcessor:
     """Handles Rust-accelerated image processing operations"""
@@ -171,7 +166,6 @@ class RustAcceleratedProcessor:
     def _analyze_spatial_layout_rust(self, image: np.ndarray) -> Dict[str, Any]:
         """Analyze spatial layout using Rust"""
         return analyze_spatial_layout_rust(image)
-
 
 class DynamicResponseGenerator:
     """
@@ -681,7 +675,6 @@ Use technical terms when appropriate but ensure clarity."""
             f"Adapted conversation style to: {self.context.current_style.value}"
         )
 
-
 class DynamicPromptEngine:
     """Generates dynamic, contextual prompts for Claude"""
 
@@ -778,10 +771,8 @@ Keep it concise but informative (2-4 sentences ideal)."""
 
         return "\n".join(formatted)
 
-
 # Global instance management
 _generator = None
-
 
 def get_response_generator() -> DynamicResponseGenerator:
     """Get singleton instance of response generator"""
@@ -789,7 +780,6 @@ def get_response_generator() -> DynamicResponseGenerator:
     if _generator is None:
         _generator = DynamicResponseGenerator()
     return _generator
-
 
 # Main interface functions
 async def analyze_and_respond(
@@ -880,7 +870,6 @@ async def analyze_and_respond(
             "performance_metrics": generator.performance_metrics,
             "rust_accelerated": analysis.rust_accelerated,
         }
-
 
 # Legacy compatibility wrapper
 class NaturalResponseGenerator:

@@ -62,12 +62,10 @@ if JARVIS_IMPORTS_AVAILABLE and not hasattr(VoiceCommand, '__init__'):
             self.intent = intent
             self.needs_clarification = needs_clarification
 
-
 class JARVISCommand(BaseModel):
     """Voice command request"""
     text: str
     audio_data: Optional[str] = None  # Base64 encoded audio
-
 
 class JARVISConfig(BaseModel):
     """JARVIS configuration update"""
@@ -75,7 +73,6 @@ class JARVISConfig(BaseModel):
     humor_level: Optional[str] = None  # low, moderate, high
     work_hours: Optional[tuple] = None
     break_reminder: Optional[bool] = None
-
 
 class JARVISVoiceAPI:
     """API for JARVIS voice interaction"""

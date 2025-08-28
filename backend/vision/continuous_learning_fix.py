@@ -10,7 +10,6 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-
 def create_async_task(coro):
     """Safely create an async task whether we're in an event loop or not"""
     try:
@@ -22,7 +21,6 @@ def create_async_task(coro):
         # No event loop running, use asyncio.run()
         return asyncio.run(coro)
 
-
 async def safe_async_call(coro):
     """Safely call an async function from any context"""
     try:
@@ -32,7 +30,6 @@ async def safe_async_call(coro):
             # We're already in an event loop, just await it
             return await coro
         raise
-
 
 def patch_advanced_continuous_learning():
     """Patch the advanced continuous learning to fix asyncio issues"""
@@ -73,7 +70,6 @@ def patch_advanced_continuous_learning():
     except Exception as e:
         logger.error(f"Failed to apply continuous learning fix: {e}")
         return False
-
 
 # Also fix the other asyncio.run() calls
 def patch_statistics_calls():
@@ -118,7 +114,6 @@ def patch_statistics_calls():
         logger.error(f"Failed to apply statistics fix: {e}")
         return False
 
-
 def apply_all_fixes():
     """Apply all asyncio fixes"""
     fixes_applied = []
@@ -130,7 +125,6 @@ def apply_all_fixes():
         fixes_applied.append("statistics")
     
     return fixes_applied
-
 
 if __name__ == "__main__":
     # Test the fixes

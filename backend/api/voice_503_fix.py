@@ -18,7 +18,6 @@ router = APIRouter()
 request_queue = asyncio.Queue(maxsize=50)
 processing = False
 
-
 async def process_queue():
     """Process queued requests with rate limiting"""
     global processing
@@ -48,7 +47,6 @@ async def process_queue():
             logger.error(f"Queue processing error: {e}")
             await asyncio.sleep(1)
 
-
 # Queue processor will be started when the app starts
 _queue_processor_started = False
 
@@ -58,7 +56,6 @@ def start_queue_processor():
     if not _queue_processor_started:
         _queue_processor_started = True
         asyncio.create_task(process_queue())
-
 
 @router.post("/voice/jarvis/activate")
 async def activate_jarvis_fixed(request: Request):
@@ -114,7 +111,6 @@ async def activate_jarvis_fixed(request: Request):
             'message': 'JARVIS activated (recovery mode)',
             'error': str(e)
         }, status_code=200)
-
 
 @router.get("/voice/jarvis/status")
 async def jarvis_status_fixed():

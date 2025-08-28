@@ -20,7 +20,6 @@ import platform
 
 logger = logging.getLogger(__name__)
 
-
 class SystemResource(Enum):
     """System resources that can be managed"""
     CPU = "cpu"
@@ -34,7 +33,6 @@ class SystemResource(Enum):
     BLUETOOTH = "bluetooth"
     WIFI = "wifi"
 
-
 class ControlAction(Enum):
     """Types of control actions"""
     OPTIMIZE = "optimize"
@@ -44,7 +42,6 @@ class ControlAction(Enum):
     RESTART = "restart"
     MONITOR = "monitor"
     CONFIGURE = "configure"
-
 
 @dataclass
 class SystemState:
@@ -58,7 +55,6 @@ class SystemState:
     power_status: Dict[str, Any]
     timestamp: datetime = field(default_factory=datetime.now)
 
-
 @dataclass
 class ControlDecision:
     """A control decision made by the AI"""
@@ -69,7 +65,6 @@ class ControlDecision:
     confidence: float
     impact_prediction: Dict[str, Any]
     reversible: bool = True
-
 
 class AdvancedMacOSIntegration:
     """
@@ -673,10 +668,8 @@ Be specific and safe."""
             'timestamp': datetime.now().isoformat()
         }
 
-
 # Singleton instance manager
 _macos_integration: Optional[AdvancedMacOSIntegration] = None
-
 
 def get_macos_integration(api_key: Optional[str] = None) -> AdvancedMacOSIntegration:
     """Get or create macOS integration instance"""
@@ -687,7 +680,6 @@ def get_macos_integration(api_key: Optional[str] = None) -> AdvancedMacOSIntegra
             raise ValueError("Anthropic API key required")
         _macos_integration = AdvancedMacOSIntegration(api_key)
     return _macos_integration
-
 
 # Export main class
 __all__ = ['AdvancedMacOSIntegration', 'get_macos_integration', 'SystemResource', 'ControlAction']

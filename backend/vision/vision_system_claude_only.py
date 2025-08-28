@@ -20,7 +20,6 @@ from vision.screen_vision import ScreenVisionSystem
 
 logger = logging.getLogger(__name__)
 
-
 class SimplifiedVisionSystem:
     """
     Streamlined vision system using only Claude API
@@ -148,10 +147,8 @@ class SimplifiedVisionSystem:
         else:
             return f"I'm having trouble seeing your screen: {result['message']}"
 
-
 # Global instance for easy access
 _vision_system = None
-
 
 def get_vision_system() -> SimplifiedVisionSystem:
     """Get or create the global vision system instance"""

@@ -34,7 +34,6 @@ from autonomy.vision_decision_pipeline import VisionDecisionPipeline
 
 logger = logging.getLogger(__name__)
 
-
 router = APIRouter(prefix="/vision", tags=["vision"])
 
 # Initialize vision systems
@@ -51,13 +50,11 @@ jarvis_vision = JARVISVisionIntegration(vision_system)
 # Initialize vision decision pipeline
 vision_pipeline = VisionDecisionPipeline()
 
-
 class VisionCommand(BaseModel):
     """Vision command request model"""
     command: str
     use_claude: bool = True
     region: Optional[Tuple[int, int, int, int]] = None  # (x, y, width, height)
-
 
 class ScreenAnalysisRequest(BaseModel):
     """Screen analysis request model"""
@@ -65,13 +62,11 @@ class ScreenAnalysisRequest(BaseModel):
     prompt: Optional[str] = None
     region: Optional[Tuple[int, int, int, int]] = None
 
-
 class UpdateMonitoringRequest(BaseModel):
     """Update monitoring configuration"""
     enabled: bool
     interval: int = 300  # seconds
     notify_critical_only: bool = False
-
 
 # Global monitoring state
 monitoring_config = {
@@ -298,7 +293,6 @@ class VisionWebSocketManager:
 # Initialize WebSocket manager
 ws_manager = VisionWebSocketManager()
 
-
 @router.get("/status")
 async def get_vision_status() -> Dict[str, Any]:
     """Get current vision system status"""
@@ -323,7 +317,6 @@ async def get_vision_status() -> Dict[str, Any]:
         ],
         "pipeline_performance": pipeline_status.get("performance", {})
     }
-
 
 @router.post("/command")
 @graceful_endpoint
@@ -353,7 +346,6 @@ async def process_vision_command(request: VisionCommand) -> Dict[str, Any]:
     
     except Exception as e:
         raise  # Graceful handler will catch this
-
 
 @router.post("/analyze")
 @graceful_endpoint
@@ -425,7 +417,6 @@ async def analyze_screen(request: ScreenAnalysisRequest) -> Dict[str, Any]:
     except Exception as e:
         raise  # Graceful handler will catch this
 
-
 @router.post("/monitor/updates")
 async def configure_update_monitoring(
     request: UpdateMonitoringRequest,
@@ -467,7 +458,6 @@ async def configure_update_monitoring(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 async def monitor_updates_task():
     """Background task for monitoring updates"""
     while monitoring_config["active"]:
@@ -499,7 +489,6 @@ async def monitor_updates_task():
         
         await asyncio.sleep(monitoring_config["interval"])
 
-
 @router.get("/updates/pending")
 async def get_pending_updates() -> Dict[str, Any]:
     """Get list of pending updates detected"""
@@ -508,7 +497,6 @@ async def get_pending_updates() -> Dict[str, Any]:
         "last_check": monitoring_config["last_check"],
         "monitoring_active": monitoring_config["active"]
     }
-
 
 @router.post("/capture")
 @graceful_endpoint
@@ -531,7 +519,6 @@ async def capture_screenshot() -> Dict[str, Any]:
     
     except Exception as e:
         raise  # Graceful handler will catch this
-
 
 @router.get("/capabilities")
 async def get_vision_capabilities() -> Dict[str, List[str]]:
@@ -564,7 +551,6 @@ async def get_vision_capabilities() -> Dict[str, List[str]]:
             "Claude vision integration" if claude_analyzer else "Claude vision (requires API key)"
         ]
     }
-
 
 @router.post("/pipeline/control")
 @graceful_endpoint
@@ -611,12 +597,10 @@ async def control_vision_pipeline(action: str) -> Dict[str, Any]:
     except Exception as e:
         raise  # Graceful handler will catch this
 
-
 @router.get("/pipeline/status")
 async def get_pipeline_status() -> Dict[str, Any]:
     """Get detailed vision pipeline status"""
     return vision_pipeline.get_pipeline_status()
-
 
 @router.get("/monitoring/report")
 async def get_monitoring_report() -> Dict[str, Any]:
@@ -628,7 +612,6 @@ async def get_monitoring_report() -> Dict[str, Any]:
         "error": "Monitoring data not available",
         "message": "Pipeline may not be running"
     }
-
 
 @router.get("/monitoring/health")
 async def get_system_health() -> Dict[str, Any]:
@@ -646,7 +629,6 @@ async def get_system_health() -> Dict[str, Any]:
         "uptime": monitoring.get('uptime', {}),
         "alerts": monitoring.get('alerts', [])
     }
-
 
 @router.websocket("/ws/vision")
 async def vision_websocket_endpoint(websocket: WebSocket):

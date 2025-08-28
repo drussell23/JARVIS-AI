@@ -11,7 +11,6 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
-
 class FastAppLauncher:
     """Direct app launcher for common applications"""
     
@@ -101,7 +100,6 @@ class FastAppLauncher:
     def is_common_app(self, app_name: str) -> bool:
         """Check if app is in common apps list"""
         return app_name.lower().strip() in self.common_apps
-
 
 # Singleton instance
 _fast_launcher = None

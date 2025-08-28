@@ -23,7 +23,6 @@ warnings.filterwarnings('ignore')
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class PerformanceMetric:
     """Single performance metric point"""
@@ -31,7 +30,6 @@ class PerformanceMetric:
     metric_name: str
     value: float
     tags: Dict[str, str] = None
-
 
 @dataclass
 class PerformanceAnomaly:
@@ -44,7 +42,6 @@ class PerformanceAnomaly:
     expected_value: float
     deviation_percent: float
 
-
 @dataclass
 class Bottleneck:
     """Identified system bottleneck"""
@@ -54,7 +51,6 @@ class Bottleneck:
     description: str
     metrics: Dict[str, float]
     recommendations: List[str]
-
 
 class MetricsCollector:
     """Collect and aggregate system metrics"""
@@ -148,7 +144,6 @@ class MetricsCollector:
             cutoff_time = time.time() - duration_seconds
             return [m for m in self.metrics_buffer[metric_name] if m.timestamp > cutoff_time]
 
-
 class AnomalyDetector:
     """Detect performance anomalies and regressions"""
     
@@ -223,7 +218,6 @@ class AnomalyDetector:
             }
         
         return None
-
 
 class BottleneckAnalyzer:
     """Identify system bottlenecks"""
@@ -375,7 +369,6 @@ class BottleneckAnalyzer:
         
         return None
 
-
 class ResourceForecaster:
     """Forecast future resource usage"""
     
@@ -434,7 +427,6 @@ class ResourceForecaster:
             'rate_per_minute': m,
             'confidence': confidence
         }
-
 
 class MonitoringDashboard:
     """Real-time monitoring dashboard"""
@@ -544,7 +536,6 @@ class MonitoringDashboard:
         self.metrics_collector.stop_collection()
         logger.info("Monitoring system shutdown")
 
-
 # Test function
 def test_monitoring_system():
     """Test monitoring and observability system"""
@@ -586,7 +577,6 @@ def test_monitoring_system():
     
     dashboard.shutdown()
     logger.info("\n✅ Monitoring test complete")
-
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

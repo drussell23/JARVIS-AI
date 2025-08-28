@@ -20,7 +20,6 @@ from .intelligent_memory_optimizer import (
     MemoryOptimizationAPI
 )
 
-
 class ComponentRegistration(BaseModel):
     """Request model for component registration"""
 
@@ -28,12 +27,10 @@ class ComponentRegistration(BaseModel):
     priority: str  # "CRITICAL", "HIGH", "MEDIUM", "LOW"
     estimated_memory_mb: int
 
-
 class LoadComponentRequest(BaseModel):
     """Request model for loading a component"""
 
     name: str
-
 
 class MemoryStateResponse(BaseModel):
     """Response model for memory state"""
@@ -44,7 +41,6 @@ class MemoryStateResponse(BaseModel):
     used_mb: float
     total_mb: float
     timestamp: str
-
 
 class ComponentStatusResponse(BaseModel):
     """Response model for component status"""
@@ -58,7 +54,6 @@ class ComponentStatusResponse(BaseModel):
     can_load: bool
     load_reason: Optional[str]
 
-
 class MemoryReportResponse(BaseModel):
     """Response model for full memory report"""
 
@@ -67,12 +62,10 @@ class MemoryReportResponse(BaseModel):
     analysis: Dict[str, Any]
     thresholds: Dict[str, float]
 
-
 class OptimizeLangChainRequest(BaseModel):
     """Request model for optimizing memory for LangChain"""
     
     force: bool = False  # Force optimization even if already below threshold
-
 
 class OptimizationReportResponse(BaseModel):
     """Response model for memory optimization report"""
@@ -84,7 +77,6 @@ class OptimizationReportResponse(BaseModel):
     actions_taken: List[Dict[str, Any]]
     target_percent: float
     message: str
-
 
 class MemoryAPI:
     """API for memory management functionality"""
@@ -354,7 +346,6 @@ class MemoryAPI:
         result = await self.optimization_api.get_suggestions()
         return result
 
-
 # Webhook for memory alerts (can be used by frontend)
 class MemoryAlert(BaseModel):
     """Memory alert notification"""
@@ -364,7 +355,6 @@ class MemoryAlert(BaseModel):
     percent_used: float
     message: str
     severity: str  # "info", "warning", "error", "critical"
-
 
 async def create_memory_alert_callback(websocket_manager=None):
     """Create a callback for memory state changes"""

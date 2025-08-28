@@ -14,7 +14,6 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-
 class DynamicAppController:
     """Dynamically detects and controls applications using vision and system APIs"""
     
@@ -257,7 +256,6 @@ class DynamicAppController:
                 suggestions.append(app["name"])
         
         return suggestions[:5]  # Return top 5 suggestions
-
 
 # Singleton instance
 _dynamic_controller = None

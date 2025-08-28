@@ -16,7 +16,6 @@ import statistics
 
 logger = logging.getLogger(__name__)
 
-
 class MetricType(Enum):
     """Types of metrics to track"""
     COUNTER = "counter"      # Incremental count
@@ -24,14 +23,12 @@ class MetricType(Enum):
     HISTOGRAM = "histogram"  # Distribution of values
     RATE = "rate"           # Rate per time unit
 
-
 @dataclass
 class MetricPoint:
     """Single metric data point"""
     timestamp: datetime
     value: float
     labels: Dict[str, str] = field(default_factory=dict)
-
 
 @dataclass
 class MetricSummary:
@@ -65,7 +62,6 @@ class MetricSummary:
             'rate_per_minute': round(self.rate_per_minute, 3),
             'labels': self.labels
         }
-
 
 class MetricCollector:
     """Collects and manages metrics"""
@@ -252,7 +248,6 @@ class MetricCollector:
                 summaries[name] = summary
                 
         return summaries
-
 
 class SystemMonitor:
     """High-level system monitoring"""
@@ -443,10 +438,8 @@ class SystemMonitor:
             'alerts': self.metric_collector.alerts[-10:]  # Last 10 alerts
         }
 
-
 # Global system monitor
 system_monitor = SystemMonitor()
-
 
 async def test_monitoring():
     """Test monitoring system"""
@@ -522,7 +515,6 @@ async def test_monitoring():
     await monitor.stop_monitoring()
     
     print("\n✅ Monitoring test complete!")
-
 
 if __name__ == "__main__":
     asyncio.run(test_monitoring())

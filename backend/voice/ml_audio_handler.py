@@ -11,7 +11,6 @@ import time
 
 logger = logging.getLogger(__name__)
 
-
 class MLAudioHandler:
     """
     Base ML Audio Handler with core audio processing capabilities

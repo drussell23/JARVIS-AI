@@ -19,7 +19,6 @@ from collections import defaultdict, deque
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class RouteDecision:
     """Neural routing decision with metadata"""
@@ -29,7 +28,6 @@ class RouteDecision:
     alternative_routes: List[Tuple[str, float]] = field(default_factory=list)
     context_factors: Dict[str, Any] = field(default_factory=dict)
     execution_time: Optional[float] = None
-
 
 @dataclass
 class HandlerRegistration:
@@ -42,7 +40,6 @@ class HandlerRegistration:
     context_requirements: Dict[str, Any] = field(default_factory=dict)
     learned_patterns: List[str] = field(default_factory=list)
     performance_metrics: Dict[str, float] = field(default_factory=dict)
-
 
 class AttentionRouter(nn.Module):
     """Attention-based neural router for command routing"""
@@ -104,7 +101,6 @@ class AttentionRouter(nn.Module):
         confidence = self.confidence_head(route_features)
         
         return route_features, confidence, attention_weights
-
 
 class NeuralCommandRouter:
     """
@@ -573,10 +569,8 @@ class NeuralCommandRouter:
         except Exception as e:
             logger.error(f"Error loading router state: {e}")
 
-
 # Global router instance
 _neural_router: Optional[NeuralCommandRouter] = None
-
 
 def get_neural_router() -> NeuralCommandRouter:
     """Get singleton instance of neural router"""
@@ -584,7 +578,6 @@ def get_neural_router() -> NeuralCommandRouter:
     if _neural_router is None:
         _neural_router = NeuralCommandRouter()
     return _neural_router
-
 
 # Example of replacing if/elif chains with neural routing
 async def example_migration():

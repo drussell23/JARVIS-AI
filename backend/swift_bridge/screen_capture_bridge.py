@@ -190,7 +190,6 @@ let package = Package(
         if self.lib and self.capture_instance:
             self.lib.swift_release_screen_capture(self.capture_instance)
 
-
 # Singleton instance
 _screen_capture_bridge = None
 

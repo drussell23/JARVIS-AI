@@ -44,7 +44,6 @@ class Chatbot(Protocol):
     async def chat(self, user_input: str) -> str:
         ...
 
-
 class TTSRequest(BaseModel):
     text: str
     engine: Optional[str] = "edge_tts"
@@ -54,7 +53,6 @@ class TTSRequest(BaseModel):
     volume: Optional[float] = 1.0
     format: Optional[str] = "mp3"
 
-
 class STTResponse(BaseModel):
     text: str
     language: str
@@ -62,12 +60,10 @@ class STTResponse(BaseModel):
     duration: Optional[float] = None
     segments: Optional[List[Dict]] = None
 
-
 class VoiceCommandRequest(BaseModel):
     audio_data: str  # Base64 encoded audio
     format: Optional[str] = "wav"
     language: Optional[str] = "en"
-
 
 class VoiceConfigUpdate(BaseModel):
     wake_word: Optional[str] = None
@@ -75,7 +71,6 @@ class VoiceConfigUpdate(BaseModel):
     voice_name: Optional[str] = None
     speech_rate: Optional[float] = None
     language: Optional[str] = None
-
 
 class VoiceAPI:
     """API for voice interaction capabilities"""

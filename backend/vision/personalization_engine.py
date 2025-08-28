@@ -21,7 +21,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class UserProfile:
     """Complete user profile with preferences and patterns"""
@@ -52,7 +51,6 @@ class UserProfile:
     context_awareness: Dict[str, Any] = field(default_factory=dict)
     topic_interests: Dict[str, float] = field(default_factory=dict)
 
-
 @dataclass
 class InteractionPattern:
     """Pattern learned from user interactions"""
@@ -62,7 +60,6 @@ class InteractionPattern:
     occurrences: int = 1
     last_seen: datetime = field(default_factory=datetime.now)
     context: Optional[Dict[str, Any]] = None
-
 
 class UserStyleAnalyzer(nn.Module):
     """Neural network for analyzing user communication style"""
@@ -92,7 +89,6 @@ class UserStyleAnalyzer(nn.Module):
         complexity = torch.sigmoid(self.complexity_regressor(style_features))
         
         return style_features, verbosity, tone, complexity
-
 
 class PersonalizationEngine:
     """
@@ -763,10 +759,8 @@ class PersonalizationEngine:
         except Exception as e:
             logger.error(f"Error loading profiles: {e}")
 
-
 # Singleton instance
 _personalization_engine: Optional[PersonalizationEngine] = None
-
 
 def get_personalization_engine() -> PersonalizationEngine:
     """Get singleton instance of personalization engine"""

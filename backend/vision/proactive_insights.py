@@ -19,7 +19,6 @@ from .multi_window_capture import MultiWindowCapture
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class Insight:
     """Represents a proactive insight"""
@@ -45,7 +44,6 @@ class Insight:
         else:
             return f"Sir, {self.description}"
 
-
 @dataclass
 class WindowState:
     """Tracks state of a window for change detection"""
@@ -54,7 +52,6 @@ class WindowState:
     last_checked: datetime
     title_history: List[Tuple[datetime, str]] = field(default_factory=list)
     has_new_content: bool = False
-
 
 class ProactiveInsights:
     """Generates proactive insights from workspace activity"""
@@ -436,7 +433,6 @@ class ProactiveInsights:
         
         return related[:3]  # Return top 3
 
-
 async def test_proactive_insights():
     """Test proactive insights system"""
     print("🧠 Testing Proactive Insights")
@@ -464,7 +460,6 @@ async def test_proactive_insights():
             break
     
     print(f"\n✅ Generated {insight_count} insights in 30 seconds")
-
 
 if __name__ == "__main__":
     asyncio.run(test_proactive_insights())

@@ -20,7 +20,6 @@ except ImportError:
     ANTHROPIC_AVAILABLE = False
     logger.warning("Anthropic package not installed. Install with: pip install anthropic")
 
-
 class ClaudeChatbot:
     """
     Cloud-based chatbot using Anthropic's Claude API

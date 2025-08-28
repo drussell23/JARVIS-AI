@@ -21,7 +21,6 @@ from .safety_verification_framework import VerificationReport, RiskLevel
 
 logger = logging.getLogger(__name__)
 
-
 class RolloutStage(Enum):
     """Stages of capability rollout"""
     DEVELOPMENT = "development"      # Internal testing only
@@ -30,7 +29,6 @@ class RolloutStage(Enum):
     GRADUAL = "gradual"             # Gradual percentage increase
     PRODUCTION = "production"        # Full production
 
-
 class RolloutStrategy(Enum):
     """Rollout strategies"""
     PERCENTAGE_BASED = "percentage"  # Random percentage of requests
@@ -38,7 +36,6 @@ class RolloutStrategy(Enum):
     FEATURE_FLAG = "feature_flag"    # Feature flag controlled
     CANARY_DEPLOYMENT = "canary"     # Canary deployment
     BLUE_GREEN = "blue_green"        # Blue-green deployment
-
 
 @dataclass
 class RolloutConfig:
@@ -74,7 +71,6 @@ class RolloutConfig:
         RiskLevel.CRITICAL: 0.0
     })
 
-
 @dataclass
 class RolloutMetrics:
     """Metrics collected during rollout"""
@@ -101,7 +97,6 @@ class RolloutMetrics:
     start_time: datetime = field(default_factory=datetime.now)
     last_update: datetime = field(default_factory=datetime.now)
 
-
 @dataclass
 class RolloutState:
     """Current state of a capability rollout"""
@@ -123,7 +118,6 @@ class RolloutState:
     is_paused: bool = False
     is_rolled_back: bool = False
     rollback_reason: Optional[str] = None
-
 
 class RolloutDecisionEngine:
     """Makes decisions about rollout progression"""
@@ -261,7 +255,6 @@ class RolloutDecisionEngine:
         
         return state.current_percentage
 
-
 class TrafficRouter:
     """Routes traffic based on rollout configuration"""
     
@@ -356,7 +349,6 @@ class TrafficRouter:
             user_hash = hash(user_id) % 100
             return user_hash < state.current_percentage
         return False
-
 
 class RolloutMonitor:
     """Monitors rollout metrics and health"""
@@ -464,7 +456,6 @@ class RolloutMonitor:
             # Notify alert handlers
             for handler in self.alert_handlers:
                 await handler(capability_id, issue)
-
 
 class GradualRolloutSystem:
     """Main system for managing gradual capability rollouts"""
@@ -817,10 +808,8 @@ class GradualRolloutSystem:
             except Exception as e:
                 logger.error(f"Failed to load rollout from {file_path}: {e}")
 
-
 # Singleton instance
 _rollout_system: Optional[GradualRolloutSystem] = None
-
 
 def get_gradual_rollout_system() -> GradualRolloutSystem:
     """Get singleton instance of gradual rollout system"""

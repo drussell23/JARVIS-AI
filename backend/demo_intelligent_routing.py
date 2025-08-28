@@ -11,14 +11,12 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'swift_bridge'))
 
 from python_bridge import IntelligentCommandRouter, SWIFT_AVAILABLE
 
-
 class Colors:
     GREEN = '\033[92m'
     YELLOW = '\033[93m'
     CYAN = '\033[96m'
     BOLD = '\033[1m'
     ENDC = '\033[0m'
-
 
 async def demo():
     """Demonstrate intelligent routing"""
@@ -64,7 +62,6 @@ async def demo():
     print("• Classifier learns and improves over time")
     
     print(f"\n{Colors.GREEN}✅ Intelligent routing active!{Colors.ENDC}")
-
 
 if __name__ == "__main__":
     asyncio.run(demo())

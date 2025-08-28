@@ -53,7 +53,6 @@ navigation_state = {
     },
 }
 
-
 class NavigationRequest(BaseModel):
     """Request to navigate to an element or application"""
 
@@ -63,14 +62,12 @@ class NavigationRequest(BaseModel):
     coordinates: Optional[tuple[int, int]] = None
     description: Optional[str] = None
 
-
 class WorkspaceArrangementRequest(BaseModel):
     """Request to arrange workspace"""
 
     layout: Literal["focus", "split", "grid", "cascade", "custom"]
     windows: Optional[List[str]] = None
     custom_arrangement: Optional[Dict[str, Dict[str, float]]] = None
-
 
 class WorkflowExecutionRequest(BaseModel):
     """Request to execute a workflow"""
@@ -79,14 +76,12 @@ class WorkflowExecutionRequest(BaseModel):
     params: Optional[Dict[str, Any]] = {}
     schedule_time: Optional[datetime] = None
 
-
 class SearchRequest(BaseModel):
     """Request to search workspace"""
 
     query: str
     search_type: Literal["all", "text", "window", "button"] = "all"
     limit: int = 10
-
 
 class NavigationWebSocketManager:
     """Manages WebSocket connections for real-time navigation updates"""
@@ -151,10 +146,8 @@ class NavigationWebSocketManager:
             except Exception as e:
                 logger.error(f"Error broadcasting map: {e}")
 
-
 # Initialize WebSocket manager
 ws_manager = NavigationWebSocketManager()
-
 
 @router.post("/mode/start")
 @graceful_endpoint(
@@ -180,7 +173,6 @@ async def start_navigation_mode() -> Dict[str, Any]:
     except Exception as e:
         raise  # Graceful handler will catch this
 
-
 @router.post("/mode/stop")
 @graceful_endpoint(
     fallback_response={"status": "success", "message": "Request processed successfully"}
@@ -199,7 +191,6 @@ async def stop_navigation_mode() -> Dict[str, Any]:
     except Exception as e:
         raise  # Graceful handler will catch this
 
-
 @router.get("/status")
 async def get_navigation_status() -> Dict[str, Any]:
     """Get current navigation system status"""
@@ -214,7 +205,6 @@ async def get_navigation_status() -> Dict[str, Any]:
         "current_focus": navigation_state["current_focus"],
         "last_action": navigation_state["last_action"],
     }
-
 
 @router.post("/navigate")
 @graceful_endpoint(
@@ -278,7 +268,6 @@ async def navigate(request: NavigationRequest) -> Dict[str, Any]:
     except Exception as e:
         raise  # Graceful handler will catch this
 
-
 @router.post("/workspace/arrange")
 @graceful_endpoint(
     fallback_response={"status": "success", "message": "Request processed successfully"}
@@ -300,7 +289,6 @@ async def arrange_workspace(request: WorkspaceArrangementRequest) -> Dict[str, A
 
     except Exception as e:
         raise  # Graceful handler will catch this
-
 
 @router.post("/workspace/search")
 @graceful_endpoint(
@@ -345,7 +333,6 @@ async def search_workspace(request: SearchRequest) -> Dict[str, Any]:
     except Exception as e:
         raise  # Graceful handler will catch this
 
-
 @router.get("/workspace/map")
 async def get_workspace_map() -> Dict[str, Any]:
     """Get current workspace map"""
@@ -372,7 +359,6 @@ async def get_workspace_map() -> Dict[str, Any]:
         "desktop_number": workspace_map.desktop_number,
     }
 
-
 @router.post("/automation/start")
 @graceful_endpoint(
     fallback_response={"status": "success", "message": "Request processed successfully"}
@@ -391,7 +377,6 @@ async def start_automation() -> Dict[str, Any]:
     except Exception as e:
         raise  # Graceful handler will catch this
 
-
 @router.post("/automation/stop")
 @graceful_endpoint(
     fallback_response={"status": "success", "message": "Request processed successfully"}
@@ -405,7 +390,6 @@ async def stop_automation() -> Dict[str, Any]:
 
     except Exception as e:
         raise  # Graceful handler will catch this
-
 
 @router.post("/workflow/execute")
 @graceful_endpoint(
@@ -440,7 +424,6 @@ async def execute_workflow(
     except Exception as e:
         raise  # Graceful handler will catch this
 
-
 @router.get("/workflow/list")
 async def list_workflows() -> Dict[str, Any]:
     """List available workflows"""
@@ -469,7 +452,6 @@ async def list_workflows() -> Dict[str, Any]:
         "workflows": workflows,
         "active_workflows": automation_system.active_workflows,
     }
-
 
 @router.get("/workflow/{workflow_id}")
 async def get_workflow_details(workflow_id: str) -> Dict[str, Any]:
@@ -504,7 +486,6 @@ async def get_workflow_details(workflow_id: str) -> Dict[str, Any]:
         },
     }
 
-
 @router.get("/suggestions")
 async def get_navigation_suggestions() -> Dict[str, Any]:
     """Get navigation and automation suggestions"""
@@ -515,7 +496,6 @@ async def get_navigation_suggestions() -> Dict[str, Any]:
         "navigation_suggestions": nav_suggestions,
         "automation_suggestions": auto_suggestions,
     }
-
 
 @router.websocket("/ws")
 async def navigation_websocket(websocket: WebSocket):
@@ -553,7 +533,6 @@ async def navigation_websocket(websocket: WebSocket):
         logger.error(f"WebSocket error: {e}")
         ws_manager.disconnect(websocket)
 
-
 async def _stream_workspace_updates(websocket: WebSocket):
     """Stream continuous workspace updates"""
     while (
@@ -569,12 +548,10 @@ async def _stream_workspace_updates(websocket: WebSocket):
             logger.error(f"Error streaming updates: {e}")
             break
 
-
 # Auto-start navigation system when API loads
 async def startup_navigation_system():
     """Initialize navigation system on startup"""
     logger.info("Navigation API initialized - Full workspace control available")
-
 
 # Register startup - commented out to prevent event loop error
 # The navigation system will be initialized when first accessed

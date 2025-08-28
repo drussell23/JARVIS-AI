@@ -21,7 +21,6 @@ from .workspace_analyzer import WorkspaceAnalyzer
 
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class NotificationEvent:
     """Detected notification event"""
@@ -33,7 +32,6 @@ class NotificationEvent:
     window_info: Optional[WindowInfo] = None
     visual_cues: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class InteractionContext:
     """Context for intelligent interactions"""
@@ -44,7 +42,6 @@ class InteractionContext:
     conversation_history: List[Dict[str, str]]
     learned_patterns: Dict[str, float]
 
-
 @dataclass
 class ProactiveResponse:
     """Proactive assistant response"""
@@ -54,7 +51,6 @@ class ProactiveResponse:
     follow_up_suggestions: List[str]
     context_info: Dict[str, Any]
     confidence: float = 1.0
-
 
 class ProactiveVisionAssistant:
     """
@@ -632,7 +628,6 @@ class ProactiveVisionAssistant:
         except Exception as e:
             logger.error(f"Error loading learning data: {e}")
 
-
 async def test_proactive_assistant():
     """Test the proactive vision assistant"""
     print("🤖 Testing Proactive Vision Assistant")
@@ -686,7 +681,6 @@ async def test_proactive_assistant():
             print(f"  {i}. {option}")
     
     print("\n✅ Proactive assistant test complete!")
-
 
 if __name__ == "__main__":
     asyncio.run(test_proactive_assistant())

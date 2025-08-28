@@ -11,7 +11,6 @@ from dataclasses import dataclass, field
 from collections import defaultdict
 import pickle
 
-
 @dataclass
 class DomainKnowledge:
     """Container for domain-specific knowledge"""
@@ -22,7 +21,6 @@ class DomainKnowledge:
     terminology: Dict[str, str] = field(default_factory=dict)
     constraints: List[str] = field(default_factory=list)
     embeddings: Optional[np.ndarray] = None
-
 
 class DomainKnowledgeBank:
     """Manages domain-specific knowledge for multiple domains"""
@@ -171,7 +169,6 @@ class DomainKnowledgeBank:
         # Placeholder - implement actual constraint checking logic
         return False
 
-
 class DomainAdapter(nn.Module):
     """Neural adapter for domain-specific knowledge"""
     
@@ -241,7 +238,6 @@ class DomainAdapter(nn.Module):
         
         return output
 
-
 class KnowledgeIntegrator:
     """Integrates domain knowledge into model predictions"""
     
@@ -298,7 +294,6 @@ class KnowledgeIntegrator:
         
         return enhanced_states, metadata
 
-
 class DomainSpecificHeads(nn.Module):
     """Domain-specific output heads for specialized tasks"""
     
@@ -346,7 +341,6 @@ class DomainSpecificHeads(nn.Module):
                 output[i] = self.default_head(hidden[i])
                 
         return output
-
 
 # Example domain knowledge data
 EXAMPLE_DOMAINS = {
@@ -413,7 +407,6 @@ EXAMPLE_DOMAINS = {
         ]
     }
 }
-
 
 # Example usage
 if __name__ == "__main__":

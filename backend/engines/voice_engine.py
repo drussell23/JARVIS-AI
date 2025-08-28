@@ -44,8 +44,7 @@ except ImportError:
 # Try to import transformers with TF fix
 try:
     # Fix TensorFlow if needed
-    import tensorflow as tf
-    if not hasattr(tf, 'data'):
+        if not hasattr(tf, 'data'):
         class MockData:
             class Dataset:
                 @staticmethod
@@ -65,7 +64,6 @@ from utils.audio_processor import (
     AudioConfig, AudioMetrics, StreamingAudioProcessor
 )
 
-
 class AudioFormat(Enum):
     """Supported audio formats"""
     WAV = "wav"
@@ -74,13 +72,11 @@ class AudioFormat(Enum):
     WEBM = "webm"
     M4A = "m4a"
 
-
 class TTSEngine(Enum):
     """Available TTS engines"""
     GTTS = "gtts"  # Google Text-to-Speech
     PYTTSX3 = "pyttsx3"  # Offline TTS
     EDGE_TTS = "edge_tts"  # Microsoft Edge TTS (high quality)
-
 
 @dataclass
 class VoiceConfig:
@@ -97,7 +93,6 @@ class VoiceConfig:
     sample_rate: int = 16000
     chunk_size: int = 1024
 
-
 @dataclass
 class TranscriptionResult:
     """Result from speech-to-text transcription"""
@@ -107,7 +102,6 @@ class TranscriptionResult:
     segments: Optional[List[Dict]] = None
     duration: Optional[float] = None
 
-
 @dataclass
 class TTSResult:
     """Result from text-to-speech synthesis"""
@@ -115,7 +109,6 @@ class TTSResult:
     format: AudioFormat
     duration: float
     voice_used: str
-
 
 class WhisperSTT:
     """Speech-to-Text using OpenAI Whisper"""
@@ -216,7 +209,6 @@ class WhisperSTT:
         except:
             # Fallback to raw PCM
             return np.frombuffer(audio_bytes, dtype=np.float32)
-
 
 class NaturalTTS:
     """Text-to-Speech with multiple engine support"""
@@ -385,7 +377,6 @@ class NaturalTTS:
         # Play audio
         play(audio)
 
-
 class WakeWordDetector:
     """Wake word detection for hands-free activation"""
     
@@ -513,7 +504,6 @@ class WakeWordDetector:
             except Exception as e:
                 print(f"Wake word detection error: {e}")
 
-
 class VoiceCommandProcessor:
     """Process voice commands with context awareness"""
     
@@ -634,7 +624,6 @@ class VoiceCommandProcessor:
             "audio_duration": transcription.duration,
             "response_duration": tts_result.duration
         }
-
 
 class VoiceAssistant:
     """Complete voice assistant integrating all components"""
@@ -791,7 +780,6 @@ class VoiceAssistant:
         self.audio_processor.calibrate_noise(duration)
         self._play_feedback("double_beep")
         print("Noise calibration complete.")
-
 
 # Example usage and testing
 if __name__ == "__main__":
