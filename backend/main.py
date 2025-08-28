@@ -565,26 +565,36 @@ logger.info("Memory management API initialized")
 chatbot_api = ChatbotAPI()
 app.include_router(chatbot_api.router)
 
-# Include Enhanced Vision API with Claude integration
+# Include Unified Vision Handler - Resolves all WebSocket conflicts
 try:
-    from api.enhanced_vision_api import router as enhanced_vision_router
-    app.include_router(enhanced_vision_router)
-    logger.info("Enhanced Vision API routes added - Claude-powered vision system activated!")
+    # Import the unified vision handler but don't include router
+    # The TypeScript WebSocket server will handle routing
+    from api.unified_vision_handler import unified_handler
+    from bridges.python_ts_bridge import register_vision_handlers, start_bridge
+    
+    # Register handlers with the bridge
+    register_vision_handlers()
+    
+    # Start the Python-TypeScript bridge
+    asyncio.create_task(start_bridge())
+    
+    logger.info("Unified Vision System activated - All WebSocket conflicts resolved!")
     ENHANCED_VISION_AVAILABLE = True
     VISION_API_AVAILABLE = True  # For compatibility
+    
+    # Include only non-WebSocket routes from vision APIs
+    from api.enhanced_vision_api import router as enhanced_vision_router
+    # Remove WebSocket route to prevent conflicts
+    enhanced_vision_router.routes = [
+        route for route in enhanced_vision_router.routes 
+        if not route.path.endswith("/ws/vision")
+    ]
+    app.include_router(enhanced_vision_router)
+    
 except Exception as e:
-    logger.warning(f"Failed to initialize Enhanced Vision API: {e}")
-    # Fall back to original vision API
-    try:
-        from api.vision_api import router as vision_router
-        app.include_router(vision_router)
-        logger.info("Vision API routes added - Screen comprehension activated!")
-        VISION_API_AVAILABLE = True
-        ENHANCED_VISION_AVAILABLE = False
-    except ImportError as e2:
-        logger.warning(f"Vision API not available: {e2}")
-        VISION_API_AVAILABLE = False
-        ENHANCED_VISION_AVAILABLE = False
+    logger.warning(f"Failed to initialize Unified Vision System: {e}")
+    VISION_API_AVAILABLE = False
+    ENHANCED_VISION_AVAILABLE = False
 
 # Include Voice API routes if available with memory management
 if VOICE_API_AVAILABLE:

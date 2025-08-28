@@ -7,247 +7,247 @@ import mlAudioHandler from '../utils/MLAudioHandler'; // ML-enhanced audio handl
 
 // VisionConnection class for real-time workspace monitoring
 class VisionConnection {
-    constructor(onUpdate, onAction) {
-        this.socket = null;
-        this.isConnected = false;
+  constructor(onUpdate, onAction) {
+    this.socket = null;
+    this.isConnected = false;
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 5;
+    this.reconnectDelay = 2000;
+    this.workspaceData = null;
+    this.actionQueue = [];
+
+    // Callbacks
+    this.onWorkspaceUpdate = onUpdate || (() => { });
+    this.onActionExecuted = onAction || (() => { });
+
+    // Monitoring state
+    this.monitoringActive = false;
+    this.updateInterval = 2.0;
+  }
+
+  async connect() {
+    try {
+      console.log('🔌 Connecting to Vision WebSocket...');
+
+      const wsUrl = `ws://localhost:8000/vision/ws/vision`;
+      this.socket = new WebSocket(wsUrl);
+
+      this.socket.onopen = () => {
+        console.log('✅ Vision WebSocket connected!');
+        this.isConnected = true;
         this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 5;
-        this.reconnectDelay = 2000;
-        this.workspaceData = null;
-        this.actionQueue = [];
-        
-        // Callbacks
-        this.onWorkspaceUpdate = onUpdate || (() => {});
-        this.onActionExecuted = onAction || (() => {});
-        
-        // Monitoring state
-        this.monitoringActive = false;
-        this.updateInterval = 2.0;
-    }
-    
-    async connect() {
+        this.monitoringActive = true;
+
+        // Request initial analysis
+        this.requestWorkspaceAnalysis();
+      };
+
+      this.socket.onmessage = (event) => {
         try {
-            console.log('🔌 Connecting to Vision WebSocket...');
-            
-            const wsUrl = `ws://localhost:8000/vision/ws/vision`;
-            this.socket = new WebSocket(wsUrl);
-            
-            this.socket.onopen = () => {
-                console.log('✅ Vision WebSocket connected!');
-                this.isConnected = true;
-                this.reconnectAttempts = 0;
-                this.monitoringActive = true;
-                
-                // Request initial analysis
-                this.requestWorkspaceAnalysis();
-            };
-            
-            this.socket.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    this.handleVisionMessage(data);
-                } catch (error) {
-                    console.error('Error parsing vision message:', error);
-                }
-            };
-            
-            this.socket.onerror = (error) => {
-                console.error('❌ Vision WebSocket error:', error);
-            };
-            
-            this.socket.onclose = () => {
-                console.log('🔌 Vision WebSocket disconnected');
-                this.isConnected = false;
-                this.monitoringActive = false;
-                this.attemptReconnect();
-            };
-            
+          const data = JSON.parse(event.data);
+          this.handleVisionMessage(data);
         } catch (error) {
-            console.error('Failed to connect to Vision WebSocket:', error);
-            this.attemptReconnect();
+          console.error('Error parsing vision message:', error);
         }
+      };
+
+      this.socket.onerror = (error) => {
+        console.error('❌ Vision WebSocket error:', error);
+      };
+
+      this.socket.onclose = () => {
+        console.log('🔌 Vision WebSocket disconnected');
+        this.isConnected = false;
+        this.monitoringActive = false;
+        this.attemptReconnect();
+      };
+
+    } catch (error) {
+      console.error('Failed to connect to Vision WebSocket:', error);
+      this.attemptReconnect();
     }
-    
-    handleVisionMessage(data) {
-        console.log('👁️ Vision Update:', data.type);
-        
-        switch (data.type) {
-            case 'initial_state':
-                this.handleInitialState(data);
-                break;
-                
-            case 'workspace_update':
-                this.handleWorkspaceUpdate(data);
-                break;
-                
-            case 'workspace_analysis':
-                this.handleWorkspaceAnalysis(data);
-                break;
-                
-            case 'action_result':
-                this.handleActionResult(data);
-                break;
-                
-            case 'config_updated':
-                console.log('⚙️ Config updated:', data);
-                this.updateInterval = data.update_interval;
-                break;
-                
-            default:
-                console.log('Unknown vision message type:', data.type);
-        }
-    }
-    
-    handleInitialState(data) {
-        console.log('📊 Initial workspace state:', data.workspace);
-        this.workspaceData = data.workspace;
-        this.monitoringActive = data.monitoring_active;
+  }
+
+  handleVisionMessage(data) {
+    console.log('👁️ Vision Update:', data.type);
+
+    switch (data.type) {
+      case 'initial_state':
+        this.handleInitialState(data);
+        break;
+
+      case 'workspace_update':
+        this.handleWorkspaceUpdate(data);
+        break;
+
+      case 'workspace_analysis':
+        this.handleWorkspaceAnalysis(data);
+        break;
+
+      case 'action_result':
+        this.handleActionResult(data);
+        break;
+
+      case 'config_updated':
+        console.log('⚙️ Config updated:', data);
         this.updateInterval = data.update_interval;
-        
-        this.onWorkspaceUpdate({
-            type: 'initial',
-            workspace: data.workspace,
-            timestamp: data.timestamp
-        });
+        break;
+
+      default:
+        console.log('Unknown vision message type:', data.type);
     }
-    
-    handleWorkspaceUpdate(data) {
-        console.log(`🔄 Workspace update: ${data.workspace.window_count} windows`);
-        
-        this.workspaceData = data.workspace;
-        
-        // Process autonomous actions
-        if (data.autonomous_actions && data.autonomous_actions.length > 0) {
-            this.processAutonomousActions(data.autonomous_actions);
-        }
-        
-        // Check for important notifications
-        if (data.workspace.notification_details) {
-            const details = data.workspace.notification_details;
-            const totalNotifs = details.badges + details.messages + details.meetings + details.alerts;
-            
-            if (totalNotifs > 0) {
-                console.log(`📬 Notifications: ${details.badges} badges, ${details.messages} messages, ${details.meetings} meetings, ${details.alerts} alerts`);
-            }
-        }
-        
-        // Notify UI
-        this.onWorkspaceUpdate({
-            type: 'update',
-            workspace: data.workspace,
-            autonomousActions: data.autonomous_actions,
-            enhancedData: data.enhanced_data,
-            queueStatus: data.queue_status,
-            timestamp: data.timestamp
-        });
+  }
+
+  handleInitialState(data) {
+    console.log('📊 Initial workspace state:', data.workspace);
+    this.workspaceData = data.workspace;
+    this.monitoringActive = data.monitoring_active;
+    this.updateInterval = data.update_interval;
+
+    this.onWorkspaceUpdate({
+      type: 'initial',
+      workspace: data.workspace,
+      timestamp: data.timestamp
+    });
+  }
+
+  handleWorkspaceUpdate(data) {
+    console.log(`🔄 Workspace update: ${data.workspace.window_count} windows`);
+
+    this.workspaceData = data.workspace;
+
+    // Process autonomous actions
+    if (data.autonomous_actions && data.autonomous_actions.length > 0) {
+      this.processAutonomousActions(data.autonomous_actions);
     }
-    
-    handleWorkspaceAnalysis(data) {
-        console.log('🔍 Workspace analysis received:', data.analysis);
-        
-        this.onWorkspaceUpdate({
-            type: 'analysis',
-            analysis: data.analysis,
-            timestamp: data.timestamp
-        });
+
+    // Check for important notifications
+    if (data.workspace.notification_details) {
+      const details = data.workspace.notification_details;
+      const totalNotifs = details.badges + details.messages + details.meetings + details.alerts;
+
+      if (totalNotifs > 0) {
+        console.log(`📬 Notifications: ${details.badges} badges, ${details.messages} messages, ${details.meetings} meetings, ${details.alerts} alerts`);
+      }
     }
-    
-    handleActionResult(data) {
-        console.log('⚡ Action result:', data);
-        
-        this.onActionExecuted({
-            success: data.success,
-            action: data.action,
-            message: data.message
-        });
+
+    // Notify UI
+    this.onWorkspaceUpdate({
+      type: 'update',
+      workspace: data.workspace,
+      autonomousActions: data.autonomous_actions,
+      enhancedData: data.enhanced_data,
+      queueStatus: data.queue_status,
+      timestamp: data.timestamp
+    });
+  }
+
+  handleWorkspaceAnalysis(data) {
+    console.log('🔍 Workspace analysis received:', data.analysis);
+
+    this.onWorkspaceUpdate({
+      type: 'analysis',
+      analysis: data.analysis,
+      timestamp: data.timestamp
+    });
+  }
+
+  handleActionResult(data) {
+    console.log('⚡ Action result:', data);
+
+    this.onActionExecuted({
+      success: data.success,
+      action: data.action,
+      message: data.message
+    });
+  }
+
+  processAutonomousActions(actions) {
+    // Filter actions that don't require permission
+    const autoActions = actions.filter(a => !a.requires_permission && a.confidence > 0.8);
+
+    // Add to action queue
+    this.actionQueue = [...this.actionQueue, ...autoActions];
+
+    // Process queue
+    this.processActionQueue();
+
+    // Notify about actions requiring permission
+    const permissionRequired = actions.filter(a => a.requires_permission);
+    if (permissionRequired.length > 0) {
+      console.log(`🔐 ${permissionRequired.length} actions require permission`);
+      // Here you would show permission UI
     }
-    
-    processAutonomousActions(actions) {
-        // Filter actions that don't require permission
-        const autoActions = actions.filter(a => !a.requires_permission && a.confidence > 0.8);
-        
-        // Add to action queue
-        this.actionQueue = [...this.actionQueue, ...autoActions];
-        
-        // Process queue
-        this.processActionQueue();
-        
-        // Notify about actions requiring permission
-        const permissionRequired = actions.filter(a => a.requires_permission);
-        if (permissionRequired.length > 0) {
-            console.log(`🔐 ${permissionRequired.length} actions require permission`);
-            // Here you would show permission UI
-        }
+  }
+
+  async processActionQueue() {
+    if (this.actionQueue.length === 0) return;
+
+    const action = this.actionQueue.shift();
+    console.log(`🤖 Executing autonomous action: ${action.type}`);
+
+    // Send action execution request
+    this.executeAction(action);
+
+    // Process next action after delay
+    setTimeout(() => this.processActionQueue(), 1000);
+  }
+
+  requestWorkspaceAnalysis() {
+    if (this.isConnected && this.socket.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify({
+        type: 'request_analysis'
+      }));
     }
-    
-    async processActionQueue() {
-        if (this.actionQueue.length === 0) return;
-        
-        const action = this.actionQueue.shift();
-        console.log(`🤖 Executing autonomous action: ${action.type}`);
-        
-        // Send action execution request
-        this.executeAction(action);
-        
-        // Process next action after delay
-        setTimeout(() => this.processActionQueue(), 1000);
+  }
+
+  setUpdateInterval(interval) {
+    if (this.isConnected && this.socket.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify({
+        type: 'set_interval',
+        interval: interval
+      }));
     }
-    
-    requestWorkspaceAnalysis() {
-        if (this.isConnected && this.socket.readyState === WebSocket.OPEN) {
-            this.socket.send(JSON.stringify({
-                type: 'request_analysis'
-            }));
-        }
+  }
+
+  executeAction(action) {
+    if (this.isConnected && this.socket.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify({
+        type: 'execute_action',
+        action: action
+      }));
     }
-    
-    setUpdateInterval(interval) {
-        if (this.isConnected && this.socket.readyState === WebSocket.OPEN) {
-            this.socket.send(JSON.stringify({
-                type: 'set_interval',
-                interval: interval
-            }));
-        }
+  }
+
+  attemptReconnect() {
+    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+      this.reconnectAttempts++;
+      console.log(`🔄 Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+
+      setTimeout(() => {
+        this.connect();
+      }, this.reconnectDelay * this.reconnectAttempts);
+    } else {
+      console.error('❌ Max reconnection attempts reached. Vision system offline.');
     }
-    
-    executeAction(action) {
-        if (this.isConnected && this.socket.readyState === WebSocket.OPEN) {
-            this.socket.send(JSON.stringify({
-                type: 'execute_action',
-                action: action
-            }));
-        }
+  }
+
+  disconnect() {
+    if (this.socket) {
+      this.socket.close();
+      this.socket = null;
+      this.isConnected = false;
+      this.monitoringActive = false;
     }
-    
-    attemptReconnect() {
-        if (this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.reconnectAttempts++;
-            console.log(`🔄 Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-            
-            setTimeout(() => {
-                this.connect();
-            }, this.reconnectDelay * this.reconnectAttempts);
-        } else {
-            console.error('❌ Max reconnection attempts reached. Vision system offline.');
-        }
-    }
-    
-    disconnect() {
-        if (this.socket) {
-            this.socket.close();
-            this.socket = null;
-            this.isConnected = false;
-            this.monitoringActive = false;
-        }
-    }
-    
-    getWorkspaceData() {
-        return this.workspaceData;
-    }
-    
-    isMonitoring() {
-        return this.isConnected && this.monitoringActive;
-    }
+  }
+
+  getWorkspaceData() {
+    return this.workspaceData;
+  }
+
+  isMonitoring() {
+    return this.isConnected && this.monitoringActive;
+  }
 }
 
 const JarvisVoice = () => {
@@ -265,13 +265,13 @@ const JarvisVoice = () => {
   const [workspaceData, setWorkspaceData] = useState(null);
   const [autonomousMode, setAutonomousMode] = useState(false);
   const [micStatus, setMicStatus] = useState('unknown');
-  
+
   const wsRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const recognitionRef = useRef(null);
   const visionConnectionRef = useRef(null);
-  
+
   // Get API URL from environment or use default
   const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
   const WS_URL = API_URL.replace('http://', 'ws://').replace('https://', 'wss://');
@@ -279,13 +279,13 @@ const JarvisVoice = () => {
   useEffect(() => {
     // Check JARVIS status on mount
     checkJarvisStatus();
-    
+
     // Check microphone permission first
     checkMicrophonePermission();
-    
+
     // Predict potential audio issues
     mlAudioHandler.predictAudioIssue();
-    
+
     // Set up ML event listeners
     const handleAudioPrediction = (event) => {
       const { prediction, suggestedAction } = event.detail;
@@ -297,16 +297,16 @@ const JarvisVoice = () => {
         }
       }
     };
-    
+
     const handleAudioAnomaly = (event) => {
       console.warn('Audio anomaly detected:', event.detail);
       setError('Audio anomaly detected. System is adapting...');
     };
-    
+
     const handleAudioMetrics = (event) => {
       console.log('Audio metrics update:', event.detail);
     };
-    
+
     const handleTextFallback = (event) => {
       console.log('Enabling text fallback mode');
       // Focus on text input
@@ -316,13 +316,13 @@ const JarvisVoice = () => {
         textInput.placeholder = 'Voice unavailable - type your command here...';
       }
     };
-    
+
     // Add ML event listeners
     window.addEventListener('audioIssuePredicted', handleAudioPrediction);
     window.addEventListener('audioAnomaly', handleAudioAnomaly);
     window.addEventListener('audioMetricsUpdate', handleAudioMetrics);
     window.addEventListener('enableTextFallback', handleTextFallback);
-    
+
     // Load voices for speech synthesis
     if ('speechSynthesis' in window) {
       // Load voices
@@ -332,7 +332,7 @@ const JarvisVoice = () => {
         speechSynthesis.getVoices();
       };
     }
-    
+
     // Initialize Vision Connection
     if (!visionConnectionRef.current) {
       visionConnectionRef.current = new VisionConnection(
@@ -340,7 +340,7 @@ const JarvisVoice = () => {
         (data) => {
           setWorkspaceData(data);
           setVisionConnected(true);
-          
+
           // Process workspace updates
           if (data.type === 'update' && data.workspace) {
             // Check for important notifications
@@ -348,19 +348,19 @@ const JarvisVoice = () => {
               const notification = data.workspace.notifications[0];
               speakResponse(`I've detected: ${notification}`);
             }
-            
+
             // Handle autonomous actions
             if (data.autonomousActions && data.autonomousActions.length > 0 && autonomousMode) {
-              const highPriorityActions = data.autonomousActions.filter(a => 
+              const highPriorityActions = data.autonomousActions.filter(a =>
                 a.priority === 'HIGH' || a.priority === 'CRITICAL'
               );
-              
+
               if (highPriorityActions.length > 0) {
                 const action = highPriorityActions[0];
                 speakResponse(`I'm going to ${action.type.replace(/_/g, ' ')} for ${action.target}`);
               }
             }
-            
+
             // Check queue status
             if (data.queueStatus && data.queueStatus.queue_length > 0) {
               console.log(`📋 Action Queue: ${data.queueStatus.queue_length} actions pending`);
@@ -376,7 +376,7 @@ const JarvisVoice = () => {
         }
       );
     }
-    
+
     return () => {
       // Clean up WebSocket
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -403,7 +403,7 @@ const JarvisVoice = () => {
       const response = await fetch(`${API_URL}/voice/jarvis/status`);
       const data = await response.json();
       setJarvisStatus(data.status);
-      
+
       // Only connect WebSocket if JARVIS is available
       if (data.status !== 'offline') {
         setTimeout(() => {
@@ -428,7 +428,7 @@ const JarvisVoice = () => {
       // Try to get microphone access
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach(track => track.stop());
-      
+
       setMicrophonePermission('granted');
       setMicStatus('ready');
       // Initialize speech recognition after permission granted
@@ -456,20 +456,20 @@ const JarvisVoice = () => {
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
       return;
     }
-    
+
     try {
       wsRef.current = new WebSocket(`${WS_URL}/voice/jarvis/stream`);
-      
+
       wsRef.current.onopen = () => {
         console.log('Connected to JARVIS WebSocket');
         setError(null);
       };
-      
+
       wsRef.current.onmessage = (event) => {
         const data = JSON.parse(event.data);
         handleWebSocketMessage(data);
       };
-      
+
       wsRef.current.onerror = (error) => {
         console.error('WebSocket error:', error);
         // Only show error if not connecting
@@ -477,7 +477,7 @@ const JarvisVoice = () => {
           setError('Connection error');
         }
       };
-      
+
       wsRef.current.onclose = (event) => {
         console.log('WebSocket disconnected');
         // Only reconnect if it was a clean close and component is still mounted
@@ -510,13 +510,13 @@ const JarvisVoice = () => {
         requestAnimationFrame(() => {
           speakResponse(data.text);
         });
-        
+
         // Check for autonomy activation commands in response
         const responseText = data.text.toLowerCase();
-        if (data.command_type === 'autonomy_activation' || 
-            responseText.includes('autonomous mode activated') ||
-            responseText.includes('full autonomy enabled') ||
-            responseText.includes('all systems online')) {
+        if (data.command_type === 'autonomy_activation' ||
+          responseText.includes('autonomous mode activated') ||
+          responseText.includes('full autonomy enabled') ||
+          responseText.includes('all systems online')) {
           // Activate autonomous mode
           if (!autonomousMode) {
             setAutonomousMode(true);
@@ -565,15 +565,15 @@ const JarvisVoice = () => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       recognitionRef.current = new SpeechRecognition();
-      
+
       // Track if JARVIS is speaking to avoid self-triggering
       let jarvisSpeaking = false;
-      
+
       recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = 'en-US';
       recognitionRef.current.maxAlternatives = 1;
-      
+
       // Increase timeouts to be more patient
       // Note: These are non-standard but work in some browsers
       if ('speechTimeout' in recognitionRef.current) {
@@ -582,19 +582,19 @@ const JarvisVoice = () => {
       if ('noSpeechTimeout' in recognitionRef.current) {
         recognitionRef.current.noSpeechTimeout = 15000; // 15 seconds
       }
-      
+
       recognitionRef.current.onresult = (event) => {
         const last = event.results.length - 1;
         const transcript = event.results[last][0].transcript.toLowerCase();
         const isFinal = event.results[last].isFinal;
-        
+
         // Only process final results to avoid duplicate detections
         if (!isFinal) return;
-        
+
         // Check for wake word (but not while JARVIS is speaking)
         if ((transcript.includes('hey jarvis') || transcript.includes('jarvis')) && !isWaitingForCommand && !isJarvisSpeaking) {
           console.log('Wake word detected:', transcript);
-          
+
           // Extract command after wake word
           let commandAfterWake = null;
           if (transcript.includes('hey jarvis')) {
@@ -602,7 +602,7 @@ const JarvisVoice = () => {
           } else if (transcript.includes('jarvis')) {
             commandAfterWake = transcript.split('jarvis')[1].trim();
           }
-          
+
           if (commandAfterWake && commandAfterWake.length > 2) {
             // Send command directly without wake word activation
             console.log('Command with wake word:', commandAfterWake);
@@ -623,35 +623,35 @@ const JarvisVoice = () => {
           handleVoiceCommand(event.results[last][0].transcript);
         }
       };
-      
+
       recognitionRef.current.onerror = async (event) => {
         console.error('Speech recognition error:', event.error, event);
-        
+
         // Use ML-enhanced error handling
         const mlResult = await mlAudioHandler.handleAudioError(event, recognitionRef.current);
-        
+
         if (mlResult.success) {
           console.log('ML audio recovery successful:', mlResult);
           setError('');
           setMicStatus('ready');
-          
+
           // Restart recognition if needed
           if (mlResult.newContext || mlResult.message.includes('granted')) {
             startListening();
           }
         } else {
           // Fallback to basic error handling
-          switch(event.error) {
+          switch (event.error) {
             case 'audio-capture':
               setError('🎤 Microphone access denied. ML recovery failed.');
               setMicStatus('error');
               break;
-              
+
             case 'not-allowed':
               setError('🚫 Microphone permission denied. Please enable in browser settings.');
               setMicStatus('error');
               break;
-              
+
             case 'no-speech':
               // Silently restart for no-speech
               if (continuousListening && isListening) {
@@ -664,22 +664,22 @@ const JarvisVoice = () => {
                 }, 100);
               }
               break;
-              
+
             case 'network':
               setError('🌐 Network error. Check your connection.');
               break;
-              
+
             case 'aborted':
               // Don't show error for aborted (usually intentional)
               console.log('Recognition aborted');
               break;
-              
+
             default:
               setError(`Speech recognition error: ${event.error}`);
           }
         }
       };
-      
+
       recognitionRef.current.onend = () => {
         // Restart if continuous listening is enabled
         if (continuousListening) {
@@ -700,7 +700,7 @@ const JarvisVoice = () => {
   const handleWakeWordDetected = () => {
     setIsWaitingForCommand(true);
     setIsListening(true);
-    
+
     // Send wake word to JARVIS
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
@@ -708,10 +708,10 @@ const JarvisVoice = () => {
         text: 'activate'
       }));
     }
-    
+
     // Don't speak here - let the backend handle it
     // speakResponse("Yes?");
-    
+
     // Timeout for command after 10 seconds (longer for conversation)
     setTimeout(() => {
       if (isWaitingForCommand && !isJarvisSpeaking) {
@@ -724,19 +724,19 @@ const JarvisVoice = () => {
   const handleVoiceCommand = (command) => {
     console.log('Command received:', command);
     setTranscript(command);
-    
+
     // Check for autonomy activation commands
     const lowerCommand = command.toLowerCase();
-    if (lowerCommand.includes('activate full autonomy') || 
-        lowerCommand.includes('enable autonomous mode') ||
-        lowerCommand.includes('activate autonomy') ||
-        lowerCommand.includes('iron man mode') ||
-        lowerCommand.includes('activate all systems')) {
+    if (lowerCommand.includes('activate full autonomy') ||
+      lowerCommand.includes('enable autonomous mode') ||
+      lowerCommand.includes('activate autonomy') ||
+      lowerCommand.includes('iron man mode') ||
+      lowerCommand.includes('activate all systems')) {
       // Direct autonomy activation
       toggleAutonomousMode();
       return;
     }
-    
+
     // Send via WebSocket instead of REST API
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
@@ -749,7 +749,7 @@ const JarvisVoice = () => {
       // Fallback to REST API if WebSocket not connected
       sendTextCommand(command);
     }
-    
+
     // Keep listening for follow-up commands (continuous conversation mode)
     if (continuousListening) {
       // Stay in command mode for 10 seconds after response
@@ -775,7 +775,7 @@ const JarvisVoice = () => {
       setTimeout(() => {
         setJarvisStatus('online');
         // Backend JARVIS will speak the activation phrase
-        
+
         // Start continuous listening after activation
         enableContinuousListening();
       }, 2000);
@@ -784,15 +784,15 @@ const JarvisVoice = () => {
       setError('Failed to activate JARVIS');
     }
   };
-  
+
   const toggleAutonomousMode = async () => {
     const newMode = !autonomousMode;
     setAutonomousMode(newMode);
-    
+
     if (newMode) {
       // Enable autonomous mode
       speakResponse("Initiating full autonomy. All systems coming online. Vision system activating. AI brain engaged. Sir, I am now fully autonomous.");
-      
+
       // Connect vision system
       if (visionConnectionRef.current) {
         console.log('Connecting vision system...');
@@ -802,10 +802,10 @@ const JarvisVoice = () => {
           visionConnectionRef.current.startMonitoring();
         }
       }
-      
+
       // Enable continuous listening
       enableContinuousListening();
-      
+
       // Notify backend about autonomy mode
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({
@@ -816,14 +816,14 @@ const JarvisVoice = () => {
     } else {
       // Disable autonomous mode
       speakResponse("Disabling autonomous mode. Returning to manual control. Standing by for your commands, sir.");
-      
+
       // Stop vision monitoring
       if (visionConnectionRef.current && visionConnectionRef.current.isConnected) {
         visionConnectionRef.current.stopMonitoring();
         visionConnectionRef.current.disconnect();
       }
       setVisionConnected(false);
-      
+
       // Notify backend
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({
@@ -831,11 +831,11 @@ const JarvisVoice = () => {
           mode: 'manual'
         }));
       }
-      
+
       // Keep listening if user wants
     }
   };
-  
+
   const enableContinuousListening = () => {
     if (recognitionRef.current) {
       setContinuousListening(true);
@@ -847,7 +847,7 @@ const JarvisVoice = () => {
       }
     }
   };
-  
+
   const disableContinuousListening = () => {
     setContinuousListening(false);
     if (recognitionRef.current) {
@@ -858,22 +858,22 @@ const JarvisVoice = () => {
   const startListening = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
+
       mediaRecorderRef.current = new MediaRecorder(stream);
       audioChunksRef.current = [];
-      
+
       mediaRecorderRef.current.ondataavailable = (event) => {
         audioChunksRef.current.push(event.data);
       };
-      
+
       mediaRecorderRef.current.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
         await sendAudioToJarvis(audioBlob);
       };
-      
+
       mediaRecorderRef.current.start();
       setIsListening(true);
-      
+
       // Auto-stop after 5 seconds
       setTimeout(() => {
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
@@ -890,7 +890,7 @@ const JarvisVoice = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop();
       setIsListening(false);
-      
+
       // Stop all tracks
       mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
     }
@@ -898,13 +898,13 @@ const JarvisVoice = () => {
 
   const sendAudioToJarvis = async (audioBlob) => {
     setIsProcessing(true);
-    
+
     // Convert blob to base64
     const reader = new FileReader();
     reader.readAsDataURL(audioBlob);
     reader.onloadend = () => {
       const base64Audio = reader.result.split(',')[1];
-      
+
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({
           type: 'audio',
@@ -916,10 +916,10 @@ const JarvisVoice = () => {
 
   const sendTextCommand = async (text) => {
     if (!text.trim()) return;
-    
+
     setTranscript(text);
     setIsProcessing(true);
-    
+
     try {
       const response = await fetch(`${API_URL}/voice/jarvis/command`, {
         method: 'POST',
@@ -928,11 +928,11 @@ const JarvisVoice = () => {
         },
         body: JSON.stringify({ text })
       });
-      
+
       const data = await response.json();
       setResponse(data.response);
       setIsProcessing(false);
-      
+
       speakResponse(data.response);
     } catch (err) {
       console.error('Failed to send command:', err);
@@ -943,28 +943,28 @@ const JarvisVoice = () => {
 
   // Pre-select voice for faster speech
   const [selectedVoice, setSelectedVoice] = useState(null);
-  
+
   useEffect(() => {
     // Pre-select the best voice once
     const selectBestVoice = () => {
       const voices = speechSynthesis.getVoices();
       console.log('Available voices:', voices.length);
-      
+
       if (voices.length === 0) {
         // Try again after a delay
         setTimeout(selectBestVoice, 100);
         return;
       }
-      
+
       const preferredVoices = [
         'Daniel', 'Oliver', 'Google UK English Male',
         'Microsoft David - English (United States)', 'Alex',
         'Google US English', 'Microsoft Mark', 'Fred'
       ];
-      
+
       let voiceSelected = false;
       for (const preferredName of preferredVoices) {
-        const voice = voices.find(v => 
+        const voice = voices.find(v =>
           v.name.includes(preferredName) && !v.name.includes('Siri')
         );
         if (voice) {
@@ -974,7 +974,7 @@ const JarvisVoice = () => {
           break;
         }
       }
-      
+
       // If no preferred voice found, use any English voice
       if (!voiceSelected) {
         const englishVoice = voices.find(v => v.lang.startsWith('en'));
@@ -984,44 +984,44 @@ const JarvisVoice = () => {
         }
       }
     };
-    
+
     // Initial attempt
     selectBestVoice();
-    
+
     // Also listen for voice changes
     speechSynthesis.onvoiceschanged = selectBestVoice;
-    
+
     // Force load voices
     speechSynthesis.getVoices();
   }, []);
-  
+
   // Create a queue for speech to prevent overlapping
   const speechQueueRef = useRef([]);
   const isSpeakingRef = useRef(false);
-  
+
   const processSpeechQueue = () => {
     if (isSpeakingRef.current || speechQueueRef.current.length === 0) {
       return;
     }
-    
+
     const { text, voice } = speechQueueRef.current.shift();
     isSpeakingRef.current = true;
-    
+
     const utterance = new SpeechSynthesisUtterance(text);
-    
+
     if (voice) {
       utterance.voice = voice;
     }
-    
+
     utterance.rate = 1.0;
     utterance.pitch = 0.95;
     utterance.volume = 1.0;
-    
+
     utterance.onstart = () => {
       console.log('Speech started:', text);
       setIsJarvisSpeaking(true);
     };
-    
+
     utterance.onend = () => {
       console.log('Speech ended');
       isSpeakingRef.current = false;
@@ -1029,12 +1029,12 @@ const JarvisVoice = () => {
       // Process next in queue
       setTimeout(processSpeechQueue, 100);
     };
-    
+
     utterance.onerror = (event) => {
       console.error('Speech error:', event.error);
       isSpeakingRef.current = false;
       setIsJarvisSpeaking(false);
-      
+
       // Handle different error types
       if (event.error === 'canceled') {
         // Speech was canceled - likely by another utterance
@@ -1062,7 +1062,7 @@ const JarvisVoice = () => {
         setTimeout(processSpeechQueue, 100);
       }
     };
-    
+
     // Only cancel if there's actually something speaking
     if (speechSynthesis.speaking && !speechSynthesis.pending) {
       speechSynthesis.cancel();
@@ -1089,19 +1089,19 @@ const JarvisVoice = () => {
       }
     }
   };
-  
+
   const speakResponse = (text) => {
     if (!('speechSynthesis' in window)) {
       console.error('Speech synthesis not supported');
       return;
     }
-    
+
     console.log('Queueing speech:', text);
     console.log('Using voice:', selectedVoice?.name || 'default');
-    
+
     // Add to queue
     speechQueueRef.current.push({ text, voice: selectedVoice });
-    
+
     // Process queue
     processSpeechQueue();
   };
@@ -1109,7 +1109,7 @@ const JarvisVoice = () => {
   return (
     <div className="jarvis-voice-container">
       {microphonePermission !== 'granted' && (
-        <MicrophonePermissionHelper 
+        <MicrophonePermissionHelper
           onPermissionGranted={() => {
             setMicrophonePermission('granted');
             setMicStatus('ready');
@@ -1117,14 +1117,14 @@ const JarvisVoice = () => {
           }}
         />
       )}
-      
+
       <div className={`arc-reactor ${isListening ? 'listening' : ''} ${isProcessing ? 'processing' : ''} ${continuousListening ? 'continuous' : ''} ${isWaitingForCommand ? 'waiting' : ''}`}>
         <div className="core"></div>
         <div className="ring ring-1"></div>
         <div className="ring ring-2"></div>
         <div className="ring ring-3"></div>
       </div>
-      
+
       <div className="jarvis-status">
         <div className={`status-indicator ${jarvisStatus}`}></div>
         <span>JARVIS {jarvisStatus.toUpperCase()}</span>
@@ -1149,23 +1149,23 @@ const JarvisVoice = () => {
           </span>
         )}
       </div>
-      
+
       {/* Error Display */}
       {error && (
         <div className="jarvis-error">
           <div className="error-icon">⚠️</div>
           <div className="error-text" style={{ whiteSpace: 'pre-line' }}>{error}</div>
           {error.includes('Microphone') && (
-            <button 
+            <button
               onClick={checkMicrophonePermission}
-              className="jarvis-button retry-button" 
+              className="jarvis-button retry-button"
             >
               🎤 Retry Microphone Access
             </button>
           )}
         </div>
       )}
-      
+
       {/* Vision Status */}
       {autonomousMode && (
         <div className="vision-status-bar">
@@ -1183,23 +1183,23 @@ const JarvisVoice = () => {
           )}
         </div>
       )}
-      
+
       <div className="voice-controls">
         {jarvisStatus === 'offline' && (
           <button onClick={activateJarvis} className="jarvis-button activate">
             Activate JARVIS
           </button>
         )}
-        
+
         {jarvisStatus === 'online' && (
           <>
-            <button 
+            <button
               onClick={continuousListening ? disableContinuousListening : enableContinuousListening}
               className={`jarvis-button ${continuousListening ? 'continuous-active' : 'start'}`}
             >
               {continuousListening ? 'Stop Listening' : 'Start Listening'}
             </button>
-            
+
             <button
               onClick={toggleAutonomousMode}
               className={`jarvis-button ${autonomousMode ? 'autonomous-active' : 'autonomous'}`}
@@ -1209,7 +1209,7 @@ const JarvisVoice = () => {
           </>
         )}
       </div>
-      
+
       <div className="voice-input">
         <input
           type="text"
@@ -1223,24 +1223,24 @@ const JarvisVoice = () => {
           disabled={jarvisStatus !== 'online'}
         />
       </div>
-      
+
       {transcript && (
         <div className="transcript">
           <strong>You:</strong> {transcript}
         </div>
       )}
-      
+
       {response && (
         <div className="jarvis-response">
           <strong>JARVIS:</strong> {response}
         </div>
       )}
-      
+
       {error && (
         <div className="error-message">
           {error}
           {error === 'Connection error' && (
-            <button 
+            <button
               onClick={() => {
                 setError(null);
                 connectWebSocket();
@@ -1252,14 +1252,14 @@ const JarvisVoice = () => {
           )}
         </div>
       )}
-      
+
       <div className="voice-tips">
         <p>Click "Start Listening" then say "Hey JARVIS" to activate</p>
         <p>Available commands: weather, time, calculations, reminders</p>
-        
+
         {/* Debug audio buttons */}
         <div style={{ marginTop: '10px' }}>
-          <button 
+          <button
             onClick={() => {
               console.log('Testing speech with queue...');
               speakResponse('Testing JARVIS voice. Can you hear me, sir?');
@@ -1276,8 +1276,8 @@ const JarvisVoice = () => {
           >
             Test Audio (Queue)
           </button>
-          
-          <button 
+
+          <button
             onClick={() => {
               console.log('Direct speech test...');
               // Direct test without our system
@@ -1286,11 +1286,11 @@ const JarvisVoice = () => {
               u.rate = 1.0;
               u.pitch = 1.0;
               u.volume = 1.0;
-              
+
               u.onstart = () => console.log('Direct speech started');
               u.onend = () => console.log('Direct speech ended');
               u.onerror = (e) => console.error('Direct speech error:', e);
-              
+
               setTimeout(() => {
                 speechSynthesis.speak(u);
                 console.log('Direct speech queued');

@@ -165,9 +165,11 @@ class DynamicResponseComposer:
         """Initialize base response patterns (to be learned and replaced)"""
         return {
             'vision_capability_confirmation': [
-                "Yes {user_name}, I can see your screen. {description}",
-                "I'm able to view your display. {description}",
-                "Your screen is visible to me. {description}"
+                "Yes {user_name}, I can see your screen clearly.",
+                "I have visual on your display, {user_name}.",
+                "Visual feed confirmed and active.",
+                "I'm looking at your screen now, {user_name}.",
+                "Screen access confirmed, {user_name}."
             ],
             'screen_analysis': [
                 "{description}",

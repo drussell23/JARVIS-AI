@@ -408,15 +408,38 @@ class VisionSystemV2:
     ) -> VisionResponse:
         """Handle 'can you see my screen?' type questions"""
         try:
-            # Capture and analyze screen
+            # Import dynamic vision analyzer
+            from vision.natural_responses import get_vision_analyzer
+            analyzer = get_vision_analyzer()
+            
+            # Capture screen first
             result = capture_with_intelligence(
                 query=command,
-                use_claude=self.claude_available
+                use_claude=False  # We'll use our own Claude integration
             )
             
-            if result['success'] and result.get('analysis'):
-                # Format as confirmation
-                message = f"Yes, I can see your screen. {result['analysis']}"
+            if result['success'] and result.get('image'):
+                # Use the dynamic analyzer for natural response
+                if self.claude_available and analyzer.client:
+                    # Full Claude analysis
+                    analysis_result = await analyzer.analyze_screen_with_context(
+                        result['image'],
+                        command,
+                        context
+                    )
+                    
+                    if analysis_result['success']:
+                        message = analysis_result['message']
+                        
+                        # Store insights in result
+                        result['insights'] = analysis_result.get('insights', {})
+                        result['dynamic_analysis'] = True
+                    else:
+                        # Fallback if Claude fails
+                        message = analyzer._generate_fallback_response(result)
+                else:
+                    # No Claude API - use fallback
+                    message = analyzer._generate_fallback_response(result)
                 
                 # Learn this successful pattern
                 self.intent_classifier.learn_from_interaction(

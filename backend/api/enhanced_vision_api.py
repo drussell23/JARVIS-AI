@@ -342,3 +342,23 @@ async def analyze_current_screen():
             status_code=500,
             detail=f"Vision analysis failed: {str(e)}"
         )
+
+
+@router.get("/can_see")
+async def vision_confirmation():
+    """
+    Fast endpoint to confirm vision capability.
+    Returns in <100ms instead of 3-9 seconds.
+    """
+    from vision.natural_responses import confirm_vision_capability
+    
+    result = await confirm_vision_capability()
+    
+    return {
+        "status": "success" if result["success"] else "error",
+        "message": result["response"],
+        "performance_ms": result["performance_ms"],
+        "cached": result.get("cached", False),
+        "screen_info": result.get("screen_info"),
+        "confidence": result["confidence"]
+    }

@@ -59,7 +59,7 @@ class AsyncSystemManager:
         self.frontend_dir = Path("frontend")
         self.ports = {
             "main_api": 8000,
-            "training_api": 8001,
+            "websocket_router": 8001,  # TypeScript WebSocket Router
             "frontend": 3000,
             "llama_cpp": 8080
         }
@@ -73,8 +73,8 @@ class AsyncSystemManager:
     def print_header(self):
         """Print system header"""
         print(f"\n{Colors.HEADER}{'='*60}")
-        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v12.1 - Advanced Rust-Powered Intelligence 🚀{Colors.ENDC}")
-        print(f"{Colors.CYAN}🦀 Rust Performance • Zero-Copy Operations • Memory Safety{Colors.ENDC}")
+        print(f"{Colors.BOLD}🤖 JARVIS AI Agent v12.3 - Unified WebSocket Architecture 🚀{Colors.ENDC}")
+        print(f"{Colors.CYAN}⚡ Zero Conflicts • 🔌 TypeScript Router • 🌉 Perfect Integration{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}")
         
         # AI Integration
@@ -113,12 +113,13 @@ class AsyncSystemManager:
         print(f"{Colors.GREEN}🛡️ Safety First:{Colors.ENDC} Memory pressure monitoring • Graceful degradation • Auto recovery")
         print(f"{Colors.YELLOW}🌐 Platform Optimized:{Colors.ENDC} Metal on macOS • Vulkan on Linux • Native everywhere")
         
-        print(f"\n{Colors.BOLD}🔗 NEW - TYPESCRIPT WEBSOCKET INTEGRATION:{Colors.ENDC}")
-        print(f"{Colors.HEADER}🌐 Dynamic WebSocket:{Colors.ENDC} Auto-discovery • Self-healing • Zero hardcoding")
-        print(f"{Colors.CYAN}🔄 Smart Reconnection:{Colors.ENDC} Exponential backoff • Network adaptation • Connection pooling")
-        print(f"{Colors.YELLOW}🌉 Language Bridge:{Colors.ENDC} TypeScript-Python integration • Type safety • Seamless conversion")
-        print(f"{Colors.GREEN}📊 Real-time Metrics:{Colors.ENDC} Connection health • Message statistics • Performance tracking")
-        print(f"{Colors.BLUE}🧩 Multi-Protocol:{Colors.ENDC} WebSocket discovery • Capability routing • Protocol negotiation")
+        print(f"\n{Colors.BOLD}🔗 v12.3 - UNIFIED WEBSOCKET ARCHITECTURE:{Colors.ENDC}")
+        print(f"{Colors.HEADER}🌐 TypeScript Router:{Colors.ENDC} Resolves ALL conflicts • Single routing point • Zero hardcoding")
+        print(f"{Colors.CYAN}🔄 Smart Routing:{Colors.ENDC} Dynamic discovery • Pattern matching • Capability-based")
+        print(f"{Colors.YELLOW}🌉 TS-Python Bridge:{Colors.ENDC} ZeroMQ IPC • Type safety • Bidirectional calls")
+        print(f"{Colors.GREEN}🛡️ Error Handling:{Colors.ENDC} Circuit breakers • Retry logic • Self-healing")
+        print(f"{Colors.BLUE}⚡ Performance:{Colors.ENDC} Rate limiting • Connection pooling • Message batching")
+        print(f"{Colors.HEADER}🔧 No Conflicts:{Colors.ENDC} Port 8001 for WS • Port 8000 for API • Clean separation")
         
         # Activation
         print(f"\n{Colors.BOLD}🎤 ACTIVATION COMMANDS:{Colors.ENDC}")
@@ -786,91 +787,163 @@ class AsyncSystemManager:
             print(f"  System will run with Python-only implementation")
     
     async def start_backend(self) -> asyncio.subprocess.Process:
-        """Start backend service asynchronously"""
-        print(f"\n{Colors.BLUE}Starting backend service...{Colors.ENDC}")
+        """Start backend service with unified WebSocket router"""
+        print(f"\n{Colors.BLUE}Starting unified backend service...{Colors.ENDC}")
         
         # Initialize Rust core before starting backend
         await self.initialize_rust_core()
         
-        # Enhanced port management with multiple recovery attempts
-        port_ready = False
-        recovery_attempts = 0
-        max_attempts = 3
-        
-        while not port_ready and recovery_attempts < max_attempts:
-            if await self.check_port_available(self.ports["main_api"]):
-                port_ready = True
-                break
-                
-            recovery_attempts += 1
-            print(f"{Colors.WARNING}⚠️  Port {self.ports['main_api']} is in use (attempt {recovery_attempts}/{max_attempts}){Colors.ENDC}")
+        # Check if we should use the unified startup script
+        unified_script = self.backend_dir / "start_unified_backend.sh"
+        if unified_script.exists():
+            print(f"{Colors.CYAN}Using unified backend startup (TypeScript + Python)...{Colors.ENDC}")
             
-            # Try graceful shutdown first
-            if recovery_attempts == 1:
-                try:
-                    async with aiohttp.ClientSession() as session:
-                        await session.post(f"http://localhost:{self.ports['main_api']}/shutdown", timeout=2)
-                        print(f"{Colors.YELLOW}Sent graceful shutdown request...{Colors.ENDC}")
-                        await asyncio.sleep(3)
-                except:
-                    pass
+            # Make sure the script is executable
+            os.chmod(str(unified_script), 0o755)
             
-            # Force kill if still in use
-            if not await self.check_port_available(self.ports["main_api"]):
-                if await self.kill_process_on_port(self.ports["main_api"]):
-                    print(f"{Colors.GREEN}✓ Process killed{Colors.ENDC}")
-                    await asyncio.sleep(2 + recovery_attempts)  # Progressive delay
-                    
-        if not port_ready:
-            # Find alternative port as last resort
-            self.ports["main_api"] = await self.find_available_port(self.ports["main_api"] + 1)
-            print(f"{Colors.GREEN}Using alternative port {self.ports['main_api']}{Colors.ENDC}")
-        
-        # Set environment
-        env = os.environ.copy()
-        env["PYTHONUNBUFFERED"] = "1"
-        env["USE_CLAUDE"] = "1"
-        env["PORT"] = str(self.ports["main_api"])
-        
-        # Ensure API key is passed to backend
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if api_key:
-            env["ANTHROPIC_API_KEY"] = api_key
-        
-        # Start backend - try start_backend.py first, then main.py
-        if (self.backend_dir / "start_backend.py").exists():
-            server_script = "start_backend.py"
-        elif (self.backend_dir / "main.py").exists():
-            server_script = "main.py"
+            # Check both ports
+            for port_name, port_num in [("main_api", self.ports["main_api"]), 
+                                         ("websocket_router", self.ports["websocket_router"])]:
+                if not await self.check_port_available(port_num):
+                    print(f"{Colors.WARNING}Killing process on port {port_num}...{Colors.ENDC}")
+                    await self.kill_process_on_port(port_num)
+                    await asyncio.sleep(2)
+            
+            # Update frontend WebSocket URLs if needed
+            update_frontend_script = self.backend_dir / "websocket" / "initialize_frontend.js"
+            if update_frontend_script.exists():
+                print(f"{Colors.CYAN}Updating frontend WebSocket URLs...{Colors.ENDC}")
+                proc = await asyncio.create_subprocess_exec(
+                    "node", str(update_frontend_script),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, stderr = await proc.communicate()
+                if proc.returncode == 0:
+                    print(f"{Colors.GREEN}✓ Frontend URLs updated{Colors.ENDC}")
+                else:
+                    print(f"{Colors.WARNING}⚠️  Frontend URL update failed{Colors.ENDC}")
+            
+            # Set environment
+            env = os.environ.copy()
+            env["PYTHONUNBUFFERED"] = "1"
+            env["USE_CLAUDE"] = "1"
+            env["WEBSOCKET_PORT"] = str(self.ports["websocket_router"])
+            env["PYTHON_BACKEND_PORT"] = str(self.ports["main_api"])
+            
+            # Ensure API key is passed
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+            if api_key:
+                env["ANTHROPIC_API_KEY"] = api_key
+            
+            # Create log files
+            log_dir = self.backend_dir / "logs"
+            log_dir.mkdir(exist_ok=True)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            unified_log = log_dir / f"unified_{timestamp}.log"
+            
+            print(f"{Colors.CYAN}Log file: {unified_log}{Colors.ENDC}")
+            
+            # Start unified backend
+            with open(unified_log, 'w') as log:
+                process = await asyncio.create_subprocess_exec(
+                    "/bin/bash", str(unified_script),
+                    cwd=str(self.backend_dir.absolute()),
+                    stdout=log,
+                    stderr=asyncio.subprocess.STDOUT,
+                    env=env
+                )
+            
+            self.processes.append(process)
+            print(f"{Colors.GREEN}✓ Unified backend starting:{Colors.ENDC}")
+            print(f"  • Python Backend: port {self.ports['main_api']}")
+            print(f"  • TypeScript WebSocket Router: port {self.ports['websocket_router']}")
+            print(f"  • Process PID: {process.pid}")
+            
+            # Store for monitoring
+            self.backend_process = process
+            self.backend_start_time = time.time()
+            
+            return process
+            
         else:
-            server_script = "run_server.py"
-        
-        # Create log file for this session
-        log_dir = self.backend_dir / "logs"
-        log_dir.mkdir(exist_ok=True)
-        log_file = log_dir / f"jarvis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-        
-        print(f"{Colors.CYAN}Log file: {log_file}{Colors.ENDC}")
-        
-        # Start backend with proper logging
-        with open(log_file, 'w') as log:
-            process = await asyncio.create_subprocess_exec(
-                sys.executable, server_script,
-                "--port", str(self.ports["main_api"]),
-                cwd=str(self.backend_dir.absolute()),
-                stdout=log,
-                stderr=asyncio.subprocess.STDOUT,
-                env=env
-            )
-        
-        self.processes.append(process)
-        print(f"{Colors.GREEN}✓ Backend starting on port {self.ports['main_api']} (PID: {process.pid}){Colors.ENDC}")
-        
-        # Store process info for monitoring
-        self.backend_process = process
-        self.backend_start_time = time.time()
-        
-        return process
+            # Fallback to original backend startup
+            print(f"{Colors.YELLOW}Unified startup script not found, using standard backend...{Colors.ENDC}")
+            
+            # Original backend startup code
+            port_ready = False
+            recovery_attempts = 0
+            max_attempts = 3
+            
+            while not port_ready and recovery_attempts < max_attempts:
+                if await self.check_port_available(self.ports["main_api"]):
+                    port_ready = True
+                    break
+                    
+                recovery_attempts += 1
+                print(f"{Colors.WARNING}⚠️  Port {self.ports['main_api']} is in use (attempt {recovery_attempts}/{max_attempts}){Colors.ENDC}")
+                
+                # Try graceful shutdown first
+                if recovery_attempts == 1:
+                    try:
+                        async with aiohttp.ClientSession() as session:
+                            await session.post(f"http://localhost:{self.ports['main_api']}/shutdown", timeout=2)
+                            print(f"{Colors.YELLOW}Sent graceful shutdown request...{Colors.ENDC}")
+                            await asyncio.sleep(3)
+                    except:
+                        pass
+                
+                # Force kill if still in use
+                if not await self.check_port_available(self.ports["main_api"]):
+                    if await self.kill_process_on_port(self.ports["main_api"]):
+                        print(f"{Colors.GREEN}✓ Process killed{Colors.ENDC}")
+                        await asyncio.sleep(2 + recovery_attempts)
+                        
+            if not port_ready:
+                self.ports["main_api"] = await self.find_available_port(self.ports["main_api"] + 1)
+                print(f"{Colors.GREEN}Using alternative port {self.ports['main_api']}{Colors.ENDC}")
+            
+            # Set environment
+            env = os.environ.copy()
+            env["PYTHONUNBUFFERED"] = "1"
+            env["USE_CLAUDE"] = "1"
+            env["PORT"] = str(self.ports["main_api"])
+            
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+            if api_key:
+                env["ANTHROPIC_API_KEY"] = api_key
+            
+            # Start backend
+            if (self.backend_dir / "start_backend.py").exists():
+                server_script = "start_backend.py"
+            elif (self.backend_dir / "main.py").exists():
+                server_script = "main.py"
+            else:
+                server_script = "run_server.py"
+            
+            log_dir = self.backend_dir / "logs"
+            log_dir.mkdir(exist_ok=True)
+            log_file = log_dir / f"jarvis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+            
+            print(f"{Colors.CYAN}Log file: {log_file}{Colors.ENDC}")
+            
+            with open(log_file, 'w') as log:
+                process = await asyncio.create_subprocess_exec(
+                    sys.executable, server_script,
+                    "--port", str(self.ports["main_api"]),
+                    cwd=str(self.backend_dir.absolute()),
+                    stdout=log,
+                    stderr=asyncio.subprocess.STDOUT,
+                    env=env
+                )
+            
+            self.processes.append(process)
+            print(f"{Colors.GREEN}✓ Backend starting on port {self.ports['main_api']} (PID: {process.pid}){Colors.ENDC}")
+            
+            self.backend_process = process
+            self.backend_start_time = time.time()
+            
+            return process
     
     async def start_frontend(self) -> Optional[asyncio.subprocess.Process]:
         """Start frontend service asynchronously"""
@@ -1110,6 +1183,7 @@ class AsyncSystemManager:
         print(f"\n{Colors.BOLD}🌐 ACCESS POINTS:{Colors.ENDC}")
         print(f"{Colors.CYAN}  • Web Interface:{Colors.ENDC} http://localhost:{self.ports['frontend']} {Colors.GREEN}← Primary Interface{Colors.ENDC}")
         print(f"{Colors.CYAN}  • API Documentation:{Colors.ENDC} http://localhost:{self.ports['main_api']}/docs")
+        print(f"{Colors.CYAN}  • WebSocket Routes:{Colors.ENDC} ws://localhost:{self.ports['websocket_router']} {Colors.GREEN}← Unified Router{Colors.ENDC}")
         print(f"{Colors.CYAN}  • Health Status:{Colors.ENDC} http://localhost:{self.ports['main_api']}/health")
         print(f"{Colors.CYAN}  • Vision Status:{Colors.ENDC} http://localhost:{self.ports['main_api']}/vision/status")
         print(f"{Colors.CYAN}  • Voice Status:{Colors.ENDC} http://localhost:{self.ports['main_api']}/voice/jarvis/status")
@@ -1190,15 +1264,23 @@ class AsyncSystemManager:
             print(f"  🔊 Backend speech: {Colors.GREEN}Enabled{Colors.ENDC} (macOS native)")
             print(f"  🎵 Browser speech: Fallback mode")
             
-        print(f"\n{Colors.GREEN}✨ v5.8 - Zero-Hardcoding Dynamic Vision System:{Colors.ENDC}")
-        print(f"  • 🧠 Dynamic Vision Engine {Colors.GREEN}[NEW]{Colors.ENDC} - Zero hardcoding, pure ML intelligence")
-        print(f"  • 🔌 Plugin Architecture {Colors.GREEN}[NEW]{Colors.ENDC} - Extensible vision provider system")
-        print(f"  • 🎯 Intent Classification {Colors.GREEN}[NEW]{Colors.ENDC} - ML-based command understanding")
-        print(f"  • 📊 Performance Routing {Colors.GREEN}[NEW]{Colors.ENDC} - Routes to best provider dynamically")
-        print(f"  • 🔄 Self-Learning {Colors.GREEN}[ENHANCED]{Colors.ENDC} - Learns from every interaction")
-        print(f"  • 🌐 Auto-Discovery {Colors.GREEN}[NEW]{Colors.ENDC} - Finds capabilities at runtime")
-        print(f"  • 💡 Semantic Matching {Colors.GREEN}[NEW]{Colors.ENDC} - Understands intent, not keywords")
-        print(f"  • 🚀 Zero Maintenance {Colors.GREEN}[NEW]{Colors.ENDC} - Self-improving, self-healing")
+        print(f"\n{Colors.GREEN}✨ v12.2 - Lightning-Fast Natural Response System:{Colors.ENDC}")
+        print(f"  • ⚡ Ultra-Fast Vision {Colors.GREEN}[NEW]{Colors.ENDC} - <1s response time (was 3-9s)")
+        print(f"  • 🧠 Smart Model Selection {Colors.GREEN}[NEW]{Colors.ENDC} - Haiku for speed, Opus for depth")
+        print(f"  • 🚀 Intelligent Caching {Colors.GREEN}[NEW]{Colors.ENDC} - <100ms for repeated queries")
+        print(f"  • 🔄 Async Operations {Colors.GREEN}[NEW]{Colors.ENDC} - Non-blocking screen capture")
+        print(f"  • 💬 Natural Conversations {Colors.GREEN}[ENHANCED]{Colors.ENDC} - Adapts style based on context")
+        print(f"  • 🦀 Rust Acceleration {Colors.GREEN}[ENHANCED]{Colors.ENDC} - 10-100x faster image processing")
+        print(f"  • 📊 Performance Metrics {Colors.GREEN}[NEW]{Colors.ENDC} - Real-time response tracking")
+        print(f"  • 🎯 Zero Hardcoding {Colors.GREEN}[ENHANCED]{Colors.ENDC} - Everything dynamically optimized")
+        print(f"  • 🧠 Dynamic Vision Engine - Zero hardcoding, pure ML intelligence")
+        print(f"  • 🔌 Plugin Architecture - Extensible vision provider system")
+        print(f"  • 🎯 Intent Classification - ML-based command understanding")
+        print(f"  • 📊 Performance Routing - Routes to best provider dynamically")
+        print(f"  • 🔄 Self-Learning - Learns from every interaction")
+        print(f"  • 🌐 Auto-Discovery - Finds capabilities at runtime")
+        print(f"  • 💡 Semantic Matching - Understands intent, not keywords")
+        print(f"  • 🚀 Zero Maintenance - Self-improving, self-healing")
         print(f"  • 🎯 Dynamic App Control - Works with ANY macOS app")
         print(f"  • 🤖 ML Audio Recovery - Self-healing voice system")
         print(f"  • 🧠 Claude AI Brain - Connected to all systems")
@@ -1211,10 +1293,15 @@ class AsyncSystemManager:
         print(f"  • 🎯 WebSocket Stability {Colors.GREEN}[FIXED]{Colors.ENDC} - Reliable connections")
         
         print(f"\n{Colors.BOLD}🔧 TROUBLESHOOTING:{Colors.ENDC}")
-        print(f"{Colors.CYAN}Vision Connection Issues:{Colors.ENDC}")
+        print(f"{Colors.CYAN}WebSocket Connection (NEW Unified System):{Colors.ENDC}")
+        print(f"  • TypeScript Router: ws://localhost:{self.ports['websocket_router']}/ws/vision")
+        print(f"  • Test connection: {Colors.YELLOW}python backend/tests/test_unified_websocket.py{Colors.ENDC}")
+        print(f"  • View routes: curl http://localhost:{self.ports['websocket_router']}/api/websocket/endpoints")
+        print(f"  • {Colors.GREEN}NO MORE CONFLICTS{Colors.ENDC} - All WebSocket traffic goes through port {self.ports['websocket_router']}")
+        
+        print(f"\n{Colors.CYAN}Vision Connection Issues:{Colors.ENDC}")
         print(f"  • Run diagnostic: {Colors.YELLOW}python diagnose_vision.py{Colors.ENDC}")
-        print(f"  • Check WebSocket: ws://localhost:{self.ports['main_api']}/vision/ws/vision")
-        print(f"  • Verify backend: curl http://localhost:{self.ports['main_api']}/vision/status")
+        print(f"  • Check API status: curl http://localhost:{self.ports['main_api']}/vision/status")
         
         print(f"\n{Colors.CYAN}ML Command Routing (v5.7 - Hybrid C++ Vision Fix):{Colors.ENDC}")
         print(f"  • Apply vision fix: {Colors.YELLOW}python backend/apply_hybrid_vision_fix.py{Colors.ENDC}")

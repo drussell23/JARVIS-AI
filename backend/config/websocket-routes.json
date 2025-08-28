@@ -1,0 +1,98 @@
+{
+  "port": 8001,
+  "pythonBackendUrl": "http://localhost:8000",
+  "enableAuthentication": false,
+  "enableRateLimiting": true,
+  "enableDynamicRouting": true,
+  "routes": [
+    {
+      "path": "/ws/vision",
+      "capabilities": [
+        "vision",
+        "monitoring", 
+        "analysis",
+        "autonomous",
+        "claude",
+        "workspace",
+        "window_detection",
+        "notification_detection",
+        "pattern_learning"
+      ],
+      "priority": 10,
+      "pythonModule": "backend.api.unified_vision_handler",
+      "handlers": {
+        "set_monitoring_interval": "handle_monitoring_interval",
+        "request_workspace_analysis": "handle_workspace_analysis",
+        "execute_action": "handle_action_execution",
+        "vision_command": "handle_vision_command",
+        "claude_vision": "handle_claude_vision",
+        "autonomous_action": "handle_autonomous_action",
+        "learn_pattern": "handle_pattern_learning"
+      }
+    },
+    {
+      "path": "/ws/voice",
+      "capabilities": [
+        "voice",
+        "speech",
+        "commands",
+        "jarvis",
+        "rust_accelerated"
+      ],
+      "priority": 8,
+      "pythonModule": "backend.api.voice_websocket_handler",
+      "handlers": {
+        "voice_command": "handle_voice_command",
+        "start_listening": "handle_start_listening",
+        "stop_listening": "handle_stop_listening",
+        "set_voice_model": "handle_set_voice_model"
+      }
+    },
+    {
+      "path": "/ws/automation",
+      "capabilities": [
+        "automation",
+        "workflow",
+        "tasks",
+        "scripts",
+        "scheduling"
+      ],
+      "priority": 7,
+      "pythonModule": "backend.api.automation_handler",
+      "handlers": {
+        "create_automation": "handle_create_automation",
+        "execute_automation": "handle_execute_automation",
+        "schedule_task": "handle_schedule_task",
+        "get_automations": "handle_get_automations"
+      }
+    },
+    {
+      "path": "/ws/notifications",
+      "capabilities": [
+        "notifications",
+        "alerts",
+        "real_time_updates"
+      ],
+      "priority": 6,
+      "pythonModule": "backend.api.notification_handler"
+    },
+    {
+      "path": "/ws",
+      "capabilities": [
+        "general",
+        "chat",
+        "system_events"
+      ],
+      "priority": 5,
+      "pythonModule": "backend.api.general_handler"
+    },
+    {
+      "path": "/api/websocket/endpoints",
+      "capabilities": [
+        "discovery",
+        "metadata"
+      ],
+      "priority": 1
+    }
+  ]
+}

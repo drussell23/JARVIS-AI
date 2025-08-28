@@ -1,0 +1,45 @@
+{
+  "routes": [
+    {
+      "path": "/ws/vision",
+      "capabilities": ["vision", "monitoring", "claude", "pattern_learning", "autonomous_actions"],
+      "pythonModule": "backend.api.unified_vision_handler",
+      "pythonHandler": "UnifiedVisionHandler",
+      "description": "Unified vision WebSocket endpoint handling all vision-related operations",
+      "rateLimit": {
+        "maxRequests": 100,
+        "windowMs": 60000
+      }
+    },
+    {
+      "path": "/ws/voice",
+      "capabilities": ["voice", "tts", "stt", "natural_language"],
+      "pythonModule": "backend.api.voice_handler",
+      "pythonHandler": "VoiceHandler",
+      "description": "Voice interaction and speech processing endpoint"
+    },
+    {
+      "path": "/ws/automation",
+      "capabilities": ["automation", "workflow", "task_execution"],
+      "pythonModule": "backend.api.automation_handler",
+      "pythonHandler": "AutomationHandler",
+      "description": "Task automation and workflow management endpoint"
+    },
+    {
+      "path": "/ws",
+      "capabilities": ["general", "system", "health"],
+      "pythonModule": "backend.api.general_handler",
+      "pythonHandler": "GeneralHandler",
+      "description": "General WebSocket endpoint for system communication"
+    }
+  ],
+  "config": {
+    "enableDynamicRouting": true,
+    "enableRateLimiting": true,
+    "enableAuthentication": false,
+    "pythonBridgePort": 5555,
+    "maxConnectionsPerClient": 5,
+    "messageTimeout": 30000,
+    "reconnectInterval": 5000
+  }
+}
