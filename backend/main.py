@@ -596,6 +596,15 @@ except Exception as e:
     VISION_API_AVAILABLE = False
     ENHANCED_VISION_AVAILABLE = False
 
+# Include Vision Status Endpoint - Always available
+try:
+    from api.vision_status_endpoint import router as vision_status_router
+    app.include_router(vision_status_router)
+    logger.info("Vision status endpoint added - /vision/status available")
+    VISION_API_AVAILABLE = True  # At least status is available
+except Exception as e:
+    logger.warning(f"Failed to initialize vision status endpoint: {e}")
+
 # Include Voice API routes if available with memory management
 if VOICE_API_AVAILABLE:
     try:
