@@ -774,6 +774,14 @@ try:
 except Exception as e:
     logger.warning(f"Failed to initialize ML Audio API: {e}")
     ML_AUDIO_API_AVAILABLE = False
+    
+    # Use fallback audio error handler
+    try:
+        from api.audio_error_fallback import router as audio_fallback_router
+        app.include_router(audio_fallback_router)
+        logger.info("Audio error fallback handler enabled")
+    except Exception as fallback_e:
+        logger.error(f"Failed to load audio error fallback: {fallback_e}")
 
 # Include Model Status API for real-time loading progress
 try:

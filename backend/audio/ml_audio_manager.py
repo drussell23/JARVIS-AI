@@ -16,6 +16,7 @@ from collections import defaultdict, deque
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import DBSCAN
+from sklearn.ensemble import RandomForestClassifier, IsolationForest
 import joblib
 import aiofiles
 from pathlib import Path
