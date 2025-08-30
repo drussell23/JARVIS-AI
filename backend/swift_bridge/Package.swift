@@ -19,6 +19,17 @@ let package = Package(
             name: "SystemControl",
             targets: ["SystemControl"]),
         
+        // Performance Core library
+        .library(
+            name: "PerformanceCore",
+            type: .dynamic,
+            targets: ["PerformanceCore"]),
+        
+        // Advanced Command Classifier
+        .library(
+            name: "AdvancedCommandClassifier",
+            targets: ["AdvancedCommandClassifier"]),
+        
         // Executable for command-line testing
         .executable(
             name: "jarvis-classifier",
@@ -33,7 +44,7 @@ let package = Package(
         .library(
             name: "CommandClassifierDynamic",
             type: .dynamic,
-            targets: ["CommandClassifier", "SystemControl"])
+            targets: ["CommandClassifier", "SystemControl", "AdvancedCommandClassifier"])
     ],
     dependencies: [
         // No external dependencies - using only Apple frameworks
@@ -50,6 +61,28 @@ let package = Package(
             name: "SystemControl",
             dependencies: [],
             path: "Sources/SystemControl"),
+        
+        // Advanced Command Classifier with ML
+        .target(
+            name: "AdvancedCommandClassifier",
+            dependencies: [],
+            path: "Sources/AdvancedCommandClassifier"),
+        
+        // Performance Core - Audio, Vision, System monitoring
+        .target(
+            name: "PerformanceCore",
+            dependencies: [],
+            path: "Sources/PerformanceCore",
+            linkerSettings: [
+                .linkedFramework("Accelerate"),
+                .linkedFramework("CoreML"),
+                .linkedFramework("Vision"),
+                .linkedFramework("Metal"),
+                .linkedFramework("MetalPerformanceShaders"),
+                .linkedFramework("AVFoundation"),
+                .linkedFramework("CoreImage"),
+                .linkedFramework("IOKit")
+            ]),
         
         // CLI tool for testing
         .executableTarget(

@@ -662,9 +662,23 @@ class SecurityHandler:
         return actions
 
 class AutonomousBehaviorManager:
-    """Manages all autonomous behaviors"""
+    """Manages all autonomous behaviors (Singleton)"""
+    
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(AutonomousBehaviorManager, cls).__new__(cls)
+        return cls._instance
     
     def __init__(self):
+        # Only initialize once
+        if AutonomousBehaviorManager._initialized:
+            return
+            
+        AutonomousBehaviorManager._initialized = True
+        
         self.message_handler = MessageHandler()
         self.meeting_handler = MeetingHandler()
         self.workspace_organizer = WorkspaceOrganizer()

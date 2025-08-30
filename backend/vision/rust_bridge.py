@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 # Try to import Rust components
 RUST_AVAILABLE = False
 rust_processor = None
+jarvis_rust_core = None  # Initialize to None
 
 # Check if Rust library is built
 rust_lib_path = Path(__file__).parent / "jarvis-rust-core" / "target" / "release"
@@ -44,6 +45,7 @@ if not RUST_AVAILABLE:
         RUST_AVAILABLE = True
         logger.info("Using PyO3 Rust bindings")
     except ImportError:
+        jarvis_rust_core = None  # Make sure it's defined
         logger.warning("Rust acceleration not available")
 
 class RustImageProcessor:

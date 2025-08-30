@@ -684,6 +684,9 @@ class VisionSystemV2:
         context: Optional[Dict]
     ):
         """Analyze failed request for capability generation (Phase 5)"""
+        # Check CPU before heavy processing
+        self._check_cpu()
+        
         if not self.capability_generator:
             return
             
@@ -737,9 +740,15 @@ class VisionSystemV2:
     
     async def _verify_and_deploy_capability(self, capability):
         """Verify and deploy a generated capability (Phase 5)"""
+        # Check CPU before deployment process
+        self._check_cpu()
+        
         if not self.safety_verifier or not self.rollout_system:
             return
             
+        # Add delay to prevent CPU spikes
+        await asyncio.sleep(1.0)
+        
         # Verify capability safety
         verification_report = await self.safety_verifier.verify_capability(
             capability,

@@ -9,7 +9,7 @@ os.environ["USE_TF"] = "0"  # Disable TensorFlow in transformers
 
 # Apply TensorFlow fixes
 try:
-    
+    import tensorflow as tf
     if not hasattr(tf, "data"):
         # Create a mock data module to prevent import errors
         class MockData:

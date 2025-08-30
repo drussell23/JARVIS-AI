@@ -210,44 +210,86 @@ class CreativeProblemSolver:
     async def _analyze_problem(self, problem: Problem) -> Dict[str, Any]:
         """Deep analysis of the problem using AI"""
         try:
-            response = await asyncio.to_thread(
-                self.claude.messages.create,
-                model="claude-3-opus-20240229",
-                max_tokens=1000,
-                messages=[{
-                    "role": "user",
-                    "content": f"""Analyze this problem deeply:
-
-{problem.to_prompt_context()}
-
-Provide analysis including:
-1. Root causes (not just symptoms)
-2. Hidden assumptions that could be challenged
-3. Stakeholder perspectives and needs
-4. System interdependencies
-5. Potential unintended consequences
-6. Opportunity spaces for innovation
-7. Similar problems in other domains
-8. Key leverage points for maximum impact
-
-Format as JSON with these keys: root_causes, assumptions, stakeholder_needs, 
-interdependencies, risks, opportunities, analogous_problems, leverage_points"""
-                }]
-            )
+            # LOCAL PROBLEM ANALYSIS - No Claude API calls
+            import psutil
+            cpu_usage = psutil.cpu_percent(interval=0.1)
             
-            analysis_text = response.content[0].text
+            if cpu_usage > 25:
+                logger.warning(f"CPU usage too high ({cpu_usage}%) - using local analysis")
+                return self._local_problem_analysis(problem)
             
-            # Parse JSON from response
-            import re
-            json_match = re.search(r'\{.*\}', analysis_text, re.DOTALL)
-            if json_match:
-                return json.loads(json_match.group())
+            # Use local analysis patterns based on problem type
+            if problem.problem_type == ProblemType.WORKFLOW_OPTIMIZATION:
+                return {
+                    'root_causes': ['Process bottlenecks', 'Resource allocation inefficiency', 'Communication gaps'],
+                    'assumptions': ['Current workflow is optimal', 'All steps are necessary', 'Sequential processing required'],
+                    'stakeholder_needs': ['Efficiency', 'Predictability', 'Resource optimization'],
+                    'interdependencies': ['Process steps', 'Team coordination', 'Resource sharing'],
+                    'risks': ['Change resistance', 'Implementation complexity', 'Temporary productivity loss'],
+                    'opportunities': ['Automation', 'Parallel processing', 'Standardization'],
+                    'analogous_problems': ['Manufacturing optimization', 'Supply chain efficiency', 'Software development workflows'],
+                    'leverage_points': ['Bottleneck processes', 'Decision points', 'Resource allocation']
+                }
+            elif problem.problem_type == ProblemType.TECHNICAL_CHALLENGE:
+                return {
+                    'root_causes': ['Technical debt', 'Resource constraints', 'Knowledge gaps'],
+                    'assumptions': ['Current architecture is optimal', 'All features are necessary', 'Technical approach is correct'],
+                    'stakeholder_needs': ['Reliability', 'Performance', 'Maintainability'],
+                    'interdependencies': ['System components', 'External dependencies', 'Technical constraints'],
+                    'risks': ['System failure', 'Performance degradation', 'Maintenance complexity'],
+                    'opportunities': ['Architecture improvement', 'Technology upgrade', 'Process optimization'],
+                    'analogous_problems': ['Software refactoring', 'Infrastructure scaling', 'Legacy system modernization'],
+                    'leverage_points': ['Core architecture', 'Critical dependencies', 'Performance bottlenecks']
+                }
             else:
                 return self._generate_default_analysis(problem)
                 
         except Exception as e:
             logger.error(f"Error in problem analysis: {e}")
             return self._generate_default_analysis(problem)
+    
+    def _local_problem_analysis(self, problem: Problem) -> Dict[str, Any]:
+        """Local problem analysis without API calls"""
+        # Generate intelligent analysis based on problem attributes
+        base_analysis = {
+            'root_causes': [],
+            'assumptions': [],
+            'stakeholder_needs': [],
+            'interdependencies': [],
+            'risks': [],
+            'opportunities': [],
+            'analogous_problems': [],
+            'leverage_points': []
+        }
+        
+        # Add contextual analysis based on problem description
+        if problem.description:
+            desc_lower = problem.description.lower()
+            
+            # Detect performance issues
+            if any(word in desc_lower for word in ['slow', 'performance', 'lag', 'delay']):
+                base_analysis['root_causes'].append('Performance bottlenecks')
+                base_analysis['opportunities'].append('Performance optimization')
+                
+            # Detect resource issues
+            if any(word in desc_lower for word in ['memory', 'cpu', 'resource', 'capacity']):
+                base_analysis['root_causes'].append('Resource constraints')
+                base_analysis['opportunities'].append('Resource optimization')
+                
+            # Detect user experience issues
+            if any(word in desc_lower for word in ['user', 'experience', 'usability', 'interface']):
+                base_analysis['stakeholder_needs'].append('Improved user experience')
+                base_analysis['opportunities'].append('UX enhancement')
+        
+        # Add constraints as risks
+        for constraint in problem.constraints:
+            base_analysis['risks'].append(f'Constraint: {constraint}')
+            
+        # Add success criteria as stakeholder needs
+        for criteria in problem.success_criteria:
+            base_analysis['stakeholder_needs'].append(f'Success: {criteria}')
+            
+        return base_analysis
     
     def _generate_default_analysis(self, problem: Problem) -> Dict[str, Any]:
         """Generate default analysis when AI analysis fails"""

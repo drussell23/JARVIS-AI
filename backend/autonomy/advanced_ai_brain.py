@@ -72,6 +72,11 @@ class AdvancedAIBrain:
             
         self.claude = anthropic.Anthropic(api_key=self.claude_api_key)
         
+        # CPU throttling settings
+        self.cpu_threshold = 25.0  # Max CPU usage
+        self.last_cpu_check = 0
+        self.cpu_check_interval = 5.0  # Check every 5 seconds
+        
         # Initialize enhanced intelligence modules
         self.predictive_engine = PredictiveIntelligenceEngine(self.claude_api_key)
         self.contextual_engine = ContextualUnderstandingEngine(self.claude_api_key)
@@ -123,6 +128,58 @@ class AdvancedAIBrain:
         # Active monitoring
         self.is_active = False
         self.monitoring_tasks = []
+    
+    async def _check_cpu_before_ai_processing(self) -> bool:
+        """Check if CPU usage allows AI processing"""
+        import time
+        import psutil
+        
+        current_time = time.time()
+        if current_time - self.last_cpu_check < self.cpu_check_interval:
+            return True  # Skip check if too soon
+            
+        self.last_cpu_check = current_time
+        cpu_usage = psutil.cpu_percent(interval=0.1)
+        
+        if cpu_usage > self.cpu_threshold:
+            logger.warning(f"CPU usage too high ({cpu_usage}%) - skipping AI processing")
+            return False
+            
+        return True
+    
+    def _lightweight_command_response(self, command: str) -> Dict[str, Any]:
+        """Lightweight command response when AI processing is not available"""
+        command_lower = command.lower()
+        
+        # Simple pattern matching
+        if "status" in command_lower:
+            return {
+                "understanding": "Status check requested",
+                "response": "All systems operational. Running in low-power mode.",
+                "actions": [],
+                "suggestions": []
+            }
+        elif "help" in command_lower:
+            return {
+                "understanding": "Help requested",
+                "response": "I'm JARVIS. I can help with system control, file operations, and monitoring. Currently in low-power mode.",
+                "actions": [],
+                "suggestions": ["Try asking about system status", "Request specific actions"]
+            }
+        elif any(word in command_lower for word in ["open", "launch", "start"]):
+            return {
+                "understanding": "Application launch requested",
+                "response": "I'll help you launch applications. Please specify which app.",
+                "actions": [{"type": "query", "target": "app_name"}],
+                "suggestions": []
+            }
+        else:
+            return {
+                "understanding": "General command",
+                "response": f"I understand: {command}. Running in low-power mode for optimal performance.",
+                "actions": [],
+                "suggestions": ["Try a more specific command"]
+            }
         
     def set_navigation_system(self, navigation: VisionNavigationSystem):
         """Inject navigation system"""
@@ -724,11 +781,15 @@ class AdvancedAIBrain:
             # Build comprehensive context
             context = await self._build_command_context(command)
             
-            # Use Claude for deep understanding
+            # Check CPU before using Claude
+            if not await self._check_cpu_before_ai_processing():
+                return self._lightweight_command_response(command)
+            
+            # Use Claude for deep understanding (with faster model)
             response = await asyncio.to_thread(
                 self.claude.messages.create,
-                model="claude-3-opus-20240229",
-                max_tokens=1000,
+                model="claude-3-haiku-20240307",  # Faster model
+                max_tokens=512,  # Reduced tokens
                 messages=[{
                     "role": "user",
                     "content": f"""As JARVIS with full autonomous AI capabilities, process this command:
@@ -881,6 +942,17 @@ Provide:
     async def _analyze_emotional_indicators(self, indicators: Dict[str, int]) -> EmotionalState:
         """Use AI to analyze emotional indicators"""
         try:
+            # Check CPU before Claude call
+            import psutil
+            if psutil.cpu_percent(interval=0.1) > 25:
+                # Simple local analysis
+                if indicators['rapid_clicks'] > 10 or indicators['error_windows'] > 2:
+                    return EmotionalState.FRUSTRATED
+                elif indicators['idle_time'] > 300:
+                    return EmotionalState.BORED
+                else:
+                    return EmotionalState.NEUTRAL
+                    
             response = self.claude.messages.create(
                 model="claude-3-haiku-20240307",
                 max_tokens=100,

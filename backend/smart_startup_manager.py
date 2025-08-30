@@ -17,6 +17,14 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 import signal
 import sys
 
+# Try to use Swift performance monitoring if available
+try:
+    from core.swift_system_monitor import get_swift_system_monitor, ResourceSnapshot
+    SWIFT_MONITORING_AVAILABLE = True
+except ImportError:
+    SWIFT_MONITORING_AVAILABLE = False
+    ResourceSnapshot = None
+
 logger = logging.getLogger(__name__)
 
 class LoadPhase(Enum):
@@ -101,6 +109,27 @@ class SmartStartupManager:
         
         self.last_check_time = current_time
         
+        # Use Swift monitoring if available (much lower overhead)
+        if SWIFT_MONITORING_AVAILABLE:
+            try:
+                monitor = get_swift_system_monitor()
+                snapshot = monitor.get_current_metrics()
+                
+                resources = SystemResources(
+                    cpu_percent=snapshot.cpu_percent,
+                    memory_percent=snapshot.memory_percent,
+                    memory_available_mb=snapshot.memory_available_mb,
+                    memory_total_mb=snapshot.memory_total_mb,
+                    cpu_count=self.cpu_count,
+                    load_average=(0.0, 0.0, 0.0)  # Swift doesn't provide load average
+                )
+                
+                self._cached_resources = resources
+                return resources
+            except Exception as e:
+                logger.warning(f"Swift monitoring failed, falling back to psutil: {e}")
+        
+        # Fallback to psutil
         memory = psutil.virtual_memory()
         # Use interval=None to avoid blocking, get instantaneous value
         cpu_percent = psutil.cpu_percent(interval=None)

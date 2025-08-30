@@ -70,35 +70,66 @@ class ContinuousVisionMonitor:
         self.action_callbacks.append(callback)
     
     async def _monitoring_loop(self):
-        """Main monitoring loop"""
+        """Main monitoring loop with CPU throttling"""
+        import psutil
+        cpu_threshold = 25.0
+        
+        # Increase monitoring interval to reduce CPU usage
+        self.monitoring_interval = max(self.monitoring_interval, 10.0)  # Min 10 seconds
+        
         while self.monitoring_active:
             try:
+                # Check CPU before processing
+                cpu_usage = psutil.cpu_percent(interval=0.1)
+                if cpu_usage > cpu_threshold:
+                    logger.debug(f"CPU too high ({cpu_usage}%) - skipping vision monitor cycle")
+                    await asyncio.sleep(30)  # Wait 30 seconds when CPU is high
+                    continue
+                
                 # Capture current screen state
                 screen_state = await self._capture_screen_state()
                 
-                # Analyze with Claude
-                analysis = await self._analyze_screen_state(screen_state)
+                # Skip Claude analysis if CPU is still elevated
+                if psutil.cpu_percent(interval=0.1) > cpu_threshold:
+                    logger.debug("CPU elevated - using cached analysis")
+                    analysis = self.last_screen_state if self.last_screen_state else screen_state
+                else:
+                    # Analyze with Claude only when CPU is low
+                    analysis = await self._analyze_screen_state(screen_state)
                 
                 # Check for significant changes
                 if self._has_significant_change(analysis):
                     # Notify update callbacks
                     for callback in self.update_callbacks:
-                        await callback(analysis)
+                        try:
+                            await callback(analysis)
+                        except Exception as e:
+                            logger.error(f"Callback error: {e}")
                 
                 # Check for actionable items
                 if analysis.get("actionable_items"):
                     for callback in self.action_callbacks:
-                        await callback(analysis["actionable_items"])
+                        try:
+                            await callback(analysis["actionable_items"])
+                        except Exception as e:
+                            logger.error(f"Action callback error: {e}")
                 
                 # Update state
                 self.last_screen_state = analysis
                 
-                # Wait before next capture
-                await asyncio.sleep(self.monitoring_interval)
+                # Dynamic interval based on CPU
+                if cpu_usage < 15:
+                    interval = self.monitoring_interval
+                elif cpu_usage < 20:
+                    interval = self.monitoring_interval * 2
+                else:
+                    interval = self.monitoring_interval * 4
+                
+                await asyncio.sleep(interval)
                 
             except Exception as e:
                 logger.error(f"Error in monitoring loop: {e}")
-                await asyncio.sleep(5)  # Wait longer on error
+                await asyncio.sleep(60)  # Wait 60 seconds on error
     
     async def _capture_screen_state(self) -> Dict[str, Any]:
         """Capture comprehensive screen state"""

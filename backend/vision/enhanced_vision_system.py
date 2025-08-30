@@ -124,9 +124,24 @@ class EnhancedVisionSystem:
         prompt = self._build_intelligent_prompt(query, context)
         
         try:
+            # Check CPU usage before making Claude call
+            import psutil
+            cpu_usage = psutil.cpu_percent(interval=0.1)
+            
+            if cpu_usage > 25:  # Don't call Claude if CPU > 25%
+                logger.warning(f"CPU usage too high ({cpu_usage}%) - using local fallback")
+                return {
+                    "success": True,
+                    "analysis": self._local_image_analysis(pil_image, query),
+                    "timestamp": datetime.now(),
+                    "method": "local_analysis"
+                }
+            
+            # Only make Claude call if CPU is low
             response = self.claude.messages.create(
-                model="claude-3-opus-20240229",
-                max_tokens=1024,
+                model="claude-3-haiku-20240307",  # Use faster model
+                max_tokens=512,  # Reduce token usage
+                temperature=0.7,
                 messages=[{
                     "role": "user",
                     "content": [
@@ -156,7 +171,7 @@ class EnhancedVisionSystem:
             return {
                 "success": False,
                 "error": str(e),
-                "fallback": self._basic_analysis(image)
+                "fallback": self._local_image_analysis(pil_image, query)
             }
             
     def _build_intelligent_prompt(self, query: str, context: Dict = None) -> str:
@@ -241,6 +256,38 @@ class EnhancedVisionSystem:
             "intelligence_level": "advanced"
         }
         
+    def _local_image_analysis(self, image: Image.Image, query: str) -> str:
+        """Local image analysis without API calls"""
+        # Basic text detection (if OCR available)
+        try:
+            import pytesseract
+            text = pytesseract.image_to_string(image)
+            has_text = len(text.strip()) > 10
+        except:
+            has_text = False
+            text = ""
+        
+        # Basic color analysis
+        colors = image.getcolors(maxcolors=1000)
+        dominant_colors = sorted(colors, key=lambda x: x[0], reverse=True)[:5] if colors else []
+        
+        # Basic size analysis
+        width, height = image.size
+        aspect_ratio = width / height
+        
+        # Generate response based on query
+        if "text" in query.lower() and has_text:
+            return f"Found text content: {text[:200]}..."
+        elif "color" in query.lower():
+            color_desc = [f'{c[1]}' for c in dominant_colors[:3]] if dominant_colors else []
+            return f"Dominant colors detected: {', '.join(str(c) for c in color_desc)}"
+        elif "size" in query.lower():
+            return f"Image dimensions: {width}x{height} (aspect ratio: {aspect_ratio:.2f})"
+        elif "app" in query.lower() or "window" in query.lower():
+            return f"Screen capture shows a {width}x{height} window. {'Text detected in the interface.' if has_text else 'No text elements visible.'}"
+        else:
+            return f"Image analysis: {width}x{height} pixels, {len(dominant_colors)} distinct colors, {'with' if has_text else 'no'} text detected"
+    
     def _basic_analysis(self, screenshot: np.ndarray) -> Dict[str, Any]:
         """
         Fallback to basic OCR when Claude isn't available.

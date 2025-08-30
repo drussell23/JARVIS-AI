@@ -294,43 +294,54 @@ class AdvancedMacOSIntegration:
                 'timestamp': self.system_state.timestamp.isoformat()
             }
             
-            response = await asyncio.to_thread(
-                self.claude.messages.create,
-                model="claude-3-opus-20240229",
-                max_tokens=1000,
-                messages=[{
-                    "role": "user",
-                    "content": f"""As JARVIS system optimizer, analyze this macOS state and identify optimization opportunities:
-
-System State:
-{json.dumps(context, indent=2)}
-
-Safety Limits:
-- Don't throttle CPU below 50%
-- Keep at least 2GB memory free
-- Protected apps: {self.safety_limits['protected_apps']}
-
-Identify optimizations that would:
-1. Improve performance
-2. Save battery (if on battery)
-3. Reduce resource usage
-4. Enhance user experience
-
-For each optimization provide:
-- Resource to optimize (cpu/memory/disk/network/display/power)
-- Action to take
-- Specific parameters
-- Reasoning
-- Confidence (0-1)
-- Expected impact
-- Is it reversible?
-
-Focus on safe, beneficial optimizations."""
-                }]
-            )
+            # LOCAL ANALYSIS - No Claude API calls to reduce CPU usage
+            opportunities = []
             
-            # Parse response
-            opportunities = self._parse_optimization_response(response.content[0].text)
+            # CPU optimization (local logic)
+            if self.system_state.cpu_usage > 80:
+                opportunities.append(ControlDecision(
+                    resource=SystemResource.CPU,
+                    action=ControlAction.OPTIMIZE,
+                    parameters={'target_cpu': 70, 'method': 'throttle_background'},
+                    reasoning="CPU usage above 80% - throttle background processes",
+                    confidence=0.9,
+                    impact_prediction={'cpu_reduction': '10-15%', 'battery_improvement': '5-10%'}
+                ))
+            
+            # Memory optimization (local logic)
+            if self.system_state.memory_usage > 85:
+                opportunities.append(ControlDecision(
+                    resource=SystemResource.MEMORY,
+                    action=ControlAction.OPTIMIZE,
+                    parameters={'target_memory': 75, 'method': 'unload_unused_models'},
+                    reasoning="Memory usage above 85% - unload unused ML models",
+                    confidence=0.95,
+                    impact_prediction={'memory_reduction': '1-2GB', 'stability_improvement': 'high'}
+                ))
+            
+            # Battery optimization (if on battery)
+            if self.system_state.power_status.get('power_source') == 'battery':
+                if self.system_state.cpu_usage > 60:
+                    opportunities.append(ControlDecision(
+                        resource=SystemResource.POWER,
+                        action=ControlAction.OPTIMIZE,
+                        parameters={'target_cpu': 50, 'method': 'battery_saver_mode'},
+                        reasoning="On battery with high CPU - enable battery saver",
+                        confidence=0.8,
+                        impact_prediction={'battery_improvement': '15-25%', 'performance_impact': 'minimal'}
+                    ))
+            
+            # Disk optimization (local logic)
+            if self.system_state.disk_usage > 90:
+                opportunities.append(ControlDecision(
+                    resource=SystemResource.DISK,
+                    action=ControlAction.OPTIMIZE,
+                    parameters={'method': 'clear_cache', 'target_free_space': '10%'},
+                    reasoning="Disk usage above 90% - clear cache files",
+                    confidence=0.85,
+                    impact_prediction={'disk_freed': '1-5GB', 'performance_improvement': 'moderate'}
+                ))
+            
             return opportunities
             
         except Exception as e:

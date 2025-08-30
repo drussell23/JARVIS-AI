@@ -160,6 +160,56 @@ class ContinuousLearningPipeline:
         self._initialize_pipeline()
         
         logger.info("Continuous Learning Pipeline initialized")
+        
+        # CPU control
+        self.cpu_threshold = 20.0  # Maximum CPU for learning
+        self.learning_enabled = False  # Disabled by default
+    
+    async def start_learning(self) -> bool:
+        """Start learning only if CPU allows"""
+        import psutil
+        cpu_usage = psutil.cpu_percent(interval=1.0)
+        if cpu_usage > self.cpu_threshold:
+            logger.warning(f"CPU too high ({cpu_usage}%) - learning disabled")
+            return False
+            
+        self.learning_enabled = True
+        self.running = True
+        # Actually start the threads now
+        if not self.learning_thread or not self.learning_thread.is_alive():
+            self._really_start_background_tasks()
+        logger.info("Continuous learning started")
+        return True
+        
+    async def stop_learning(self):
+        """Stop all learning activities"""
+        self.learning_enabled = False
+        self.running = False
+        logger.info("Continuous learning stopped")
+        
+    def _really_start_background_tasks(self):
+        """Actually start the background tasks when allowed"""
+        # Learning thread with CPU checks
+        def learning_loop():
+            import psutil
+            while self.running and self.learning_enabled:
+                try:
+                    # Check CPU before learning
+                    cpu_usage = psutil.cpu_percent(interval=0.1)
+                    if cpu_usage > self.cpu_threshold:
+                        logger.debug(f"CPU too high ({cpu_usage}%) - pausing learning")
+                        time.sleep(30)
+                        continue
+                    
+                    self._process_learning_cycle()
+                    time.sleep(max(self.learning_config['update_frequency'], 60))
+                except Exception as e:
+                    logger.error(f"Learning cycle error: {e}")
+                    time.sleep(300)
+        
+        self.learning_thread = threading.Thread(target=learning_loop, daemon=True)
+        self.learning_thread.start()
+        logger.info("Background learning thread started")
     
     def _initialize_pipeline(self):
         """Initialize all pipeline components"""
@@ -175,30 +225,52 @@ class ContinuousLearningPipeline:
     
     def _start_background_tasks(self):
         """Start background learning and monitoring tasks"""
+        # DISABLED BY DEFAULT - High CPU usage prevention
+        logger.warning("Background learning tasks DISABLED by default to prevent high CPU usage")
+        logger.warning("To enable learning, call start_learning() explicitly when CPU < 20%")
+        return  # Exit without starting threads
+        
+        # Original code kept for reference but NOT executed
         # Learning thread
         def learning_loop():
+            import psutil
             while self.running:
                 try:
+                    # Check CPU before learning
+                    cpu_usage = psutil.cpu_percent(interval=0.1)
+                    if cpu_usage > 20.0:  # Strict 20% limit for learning
+                        logger.debug(f"CPU too high ({cpu_usage}%) - skipping learning cycle")
+                        time.sleep(30)  # Wait longer when CPU is high
+                        continue
+                    
                     self._process_learning_cycle()
-                    time.sleep(self.learning_config['update_frequency'])
+                    time.sleep(max(self.learning_config['update_frequency'], 60))  # Min 60s between cycles
                 except Exception as e:
                     logger.error(f"Learning cycle error: {e}")
                     time.sleep(300)  # Wait 5 minutes on error
         
         # Monitoring thread
         def monitoring_loop():
+            import psutil
             while self.running:
                 try:
+                    # Check CPU before monitoring
+                    cpu_usage = psutil.cpu_percent(interval=0.1)
+                    if cpu_usage > 25.0:
+                        logger.debug(f"CPU too high ({cpu_usage}%) - skipping monitoring")
+                        time.sleep(120)  # Wait 2 minutes when CPU is high
+                        continue
+                        
                     self._update_performance_monitoring()
-                    time.sleep(60)  # Check every minute
+                    time.sleep(300)  # Check every 5 minutes instead of 1
                 except Exception as e:
                     logger.error(f"Monitoring error: {e}")
+                    time.sleep(600)  # Wait 10 minutes on error
         
         self.learning_thread = threading.Thread(target=learning_loop, daemon=True)
         self.monitoring_thread = threading.Thread(target=monitoring_loop, daemon=True)
         
-        self.learning_thread.start()
-        self.monitoring_thread.start()
+        # Threads not started due to early return above
     
     async def record_learning_event(
         self,

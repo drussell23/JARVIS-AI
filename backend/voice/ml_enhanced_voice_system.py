@@ -216,13 +216,19 @@ class MLEnhancedVoiceSystem:
         self.adaptation_thread = None
         self.running = False
         
-        # Load existing models
-        self._load_models()
+        # CPU control for model loading
+        self.max_cpu_percent = 25.0
+        self.model_cache = {}
+        self.max_models_in_memory = 2  # Limit model loading
+        
+        # Defer model loading to prevent startup CPU spike
+        logger.info("Deferring model loading to prevent CPU spike")
         
         # Deep learning models will be initialized lazily
         self.wake_word_nn = None
         self.anomaly_detector = None
         self._deep_models_initialized = False
+        self._models_loaded = False
         
         # Hybrid detector with Picovoice
         self.hybrid_detector = None
@@ -258,14 +264,49 @@ class MLEnhancedVoiceSystem:
         except Exception as e:
             logger.error(f"Failed to initialize deep models: {e}")
     
+    def _should_load_model(self, model_name: str) -> bool:
+        """Check if we should load another model"""
+        import psutil
+        
+        if len(self.model_cache) >= self.max_models_in_memory:
+            logger.warning(f"Model cache full ({self.max_models_in_memory} models) - skipping {model_name}")
+            return False
+            
+        cpu_usage = psutil.cpu_percent(interval=0.1)
+        if cpu_usage > self.max_cpu_percent:
+            logger.warning(f"CPU too high ({cpu_usage}%) - deferring {model_name} load")
+            return False
+            
+        return True
+        
+    def _unload_least_used_model(self):
+        """Unload the least recently used model"""
+        if not self.model_cache:
+            return
+            
+        # Find least used model
+        least_used = min(self.model_cache.keys(), 
+                        key=lambda k: self.model_cache[k].get('last_used', 0))
+        del self.model_cache[least_used]
+        logger.info(f"Unloaded model: {least_used}")
+    
     def _load_models(self):
-        """Load saved ML models"""
+        """Load saved ML models with CPU checking"""
+        import psutil
+        
+        # Check CPU before loading
+        cpu_usage = psutil.cpu_percent(interval=0.5)
+        if cpu_usage > self.max_cpu_percent:
+            logger.warning(f"CPU too high ({cpu_usage}%) - skipping model loading")
+            return
+        
         try:
-            # Load personalized SVM
-            svm_path = os.path.join(self.model_dir, "personalized_svm.pkl")
-            if os.path.exists(svm_path):
-                self.personalized_svm = joblib.load(svm_path)
-                logger.info("Loaded personalized SVM model")
+            # Load personalized SVM only if CPU allows
+            if self._should_load_model("personalized_svm"):
+                svm_path = os.path.join(self.model_dir, "personalized_svm.pkl")
+                if os.path.exists(svm_path):
+                    self.personalized_svm = joblib.load(svm_path)
+                    logger.info("Loaded personalized SVM model")
             
             # Load anomaly detector
             anomaly_path = os.path.join(self.model_dir, "anomaly_detector.pkl")
@@ -676,8 +717,15 @@ class MLEnhancedVoiceSystem:
             return True
         
         try:
-            # Ensure models are loaded
-            self._load_models()
+            # Ensure models are loaded only if not already loaded and CPU allows
+            if not self._models_loaded:
+                import psutil
+                if psutil.cpu_percent(interval=0.1) < self.max_cpu_percent:
+                    self._load_models()
+                    self._models_loaded = True
+                else:
+                    logger.debug("CPU too high - skipping model load for anomaly detection")
+                    return True  # Skip anomaly detection when CPU is high
             
             if not self.anomaly_detector:
                 return True  # No anomaly detection available

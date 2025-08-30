@@ -23,9 +23,50 @@ try:
     RUST_AVAILABLE = True
 except ImportError:
     RUST_AVAILABLE = False
+    jarvis_rust_core = None  # Define as None to prevent NameError
     logging.warning("Rust core not available. Run 'maturin develop' in backend/vision/jarvis-rust-core")
 
 logger = logging.getLogger(__name__)
+
+
+class SharedMemoryBuffer:
+    """Shared memory buffer for zero-copy data transfer."""
+    
+    def __init__(self, size: int):
+        """Initialize shared memory buffer."""
+        self.size = size
+        self.data = bytearray(size)
+        self.position = 0
+        
+    def write(self, data: bytes) -> int:
+        """Write data to buffer."""
+        data_len = len(data)
+        if self.position + data_len > self.size:
+            raise ValueError("Buffer overflow")
+        
+        self.data[self.position:self.position + data_len] = data
+        self.position += data_len
+        return data_len
+    
+    def read(self, size: int) -> bytes:
+        """Read data from buffer."""
+        if size > self.position:
+            size = self.position
+        
+        data = bytes(self.data[:size])
+        # Shift remaining data
+        self.data[:self.position - size] = self.data[size:self.position]
+        self.position -= size
+        return data
+    
+    def clear(self):
+        """Clear the buffer."""
+        self.position = 0
+    
+    def __len__(self):
+        """Get current data size."""
+        return self.position
+
 
 class RustAccelerator:
     """Main interface for Rust acceleration in JARVIS."""
@@ -224,6 +265,57 @@ class RustQuantizedModel:
             Quantized weights as INT8
         """
         return jarvis_rust_core.quantize_model_weights(weights)
+
+class ZeroCopyVisionPipeline:
+    """Zero-copy vision pipeline for maximum performance."""
+    
+    def __init__(self, enable_quantization: bool = True):
+        """Initialize zero-copy vision pipeline."""
+        if not RUST_AVAILABLE:
+            raise ImportError("Rust core not available for zero-copy pipeline")
+        
+        self.enable_quantization = enable_quantization
+        self.processor = RustImageProcessor()
+        self.quantized_model = None
+        
+        logger.info("Zero-copy vision pipeline initialized")
+    
+    async def process_image(self, image_data: Union[bytes, np.ndarray], 
+                          model_name: Optional[str] = None) -> Dict[str, Any]:
+        """Process image with zero-copy optimization."""
+        try:
+            # Convert to numpy array if needed
+            if isinstance(image_data, bytes):
+                import cv2
+                nparr = np.frombuffer(image_data, np.uint8)
+                image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            else:
+                image = image_data
+                
+            # Process with hardware acceleration
+            result = await self.processor.process_image_async(image)
+            
+            return {
+                "success": True,
+                "features": result.get("features", []),
+                "objects": result.get("objects", []),
+                "processing_time_ms": result.get("processing_time_ms", 0)
+            }
+            
+        except Exception as e:
+            logger.error(f"Zero-copy pipeline error: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    def cleanup(self):
+        """Clean up resources."""
+        if hasattr(self, 'processor'):
+            self.processor = None
+        if hasattr(self, 'quantized_model'):
+            self.quantized_model = None
+
 
 class RustMemoryMonitor:
     """Monitor and prevent memory leaks."""

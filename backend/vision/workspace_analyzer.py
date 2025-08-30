@@ -42,9 +42,23 @@ class WorkspaceAnalysis:
     confidence: float
 
 class WorkspaceAnalyzer:
-    """Analyzes multi-window workspace using Claude Vision"""
+    """Analyzes multi-window workspace using Claude Vision (Singleton)"""
+    
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls, api_key: Optional[str] = None):
+        if cls._instance is None:
+            cls._instance = super(WorkspaceAnalyzer, cls).__new__(cls)
+        return cls._instance
     
     def __init__(self, api_key: Optional[str] = None):
+        # Only initialize once
+        if WorkspaceAnalyzer._initialized:
+            return
+            
+        WorkspaceAnalyzer._initialized = True
+        
         self.window_detector = WindowDetector()
         self.capture_system = MultiWindowCapture()
         self.relationship_detector = WindowRelationshipDetector()

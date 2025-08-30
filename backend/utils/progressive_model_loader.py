@@ -1028,8 +1028,8 @@ class ProgressiveModelLoader:
 
         logger.info("✅ Model loader shutdown complete")
 
-# Global instance with auto-discovery enabled
-model_loader = ProgressiveModelLoader(auto_discover=True)
+# Global instance with auto-discovery disabled for faster startup
+model_loader = ProgressiveModelLoader(auto_discover=False)
 
 # Enhanced lazy proxy with automatic loading
 class SmartLazyProxy:
