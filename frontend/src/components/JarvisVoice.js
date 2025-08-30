@@ -404,11 +404,14 @@ const JarvisVoice = () => {
       const data = await response.json();
       setJarvisStatus(data.status);
 
-      // Only connect WebSocket if JARVIS is available
+      // Connect WebSocket if JARVIS is available (including standby)
       if (data.status !== 'offline') {
+        console.log('JARVIS is available, connecting WebSocket...');
         setTimeout(() => {
           connectWebSocket();
         }, 500);
+      } else {
+        console.log('JARVIS is offline, not connecting WebSocket');
       }
     } catch (err) {
       console.error('Failed to check JARVIS status:', err);
@@ -454,11 +457,14 @@ const JarvisVoice = () => {
   const connectWebSocket = () => {
     // Don't connect if already connected or connecting
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+      console.log('WebSocket already connected or connecting');
       return;
     }
 
     try {
-      wsRef.current = new WebSocket(`${WS_URL}/voice/jarvis/stream`);
+      const wsUrl = `${WS_URL}/voice/jarvis/stream`;
+      console.log('Connecting to WebSocket:', wsUrl);
+      wsRef.current = new WebSocket(wsUrl);
 
       wsRef.current.onopen = () => {
         console.log('Connected to JARVIS WebSocket');
@@ -707,10 +713,13 @@ const JarvisVoice = () => {
         type: 'command',
         text: 'activate'
       }));
+    } else {
+      // WebSocket not connected, try to establish connection
+      console.log('WebSocket not connected, attempting to connect...');
+      connectWebSocket();
+      // Use fallback to speak locally
+      speakResponse("Yes, sir?");
     }
-
-    // Don't speak here - let the backend handle it
-    // speakResponse("Yes?");
 
     // Timeout for command after 10 seconds (longer for conversation)
     setTimeout(() => {

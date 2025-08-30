@@ -17,6 +17,7 @@ mod ml;
 mod vision;
 mod memory;
 mod utils;
+mod resource_monitor;
 
 use ml::{QuantizedInferenceEngine, InferenceOptions};
 use vision::{VisionProcessor, ProcessingOptions};

@@ -10,6 +10,11 @@ class MLAudioHandler {
         this.ws = null;
         this.errorHistory = [];
         this.recoveryStrategies = new Map();
+        this.connectionAttempts = 0;
+        this.maxConnectionAttempts = 10;
+        this.backoffMultiplier = 1.5;
+        this.currentBackoffDelay = 1000;
+        this.isConnecting = false;
         this.metrics = {
             errors: 0,
             recoveries: 0,
@@ -29,8 +34,8 @@ class MLAudioHandler {
         // Load configuration from backend
         this.loadConfiguration();
         
-        // Initialize WebSocket connection to ML backend
-        this.connectToMLBackend();
+        // Initialize WebSocket connection to ML backend with delay
+        setTimeout(() => this.connectToMLBackend(), 5000);
         
         // Browser detection
         this.browserInfo = this.detectBrowser();
@@ -54,11 +59,24 @@ class MLAudioHandler {
     }
     
     connectToMLBackend() {
+        if (this.isConnecting || this.connectionAttempts >= this.maxConnectionAttempts) {
+            if (this.connectionAttempts >= this.maxConnectionAttempts) {
+                console.warn('ML Audio: Max connection attempts reached, stopping reconnection');
+            }
+            return;
+        }
+        
+        this.isConnecting = true;
+        this.connectionAttempts++;
+        
         try {
             this.ws = new WebSocket(`${API_BASE_URL.replace('http', 'ws')}/audio/ml/stream`);
             
             this.ws.onopen = () => {
                 console.log('Connected to ML Audio Backend');
+                this.connectionAttempts = 0;
+                this.currentBackoffDelay = 1000;
+                this.isConnecting = false;
                 this.sendTelemetry('connection', { status: 'connected' });
             };
             
@@ -68,14 +86,23 @@ class MLAudioHandler {
             };
             
             this.ws.onerror = (error) => {
-                console.error('ML Audio WebSocket error:', error);
+                // Don't log every error to avoid spam
+                if (this.connectionAttempts === 1) {
+                    console.warn('ML Audio WebSocket not available, will retry...');
+                }
             };
             
             this.ws.onclose = () => {
-                console.log('ML Audio WebSocket closed, reconnecting...');
-                setTimeout(() => this.connectToMLBackend(), 5000);
+                this.isConnecting = false;
+                if (this.connectionAttempts < this.maxConnectionAttempts) {
+                    const delay = Math.min(this.currentBackoffDelay, 30000); // Max 30s
+                    console.log(`ML Audio WebSocket closed, retrying in ${delay/1000}s (attempt ${this.connectionAttempts}/${this.maxConnectionAttempts})`);
+                    setTimeout(() => this.connectToMLBackend(), delay);
+                    this.currentBackoffDelay = Math.floor(this.currentBackoffDelay * this.backoffMultiplier);
+                }
             };
         } catch (error) {
+            this.isConnecting = false;
             console.error('Failed to connect to ML backend:', error);
         }
     }

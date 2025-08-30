@@ -1,0 +1,244 @@
+# Unified Resource Management Configuration
+# Dynamic configuration for 16GB RAM constraint optimization
+
+# System Resource Limits
+system:
+  total_memory_gb: 16
+  reserved_memory_gb: 4  # Reserved for OS and other apps
+  jarvis_max_memory_gb: 12
+  critical_threshold_percent: 85
+  high_threshold_percent: 70
+  target_usage_percent: 60
+  
+# Component Priority and Resource Allocation
+components:
+  voice:
+    priority: 1  # Highest priority
+    min_memory_mb: 512
+    max_memory_mb: 3072
+    degradation_levels:
+      full:
+        models: ["wake_word_nn", "personalized_svm", "anomaly_detector"]
+        features: ["deep_learning", "personalization", "adaptation"]
+      reduced:
+        models: ["wake_word_nn"]
+        features: ["deep_learning"]
+      minimal:
+        models: []
+        features: ["basic_detection"]
+    restart_policy:
+      max_retries: 3
+      backoff_seconds: [1, 5, 15]
+      
+  vision:
+    priority: 2
+    min_memory_mb: 256
+    max_memory_mb: 2048
+    degradation_levels:
+      full:
+        features: ["claude_analysis", "multi_window", "caching"]
+        cache_size_mb: 512
+      reduced:
+        features: ["claude_analysis", "single_window"]
+        cache_size_mb: 128
+      minimal:
+        features: ["basic_capture"]
+        cache_size_mb: 0
+    restart_policy:
+      max_retries: 2
+      backoff_seconds: [2, 10]
+      
+  control:
+    priority: 3
+    min_memory_mb: 128
+    max_memory_mb: 512
+    degradation_levels:
+      full:
+        features: ["all_operations", "workflow_automation"]
+      reduced:
+        features: ["essential_operations"]
+      minimal:
+        features: ["safe_operations_only"]
+    restart_policy:
+      max_retries: 5
+      backoff_seconds: [1, 2, 5, 10, 30]
+      
+  memory_controller:
+    priority: 0  # Always runs
+    min_memory_mb: 64
+    max_memory_mb: 256
+    restart_policy:
+      max_retries: -1  # Infinite
+      backoff_seconds: [1]
+
+# Resource Sharing Strategies
+resource_sharing:
+  model_cache:
+    enabled: true
+    max_size_mb: 1024
+    eviction_policy: "lru"  # least recently used
+    share_between: ["voice", "vision"]
+    
+  audio_buffers:
+    enabled: true
+    max_size_mb: 256
+    pool_size: 10
+    reuse_strategy: "round_robin"
+    
+  computation_pool:
+    enabled: true
+    max_workers: 4
+    priority_queues: true
+    task_timeout_seconds: 30
+
+# Performance Optimization
+optimization:
+  memory_profiling:
+    enabled: true
+    interval_seconds: 30
+    detailed_tracking: false
+    
+  garbage_collection:
+    mode: "adaptive"  # adaptive, aggressive, conservative
+    trigger_threshold_mb: 500
+    full_collection_interval: 300
+    
+  model_optimization:
+    quantization_enabled: false
+    pruning_enabled: false
+    dynamic_loading: true
+    lazy_initialization: true
+    
+  caching:
+    global_cache_mb: 512
+    ttl_seconds: 3600
+    compression_enabled: true
+    
+# Graceful Degradation
+degradation:
+  triggers:
+    - type: "memory_pressure"
+      threshold: "high"
+      action: "reduce_features"
+    - type: "memory_pressure"
+      threshold: "critical"
+      action: "minimal_mode"
+    - type: "component_failure"
+      count: 3
+      action: "disable_component"
+      
+  recovery:
+    check_interval_seconds: 60
+    upgrade_threshold_percent: 50
+    gradual_recovery: true
+    
+# Health Monitoring
+health_monitoring:
+  heartbeat_interval_seconds: 5
+  component_timeout_seconds: 30
+  
+  checks:
+    memory_usage:
+      enabled: true
+      warning_percent: 70
+      critical_percent: 85
+      
+    response_time:
+      enabled: true
+      warning_ms: 1000
+      critical_ms: 5000
+      
+    error_rate:
+      enabled: true
+      window_seconds: 60
+      warning_percent: 5
+      critical_percent: 10
+      
+# Logging and Debugging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  performance_logging: true
+  memory_logging: true
+  event_logging: true
+  
+  rotation:
+    max_size_mb: 100
+    max_files: 5
+    compress: true
+    
+  remote_logging:
+    enabled: false
+    endpoint: ""
+    
+# User Preferences Learning
+user_preferences:
+  learning_enabled: true
+  
+  tracked_metrics:
+    - "feature_usage_frequency"
+    - "command_patterns"
+    - "peak_usage_times"
+    - "preferred_responses"
+    
+  adaptation:
+    min_observations: 10
+    confidence_threshold: 0.8
+    update_interval_seconds: 3600
+    
+# Backup and Recovery
+backup:
+  enabled: true
+  
+  included:
+    - "user_preferences"
+    - "learned_models"
+    - "configuration_overrides"
+    
+  schedule:
+    interval_hours: 24
+    retention_days: 7
+    
+  location: "~/.jarvis/backups"
+  compression: true
+  encryption: false
+
+# Swift Bridge Configuration
+swift_bridge:
+  enabled: true
+  
+  components:
+    audio_processing:
+      priority: "high"
+      max_memory_mb: 256
+      features: ["vad", "noise_reduction"]
+      
+    system_monitoring:
+      priority: "medium"
+      max_memory_mb: 128
+      features: ["memory_tracking", "cpu_monitoring"]
+      
+    ui_automation:
+      priority: "low"
+      max_memory_mb: 64
+      features: ["accessibility_api", "event_handling"]
+
+# Dynamic Configuration
+dynamic_config:
+  hot_reload: true
+  validation: "strict"  # strict, permissive
+  
+  sources:
+    - type: "file"
+      path: "~/.jarvis/config_overrides.yaml"
+      priority: 10
+    - type: "environment"
+      prefix: "JARVIS_"
+      priority: 20
+    - type: "learned"
+      path: "~/.jarvis/learned_config.yaml"
+      priority: 5
+      
+  update_handlers:
+    - "validate_memory_limits"
+    - "check_component_compatibility"
+    - "apply_performance_tweaks"

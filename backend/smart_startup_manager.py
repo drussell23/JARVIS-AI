@@ -60,10 +60,11 @@ class SmartStartupManager:
     def __init__(self, 
                  max_memory_percent: float = 80,
                  max_cpu_percent: float = 75,
-                 check_interval: float = 0.5):
+                 check_interval: float = 5.0):  # Changed from 0.5 to 5.0 seconds
         self.max_memory_percent = max_memory_percent
         self.max_cpu_percent = max_cpu_percent
         self.check_interval = check_interval
+        self.last_check_time = 0  # Track last check to prevent rapid polling
         
         # Resource monitoring
         self.process = psutil.Process()
@@ -91,10 +92,20 @@ class SmartStartupManager:
         
     def get_system_resources(self) -> SystemResources:
         """Get current system resource usage"""
-        memory = psutil.virtual_memory()
-        cpu_percent = psutil.cpu_percent(interval=0.1)
+        # Rate limit resource checks to prevent CPU spinning
+        current_time = time.time()
+        if current_time - self.last_check_time < 1.0:  # Minimum 1 second between checks
+            # Return cached values if checking too frequently
+            if hasattr(self, '_cached_resources'):
+                return self._cached_resources
         
-        return SystemResources(
+        self.last_check_time = current_time
+        
+        memory = psutil.virtual_memory()
+        # Use interval=None to avoid blocking, get instantaneous value
+        cpu_percent = psutil.cpu_percent(interval=None)
+        
+        resources = SystemResources(
             cpu_percent=cpu_percent,
             memory_percent=memory.percent,
             memory_available_mb=int(memory.available / 1024 / 1024),
@@ -102,6 +113,9 @@ class SmartStartupManager:
             cpu_count=self.cpu_count,
             load_average=os.getloadavg() if hasattr(os, 'getloadavg') else (0, 0, 0)
         )
+        
+        self._cached_resources = resources
+        return resources
     
     async def wait_for_resources(self, 
                                 required_memory_mb: int = 500,
@@ -243,42 +257,75 @@ class SmartStartupManager:
         # Models will be loaded on-demand when first accessed
     
     async def resource_monitor(self):
-        """Continuous resource monitoring"""
+        """Continuous resource monitoring with efficient polling"""
+        consecutive_high_cpu = 0
+        consecutive_high_memory = 0
+        
         while not self.shutdown_requested:
-            resources = self.get_system_resources()
-            
-            # Log warnings if resources are low
-            if resources.memory_percent > 85:
-                logger.warning(
-                    f"⚠️  High memory usage: {resources.memory_percent:.1f}% "
-                    f"({resources.memory_available_mb}MB free)"
-                )
-            
-            if resources.cpu_percent > 80:
-                logger.warning(f"⚠️  High CPU usage: {resources.cpu_percent:.1f}%")
-            
-            # Emergency measures if critically low on memory
-            if resources.memory_percent > 95:
-                logger.error("🚨 CRITICAL: Memory exhausted, triggering emergency cleanup!")
-                await self._emergency_cleanup()
-            
-            await asyncio.sleep(self.check_interval)
+            try:
+                # Get resources (rate-limited internally)
+                resources = self.get_system_resources()
+                
+                # Only log if consistently high (prevents log spam)
+                if resources.memory_percent > 85:
+                    consecutive_high_memory += 1
+                    if consecutive_high_memory == 3:  # Log only when it reaches 3
+                        logger.warning(
+                            f"⚠️  Sustained high memory usage: {resources.memory_percent:.1f}% "
+                            f"({resources.memory_available_mb}MB free)"
+                        )
+                else:
+                    consecutive_high_memory = 0
+                
+                if resources.cpu_percent > 80:
+                    consecutive_high_cpu += 1
+                    if consecutive_high_cpu == 3:  # Log only when it reaches 3
+                        logger.warning(f"⚠️  Sustained high CPU usage: {resources.cpu_percent:.1f}%")
+                else:
+                    consecutive_high_cpu = 0
+                
+                # Emergency measures if critically low on memory
+                if resources.memory_percent > 95:
+                    logger.error("🚨 CRITICAL: Memory exhausted, triggering emergency cleanup!")
+                    await self._emergency_cleanup()
+                    # Longer sleep after emergency cleanup
+                    await asyncio.sleep(30)
+                    continue
+                
+                # Adaptive sleep interval based on system health
+                if resources.is_healthy:
+                    sleep_time = self.check_interval * 2  # Double interval when healthy
+                else:
+                    sleep_time = self.check_interval
+                
+                await asyncio.sleep(sleep_time)
+                
+            except Exception as e:
+                logger.error(f"Resource monitoring error: {e}")
+                await asyncio.sleep(10)  # Longer sleep on error
     
     async def _emergency_cleanup(self):
         """Emergency cleanup when memory is critical"""
         import gc
+        from core.memory_quantizer import memory_quantizer
         
-        # Force garbage collection
-        gc.collect()
+        logger.info("🚨 Starting emergency memory cleanup...")
         
-        # Clear any caches
-        if hasattr(self, 'model_loader'):
-            # Clear model caches
-            pass
+        # Use memory quantizer for aggressive cleanup
+        await memory_quantizer._reduce_memory_usage()
+        
+        # Additional emergency measures
+        # Clear executor queues
+        if hasattr(self.thread_executor, '_threads'):
+            self.thread_executor._threads.clear()
+        
+        # Force multiple GC passes
+        for _ in range(3):
+            gc.collect()
         
         # Log memory usage after cleanup
         resources = self.get_system_resources()
-        logger.info(f"🧹 After cleanup: {resources.memory_available_mb}MB free")
+        logger.info(f"🧹 After emergency cleanup: {resources.memory_available_mb}MB free ({resources.memory_percent:.1f}% used)")
     
     def get_startup_status(self) -> Dict[str, Any]:
         """Get current startup status"""
@@ -331,15 +378,25 @@ async def smart_startup():
     logger.info("🎯 JARVIS Smart Startup Manager v2.0")
     logger.info("=" * 60)
     
+    # Import and start memory quantizer
+    from core.memory_quantizer import memory_quantizer, start_memory_optimization
+    
+    # Start memory optimization service
+    memory_task = asyncio.create_task(start_memory_optimization())
+    
     # Start resource monitor
     monitor_task = asyncio.create_task(startup_manager.resource_monitor())
+    
+    # Get initial memory status
+    memory_status = memory_quantizer.get_memory_status()
+    logger.info(f"📊 Memory quantizer started - Level: {memory_status['current_level']}, Usage: {memory_status['memory_usage_gb']:.1f}GB")
     
     # Start progressive loading
     await startup_manager.progressive_model_loading()
     
     # Keep monitoring
     try:
-        await monitor_task
+        await asyncio.gather(monitor_task, memory_task)
     except asyncio.CancelledError:
         pass
     

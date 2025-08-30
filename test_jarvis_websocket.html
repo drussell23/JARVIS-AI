@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>JARVIS WebSocket Test</title>
+</head>
+<body>
+    <h1>JARVIS WebSocket Test</h1>
+    <button onclick="connect()">Connect to JARVIS</button>
+    <button onclick="sendActivate()">Send Activate</button>
+    <button onclick="sendCommand()">Send Test Command</button>
+    <div id="status">Not connected</div>
+    <div id="messages"></div>
+    
+    <script>
+        let ws = null;
+        
+        function connect() {
+            const url = 'ws://localhost:8000/voice/jarvis/stream';
+            console.log('Connecting to:', url);
+            
+            ws = new WebSocket(url);
+            
+            ws.onopen = () => {
+                console.log('Connected!');
+                document.getElementById('status').textContent = 'Connected';
+            };
+            
+            ws.onmessage = (event) => {
+                console.log('Received:', event.data);
+                const data = JSON.parse(event.data);
+                document.getElementById('messages').innerHTML += `<p>Received: ${JSON.stringify(data)}</p>`;
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                document.getElementById('status').textContent = 'Error: ' + error;
+            };
+            
+            ws.onclose = () => {
+                console.log('Disconnected');
+                document.getElementById('status').textContent = 'Disconnected';
+            };
+        }
+        
+        function sendActivate() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'command',
+                    text: 'activate'
+                }));
+                console.log('Sent activate command');
+            } else {
+                alert('Not connected!');
+            }
+        }
+        
+        function sendCommand() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'command',
+                    text: 'what time is it'
+                }));
+                console.log('Sent test command');
+            } else {
+                alert('Not connected!');
+            }
+        }
+    </script>
+</body>
+</html>

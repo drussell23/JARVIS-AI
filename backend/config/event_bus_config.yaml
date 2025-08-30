@@ -1,0 +1,234 @@
+# Event Bus Configuration
+# This file defines all event system parameters without hardcoding
+
+# Event Bus Core Settings
+event_bus:
+  # Performance settings
+  max_queue_size: 10000
+  max_subscribers_per_event: 100
+  event_ttl_seconds: 3600  # How long events are kept in history
+  
+  # Processing settings
+  worker_threads: 4
+  batch_size: 50
+  processing_timeout_ms: 5000
+  retry_attempts: 3
+  retry_delay_ms: 1000
+  
+  # Memory management
+  max_memory_mb: 512
+  cleanup_interval_seconds: 300
+  compression_enabled: true
+  
+  # Persistence settings
+  persistence:
+    enabled: true
+    backend: "sqlite"  # sqlite, redis, or memory
+    path: "data/events.db"
+    retention_days: 7
+    batch_write_size: 100
+    
+  # Replay settings
+  replay:
+    enabled: true
+    max_replay_events: 1000
+    replay_speed_multiplier: 1.0
+    snapshot_interval: 100
+
+# Event Priority Levels
+priorities:
+  CRITICAL:
+    level: 0
+    processing_threads: 2
+    queue_size: 1000
+    timeout_override_ms: 1000
+    
+  HIGH:
+    level: 1
+    processing_threads: 1
+    queue_size: 2000
+    timeout_override_ms: 3000
+    
+  NORMAL:
+    level: 2
+    processing_threads: 1
+    queue_size: 5000
+    timeout_override_ms: 5000
+    
+  LOW:
+    level: 3
+    processing_threads: 1
+    queue_size: 2000
+    timeout_override_ms: 10000
+
+# Event Categories and Types
+event_types:
+  # System events
+  system:
+    startup:
+      priority: HIGH
+      persist: true
+      ttl_override: 86400
+    shutdown:
+      priority: HIGH
+      persist: true
+      ttl_override: 86400
+    error:
+      priority: CRITICAL
+      persist: true
+      ttl_override: 604800  # 7 days
+    warning:
+      priority: NORMAL
+      persist: true
+      ttl_override: 86400
+      
+  # Voice events
+  voice:
+    wake_word_detected:
+      priority: HIGH
+      persist: true
+      ttl_override: 3600
+    command_received:
+      priority: HIGH
+      persist: true
+      ttl_override: 3600
+    response_generated:
+      priority: NORMAL
+      persist: true
+      ttl_override: 3600
+    audio_processed:
+      priority: LOW
+      persist: false
+      ttl_override: 300
+      
+  # Vision events
+  vision:
+    screen_captured:
+      priority: NORMAL
+      persist: false
+      ttl_override: 300
+    analysis_complete:
+      priority: NORMAL
+      persist: true
+      ttl_override: 3600
+    object_detected:
+      priority: HIGH
+      persist: true
+      ttl_override: 3600
+      
+  # System control events
+  control:
+    command_executed:
+      priority: HIGH
+      persist: true
+      ttl_override: 86400
+    app_launched:
+      priority: NORMAL
+      persist: true
+      ttl_override: 3600
+    file_operation:
+      priority: HIGH
+      persist: true
+      ttl_override: 86400
+      
+  # Memory events
+  memory:
+    pressure_changed:
+      priority: HIGH
+      persist: true
+      ttl_override: 3600
+    gc_triggered:
+      priority: NORMAL
+      persist: true
+      ttl_override: 3600
+    model_loaded:
+      priority: NORMAL
+      persist: true
+      ttl_override: 3600
+    model_unloaded:
+      priority: NORMAL
+      persist: true
+      ttl_override: 3600
+
+# Event Filtering Rules
+filters:
+  # Global filters (apply to all events)
+  global:
+    - name: "rate_limiter"
+      type: "rate_limit"
+      config:
+        max_per_second: 1000
+        burst_size: 2000
+        
+    - name: "size_filter"
+      type: "payload_size"
+      config:
+        max_size_bytes: 1048576  # 1MB
+        
+  # Category-specific filters
+  categories:
+    voice:
+      - name: "audio_dedup"
+        type: "deduplication"
+        config:
+          window_seconds: 1
+          similarity_threshold: 0.95
+          
+    vision:
+      - name: "image_throttle"
+        type: "throttle"
+        config:
+          min_interval_ms: 100
+          
+# Subscription Rules
+subscriptions:
+  # Default subscription settings
+  defaults:
+    max_retries: 3
+    timeout_ms: 5000
+    async: true
+    
+  # Pattern-based routing
+  patterns:
+    - pattern: "system.*"
+      subscribers: ["monitoring", "logging"]
+      
+    - pattern: "voice.command_*"
+      subscribers: ["command_processor", "analytics"]
+      
+    - pattern: "*.error"
+      subscribers: ["error_handler", "alerting"]
+      
+  # Load balancing
+  load_balancing:
+    enabled: true
+    strategy: "round_robin"  # round_robin, random, least_loaded
+    health_check_interval_seconds: 30
+
+# Performance Monitoring
+monitoring:
+  enabled: true
+  metrics_interval_seconds: 60
+  
+  alerts:
+    queue_full_threshold: 0.9
+    processing_delay_threshold_ms: 1000
+    error_rate_threshold: 0.05
+    
+  export:
+    type: "prometheus"  # prometheus, statsd, console
+    endpoint: "http://localhost:9090/metrics"
+    
+# Development & Debugging
+debug:
+  enabled: false
+  verbose_logging: false
+  event_tracing: true
+  performance_profiling: false
+  
+  # Event inspection
+  inspection:
+    web_ui_enabled: true
+    web_ui_port: 8888
+    api_enabled: true
+    api_port: 8889

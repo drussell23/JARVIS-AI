@@ -14,16 +14,26 @@ let package = Package(
             name: "CommandClassifier",
             targets: ["CommandClassifier"]),
         
+        // System Control library
+        .library(
+            name: "SystemControl",
+            targets: ["SystemControl"]),
+        
         // Executable for command-line testing
         .executable(
             name: "jarvis-classifier",
             targets: ["CommandClassifierCLI"]),
         
+        // System Control executable
+        .executable(
+            name: "jarvis-system-control",
+            targets: ["SystemControlCLI"]),
+        
         // Dynamic library for Python integration
         .library(
             name: "CommandClassifierDynamic",
             type: .dynamic,
-            targets: ["CommandClassifier"])
+            targets: ["CommandClassifier", "SystemControl"])
     ],
     dependencies: [
         // No external dependencies - using only Apple frameworks
@@ -35,11 +45,23 @@ let package = Package(
             dependencies: [],
             path: "Sources/CommandClassifier"),
         
+        // System Control target
+        .target(
+            name: "SystemControl",
+            dependencies: [],
+            path: "Sources/SystemControl"),
+        
         // CLI tool for testing
         .executableTarget(
             name: "CommandClassifierCLI",
-            dependencies: ["CommandClassifier"],
+            dependencies: ["CommandClassifier", "SystemControl"],
             path: "Sources/CommandClassifierCLI"),
+        
+        // System Control CLI
+        .executableTarget(
+            name: "SystemControlCLI",
+            dependencies: ["SystemControl", "CommandClassifier"],
+            path: "Sources/SystemControlCLI"),
         
         // Tests
         .testTarget(

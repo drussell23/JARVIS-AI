@@ -121,7 +121,10 @@ class JARVISVoiceAPI:
         self.router.add_api_route("/jarvis/personality", self.get_personality, methods=["GET"])
         
         # WebSocket for real-time interaction
-        self.router.add_api_websocket_route("/jarvis/stream", self.jarvis_stream)
+        # Note: WebSocket routes must be added using the decorator pattern in FastAPI
+        @self.router.websocket("/jarvis/stream")
+        async def websocket_endpoint(websocket: WebSocket):
+            await self.jarvis_stream(websocket)
         
     async def get_status(self) -> Dict:
         """Get JARVIS system status"""
@@ -483,12 +486,14 @@ class JARVISVoiceAPI:
                     
                     # Handle activation command specially
                     if command_text.lower() == "activate":
-                        # Speak activation response on backend
-                        if hasattr(self.jarvis, 'voice_engine') and hasattr(self.jarvis.voice_engine, 'speak'):
-                            try:
-                                await asyncio.to_thread(self.jarvis.voice_engine.speak, "Yes, sir?")
-                            except Exception as e:
-                                logger.warning(f"Backend activation speech failed: {e}")
+                        # Send activation response immediately for frontend to speak
+                        await websocket.send_json({
+                            "type": "response",
+                            "text": "Yes, sir?",
+                            "emotion": "attentive",
+                            "timestamp": datetime.now().isoformat()
+                        })
+                        continue
                     
                     # Send acknowledgment immediately
                     await websocket.send_json({
@@ -524,12 +529,7 @@ class JARVISVoiceAPI:
                         "timestamp": datetime.now().isoformat()
                     })
                     
-                    # Also speak on backend if on macOS
-                    if hasattr(self.jarvis, 'voice_engine') and hasattr(self.jarvis.voice_engine, 'speak'):
-                        try:
-                            await asyncio.to_thread(self.jarvis.voice_engine.speak, response)
-                        except Exception as e:
-                            logger.warning(f"Backend speech failed: {e}")
+                    # Don't speak on backend to avoid delays - let frontend handle TTS
                     
                 elif data.get("type") == "audio":
                     # Handle audio data (base64 encoded)
