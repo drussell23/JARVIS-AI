@@ -175,7 +175,10 @@ class HybridVisionRouter:
         """
         if not features:
             # Basic tokenization if no features provided
-            words = command.lower().split()
+            if command:
+                words = command.lower().split() if command else []
+            else:
+                words = []
             features = {"tokens": words}
             
         score = 0.0
@@ -198,7 +201,7 @@ class HybridVisionRouter:
                 
         # Check for question words
         question_words = {"what", "where", "which", "how", "can", "could", "is", "are"}
-        tokens = features.get("tokens", command.lower().split())
+        tokens = features.get("tokens", command.lower().split() if command else [])
         if any(word in question_words for word in tokens):
             score += 0.2
             
@@ -208,7 +211,7 @@ class HybridVisionRouter:
         """
         Check if we've seen similar patterns before
         """
-        command_lower = command.lower()
+        command_lower = command.lower() if command else ""
         
         # Check exact matches first
         if command_lower in self.pattern_database["patterns"]:
@@ -254,7 +257,7 @@ class HybridVisionRouter:
         """
         features = np.zeros(50)
         
-        words = command.lower().split()
+        words = command.lower().split() if command else []
         
         # Basic features
         features[0] = len(words) / 20.0  # Normalized word count
@@ -412,7 +415,7 @@ class HybridVisionRouter:
         """
         Extract target from command dynamically
         """
-        words = command.lower().split()
+        words = command.lower().split() if command else []
         
         # Look for words after prepositions
         prepositions = {"for", "at", "on", "in", "of"}
@@ -436,7 +439,7 @@ class HybridVisionRouter:
             )
             
         # Update pattern database
-        pattern_key = intent.command.lower()
+        pattern_key = intent.command.lower() if intent.command else ""
         if pattern_key not in self.pattern_database["patterns"]:
             self.pattern_database["patterns"][pattern_key] = {
                 "action": intent.final_action,

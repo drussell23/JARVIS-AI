@@ -1,0 +1,39 @@
+# Voice System Improvement Dependencies
+
+# Voice Activity Detection
+webrtcvad==2.0.10
+
+# Picovoice Wake Word Detection (optional but recommended)
+# Provides efficient on-device wake word detection
+pvporcupine==3.0.2
+
+# Audio Processing (should already be installed)
+librosa>=0.10.0
+soundfile>=0.12.1
+scipy>=1.11.0
+numpy>=1.24.0
+
+# Machine Learning (should already be installed)
+scikit-learn>=1.3.0
+torch>=2.0.0  # For neural network models
+torchaudio>=2.0.0  # For audio-specific models
+
+# Speech Recognition
+SpeechRecognition>=3.10.0
+
+# Optional: For better performance
+numba>=0.58.0  # Speeds up librosa
+
+# Installation Instructions:
+# 1. Basic installation (without Picovoice):
+#    pip install webrtcvad librosa soundfile scipy numpy scikit-learn SpeechRecognition
+#
+# 2. Full installation (with Picovoice):
+#    pip install -r requirements_voice_improvements.txt
+#
+# 3. For Picovoice, you'll also need to:
+#    - Sign up at https://console.picovoice.ai/ for a free access key
+#    - Set the environment variable: export PICOVOICE_ACCESS_KEY="your-key-here"
+#
+# 4. For PyTorch with Metal acceleration on macOS:
+#    pip install torch torchvision torchaudio

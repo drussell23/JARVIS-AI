@@ -100,6 +100,19 @@ class ClaudeCommandInterpreter:
     async def interpret_command(self, voice_input: str, context: Optional[Dict] = None) -> CommandIntent:
         """Interpret natural language command using Claude"""
         
+        # Validate input
+        if not voice_input:
+            logger.warning("interpret_command called with None/empty voice_input")
+            return CommandIntent(
+                action="",
+                target="",
+                parameters={},
+                raw_text="",
+                category=CommandCategory.UNKNOWN,
+                confidence=0.0,
+                safety=SafetyLevel.SAFE
+            )
+        
         # Build context for Claude
         system_prompt = """You are JARVIS, an AI assistant that controls macOS systems. 
         Analyze the user's command and extract:

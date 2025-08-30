@@ -8,11 +8,20 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Find Python and pybind11
 find_package(Python COMPONENTS Interpreter Development REQUIRED)
-find_package(pybind11 CONFIG)
 
-if(NOT pybind11_FOUND)
-    # If pybind11 is not installed system-wide, use the submodule
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../extern/pybind11 pybind11)
+# Use pip-installed pybind11
+execute_process(
+    COMMAND ${Python_EXECUTABLE} -c "import pybind11; print(pybind11.get_cmake_dir())"
+    OUTPUT_VARIABLE pybind11_DIR
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+
+if(pybind11_DIR)
+    list(APPEND CMAKE_PREFIX_PATH "${pybind11_DIR}")
+    find_package(pybind11 CONFIG REQUIRED)
+else()
+    message(FATAL_ERROR "pybind11 not found. Please install it with: pip install pybind11")
 endif()
 
 # macOS specific settings

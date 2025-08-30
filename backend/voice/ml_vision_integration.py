@@ -149,6 +149,11 @@ class MLVisionIntegration:
         Fix commands that were misrouted to system handler
         This is called when system handler fails with 'Unknown action'
         """
+        # Validate command
+        if not command:
+            logger.warning("fix_misrouted_command called with None/empty command")
+            return None
+            
         # Check if error indicates misrouting
         if "Unknown system action" in error_message or "couldn't complete that action" in error_message:
             # Extract the failed action
@@ -207,7 +212,10 @@ class MLVisionIntegration:
         failed_action: Optional[str] = None
     ):
         """Learn from routing corrections"""
-        key = failed_action or command.split()[0].lower()
+        # Handle None command
+        if command is None:
+            command = ""
+        key = failed_action or (command.split()[0].lower() if command else "unknown")
         
         if key not in self.pattern_corrections:
             self.pattern_corrections[key] = {
@@ -225,7 +233,7 @@ class MLVisionIntegration:
         # Update vision router's learned patterns
         if correct_handler == "vision":
             # Boost vision vocabulary for this pattern
-            words = command.lower().split()
+            words = command.lower().split() if command else []
             for word in words:
                 if word in self.vision_router.vision_vocabulary["visual_verbs"]:
                     # Increase weight
@@ -246,6 +254,11 @@ class EnhancedCommandHandler:
         """
         Enhanced interpret_and_execute that fixes vision routing
         """
+        # Validate command
+        if not command:
+            logger.warning("interpret_and_execute called with None/empty command")
+            return "I didn't catch that. Could you please repeat?"
+            
         try:
             # First, check if this should be vision
             if hasattr(self.original_handler, 'last_classification'):

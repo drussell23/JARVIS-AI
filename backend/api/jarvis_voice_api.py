@@ -246,6 +246,15 @@ class JARVISVoiceAPI:
             }
             
         try:
+            # Validate command text
+            if not command.text or command.text is None:
+                logger.warning("Received command with empty or None text")
+                return {
+                    "response": "I didn't catch that. Could you please repeat?",
+                    "status": "error",
+                    "confidence": 0.0
+                }
+            
             # Ensure JARVIS is active
             if not self.jarvis.running:
                 self.jarvis.running = True

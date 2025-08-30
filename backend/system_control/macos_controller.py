@@ -26,6 +26,7 @@ class CommandCategory(Enum):
     WORKFLOW = "workflow"
     VISION = "vision"
     DANGEROUS = "dangerous"
+    UNKNOWN = "unknown"
 
 class SafetyLevel(Enum):
     """Safety levels for commands"""

@@ -30,6 +30,14 @@ from scipy import signal as scipy_signal
 from scipy.stats import zscore
 import speech_recognition as sr
 
+# Voice Activity Detection
+try:
+    import webrtcvad
+    VAD_AVAILABLE = True
+except ImportError:
+    VAD_AVAILABLE = False
+    print("webrtcvad not available. Install with: pip install webrtcvad")
+
 # ML libraries
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
@@ -61,6 +69,14 @@ from anthropic import Anthropic
 # Import existing components
 from voice.voice_ml_trainer import VoiceMLTrainer, VoicePattern, UserVoiceProfile
 from voice.jarvis_voice import EnhancedVoiceEngine
+from voice.config import VOICE_CONFIG
+
+# Try to import Picovoice integration
+try:
+    from voice.picovoice_integration import HybridWakeWordDetector, PicovoiceConfig
+    PICOVOICE_INTEGRATION_AVAILABLE = True
+except ImportError:
+    PICOVOICE_INTEGRATION_AVAILABLE = False
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -88,8 +104,8 @@ class EnvironmentalProfile:
 @dataclass
 class PersonalizedThresholds:
     """Dynamic thresholds personalized per user"""
-    wake_word_threshold: float = 0.85
-    confidence_threshold: float = 0.7
+    wake_word_threshold: float = 0.55  # Lowered from 0.85 for better detection
+    confidence_threshold: float = 0.6   # Lowered from 0.7
     noise_adaptation_factor: float = 1.0
     false_positive_rate: float = 0.2
     true_positive_rate: float = 0.8
@@ -141,6 +157,9 @@ class MLEnhancedVoiceSystem:
         self.model_dir = model_dir
         os.makedirs(model_dir, exist_ok=True)
         
+        # Configuration
+        self.config = VOICE_CONFIG
+        
         # Core components
         self.ml_trainer = VoiceMLTrainer(anthropic_api_key, model_dir)
         self.voice_engine = EnhancedVoiceEngine(ml_trainer=self.ml_trainer)
@@ -155,6 +174,21 @@ class MLEnhancedVoiceSystem:
         self.env_profile = EnvironmentalProfile()
         self.noise_estimator = None
         self.adaptive_filter = None
+        
+        # Voice Activity Detection
+        self.vad = None
+        if VAD_AVAILABLE and self.config.enable_vad:
+            self.vad = webrtcvad.Vad(self.config.vad_aggressiveness)
+            logger.info(f"VAD enabled with aggressiveness level {self.config.vad_aggressiveness}")
+        
+        # Audio buffering
+        self.audio_buffer = deque(maxlen=int(
+            self.config.audio_buffer_duration * self.config.audio_sample_rate
+        ))
+        self.wake_word_buffer = deque(maxlen=int(
+            (self.config.wake_word_buffer_pre + self.config.wake_word_buffer_post) * 
+            self.config.audio_sample_rate
+        ))
         
         # Personalization
         self.user_thresholds: Dict[str, PersonalizedThresholds] = {}
@@ -189,6 +223,19 @@ class MLEnhancedVoiceSystem:
         self.wake_word_nn = None
         self.anomaly_detector = None
         self._deep_models_initialized = False
+        
+        # Hybrid detector with Picovoice
+        self.hybrid_detector = None
+        if PICOVOICE_INTEGRATION_AVAILABLE and self.config.use_picovoice:
+            try:
+                picovoice_config = PicovoiceConfig(
+                    keywords=self.config.wake_words,
+                    sensitivities=[0.5] * len(self.config.wake_words)
+                )
+                self.hybrid_detector = HybridWakeWordDetector(self, picovoice_config)
+                logger.info("Picovoice hybrid detection enabled")
+            except Exception as e:
+                logger.warning(f"Failed to enable Picovoice: {e}")
     
     def _init_deep_models(self):
         """Initialize deep learning models"""
@@ -285,6 +332,49 @@ class MLEnhancedVoiceSystem:
         except Exception as e:
             logger.error(f"Error saving models: {e}")
     
+    def process_audio_with_vad(self, audio_data: np.ndarray) -> List[np.ndarray]:
+        """Process audio using Voice Activity Detection to extract speech segments"""
+        if not self.vad or not self.config.enable_vad:
+            return [audio_data]
+        
+        # Convert to 16-bit PCM for VAD
+        audio_16bit = (audio_data * 32768).astype(np.int16)
+        
+        # Frame parameters
+        frame_duration_ms = self.config.vad_frame_duration_ms
+        frame_size = int(self.config.audio_sample_rate * frame_duration_ms / 1000)
+        
+        # Process frames
+        speech_segments = []
+        current_segment = []
+        speech_count = 0
+        
+        for i in range(0, len(audio_16bit) - frame_size, frame_size):
+            frame = audio_16bit[i:i + frame_size].tobytes()
+            
+            try:
+                is_speech = self.vad.is_speech(frame, self.config.audio_sample_rate)
+                
+                if is_speech:
+                    speech_count += 1
+                    current_segment.extend(audio_data[i:i + frame_size])
+                else:
+                    # Check if we had enough consecutive speech frames
+                    if speech_count >= self.config.vad_padding_frames:
+                        speech_segments.append(np.array(current_segment))
+                    speech_count = 0
+                    current_segment = []
+                    
+            except Exception as e:
+                logger.debug(f"VAD processing error: {e}")
+                continue
+        
+        # Don't forget the last segment
+        if speech_count >= self.config.vad_padding_frames:
+            speech_segments.append(np.array(current_segment))
+        
+        return speech_segments if speech_segments else [audio_data]
+    
     def extract_wake_word_features(self, audio_data: np.ndarray, sr: int = 16000) -> Dict[str, Any]:
         """Extract comprehensive features for wake word detection"""
         features = {}
@@ -375,100 +465,118 @@ class MLEnhancedVoiceSystem:
         Advanced wake word detection with personalization
         Returns: (is_wake_word, confidence, rejection_reason)
         """
-        # Extract features
-        features = self.extract_wake_word_features(audio_data)
+        # Use hybrid detector if available
+        if self.hybrid_detector:
+            return await self.hybrid_detector.detect_wake_word(audio_data, user_id)
+        # Update audio buffer if enabled
+        if self.config.enable_wake_word_buffer:
+            self.audio_buffer.extend(audio_data)
+            
+        # Process with VAD to get speech segments
+        speech_segments = self.process_audio_with_vad(audio_data)
         
-        # Get user thresholds
-        if user_id not in self.user_thresholds:
-            self.user_thresholds[user_id] = PersonalizedThresholds()
-        thresholds = self.user_thresholds[user_id]
+        # Check each speech segment for wake word
+        best_detection = (False, 0.0, "No speech detected")
         
-        # Adapt threshold based on environment
-        adapted_threshold = self._adapt_threshold_to_environment(
-            thresholds.wake_word_threshold,
-            features.get('snr', 20)
-        )
+        for segment in speech_segments:
+            if len(segment) < self.config.audio_sample_rate * 0.2:  # Skip very short segments
+                continue
+                
+            # Extract features
+            features = self.extract_wake_word_features(segment, self.config.audio_sample_rate)
+            
+            # Get user thresholds with config defaults
+            if user_id not in self.user_thresholds:
+                self.user_thresholds[user_id] = PersonalizedThresholds(
+                    wake_word_threshold=self.config.wake_word_threshold_default,
+                    confidence_threshold=self.config.confidence_threshold
+                )
+            thresholds = self.user_thresholds[user_id]
+            
+            # Adapt threshold based on environment
+            adapted_threshold = self.config.get_adaptive_threshold(features.get('snr', 20))
         
-        # Multiple detection strategies
-        detections = []
-        
-        # 1. Traditional pattern matching with adaptive threshold
-        pattern_score = self._pattern_matching_score(features)
-        detections.append(('pattern', pattern_score, pattern_score > adapted_threshold))
-        
-        # 2. Personalized SVM if trained
-        if self.personalized_svm:
-            try:
-                feature_vector = self._prepare_feature_vector(features)
-                svm_score = self.personalized_svm.decision_function([feature_vector])[0]
-                svm_prob = 1 / (1 + np.exp(-svm_score))  # Convert to probability
-                detections.append(('svm', svm_prob, svm_prob > thresholds.confidence_threshold))
-            except:
-                pass
-        
-        # 3. Neural network if available
-        if DEEP_LEARNING_AVAILABLE and self.wake_word_nn:
-            nn_score = await self._neural_network_score(audio_data)
-            if nn_score is not None:
-                detections.append(('neural', nn_score, nn_score > thresholds.wake_word_threshold))
-        
-        # 4. Anomaly detection (reject unusual patterns)
-        if self.anomaly_detector:
-            is_normal = self._is_normal_pattern(features)
-            if not is_normal:
-                return False, 0.0, "Anomalous audio pattern detected"
-        
-        # Combine detections (weighted voting)
-        if not detections:
-            return False, 0.0, "No detection methods available"
-        
-        # Weight more recent/accurate methods higher
-        weights = {'pattern': 0.3, 'svm': 0.4, 'neural': 0.5}
-        total_score = 0
-        total_weight = 0
-        positive_votes = 0
-        
-        for method, score, is_positive in detections:
-            weight = weights.get(method, 0.3)
-            total_score += score * weight
-            total_weight += weight
-            if is_positive:
-                positive_votes += weight
-        
-        final_confidence = total_score / total_weight if total_weight > 0 else 0
-        is_wake_word = positive_votes >= (total_weight * 0.5)  # Majority vote
-        
-        # Record detection for continuous learning
-        detection = WakeWordDetection(
-            timestamp=datetime.now(),
-            confidence=final_confidence,
-            audio_features={k: float(v) if isinstance(v, (int, float, np.number)) else 0 
-                          for k, v in features.items() if k != 'deep_embedding'},
-            is_valid=is_wake_word,
-            environmental_noise=self.env_profile.noise_floor,
-            rejection_reason=None if is_wake_word else "Below threshold"
-        )
-        self.wake_word_history.append(detection)
+            # Multiple detection strategies
+            detections = []
+            
+            # 1. Traditional pattern matching with adaptive threshold
+            pattern_score = self._pattern_matching_score(features)
+            detections.append(('pattern', pattern_score, pattern_score > adapted_threshold))
+            
+            # 2. Personalized SVM if trained
+            if self.personalized_svm:
+                try:
+                    feature_vector = self._prepare_feature_vector(features)
+                    svm_score = self.personalized_svm.decision_function([feature_vector])[0]
+                    svm_prob = 1 / (1 + np.exp(-svm_score))  # Convert to probability
+                    detections.append(('svm', svm_prob, svm_prob > thresholds.confidence_threshold))
+                except:
+                    pass
+            
+            # 3. Neural network if available
+            if DEEP_LEARNING_AVAILABLE and self.wake_word_nn:
+                nn_score = await self._neural_network_score(segment)
+                if nn_score is not None:
+                    detections.append(('neural', nn_score, nn_score > thresholds.wake_word_threshold))
+            
+            # 4. Anomaly detection (reject unusual patterns)
+            if self.anomaly_detector:
+                is_normal = self._is_normal_pattern(features)
+                if not is_normal:
+                    continue  # Check next segment
+            
+            # Combine detections (weighted voting)
+            if not detections:
+                continue
+            
+            # Weight more recent/accurate methods higher
+            weights = {'pattern': 0.3, 'svm': 0.4, 'neural': 0.5}
+            total_score = 0
+            total_weight = 0
+            positive_votes = 0
+            
+            for method, score, is_positive in detections:
+                weight = weights.get(method, 0.3)
+                total_score += score * weight
+                total_weight += weight
+                if is_positive:
+                    positive_votes += weight
+            
+            final_confidence = total_score / total_weight if total_weight > 0 else 0
+            is_wake_word = positive_votes >= (total_weight * 0.5)  # Majority vote
+            
+            # Update best detection
+            if final_confidence > best_detection[1]:
+                best_detection = (is_wake_word, final_confidence, 
+                                None if is_wake_word else "Below threshold")
+            
+            # Record detection for continuous learning
+            detection = WakeWordDetection(
+                timestamp=datetime.now(),
+                confidence=final_confidence,
+                audio_features={k: float(v) if isinstance(v, (int, float, np.number)) else 0 
+                              for k, v in features.items() if k != 'deep_embedding'},
+                is_valid=is_wake_word,
+                environmental_noise=self.env_profile.noise_floor,
+                rejection_reason=None if is_wake_word else "Below threshold"
+            )
+            self.wake_word_history.append(detection)
+            
+            # If we found wake word with high confidence, return immediately
+            if is_wake_word and final_confidence > 0.8:
+                self.metrics['total_detections'] += 1
+                
+                # Save wake word buffer for future analysis
+                if self.config.enable_wake_word_buffer:
+                    self.wake_word_buffer.extend(segment)
+                    
+                return is_wake_word, final_confidence, None
         
         # Update metrics
         self.metrics['total_detections'] += 1
         
-        return is_wake_word, final_confidence, None if is_wake_word else "Confidence too low"
+        return best_detection
     
-    def _adapt_threshold_to_environment(self, base_threshold: float, snr: float) -> float:
-        """Dynamically adapt threshold based on environmental conditions"""
-        # Lower threshold in noisy environments, but not too much
-        if snr < 10:  # Very noisy
-            adaptation = 0.9
-        elif snr < 20:  # Moderately noisy
-            adaptation = 0.95
-        else:  # Quiet environment
-            adaptation = 1.0
-        
-        # Apply user's personal noise adaptation factor
-        user_factor = self.user_thresholds.get('default', PersonalizedThresholds()).noise_adaptation_factor
-        
-        return base_threshold * adaptation * user_factor
     
     def _pattern_matching_score(self, features: Dict[str, Any]) -> float:
         """Score based on acoustic patterns matching 'JARVIS'"""
@@ -764,6 +872,42 @@ Response:"""
         except Exception as e:
             logger.error(f"Error enhancing conversation: {e}")
             return "I didn't quite catch that, sir. Could you repeat?"
+    
+    async def process_audio_stream(self, audio_chunk: np.ndarray, user_id: str = "default") -> Optional[Tuple[bool, float]]:
+        """
+        Process audio in streaming mode for real-time wake word detection
+        Returns: (is_wake_word, confidence) or None if no detection
+        """
+        if not self.config.enable_streaming:
+            # Fall back to regular detection
+            result = await self.detect_wake_word(audio_chunk, user_id)
+            return (result[0], result[1]) if result[0] else None
+        
+        # Add to rolling audio buffer
+        self.audio_buffer.extend(audio_chunk)
+        
+        # Check buffer size - need enough audio to analyze
+        min_samples = int(self.config.audio_sample_rate * 0.5)  # 0.5 seconds minimum
+        if len(self.audio_buffer) < min_samples:
+            return None
+        
+        # Process the buffered audio
+        buffer_array = np.array(list(self.audio_buffer))
+        
+        # Quick energy check to avoid processing silence
+        energy = np.sqrt(np.mean(buffer_array**2))
+        if energy < 0.001:  # Very quiet, likely silence
+            return None
+        
+        # Run detection on buffer
+        result = await self.detect_wake_word(buffer_array[-min_samples:], user_id)
+        
+        if result[0] and result[1] > 0.7:  # High confidence detection
+            # Clear buffer after detection to avoid repeated triggers
+            self.audio_buffer.clear()
+            return (result[0], result[1])
+        
+        return None
     
     def get_performance_metrics(self, user_id: str = "default") -> Dict[str, Any]:
         """Get detailed performance metrics"""
