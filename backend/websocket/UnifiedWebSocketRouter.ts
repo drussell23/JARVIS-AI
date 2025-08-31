@@ -68,8 +68,23 @@ export class UnifiedWebSocketRouter extends EventEmitter {
       ...config
     };
 
-    // Create HTTP server
-    this.server = createServer();
+    // Create HTTP server with health check endpoint
+    this.server = createServer((req, res) => {
+      const parsedUrl = parse(req.url || '');
+      
+      if (parsedUrl.pathname === '/health') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+          status: 'ok', 
+          timestamp: new Date().toISOString(),
+          routes: Array.from(this.routes.keys()),
+          clients: this.clients.size
+        }));
+      } else {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not Found');
+      }
+    });
     
     // Create WebSocket server
     this.wss = new WebSocketServer({ 

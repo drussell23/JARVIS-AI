@@ -122,7 +122,15 @@ def _setup_function_signatures():
     _performance_lib.system_monitor_destroy.argtypes = []
 
 # Initialize library on import
-_load_performance_library()
+# NOTE: Disabled auto-loading to prevent startup hangs
+# _load_performance_library()
+
+# Add lazy initialization helper
+def _ensure_library_loaded():
+    """Ensure the Swift library is loaded when first needed"""
+    global SWIFT_PERFORMANCE_AVAILABLE
+    if not SWIFT_PERFORMANCE_AVAILABLE and _performance_lib is None:
+        _load_performance_library()
 
 # Data classes for type safety
 @dataclass
@@ -389,6 +397,8 @@ def get_audio_processor() -> Optional[SwiftAudioProcessor]:
     """Get singleton audio processor instance"""
     global _audio_processor
     
+    _ensure_library_loaded()
+    
     if SWIFT_PERFORMANCE_AVAILABLE and _audio_processor is None:
         try:
             _audio_processor = SwiftAudioProcessor()
@@ -401,6 +411,8 @@ def get_vision_processor() -> Optional[SwiftVisionProcessor]:
     """Get singleton vision processor instance"""
     global _vision_processor
     
+    _ensure_library_loaded()
+    
     if SWIFT_PERFORMANCE_AVAILABLE and _vision_processor is None:
         try:
             _vision_processor = SwiftVisionProcessor()
@@ -412,6 +424,8 @@ def get_vision_processor() -> Optional[SwiftVisionProcessor]:
 def get_system_monitor() -> Optional[SwiftSystemMonitor]:
     """Get singleton system monitor instance"""
     global _system_monitor
+    
+    _ensure_library_loaded()
     
     if SWIFT_PERFORMANCE_AVAILABLE and _system_monitor is None:
         try:

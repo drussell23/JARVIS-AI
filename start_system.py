@@ -9,8 +9,11 @@ Resource Optimized Edition with Performance Enhancements
 - Vision system optimizations (Phase 0C)
 """
 
-import os
+print("DEBUG: start_system.py starting imports...")
 import sys
+sys.stdout.flush()
+
+import os
 import asyncio
 import signal
 import platform
@@ -1045,6 +1048,105 @@ class AsyncSystemManager:
 
         print(f"{Colors.GREEN}✓ All services stopped{Colors.ENDC}")
 
+    async def start_websocket_router(self) -> Optional[asyncio.subprocess.Process]:
+        """Start TypeScript WebSocket Router"""
+        websocket_dir = self.backend_dir / "websocket"
+        if not websocket_dir.exists():
+            print(
+                f"{Colors.WARNING}WebSocket router directory not found, skipping...{Colors.ENDC}"
+            )
+            return None
+
+        print(f"\n{Colors.BLUE}Starting TypeScript WebSocket Router...{Colors.ENDC}")
+
+        # Check/install dependencies
+        node_modules = websocket_dir / "node_modules"
+        if not node_modules.exists():
+            print(
+                f"{Colors.YELLOW}Installing WebSocket router dependencies...{Colors.ENDC}"
+            )
+            proc = await asyncio.create_subprocess_exec(
+                "npm",
+                "install",
+                cwd=str(websocket_dir),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                print(
+                    f"{Colors.FAIL}✗ Failed to install WebSocket router dependencies.{Colors.ENDC}"
+                )
+                print(stderr.decode())
+                return None
+
+        # Build TypeScript
+        print(f"{Colors.CYAN}Building WebSocket router...{Colors.ENDC}")
+        build_proc = await asyncio.create_subprocess_exec(
+            "npm",
+            "run",
+            "build",
+            cwd=str(websocket_dir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await build_proc.communicate()
+        if build_proc.returncode != 0:
+            print(f"{Colors.FAIL}✗ Failed to build WebSocket router.{Colors.ENDC}")
+            print(stderr.decode())
+            return None
+
+        # Kill existing process
+        port = self.ports["websocket_router"]
+        if not await self.check_port_available(port):
+            await self.kill_process_on_port(port)
+            await asyncio.sleep(1)
+
+        # Start router
+        log_file = (
+            self.backend_dir
+            / "logs"
+            / f"websocket_router_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        )
+
+        # Correctly set the environment variable for the port
+        env = os.environ.copy()
+        env["PORT"] = str(port)
+
+        with open(log_file, "w") as log:
+            process = await asyncio.create_subprocess_exec(
+                "npm",
+                "start",
+                cwd=str(websocket_dir),
+                stdout=log,
+                stderr=asyncio.subprocess.STDOUT,
+                env=env,
+            )
+
+        self.processes.append(process)
+        print(
+            f"{Colors.GREEN}✓ WebSocket Router starting on port {port} (PID: {process.pid}){Colors.ENDC}"
+        )
+
+        # Health check for the websocket router
+        router_ready = await self.wait_for_service(
+            f"http://localhost:{port}/health", timeout=15
+        )
+        if not router_ready:
+            print(
+                f"{Colors.FAIL}✗ WebSocket router failed to start or is not healthy.{Colors.ENDC}"
+            )
+            print(f"  Check log file: {log_file}")
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+            return None
+
+        print(f"{Colors.GREEN}✓ WebSocket Router is healthy.{Colors.ENDC}")
+
+        return process
+
     async def run(self):
         """Main run method"""
         self.print_header()
@@ -1099,17 +1201,42 @@ class AsyncSystemManager:
 
         if self.backend_only:
             print(f"{Colors.CYAN}Starting backend only...{Colors.ENDC}")
+            await self.start_websocket_router()
+            await asyncio.sleep(5)  # Allow router to stabilize
             await self.start_backend()
         elif self.frontend_only:
             print(f"{Colors.CYAN}Starting frontend only...{Colors.ENDC}")
             await self.start_frontend()
         else:
-            # Start both
-            backend_task = asyncio.create_task(self.start_backend())
-            await asyncio.sleep(3)  # Give backend time to start
+            # Stagger the startup to reduce initial memory spike
+            print(f"\n{Colors.CYAN}Step 1: Starting WebSocket Router...{Colors.ENDC}")
+            websocket_router_process = await self.start_websocket_router()
+            if not websocket_router_process:
+                print(
+                    f"{Colors.FAIL}✗ WebSocket router failed to start. Aborting.{Colors.ENDC}"
+                )
+                await self.cleanup()
+                return False
 
-            frontend_task = asyncio.create_task(self.start_frontend())
-            await asyncio.gather(backend_task, frontend_task, return_exceptions=True)
+            print(
+                f"\n{Colors.CYAN}Step 2: Starting Main Backend (waiting 5s)...{Colors.ENDC}"
+            )
+            await asyncio.sleep(5)
+
+            backend_process = await self.start_backend()
+            if not backend_process:
+                print(
+                    f"{Colors.FAIL}✗ Main backend failed to start. Aborting.{Colors.ENDC}"
+                )
+                await self.cleanup()
+                return False
+
+            print(
+                f"\n{Colors.CYAN}Step 3: Starting Frontend (waiting 3s)...{Colors.ENDC}"
+            )
+            await asyncio.sleep(3)
+
+            await self.start_frontend()
 
         # Wait a bit for services to initialize
         print(f"\n{Colors.YELLOW}Waiting for services to initialize...{Colors.ENDC}")
@@ -1160,6 +1287,9 @@ async def shutdown_handler():
 async def main():
     """Main entry point"""
     global _manager
+    
+    print("DEBUG: In main function")
+    sys.stdout.flush()
 
     parser = argparse.ArgumentParser(
         description="J.A.R.V.I.S. Advanced AI System v12.8 - Resource Optimized Edition"
@@ -1223,6 +1353,8 @@ async def main():
 
 if __name__ == "__main__":
     try:
+        print("DEBUG: Starting main function...")
+        sys.stdout.flush()
         exit_code = asyncio.run(main())
         sys.exit(exit_code)
     except KeyboardInterrupt:
