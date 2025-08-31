@@ -25,6 +25,7 @@ import json
 import time
 from typing import Optional, List, Dict, Any
 import logging
+import httpx
 
 # Load environment variables from .env file
 try:
@@ -708,6 +709,10 @@ async def startup_event():
     logger.info("🚀 Starting up AI-Powered Chatbot with smart startup manager...")
 
     try:
+        # Store the chatbot API instance in app state for WebSocket access
+        app.state.chatbot_api = chatbot_api
+        logger.info("✅ Chatbot API stored in app state")
+        
         # Start memory monitoring if available
         if MEMORY_MANAGER_AVAILABLE:
             await memory_manager.start_monitoring()
@@ -1055,15 +1060,42 @@ async def jarvis_websocket(websocket: WebSocket):
                 except:
                     msg = {"text": data}
                 
-                # Echo back with a JARVIS-style response
-                response_text = f"I heard you say: {msg.get('text', data)}"
-                await websocket.send_json({
-                    "type": "response",
-                    "text": response_text,
-                    "message": response_text,
-                    "mode": "text",
-                    "timestamp": asyncio.get_event_loop().time()
-                })
+                # Get the text from the message
+                command_text = msg.get('text', data) if isinstance(msg, dict) else data
+                
+                # Check for vision command
+                if command_text and "see my screen" in command_text.lower():
+                    try:
+                        async with httpx.AsyncClient() as client:
+                            response = await client.post("http://localhost:8001/vision/capture")
+                            response.raise_for_status()
+                            vision_data = response.json()
+                            response_text = vision_data.get("description", "I was unable to analyze the screen.")
+                    except httpx.RequestError as e:
+                        logger.error(f"Could not connect to vision service: {e}")
+                        response_text = "I'm having trouble connecting to my vision system."
+                # Process through the chatbot instance
+                elif command_text and command_text.strip():
+                    # Get the chatbot instance from app state
+                    chatbot_api = getattr(app.state, 'chatbot_api', None)
+                    
+                    if chatbot_api and chatbot_api.bot:
+                        # Process the command through the actual chatbot
+                        try:
+                            response_text = await chatbot_api.bot.generate_response(command_text)
+                        except Exception as e:
+                            logger.error(f"Error processing command through chatbot: {e}")
+                            response_text = "I apologize, but I encountered an error processing your request."
+                    else:
+                        response_text = "JARVIS system is initializing. Please try again in a moment."
+                    
+                    await websocket.send_json({
+                        "type": "response",
+                        "text": response_text,
+                        "message": response_text,
+                        "mode": "text",
+                        "timestamp": asyncio.get_event_loop().time()
+                    })
             except WebSocketDisconnect:
                 logger.info("JARVIS WebSocket client disconnected")
                 break
