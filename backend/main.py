@@ -9,7 +9,7 @@ os.environ["USE_TF"] = "0"  # Disable TensorFlow in transformers
 
 # Skip TensorFlow - not needed for basic operation
 
-from fastapi import FastAPI, APIRouter, UploadFile, File, HTTPException
+from fastapi import FastAPI, APIRouter, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -944,6 +944,158 @@ async def root():
         },
     }
 
+
+# Add stub endpoints for frontend compatibility
+@app.get("/voice/jarvis/status")
+async def jarvis_status():
+    """Stub endpoint for JARVIS voice status"""
+    return {
+        "status": "online",
+        "jarvis_available": True,
+        "mode": "minimal",
+        "message": "JARVIS voice in minimal mode"
+    }
+
+# Add command endpoint for JARVIS text commands
+class JarvisCommand(BaseModel):
+    command: str
+
+@app.post("/voice/jarvis/command")
+async def jarvis_command(command: JarvisCommand):
+    """Handle JARVIS text commands"""
+    try:
+        # Use the chatbot to process the command with JARVIS personality
+        jarvis_prompt = f"You are JARVIS, Tony Stark's AI assistant. Respond to this command in character: {command.command}"
+        
+        if hasattr(chatbot_api.bot, 'get_response'):
+            response = await chatbot_api.bot.get_response(jarvis_prompt)
+        else:
+            # Fallback response
+            response = f"Processing command: {command.command}"
+        
+        return {
+            "success": True,
+            "response": response,
+            "command": command.command,
+            "mode": "text"
+        }
+    except Exception as e:
+        logger.error(f"Error processing JARVIS command: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "response": "I apologize, sir. I encountered an error processing your command."
+        }
+
+@app.get("/audio/ml/config")
+async def audio_ml_config():
+    """Configuration for ML audio system"""
+    return {
+        "sample_rate": 16000,
+        "channels": 1,
+        "format": "int16",
+        "chunk_size": 1024,
+        "vad_enabled": True,
+        "wake_word": "hey jarvis"
+    }
+
+@app.post("/audio/ml/predict")
+async def audio_ml_predict():
+    """Stub endpoint for ML audio prediction"""
+    return {
+        "prediction": "normal",
+        "confidence": 0.9,
+        "audio_health": "good"
+    }
+
+# WebSocket endpoints with minimal implementation
+@app.websocket("/voice/jarvis/stream")
+async def jarvis_websocket(websocket: WebSocket):
+    """Minimal WebSocket endpoint for JARVIS voice"""
+    await websocket.accept()
+    logger.info("JARVIS WebSocket connected")
+    
+    try:
+        # Send initial connection message
+        await websocket.send_json({
+            "type": "connection",
+            "status": "connected",
+            "message": "JARVIS voice stream connected (minimal mode)"
+        })
+        
+        # Keep connection alive and echo messages
+        while True:
+            try:
+                data = await websocket.receive_text()
+                # Parse the message
+                try:
+                    msg = json.loads(data) if data.startswith('{') else {"text": data}
+                except:
+                    msg = {"text": data}
+                
+                # Echo back with a JARVIS-style response
+                response_text = f"I heard you say: {msg.get('text', data)}"
+                await websocket.send_json({
+                    "type": "response",
+                    "text": response_text,
+                    "message": response_text,
+                    "mode": "text",
+                    "timestamp": asyncio.get_event_loop().time()
+                })
+            except WebSocketDisconnect:
+                logger.info("JARVIS WebSocket client disconnected")
+                break
+    except Exception as e:
+        logger.error(f"JARVIS WebSocket error: {e}")
+
+@app.websocket("/audio/ml/stream")
+async def audio_ml_websocket(websocket: WebSocket):
+    """Minimal WebSocket endpoint for ML audio"""
+    await websocket.accept()
+    logger.info("ML Audio WebSocket connected")
+    
+    try:
+        # Send initial connection message
+        await websocket.send_json({
+            "type": "connection",
+            "status": "connected",
+            "audio_health": "good"
+        })
+        
+        # Keep connection alive and send periodic health updates
+        while True:
+            try:
+                message = await websocket.receive_text()
+                
+                # Parse the message if it's JSON
+                try:
+                    data = json.loads(message)
+                    msg_type = data.get('type', 'audio_data')
+                except:
+                    msg_type = 'audio_data'
+                
+                # Send back appropriate response
+                if msg_type == 'config':
+                    await websocket.send_json({
+                        "type": "config",
+                        "sample_rate": 16000,
+                        "channels": 1,
+                        "format": "int16"
+                    })
+                else:
+                    # Send back audio health status
+                    await websocket.send_json({
+                        "type": "audio_status",
+                        "prediction": "normal",
+                        "confidence": 0.95,
+                        "audio_health": "good",
+                        "timestamp": asyncio.get_event_loop().time()
+                    })
+            except WebSocketDisconnect:
+                logger.info("ML Audio WebSocket client disconnected")
+                break
+    except Exception as e:
+        logger.error(f"ML Audio WebSocket error: {e}")
 
 # Redirect old demo URLs to new locations
 from fastapi.responses import RedirectResponse
