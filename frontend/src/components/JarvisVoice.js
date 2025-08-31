@@ -2,9 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import './JarvisVoice.css';
 import '../styles/JarvisVoiceError.css';
 import MicrophonePermissionHelper from './MicrophonePermissionHelper';
-import SpeechDebug from './SpeechDebug'; // Temporary debug panel
 import mlAudioHandler from '../utils/MLAudioHandler'; // ML-enhanced audio handling
-import speechManager from '../utils/speechSynthesis'; // Improved speech synthesis
 
 // VisionConnection class for real-time workspace monitoring
 class VisionConnection {
@@ -511,129 +509,11 @@ const JarvisVoice = () => {
         console.log('WebSocket response received:', data);
         setResponse(data.text || data.message || 'Response received');
         setIsProcessing(false);
-        // Use improved speech synthesis
-        console.log('Response text:', data.text);
-        console.log('Response received, attempting speech...');
-        // Use setTimeout to ensure DOM updates first
-        setTimeout(async () => {
-          try {
-            // Debounce rapid speech calls
-            const now = Date.now();
-            if (now - lastSpeechTimeRef.current < 500) {
-              console.log('Debouncing rapid speech call');
-              return;
-            }
-            lastSpeechTimeRef.current = now;
-
-            // Ensure speech synthesis is available
-            if ('speechSynthesis' in window) {
-              // Force Chrome to wake up speech synthesis
-              window.speechSynthesis.cancel();
-
-              // Get voices - Chrome needs this
-              let voices = window.speechSynthesis.getVoices();
-              console.log(`Available voices: ${voices.length}`);
-
-              // If no voices yet, wait for them
-              if (voices.length === 0) {
-                await new Promise(resolve => {
-                  window.speechSynthesis.onvoiceschanged = () => {
-                    voices = window.speechSynthesis.getVoices();
-                    console.log(`Voices loaded: ${voices.length}`);
-                    resolve();
-                  };
-                  // Timeout after 1 second
-                  setTimeout(resolve, 1000);
-                });
-              }
-
-              // Chrome bug workaround - need to create a dummy utterance first
-              const dummyUtterance = new SpeechSynthesisUtterance('');
-              window.speechSynthesis.speak(dummyUtterance);
-
-              // Small delay
-              await new Promise(resolve => setTimeout(resolve, 100));
-
-              // Now create the real utterance
-              const utterance = new SpeechSynthesisUtterance(data.text);
-
-              // Set properties
-              utterance.rate = 1.0;
-              utterance.pitch = 1.0;
-              utterance.volume = 1.0;
-
-              // Select a voice
-              if (voices.length > 0) {
-                // Try to find a US English voice first (more reliable)
-                const usVoice = voices.find(voice =>
-                  voice.lang === 'en-US' && voice.localService === true
-                );
-                const englishVoice = usVoice || voices.find(voice =>
-                  voice.lang.startsWith('en')
-                ) || voices[0];
-
-                utterance.voice = englishVoice;
-                console.log('Selected voice:', englishVoice.name, englishVoice.lang);
-              }
-
-              // Set up promise to track speech
-              const speechPromise = new Promise((resolve, reject) => {
-                utterance.onstart = () => {
-                  console.log('✅ Speech started successfully');
-                  setIsJarvisSpeaking(true);
-                };
-
-                utterance.onend = () => {
-                  console.log('✅ Speech ended successfully');
-                  setIsJarvisSpeaking(false);
-                  resolve();
-                };
-
-                utterance.onerror = (e) => {
-                  console.error('❌ Speech error:', e.error, e);
-                  setIsJarvisSpeaking(false);
-                  reject(e);
-                };
-
-                // Timeout fallback
-                setTimeout(() => {
-                  if (!window.speechSynthesis.speaking) {
-                    console.error('❌ Speech timeout - no speech started');
-                    reject(new Error('Speech timeout'));
-                  }
-                }, 500);
-              });
-
-              // Cancel any pending speech
-              window.speechSynthesis.cancel();
-
-              // Speak with a small delay
-              setTimeout(() => {
-                window.speechSynthesis.speak(utterance);
-                console.log('🔊 Speech utterance queued');
-                console.log('Speaking state:', window.speechSynthesis.speaking);
-                console.log('Pending state:', window.speechSynthesis.pending);
-                console.log('Paused state:', window.speechSynthesis.paused);
-              }, 50);
-
-              // Wait for speech to complete or error
-              try {
-                await speechPromise;
-              } catch (error) {
-                console.error('Speech failed, trying fallback method');
-                // Fallback to alert or visual notification
-                alert(`JARVIS says: ${data.text}`);
-              }
-            } else {
-              console.error('Speech synthesis not available in browser');
-              await speakResponse(data.text);
-            }
-          } catch (error) {
-            console.error('Speech failed:', error);
-            // Try the original method as fallback
-            await speakResponse(data.text);
-          }
-        }, 300);
+        
+        // Use audio endpoint directly
+        if (data.text) {
+          playAudioResponse(data.text);
+        }
 
         // Check for autonomy activation commands in response
         const responseText = data.text.toLowerCase();
@@ -685,40 +565,6 @@ const JarvisVoice = () => {
     }
   };
 
-  const initializeSpeechSynthesis = () => {
-    // Initialize speech synthesis on user interaction
-    if ('speechSynthesis' in window) {
-      // Load voices first
-      const loadVoices = () => {
-        const voices = window.speechSynthesis.getVoices();
-        console.log(`Loaded ${voices.length} voices`);
-        if (voices.length > 0) {
-          const englishVoice = voices.find(v => v.lang.startsWith('en')) || voices[0];
-          console.log('Default voice selected:', englishVoice.name);
-        }
-      };
-
-      // Load voices immediately and on change
-      loadVoices();
-      window.speechSynthesis.onvoiceschanged = loadVoices;
-
-      // Chrome requires user interaction to enable speech
-      window.speechSynthesis.cancel(); // Clear any pending
-      const initUtterance = new SpeechSynthesisUtterance(' '); // Space instead of empty
-      initUtterance.volume = 0.01; // Very low volume instead of 0
-      initUtterance.rate = 10; // Very fast
-      window.speechSynthesis.speak(initUtterance);
-
-      // Also resume if paused
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-      }
-
-      console.log('Speech synthesis initialized');
-      console.log('Initial speaking state:', window.speechSynthesis.speaking);
-      console.log('Initial paused state:', window.speechSynthesis.paused);
-    }
-  };
 
   const initializeSpeechRecognition = () => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
@@ -1106,18 +952,41 @@ const JarvisVoice = () => {
     }
   };
 
-  const speakResponse = async (text) => {
-    console.log('Speaking:', text);
-
+  const playAudioResponse = async (text) => {
+    console.log('Playing audio response:', text);
+    
     try {
-      await speechManager.speak(text);
-    } catch (error) {
-      console.error('Speech synthesis error:', error);
-      // Fallback: show visual notification if speech fails
-      if (error.message.includes('not supported')) {
-        setError('Text-to-speech not supported in this browser. Response shown above.');
-      }
+      const audio = new Audio(`${API_URL}/audio/speak/${encodeURIComponent(text)}`);
+      audio.volume = 1.0;
+      
+      // Set speaking state
+      setIsJarvisSpeaking(true);
+      
+      audio.onended = () => {
+        console.log('Audio playback completed');
+        setIsJarvisSpeaking(false);
+      };
+      
+      audio.onerror = (e) => {
+        console.error('Audio playback error:', e);
+        setIsJarvisSpeaking(false);
+        // Final fallback: show visual notification
+        setError('Unable to play audio. Response shown above.');
+      };
+      
+      await audio.play();
+      console.log('Audio playback started successfully');
+    } catch (audioError) {
+      console.error('Audio endpoint failed:', audioError);
+      setIsJarvisSpeaking(false);
+      // Final fallback: show visual notification
+      setError('Unable to play audio. Response shown above.');
     }
+  };
+
+  const speakResponse = async (text) => {
+    // Simply use the audio endpoint
+    await playAudioResponse(text);
   };
 
   return (
@@ -1127,7 +996,6 @@ const JarvisVoice = () => {
           onPermissionGranted={() => {
             setMicrophonePermission('granted');
             setMicStatus('ready');
-            initializeSpeechSynthesis(); // Initialize TTS on user interaction
             initializeSpeechRecognition();
           }}
         />
@@ -1273,36 +1141,13 @@ const JarvisVoice = () => {
         <p>Click "Start Listening" then say "Hey JARVIS" to activate</p>
         <p>Available commands: weather, time, calculations, reminders</p>
 
-        {/* Debug audio buttons */}
+        {/* Debug audio button */}
         <div style={{ marginTop: '10px' }}>
           <button
             onClick={async () => {
-              console.log('Testing direct speech synthesis...');
+              console.log('Testing audio endpoint...');
               try {
-                // Direct test without any wrappers
-                if ('speechSynthesis' in window) {
-                  window.speechSynthesis.cancel();
-                  const testUtterance = new SpeechSynthesisUtterance('Testing JARVIS voice. Can you hear me?');
-                  testUtterance.rate = 1;
-                  testUtterance.pitch = 1;
-                  testUtterance.volume = 1;
-
-                  testUtterance.onstart = () => console.log('TEST: Speech started');
-                  testUtterance.onend = () => console.log('TEST: Speech ended');
-                  testUtterance.onerror = (e) => console.error('TEST: Speech error', e);
-
-                  window.speechSynthesis.speak(testUtterance);
-                  console.log('TEST: Utterance queued');
-
-                  // Log state after a moment
-                  setTimeout(() => {
-                    console.log('TEST: Speaking:', window.speechSynthesis.speaking);
-                    console.log('TEST: Pending:', window.speechSynthesis.pending);
-                    console.log('TEST: Paused:', window.speechSynthesis.paused);
-                  }, 100);
-                } else {
-                  console.error('Speech synthesis not available');
-                }
+                await playAudioResponse('Testing JARVIS voice. Can you hear me?');
               } catch (error) {
                 console.error('Test failed:', error);
                 setError('Audio test failed: ' + error.message);
@@ -1320,28 +1165,8 @@ const JarvisVoice = () => {
           >
             Test Audio
           </button>
-
-          <button
-            onClick={() => {
-              const voices = speechManager.getVoices();
-              console.log('Available voices:', voices);
-              console.log('Current voice:', speechManager.selectedVoice);
-            }}
-            style={{
-              padding: '5px 10px',
-              background: '#444',
-              border: '1px solid #666',
-              color: '#fff',
-              cursor: 'pointer',
-              borderRadius: '4px'
-            }}
-          >
-            List Voices
-          </button>
         </div>
       </div>
-      {/* Temporary Speech Debug Panel - Remove after fixing */}
-      <SpeechDebug />
     </div>
   );
 };

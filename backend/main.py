@@ -23,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+import io
 
 try:
     from chatbots.claude_vision_chatbot import (
@@ -1405,6 +1406,34 @@ async def audio_ml_websocket(websocket: WebSocket):
     except Exception as e:
         logger.error(f"ML Audio WebSocket error: {e}")
 
+
+# Add audio synthesis endpoint
+@app.get("/audio/speak/{text}")
+async def speak_text(text: str):
+    """Generate and stream audio for text"""
+    try:
+        import gtts
+        
+        # Generate audio
+        tts = gtts.gTTS(text, lang='en')
+        audio_buffer = io.BytesIO()
+        tts.write_to_fp(audio_buffer)
+        audio_buffer.seek(0)
+        
+        return StreamingResponse(
+            audio_buffer,
+            media_type="audio/mpeg",
+            headers={
+                "Content-Disposition": f"inline; filename=jarvis_speech.mp3"
+            }
+        )
+    except ImportError:
+        # If gTTS not installed, return error
+        logger.error("gTTS not installed. Install with: pip install gtts")
+        raise HTTPException(status_code=503, detail="Text-to-speech service unavailable. Please install gTTS.")
+    except Exception as e:
+        logger.error(f"Audio generation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Redirect old demo URLs to new locations
 from fastapi.responses import RedirectResponse
