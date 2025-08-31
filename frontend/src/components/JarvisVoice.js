@@ -403,13 +403,11 @@ const JarvisVoice = () => {
       setJarvisStatus(data.status);
 
       // Connect WebSocket if JARVIS is available (including standby and active)
-      if (data.status === 'online' || data.status === 'standby') {
-        console.log('JARVIS is online/standby, connecting WebSocket...');
+      if (data.status === 'online' || data.status === 'standby' || data.status === 'active') {
+        console.log('JARVIS is available, connecting WebSocket...');
         setTimeout(() => {
           connectWebSocket();
         }, 500);
-      } else if (data.status === 'active') {
-        console.log('JARVIS is active but not yet online, showing activate button');
       } else {
         console.log('JARVIS is offline, not connecting WebSocket');
       }
@@ -510,9 +508,11 @@ const JarvisVoice = () => {
         // Don't cancel speech here - it might cancel the wake word response
         break;
       case 'response':
-        setResponse(data.text);
+        console.log('WebSocket response received:', data);
+        setResponse(data.text || data.message || 'Response received');
         setIsProcessing(false);
         // Use improved speech synthesis
+        console.log('Response text:', data.text);
         console.log('Response received, attempting speech...');
         // Use setTimeout to ensure DOM updates first
         setTimeout(async () => {
@@ -524,16 +524,16 @@ const JarvisVoice = () => {
               return;
             }
             lastSpeechTimeRef.current = now;
-            
+
             // Ensure speech synthesis is available
             if ('speechSynthesis' in window) {
               // Force Chrome to wake up speech synthesis
               window.speechSynthesis.cancel();
-              
+
               // Get voices - Chrome needs this
               let voices = window.speechSynthesis.getVoices();
               console.log(`Available voices: ${voices.length}`);
-              
+
               // If no voices yet, wait for them
               if (voices.length === 0) {
                 await new Promise(resolve => {
@@ -546,55 +546,55 @@ const JarvisVoice = () => {
                   setTimeout(resolve, 1000);
                 });
               }
-              
+
               // Chrome bug workaround - need to create a dummy utterance first
               const dummyUtterance = new SpeechSynthesisUtterance('');
               window.speechSynthesis.speak(dummyUtterance);
-              
+
               // Small delay
               await new Promise(resolve => setTimeout(resolve, 100));
-              
+
               // Now create the real utterance
               const utterance = new SpeechSynthesisUtterance(data.text);
-              
+
               // Set properties
               utterance.rate = 1.0;
               utterance.pitch = 1.0;
               utterance.volume = 1.0;
-              
+
               // Select a voice
               if (voices.length > 0) {
                 // Try to find a US English voice first (more reliable)
-                const usVoice = voices.find(voice => 
+                const usVoice = voices.find(voice =>
                   voice.lang === 'en-US' && voice.localService === true
                 );
-                const englishVoice = usVoice || voices.find(voice => 
+                const englishVoice = usVoice || voices.find(voice =>
                   voice.lang.startsWith('en')
                 ) || voices[0];
-                
+
                 utterance.voice = englishVoice;
                 console.log('Selected voice:', englishVoice.name, englishVoice.lang);
               }
-              
+
               // Set up promise to track speech
               const speechPromise = new Promise((resolve, reject) => {
                 utterance.onstart = () => {
                   console.log('✅ Speech started successfully');
                   setIsJarvisSpeaking(true);
                 };
-                
+
                 utterance.onend = () => {
                   console.log('✅ Speech ended successfully');
                   setIsJarvisSpeaking(false);
                   resolve();
                 };
-                
+
                 utterance.onerror = (e) => {
                   console.error('❌ Speech error:', e.error, e);
                   setIsJarvisSpeaking(false);
                   reject(e);
                 };
-                
+
                 // Timeout fallback
                 setTimeout(() => {
                   if (!window.speechSynthesis.speaking) {
@@ -603,10 +603,10 @@ const JarvisVoice = () => {
                   }
                 }, 500);
               });
-              
+
               // Cancel any pending speech
               window.speechSynthesis.cancel();
-              
+
               // Speak with a small delay
               setTimeout(() => {
                 window.speechSynthesis.speak(utterance);
@@ -615,7 +615,7 @@ const JarvisVoice = () => {
                 console.log('Pending state:', window.speechSynthesis.pending);
                 console.log('Paused state:', window.speechSynthesis.paused);
               }, 50);
-              
+
               // Wait for speech to complete or error
               try {
                 await speechPromise;
@@ -697,23 +697,23 @@ const JarvisVoice = () => {
           console.log('Default voice selected:', englishVoice.name);
         }
       };
-      
+
       // Load voices immediately and on change
       loadVoices();
       window.speechSynthesis.onvoiceschanged = loadVoices;
-      
+
       // Chrome requires user interaction to enable speech
       window.speechSynthesis.cancel(); // Clear any pending
       const initUtterance = new SpeechSynthesisUtterance(' '); // Space instead of empty
       initUtterance.volume = 0.01; // Very low volume instead of 0
       initUtterance.rate = 10; // Very fast
       window.speechSynthesis.speak(initUtterance);
-      
+
       // Also resume if paused
       if (window.speechSynthesis.paused) {
         window.speechSynthesis.resume();
       }
-      
+
       console.log('Speech synthesis initialized');
       console.log('Initial speaking state:', window.speechSynthesis.speaking);
       console.log('Initial paused state:', window.speechSynthesis.paused);
@@ -784,13 +784,19 @@ const JarvisVoice = () => {
       };
 
       recognitionRef.current.onerror = async (event) => {
-        console.error('Speech recognition error:', event.error, event);
+        // Handle "no-speech" errors quietly - they're expected
+        if (event.error !== 'no-speech') {
+          console.error('Speech recognition error:', event.error, event);
+        }
 
         // Use ML-enhanced error handling
         const mlResult = await mlAudioHandler.handleAudioError(event, recognitionRef.current);
 
         if (mlResult.success) {
-          console.log('ML audio recovery successful:', mlResult);
+          // Only log recovery for non-no-speech errors
+          if (event.error !== 'no-speech') {
+            console.log('ML audio recovery successful:', mlResult);
+          }
           setError('');
           setMicStatus('ready');
 
@@ -1083,31 +1089,26 @@ const JarvisVoice = () => {
 
     setTranscript(text);
     setIsProcessing(true);
+    setResponse('');  // Clear previous response
 
-    try {
-      const response = await fetch(`${API_URL}/voice/jarvis/command`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ text })
-      });
-
-      const data = await response.json();
-      setResponse(data.response);
-      setIsProcessing(false);
-
-      speakResponse(data.response);
-    } catch (err) {
-      console.error('Failed to send command:', err);
-      setError('Failed to process command');
+    // Use WebSocket if connected
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'command',
+        text: text,
+        mode: autonomousMode ? 'autonomous' : 'manual'
+      }));
+      // Response will come through WebSocket message handler
+    } else {
+      // WebSocket not connected
+      setError('Not connected to JARVIS. Please refresh the page.');
       setIsProcessing(false);
     }
   };
 
   const speakResponse = async (text) => {
     console.log('Speaking:', text);
-    
+
     try {
       await speechManager.speak(text);
     } catch (error) {
@@ -1285,14 +1286,14 @@ const JarvisVoice = () => {
                   testUtterance.rate = 1;
                   testUtterance.pitch = 1;
                   testUtterance.volume = 1;
-                  
+
                   testUtterance.onstart = () => console.log('TEST: Speech started');
                   testUtterance.onend = () => console.log('TEST: Speech ended');
                   testUtterance.onerror = (e) => console.error('TEST: Speech error', e);
-                  
+
                   window.speechSynthesis.speak(testUtterance);
                   console.log('TEST: Utterance queued');
-                  
+
                   // Log state after a moment
                   setTimeout(() => {
                     console.log('TEST: Speaking:', window.speechSynthesis.speaking);

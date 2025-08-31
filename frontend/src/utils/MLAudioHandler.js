@@ -20,7 +20,7 @@ class MLAudioHandler {
             recoveries: 0,
             startTime: Date.now()
         };
-        
+
         // Configuration (loaded dynamically)
         this.config = {
             enableML: true,
@@ -30,21 +30,21 @@ class MLAudioHandler {
             anomalyThreshold: 0.8,
             predictionThreshold: 0.7
         };
-        
+
         // Load configuration from backend
         this.loadConfiguration();
-        
+
         // Initialize WebSocket connection to ML backend with delay
         setTimeout(() => this.connectToMLBackend(), 5000);
-        
+
         // Browser detection
         this.browserInfo = this.detectBrowser();
-        
+
         // Permission state tracking
         this.permissionState = 'unknown';
         this.checkPermissionState();
     }
-    
+
     async loadConfiguration() {
         try {
             const response = await fetch(`${API_BASE_URL}/audio/ml/config`);
@@ -57,7 +57,7 @@ class MLAudioHandler {
             console.warn('Using default ML audio configuration');
         }
     }
-    
+
     connectToMLBackend() {
         if (this.isConnecting || this.connectionAttempts >= this.maxConnectionAttempts) {
             if (this.connectionAttempts >= this.maxConnectionAttempts) {
@@ -65,13 +65,13 @@ class MLAudioHandler {
             }
             return;
         }
-        
+
         this.isConnecting = true;
         this.connectionAttempts++;
-        
+
         try {
             this.ws = new WebSocket(`${API_BASE_URL.replace('http', 'ws')}/audio/ml/stream`);
-            
+
             this.ws.onopen = () => {
                 console.log('Connected to ML Audio Backend');
                 this.connectionAttempts = 0;
@@ -79,24 +79,24 @@ class MLAudioHandler {
                 this.isConnecting = false;
                 this.sendTelemetry('connection', { status: 'connected' });
             };
-            
+
             this.ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 this.handleMLMessage(data);
             };
-            
+
             this.ws.onerror = (error) => {
                 // Don't log every error to avoid spam
                 if (this.connectionAttempts === 1) {
                     console.warn('ML Audio WebSocket not available, will retry...');
                 }
             };
-            
+
             this.ws.onclose = () => {
                 this.isConnecting = false;
                 if (this.connectionAttempts < this.maxConnectionAttempts) {
                     const delay = Math.min(this.currentBackoffDelay, 30000); // Max 30s
-                    console.log(`ML Audio WebSocket closed, retrying in ${delay/1000}s (attempt ${this.connectionAttempts}/${this.maxConnectionAttempts})`);
+                    console.log(`ML Audio WebSocket closed, retrying in ${delay / 1000}s (attempt ${this.connectionAttempts}/${this.maxConnectionAttempts})`);
                     setTimeout(() => this.connectToMLBackend(), delay);
                     this.currentBackoffDelay = Math.floor(this.currentBackoffDelay * this.backoffMultiplier);
                 }
@@ -106,7 +106,7 @@ class MLAudioHandler {
             console.error('Failed to connect to ML backend:', error);
         }
     }
-    
+
     handleMLMessage(data) {
         switch (data.type) {
             case 'prediction':
@@ -123,11 +123,19 @@ class MLAudioHandler {
                 break;
         }
     }
-    
+
     async handleAudioError(error, recognition) {
-        console.error('Audio error detected:', error);
-        this.metrics.errors++;
-        
+        // Handle "no-speech" errors quietly - they're expected during silence
+        if (error.error === 'no-speech') {
+            // Don't log to console - this is normal behavior
+            // Just update metrics silently
+            this.metrics.noSpeechEvents = (this.metrics.noSpeechEvents || 0) + 1;
+        } else {
+            // Log actual errors
+            console.error('Audio error detected:', error);
+            this.metrics.errors++;
+        }
+
         // Create error context
         const context = {
             error_code: error.error || error.name,
@@ -141,16 +149,16 @@ class MLAudioHandler {
             audio_context_state: this.getAudioContextState(),
             previous_errors: this.getRecentErrors(5)
         };
-        
+
         // Record error
         this.errorHistory.push({
             ...context,
             resolved: false
         });
-        
+
         // Send to ML backend
         const response = await this.sendErrorToBackend(context);
-        
+
         if (response) {
             // Check if response contains a strategy object with action
             if (response.strategy && response.strategy.action) {
@@ -167,7 +175,7 @@ class MLAudioHandler {
             return await this.executeLocalStrategy(error, recognition);
         }
     }
-    
+
     async sendErrorToBackend(context) {
         try {
             const response = await fetch(`${API_BASE_URL}/audio/ml/error`, {
@@ -175,7 +183,7 @@ class MLAudioHandler {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(context)
             });
-            
+
             if (response.ok) {
                 return await response.json();
             }
@@ -184,66 +192,69 @@ class MLAudioHandler {
         }
         return null;
     }
-    
+
     async executeStrategy(strategy, error, recognition) {
         console.log('Executing ML strategy:', strategy);
-        
+
         // Handle case where strategy doesn't have an action property
         if (!strategy || !strategy.action) {
             console.warn('Invalid strategy format:', strategy);
             return { success: false, message: 'Invalid strategy format' };
         }
-        
+
         const action = strategy.action;
-        
+
         // Ensure action has a type
         if (!action.type) {
             console.warn('Strategy action missing type:', action);
             return { success: false, message: 'Strategy action missing type' };
         }
-        
+
         switch (action.type) {
             case 'request_media_permission':
                 return await this.requestPermissionWithRetry(action.params);
-                
+
             case 'show_instructions':
                 return this.showInstructions(action.params);
-                
+
             case 'restart_audio_context':
                 return await this.restartAudioContext(recognition);
-                
+
             case 'enable_text_fallback':
                 return this.enableTextFallback(action.params);
-                
+
             case 'show_system_settings':
                 return this.showSystemSettings(action.params);
-                
+
             default:
                 console.warn('Unknown strategy action:', action.type);
                 return { success: false };
         }
     }
-    
+
     async executeLocalStrategy(error, recognition) {
-        console.log('Executing local fallback strategy for error:', error.error);
-        
+        // Only log for non-no-speech errors
+        if (error.error !== 'no-speech') {
+            console.log('Executing local fallback strategy for error:', error.error);
+        }
+
         // Local strategy based on error type
         switch (error.error) {
             case 'not-allowed':
             case 'permission-denied':
                 return await this.requestPermissionWithRetry({});
-                
+
             case 'no-speech':
                 // No speech detected is often not a critical error
-                return { 
-                    success: true, 
-                    message: 'No speech detected - continuing to listen' 
+                return {
+                    success: true,
+                    message: 'No speech detected - continuing to listen'
                 };
-                
+
             case 'audio-capture':
                 // Try to restart audio context
                 return await this.restartAudioContext(recognition);
-                
+
             case 'network':
             case 'service-not-allowed':
                 // Network errors might resolve on their own
@@ -251,66 +262,66 @@ class MLAudioHandler {
                     success: false,
                     message: 'Network or service error - will retry automatically'
                 };
-                
+
             default:
                 console.warn('No local strategy for error type:', error.error);
-                return { 
-                    success: false, 
-                    message: `Unhandled error type: ${error.error}` 
+                return {
+                    success: false,
+                    message: `Unhandled error type: ${error.error}`
                 };
         }
     }
-    
+
     async requestPermissionWithRetry(params) {
         const { retryDelays = this.config.retryDelays } = params;
-        
+
         for (let i = 0; i < retryDelays.length; i++) {
             try {
                 console.log(`Requesting microphone permission (attempt ${i + 1})`);
-                
-                const stream = await navigator.mediaDevices.getUserMedia({ 
+
+                const stream = await navigator.mediaDevices.getUserMedia({
                     audio: {
                         echoCancellation: true,
                         noiseSuppression: true,
                         autoGainControl: true
-                    } 
+                    }
                 });
-                
+
                 // Success! Clean up and report
                 stream.getTracks().forEach(track => track.stop());
-                
+
                 this.sendTelemetry('recovery', {
                     method: 'request_permission',
                     attempts: i + 1,
                     success: true
                 });
-                
+
                 this.metrics.recoveries++;
-                
+
                 return {
                     success: true,
                     message: 'Microphone permission granted',
                     attempts: i + 1
                 };
-                
+
             } catch (error) {
                 console.error(`Permission attempt ${i + 1} failed:`, error);
-                
+
                 if (i < retryDelays.length - 1) {
                     await new Promise(resolve => setTimeout(resolve, retryDelays[i]));
                 }
             }
         }
-        
+
         return {
             success: false,
             message: 'Failed to obtain microphone permission after retries'
         };
     }
-    
+
     showInstructions(params) {
         const { instructions, browser } = params;
-        
+
         // Create or update instruction UI
         let instructionDiv = document.getElementById('ml-audio-instructions');
         if (!instructionDiv) {
@@ -319,7 +330,7 @@ class MLAudioHandler {
             instructionDiv.className = 'ml-audio-instructions';
             document.body.appendChild(instructionDiv);
         }
-        
+
         // Generate instruction HTML
         const html = `
             <div class="ml-instructions-container">
@@ -348,51 +359,51 @@ class MLAudioHandler {
                 </div>
             </div>
         `;
-        
+
         instructionDiv.innerHTML = html;
         instructionDiv.style.display = 'block';
-        
+
         // Add animation
         requestAnimationFrame(() => {
             instructionDiv.classList.add('ml-show');
         });
-        
+
         return { success: true, message: 'Instructions displayed' };
     }
-    
+
     async restartAudioContext(recognition) {
         try {
             // Stop current recognition
             if (recognition && recognition.stop) {
                 recognition.stop();
             }
-            
+
             // Create new audio context
             const AudioContext = window.AudioContext || window.webkitAudioContext;
             const newContext = new AudioContext();
-            
+
             // Test with getUserMedia
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const source = newContext.createMediaStreamSource(stream);
-            
+
             // Verify it works
             const analyser = newContext.createAnalyser();
             source.connect(analyser);
-            
+
             // Clean up test
             stream.getTracks().forEach(track => track.stop());
-            
+
             this.sendTelemetry('recovery', {
                 method: 'restart_audio_context',
                 success: true
             });
-            
+
             return {
                 success: true,
                 message: 'Audio context restarted successfully',
                 newContext
             };
-            
+
         } catch (error) {
             console.error('Failed to restart audio context:', error);
             return {
@@ -401,27 +412,27 @@ class MLAudioHandler {
             };
         }
     }
-    
+
     enableTextFallback(params) {
         // Emit event for UI to handle
-        window.dispatchEvent(new CustomEvent('enableTextFallback', { 
-            detail: params 
+        window.dispatchEvent(new CustomEvent('enableTextFallback', {
+            detail: params
         }));
-        
+
         this.sendTelemetry('fallback', {
             mode: 'text',
             reason: 'audio_error'
         });
-        
+
         return {
             success: true,
             message: 'Text input mode enabled'
         };
     }
-    
+
     showSystemSettings(params) {
         const { os, setting } = params;
-        
+
         // OS-specific guidance
         const guides = {
             macos: {
@@ -443,19 +454,19 @@ class MLAudioHandler {
                 ]
             }
         };
-        
+
         const instructions = guides[os]?.[setting] || ['Check system microphone settings'];
-        
+
         return this.showInstructions({
             instructions,
             browser: 'system'
         });
     }
-    
+
     // Predictive capabilities
     async predictAudioIssue() {
         if (!this.config.enableML) return null;
-        
+
         const context = {
             browser: this.browserInfo.name,
             time_of_day: new Date().getHours(),
@@ -464,33 +475,33 @@ class MLAudioHandler {
             session_duration: Date.now() - this.metrics.startTime,
             permission_state: this.permissionState
         };
-        
+
         try {
             const response = await fetch(`${API_BASE_URL}/audio/ml/predict`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(context)
             });
-            
+
             if (response.ok) {
                 const prediction = await response.json();
-                
+
                 if (prediction.probability > this.config.predictionThreshold) {
                     this.handlePrediction(prediction);
                 }
-                
+
                 return prediction;
             }
         } catch (error) {
             console.error('Prediction request failed:', error);
         }
-        
+
         return null;
     }
-    
+
     handlePrediction(prediction) {
         console.log('ML Prediction:', prediction);
-        
+
         if (prediction.probability > this.config.predictionThreshold) {
             // Proactive mitigation
             window.dispatchEvent(new CustomEvent('audioIssuePredicted', {
@@ -501,25 +512,25 @@ class MLAudioHandler {
             }));
         }
     }
-    
+
     handleAnomaly(anomaly) {
         console.warn('Audio anomaly detected:', anomaly);
-        
+
         // Log for analysis
         this.sendTelemetry('anomaly', anomaly);
-        
+
         // Notify UI
         window.dispatchEvent(new CustomEvent('audioAnomaly', {
             detail: anomaly
         }));
     }
-    
+
     // Utility methods
     detectBrowser() {
         const ua = navigator.userAgent;
         let name = 'unknown';
         let version = '';
-        
+
         if (ua.includes('Chrome') && !ua.includes('Edg')) {
             name = 'chrome';
             version = ua.match(/Chrome\/(\d+)/)?.[1] || '';
@@ -533,16 +544,16 @@ class MLAudioHandler {
             name = 'edge';
             version = ua.match(/Edg\/(\d+)/)?.[1] || '';
         }
-        
+
         return { name, version, ua };
     }
-    
+
     async checkPermissionState() {
         if ('permissions' in navigator) {
             try {
                 const result = await navigator.permissions.query({ name: 'microphone' });
                 this.permissionState = result.state;
-                
+
                 result.addEventListener('change', () => {
                     this.permissionState = result.state;
                     this.sendTelemetry('permission_change', { state: result.state });
@@ -552,7 +563,7 @@ class MLAudioHandler {
             }
         }
     }
-    
+
     getAudioContextState() {
         if (window.AudioContext || window.webkitAudioContext) {
             try {
@@ -566,11 +577,11 @@ class MLAudioHandler {
         }
         return 'unsupported';
     }
-    
+
     getRetryCount(errorCode) {
         return this.errorHistory.filter(e => e.error_code === errorCode).length;
     }
-    
+
     getRecentErrors(count) {
         return this.errorHistory.slice(-count).map(e => ({
             code: e.error_code,
@@ -578,7 +589,7 @@ class MLAudioHandler {
             resolved: e.resolved
         }));
     }
-    
+
     sendTelemetry(event, data) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify({
@@ -589,26 +600,26 @@ class MLAudioHandler {
             }));
         }
     }
-    
+
     updateMetrics(metrics) {
         console.log('ML Audio Metrics:', metrics);
         this.metrics = { ...this.metrics, ...metrics };
-        
+
         // Emit metrics update event
         window.dispatchEvent(new CustomEvent('audioMetricsUpdate', {
             detail: this.metrics
         }));
     }
-    
+
     // Public methods for UI integration
     async retryPermission() {
         return await this.requestPermissionWithRetry({});
     }
-    
+
     enableTextMode() {
         return this.enableTextFallback({ showKeyboard: true });
     }
-    
+
     getMetrics() {
         return {
             ...this.metrics,

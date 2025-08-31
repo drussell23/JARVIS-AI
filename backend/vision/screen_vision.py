@@ -24,9 +24,19 @@ logger = logging.getLogger(__name__)
 
 # Import Claude Vision Analyzer if available
 try:
-    from .claude_vision_analyzer import ClaudeVisionAnalyzer
+    from .optimized_claude_vision import (
+        OptimizedClaudeVisionAnalyzer as ClaudeVisionAnalyzer,
+    )
+
+    logger.info("Using optimized Claude Vision analyzer")
 except ImportError:
-    ClaudeVisionAnalyzer = None
+    try:
+        from .claude_vision_analyzer import ClaudeVisionAnalyzer
+
+        logger.info("Using standard Claude Vision analyzer")
+    except ImportError:
+        ClaudeVisionAnalyzer = None
+
 
 class UpdateType(Enum):
     """Types of software updates that can be detected"""
@@ -37,6 +47,7 @@ class UpdateType(Enum):
     SECURITY_UPDATE = "security_update"
     SYSTEM_NOTIFICATION = "system_notification"
 
+
 @dataclass
 class ScreenElement:
     """Represents a detected element on screen"""
@@ -46,6 +57,7 @@ class ScreenElement:
     location: Tuple[int, int, int, int]  # x, y, width, height
     confidence: float
     metadata: Optional[Dict] = None
+
 
 @dataclass
 class UpdateNotification:
@@ -59,6 +71,7 @@ class UpdateNotification:
     detected_at: datetime
     screenshot_region: Optional[Tuple[int, int, int, int]] = None
 
+
 class ScreenVisionSystem:
     """Computer vision system for understanding macOS screen content"""
 
@@ -68,7 +81,7 @@ class ScreenVisionSystem:
         self.notification_patterns = self._initialize_notification_patterns()
         self.last_scan_time = None
         self.detected_updates = []
-        
+
         # Initialize Claude Vision Analyzer if API key is available
         self.claude_analyzer = None
         api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -203,7 +216,7 @@ class ScreenVisionSystem:
 
             # Convert BGRA to RGB (skip alpha channel)
             image = image[:, :, [2, 1, 0]]  # BGR to RGB
-            
+
             # Convert numpy array to PIL Image
             pil_image = Image.fromarray(image)
             return pil_image
@@ -424,7 +437,7 @@ class ScreenVisionSystem:
         """Get comprehensive context about what's on screen"""
         # Capture screen
         pil_image = await self.capture_screen(region)
-        
+
         if pil_image is None:
             # Return minimal context if screen capture failed
             return {
@@ -433,12 +446,12 @@ class ScreenVisionSystem:
                 "text_elements": [],
                 "ui_elements": [],
                 "detected_apps": [],
-                "potential_updates": 0
+                "potential_updates": 0,
             }
 
         # Convert PIL Image to numpy array for OpenCV operations
         image_array = np.array(pil_image)
-        
+
         # Extract all elements
         text_elements = await self.detect_text_regions(image_array)
         ui_elements = await self.detect_ui_elements(image_array)
@@ -500,7 +513,7 @@ class ScreenVisionSystem:
         """Capture screen and provide a natural language description"""
         # First, try to capture the screen to test permissions
         test_capture = await self.capture_screen()
-        
+
         # Check if screen capture is working
         if test_capture is None:
             return (
@@ -508,7 +521,7 @@ class ScreenVisionSystem:
                 "Please ensure I have screen recording permission in "
                 "System Preferences → Security & Privacy → Privacy → Screen Recording."
             )
-            
+
         # Skip context analysis - go directly to Claude Vision
         # context = await self.get_screen_context()
 
@@ -526,8 +539,10 @@ class ScreenVisionSystem:
             try:
                 # Pass PIL Image directly to Claude analyzer (it handles conversion)
                 prompt = "Please analyze this screenshot and describe what the user appears to be working on. Be specific about the applications open, the content visible, and any relevant details you can see."
-                claude_analysis = await self.claude_analyzer.analyze_screenshot(test_capture, prompt)
-                
+                claude_analysis = await self.claude_analyzer.analyze_screenshot(
+                    test_capture, prompt
+                )
+
                 # Return ONLY Claude's analysis - no generic fallbacks
                 if claude_analysis and claude_analysis.get("description"):
                     return f"Yes sir, I can see your screen. {claude_analysis['description']}"
@@ -543,6 +558,7 @@ class ScreenVisionSystem:
                 return "I need an Anthropic API key to analyze your screen. Please configure ANTHROPIC_API_KEY in your environment."
             else:
                 return "Claude Vision analyzer is not initialized. Please check the system logs."
+
 
 # Integration with JARVIS
 class JARVISVisionIntegration:
@@ -574,7 +590,10 @@ class JARVISVisionIntegration:
         ):
             description = await self.vision.capture_and_describe()
             # Remove "Sir," prefix since description already starts appropriately
-            if "can you see my screen" in command_lower or "do you see my screen" in command_lower:
+            if (
+                "can you see my screen" in command_lower
+                or "do you see my screen" in command_lower
+            ):
                 return description  # Returns "Yes sir, I can see your screen..."
             else:
                 return f"Sir, {description}"

@@ -17,6 +17,7 @@ from fastapi import (
     HTTPException,
     WebSocket,
     WebSocketDisconnect,
+    Request,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -191,7 +192,7 @@ except ImportError as e:
 # Enable JARVIS voice API
 JARVIS_VOICE_AVAILABLE = True
 try:
-    from voice.jarvis_agent_voice import JarvisVoiceAgent
+    from voice.jarvis_agent_voice import JARVISAgentVoice
 
     logger.info("JARVIS voice API imported successfully")
 except ImportError as e:
@@ -767,16 +768,14 @@ async def initialize_vision_discovery_async():
         logger.info("System will continue without vision discovery")
 
 
-# Create FastAPI app
-logger.info("Creating FastAPI app...")
-app = FastAPI()
-logger.info("FastAPI app created")
+# Lifespan context manager for startup/shutdown
+from contextlib import asynccontextmanager
 
 
-# Startup event
-@app.on_event("startup")
-async def startup_event():
-    """Initialize async components on startup with smart resource management"""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown events"""
+    # Startup
     logger.info("🚀 Starting up AI-Powered Chatbot with smart startup manager...")
 
     try:
@@ -804,6 +803,19 @@ async def startup_event():
         logger.error(f"❌ Startup warning: {e}")
         # Don't raise - let the server start anyway with minimal functionality
         logger.info("⚡ Starting with minimal functionality...")
+
+    yield  # Server is running
+
+    # Shutdown
+    logger.info("Shutting down...")
+    if MEMORY_MANAGER_AVAILABLE:
+        await memory_manager.stop_monitoring()
+
+
+# Create FastAPI app
+logger.info("Creating FastAPI app...")
+app = FastAPI(lifespan=lifespan)
+logger.info("FastAPI app created")
 
 
 # Enable CORS for all origins (adjust for production)
@@ -1030,24 +1042,49 @@ def is_vision_command(command_text: str) -> bool:
 
 
 async def handle_vision_command_request(command_text: str) -> str:
-    """Handles a command by forwarding it to the vision service."""
+    """Handles a command by processing it directly with vision system."""
     try:
-        async with httpx.AsyncClient() as client:
-            # Use the /vision/command endpoint for better handling
-            response = await client.post(
-                f"{VISION_SERVICE_URL}/vision/command",
-                json={"command": command_text, "use_claude": True},
-                timeout=30.0,  # Add a timeout
-            )
-            response.raise_for_status()
-            vision_data = response.json()
-            return vision_data.get("response", "I was unable to analyze the screen.")
-    except httpx.TimeoutException:
-        logger.error("Request to vision service timed out.")
-        return "My vision system is taking too long to respond. There might be an issue with screen capture permissions."
-    except httpx.RequestError as e:
-        logger.error(f"Could not connect to vision service: {e}")
-        return "I'm having trouble connecting to my vision system. Please ensure it's running correctly."
+        logger.info(f"Vision command received: {command_text}")
+
+        # Check if we have the vision chatbot available
+        chatbot_api = getattr(app.state, "chatbot_api", None)
+        logger.info(f"Chatbot API available: {chatbot_api is not None}")
+        if chatbot_api:
+            logger.info(f"Bot available: {hasattr(chatbot_api, 'bot')}")
+            if hasattr(chatbot_api, "bot"):
+                logger.info(f"Bot type: {type(chatbot_api.bot).__name__}")
+                logger.info(
+                    f"Has analyze_screen_with_vision: {hasattr(chatbot_api.bot, 'analyze_screen_with_vision')}"
+                )
+
+        if (
+            chatbot_api
+            and hasattr(chatbot_api, "bot")
+            and hasattr(chatbot_api.bot, "analyze_screen_with_vision")
+        ):
+            # Use the Claude Vision chatbot directly
+            logger.info("Using Claude Vision API for screen analysis")
+            response = await chatbot_api.bot.analyze_screen_with_vision(command_text)
+            return response
+        else:
+            # If vision chatbot not available, fall back to HTTP request
+            logger.warning("Vision chatbot not available, falling back to HTTP request")
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        f"{VISION_SERVICE_URL}/vision/command",
+                        json={"command": command_text, "use_claude": True},
+                        timeout=30.0,
+                    )
+                    response.raise_for_status()
+                    vision_data = response.json()
+                    return vision_data.get(
+                        "response", "I was unable to analyze the screen."
+                    )
+            except Exception as e:
+                logger.error(f"HTTP request failed: {e}")
+                return "I'm having trouble accessing my vision capabilities."
+
     except Exception as e:
         logger.error(f"An unexpected error occurred during vision processing: {e}")
         return "I encountered an unexpected error with my vision system."
@@ -1196,6 +1233,40 @@ async def audio_ml_predict():
     return {"prediction": "normal", "confidence": 0.9, "audio_health": "good"}
 
 
+@app.post("/audio/ml/error")
+async def audio_ml_error(request: Request):
+    """Handle ML audio errors"""
+    try:
+        error_data = await request.json()
+        error_type = error_data.get("error", "unknown")
+
+        # Handle different error types
+        if error_type == "no-speech":
+            # This is expected when there's silence - not really an error
+            return {
+                "handled": True,
+                "action": "continue",
+                "message": "No speech detected - this is normal during silence",
+            }
+        elif error_type == "network":
+            return {
+                "handled": True,
+                "action": "retry",
+                "message": "Network error - will retry",
+            }
+        else:
+            # Log unexpected errors
+            logger.warning(f"ML Audio error reported: {error_type}")
+            return {
+                "handled": True,
+                "action": "continue",
+                "message": f"Error acknowledged: {error_type}",
+            }
+    except Exception as e:
+        logger.error(f"Error handling ML audio error: {e}")
+        return {"handled": False, "message": str(e)}
+
+
 # WebSocket endpoints with minimal implementation
 @app.websocket("/voice/jarvis/stream")
 async def jarvis_websocket(websocket: WebSocket):
@@ -1223,9 +1294,35 @@ async def jarvis_websocket(websocket: WebSocket):
                 if not command_text:
                     continue
 
+                # Send processing status immediately
+                if is_vision_command(command_text):
+                    await websocket.send_json(
+                        {
+                            "type": "processing",
+                            "status": "processing",
+                            "message": "Let me take a look at your screen...",
+                        }
+                    )
+                else:
+                    await websocket.send_json(
+                        {
+                            "type": "processing",
+                            "status": "processing",
+                            "message": "Processing your request...",
+                        }
+                    )
+
                 # Route command to vision or chatbot
                 if is_vision_command(command_text):
+                    logger.info(f"Vision command detected in WebSocket: {command_text}")
+                    import time
+
+                    start_time = time.time()
                     response_text = await handle_vision_command_request(command_text)
+                    end_time = time.time()
+                    logger.info(
+                        f"Vision command processing took {end_time - start_time:.2f} seconds"
+                    )
                 else:
                     chatbot_api = getattr(app.state, "chatbot_api", None)
                     response_text = await handle_chatbot_command(

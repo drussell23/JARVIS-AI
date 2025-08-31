@@ -7,12 +7,13 @@ import os
 import logging
 import asyncio
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import base64
 import io
 from PIL import Image
 import numpy as np
+import hashlib
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,11 @@ You excel at understanding context and providing insightful, well-structured res
         self.conversation_history: List[Dict[str, str]] = []
         self.max_history_length = 10
         
+        # Screenshot cache (cache for 5 seconds to handle repeated requests)
+        self._screenshot_cache = None
+        self._screenshot_cache_time = None
+        self._screenshot_cache_duration = timedelta(seconds=5)
+        
         # Vision command patterns
         self.vision_patterns = [
             "can you see my screen",
@@ -108,11 +114,22 @@ You excel at understanding context and providing insightful, well-structured res
         return any(pattern in input_lower for pattern in self.vision_patterns)
         
     async def capture_screenshot(self) -> Optional[Image.Image]:
-        """Capture the current screen"""
+        """Capture the current screen with caching"""
+        # Check cache first
+        if (self._screenshot_cache is not None and 
+            self._screenshot_cache_time is not None and 
+            datetime.now() - self._screenshot_cache_time < self._screenshot_cache_duration):
+            logger.info("Using cached screenshot")
+            return self._screenshot_cache
+            
         # Try pyautogui first
         if SCREENSHOT_AVAILABLE:
             try:
-                screenshot = pyautogui.screenshot()
+                # Run in thread pool to avoid blocking
+                screenshot = await asyncio.to_thread(pyautogui.screenshot)
+                # Cache the screenshot
+                self._screenshot_cache = screenshot
+                self._screenshot_cache_time = datetime.now()
                 return screenshot
             except Exception as e:
                 logger.warning(f"PyAutoGUI screenshot failed: {e}")
@@ -142,28 +159,62 @@ You excel at understanding context and providing insightful, well-structured res
     async def analyze_screen_with_vision(self, user_input: str) -> str:
         """Analyze the screen using Claude's vision capabilities"""
         try:
+            total_start = datetime.now()
+            
             # Capture screenshot
+            capture_start = datetime.now()
             screenshot = await self.capture_screenshot()
+            capture_time = (datetime.now() - capture_start).total_seconds()
+            logger.info(f"Screenshot capture took {capture_time:.2f}s")
+            
             if not screenshot:
                 return "I apologize, sir, but I'm unable to capture your screen at the moment. Please ensure screen recording permissions are enabled in System Preferences > Security & Privacy > Privacy > Screen Recording."
                 
-            # Convert to base64 for Claude API
+            # Resize image for faster processing if it's too large
+            encode_start = datetime.now()
+            max_dimension = 1920  # Reasonable size for Claude
+            if screenshot.width > max_dimension or screenshot.height > max_dimension:
+                ratio = min(max_dimension / screenshot.width, max_dimension / screenshot.height)
+                new_size = (int(screenshot.width * ratio), int(screenshot.height * ratio))
+                screenshot = screenshot.resize(new_size, Image.Resampling.LANCZOS)
+                logger.info(f"Resized screenshot to {new_size[0]}x{new_size[1]}")
+            
+            # Convert to base64 for Claude API with optimization
             buffer = io.BytesIO()
-            screenshot.save(buffer, format="PNG")
+            # Convert RGBA to RGB if needed for JPEG
+            if screenshot.mode == 'RGBA':
+                # Create a white background
+                rgb_image = Image.new('RGB', screenshot.size, (255, 255, 255))
+                rgb_image.paste(screenshot, mask=screenshot.split()[3])  # Use alpha channel as mask
+                screenshot = rgb_image
+            # Use JPEG for smaller file size and faster encoding
+            screenshot.save(buffer, format="JPEG", quality=85, optimize=True)
             image_base64 = base64.b64encode(buffer.getvalue()).decode()
+            encode_time = (datetime.now() - encode_start).total_seconds()
+            logger.info(f"Image encoding took {encode_time:.2f}s")
             
             # Build the vision message
             messages = self._build_messages_with_vision(user_input, image_base64)
             
             # Make API call with vision
-            start_time = datetime.now()
+            api_start = datetime.now()
+            
+            # Use a faster model for quick vision checks if available
+            vision_model = self.model
+            if "can you see" in user_input.lower() and "claude-3-haiku" in self.model:
+                # For simple "can you see" queries, we can use the same model
+                pass
+            
+            # For vision requests, we can't stream unfortunately
+            # But we can use a shorter system prompt for faster processing
+            quick_system_prompt = "You are JARVIS. You can see the user's screen. Be concise and helpful." if "can you see" in user_input.lower() else self.system_prompt
             
             response = await asyncio.to_thread(
                 self.client.messages.create,
-                model=self.model,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
-                system=self.system_prompt,
+                model=vision_model,
+                max_tokens=256 if "can you see" in user_input.lower() else self.max_tokens,
+                temperature=0.3 if "can you see" in user_input.lower() else self.temperature,
+                system=quick_system_prompt,
                 messages=messages
             )
             
@@ -171,8 +222,10 @@ You excel at understanding context and providing insightful, well-structured res
             ai_response = response.content[0].text
             
             # Log performance
-            response_time = (datetime.now() - start_time).total_seconds()
-            logger.info(f"Claude vision API call completed in {response_time:.2f}s")
+            api_time = (datetime.now() - api_start).total_seconds()
+            total_time = (datetime.now() - total_start).total_seconds()
+            logger.info(f"Claude API call took {api_time:.2f}s")
+            logger.info(f"Total vision processing took {total_time:.2f}s")
             
             # Update conversation history
             self._update_history(user_input, ai_response)
@@ -203,7 +256,7 @@ You excel at understanding context and providing insightful, well-structured res
                     "type": "image",
                     "source": {
                         "type": "base64",
-                        "media_type": "image/png",
+                        "media_type": "image/jpeg",
                         "data": image_base64
                     }
                 },
