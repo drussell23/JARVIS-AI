@@ -323,10 +323,6 @@ const JarvisVoice = () => {
     window.addEventListener('audioMetricsUpdate', handleAudioMetrics);
     window.addEventListener('enableTextFallback', handleTextFallback);
 
-    // Set up speech manager callback
-    speechManager.setSpeakingChangeCallback((isSpeaking) => {
-      setIsJarvisSpeaking(isSpeaking);
-    });
 
     // Initialize Vision Connection
     if (!visionConnectionRef.current) {
