@@ -70,8 +70,7 @@ class AsyncSystemManager:
             "websocket_router": 8001,  # TypeScript WebSocket Router
             "frontend": 3000,
             "llama_cpp": 8080,
-            "event_ui": 8888,  # Event-driven UI
-            "performance_dashboard": 8889,  # Performance monitoring
+            "event_ui": 8888  # Event-driven UI
         }
         self.is_m1_mac = platform.system() == "Darwin" and platform.machine() == "arm64"
         self.claude_configured = False
@@ -511,7 +510,6 @@ class AsyncSystemManager:
         # Kill any existing processes
         for port_name, port in [
             ("event_ui", 8888),
-            ("performance_dashboard", 8889),
             ("main_api", self.ports["main_api"]),
         ]:
             if not await self.check_port_available(port):
@@ -529,7 +527,6 @@ class AsyncSystemManager:
             env = os.environ.copy()
             env["PYTHONPATH"] = str(self.backend_dir)
             env["JARVIS_USER"] = os.getenv("JARVIS_USER", "Sir")
-            env["JARVIS_PERFORMANCE_DASHBOARD"] = "true"
 
             # Set Swift library path
             swift_lib_path = str(
@@ -638,7 +635,6 @@ class AsyncSystemManager:
         env = os.environ.copy()
         env["PYTHONPATH"] = str(self.backend_dir)
         env["JARVIS_USER"] = os.getenv("JARVIS_USER", "Sir")
-        env["JARVIS_PERFORMANCE_DASHBOARD"] = "true"
 
         # Set Swift library path
         swift_lib_path = str(self.backend_dir / "swift_bridge" / ".build" / "release")
@@ -677,9 +673,6 @@ class AsyncSystemManager:
         )
         print(f"{Colors.GREEN}✓ Resource management initialized{Colors.ENDC}")
         print(f"{Colors.GREEN}✓ Health monitoring active{Colors.ENDC}")
-        print(
-            f"{Colors.GREEN}✓ Performance dashboard at http://localhost:8889{Colors.ENDC}"
-        )
         print(f"{Colors.GREEN}✓ Event UI at http://localhost:8888{Colors.ENDC}")
 
         return process
@@ -893,11 +886,6 @@ class AsyncSystemManager:
                 print(f"{Colors.GREEN}✓ Event UI ready{Colors.ENDC}")
                 services.append("event_ui")
 
-            # Check performance dashboard
-            perf_url = f"http://localhost:{self.ports['performance_dashboard']}/"
-            if await self.wait_for_service(perf_url, timeout=10):
-                print(f"{Colors.GREEN}✓ Performance Dashboard ready{Colors.ENDC}")
-                services.append("performance_dashboard")
 
         # Check frontend
         if self.frontend_dir.exists() and not self.backend_only:
@@ -929,9 +917,6 @@ class AsyncSystemManager:
             print(
                 f"  • Event UI: {Colors.GREEN}http://localhost:{self.ports['event_ui']}/{Colors.ENDC}"
             )
-            print(
-                f"  • Performance: {Colors.GREEN}http://localhost:{self.ports['performance_dashboard']}/{Colors.ENDC}"
-            )
 
         print(f"\n{Colors.CYAN}Voice Commands:{Colors.ENDC}")
         print(f"  • Say '{Colors.GREEN}Hey JARVIS{Colors.ENDC}' to activate")
@@ -944,7 +929,6 @@ class AsyncSystemManager:
             print(f"  • Memory target: 4GB max")
             print(f"  • Swift monitoring: 0.41ms overhead")
             print(f"  • Emergency cleanup: Automatic")
-            print(f"  • View metrics in Performance Dashboard")
 
         print(f"\n{Colors.YELLOW}Press Ctrl+C to stop{Colors.ENDC}")
 
@@ -953,7 +937,7 @@ class AsyncSystemManager:
         print(f"\n{Colors.BLUE}Monitoring services...{Colors.ENDC}")
 
         last_health_check = time.time()
-        consecutive_failures = {"backend": 0, "performance": 0}
+        consecutive_failures = {"backend": 0}
 
         try:
             while True:
@@ -987,35 +971,6 @@ class AsyncSystemManager:
                     except:
                         consecutive_failures["backend"] += 1
 
-                    # Check performance dashboard (if optimized)
-                    if self.use_optimized:
-                        try:
-                            async with aiohttp.ClientSession() as session:
-                                async with session.get(
-                                    f"http://localhost:{self.ports['performance_dashboard']}/api/system/status",
-                                    timeout=2,
-                                ) as resp:
-                                    if resp.status == 200:
-                                        consecutive_failures["performance"] = 0
-
-                                        # Log some metrics
-                                        data = await resp.json()
-                                        memory_gb = data.get("memory_usage_gb", 0)
-                                        cpu_percent = data.get("cpu_percent", 0)
-
-                                        if memory_gb > 4.0:
-                                            print(
-                                                f"\n{Colors.WARNING}⚠ High memory usage: {memory_gb:.1f}GB (target: 4GB){Colors.ENDC}"
-                                            )
-
-                                        if cpu_percent > 25:
-                                            print(
-                                                f"\n{Colors.WARNING}⚠ High CPU usage: {cpu_percent:.1f}% (target: <25%){Colors.ENDC}"
-                                            )
-                                    else:
-                                        consecutive_failures["performance"] += 1
-                        except:
-                            consecutive_failures["performance"] += 1
 
                     # Alert on repeated failures
                     for service, failures in consecutive_failures.items():
@@ -1127,12 +1082,7 @@ class AsyncSystemManager:
         if not self.no_browser:
             await asyncio.sleep(2)
 
-            if self.use_optimized:
-                # Open performance dashboard for optimized mode
-                webbrowser.open(
-                    f"http://localhost:{self.ports['performance_dashboard']}/"
-                )
-            elif self.frontend_dir.exists() and not self.backend_only:
+            if self.frontend_dir.exists() and not self.backend_only:
                 webbrowser.open(f"http://localhost:{self.ports['frontend']}/")
             else:
                 webbrowser.open(f"http://localhost:{self.ports['main_api']}/docs")

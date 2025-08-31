@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from chatbots.claude_chatbot import ClaudeChatbot  # Import the ClaudeChatbot class
 import asyncio
 import json
+import time
 from typing import Optional, List, Dict, Any
 import logging
 
@@ -213,6 +214,9 @@ class ChatbotAPI:
                         for char in response:
                             yield char
                     
+                    async def generate_response(self, user_input):
+                        return f"Echo: {user_input}"
+                    
                     async def get_response(self, prompt):
                         return f"Echo: {prompt}"
                     
@@ -268,6 +272,9 @@ class ChatbotAPI:
                     response = f"Echo: {user_input}"
                     for char in response:
                         yield char
+                
+                async def generate_response(self, user_input):
+                    return f"Echo: {user_input}"
                 
                 async def get_response(self, prompt):
                     return f"Echo: {prompt}"
@@ -967,8 +974,8 @@ async def jarvis_command(command: JarvisCommand):
         # Use the chatbot to process the command with JARVIS personality
         jarvis_prompt = f"You are JARVIS, Tony Stark's AI assistant. Respond to this command in character: {command.command}"
         
-        if hasattr(chatbot_api.bot, 'get_response'):
-            response = await chatbot_api.bot.get_response(jarvis_prompt)
+        if hasattr(chatbot_api.bot, 'generate_response'):
+            response = await chatbot_api.bot.generate_response(jarvis_prompt)
         else:
             # Fallback response
             response = f"Processing command: {command.command}"
@@ -1138,6 +1145,7 @@ async def get_model_status():
             return model_loader.get_status()
         else:
             return {"status": "model loading disabled", "models_loaded": 0}
+
 
 
 # Health check endpoint
