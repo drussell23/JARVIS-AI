@@ -9,16 +9,29 @@ os.environ["USE_TF"] = "0"  # Disable TensorFlow in transformers
 
 # Skip TensorFlow - not needed for basic operation
 
-from fastapi import FastAPI, APIRouter, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    APIRouter,
+    UploadFile,
+    File,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
 try:
-    from chatbots.claude_vision_chatbot import ClaudeVisionChatbot  # Try vision-enabled chatbot first
+    from chatbots.claude_vision_chatbot import (
+        ClaudeVisionChatbot,
+    )  # Try vision-enabled chatbot first
+
     VISION_CHATBOT_AVAILABLE = True
 except ImportError:
     from chatbots.claude_chatbot import ClaudeChatbot  # Fall back to regular chatbot
+
     VISION_CHATBOT_AVAILABLE = False
 import asyncio
 import json
@@ -45,50 +58,61 @@ logger.info("Starting main.py imports...")
 try:
     from memory.memory_manager import M1MemoryManager, ComponentPriority
     from memory.memory_api import MemoryAPI, create_memory_alert_callback
+
     MEMORY_MANAGER_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Memory manager not available: {e}")
     MEMORY_MANAGER_AVAILABLE = False
+
     # Create stub classes
     class M1MemoryManager:
         def __init__(self):
             pass
+
         async def start_monitoring(self):
             pass
+
         async def get_memory_snapshot(self):
             from types import SimpleNamespace
+
             return SimpleNamespace(
                 state=SimpleNamespace(value="normal"),
                 percent=0.5,
-                available=8*1024*1024*1024,
-                total=16*1024*1024*1024
+                available=8 * 1024 * 1024 * 1024,
+                total=16 * 1024 * 1024 * 1024,
             )
+
         def register_component(self, *args, **kwargs):
             pass
+
         @property
         def is_m1(self):
             return True
+
         @property
         def components(self):
             return {}
-    
+
     class ComponentPriority:
         CRITICAL = 5
         HIGH = 4
         MEDIUM = 3
         LOW = 2
         MINIMAL = 1
-    
+
     class MemoryAPI:
         def __init__(self, manager):
             self.router = APIRouter()
             self.router.add_api_route("/status", self.get_status, methods=["GET"])
+
         async def get_status(self):
             return {"status": "memory management disabled"}
+
 
 # Apply model loader patch to prevent loading 197 models
 try:
     from utils.model_loader_patch import patch_model_discovery
+
     patch_model_discovery()
     logger.info("Model loader patch applied")
 except Exception as e:
@@ -97,20 +121,27 @@ except Exception as e:
 # Import progressive model loader to prevent blocking
 try:
     from utils.progressive_model_loader import model_loader
+
     MODEL_LOADER_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Progressive model loader not available: {e}")
     MODEL_LOADER_AVAILABLE = False
+
     # Create stub
     class ModelLoader:
         def get_status(self):
             return {"status": "model loader disabled"}
+
     model_loader = ModelLoader()
 
 # Import ML model loader for parallel initialization
 try:
     from ml_model_loader import initialize_models, get_loader_status
-    from api.model_status_api import router as model_status_router, broadcast_model_status
+    from api.model_status_api import (
+        router as model_status_router,
+        broadcast_model_status,
+    )
+
     ML_MODEL_LOADER_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"ML model loader not available: {e}")
@@ -198,49 +229,54 @@ class ChatbotAPI:
             if not claude_api_key:
                 logger.warning("ANTHROPIC_API_KEY not found in environment variables")
                 logger.info("Creating minimal chatbot for testing")
+
                 # Create minimal chatbot that just echoes
                 class MinimalChatbot:
                     def __init__(self):
                         self.model_name = "minimal-echo"
                         self.model = "minimal"
                         self.conversation_history = []
-                    
+
                     async def generate_response_with_context(self, user_input):
                         response = f"Echo: {user_input}"
-                        self.conversation_history.append({"role": "user", "content": user_input})
-                        self.conversation_history.append({"role": "assistant", "content": response})
+                        self.conversation_history.append(
+                            {"role": "user", "content": user_input}
+                        )
+                        self.conversation_history.append(
+                            {"role": "assistant", "content": response}
+                        )
                         return {
                             "response": response,
                             "conversation_id": "test",
-                            "message_count": len(self.conversation_history)
+                            "message_count": len(self.conversation_history),
                         }
-                    
+
                     async def generate_response_stream(self, user_input):
                         response = f"Echo: {user_input}"
                         for char in response:
                             yield char
-                    
+
                     async def generate_response(self, user_input):
                         return f"Echo: {user_input}"
-                    
+
                     async def get_response(self, prompt):
                         return f"Echo: {prompt}"
-                    
+
                     async def get_conversation_history(self):
                         return self.conversation_history
-                    
+
                     async def clear_history(self):
                         self.conversation_history = []
-                    
+
                     def set_system_prompt(self, prompt):
                         pass
-                    
+
                     def is_available(self):
                         return True
-                    
+
                     def get_usage_stats(self):
                         return {"requests": len(self.conversation_history) // 2}
-                
+
                 self.bot = MinimalChatbot()
             else:
                 logger.info("Initializing Claude-powered chatbot")
@@ -250,7 +286,9 @@ class ChatbotAPI:
                     logger.info("Using vision-enabled Claude chatbot")
                     self.bot = ClaudeVisionChatbot(
                         api_key=claude_api_key,
-                        model=os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-20241022"),  # Vision model
+                        model=os.getenv(
+                            "CLAUDE_MODEL", "claude-3-5-sonnet-20241022"
+                        ),  # Vision model
                         max_tokens=int(os.getenv("CLAUDE_MAX_TOKENS", "1024")),
                         temperature=float(os.getenv("CLAUDE_TEMPERATURE", "0.7")),
                     )
@@ -268,48 +306,53 @@ class ChatbotAPI:
             logger.error(f"Failed to initialize chatbot: {e}")
             # Create minimal fallback
             logger.info("Creating minimal chatbot as fallback")
+
             class MinimalChatbot:
                 def __init__(self):
                     self.model_name = "minimal-echo"
                     self.model = "minimal"
                     self.conversation_history = []
-                
+
                 async def generate_response_with_context(self, user_input):
                     response = f"Echo: {user_input}"
-                    self.conversation_history.append({"role": "user", "content": user_input})
-                    self.conversation_history.append({"role": "assistant", "content": response})
+                    self.conversation_history.append(
+                        {"role": "user", "content": user_input}
+                    )
+                    self.conversation_history.append(
+                        {"role": "assistant", "content": response}
+                    )
                     return {
                         "response": response,
                         "conversation_id": "test",
-                        "message_count": len(self.conversation_history)
+                        "message_count": len(self.conversation_history),
                     }
-                
+
                 async def generate_response_stream(self, user_input):
                     response = f"Echo: {user_input}"
                     for char in response:
                         yield char
-                
+
                 async def generate_response(self, user_input):
                     return f"Echo: {user_input}"
-                
+
                 async def get_response(self, prompt):
                     return f"Echo: {prompt}"
-                
+
                 async def get_conversation_history(self):
                     return self.conversation_history
-                
+
                 async def clear_history(self):
                     self.conversation_history = []
-                
+
                 def set_system_prompt(self, prompt):
                     pass
-                
+
                 def is_available(self):
                     return True
-                
+
                 def get_usage_stats(self):
                     return {"requests": len(self.conversation_history) // 2}
-            
+
             self.bot = MinimalChatbot()
         # Create a router for our endpoints
         self.router = APIRouter()
@@ -688,7 +731,7 @@ async def initialize_bridge_async():
 async def initialize_vision_discovery_async():
     """Initialize the vision discovery system asynchronously"""
     try:
-        # Skip vision discovery initialization  
+        # Skip vision discovery initialization
         pass
         logger.info("Vision discovery system initialized successfully")
     except Exception as e:
@@ -712,7 +755,7 @@ async def startup_event():
         # Store the chatbot API instance in app state for WebSocket access
         app.state.chatbot_api = chatbot_api
         logger.info("✅ Chatbot API stored in app state")
-        
+
         # Start memory monitoring if available
         if MEMORY_MANAGER_AVAILABLE:
             await memory_manager.start_monitoring()
@@ -980,12 +1023,14 @@ async def jarvis_status():
         "status": "online",
         "jarvis_available": True,
         "mode": "minimal",
-        "message": "JARVIS voice in minimal mode"
+        "message": "JARVIS voice in minimal mode",
     }
+
 
 # Add command endpoint for JARVIS text commands
 class JarvisCommand(BaseModel):
     command: str
+
 
 @app.post("/voice/jarvis/command")
 async def jarvis_command(command: JarvisCommand):
@@ -993,26 +1038,27 @@ async def jarvis_command(command: JarvisCommand):
     try:
         # Use the chatbot to process the command with JARVIS personality
         jarvis_prompt = f"You are JARVIS, Tony Stark's AI assistant. Respond to this command in character: {command.command}"
-        
-        if hasattr(chatbot_api.bot, 'generate_response'):
+
+        if hasattr(chatbot_api.bot, "generate_response"):
             response = await chatbot_api.bot.generate_response(jarvis_prompt)
         else:
             # Fallback response
             response = f"Processing command: {command.command}"
-        
+
         return {
             "success": True,
             "response": response,
             "command": command.command,
-            "mode": "text"
+            "mode": "text",
         }
     except Exception as e:
         logger.error(f"Error processing JARVIS command: {e}")
         return {
             "success": False,
             "error": str(e),
-            "response": "I apologize, sir. I encountered an error processing your command."
+            "response": "I apologize, sir. I encountered an error processing your command.",
         }
+
 
 @app.get("/audio/ml/config")
 async def audio_ml_config():
@@ -1023,17 +1069,15 @@ async def audio_ml_config():
         "format": "int16",
         "chunk_size": 1024,
         "vad_enabled": True,
-        "wake_word": "hey jarvis"
+        "wake_word": "hey jarvis",
     }
+
 
 @app.post("/audio/ml/predict")
 async def audio_ml_predict():
     """Stub endpoint for ML audio prediction"""
-    return {
-        "prediction": "normal",
-        "confidence": 0.9,
-        "audio_health": "good"
-    }
+    return {"prediction": "normal", "confidence": 0.9, "audio_health": "good"}
+
 
 # WebSocket endpoints with minimal implementation
 @app.websocket("/voice/jarvis/stream")
@@ -1041,115 +1085,133 @@ async def jarvis_websocket(websocket: WebSocket):
     """Minimal WebSocket endpoint for JARVIS voice"""
     await websocket.accept()
     logger.info("JARVIS WebSocket connected")
-    
+
     try:
         # Send initial connection message
-        await websocket.send_json({
-            "type": "connection",
-            "status": "connected",
-            "message": "JARVIS voice stream connected (minimal mode)"
-        })
-        
+        await websocket.send_json(
+            {
+                "type": "connection",
+                "status": "connected",
+                "message": "JARVIS voice stream connected (minimal mode)",
+            }
+        )
+
         # Keep connection alive and echo messages
         while True:
             try:
                 data = await websocket.receive_text()
                 # Parse the message
                 try:
-                    msg = json.loads(data) if data.startswith('{') else {"text": data}
+                    msg = json.loads(data) if data.startswith("{") else {"text": data}
                 except:
                     msg = {"text": data}
-                
+
                 # Get the text from the message
-                command_text = msg.get('text', data) if isinstance(msg, dict) else data
-                
+                command_text = msg.get("text", data) if isinstance(msg, dict) else data
+
                 # Check for vision command
                 if command_text and "see my screen" in command_text.lower():
                     try:
                         async with httpx.AsyncClient() as client:
-                            response = await client.post("http://localhost:8001/vision/capture")
+                            response = await client.post(
+                                "http://localhost:8001/vision/capture"
+                            )
                             response.raise_for_status()
                             vision_data = response.json()
-                            response_text = vision_data.get("description", "I was unable to analyze the screen.")
+                            response_text = vision_data.get(
+                                "description", "I was unable to analyze the screen."
+                            )
                     except httpx.RequestError as e:
                         logger.error(f"Could not connect to vision service: {e}")
-                        response_text = "I'm having trouble connecting to my vision system."
+                        response_text = (
+                            "I'm having trouble connecting to my vision system."
+                        )
                 # Process through the chatbot instance
                 elif command_text and command_text.strip():
                     # Get the chatbot instance from app state
-                    chatbot_api = getattr(app.state, 'chatbot_api', None)
-                    
+                    chatbot_api = getattr(app.state, "chatbot_api", None)
+
                     if chatbot_api and chatbot_api.bot:
                         # Process the command through the actual chatbot
                         try:
-                            response_text = await chatbot_api.bot.generate_response(command_text)
+                            response_text = await chatbot_api.bot.generate_response(
+                                command_text
+                            )
                         except Exception as e:
-                            logger.error(f"Error processing command through chatbot: {e}")
+                            logger.error(
+                                f"Error processing command through chatbot: {e}"
+                            )
                             response_text = "I apologize, but I encountered an error processing your request."
                     else:
                         response_text = "JARVIS system is initializing. Please try again in a moment."
-                    
-                    await websocket.send_json({
-                        "type": "response",
-                        "text": response_text,
-                        "message": response_text,
-                        "mode": "text",
-                        "timestamp": asyncio.get_event_loop().time()
-                    })
+
+                    await websocket.send_json(
+                        {
+                            "type": "response",
+                            "text": response_text,
+                            "message": response_text,
+                            "mode": "text",
+                            "timestamp": asyncio.get_event_loop().time(),
+                        }
+                    )
             except WebSocketDisconnect:
                 logger.info("JARVIS WebSocket client disconnected")
                 break
     except Exception as e:
         logger.error(f"JARVIS WebSocket error: {e}")
 
+
 @app.websocket("/audio/ml/stream")
 async def audio_ml_websocket(websocket: WebSocket):
     """Minimal WebSocket endpoint for ML audio"""
     await websocket.accept()
     logger.info("ML Audio WebSocket connected")
-    
+
     try:
         # Send initial connection message
-        await websocket.send_json({
-            "type": "connection",
-            "status": "connected",
-            "audio_health": "good"
-        })
-        
+        await websocket.send_json(
+            {"type": "connection", "status": "connected", "audio_health": "good"}
+        )
+
         # Keep connection alive and send periodic health updates
         while True:
             try:
                 message = await websocket.receive_text()
-                
+
                 # Parse the message if it's JSON
                 try:
                     data = json.loads(message)
-                    msg_type = data.get('type', 'audio_data')
+                    msg_type = data.get("type", "audio_data")
                 except:
-                    msg_type = 'audio_data'
-                
+                    msg_type = "audio_data"
+
                 # Send back appropriate response
-                if msg_type == 'config':
-                    await websocket.send_json({
-                        "type": "config",
-                        "sample_rate": 16000,
-                        "channels": 1,
-                        "format": "int16"
-                    })
+                if msg_type == "config":
+                    await websocket.send_json(
+                        {
+                            "type": "config",
+                            "sample_rate": 16000,
+                            "channels": 1,
+                            "format": "int16",
+                        }
+                    )
                 else:
                     # Send back audio health status
-                    await websocket.send_json({
-                        "type": "audio_status",
-                        "prediction": "normal",
-                        "confidence": 0.95,
-                        "audio_health": "good",
-                        "timestamp": asyncio.get_event_loop().time()
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "audio_status",
+                            "prediction": "normal",
+                            "confidence": 0.95,
+                            "audio_health": "good",
+                            "timestamp": asyncio.get_event_loop().time(),
+                        }
+                    )
             except WebSocketDisconnect:
                 logger.info("ML Audio WebSocket client disconnected")
                 break
     except Exception as e:
         logger.error(f"ML Audio WebSocket error: {e}")
+
 
 # Redirect old demo URLs to new locations
 from fastapi.responses import RedirectResponse
@@ -1192,7 +1254,6 @@ async def get_model_status():
             return model_loader.get_status()
         else:
             return {"status": "model loading disabled", "models_loaded": 0}
-
 
 
 # Health check endpoint
