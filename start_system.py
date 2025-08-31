@@ -9,11 +9,8 @@ Resource Optimized Edition with Performance Enhancements
 - Vision system optimizations (Phase 0C)
 """
 
-print("DEBUG: start_system.py starting imports...")
-import sys
-sys.stdout.flush()
-
 import os
+import sys
 import asyncio
 import signal
 import platform
@@ -1287,9 +1284,6 @@ async def shutdown_handler():
 async def main():
     """Main entry point"""
     global _manager
-    
-    print("DEBUG: In main function")
-    sys.stdout.flush()
 
     parser = argparse.ArgumentParser(
         description="J.A.R.V.I.S. Advanced AI System v12.8 - Resource Optimized Edition"
@@ -1353,8 +1347,6 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        print("DEBUG: Starting main function...")
-        sys.stdout.flush()
         exit_code = asyncio.run(main())
         sys.exit(exit_code)
     except KeyboardInterrupt:

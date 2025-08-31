@@ -810,41 +810,30 @@ app.include_router(chatbot_api.router)
 
 # Include Unified Vision Handler - Resolves all WebSocket conflicts
 try:
-    # Import the unified vision handler but don't include router
-    # The TypeScript WebSocket server will handle routing
-    # Skip unified vision handler imports
-    raise ImportError("Skipping complex vision initialization")
-
-    # Bridge will be started during app startup event
-    logger.info("Unified Vision System activated - All WebSocket conflicts resolved!")
-    ENHANCED_VISION_AVAILABLE = True
-    VISION_API_AVAILABLE = True  # For compatibility
-
-    # Include only non-WebSocket routes from vision APIs
-    # Use lazy version to prevent eager loading
-    try:
-        from api.lazy_enhanced_vision_api import router as enhanced_vision_router
-
-        logger.info("Using lazy enhanced vision API")
-    except ImportError:
-        logger.warning("Lazy vision API not available, falling back to original")
-        from api.enhanced_vision_api import router as enhanced_vision_router
-
-    # Remove WebSocket route to prevent conflicts
-    enhanced_vision_router.routes = [
+    # Import basic vision API for HTTP endpoints only
+    # WebSocket routes are handled by the TypeScript router
+    from api.vision_api import router as vision_router
+    
+    # Filter out WebSocket routes to prevent conflicts
+    vision_router.routes = [
         route
-        for route in enhanced_vision_router.routes
-        if not route.path.endswith("/ws/vision")
+        for route in vision_router.routes
+        if not hasattr(route, 'websocket_route') and not route.path.endswith("/ws")
     ]
-    app.include_router(enhanced_vision_router)
+    
+    app.include_router(vision_router)
+    logger.info("Vision API HTTP routes added successfully")
+    VISION_API_AVAILABLE = True
+    ENHANCED_VISION_AVAILABLE = True
 
-except Exception as e:
-    logger.warning(f"Failed to initialize Unified Vision System: {e}")
+except ImportError as e:
+    logger.warning(f"Failed to import vision API: {e}")
     VISION_API_AVAILABLE = False
     ENHANCED_VISION_AVAILABLE = False
-
-# Skip vision status endpoint
-VISION_API_AVAILABLE = False
+except Exception as e:
+    logger.warning(f"Failed to initialize Vision System: {e}")
+    VISION_API_AVAILABLE = False
+    ENHANCED_VISION_AVAILABLE = False
 
 # Include Voice API routes if available with memory management
 if VOICE_API_AVAILABLE:

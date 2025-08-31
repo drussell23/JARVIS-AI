@@ -276,11 +276,55 @@ class UnifiedVisionHandler:
         command = message.get("command", "")
 
         try:
+            # Check if vision system is available
+            if not self.vision_system:
+                # Fallback to basic screen capture
+                from vision.screen_capture_fallback import capture_with_intelligence
+                
+                capture_result = capture_with_intelligence(command, use_claude=True)
+                
+                if capture_result.get("success"):
+                    return {
+                        "type": "vision_result",
+                        "command": command,
+                        "result": capture_result.get("analysis", "I captured the screen successfully."),
+                        "timestamp": datetime.now().isoformat(),
+                        "fallback_used": True
+                    }
+                else:
+                    return {
+                        "type": "error",
+                        "message": capture_result.get("error", "Failed to capture screen")
+                    }
+            
             # Process command through vision system
             result = await self.vision_system.process_command(command)
 
             # Enhance with natural language
-            enhanced_result = self.response_composer.compose_response(command, result)
+            if self.response_composer:
+                # Create ResponseContext from VisionResponse
+                from vision.dynamic_response_composer import ResponseContext
+                
+                response_context = ResponseContext(
+                    intent_type=result.intent_type,
+                    confidence=result.confidence,
+                    user_name=None,  # We don't have user info here
+                    conversation_history=[],
+                    user_preferences={}
+                )
+                
+                try:
+                    if asyncio.iscoroutinefunction(self.response_composer.compose_response):
+                        generated_response = await self.response_composer.compose_response(result.message, response_context)
+                        enhanced_result = generated_response.text if hasattr(generated_response, 'text') else str(generated_response)
+                    else:
+                        generated_response = self.response_composer.compose_response(result.message, response_context)
+                        enhanced_result = generated_response.text if hasattr(generated_response, 'text') else str(generated_response)
+                except Exception as e:
+                    logger.warning(f"Response composer failed: {e}, using original message")
+                    enhanced_result = result.message
+            else:
+                enhanced_result = result.message
 
             return {
                 "type": "vision_result",

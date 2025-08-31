@@ -410,6 +410,10 @@ class LazyDynamicVisionEngine:
                 
         return "basic_capture_screen"  # Default fallback
         
+    async def process_vision_command(self, command: str) -> Dict[str, Any]:
+        """Process vision command - alias for execute_vision_command for compatibility"""
+        return await self.execute_vision_command(command)
+    
     async def execute_vision_command(self, command: str) -> Dict[str, Any]:
         """Execute vision command with zero hardcoding"""
         # Analyze intent
