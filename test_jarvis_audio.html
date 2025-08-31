@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>JARVIS Audio Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        #status {
+            margin-top: 20px;
+            padding: 10px;
+            background: #333;
+            border-radius: 5px;
+        }
+        .error {
+            color: #ff6b6b;
+        }
+        .success {
+            color: #51cf66;
+        }
+    </style>
+</head>
+<body>
+    <h1>JARVIS Audio System Test</h1>
+    
+    <div>
+        <h2>1. Test Browser TTS</h2>
+        <button onclick="testBrowserTTS()">Test Browser Speech</button>
+        <button onclick="listVoices()">List Available Voices</button>
+    </div>
+    
+    <div>
+        <h2>2. Test JARVIS WebSocket</h2>
+        <button onclick="connectJarvis()">Connect to JARVIS</button>
+        <button onclick="sendVisionCommand()">Send Vision Command</button>
+    </div>
+    
+    <div id="status"></div>
+    
+    <script>
+        let ws = null;
+        
+        function log(message, type = 'info') {
+            const status = document.getElementById('status');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : '';
+            status.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            status.scrollTop = status.scrollHeight;
+        }
+        
+        // Test browser TTS
+        function testBrowserTTS() {
+            if (!('speechSynthesis' in window)) {
+                log('Speech synthesis not supported in this browser!', 'error');
+                return;
+            }
+            
+            const text = "Hello, this is JARVIS. Testing speech synthesis.";
+            const utterance = new SpeechSynthesisUtterance(text);
+            
+            utterance.onstart = () => log('Speech started', 'success');
+            utterance.onend = () => log('Speech ended', 'success');
+            utterance.onerror = (e) => log(`Speech error: ${e.error}`, 'error');
+            
+            speechSynthesis.cancel(); // Cancel any ongoing speech
+            setTimeout(() => {
+                speechSynthesis.speak(utterance);
+                log('Speaking: ' + text);
+            }, 100);
+        }
+        
+        // List available voices
+        function listVoices() {
+            const voices = speechSynthesis.getVoices();
+            log(`Found ${voices.length} voices:`);
+            voices.forEach((voice, i) => {
+                log(`  ${i}: ${voice.name} (${voice.lang})`);
+            });
+        }
+        
+        // Connect to JARVIS WebSocket
+        function connectJarvis() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                log('Already connected', 'error');
+                return;
+            }
+            
+            try {
+                ws = new WebSocket('ws://localhost:8010/voice/jarvis/stream');
+                
+                ws.onopen = () => {
+                    log('Connected to JARVIS WebSocket', 'success');
+                };
+                
+                ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    log(`Received: ${JSON.stringify(data, null, 2)}`);
+                    
+                    if (data.type === 'response' && data.text) {
+                        log('Attempting to speak response...', 'success');
+                        
+                        // Test speaking the response
+                        const utterance = new SpeechSynthesisUtterance(data.text);
+                        utterance.onstart = () => log('Speaking JARVIS response', 'success');
+                        utterance.onend = () => log('Finished speaking', 'success');
+                        utterance.onerror = (e) => log(`TTS Error: ${e.error}`, 'error');
+                        
+                        speechSynthesis.cancel();
+                        setTimeout(() => {
+                            speechSynthesis.speak(utterance);
+                        }, 100);
+                    }
+                };
+                
+                ws.onerror = (error) => {
+                    log(`WebSocket error: ${error}`, 'error');
+                };
+                
+                ws.onclose = () => {
+                    log('WebSocket closed');
+                    ws = null;
+                };
+                
+            } catch (error) {
+                log(`Connection error: ${error}`, 'error');
+            }
+        }
+        
+        // Send vision command
+        function sendVisionCommand() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('Not connected to JARVIS', 'error');
+                return;
+            }
+            
+            const command = { text: "can you see my screen" };
+            ws.send(JSON.stringify(command));
+            log(`Sent: ${JSON.stringify(command)}`);
+        }
+        
+        // Initialize voices on load
+        window.onload = () => {
+            if ('speechSynthesis' in window) {
+                // Chrome loads voices asynchronously
+                if (speechSynthesis.onvoiceschanged !== undefined) {
+                    speechSynthesis.onvoiceschanged = () => {
+                        log('Voices loaded', 'success');
+                    };
+                }
+            }
+        };
+    </script>
+</body>
+</html>

@@ -9,6 +9,7 @@ import os
 from datetime import datetime
 import asyncio
 import logging
+import traceback
 
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -39,6 +40,9 @@ router = APIRouter(prefix="/vision", tags=["vision"])
 # Initialize vision systems
 vision_system = ScreenVisionSystem()
 claude_analyzer = None
+
+# Import unified handler for WebSocket integration
+from api.unified_vision_handler import handle_vision_command as unified_handle_vision_command
 
 # Initialize Claude analyzer if API key is available
 anthropic_key = os.getenv("ANTHROPIC_API_KEY")
@@ -629,6 +633,29 @@ async def get_system_health() -> Dict[str, Any]:
         "uptime": monitoring.get('uptime', {}),
         "alerts": monitoring.get('alerts', [])
     }
+
+@router.post("/handler")
+async def websocket_vision_handler(request_data: Dict[str, Any]) -> Dict[str, Any]:
+    """HTTP handler for WebSocket bridge - routes to unified vision handler"""
+    try:
+        # Extract the message from the request
+        message = request_data.get('args', [{}])[0] if request_data.get('args') else {}
+        kwargs = request_data.get('kwargs', {})
+        
+        # Call the unified vision handler
+        result = await unified_handle_vision_command(message, **kwargs)
+        
+        return {
+            "success": True,
+            "result": result
+        }
+    except Exception as e:
+        logger.error(f"Vision handler error: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc() if hasattr(e, '__traceback__') else None
+        }
 
 @router.websocket("/ws/vision")
 async def vision_websocket_endpoint(websocket: WebSocket):

@@ -938,7 +938,7 @@ WEBSOCKET_HTTP_HANDLERS_AVAILABLE = False
 
 
 # Configuration for external services
-VISION_SERVICE_URL = os.getenv("VISION_SERVICE_URL", "http://localhost:8001")
+VISION_SERVICE_URL = os.getenv("VISION_SERVICE_URL", "http://localhost:8010")
 
 
 def load_vision_triggers():
@@ -1210,8 +1210,9 @@ async def jarvis_websocket(websocket: WebSocket):
                         "type": "response",
                         "text": response_text,
                         "message": response_text,
-                        "mode": "text",
+                        "mode": "speech",  # Changed from "text" to "speech" to trigger TTS
                         "timestamp": asyncio.get_event_loop().time(),
+                        "speak": True,  # Explicitly indicate this should be spoken
                     }
                 )
             except WebSocketDisconnect:

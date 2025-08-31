@@ -24,18 +24,26 @@ async def test_vision_websocket():
             print(f"\n📤 Sending: {json.dumps(message, indent=2)}")
             await websocket.send(json.dumps(message))
             
-            # Wait for response
-            response = await websocket.recv()
-            response_data = json.loads(response)
-            
-            print(f"\n📥 Received: {json.dumps(response_data, indent=2)}")
-            
-            if response_data.get("type") == "error":
-                print(f"\n❌ Error: {response_data.get('message')}")
-            else:
-                print(f"\n✅ Success!")
-                if response_data.get("result"):
-                    print(f"Result: {response_data['result'][:200]}...")
+            # Wait for responses (may get connection message first)
+            while True:
+                response = await asyncio.wait_for(websocket.recv(), timeout=5.0)
+                response_data = json.loads(response)
+                
+                print(f"\n📥 Received: {json.dumps(response_data, indent=2)}")
+                
+                # Skip connection message
+                if response_data.get("type") == "connected":
+                    print("✅ Connection acknowledged, waiting for vision response...")
+                    continue
+                
+                # Handle actual response
+                if response_data.get("type") == "error":
+                    print(f"\n❌ Error: {response_data.get('message')}")
+                else:
+                    print(f"\n✅ Success! Type: {response_data.get('type')}")
+                    if response_data.get("result"):
+                        print(f"Result: {response_data['result'][:200]}...")
+                break
                     
     except Exception as e:
         print(f"❌ WebSocket connection failed: {e}")

@@ -509,8 +509,8 @@ class VisionSystemV2:
         """Handle 'can you see my screen?' type questions"""
         try:
             # Import dynamic vision analyzer
-            from vision.natural_responses import get_vision_analyzer
-            analyzer = get_vision_analyzer()
+            from vision.natural_responses import NaturalResponseGenerator
+            analyzer = NaturalResponseGenerator()
             
             # Capture screen first
             result = capture_with_intelligence(

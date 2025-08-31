@@ -151,7 +151,7 @@ export class PythonHTTPBridge extends EventEmitter {
   private getEndpointForModule(module: string): string {
     // Map module names to endpoints
     const moduleEndpoints: Record<string, string> = {
-      'backend.api.unified_vision_handler': '/ws/vision/handler',
+      'backend.api.unified_vision_handler': '/vision/handler',
       'backend.api.general_websocket_handler': '/ws/general/handler',
       'backend.api.voice_websocket_handler': '/ws/voice/handler',
       'backend.vision.vision_system_v2': '/api/vision/execute',

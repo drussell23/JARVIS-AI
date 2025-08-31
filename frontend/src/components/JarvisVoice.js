@@ -272,6 +272,7 @@ const JarvisVoice = () => {
   const audioChunksRef = useRef([]);
   const recognitionRef = useRef(null);
   const visionConnectionRef = useRef(null);
+  const lastSpeechTimeRef = useRef(0);
 
   // Get API URL from environment or use default
   const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -510,9 +511,84 @@ const JarvisVoice = () => {
         // Use improved speech synthesis
         console.log('Response received, attempting speech...');
         // Use setTimeout to ensure DOM updates first
-        setTimeout(() => {
-          speakResponse(data.text);
-        }, 100);
+        setTimeout(async () => {
+          try {
+            // Debounce rapid speech calls
+            const now = Date.now();
+            if (now - lastSpeechTimeRef.current < 500) {
+              console.log('Debouncing rapid speech call');
+              return;
+            }
+            lastSpeechTimeRef.current = now;
+            
+            // Ensure speech synthesis is available
+            if ('speechSynthesis' in window) {
+              // Don't cancel if already speaking - let it finish
+              if (window.speechSynthesis.speaking) {
+                console.log('Already speaking, queuing response...');
+                // Wait for current speech to end
+                await new Promise(resolve => {
+                  const checkSpeaking = setInterval(() => {
+                    if (!window.speechSynthesis.speaking) {
+                      clearInterval(checkSpeaking);
+                      resolve();
+                    }
+                  }, 100);
+                });
+              }
+              
+              // Small delay to ensure system is ready
+              await new Promise(resolve => setTimeout(resolve, 200));
+              
+              // Create utterance
+              const utterance = new SpeechSynthesisUtterance(data.text);
+              utterance.rate = 1.0;
+              utterance.pitch = 0.9;
+              utterance.volume = 1.0;
+              
+              // Select a voice if available
+              const voices = window.speechSynthesis.getVoices();
+              if (voices.length > 0) {
+                // Try to find a good English voice
+                const englishVoice = voices.find(voice => 
+                  voice.lang.startsWith('en') && !voice.name.includes('Google')
+                ) || voices[0];
+                utterance.voice = englishVoice;
+                console.log('Using voice:', englishVoice.name);
+              }
+              
+              // Add event handlers for debugging
+              utterance.onstart = () => {
+                console.log('Speech started');
+                setIsJarvisSpeaking(true);
+              };
+              utterance.onend = () => {
+                console.log('Speech ended');
+                setIsJarvisSpeaking(false);
+              };
+              utterance.onerror = (e) => {
+                console.error('Speech error:', e);
+                setIsJarvisSpeaking(false);
+                // Only retry if not a cancel error
+                if (e.error !== 'canceled') {
+                  console.log('Retrying with speechManager...');
+                  speakResponse(data.text);
+                }
+              };
+              
+              // Speak
+              window.speechSynthesis.speak(utterance);
+              console.log('Speech synthesis triggered directly');
+            } else {
+              console.error('Speech synthesis not available in browser');
+              await speakResponse(data.text);
+            }
+          } catch (error) {
+            console.error('Speech failed:', error);
+            // Try the original method as fallback
+            await speakResponse(data.text);
+          }
+        }, 300);
 
         // Check for autonomy activation commands in response
         const responseText = data.text.toLowerCase();
@@ -561,6 +637,31 @@ const JarvisVoice = () => {
         break;
       default:
         break;
+    }
+  };
+
+  const initializeSpeechSynthesis = () => {
+    // Initialize speech synthesis on user interaction
+    if ('speechSynthesis' in window) {
+      // Load voices first
+      const loadVoices = () => {
+        const voices = window.speechSynthesis.getVoices();
+        console.log(`Loaded ${voices.length} voices`);
+        if (voices.length > 0) {
+          const englishVoice = voices.find(v => v.lang.startsWith('en')) || voices[0];
+          console.log('Default voice selected:', englishVoice.name);
+        }
+      };
+      
+      // Load voices immediately and on change
+      loadVoices();
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+      
+      // Chrome requires user interaction to enable speech
+      const initUtterance = new SpeechSynthesisUtterance('');
+      initUtterance.volume = 0;
+      window.speechSynthesis.speak(initUtterance);
+      console.log('Speech synthesis initialized');
     }
   };
 
@@ -970,6 +1071,7 @@ const JarvisVoice = () => {
           onPermissionGranted={() => {
             setMicrophonePermission('granted');
             setMicStatus('ready');
+            initializeSpeechSynthesis(); // Initialize TTS on user interaction
             initializeSpeechRecognition();
           }}
         />

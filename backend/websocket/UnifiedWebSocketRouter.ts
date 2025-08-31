@@ -476,6 +476,26 @@ export class UnifiedWebSocketRouter extends EventEmitter {
             result
           }));
         }
+      })
+      .on('vision_command', async (msg, ws, ctx) => {
+        // Handle vision commands
+        if (ctx.pythonBridge) {
+          try {
+            const result = await ctx.pythonBridge.callPythonFunction(
+              'backend.api.unified_vision_handler',
+              'handle_vision_command',
+              [msg],
+              { client_id: ctx.clientId }
+            );
+            
+            ws.send(JSON.stringify(result));
+          } catch (error: any) {
+            ws.send(JSON.stringify({
+              type: 'error',
+              message: `Vision command failed: ${error.message}`
+            }));
+          }
+        }
       });
 
     // General WebSocket route
