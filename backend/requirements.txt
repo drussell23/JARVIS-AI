@@ -91,3 +91,4 @@ Pillow>=10.0.0  # For image manipulation
 pyobjc-framework-Quartz>=9.0  # For macOS screen capture
 pyobjc-framework-Vision>=9.0  # For macOS Vision framework
 pyobjc-framework-CoreGraphics>=9.0  # For screen capture
+pyautogui>=0.9.54  # For cross-platform screen capture

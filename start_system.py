@@ -82,6 +82,7 @@ class AsyncSystemManager:
         self.auto_cleanup = False  # Auto cleanup without prompting
         self.resource_coordinator = None
         self.jarvis_coordinator = None
+        self._shutting_down = False  # Flag to suppress exit warnings during shutdown
 
     def print_header(self):
         """Print system header with resource optimization info"""
@@ -943,13 +944,18 @@ class AsyncSystemManager:
             while True:
                 await asyncio.sleep(5)
 
+                # Skip process checking if we're shutting down
+                if self._shutting_down:
+                    continue
+
                 # Check if processes are still running
                 for i, proc in enumerate(self.processes):
                     if proc and proc.returncode is not None:
-                        # Only print once per process exit
-                        if not hasattr(proc, "_exit_reported"):
+                        # Only print warnings for unexpected exits (non-zero exit codes)
+                        # and only if we're not shutting down
+                        if not hasattr(proc, "_exit_reported") and proc.returncode != 0 and proc.returncode != -2:
                             print(
-                                f"\n{Colors.WARNING}⚠ Process {i} exited with code {proc.returncode}{Colors.ENDC}"
+                                f"\n{Colors.WARNING}⚠ Process {i} unexpectedly exited with code {proc.returncode}{Colors.ENDC}"
                             )
                             proc._exit_reported = True
 
@@ -980,21 +986,44 @@ class AsyncSystemManager:
                             )
 
         except asyncio.CancelledError:
+            self._shutting_down = True
             pass
 
     async def cleanup(self):
         """Clean up all processes"""
         print(f"\n{Colors.BLUE}Shutting down services...{Colors.ENDC}")
 
-        # Terminate all processes
+        # Set a flag to suppress exit warnings
+        self._shutting_down = True
+
+        # Terminate all processes gracefully
         tasks = []
         for proc in self.processes:
             if proc and proc.returncode is None:
-                proc.terminate()
-                tasks.append(proc.wait())
+                try:
+                    proc.terminate()
+                    # Mark as intentionally terminated to suppress warnings
+                    proc._exit_reported = True
+                    tasks.append(proc.wait())
+                except ProcessLookupError:
+                    # Process already terminated
+                    pass
 
         if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            # Wait for processes to terminate with a timeout
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True),
+                    timeout=5.0
+                )
+            except asyncio.TimeoutError:
+                # Force kill any remaining processes
+                for proc in self.processes:
+                    if proc and proc.returncode is None:
+                        try:
+                            proc.kill()
+                        except ProcessLookupError:
+                            pass
 
         print(f"{Colors.GREEN}✓ All services stopped{Colors.ENDC}")
 
@@ -1105,7 +1134,8 @@ _manager = None
 async def shutdown_handler():
     """Handle shutdown gracefully"""
     global _manager
-    if _manager:
+    if _manager and not _manager._shutting_down:
+        _manager._shutting_down = True
         await _manager.cleanup()
 
 
@@ -1175,9 +1205,10 @@ async def main():
 
 if __name__ == "__main__":
     try:
-        sys.exit(asyncio.run(main()))
+        exit_code = asyncio.run(main())
+        sys.exit(exit_code)
     except KeyboardInterrupt:
-        print(f"\n{Colors.YELLOW}Shutdown requested...{Colors.ENDC}")
+        # Don't print anything extra - cleanup() already handles the shutdown message
         sys.exit(0)
     except Exception as e:
         print(f"\n{Colors.FAIL}Fatal error: {e}{Colors.ENDC}")

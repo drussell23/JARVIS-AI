@@ -14,7 +14,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from chatbots.claude_chatbot import ClaudeChatbot  # Import the ClaudeChatbot class
+try:
+    from chatbots.claude_vision_chatbot import ClaudeVisionChatbot  # Try vision-enabled chatbot first
+    VISION_CHATBOT_AVAILABLE = True
+except ImportError:
+    from chatbots.claude_chatbot import ClaudeChatbot  # Fall back to regular chatbot
+    VISION_CHATBOT_AVAILABLE = False
 import asyncio
 import json
 import time
@@ -239,13 +244,23 @@ class ChatbotAPI:
             else:
                 logger.info("Initializing Claude-powered chatbot")
 
-                # Use ClaudeChatbot directly for consistent, high-quality responses
-                self.bot = ClaudeChatbot(
-                    api_key=claude_api_key,
-                    model=os.getenv("CLAUDE_MODEL", "claude-3-haiku-20240307"),
-                    max_tokens=int(os.getenv("CLAUDE_MAX_TOKENS", "1024")),
-                    temperature=float(os.getenv("CLAUDE_TEMPERATURE", "0.7")),
-                )
+                # Use vision-enabled chatbot if available
+                if VISION_CHATBOT_AVAILABLE:
+                    logger.info("Using vision-enabled Claude chatbot")
+                    self.bot = ClaudeVisionChatbot(
+                        api_key=claude_api_key,
+                        model=os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-20241022"),  # Vision model
+                        max_tokens=int(os.getenv("CLAUDE_MAX_TOKENS", "1024")),
+                        temperature=float(os.getenv("CLAUDE_TEMPERATURE", "0.7")),
+                    )
+                else:
+                    logger.info("Using standard Claude chatbot")
+                    self.bot = ClaudeChatbot(
+                        api_key=claude_api_key,
+                        model=os.getenv("CLAUDE_MODEL", "claude-3-haiku-20240307"),
+                        max_tokens=int(os.getenv("CLAUDE_MAX_TOKENS", "1024")),
+                        temperature=float(os.getenv("CLAUDE_TEMPERATURE", "0.7")),
+                    )
 
                 logger.info("Claude chatbot initialized successfully")
         except Exception as e:
