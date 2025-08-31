@@ -38,6 +38,7 @@ import json
 import time
 from typing import Optional, List, Dict, Any
 import logging
+
 import httpx
 
 # Load environment variables from .env file
@@ -156,19 +157,46 @@ else:
     memory_manager = M1MemoryManager()  # Stub version
 logger.info("Memory manager created")
 
-# Skip voice API imports for faster startup
-VOICE_API_AVAILABLE = False
-logger.info("Skipped voice API import")
+# Enable voice API for JARVIS speech functionality
+VOICE_API_AVAILABLE = True
+try:
+    from api.voice_api import VoiceAPI
+
+    logger.info("Voice API imported successfully")
+except ImportError as e:
+    logger.warning(f"Voice API import failed: {e}")
+    VOICE_API_AVAILABLE = False
 
 # Import Enhanced Voice Routes with Rust Acceleration
-# Skip enhanced voice routes to avoid import delays
-ENHANCED_VOICE_AVAILABLE = False
-enhanced_voice_router = None
-VOICE_FIX_AVAILABLE = False
+ENHANCED_VOICE_AVAILABLE = True
+try:
+    from api.enhanced_voice_routes import router as enhanced_voice_router
 
-# Skip JARVIS voice API import
-JARVIS_VOICE_AVAILABLE = False
-logger.info("Skipped JARVIS voice API import")
+    logger.info("Enhanced voice routes imported successfully")
+except ImportError as e:
+    logger.warning(f"Enhanced voice routes import failed: {e}")
+    ENHANCED_VOICE_AVAILABLE = False
+    enhanced_voice_router = None
+
+# Enable voice fix if available
+VOICE_FIX_AVAILABLE = True
+try:
+    from api.voice_503_fix import router as voice_fix_router
+
+    logger.info("Voice fix imported successfully")
+except ImportError as e:
+    logger.warning(f"Voice fix import failed: {e}")
+    VOICE_FIX_AVAILABLE = False
+
+# Enable JARVIS voice API
+JARVIS_VOICE_AVAILABLE = True
+try:
+    from voice.jarvis_agent_voice import JarvisVoiceAgent
+
+    logger.info("JARVIS voice API imported successfully")
+except ImportError as e:
+    logger.warning(f"JARVIS voice API import failed: {e}")
+    JARVIS_VOICE_AVAILABLE = False
 
 # Skip automation API import
 AUTOMATION_API_AVAILABLE = False
@@ -813,14 +841,14 @@ try:
     # Import basic vision API for HTTP endpoints only
     # WebSocket routes are handled by the TypeScript router
     from api.vision_api import router as vision_router
-    
+
     # Filter out WebSocket routes to prevent conflicts
     vision_router.routes = [
         route
         for route in vision_router.routes
-        if not hasattr(route, 'websocket_route') and not route.path.endswith("/ws")
+        if not hasattr(route, "websocket_route") and not route.path.endswith("/ws")
     ]
-    
+
     app.include_router(vision_router)
     logger.info("Vision API HTTP routes added successfully")
     VISION_API_AVAILABLE = True
@@ -938,7 +966,7 @@ WEBSOCKET_HTTP_HANDLERS_AVAILABLE = False
 
 
 # Configuration for external services
-VISION_SERVICE_URL = os.getenv("VISION_SERVICE_URL", "http://localhost:8010")
+VISION_SERVICE_URL = os.getenv("VISION_SERVICE_URL", "http://localhost:8001")
 
 
 def load_vision_triggers():

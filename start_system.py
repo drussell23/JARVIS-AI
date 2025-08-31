@@ -63,6 +63,7 @@ class AsyncSystemManager:
 
     def __init__(self):
         self.processes = []
+        self.open_files = []  # Track open file handles for cleanup
         self.backend_dir = Path("backend")
         self.frontend_dir = Path("frontend")
         self.ports = {
@@ -559,33 +560,51 @@ class AsyncSystemManager:
             print(f"{Colors.CYAN}Log file: {log_file}{Colors.ENDC}")
 
             # Start main.py directly
-            with open(log_file, "w") as log:
-                process = await asyncio.create_subprocess_exec(
-                    sys.executable,
-                    "main.py",
-                    "--port",
-                    str(self.ports["main_api"]),
-                    cwd=str(self.backend_dir.absolute()),
-                    stdout=log,
-                    stderr=asyncio.subprocess.STDOUT,
-                    env=env,
-                )
+            # Open log file without 'with' statement to keep it open for subprocess
+            log = open(log_file, "w")
+            self.open_files.append(log)  # Track for cleanup
+            
+            process = await asyncio.create_subprocess_exec(
+                sys.executable,
+                "main.py",
+                "--port",
+                str(self.ports["main_api"]),
+                cwd=str(self.backend_dir.absolute()),
+                stdout=log,
+                stderr=asyncio.subprocess.STDOUT,
+                env=env,
+            )
 
             self.processes.append(process)
 
-            # Wait a bit longer for quick starter to do its work
-            await asyncio.sleep(10)
+            # Wait for backend to start up
+            print(f"{Colors.YELLOW}Waiting for backend to initialize...{Colors.ENDC}")
+            await asyncio.sleep(15)
 
-            # Don't check returncode for quick starter - it exits after starting backend
-            # Instead, check if backend is accessible
+            # Check if backend is accessible
             backend_url = f"http://localhost:{self.ports['main_api']}/health"
-            backend_ready = await self.wait_for_service(backend_url, timeout=10)
+            print(f"{Colors.CYAN}Checking backend at {backend_url}...{Colors.ENDC}")
+            backend_ready = await self.wait_for_service(backend_url, timeout=60)
 
             if not backend_ready:
+                print(f"{Colors.WARNING}Backend did not respond at {backend_url} after 60 seconds{Colors.ENDC}")
+                print(f"{Colors.WARNING}Check log file: {log_file}{Colors.ENDC}")
                 # main.py failed, try fallback to minimal
                 print(
                     f"{Colors.WARNING}Main backend failed to start, trying minimal fallback...{Colors.ENDC}"
                 )
+                # Check if process is still running before killing
+                if process.returncode is None:
+                    print(f"{Colors.YELLOW}Backend process is still running, terminating...{Colors.ENDC}")
+                    try:
+                        process.terminate()
+                        await asyncio.sleep(2)
+                        if process.returncode is None:
+                            process.kill()
+                    except:
+                        pass
+                else:
+                    print(f"{Colors.WARNING}Backend process already exited with code: {process.returncode}{Colors.ENDC}")
                 self.processes.remove(process)
 
                 minimal_path = self.backend_dir / "main_minimal.py"
@@ -593,6 +612,10 @@ class AsyncSystemManager:
                     print(
                         f"{Colors.CYAN}Starting minimal backend as fallback...{Colors.ENDC}"
                     )
+                    # Re-open log file for fallback process
+                    log = open(log_file, "a")  # Append mode for fallback
+                    self.open_files.append(log)
+                    
                     process = await asyncio.create_subprocess_exec(
                         sys.executable,
                         "main_minimal.py",
@@ -813,12 +836,15 @@ class AsyncSystemManager:
         async with aiohttp.ClientSession() as session:
             while time.time() - start_time < timeout:
                 try:
-                    async with session.get(url, timeout=2) as resp:
+                    async with session.get(url, timeout=5) as resp:
                         if resp.status in [200, 404]:  # 404 is ok for API endpoints
                             return True
-                except:
-                    pass
-                await asyncio.sleep(1)
+                except Exception as e:
+                    # Log the error for debugging but continue trying
+                    remaining = timeout - (time.time() - start_time)
+                    if remaining > 0:
+                        print(f"{Colors.YELLOW}Waiting for service... ({int(remaining)}s remaining){Colors.ENDC}", end='\r')
+                await asyncio.sleep(2)
 
         return False
 
@@ -1014,6 +1040,14 @@ class AsyncSystemManager:
 
         # Set a flag to suppress exit warnings
         self._shutting_down = True
+
+        # Close all open file handles first
+        for file_handle in self.open_files:
+            try:
+                file_handle.close()
+            except Exception:
+                pass
+        self.open_files.clear()
 
         # Terminate all processes gracefully
         tasks = []
