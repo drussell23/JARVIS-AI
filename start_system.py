@@ -519,121 +519,11 @@ class AsyncSystemManager:
                 await self.kill_process_on_port(port)
                 await asyncio.sleep(1)
 
-        # Check if quick startup script exists (preferred for speed)
-        quick_starter = Path(__file__).parent / "start_backend_quick.py"
-        robust_starter = Path(__file__).parent / "start_backend_robust.py"
-
-        # Use quick starter if it exists (faster fallback)
-        if quick_starter.exists():
+        # Use main.py directly since we've fixed it
+        if (self.backend_dir / "main.py").exists():
+            # Use main.py with graceful fallbacks
             print(
-                f"{Colors.CYAN}Using quick backend starter for fast startup...{Colors.ENDC}"
-            )
-
-            env = os.environ.copy()
-            env["JARVIS_USER"] = os.getenv("JARVIS_USER", "Sir")
-            env["JARVIS_PERFORMANCE_DASHBOARD"] = "true"
-
-            if os.getenv("ANTHROPIC_API_KEY"):
-                env["ANTHROPIC_API_KEY"] = os.getenv("ANTHROPIC_API_KEY")
-
-            # Create log file
-            log_dir = self.backend_dir / "logs"
-            log_dir.mkdir(exist_ok=True)
-            log_file = (
-                log_dir
-                / f"jarvis_quick_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-            )
-
-            print(f"{Colors.CYAN}Log file: {log_file}{Colors.ENDC}")
-
-            # Start using quick starter
-            with open(log_file, "w") as log:
-                process = await asyncio.create_subprocess_exec(
-                    sys.executable,
-                    str(quick_starter),
-                    cwd=str(Path(__file__).parent),
-                    stdout=log,
-                    stderr=asyncio.subprocess.STDOUT,
-                    env=env,
-                )
-
-            self.processes.append(process)
-
-            print(
-                f"{Colors.GREEN}✓ Quick backend starter initiated (PID: {process.pid}){Colors.ENDC}"
-            )
-            print(
-                f"{Colors.GREEN}✓ Fast startup with automatic fallback{Colors.ENDC}"
-            )
-            print(
-                f"{Colors.GREEN}✓ Will try main.py then main_minimal.py{Colors.ENDC}"
-            )
-            print(
-                f"{Colors.GREEN}✓ Server will start on port {self.ports['main_api']}{Colors.ENDC}"
-            )
-
-            return process
-
-        # Fallback to robust starter if quick doesn't exist
-        elif robust_starter.exists():
-            # Use robust starter for maximum reliability
-            print(
-                f"{Colors.CYAN}Using robust backend starter for reliability...{Colors.ENDC}"
-            )
-
-            env = os.environ.copy()
-            env["JARVIS_USER"] = os.getenv("JARVIS_USER", "Sir")
-            env["JARVIS_PERFORMANCE_DASHBOARD"] = "true"
-
-            # The robust starter handles Swift paths and memory optimization internally
-            if os.getenv("ANTHROPIC_API_KEY"):
-                env["ANTHROPIC_API_KEY"] = os.getenv("ANTHROPIC_API_KEY")
-
-            # Create log file
-            log_dir = self.backend_dir / "logs"
-            log_dir.mkdir(exist_ok=True)
-            log_file = (
-                log_dir
-                / f"jarvis_robust_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-            )
-
-            print(f"{Colors.CYAN}Log file: {log_file}{Colors.ENDC}")
-
-            # Start using robust starter
-            with open(log_file, "w") as log:
-                process = await asyncio.create_subprocess_exec(
-                    sys.executable,
-                    str(robust_starter),
-                    cwd=str(Path(__file__).parent),
-                    stdout=log,
-                    stderr=asyncio.subprocess.STDOUT,
-                    env=env,
-                )
-
-            self.processes.append(process)
-
-            print(
-                f"{Colors.GREEN}✓ Robust backend starter initiated (PID: {process.pid}){Colors.ENDC}"
-            )
-            print(
-                f"{Colors.GREEN}✓ CPU monitoring and process cleanup enabled{Colors.ENDC}"
-            )
-            print(f"{Colors.GREEN}✓ Swift performance bridges configured{Colors.ENDC}")
-            print(f"{Colors.GREEN}✓ Memory optimization active{Colors.ENDC}")
-            print(f"{Colors.GREEN}✓ Automatic retry on failure{Colors.ENDC}")
-            print(
-                f"{Colors.GREEN}✓ Server will start on port {self.ports['main_api']}{Colors.ENDC}"
-            )
-
-            return process
-
-        # Fallback to main.py if robust starter doesn't exist
-        elif (self.backend_dir / "main.py").exists() and (
-            self.backend_dir / "smart_startup_manager.py"
-        ).exists():
-            # Use main.py which already integrates smart startup manager
-            print(
-                f"{Colors.CYAN}Using main.py with integrated performance optimizations...{Colors.ENDC}"
+                f"{Colors.CYAN}Starting backend with main.py...{Colors.ENDC}"
             )
 
             env = os.environ.copy()
@@ -678,10 +568,15 @@ class AsyncSystemManager:
 
             self.processes.append(process)
 
-            # Wait a bit and check if it started successfully
-            await asyncio.sleep(3)
-
-            if process.returncode is not None:
+            # Wait a bit longer for quick starter to do its work
+            await asyncio.sleep(10)
+            
+            # Don't check returncode for quick starter - it exits after starting backend
+            # Instead, check if backend is accessible
+            backend_url = f"http://localhost:{self.ports['main_api']}/health"
+            backend_ready = await self.wait_for_service(backend_url, timeout=10)
+            
+            if not backend_ready:
                 # main.py failed, try fallback to minimal
                 print(
                     f"{Colors.WARNING}Main backend failed to start, trying minimal fallback...{Colors.ENDC}"
@@ -733,14 +628,11 @@ class AsyncSystemManager:
 
             return process
 
-        # Fallback to old method
-        startup_script = self.backend_dir / "start_jarvis_optimized.py"
-
-        if not startup_script.exists():
-            print(
-                f"{Colors.WARNING}Optimized startup script not found, using standard backend...{Colors.ENDC}"
-            )
-            return await self.start_backend_standard()
+        # Fallback to standard backend if main.py doesn't exist
+        print(
+            f"{Colors.WARNING}Main backend not available, using standard backend...{Colors.ENDC}"
+        )
+        return await self.start_backend_standard()
 
         # Use old optimized script
         env = os.environ.copy()
@@ -815,9 +707,16 @@ class AsyncSystemManager:
         if os.getenv("ANTHROPIC_API_KEY"):
             env["ANTHROPIC_API_KEY"] = os.getenv("ANTHROPIC_API_KEY")
 
-        # Always use main.py if it exists
-        if (self.backend_dir / "main.py").exists():
+        # Try main.py first, then fall back to main_minimal.py
+        main_script = self.backend_dir / "main.py"
+        minimal_script = self.backend_dir / "main_minimal.py"
+        
+        if main_script.exists():
             server_script = "main.py"
+            print(f"{Colors.CYAN}Starting main backend...{Colors.ENDC}")
+        elif minimal_script.exists():
+            server_script = "main_minimal.py"
+            print(f"{Colors.YELLOW}Using minimal backend (limited features)...{Colors.ENDC}")
         elif (self.backend_dir / "start_backend.py").exists():
             server_script = "start_backend.py"
         else:
@@ -919,6 +818,56 @@ class AsyncSystemManager:
                 await asyncio.sleep(1)
 
         return False
+    
+    async def start_minimal_backend_fallback(self) -> bool:
+        """Start minimal backend as fallback when main backend fails"""
+        minimal_script = self.backend_dir / "main_minimal.py"
+        
+        if not minimal_script.exists():
+            print(f"{Colors.WARNING}Minimal backend not available{Colors.ENDC}")
+            return False
+        
+        print(f"\n{Colors.YELLOW}Starting minimal backend as fallback...{Colors.ENDC}")
+        
+        # Kill any existing backend process
+        await self.kill_process_on_port(self.ports["main_api"])
+        await asyncio.sleep(2)
+        
+        # Set up environment
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(self.backend_dir)
+        
+        if os.getenv("ANTHROPIC_API_KEY"):
+            env["ANTHROPIC_API_KEY"] = os.getenv("ANTHROPIC_API_KEY")
+        
+        # Start minimal backend
+        log_file = self.backend_dir / "logs" / f"minimal_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        log_file.parent.mkdir(exist_ok=True)
+        
+        with open(log_file, "w") as log:
+            process = await asyncio.create_subprocess_exec(
+                sys.executable,
+                "main_minimal.py",
+                "--port",
+                str(self.ports["main_api"]),
+                cwd=str(self.backend_dir.absolute()),
+                stdout=log,
+                stderr=asyncio.subprocess.STDOUT,
+                env=env,
+            )
+        
+        self.processes.append(process)
+        print(f"{Colors.GREEN}✓ Minimal backend started (PID: {process.pid}){Colors.ENDC}")
+        
+        # Wait for it to be ready
+        backend_url = f"http://localhost:{self.ports['main_api']}/health"
+        if await self.wait_for_service(backend_url, timeout=10):
+            print(f"{Colors.GREEN}✓ Minimal backend ready{Colors.ENDC}")
+            print(f"{Colors.YELLOW}⚠ Running in minimal mode - some features limited{Colors.ENDC}")
+            return True
+        else:
+            print(f"{Colors.FAIL}❌ Minimal backend failed to start{Colors.ENDC}")
+            return False
 
     async def verify_services(self):
         """Verify all services are running"""
@@ -933,6 +882,9 @@ class AsyncSystemManager:
             services.append("backend")
         else:
             print(f"{Colors.WARNING}⚠ Backend API not responding{Colors.ENDC}")
+            # Try to start minimal backend as fallback
+            if await self.start_minimal_backend_fallback():
+                services.append("backend")
 
         # Check event UI (if optimized)
         if self.use_optimized:
