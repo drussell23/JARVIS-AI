@@ -948,6 +948,106 @@ WEBSOCKET_DISCOVERY_AVAILABLE = False
 WEBSOCKET_HTTP_HANDLERS_AVAILABLE = False
 
 
+# Configuration for external services
+VISION_SERVICE_URL = os.getenv("VISION_SERVICE_URL", "http://localhost:8001")
+
+
+def load_vision_triggers():
+    """Loads vision command triggers from a JSON file with a hardcoded fallback."""
+    default_triggers = [
+        "can you see my screen",
+        "do you see my screen",
+        "what's on my screen",
+        "what can you see",
+        "analyze my screen",
+        "see my screen",
+        "look at my screen",
+        "describe my screen",
+        "what do you see",
+        "analyze what's on my screen",
+    ]
+
+    try:
+        config_path = os.path.join(
+            os.path.dirname(__file__), "config", "vision_triggers.json"
+        )
+        if os.path.exists(config_path):
+            with open(config_path, "r") as f:
+                data = json.load(f)
+                triggers = data.get("triggers", default_triggers)
+                if isinstance(triggers, list) and all(
+                    isinstance(t, str) for t in triggers
+                ):
+                    logger.info(
+                        f"Loaded {len(triggers)} vision command triggers from config file."
+                    )
+                    return triggers
+                else:
+                    logger.warning(
+                        "Invalid format in vision_triggers.json. Using default triggers."
+                    )
+                    return default_triggers
+        else:
+            logger.info(
+                "vision_triggers.json not found. Using default vision command triggers."
+            )
+            return default_triggers
+    except Exception as e:
+        logger.error(
+            f"Error loading vision_triggers.json: {e}. Using default triggers."
+        )
+        return default_triggers
+
+
+# Vision command trigger phrases
+VISION_COMMAND_TRIGGERS = load_vision_triggers()
+
+
+def is_vision_command(command_text: str) -> bool:
+    """Check if a command is intended for the vision system."""
+    if not command_text:
+        return False
+
+    lower_command = command_text.lower()
+    return any(phrase in lower_command for phrase in VISION_COMMAND_TRIGGERS)
+
+
+async def handle_vision_command_request(command_text: str) -> str:
+    """Handles a command by forwarding it to the vision service."""
+    try:
+        async with httpx.AsyncClient() as client:
+            # Use the /vision/command endpoint for better handling
+            response = await client.post(
+                f"{VISION_SERVICE_URL}/vision/command",
+                json={"command": command_text, "use_claude": True},
+                timeout=30.0,  # Add a timeout
+            )
+            response.raise_for_status()
+            vision_data = response.json()
+            return vision_data.get("response", "I was unable to analyze the screen.")
+    except httpx.TimeoutException:
+        logger.error("Request to vision service timed out.")
+        return "My vision system is taking too long to respond. There might be an issue with screen capture permissions."
+    except httpx.RequestError as e:
+        logger.error(f"Could not connect to vision service: {e}")
+        return "I'm having trouble connecting to my vision system. Please ensure it's running correctly."
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during vision processing: {e}")
+        return "I encountered an unexpected error with my vision system."
+
+
+async def handle_chatbot_command(command_text: str, chatbot_api_instance) -> str:
+    """Handles a command by forwarding it to the chatbot."""
+    if chatbot_api_instance and chatbot_api_instance.bot:
+        try:
+            return await chatbot_api_instance.bot.generate_response(command_text)
+        except Exception as e:
+            logger.error(f"Error processing command through chatbot: {e}")
+            return "I apologize, but I encountered an error processing your request."
+    else:
+        return "JARVIS system is initializing. Please try again in a moment."
+
+
 # Update root endpoint
 @app.get("/")
 async def root():
@@ -1096,69 +1196,47 @@ async def jarvis_websocket(websocket: WebSocket):
             }
         )
 
-        # Keep connection alive and echo messages
+        # Main message processing loop
         while True:
             try:
                 data = await websocket.receive_text()
-                # Parse the message
-                try:
-                    msg = json.loads(data) if data.startswith("{") else {"text": data}
-                except:
-                    msg = {"text": data}
+                msg = json.loads(data) if data.startswith("{") else {"text": data}
+                command_text = msg.get("text", "").strip()
 
-                # Get the text from the message
-                command_text = msg.get("text", data) if isinstance(msg, dict) else data
+                if not command_text:
+                    continue
 
-                # Check for vision command
-                if command_text and "see my screen" in command_text.lower():
-                    try:
-                        async with httpx.AsyncClient() as client:
-                            response = await client.post(
-                                "http://localhost:8001/vision/capture"
-                            )
-                            response.raise_for_status()
-                            vision_data = response.json()
-                            response_text = vision_data.get(
-                                "description", "I was unable to analyze the screen."
-                            )
-                    except httpx.RequestError as e:
-                        logger.error(f"Could not connect to vision service: {e}")
-                        response_text = (
-                            "I'm having trouble connecting to my vision system."
-                        )
-                # Process through the chatbot instance
-                elif command_text and command_text.strip():
-                    # Get the chatbot instance from app state
+                # Route command to vision or chatbot
+                if is_vision_command(command_text):
+                    response_text = await handle_vision_command_request(command_text)
+                else:
                     chatbot_api = getattr(app.state, "chatbot_api", None)
-
-                    if chatbot_api and chatbot_api.bot:
-                        # Process the command through the actual chatbot
-                        try:
-                            response_text = await chatbot_api.bot.generate_response(
-                                command_text
-                            )
-                        except Exception as e:
-                            logger.error(
-                                f"Error processing command through chatbot: {e}"
-                            )
-                            response_text = "I apologize, but I encountered an error processing your request."
-                    else:
-                        response_text = "JARVIS system is initializing. Please try again in a moment."
-
-                    await websocket.send_json(
-                        {
-                            "type": "response",
-                            "text": response_text,
-                            "message": response_text,
-                            "mode": "text",
-                            "timestamp": asyncio.get_event_loop().time(),
-                        }
+                    response_text = await handle_chatbot_command(
+                        command_text, chatbot_api
                     )
+
+                # Send the response back to the client
+                await websocket.send_json(
+                    {
+                        "type": "response",
+                        "text": response_text,
+                        "message": response_text,
+                        "mode": "text",
+                        "timestamp": asyncio.get_event_loop().time(),
+                    }
+                )
             except WebSocketDisconnect:
                 logger.info("JARVIS WebSocket client disconnected")
                 break
+            except Exception as e:
+                logger.error(f"Error in WebSocket loop: {e}")
+                # Optionally send an error message to the client
+                await websocket.send_json(
+                    {"type": "error", "message": "An internal error occurred."}
+                )
+
     except Exception as e:
-        logger.error(f"JARVIS WebSocket error: {e}")
+        logger.error(f"JARVIS WebSocket connection error: {e}")
 
 
 @app.websocket("/audio/ml/stream")

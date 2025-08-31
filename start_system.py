@@ -70,7 +70,7 @@ class AsyncSystemManager:
             "websocket_router": 8001,  # TypeScript WebSocket Router
             "frontend": 3000,
             "llama_cpp": 8080,
-            "event_ui": 8888  # Event-driven UI
+            "event_ui": 8888,  # Event-driven UI
         }
         self.is_m1_mac = platform.system() == "Darwin" and platform.machine() == "arm64"
         self.claude_configured = False
@@ -248,16 +248,25 @@ class AsyncSystemManager:
 
             manager = ProcessCleanupManager()
 
-            # Get recommendations
-            recommendations = manager.get_cleanup_recommendations()
+            # --- Parallelize the checks ---
+            async def get_recommendations():
+                return manager.get_cleanup_recommendations()
+
+            async def analyze_state():
+                return manager.analyze_system_state()
+
+            # Run checks concurrently
+            recommendations, state = await asyncio.gather(
+                get_recommendations(), analyze_state()
+            )
+            # --- End of parallelization ---
+
             if recommendations:
                 print(f"{Colors.YELLOW}System optimization suggestions:{Colors.ENDC}")
                 for rec in recommendations:
                     print(f"  • {rec}")
 
             # Check if cleanup is needed
-            state = manager.analyze_system_state()
-
             needs_cleanup = (
                 len(state.get("stuck_processes", [])) > 0
                 or len(state.get("zombie_processes", [])) > 0
@@ -521,9 +530,7 @@ class AsyncSystemManager:
         # Use main.py directly since we've fixed it
         if (self.backend_dir / "main.py").exists():
             # Use main.py with graceful fallbacks
-            print(
-                f"{Colors.CYAN}Starting backend with main.py...{Colors.ENDC}"
-            )
+            print(f"{Colors.CYAN}Starting backend with main.py...{Colors.ENDC}")
 
             env = os.environ.copy()
             env["PYTHONPATH"] = str(self.backend_dir)
@@ -568,12 +575,12 @@ class AsyncSystemManager:
 
             # Wait a bit longer for quick starter to do its work
             await asyncio.sleep(10)
-            
+
             # Don't check returncode for quick starter - it exits after starting backend
             # Instead, check if backend is accessible
             backend_url = f"http://localhost:{self.ports['main_api']}/health"
             backend_ready = await self.wait_for_service(backend_url, timeout=10)
-            
+
             if not backend_ready:
                 # main.py failed, try fallback to minimal
                 print(
@@ -704,13 +711,15 @@ class AsyncSystemManager:
         # Try main.py first, then fall back to main_minimal.py
         main_script = self.backend_dir / "main.py"
         minimal_script = self.backend_dir / "main_minimal.py"
-        
+
         if main_script.exists():
             server_script = "main.py"
             print(f"{Colors.CYAN}Starting main backend...{Colors.ENDC}")
         elif minimal_script.exists():
             server_script = "main_minimal.py"
-            print(f"{Colors.YELLOW}Using minimal backend (limited features)...{Colors.ENDC}")
+            print(
+                f"{Colors.YELLOW}Using minimal backend (limited features)...{Colors.ENDC}"
+            )
         elif (self.backend_dir / "start_backend.py").exists():
             server_script = "start_backend.py"
         else:
@@ -812,32 +821,36 @@ class AsyncSystemManager:
                 await asyncio.sleep(1)
 
         return False
-    
+
     async def start_minimal_backend_fallback(self) -> bool:
         """Start minimal backend as fallback when main backend fails"""
         minimal_script = self.backend_dir / "main_minimal.py"
-        
+
         if not minimal_script.exists():
             print(f"{Colors.WARNING}Minimal backend not available{Colors.ENDC}")
             return False
-        
+
         print(f"\n{Colors.YELLOW}Starting minimal backend as fallback...{Colors.ENDC}")
-        
+
         # Kill any existing backend process
         await self.kill_process_on_port(self.ports["main_api"])
         await asyncio.sleep(2)
-        
+
         # Set up environment
         env = os.environ.copy()
         env["PYTHONPATH"] = str(self.backend_dir)
-        
+
         if os.getenv("ANTHROPIC_API_KEY"):
             env["ANTHROPIC_API_KEY"] = os.getenv("ANTHROPIC_API_KEY")
-        
+
         # Start minimal backend
-        log_file = self.backend_dir / "logs" / f"minimal_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        log_file = (
+            self.backend_dir
+            / "logs"
+            / f"minimal_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        )
         log_file.parent.mkdir(exist_ok=True)
-        
+
         with open(log_file, "w") as log:
             process = await asyncio.create_subprocess_exec(
                 sys.executable,
@@ -849,15 +862,19 @@ class AsyncSystemManager:
                 stderr=asyncio.subprocess.STDOUT,
                 env=env,
             )
-        
+
         self.processes.append(process)
-        print(f"{Colors.GREEN}✓ Minimal backend started (PID: {process.pid}){Colors.ENDC}")
-        
+        print(
+            f"{Colors.GREEN}✓ Minimal backend started (PID: {process.pid}){Colors.ENDC}"
+        )
+
         # Wait for it to be ready
         backend_url = f"http://localhost:{self.ports['main_api']}/health"
         if await self.wait_for_service(backend_url, timeout=10):
             print(f"{Colors.GREEN}✓ Minimal backend ready{Colors.ENDC}")
-            print(f"{Colors.YELLOW}⚠ Running in minimal mode - some features limited{Colors.ENDC}")
+            print(
+                f"{Colors.YELLOW}⚠ Running in minimal mode - some features limited{Colors.ENDC}"
+            )
             return True
         else:
             print(f"{Colors.FAIL}❌ Minimal backend failed to start{Colors.ENDC}")
@@ -886,7 +903,6 @@ class AsyncSystemManager:
             if await self.wait_for_service(event_url, timeout=10):
                 print(f"{Colors.GREEN}✓ Event UI ready{Colors.ENDC}")
                 services.append("event_ui")
-
 
         # Check frontend
         if self.frontend_dir.exists() and not self.backend_only:
@@ -953,7 +969,11 @@ class AsyncSystemManager:
                     if proc and proc.returncode is not None:
                         # Only print warnings for unexpected exits (non-zero exit codes)
                         # and only if we're not shutting down
-                        if not hasattr(proc, "_exit_reported") and proc.returncode != 0 and proc.returncode != -2:
+                        if (
+                            not hasattr(proc, "_exit_reported")
+                            and proc.returncode != 0
+                            and proc.returncode != -2
+                        ):
                             print(
                                 f"\n{Colors.WARNING}⚠ Process {i} unexpectedly exited with code {proc.returncode}{Colors.ENDC}"
                             )
@@ -976,7 +996,6 @@ class AsyncSystemManager:
                                     consecutive_failures["backend"] += 1
                     except:
                         consecutive_failures["backend"] += 1
-
 
                     # Alert on repeated failures
                     for service, failures in consecutive_failures.items():
@@ -1013,8 +1032,7 @@ class AsyncSystemManager:
             # Wait for processes to terminate with a timeout
             try:
                 await asyncio.wait_for(
-                    asyncio.gather(*tasks, return_exceptions=True),
-                    timeout=5.0
+                    asyncio.gather(*tasks, return_exceptions=True), timeout=5.0
                 )
             except asyncio.TimeoutError:
                 # Force kill any remaining processes
