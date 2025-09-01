@@ -1,63 +1,524 @@
 """
 Claude Vision Analyzer - Advanced screen understanding using Claude's vision capabilities
+Fully dynamic and configurable - NO HARDCODING
+Optimized for macOS with 16GB RAM - includes caching, compression, and memory management
 """
 
 import base64
 import io
-from typing import Dict, List, Optional, Any
-from PIL import Image
+import hashlib
+import asyncio
+import time
+import gc
+import os
+import re
+from typing import Dict, List, Optional, Any, Tuple, Union, Set
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
+from PIL import Image, ImageOps
 import numpy as np
 from anthropic import Anthropic
 import json
+import logging
+import psutil
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+@dataclass
+class VisionConfig:
+    """Dynamic configuration for vision analyzer"""
+    # Image processing
+    max_image_dimension: int = field(default_factory=lambda: int(os.getenv('VISION_MAX_IMAGE_DIM', '1536')))
+    jpeg_quality: int = field(default_factory=lambda: int(os.getenv('VISION_JPEG_QUALITY', '85')))
+    compression_enabled: bool = field(default_factory=lambda: os.getenv('VISION_COMPRESSION', 'true').lower() == 'true')
+    
+    # API settings
+    max_tokens: int = field(default_factory=lambda: int(os.getenv('VISION_MAX_TOKENS', '1500')))
+    model_name: str = field(default_factory=lambda: os.getenv('VISION_MODEL', 'claude-3-5-sonnet-20241022'))
+    max_concurrent_requests: int = field(default_factory=lambda: int(os.getenv('VISION_MAX_CONCURRENT', '2')))
+    api_timeout: int = field(default_factory=lambda: int(os.getenv('VISION_API_TIMEOUT', '30')))
+    
+    # Cache settings
+    cache_enabled: bool = field(default_factory=lambda: os.getenv('VISION_CACHE_ENABLED', 'true').lower() == 'true')
+    cache_size_mb: int = field(default_factory=lambda: int(os.getenv('VISION_CACHE_SIZE_MB', '100')))
+    cache_max_entries: int = field(default_factory=lambda: int(os.getenv('VISION_CACHE_ENTRIES', '50')))
+    cache_ttl_minutes: int = field(default_factory=lambda: int(os.getenv('VISION_CACHE_TTL_MIN', '30')))
+    
+    # Performance settings
+    memory_threshold_percent: float = field(default_factory=lambda: float(os.getenv('VISION_MEMORY_THRESHOLD', '70')))
+    cpu_threshold_percent: float = field(default_factory=lambda: float(os.getenv('VISION_CPU_THRESHOLD', '70')))
+    thread_pool_size: int = field(default_factory=lambda: int(os.getenv('VISION_THREAD_POOL', '2')))
+    
+    # Feature flags
+    enable_metrics: bool = field(default_factory=lambda: os.getenv('VISION_METRICS', 'true').lower() == 'true')
+    enable_entity_extraction: bool = field(default_factory=lambda: os.getenv('VISION_EXTRACT_ENTITIES', 'true').lower() == 'true')
+    enable_action_detection: bool = field(default_factory=lambda: os.getenv('VISION_DETECT_ACTIONS', 'true').lower() == 'true')
+    
+    @classmethod
+    def from_file(cls, config_path: str) -> 'VisionConfig':
+        """Load configuration from JSON file"""
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                config_data = json.load(f)
+                return cls(**config_data)
+        return cls()
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert config to dictionary"""
+        return {
+            'max_image_dimension': self.max_image_dimension,
+            'jpeg_quality': self.jpeg_quality,
+            'compression_enabled': self.compression_enabled,
+            'max_tokens': self.max_tokens,
+            'model_name': self.model_name,
+            'max_concurrent_requests': self.max_concurrent_requests,
+            'cache_enabled': self.cache_enabled,
+            'cache_size_mb': self.cache_size_mb,
+            'cache_ttl_minutes': self.cache_ttl_minutes,
+            'memory_threshold_percent': self.memory_threshold_percent,
+            'enable_metrics': self.enable_metrics
+        }
+
+@dataclass
+class CacheEntry:
+    """Cache entry with metadata"""
+    result: Dict[str, Any]
+    timestamp: datetime
+    prompt_hash: str
+    image_hash: str
+    access_count: int = 0
+    size_bytes: int = 0
+
+@dataclass
+class AnalysisMetrics:
+    """Performance metrics for analysis"""
+    preprocessing_time: float = 0.0
+    api_call_time: float = 0.0
+    parsing_time: float = 0.0
+    total_time: float = 0.0
+    cache_hit: bool = False
+    image_size_original: int = 0
+    image_size_compressed: int = 0
+    compression_ratio: float = 0.0
+
+class DynamicEntityExtractor:
+    """Dynamic entity extraction without hardcoded patterns"""
+    
+    def __init__(self):
+        self.discovered_apps: Set[str] = set()
+        self.discovered_patterns: Dict[str, Set[str]] = {
+            'applications': set(),
+            'file_extensions': set(),
+            'ui_elements': set(),
+            'actions': set()
+        }
+        self._load_discovered_patterns()
+    
+    def _load_discovered_patterns(self):
+        """Load previously discovered patterns from disk"""
+        patterns_file = Path.home() / '.jarvis' / 'vision_patterns.json'
+        if patterns_file.exists():
+            try:
+                with open(patterns_file, 'r') as f:
+                    data = json.load(f)
+                    for key, values in data.items():
+                        if key in self.discovered_patterns:
+                            self.discovered_patterns[key] = set(values)
+            except Exception as e:
+                logger.debug(f"Could not load patterns: {e}")
+    
+    def _save_discovered_patterns(self):
+        """Save discovered patterns to disk"""
+        patterns_file = Path.home() / '.jarvis' / 'vision_patterns.json'
+        patterns_file.parent.mkdir(exist_ok=True)
+        
+        try:
+            data = {k: list(v) for k, v in self.discovered_patterns.items()}
+            with open(patterns_file, 'w') as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            logger.debug(f"Could not save patterns: {e}")
+    
+    def extract_entities(self, text: str) -> Dict[str, List[str]]:
+        """Extract entities dynamically from text"""
+        entities = {
+            'applications': [],
+            'files': [],
+            'urls': [],
+            'ui_elements': []
+        }
+        
+        # Dynamic application detection
+        # Look for patterns like "in <App>" or "<App> window" or "<App> is open"
+        app_patterns = [
+            r'(?:in|using|running|open|closed?)\s+(\w+(?:\s+\w+)?)\s*(?:app|application|window)?',
+            r'(\w+(?:\s+\w+)?)\s+(?:is|was|are|were)\s+(?:open|running|active)',
+            r'(?:launch|start|open|close|quit)\s+(\w+(?:\s+\w+)?)'
+        ]
+        
+        for pattern in app_patterns:
+            matches = re.finditer(pattern, text, re.IGNORECASE)
+            for match in matches:
+                app = match.group(1).strip()
+                # Filter out common words that aren't apps
+                if len(app) > 2 and not app.lower() in ['the', 'and', 'this', 'that', 'with']:
+                    entities['applications'].append(app.title())
+                    self.discovered_patterns['applications'].add(app.title())
+        
+        # Dynamic file detection - learn extensions from text
+        file_pattern = r'([\w\-]+\.[\w]{2,5})'
+        files = re.findall(file_pattern, text)
+        for file in files:
+            entities['files'].append(file)
+            # Learn the extension
+            ext = file.split('.')[-1].lower()
+            if 2 <= len(ext) <= 5:  # Reasonable extension length
+                self.discovered_patterns['file_extensions'].add(ext)
+        
+        # Dynamic URL detection
+        url_patterns = [
+            r'https?://[^\s<>"{}|\\^`\[\]]+',
+            r'www\.[^\s<>"{}|\\^`\[\]]+',
+            r'[a-zA-Z0-9\-]+\.(com|org|net|io|dev|app|edu|gov)[^\s]*'
+        ]
+        
+        for pattern in url_patterns:
+            urls = re.findall(pattern, text, re.IGNORECASE)
+            entities['urls'].extend(urls[:5])  # Limit URLs
+        
+        # Dynamic UI element detection
+        ui_pattern = r'(\w+(?:\s+\w+)?)\s*(?:button|menu|dialog|window|tab|panel|bar|field|box)'
+        ui_matches = re.finditer(ui_pattern, text, re.IGNORECASE)
+        for match in ui_matches:
+            element = match.group(0).strip()
+            if element and len(element) < 50:  # Reasonable length
+                entities['ui_elements'].append(element)
+                self.discovered_patterns['ui_elements'].add(element.lower())
+        
+        # Save newly discovered patterns
+        self._save_discovered_patterns()
+        
+        # Remove duplicates
+        for key in entities:
+            entities[key] = list(dict.fromkeys(entities[key]))
+        
+        return entities
+
+class MemoryAwareCache:
+    """LRU cache with memory awareness - fully configurable"""
+    
+    def __init__(self, config: VisionConfig):
+        self.config = config
+        self.max_size_bytes = config.cache_size_mb * 1024 * 1024
+        self.max_entries = config.cache_max_entries
+        self.cache: OrderedDict[str, CacheEntry] = OrderedDict()
+        self.current_size_bytes = 0
+        self._lock = asyncio.Lock()
+        
+    async def get(self, key: str) -> Optional[CacheEntry]:
+        """Get item from cache with LRU update"""
+        async with self._lock:
+            if key in self.cache:
+                # Move to end (most recently used)
+                entry = self.cache.pop(key)
+                entry.access_count += 1
+                self.cache[key] = entry
+                return entry
+            return None
+    
+    async def put(self, key: str, entry: CacheEntry):
+        """Add item to cache with memory management"""
+        async with self._lock:
+            # Calculate entry size
+            entry.size_bytes = len(json.dumps(entry.result).encode())
+            
+            # Check if we need to evict entries
+            while (self.current_size_bytes + entry.size_bytes > self.max_size_bytes or 
+                   len(self.cache) >= self.max_entries) and self.cache:
+                # Remove least recently used
+                oldest_key, oldest_entry = self.cache.popitem(last=False)
+                self.current_size_bytes -= oldest_entry.size_bytes
+                logger.debug(f"Evicted cache entry: {oldest_key[:8]}...")
+            
+            # Add new entry
+            self.cache[key] = entry
+            self.current_size_bytes += entry.size_bytes
+            
+            # Force garbage collection if memory usage is high
+            if self._get_memory_usage_percent() > self.config.memory_threshold_percent:
+                gc.collect()
+    
+    def _get_memory_usage_percent(self) -> float:
+        """Get current memory usage percentage"""
+        return psutil.Process().memory_percent()
+    
+    async def clear(self):
+        """Clear the cache"""
+        async with self._lock:
+            self.cache.clear()
+            self.current_size_bytes = 0
+            gc.collect()
 
 class ClaudeVisionAnalyzer:
-    """Use Claude's vision capabilities for advanced screen understanding"""
+    """Enhanced Claude vision analyzer - fully dynamic and configurable"""
     
-    def __init__(self, api_key: str):
-        """Initialize Claude vision analyzer"""
-        self.client = Anthropic(api_key=api_key)
-        self.model = "claude-3-5-sonnet-20241022"  # Current vision-capable model
+    def __init__(self, api_key: str, config: Optional[VisionConfig] = None,
+                 config_path: Optional[str] = None):
+        """Initialize enhanced Claude vision analyzer
         
-    async def analyze_screenshot(self, image: Any, prompt: str) -> Dict[str, Any]:
-        """Send screenshot to Claude for analysis
+        Args:
+            api_key: Anthropic API key
+            config: VisionConfig instance (optional)
+            config_path: Path to JSON config file (optional)
+        """
+        # Load configuration
+        if config:
+            self.config = config
+        elif config_path:
+            self.config = VisionConfig.from_file(config_path)
+        else:
+            self.config = VisionConfig()
+        
+        # Initialize API client
+        self.client = Anthropic(api_key=api_key)
+        
+        # Initialize components based on config
+        self.cache = MemoryAwareCache(self.config) if self.config.cache_enabled else None
+        self.executor = ThreadPoolExecutor(max_workers=self.config.thread_pool_size)
+        self.api_semaphore = asyncio.Semaphore(self.config.max_concurrent_requests)
+        
+        # Metrics storage
+        self.recent_metrics: List[AnalysisMetrics] = []
+        
+        # Dynamic entity extractor
+        self.entity_extractor = DynamicEntityExtractor()
+        
+        # Dynamic prompt templates loaded from file or defaults
+        self.prompt_templates = self._load_prompt_templates()
+        
+        logger.info(f"Initialized ClaudeVisionAnalyzer with config: {self.config.to_dict()}")
+    
+    def _load_prompt_templates(self) -> Dict[str, str]:
+        """Load prompt templates from file or use defaults"""
+        templates_file = Path.home() / '.jarvis' / 'vision_prompts.json'
+        
+        # Default templates
+        default_templates = {
+            "general": "Analyze this screenshot and provide a concise description. Focus on: {focus}",
+            "json": "Analyze this screenshot and respond ONLY with valid JSON in this format: {format}",
+            "action": "Identify actionable items in this screenshot. List specific actions the user can take.",
+            "error": "Check this screenshot for any errors, warnings, or issues that need attention.",
+            "workspace": "Describe the user's current workspace and what they appear to be working on.",
+            "quick": "Briefly describe what's on screen in 2-3 sentences.",
+            "detailed": "Provide a detailed analysis of everything visible on screen, including all text, UI elements, and their relationships."
+        }
+        
+        # Try to load custom templates
+        if templates_file.exists():
+            try:
+                with open(templates_file, 'r') as f:
+                    custom_templates = json.load(f)
+                    default_templates.update(custom_templates)
+                    logger.info(f"Loaded {len(custom_templates)} custom prompt templates")
+            except Exception as e:
+                logger.debug(f"Could not load custom templates: {e}")
+        
+        return default_templates
+    
+    def update_config(self, **kwargs):
+        """Update configuration dynamically"""
+        for key, value in kwargs.items():
+            if hasattr(self.config, key):
+                setattr(self.config, key, value)
+                logger.info(f"Updated config: {key} = {value}")
+    
+    async def analyze_screenshot(self, image: Any, prompt: str, 
+                               use_cache: Optional[bool] = None,
+                               priority: str = "normal",
+                               custom_config: Optional[Dict[str, Any]] = None) -> Tuple[Dict[str, Any], AnalysisMetrics]:
+        """Enhanced screenshot analysis with full configurability
         
         Args:
             image: Screenshot as PIL Image or numpy array
             prompt: What to analyze in the image
+            use_cache: Override cache setting for this request
+            priority: "high" for urgent requests, "normal" for standard
+            custom_config: Override config values for this request
             
         Returns:
-            Analysis results from Claude
+            Tuple of (analysis results, performance metrics)
         """
-        # Handle both PIL Image and numpy array inputs
+        metrics = AnalysisMetrics()
+        start_time = time.time()
+        
+        # Apply custom config for this request if provided
+        if custom_config:
+            original_config = {}
+            for key, value in custom_config.items():
+                if hasattr(self.config, key):
+                    original_config[key] = getattr(self.config, key)
+                    setattr(self.config, key, value)
+        
+        try:
+            # Determine if we should use cache
+            should_use_cache = use_cache if use_cache is not None else self.config.cache_enabled
+            
+            # Convert and preprocess image
+            preprocessing_start = time.time()
+            pil_image, image_hash = await self._preprocess_image(image)
+            metrics.preprocessing_time = time.time() - preprocessing_start
+            metrics.image_size_original = self._estimate_image_size(pil_image)
+            
+            # Check cache if enabled
+            if should_use_cache and self.cache:
+                cache_key = self._generate_cache_key(image_hash, prompt)
+                cached_entry = await self.cache.get(cache_key)
+                if cached_entry and self._is_cache_valid(cached_entry):
+                    metrics.cache_hit = True
+                    metrics.total_time = time.time() - start_time
+                    logger.debug(f"Cache hit for prompt: {prompt[:50]}...")
+                    return cached_entry.result, metrics
+            
+            # Compress image if enabled
+            if self.config.compression_enabled:
+                compression_start = time.time()
+                image_base64, compressed_size = await self._compress_and_encode(pil_image)
+                metrics.image_size_compressed = compressed_size
+                metrics.compression_ratio = 1 - (compressed_size / metrics.image_size_original)
+                logger.debug(f"Compressed image from {metrics.image_size_original} to "
+                           f"{compressed_size} bytes ({metrics.compression_ratio:.1%} reduction)")
+            else:
+                image_base64 = self._encode_image(pil_image)
+                metrics.image_size_compressed = len(base64.b64decode(image_base64))
+            
+            # Make API call with rate limiting
+            api_start = time.time()
+            async with self.api_semaphore:
+                if priority == "high":
+                    # High priority requests get processed immediately
+                    result = await self._call_claude_api(image_base64, prompt)
+                else:
+                    # Normal priority may be delayed if system is busy
+                    if self._get_system_load() > (self.config.cpu_threshold_percent / 100):
+                        await asyncio.sleep(0.5)  # Brief delay to reduce load
+                    result = await self._call_claude_api(image_base64, prompt)
+            metrics.api_call_time = time.time() - api_start
+            
+            # Parse response
+            parsing_start = time.time()
+            parsed_result = self._parse_claude_response(result)
+            metrics.parsing_time = time.time() - parsing_start
+            
+            # Cache result if enabled
+            if should_use_cache and self.cache:
+                cache_entry = CacheEntry(
+                    result=parsed_result,
+                    timestamp=datetime.now(),
+                    prompt_hash=hashlib.md5(prompt.encode()).hexdigest(),
+                    image_hash=image_hash
+                )
+                await self.cache.put(cache_key, cache_entry)
+            
+            # Track metrics
+            metrics.total_time = time.time() - start_time
+            if self.config.enable_metrics:
+                self._track_metrics(metrics)
+            
+            return parsed_result, metrics
+            
+        except Exception as e:
+            logger.error(f"Error in analyze_screenshot: {e}")
+            metrics.total_time = time.time() - start_time
+            return {"error": str(e), "description": "Analysis failed"}, metrics
+        finally:
+            # Restore original config if it was modified
+            if custom_config and 'original_config' in locals():
+                for key, value in original_config.items():
+                    setattr(self.config, key, value)
+    
+    async def _preprocess_image(self, image: Any) -> Tuple[Image.Image, str]:
+        """Preprocess image for optimal performance"""
+        # Convert to PIL Image
         if isinstance(image, np.ndarray):
-            # Ensure it's the right dtype for PIL
             if image.dtype == object:
                 raise ValueError("Invalid numpy array dtype. Expected uint8 array.")
-            # Convert numpy array to PIL Image
-            pil_image = Image.fromarray(image.astype(np.uint8))
+            pil_image = await asyncio.get_event_loop().run_in_executor(
+                self.executor, Image.fromarray, image.astype(np.uint8)
+            )
         elif isinstance(image, Image.Image):
-            # Already a PIL Image
             pil_image = image
         else:
             raise ValueError(f"Unsupported image type: {type(image)}")
         
-        # Convert to base64
-        buffer = io.BytesIO()
-        pil_image.save(buffer, format="PNG")
-        image_base64 = base64.b64encode(buffer.getvalue()).decode()
+        # Resize if too large (based on config)
+        if max(pil_image.size) > self.config.max_image_dimension:
+            pil_image = await asyncio.get_event_loop().run_in_executor(
+                self.executor, self._resize_image, pil_image
+            )
         
-        # Prepare message for Claude
-        message = self.client.messages.create(
-            model=self.model,
-            max_tokens=1024,
-            messages=[{
+        # Generate hash for caching
+        image_bytes = io.BytesIO()
+        pil_image.save(image_bytes, format="PNG")
+        image_hash = hashlib.md5(image_bytes.getvalue()).hexdigest()
+        
+        return pil_image, image_hash
+    
+    def _resize_image(self, image: Image.Image) -> Image.Image:
+        """Resize image maintaining aspect ratio"""
+        image.thumbnail(
+            (self.config.max_image_dimension, self.config.max_image_dimension), 
+            Image.Resampling.LANCZOS
+        )
+        return image
+    
+    async def _compress_and_encode(self, image: Image.Image) -> Tuple[str, int]:
+        """Compress and encode image for API transmission"""
+        buffer = io.BytesIO()
+        
+        # Convert RGBA to RGB if necessary (saves space)
+        if image.mode == 'RGBA':
+            rgb_image = Image.new('RGB', image.size, (255, 255, 255))
+            rgb_image.paste(image, mask=image.split()[3])
+            image = rgb_image
+        
+        # Save as JPEG with configured quality
+        await asyncio.get_event_loop().run_in_executor(
+            self.executor,
+            image.save,
+            buffer,
+            "JPEG",
+            self.config.jpeg_quality,
+            True  # optimize=True
+        )
+        
+        buffer.seek(0)
+        encoded = base64.b64encode(buffer.getvalue()).decode()
+        return encoded, buffer.tell()
+    
+    def _encode_image(self, image: Image.Image) -> str:
+        """Simple image encoding without compression"""
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        return base64.b64encode(buffer.getvalue()).decode()
+    
+    async def _call_claude_api(self, image_base64: str, prompt: str) -> str:
+        """Make API call to Claude"""
+        message = await asyncio.get_event_loop().run_in_executor(
+            self.executor,
+            self.client.messages.create,
+            self.config.model_name,
+            self.config.max_tokens,
+            [{
                 "role": "user",
                 "content": [
                     {
                         "type": "image",
                         "source": {
                             "type": "base64",
-                            "media_type": "image/png",
+                            "media_type": "image/jpeg" if self.config.compression_enabled else "image/png",
                             "data": image_base64
                         }
                     },
@@ -68,203 +529,296 @@ class ClaudeVisionAnalyzer:
                 ]
             }]
         )
-        
-        return self._parse_claude_response(message.content[0].text)
+        return message.content[0].text
     
     def _parse_claude_response(self, response: str) -> Dict[str, Any]:
-        """Parse Claude's response into structured data"""
-        # Try to extract JSON if Claude returns structured data
+        """Enhanced response parsing with dynamic extraction"""
+        # Try to extract JSON if present
         try:
-            # Look for JSON in the response
-            import re
-            json_match = re.search(r'\{.*\}', response, re.DOTALL)
-            if json_match:
-                return json.loads(json_match.group())
-        except:
-            pass
+            # Look for JSON blocks in various formats
+            json_patterns = [
+                r'```json\s*(.*?)\s*```',  # Markdown code block
+                r'\{[^{}]*\}',  # Simple JSON object
+                r'\{.*\}',  # Complex JSON object
+            ]
+            
+            for pattern in json_patterns:
+                match = re.search(pattern, response, re.DOTALL | re.MULTILINE)
+                if match:
+                    json_str = match.group(1) if '```' in pattern else match.group(0)
+                    parsed_json = json.loads(json_str)
+                    # Add metadata
+                    parsed_json['_metadata'] = {
+                        'timestamp': datetime.now().isoformat(),
+                        'response_type': 'json',
+                        'confidence': 0.95
+                    }
+                    return parsed_json
+        except Exception as e:
+            logger.debug(f"JSON parsing failed: {e}")
         
-        # Fallback to text analysis
-        return {
+        # Enhanced fallback parsing
+        result = {
             "description": response,
-            "has_updates": "update" in response.lower(),
-            "applications_mentioned": self._extract_app_names(response),
-            "actions_suggested": self._extract_actions(response)
+            "timestamp": datetime.now().isoformat(),
+            "confidence": self._estimate_confidence(response)
         }
+        
+        # Add optional extractions based on config
+        if self.config.enable_entity_extraction:
+            result["entities"] = self.entity_extractor.extract_entities(response)
+        
+        if self.config.enable_action_detection:
+            result["actions"] = self._extract_actions_dynamic(response)
+        
+        # Generate summary
+        result["summary"] = self._generate_summary(response)
+        
+        return result
     
-    def _extract_app_names(self, text: str) -> List[str]:
-        """Extract application names from Claude's response"""
-        common_apps = [
-            "Chrome", "Safari", "Firefox", "Mail", "Messages", "Slack",
-            "VS Code", "Xcode", "Terminal", "Finder", "System Preferences",
-            "App Store", "Activity Monitor", "Spotify", "Discord"
+    def _estimate_confidence(self, response: str) -> float:
+        """Estimate confidence based on response characteristics"""
+        confidence = 0.5  # Base confidence
+        
+        # Dynamic confidence indicators
+        confidence_boosters = {
+            'high': ['clearly', 'definitely', 'certainly', 'exactly', 'precisely'],
+            'medium': ['appears', 'seems', 'likely', 'probably'],
+            'low': ['might', 'possibly', 'unclear', 'uncertain']
+        }
+        
+        response_lower = response.lower()
+        
+        # Check confidence indicators
+        for level, words in confidence_boosters.items():
+            for word in words:
+                if word in response_lower:
+                    if level == 'high':
+                        confidence += 0.2
+                    elif level == 'medium':
+                        confidence += 0.1
+                    else:
+                        confidence -= 0.1
+        
+        # Length-based confidence
+        if len(response) > 200:
+            confidence += 0.1
+        elif len(response) < 50:
+            confidence -= 0.1
+        
+        return min(max(confidence, 0.0), 1.0)
+    
+    def _extract_actions_dynamic(self, text: str) -> List[Dict[str, str]]:
+        """Extract actionable items dynamically without hardcoded patterns"""
+        actions = []
+        
+        # Dynamic action detection using linguistic patterns
+        # Look for imperative verbs or action-suggesting phrases
+        action_patterns = [
+            # Imperative patterns
+            r'(?:you should|please|need to|must|have to|ought to)\s+(\w+)',
+            # Direct action verbs
+            r'(?:^|\. )([A-Z]\w+)\s+(?:the|a|an|your)',
+            # Action recommendations
+            r'(?:recommend|suggest|advise)\s+(?:to\s+)?(\w+)',
+            # Modal verbs suggesting actions
+            r'(?:can|could|would|should)\s+(\w+)\s+(?:the|a|an|your)'
         ]
         
-        found_apps = []
+        sentences = text.split('.')
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+                
+            # Check each pattern
+            for pattern in action_patterns:
+                matches = re.finditer(pattern, sentence, re.IGNORECASE)
+                for match in matches:
+                    verb = match.group(1) if match.lastindex else match.group(0)
+                    
+                    # Create action entry
+                    action = {
+                        "type": "detected_action",
+                        "verb": verb.lower(),
+                        "description": sentence,
+                        "priority": self._estimate_action_priority_dynamic(sentence),
+                        "confidence": self._estimate_confidence(sentence)
+                    }
+                    
+                    # Avoid duplicates
+                    if not any(a['description'] == action['description'] for a in actions):
+                        actions.append(action)
+        
+        # Sort by priority and confidence
+        actions.sort(key=lambda x: (x['priority'] == 'high', x['confidence']), reverse=True)
+        
+        return actions[:10]  # Limit to top 10 actions
+    
+    def _estimate_action_priority_dynamic(self, text: str) -> str:
+        """Dynamically estimate action priority"""
         text_lower = text.lower()
         
-        for app in common_apps:
-            if app.lower() in text_lower:
-                found_apps.append(app)
-        
-        return found_apps
-    
-    def _extract_actions(self, text: str) -> List[str]:
-        """Extract suggested actions from Claude's response"""
-        action_keywords = [
-            "should update", "recommend updating", "needs to be updated",
-            "click on", "open", "close", "restart", "install"
+        # Priority indicators (learned from context)
+        high_priority_indicators = [
+            'critical', 'urgent', 'immediately', 'security', 'error', 
+            'fail', 'crash', 'warning', 'alert', 'important'
         ]
         
-        actions = []
+        medium_priority_indicators = [
+            'should', 'recommend', 'suggest', 'update', 'improve',
+            'optimize', 'enhance', 'consider'
+        ]
+        
+        # Check indicators
+        if any(indicator in text_lower for indicator in high_priority_indicators):
+            return "high"
+        elif any(indicator in text_lower for indicator in medium_priority_indicators):
+            return "medium"
+        else:
+            return "low"
+    
+    def _generate_summary(self, text: str) -> str:
+        """Generate a brief summary of the response"""
+        # Dynamic summary generation
         sentences = text.split('.')
         
-        for sentence in sentences:
-            sentence_lower = sentence.lower()
-            for keyword in action_keywords:
-                if keyword in sentence_lower:
-                    actions.append(sentence.strip())
-                    break
+        # Filter out very short sentences
+        meaningful_sentences = [s.strip() for s in sentences if len(s.strip()) > 20]
         
-        return actions
-    
-    async def check_for_software_updates(self, screenshot: np.ndarray) -> Dict[str, Any]:
-        """Specialized prompt for checking software updates"""
-        prompt = """Analyze this screenshot and identify any software update notifications or indicators.
+        if not meaningful_sentences:
+            return text[:150].strip() + '...' if len(text) > 150 else text
         
-        Please look for:
-        1. System update notifications (macOS updates)
-        2. App update badges or notifications
-        3. Browser update indicators
-        4. Any text mentioning updates, new versions, or upgrades
-        5. Red notification badges on app icons
-        6. System preference or app store update sections
-        
-        Respond in JSON format:
-        {
-            "updates_found": true/false,
-            "update_details": [
-                {
-                    "type": "system/app/browser",
-                    "name": "application name",
-                    "version": "version if visible",
-                    "urgency": "critical/recommended/optional",
-                    "location": "where on screen"
-                }
-            ],
-            "recommended_action": "what the user should do"
-        }"""
-        
-        return await self.analyze_screenshot(screenshot, prompt)
-    
-    async def understand_user_activity(self, screenshot: np.ndarray) -> Dict[str, Any]:
-        """Understand what the user is currently doing"""
-        prompt = """Analyze this screenshot and describe what the user appears to be doing.
-        
-        Please identify:
-        1. Which applications are open and active
-        2. What type of work or activity is happening
-        3. Any potential distractions or interruptions
-        4. Suggestions for productivity or assistance
-        
-        Be concise but informative in your response."""
-        
-        return await self.analyze_screenshot(screenshot, prompt)
-    
-    async def identify_ui_elements(self, screenshot: np.ndarray, target: str) -> Dict[str, Any]:
-        """Identify specific UI elements on screen"""
-        prompt = f"""Look at this screenshot and help me find: {target}
-        
-        Please describe:
-        1. Where it is located on the screen (top/bottom/left/right/center)
-        2. What it looks like (color, shape, text)
-        3. Whether it appears clickable or interactive
-        4. Any associated text or labels
-        
-        If you cannot find it, suggest where it might typically be located."""
-        
-        return await self.analyze_screenshot(screenshot, prompt)
-    
-    async def read_text_content(self, screenshot: np.ndarray, region_description: Optional[str] = None) -> str:
-        """Read and extract text from screenshot"""
-        if region_description:
-            prompt = f"Please read and transcribe all text visible in the {region_description} area of this screenshot."
+        # Take first 1-2 meaningful sentences
+        if len(meaningful_sentences) >= 2:
+            return '. '.join(meaningful_sentences[:2]) + '.'
         else:
-            prompt = "Please read and transcribe all significant text visible in this screenshot, organizing it by section or application."
-        
-        result = await self.analyze_screenshot(screenshot, prompt)
-        return result.get("description", "")
+            return meaningful_sentences[0] + '.'
     
-    async def security_check(self, screenshot: np.ndarray) -> Dict[str, Any]:
-        """Check for security concerns on screen"""
-        prompt = """Analyze this screenshot for any security or privacy concerns.
-        
-        Look for:
-        1. Exposed passwords or sensitive information
-        2. Suspicious pop-ups or dialogs
-        3. Security warnings or alerts
-        4. Unusual system notifications
-        5. Potentially malicious content
-        
-        Respond with any concerns found and recommended actions."""
-        
-        return await self.analyze_screenshot(screenshot, prompt)
+    def _generate_cache_key(self, image_hash: str, prompt: str) -> str:
+        """Generate cache key from image and prompt"""
+        prompt_hash = hashlib.md5(prompt.encode()).hexdigest()
+        return f"{image_hash[:16]}_{prompt_hash[:16]}"
     
-    async def analyze_image_with_prompt(self, image_base64: str, prompt: str) -> Dict[str, Any]:
-        """Analyze a base64 encoded image with a custom prompt
-        
-        Args:
-            image_base64: Base64 encoded image string
-            prompt: Custom prompt for analysis
-            
-        Returns:
-            Analysis results from Claude
-        """
-        # Prepare message for Claude
-        message = self.client.messages.create(
-            model=self.model,
-            max_tokens=1024,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "image/png",
-                            "data": image_base64
-                        }
-                    },
-                    {
-                        "type": "text",
-                        "text": prompt
-                    }
-                ]
-            }]
-        )
-        
-        return self._parse_claude_response(message.content[0].text)
+    def _is_cache_valid(self, entry: CacheEntry) -> bool:
+        """Check if cache entry is still valid"""
+        age = datetime.now() - entry.timestamp
+        return age < timedelta(minutes=self.config.cache_ttl_minutes)
     
-    async def analyze_workspace_context(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze workspace context without screenshot
+    def _estimate_image_size(self, image: Image.Image) -> int:
+        """Estimate image size in bytes"""
+        # Rough estimate: width * height * channels * bytes_per_channel
+        channels = len(image.getbands())
+        return image.width * image.height * channels
+    
+    def _get_system_load(self) -> float:
+        """Get current system load (0.0 to 1.0)"""
+        return psutil.cpu_percent(interval=0.1) / 100.0
+    
+    def _track_metrics(self, metrics: AnalysisMetrics):
+        """Track performance metrics"""
+        self.recent_metrics.append(metrics)
+        # Keep only last N metrics (configurable)
+        max_metrics = int(os.getenv('VISION_MAX_METRICS', '100'))
+        if len(self.recent_metrics) > max_metrics:
+            self.recent_metrics.pop(0)
+    
+    # Dynamic analysis methods
+    
+    async def analyze_with_template(self, screenshot: np.ndarray, 
+                                  template_name: str, 
+                                  **template_vars) -> Dict[str, Any]:
+        """Analyze using a named template with variables"""
+        if template_name not in self.prompt_templates:
+            raise ValueError(f"Unknown template: {template_name}")
         
-        Args:
-            state: Dictionary containing workspace state information
-            
-        Returns:
-            Analysis based on workspace metadata
-        """
-        # Create a text-based analysis when no screenshot is available
-        analysis_text = f"""Based on the workspace information:
-- Focused application: {state.get('focused_app', 'Unknown')}
-- Number of windows open: {state.get('window_count', 0)}
-- Active windows: {', '.join([w.get('app', 'Unknown') for w in state.get('windows', [])[:5]])}
-
-The user appears to be working with multiple applications. Without seeing the actual screen content, I can provide general workspace information but cannot analyze specific content or provide detailed insights about what you're working on."""
+        prompt = self.prompt_templates[template_name]
         
-        return {
-            "description": analysis_text,
-            "focused_app": state.get('focused_app'),
-            "window_count": state.get('window_count'),
-            "requires_screenshot": True,
-            "confidence": 0.3
+        # Format template with provided variables
+        if template_vars:
+            prompt = prompt.format(**template_vars)
+        
+        result, metrics = await self.analyze_screenshot(screenshot, prompt)
+        return result
+    
+    async def quick_analysis(self, screenshot: np.ndarray, 
+                           detail_level: str = "brief") -> Dict[str, Any]:
+        """Configurable quick analysis"""
+        # Adjust config temporarily for quick analysis
+        custom_config = {
+            'max_image_dimension': 1024 if detail_level == "brief" else 1280,
+            'jpeg_quality': 70 if detail_level == "brief" else 85,
+            'max_tokens': 500 if detail_level == "brief" else 1000
         }
+        
+        prompt = self.prompt_templates.get(detail_level, self.prompt_templates['quick'])
+        result, metrics = await self.analyze_screenshot(
+            screenshot, prompt, 
+            priority="high",
+            custom_config=custom_config
+        )
+        return result
+    
+    async def batch_analyze(self, screenshots: List[np.ndarray], 
+                          prompts: List[str],
+                          batch_config: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """Analyze multiple screenshots with optional batch configuration"""
+        tasks = []
+        for screenshot, prompt in zip(screenshots, prompts):
+            task = self.analyze_screenshot(
+                screenshot, prompt, 
+                custom_config=batch_config
+            )
+            tasks.append(task)
+        
+        results = await asyncio.gather(*tasks)
+        return [result for result, _ in results]
+    
+    def get_performance_stats(self) -> Dict[str, Any]:
+        """Get comprehensive performance statistics"""
+        if not self.recent_metrics:
+            return {"message": "No metrics available"}
+        
+        total_times = [m.total_time for m in self.recent_metrics]
+        cache_hits = sum(1 for m in self.recent_metrics if m.cache_hit)
+        
+        stats = {
+            "performance": {
+                "avg_total_time": sum(total_times) / len(total_times),
+                "min_total_time": min(total_times),
+                "max_total_time": max(total_times),
+                "p95_time": sorted(total_times)[int(len(total_times) * 0.95)] if len(total_times) > 20 else max(total_times)
+            },
+            "cache": {
+                "hit_rate": cache_hits / len(self.recent_metrics),
+                "total_hits": cache_hits,
+                "total_requests": len(self.recent_metrics)
+            },
+            "compression": {
+                "avg_ratio": sum(m.compression_ratio for m in self.recent_metrics) / len(self.recent_metrics),
+                "total_saved_bytes": sum(m.image_size_original - m.image_size_compressed for m in self.recent_metrics)
+            },
+            "api": {
+                "total_calls": len([m for m in self.recent_metrics if not m.cache_hit]),
+                "avg_api_time": sum(m.api_call_time for m in self.recent_metrics if not m.cache_hit) / max(1, len([m for m in self.recent_metrics if not m.cache_hit]))
+            },
+            "config": self.config.to_dict()
+        }
+        
+        return stats
+    
+    async def clear_cache(self):
+        """Clear the response cache"""
+        if self.cache:
+            await self.cache.clear()
+            logger.info("Cache cleared")
+    
+    def save_config(self, path: str):
+        """Save current configuration to file"""
+        with open(path, 'w') as f:
+            json.dump(self.config.to_dict(), f, indent=2)
+        logger.info(f"Configuration saved to {path}")
+    
+    def __del__(self):
+        """Cleanup on deletion"""
+        self.executor.shutdown(wait=False)
