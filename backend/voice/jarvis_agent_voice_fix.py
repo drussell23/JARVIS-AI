@@ -9,7 +9,10 @@ import logging
 from typing import Optional, Dict, Any, Tuple
 
 # Import the intelligent command handler
-from .intelligent_command_handler import IntelligentCommandHandler
+try:
+    from .intelligent_command_handler import IntelligentCommandHandler
+except ImportError:
+    from voice.intelligent_command_handler import IntelligentCommandHandler
 
 logger = logging.getLogger(__name__)
 

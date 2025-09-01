@@ -14,7 +14,10 @@ import os
 import logging
 from datetime import datetime
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Ensure the backend directory is in the path
+backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +33,12 @@ except ImportError:
 try:
     from voice.jarvis_voice import EnhancedJARVISVoiceAssistant, EnhancedJARVISPersonality, VoiceCommand
     from voice.jarvis_agent_voice import JARVISAgentVoice
-    from voice.jarvis_agent_voice_fix import patch_jarvis_voice_agent
+    # Temporarily disable the patch to avoid import issues
+    # from voice.jarvis_agent_voice_fix import patch_jarvis_voice_agent
     JARVIS_IMPORTS_AVAILABLE = True
     # Apply the intelligent routing fix
-    patch_jarvis_voice_agent(JARVISAgentVoice)
-    logger.info("Applied intelligent command routing patch to JARVISAgentVoice")
+    # patch_jarvis_voice_agent(JARVISAgentVoice)
+    # logger.info("Applied intelligent command routing patch to JARVISAgentVoice")
 except (ImportError, OSError, AttributeError) as e:
     logger.warning(f"Failed to import JARVIS voice components: {e}")
     JARVIS_IMPORTS_AVAILABLE = False
@@ -263,25 +267,22 @@ class JARVISVoiceAPI:
                 self.jarvis.running = True
                 logger.info("Activating JARVIS for command processing")
             
-            # Process command with JARVIS personality
-            # Create a VoiceCommand object for the personality
-            voice_command = VoiceCommand(
-                raw_text=command.text,
-                confidence=0.9,  # High confidence for text commands
-                intent="conversation",
-                needs_clarification=False
-            )
-            response = await self.jarvis.personality.process_voice_command(voice_command)
+            # Process command through JARVIS agent (with system control)
+            response = await self.jarvis.process_voice_input(command.text)
             
-            # Get contextual info
-            context = self.jarvis.personality._get_context_info()
+            # Get contextual info if available
+            context = {}
+            if hasattr(self.jarvis, 'personality') and hasattr(self.jarvis.personality, '_get_context_info'):
+                context = self.jarvis.personality._get_context_info()
             
             return {
                 "command": command.text,
                 "response": response,
                 "context": context,
                 "timestamp": datetime.now().isoformat(),
-                "user_name": self.jarvis.personality.user_preferences['name']
+                "user_name": getattr(self.jarvis, 'user_name', 'Sir'),
+                "system_control_enabled": self.system_control_enabled,
+                "success": True
             }
             
         except Exception as e:

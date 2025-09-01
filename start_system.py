@@ -812,14 +812,18 @@ class AsyncSystemManager:
             await self.kill_process_on_port(self.ports["frontend"])
             await asyncio.sleep(2)
 
-        # Start frontend
+        # Start frontend with browser disabled
+        env = os.environ.copy()
+        env["PORT"] = str(self.ports["frontend"])
+        env["BROWSER"] = "none"  # Disable React's auto-opening of browser
+        
         process = await asyncio.create_subprocess_exec(
             "npm",
             "start",
             cwd=str(self.frontend_dir),
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
-            env={**os.environ, "PORT": str(self.ports["frontend"])},
+            env=env,
         )
 
         self.processes.append(process)
@@ -1033,6 +1037,62 @@ class AsyncSystemManager:
         except asyncio.CancelledError:
             self._shutting_down = True
             pass
+
+    async def open_browser_smart(self):
+        """Open browser intelligently - reuse tabs when possible"""
+        if self.frontend_dir.exists() and not self.backend_only:
+            url = f"http://localhost:{self.ports['frontend']}/"
+        else:
+            url = f"http://localhost:{self.ports['main_api']}/docs"
+        
+        # Try to reuse existing tab on macOS using AppleScript
+        if platform.system() == "Darwin":
+            # AppleScript to open URL in existing tab or new tab if not found
+            applescript = f'''
+            tell application "System Events"
+                set browserList to {{}}
+                if exists process "Google Chrome" then set end of browserList to "Google Chrome"
+                if exists process "Safari" then set end of browserList to "Safari"
+                if exists process "Firefox" then set end of browserList to "Firefox"
+                
+                repeat with browserName in browserList
+                    tell application browserName
+                        set windowList to windows
+                        repeat with w in windowList
+                            set tabList to tabs of w
+                            repeat with t in tabList
+                                if URL of t contains "{self.ports['frontend']}" then
+                                    set URL of t to "{url}"
+                                    set current tab of w to t
+                                    set index of w to 1
+                                    activate
+                                    return
+                                end if
+                            end repeat
+                        end repeat
+                    end tell
+                end repeat
+            end tell
+            
+            -- If no existing tab found, open new one
+            open location "{url}"
+            '''
+            
+            try:
+                # Run AppleScript silently
+                process = await asyncio.create_subprocess_exec(
+                    "osascript", "-e", applescript,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL
+                )
+                await process.wait()
+                return
+            except Exception:
+                # Fall back to webbrowser if AppleScript fails
+                pass
+        
+        # Fallback for other platforms or if AppleScript fails
+        webbrowser.open(url)
 
     async def cleanup(self):
         """Clean up all processes"""
@@ -1283,14 +1343,10 @@ class AsyncSystemManager:
         # Print access info
         self.print_access_info()
 
-        # Open browser
+        # Open browser intelligently
         if not self.no_browser:
             await asyncio.sleep(2)
-
-            if self.frontend_dir.exists() and not self.backend_only:
-                webbrowser.open(f"http://localhost:{self.ports['frontend']}/")
-            else:
-                webbrowser.open(f"http://localhost:{self.ports['main_api']}/docs")
+            await self.open_browser_smart()
 
         # Monitor services
         try:

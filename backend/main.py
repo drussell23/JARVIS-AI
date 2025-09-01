@@ -194,6 +194,7 @@ except ImportError as e:
 JARVIS_VOICE_AVAILABLE = True
 try:
     from voice.jarvis_agent_voice import JARVISAgentVoice
+    from api.jarvis_voice_api import JARVISVoiceAPI, JARVISCommand
 
     logger.info("JARVIS voice API imported successfully")
 except ImportError as e:
@@ -913,6 +914,7 @@ if JARVIS_VOICE_AVAILABLE:
     try:
         jarvis_api = JARVISVoiceAPI()
         app.include_router(jarvis_api.router, prefix="/voice")
+        app.state.jarvis_api = jarvis_api  # Store instance for WebSocket use
         logger.info("JARVIS Voice API routes added - Iron Man mode activated!")
     except Exception as e:
         logger.warning(f"Failed to initialize JARVIS Voice API: {e}")
@@ -1313,22 +1315,55 @@ async def jarvis_websocket(websocket: WebSocket):
                         }
                     )
 
-                # Route command to vision or chatbot
-                if is_vision_command(command_text):
-                    logger.info(f"Vision command detected in WebSocket: {command_text}")
-                    import time
-
-                    start_time = time.time()
-                    response_text = await handle_vision_command_request(command_text)
-                    end_time = time.time()
-                    logger.info(
-                        f"Vision command processing took {end_time - start_time:.2f} seconds"
-                    )
+                # Route command through JARVIS voice API if available
+                jarvis_api_instance = getattr(app.state, "jarvis_api", None)
+                if JARVIS_VOICE_AVAILABLE and jarvis_api_instance:
+                    try:
+                        logger.info(f"Processing command through JARVIS API: {command_text}")
+                        # Process through JARVIS with system control
+                        result = await jarvis_api_instance.process_command(JARVISCommand(text=command_text))
+                        
+                        # Handle different response formats
+                        if hasattr(result, 'body'):
+                            # JSONResponse object
+                            import json as json_lib
+                            result_data = json_lib.loads(result.body.decode())
+                            response_text = result_data.get("response", "")
+                        elif isinstance(result, dict):
+                            response_text = result.get("response", "")
+                        else:
+                            response_text = str(result)
+                            
+                        if not response_text:
+                            logger.warning("JARVIS API returned empty response")
+                            response_text = "I'm processing your request..."
+                            
+                        logger.info(f"JARVIS voice API response: {response_text}")
+                    except Exception as e:
+                        logger.error(f"Error using JARVIS voice API: {e}", exc_info=True)
+                        # Fallback to vision or chatbot
+                        if is_vision_command(command_text):
+                            response_text = await handle_vision_command_request(command_text)
+                        else:
+                            chatbot_api = getattr(app.state, "chatbot_api", None)
+                            response_text = await handle_chatbot_command(command_text, chatbot_api)
                 else:
-                    chatbot_api = getattr(app.state, "chatbot_api", None)
-                    response_text = await handle_chatbot_command(
-                        command_text, chatbot_api
-                    )
+                    # Original routing when JARVIS voice not available
+                    if is_vision_command(command_text):
+                        logger.info(f"Vision command detected in WebSocket: {command_text}")
+                        import time
+
+                        start_time = time.time()
+                        response_text = await handle_vision_command_request(command_text)
+                        end_time = time.time()
+                        logger.info(
+                            f"Vision command processing took {end_time - start_time:.2f} seconds"
+                        )
+                    else:
+                        chatbot_api = getattr(app.state, "chatbot_api", None)
+                        response_text = await handle_chatbot_command(
+                            command_text, chatbot_api
+                        )
 
                 # Send the response back to the client
                 await websocket.send_json(

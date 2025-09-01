@@ -131,23 +131,32 @@ class DynamicAppController:
         except Exception as e:
             logger.debug(f"Could not use system_profiler: {e}")
         
+    def is_app_running(self, app_name: str) -> bool:
+        """Check if an app is currently running"""
+        running_apps = self.get_all_running_apps()
+        app_name_lower = app_name.lower()
+        
+        for app in running_apps:
+            if app_name_lower in app['name'].lower() or app['name'].lower() in app_name_lower:
+                return True
+        
+        # Also check using the find_app_by_name to handle variations
+        app_info = self.find_app_by_name(app_name)
+        if app_info:
+            actual_name = app_info.get('actual_name', app_info.get('name', ''))
+            for app in running_apps:
+                if actual_name.lower() == app['name'].lower():
+                    return True
+        
+        return False
+    
     def get_all_running_apps(self) -> List[Dict[str, str]]:
         """Get all running applications with detailed info"""
         try:
-            # Use AppleScript to get comprehensive app info
+            # Use a simpler, faster AppleScript
             script = '''
             tell application "System Events"
-                set appList to {}
-                repeat with proc in (every process)
-                    try
-                        set procName to name of proc
-                        set procPath to (POSIX path of (file of proc))
-                        set procVisible to visible of proc
-                        set procPID to unix id of proc
-                        set end of appList to procName & "|" & procPath & "|" & procVisible & "|" & procPID
-                    end try
-                end repeat
-                return appList
+                get name of (every process whose background only is false)
             end tell
             '''
             
@@ -160,16 +169,15 @@ class DynamicAppController:
             
             if result.returncode == 0:
                 apps = []
-                for line in result.stdout.strip().split(", "):
-                    if "|" in line:
-                        parts = line.split("|")
-                        if len(parts) >= 4:
-                            apps.append({
-                                "name": parts[0].strip(),
-                                "path": parts[1].strip(),
-                                "visible": parts[2].strip() == "true",
-                                "pid": parts[3].strip()
-                            })
+                app_names = result.stdout.strip().split(", ")
+                for app_name in app_names:
+                    if app_name:
+                        apps.append({
+                            "name": app_name.strip(),
+                            "path": "",
+                            "visible": True,
+                            "pid": ""
+                        })
                 return apps
             
         except Exception as e:
@@ -367,6 +375,12 @@ class DynamicAppController:
     
     async def close_app_intelligently(self, search_name: str) -> Tuple[bool, str]:
         """Intelligently close app using enhanced discovery"""
+        # First check if the app is running
+        if not self.is_app_running(search_name):
+            app_info = self.find_app_by_name(search_name)
+            app_display_name = app_info['name'] if app_info else search_name
+            return True, f"{app_display_name} is not running"
+        
         # Find the app in installed apps
         app_info = self.find_app_by_name(search_name)
         
@@ -429,6 +443,13 @@ class DynamicAppController:
     
     async def open_app_intelligently(self, search_name: str) -> Tuple[bool, str]:
         """Intelligently open app using enhanced discovery"""
+        # First check if the app is already running
+        if self.is_app_running(search_name):
+            app_info = self.find_app_by_name(search_name)
+            app_display_name = app_info['name'] if app_info else search_name
+            return True, f"{app_display_name} is already running"
+        
+        # If not running, open it
         success, message = self.open_app_by_name(search_name)
         return success, message
     

@@ -50,6 +50,24 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
 
         # Add personality adapter for compatibility
         self.personality = PersonalityAdapter(self)
+        
+        # Initialize command mode and confirmations
+        self.command_mode = "conversation"  # conversation, system_control, workflow
+        self.pending_confirmations = {}
+        
+        # System control keywords
+        self.system_keywords = {
+            "open", "close", "launch", "quit", "switch", "show",
+            "volume", "mute", "screenshot", "sleep", "wifi",
+            "search", "google", "browse", "website", "create",
+            "delete", "file", "folder", "routine", "workflow",
+            "setup", "screen", "update", "monitor", "vision",
+            "see", "check", "messages", "errors", "windows",
+            "workspace", "optimize", "meeting", "privacy",
+            "sensitive", "productivity", "notifications",
+            "notification", "whatsapp", "discord", "slack",
+            "telegram", "chrome", "safari", "spotify"
+        }
 
         # Add special commands compatibility
         self.special_commands = {
@@ -99,6 +117,20 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         self.vision_enabled = False
         self.intelligent_vision_enabled = False
         self._vision_initialized = False
+        
+        # Add agent-specific responses
+        self.agent_responses = {
+            "app_opened": "I've opened {app} for you, {user}.",
+            "app_closed": "{app} has been closed, {user}.",
+            "volume_set": "Volume adjusted to {level}%, {user}.",
+            "screenshot_taken": "Screenshot captured and saved, {user}.",
+            "workflow_started": "Initiating {workflow} routine, {user}.",
+            "confirmation_needed": "This action requires your confirmation, {user}. Say 'confirm' to proceed or 'cancel' to abort.",
+            "action_completed": "Task completed successfully, {user}.",
+            "action_failed": "I apologize, {user}, but I couldn't complete that action.",
+            "system_control_mode": "Switching to system control mode. I can now help you control your Mac.",
+            "conversation_mode": "Returning to conversation mode, {user}.",
+        }
 
     def _ensure_vision_v2_initialized(self):
         """Lazy initialize Vision System v2.0 when needed"""
@@ -154,78 +186,9 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             except ImportError:
                 logger.info("Vision system not available - install vision dependencies")
 
-        # Command modes
-        self.command_mode = "conversation"  # conversation, system_control, workflow
-        self.pending_confirmations = {}
-
-        # System control keywords
-        self.system_keywords = {
-            "open",
-            "close",
-            "launch",
-            "quit",
-            "switch",
-            "show",
-            "volume",
-            "mute",
-            "screenshot",
-            "sleep",
-            "wifi",
-            "search",
-            "google",
-            "browse",
-            "website",
-            "create",
-            "delete",
-            "file",
-            "folder",
-            "routine",
-            "workflow",
-            "setup",
-            "screen",
-            "update",
-            "monitor",
-            "vision",
-            "see",
-            "check",
-            "messages",
-            "errors",
-            "windows",
-            "workspace",
-            "optimize",
-            "meeting",
-            "privacy",
-            "sensitive",
-            "productivity",
-            "notifications",
-            "notification",
-            "whatsapp",
-            "discord",
-            "slack",
-            "telegram",
-            "signal",
-            "teams",
-            "mail",
-            "email",
-            "autonomous",
-            "automatic",
-            "rollback",
-            "permission",
-        }
-
-        # Add agent-specific responses
-        self.agent_responses = {
-            "app_opened": "I've opened {app} for you, {user}.",
-            "app_closed": "{app} has been closed, {user}.",
-            "volume_set": "Volume adjusted to {level}%, {user}.",
-            "screenshot_taken": "Screenshot captured and saved, {user}.",
-            "workflow_started": "Initiating {workflow} routine, {user}.",
-            "confirmation_needed": "This action requires your confirmation, {user}. Say 'confirm' to proceed or 'cancel' to abort.",
-            "action_completed": "Task completed successfully, {user}.",
-            "action_failed": "I apologize, {user}, but I couldn't complete that action.",
-            "system_control_mode": "Switching to system control mode. I can now help you control your Mac.",
-            "conversation_mode": "Returning to conversation mode, {user}.",
-        }
+        # These are now initialized in __init__
+        # Command modes, pending_confirmations, system_keywords, and agent_responses
+        # are already set up at initialization
 
     async def process_voice_input(self, text: str) -> str:
         """Process voice input with system control capabilities"""
@@ -303,6 +266,17 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         if self.command_mode == "system_control":
             return True
 
+        # FIRST: Check for direct app control commands (open/close/launch/quit)
+        # These should ALWAYS go to system control, not vision
+        app_control_keywords = ["open", "close", "launch", "quit", "exit", "start", "kill", "terminate"]
+        for keyword in app_control_keywords:
+            if keyword in text_lower:
+                # Make sure it's not a question about these actions
+                question_words = ["what", "which", "how", "can you", "are you able", "is it possible"]
+                if not any(q_word in text_lower for q_word in question_words):
+                    # This is a direct command like "close whatsapp" or "open chrome"
+                    return True
+
         # INTELLIGENT DETECTION: Check if query is asking about screen content
         # Instead of hardcoded phrases, look for patterns that indicate screen queries
         screen_query_indicators = [
@@ -338,14 +312,15 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             "notification",
             "message",
             "check",
-            "open",
             "running",
             "any",
             "have",
         ]
         if any(word in text_lower for word in query_words):
             # Could be asking about any app - let vision figure it out
-            return True
+            # BUT NOT if it's a direct command
+            if not any(keyword in text_lower for keyword in app_control_keywords):
+                return True
 
         # Check for system keywords (for non-vision commands)
         return any(keyword in text_lower for keyword in self.system_keywords)
@@ -376,8 +351,11 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
 
         # Check if this is a direct action command
         is_action_command = False
+        logger.debug(f"Checking if '{text_lower}' is an action command")
         for action_type, keywords in action_commands.items():
+            logger.debug(f"Checking action type '{action_type}' with keywords: {keywords}")
             if any(keyword in text_lower for keyword in keywords):
+                logger.debug(f"Found keyword match for action type: {action_type}")
                 # This looks like an action command
                 # But make sure it's not a question about the action
                 question_words = [
@@ -391,15 +369,16 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
                 ]
                 if not any(q_word in text_lower for q_word in question_words):
                     is_action_command = True
+                    logger.info(f"Identified as action command of type: {action_type}")
                     break
 
         # If it's an action command, skip vision and execute directly
         if is_action_command:
-            logger.info(f"Detected action command: {text}")
-            # Skip to command execution below
+            logger.info(f"Processing action command directly: {text}")
+            # Skip all vision processing and go directly to command execution
         # INTELLIGENT ROUTING: Let vision handle ANY query about screen content
         # Don't hardcode specific apps or patterns - let vision figure it out
-        elif self.workspace_intelligence_enabled:
+        elif self.workspace_intelligence_enabled and not is_action_command:
             # If the query seems to be asking about screen content, use workspace intelligence
             # This includes ANY app, ANY notification type, ANY message type
             screen_content_keywords = [
@@ -422,30 +401,47 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             ]
 
             # If query contains screen-related words, let vision analyze it
-            if any(keyword in text_lower for keyword in screen_content_keywords):
+            # But be smart about it - don't match partial words like "what" in "whatsapp"
+            import re
+            word_boundary_keywords = ["what", "where", "have", "any", "in", "on", "from"]
+            other_keywords = [k for k in screen_content_keywords if k not in word_boundary_keywords]
+            
+            # Check word boundaries for short words
+            has_keyword = False
+            for keyword in word_boundary_keywords:
+                if re.search(r'\b' + keyword + r'\b', text_lower):
+                    has_keyword = True
+                    break
+            
+            # Check regular contains for longer words
+            if not has_keyword:
+                has_keyword = any(keyword in text_lower for keyword in other_keywords)
+            
+            if has_keyword:
                 return await self._handle_workspace_command(text)
 
-        # Standard vision triggers
-        vision_triggers = [
-            "screen",
-            "update",
-            "monitor",
-            "vision",
-            "see",
-            "what am i",
-            "what i'm",
-            "working on",
-            "cursor",
-            "analyze",
-            "look at",
-            "show me",
-            "tell me about",
-            "describe",
-            "can you see",
-            "do you see",
-        ]
-        if any(trigger in text_lower for trigger in vision_triggers):
-            return await self._handle_vision_command(text)
+        # Standard vision triggers (only if not an action command)
+        if not is_action_command:
+            vision_triggers = [
+                "screen",
+                "update",
+                "monitor",
+                "vision",
+                "see",
+                "what am i",
+                "what i'm",
+                "working on",
+                "cursor",
+                "analyze",
+                "look at",
+                "show me",
+                "tell me about",
+                "describe",
+                "can you see",
+                "do you see",
+            ]
+            if any(trigger in text_lower for trigger in vision_triggers):
+                return await self._handle_vision_command(text)
 
         try:
             # Get system context
@@ -488,7 +484,12 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             elif result.success:
                 # Format success response
                 if intent.category == CommandCategory.APPLICATION:
-                    if intent.action == "open_app":
+                    # Use the actual result message which contains intelligent status info
+                    if "already running" in result.message:
+                        return f"{result.message}, {self.user_name}."
+                    elif "not running" in result.message:
+                        return f"{result.message}, {self.user_name}."
+                    elif intent.action == "open_app":
                         return self._format_response("app_opened", app=intent.target)
                     elif intent.action == "close_app":
                         return self._format_response("app_closed", app=intent.target)
