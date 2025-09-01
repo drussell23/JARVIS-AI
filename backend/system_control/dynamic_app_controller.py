@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Dynamic App Controller for JARVIS
-Uses vision system to detect and control any application without hardcoding
+Dynamically discovers and controls all macOS applications without hardcoding
 """
 
 import os
@@ -11,15 +11,125 @@ from typing import Dict, List, Optional, Tuple, Any
 import subprocess
 import re
 from pathlib import Path
+import json
+import plistlib
+from difflib import get_close_matches
 
 logger = logging.getLogger(__name__)
 
 class DynamicAppController:
-    """Dynamically detects and controls applications using vision and system APIs"""
+    """Dynamically detects and controls applications using system APIs"""
     
     def __init__(self):
         self.detected_apps_cache = {}
+        self.installed_apps_cache = {}
+        self.app_bundle_ids = {}
         self.last_vision_scan = None
+        self.last_scan_time = None
+        self._scan_installed_applications()
+    
+    def _scan_installed_applications(self):
+        """Scan system for all installed applications"""
+        logger.info("Scanning for installed applications...")
+        self.installed_apps_cache = {}
+        self.app_bundle_ids = {}
+        
+        # Directories to scan for applications
+        app_directories = [
+            "/Applications",
+            "/System/Applications",
+            "/System/Applications/Utilities",
+            os.path.expanduser("~/Applications"),
+            "/Applications/Utilities",
+            # Common third-party app locations
+            "/Applications/Setapp",
+            os.path.expanduser("~/Applications/Setapp"),
+        ]
+        
+        for directory in app_directories:
+            if os.path.exists(directory):
+                self._scan_directory(directory)
+        
+        # Also get apps using system profiler for complete list
+        self._scan_with_system_profiler()
+        
+        logger.info(f"Found {len(self.installed_apps_cache)} installed applications")
+    
+    def _scan_directory(self, directory: str):
+        """Scan a directory for .app bundles"""
+        try:
+            for item in os.listdir(directory):
+                if item.endswith('.app'):
+                    app_path = os.path.join(directory, item)
+                    app_name = item[:-4]  # Remove .app extension
+                    
+                    # Get bundle info if available
+                    info_plist = os.path.join(app_path, "Contents", "Info.plist")
+                    if os.path.exists(info_plist):
+                        try:
+                            with open(info_plist, 'rb') as f:
+                                plist = plistlib.load(f)
+                                bundle_id = plist.get('CFBundleIdentifier', '')
+                                display_name = plist.get('CFBundleDisplayName', app_name)
+                                
+                                self.app_bundle_ids[app_name.lower()] = bundle_id
+                                # Store with various name formats
+                                self.installed_apps_cache[display_name.lower()] = {
+                                    'name': display_name,
+                                    'path': app_path,
+                                    'bundle_id': bundle_id,
+                                    'actual_name': app_name
+                                }
+                        except Exception as e:
+                            logger.debug(f"Could not read plist for {app_name}: {e}")
+                    
+                    # Store basic info
+                    self.installed_apps_cache[app_name.lower()] = {
+                        'name': app_name,
+                        'path': app_path,
+                        'bundle_id': '',
+                        'actual_name': app_name
+                    }
+                    
+                    # Also store without spaces
+                    name_no_space = app_name.replace(" ", "").lower()
+                    self.installed_apps_cache[name_no_space] = self.installed_apps_cache[app_name.lower()]
+                    
+        except Exception as e:
+            logger.error(f"Error scanning directory {directory}: {e}")
+    
+    def _scan_with_system_profiler(self):
+        """Use system_profiler to get comprehensive app list"""
+        try:
+            # This command gets all applications known to the system
+            result = subprocess.run(
+                ["system_profiler", "SPApplicationsDataType", "-json"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                apps = data.get('SPApplicationsDataType', [])
+                
+                for app in apps:
+                    app_name = app.get('_name', '')
+                    if app_name:
+                        self.installed_apps_cache[app_name.lower()] = {
+                            'name': app_name,
+                            'path': app.get('path', ''),
+                            'bundle_id': app.get('bundle_identifier', ''),
+                            'version': app.get('version', ''),
+                            'actual_name': app_name
+                        }
+                        
+                        # Store without spaces too
+                        name_no_space = app_name.replace(" ", "").lower()
+                        self.installed_apps_cache[name_no_space] = self.installed_apps_cache[app_name.lower()]
+                        
+        except Exception as e:
+            logger.debug(f"Could not use system_profiler: {e}")
         
     def get_all_running_apps(self) -> List[Dict[str, str]]:
         """Get all running applications with detailed info"""
@@ -67,44 +177,88 @@ class DynamicAppController:
             
         return []
     
-    def find_app_by_fuzzy_name(self, search_name: str) -> Optional[Dict[str, str]]:
-        """Find app using fuzzy matching"""
+    def find_app_by_name(self, search_name: str) -> Optional[Dict[str, str]]:
+        """Find app using intelligent matching"""
         search_lower = search_name.lower().strip()
-        running_apps = self.get_all_running_apps()
         
-        # First try exact match
-        for app in running_apps:
-            if app["name"].lower() == search_lower:
-                return app
+        # Direct match in installed apps
+        if search_lower in self.installed_apps_cache:
+            return self.installed_apps_cache[search_lower]
         
         # Try without spaces
         search_no_space = search_lower.replace(" ", "")
-        for app in running_apps:
-            if app["name"].lower().replace(" ", "") == search_no_space:
-                return app
+        if search_no_space in self.installed_apps_cache:
+            return self.installed_apps_cache[search_no_space]
         
-        # Try partial match
-        for app in running_apps:
-            if search_lower in app["name"].lower() or search_no_space in app["name"].lower().replace(" ", ""):
-                return app
-        
-        # Try common variations
-        variations = [
-            search_name,
-            search_name.capitalize(),
-            search_name.title(),
-            search_name.upper(),
-            search_name.replace(" ", ""),
-            search_name.replace("-", " "),
-            search_name.replace("_", " ")
-        ]
-        
+        # Handle special cases and common variations first
+        variations = self._generate_name_variations(search_name)
         for variation in variations:
-            for app in running_apps:
-                if variation in app["name"]:
-                    return app
+            if variation.lower() in self.installed_apps_cache:
+                return self.installed_apps_cache[variation.lower()]
+        
+        # Try exact word boundary matching to avoid "spotify" matching "spotlight"
+        for app_key, app_info in self.installed_apps_cache.items():
+            # Check if search term is a complete word in the app name
+            app_words = app_key.split()
+            search_words = search_lower.split()
+            
+            # Check if all search words are in app words
+            if all(word in app_words for word in search_words):
+                return app_info
+            
+            # Check if search is exact match for start of app name
+            if app_key.startswith(search_lower + " ") or app_key == search_lower:
+                return app_info
+        
+        # Try fuzzy matching
+        all_names = list(self.installed_apps_cache.keys())
+        matches = get_close_matches(search_lower, all_names, n=3, cutoff=0.7)
+        
+        if matches:
+            # Prefer matches that start with the search term
+            for match in matches:
+                if match.startswith(search_lower):
+                    return self.installed_apps_cache[match]
+            return self.installed_apps_cache[matches[0]]
+        
+        # Try partial matching as last resort
+        for app_key, app_info in self.installed_apps_cache.items():
+            if search_lower in app_key or search_no_space in app_key:
+                return app_info
         
         return None
+    
+    def find_app_by_fuzzy_name(self, search_name: str) -> Optional[Dict[str, str]]:
+        """Legacy method - redirects to find_app_by_name"""
+        return self.find_app_by_name(search_name)
+    
+    def _generate_name_variations(self, name: str) -> List[str]:
+        """Generate common name variations"""
+        variations = [name]
+        
+        # Handle common patterns
+        if name.lower() == "code":
+            variations.extend(["Visual Studio Code", "VSCode"])
+        elif name.lower() in ["discord", "discord app"]:
+            variations.append("Discord")
+        elif name.lower() == "whatsapp":
+            variations.extend(["WhatsApp", "WhatsApp Desktop"])
+        elif name.lower() == "chrome":
+            variations.append("Google Chrome")
+        elif name.lower() == "zoom":
+            variations.extend(["zoom.us", "Zoom"])
+        elif name.lower() == "spotify":
+            variations.append("Spotify")
+        
+        # Add variations with/without spaces
+        if " " in name:
+            variations.append(name.replace(" ", ""))
+        else:
+            # Try to add spaces at capital letters
+            spaced = re.sub(r'([a-z])([A-Z])', r'\1 \2', name)
+            variations.append(spaced)
+        
+        return variations
     
     def close_app_by_exact_name(self, app_name: str) -> Tuple[bool, str]:
         """Close app using exact process name"""
@@ -165,74 +319,116 @@ class DynamicAppController:
             return False, str(e)
     
     def open_app_by_name(self, app_name: str) -> Tuple[bool, str]:
-        """Open app by name, searching installed applications"""
+        """Open app by name using enhanced app discovery"""
+        app_info = self.find_app_by_name(app_name)
+        
+        if not app_info:
+            # Try refreshing cache once
+            self._scan_installed_applications()
+            app_info = self.find_app_by_name(app_name)
+            
+            if not app_info:
+                suggestions = self.get_app_suggestions(app_name)
+                if suggestions:
+                    return False, f"Could not find '{app_name}'. Did you mean: {', '.join(suggestions[:3])}?"
+                return False, f"Could not find application: {app_name}"
+        
         try:
-            # First try direct open
+            # Check if already running
+            script = f'''
+            tell application "System Events"
+                set appList to name of every application process
+                return appList contains "{app_info['actual_name']}"
+            end tell
+            '''
+            
             result = subprocess.run(
-                ["open", "-a", app_name],
+                ["osascript", "-e", script],
+                capture_output=True,
+                text=True
+            )
+            
+            is_running = result.stdout.strip() == "true"
+            
+            # Open or activate the app
+            if app_info.get('path'):
+                subprocess.run(["open", app_info['path']], check=True)
+            else:
+                subprocess.run(["open", "-a", app_info['actual_name']], check=True)
+            
+            if is_running:
+                return True, f"{app_info['name']} brought to front"
+            else:
+                return True, f"Opening {app_info['name']}"
+                
+        except Exception as e:
+            logger.error(f"Error opening {app_name}: {e}")
+            return False, f"Failed to open {app_info['name']}: {str(e)}"
+    
+    async def close_app_intelligently(self, search_name: str) -> Tuple[bool, str]:
+        """Intelligently close app using enhanced discovery"""
+        # Find the app in installed apps
+        app_info = self.find_app_by_name(search_name)
+        
+        if not app_info:
+            # Check running apps
+            running_apps = self.get_all_running_apps()
+            for running_app in running_apps:
+                if search_name.lower() in running_app['name'].lower():
+                    app_info = {'name': running_app['name'], 'actual_name': running_app['name']}
+                    break
+            
+            if not app_info:
+                return False, f"Could not find application: {search_name}"
+        
+        try:
+            # Try graceful quit
+            script = f'''
+            tell application "{app_info['actual_name']}" to quit
+            '''
+            
+            result = subprocess.run(
+                ["osascript", "-e", script],
                 capture_output=True,
                 text=True,
                 timeout=2
             )
             
             if result.returncode == 0:
-                return True, f"Opened {app_name}"
+                return True, f"Closed {app_info['name']}"
             
-            # Search in Applications folders
-            app_paths = [
-                f"/Applications/{app_name}.app",
-                f"~/Applications/{app_name}.app",
-                f"/System/Applications/{app_name}.app"
-            ]
+            # Try with System Events
+            script = f'''
+            tell application "System Events"
+                if exists process "{app_info['actual_name']}" then
+                    tell process "{app_info['actual_name']}"
+                        set frontmost to true
+                        keystroke "q" using command down
+                    end tell
+                    return "Closed using keyboard shortcut"
+                else
+                    return "Application not running"
+                end if
+            end tell
+            '''
             
-            for path in app_paths:
-                expanded_path = os.path.expanduser(path)
-                if os.path.exists(expanded_path):
-                    subprocess.run(["open", expanded_path])
-                    return True, f"Opened {app_name}"
+            result = subprocess.run(
+                ["osascript", "-e", script],
+                capture_output=True,
+                text=True
+            )
             
-            # Try to find by partial match
-            for app_dir in ["/Applications", os.path.expanduser("~/Applications"), "/System/Applications"]:
-                if os.path.exists(app_dir):
-                    for app in os.listdir(app_dir):
-                        if app.endswith('.app') and app_name.lower() in app.lower():
-                            subprocess.run(["open", os.path.join(app_dir, app)])
-                            return True, f"Opened {app[:-4]}"
+            if "not running" in result.stdout:
+                return True, f"{app_info['name']} is not running"
             
-            return False, f"Could not find application: {app_name}"
+            return True, f"Closed {app_info['name']}"
             
         except Exception as e:
-            logger.error(f"Error opening app {app_name}: {e}")
-            return False, str(e)
-    
-    async def close_app_intelligently(self, search_name: str) -> Tuple[bool, str]:
-        """Intelligently close app using fuzzy matching"""
-        # Find the app
-        app_info = self.find_app_by_fuzzy_name(search_name)
-        
-        if not app_info:
-            return False, f"Could not find running application matching '{search_name}'"
-        
-        # Close using exact name
-        success, message = self.close_app_by_exact_name(app_info["name"])
-        
-        if success:
-            return True, f"{app_info['name']} has been closed, Sir."
-        else:
-            return False, f"Failed to close {app_info['name']}: {message}"
+            logger.error(f"Error closing {search_name}: {e}")
+            return False, f"Failed to close {app_info['name']}: {str(e)}"
     
     async def open_app_intelligently(self, search_name: str) -> Tuple[bool, str]:
-        """Intelligently open app using fuzzy matching"""
-        # First check if already running
-        app_info = self.find_app_by_fuzzy_name(search_name)
-        
-        if app_info and app_info["visible"]:
-            # App is already running, just bring to front
-            script = f'tell application "{app_info["name"]}" to activate'
-            subprocess.run(["osascript", "-e", script])
-            return True, f"{app_info['name']} is already running and now active"
-        
-        # Try to open the app
+        """Intelligently open app using enhanced discovery"""
         success, message = self.open_app_by_name(search_name)
         return success, message
     
@@ -245,17 +441,23 @@ class DynamicAppController:
             self.last_vision_scan = vision_data.get("timestamp")
     
     def get_app_suggestions(self, partial_name: str) -> List[str]:
-        """Get app name suggestions"""
-        suggestions = []
-        running_apps = self.get_all_running_apps()
-        
+        """Get app name suggestions for partial matches"""
         partial_lower = partial_name.lower()
+        suggestions = []
         
-        for app in running_apps:
-            if partial_lower in app["name"].lower():
-                suggestions.append(app["name"])
+        # Get all app names that contain the partial string
+        for key, app_info in self.installed_apps_cache.items():
+            if partial_lower in key or partial_lower in app_info['name'].lower():
+                if app_info['name'] not in suggestions:
+                    suggestions.append(app_info['name'])
         
-        return suggestions[:5]  # Return top 5 suggestions
+        # Sort by similarity
+        return sorted(suggestions, key=lambda x: len(x))[:5]
+    
+    def refresh_app_list(self):
+        """Manually refresh the installed apps list"""
+        self._scan_installed_applications()
+        return len(self.installed_apps_cache)
 
 # Singleton instance
 _dynamic_controller = None

@@ -382,14 +382,14 @@ class ClaudeCommandInterpreter:
                 all_success = True
                 
                 for app in apps:
-                    # Try fast launcher first for common apps
-                    if self.fast_launcher.is_common_app(app):
-                        success, msg = await self.fast_launcher.quick_open_app(app)
-                    else:
-                        # Use dynamic controller for better app detection
-                        success, msg = await self.dynamic_controller.open_app_intelligently(app)
-                        if not success:
-                            # Fallback to standard controller
+                    # Use dynamic controller for intelligent app discovery
+                    success, msg = await self.dynamic_controller.open_app_intelligently(app)
+                    if not success:
+                        # Try fast launcher for common apps
+                        if self.fast_launcher.is_common_app(app):
+                            success, msg = await self.fast_launcher.quick_open_app(app)
+                        else:
+                            # Last resort: standard controller
                             success, msg = self.controller.open_application(app)
                     results.append(f"{app}: {msg}")
                     if not success:
@@ -400,14 +400,14 @@ class ClaudeCommandInterpreter:
                     message="; ".join(results)
                 )
             else:
-                # Try fast launcher first for common apps
-                if self.fast_launcher.is_common_app(intent.target):
-                    success, message = await self.fast_launcher.quick_open_app(intent.target)
-                else:
-                    # Use dynamic controller for better app detection
-                    success, message = await self.dynamic_controller.open_app_intelligently(intent.target)
-                    if not success:
-                        # Fallback to standard controller
+                # Use dynamic controller for intelligent app discovery
+                success, message = await self.dynamic_controller.open_app_intelligently(intent.target)
+                if not success:
+                    # Try fast launcher for common apps
+                    if self.fast_launcher.is_common_app(intent.target):
+                        success, message = await self.fast_launcher.quick_open_app(intent.target)
+                    else:
+                        # Last resort: standard controller
                         success, message = self.controller.open_application(intent.target)
                 
         elif intent.action == "close_app":
@@ -418,10 +418,10 @@ class ClaudeCommandInterpreter:
                 all_success = True
                 
                 for app in apps:
-                    # Use dynamic controller for better app detection
+                    # Use dynamic controller for intelligent app discovery
                     success, msg = await self.dynamic_controller.close_app_intelligently(app)
                     if not success:
-                        # Fallback to standard controller
+                        # Last resort: standard controller
                         success, msg = self.controller.close_application(app)
                     results.append(f"{app}: {msg}")
                     if not success:
@@ -432,10 +432,10 @@ class ClaudeCommandInterpreter:
                     message="; ".join(results)
                 )
             else:
-                # Use dynamic controller for better app detection
+                # Use dynamic controller for intelligent app discovery
                 success, message = await self.dynamic_controller.close_app_intelligently(intent.target)
                 if not success:
-                    # Fallback to standard controller
+                    # Last resort: standard controller
                     success, message = self.controller.close_application(intent.target)
                 
         elif intent.action == "switch_to_app":
