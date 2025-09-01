@@ -20,6 +20,13 @@ use crate::vision::{
     ImageCompressor, CompressionFormat, CompressedImage,
     VisionContext, VisionGlobalConfig, update_vision_config
 };
+
+#[cfg(all(feature = "python-bindings", target_os = "macos"))]
+use crate::vision::{
+    WindowTracker, WindowPosition, AppStateDetector, AppState,
+    ChunkedTextExtractor, TextChunk, WorkspaceOrganizer,
+    WorkspaceRule, RuleCondition, RuleAction, WindowLayout
+};
 use crate::quantized_ml::{QuantizedInferenceEngine, QuantizedTensor, QuantizationType};
 use crate::quantized_ml::inference::QuantizedLayer;
 use crate::memory::{MemoryManager, ZeroCopyBuffer};
@@ -1082,6 +1089,194 @@ pub fn get_memory_info(py: Python) -> PyResult<PyObject> {
     Ok(dict.to_object(py))
 }
 
+/// macOS Window Tracker for Python
+#[cfg(all(feature = "python-bindings", target_os = "macos"))]
+#[pyclass]
+pub struct RustWindowTracker {
+    tracker: WindowTracker,
+}
+
+#[cfg(all(feature = "python-bindings", target_os = "macos"))]
+#[pymethods]
+impl RustWindowTracker {
+    #[new]
+    fn new() -> Self {
+        Self {
+            tracker: WindowTracker::new(),
+        }
+    }
+    
+    /// Get windows that moved
+    fn get_moved_windows(&self, threshold_pixels: u32) -> PyResult<Vec<PyObject>> {
+        Python::with_gil(|py| {
+            let moved = self.tracker.get_moved_windows(threshold_pixels);
+            let mut results = Vec::new();
+            
+            for window in moved {
+                let dict = PyDict::new(py);
+                dict.set_item("window_id", window.window_id)?;
+                dict.set_item("app_name", window.app_name)?;
+                dict.set_item("x", window.bounds.x)?;
+                dict.set_item("y", window.bounds.y)?;
+                dict.set_item("width", window.bounds.width)?;
+                dict.set_item("height", window.bounds.height)?;
+                dict.set_item("velocity_x", window.movement_velocity.0)?;
+                dict.set_item("velocity_y", window.movement_velocity.1)?;
+                results.push(dict.to_object(py));
+            }
+            
+            Ok(results)
+        })
+    }
+}
+
+/// macOS App State Detector for Python
+#[cfg(all(feature = "python-bindings", target_os = "macos"))]
+#[pyclass]
+pub struct RustAppStateDetector {
+    detector: AppStateDetector,
+}
+
+#[cfg(all(feature = "python-bindings", target_os = "macos"))]
+#[pymethods]
+impl RustAppStateDetector {
+    #[new]
+    fn new() -> PyResult<Self> {
+        let detector = AppStateDetector::new()
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        Ok(Self { detector })
+    }
+    
+    /// Get all running applications
+    fn get_running_apps(&self, py: Python) -> PyResult<Vec<PyObject>> {
+        let apps = self.detector.get_running_apps()
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        
+        let mut results = Vec::new();
+        for app in apps {
+            let dict = PyDict::new(py);
+            dict.set_item("bundle_id", app.bundle_id)?;
+            dict.set_item("name", app.name)?;
+            dict.set_item("is_running", app.is_running)?;
+            dict.set_item("is_active", app.is_active)?;
+            dict.set_item("is_hidden", app.is_hidden)?;
+            dict.set_item("cpu_usage", app.cpu_usage)?;
+            dict.set_item("memory_usage_mb", app.memory_usage_mb)?;
+            results.push(dict.to_object(py));
+        }
+        
+        Ok(results)
+    }
+    
+    /// Detect app state changes
+    fn detect_changes(&self, py: Python) -> PyResult<Vec<PyObject>> {
+        let changes = self.detector.detect_changes()
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        
+        let mut results = Vec::new();
+        for change in changes {
+            let dict = PyDict::new(py);
+            dict.set_item("app_name", change.app_name)?;
+            dict.set_item("bundle_id", change.bundle_id)?;
+            dict.set_item("change_type", format!("{:?}", change.change_type))?;
+            results.push(dict.to_object(py));
+        }
+        
+        Ok(results)
+    }
+}
+
+/// macOS Text Extractor for Python
+#[cfg(all(feature = "python-bindings", target_os = "macos"))]
+#[pyclass]
+pub struct RustTextExtractor {
+    extractor: ChunkedTextExtractor,
+}
+
+#[cfg(all(feature = "python-bindings", target_os = "macos"))]
+#[pymethods]
+impl RustTextExtractor {
+    #[new]
+    fn new() -> Self {
+        Self {
+            extractor: ChunkedTextExtractor::new(),
+        }
+    }
+    
+    /// Extract text from image in chunks
+    fn extract_text_chunked(&self, py: Python, image: PyReadonlyArray3<u8>) -> PyResult<Vec<PyObject>> {
+        // Convert numpy to ImageData
+        let shape = image.shape();
+        let (height, width, channels) = (shape[0] as u32, shape[1] as u32, shape[2] as u8);
+        
+        let format = match channels {
+            1 => ImageFormat::Gray8,
+            3 => ImageFormat::Rgb8,
+            4 => ImageFormat::Rgba8,
+            _ => return Err(PyValueError::new_err("Unsupported channel count")),
+        };
+        
+        let img_data = ImageData::from_raw(
+            width, height,
+            image.as_slice()?.to_vec(),
+            format
+        ).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        
+        // Extract text (would be async in full implementation)
+        let runtime = tokio::runtime::Runtime::new()
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        
+        let chunks = runtime.block_on(async {
+            self.extractor.extract_text_chunked(&img_data).await
+        }).map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
+        
+        let mut results = Vec::new();
+        for chunk in chunks {
+            let dict = PyDict::new(py);
+            dict.set_item("chunk_id", chunk.chunk_id)?;
+            dict.set_item("text", chunk.text)?;
+            dict.set_item("confidence", chunk.confidence)?;
+            results.push(dict.to_object(py));
+        }
+        
+        Ok(results)
+    }
+}
+
+/// macOS Workspace Organizer for Python
+#[cfg(all(feature = "python-bindings", target_os = "macos"))]
+#[pyclass]
+pub struct RustWorkspaceOrganizer {
+    organizer: WorkspaceOrganizer,
+}
+
+#[cfg(all(feature = "python-bindings", target_os = "macos"))]
+#[pymethods]
+impl RustWorkspaceOrganizer {
+    #[new]
+    fn new() -> Self {
+        Self {
+            organizer: WorkspaceOrganizer::new(),
+        }
+    }
+    
+    /// Apply workspace rules and get actions
+    fn apply_rules(&self, py: Python) -> PyResult<Vec<PyObject>> {
+        // This would need window and app state info
+        // Simplified for now
+        let actions = Vec::new();
+        
+        let mut results = Vec::new();
+        for action in actions {
+            let dict = PyDict::new(py);
+            dict.set_item("action_type", "placeholder")?;
+            results.push(dict.to_object(py));
+        }
+        
+        Ok(results)
+    }
+}
+
 /// Register all Python bindings with enhanced functionality
 #[cfg(feature = "python-bindings")]
 pub fn register_python_module(m: &PyModule) -> PyResult<()> {
@@ -1096,6 +1291,15 @@ pub fn register_python_module(m: &PyModule) -> PyResult<()> {
     m.add_class::<RustImageCompressor>()?;
     m.add_class::<RustVisionContext>()?;
     m.add_class::<SharedMemoryInfo>()?;
+    
+    // Register macOS-specific classes
+    #[cfg(target_os = "macos")]
+    {
+        m.add_class::<RustWindowTracker>()?;
+        m.add_class::<RustAppStateDetector>()?;
+        m.add_class::<RustTextExtractor>()?;
+        m.add_class::<RustWorkspaceOrganizer>()?;
+    }
     
     // Original classes
     m.add_class::<RustQuantizedModel>()?;

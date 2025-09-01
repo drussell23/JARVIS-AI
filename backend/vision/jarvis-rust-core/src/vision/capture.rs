@@ -11,6 +11,14 @@ use serde::{Deserialize, Serialize};
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 
+// Core Graphics imports for all macOS functionality
+#[cfg(target_os = "macos")]
+use core_graphics::display::*;
+#[cfg(target_os = "macos")]
+use core_foundation::base::{TCFType, CFRelease};
+#[cfg(target_os = "macos")]
+use core_foundation::data::{CFData, CFDataGetBytePtr, CFDataGetLength};
+
 /// Global configuration store
 static CAPTURE_CONFIG_STORE: Lazy<RwLock<HashMap<String, String>>> = 
     Lazy::new(|| RwLock::new(HashMap::new()));
@@ -219,12 +227,119 @@ pub struct ScreenCapture {
     capture_stats: CaptureStats,
     #[cfg(target_os = "macos")]
     metal_context: Option<MetalCaptureContext>,
+    #[cfg(target_os = "macos")]
+    macos_context: Option<MacOSCaptureContext>,
+}
+
+#[cfg(target_os = "macos")]
+use cocoa::base::{nil, YES, NO};
+#[cfg(target_os = "macos")]
+use cocoa::foundation::{NSString, NSArray, NSDictionary, NSNumber};
+#[cfg(target_os = "macos")]
+use objc::runtime::{Object, Sel};
+#[cfg(target_os = "macos")]
+use objc::{msg_send, sel, sel_impl};
+#[cfg(target_os = "macos")]
+use dispatch::{Queue, QueueAttribute};
+
+/// Enhanced macOS capture context with NSWorkspace and window detection
+#[cfg(target_os = "macos")]
+pub struct MacOSCaptureContext {
+    /// Grand Central Dispatch queue for async operations
+    dispatch_queue: Queue,
+    /// Cached window list for performance
+    window_cache: Arc<RwLock<WindowCache>>,
+    /// NSWorkspace instance for app detection
+    workspace: *mut Object,
+    /// Display stream for efficient capture (macOS 12.3+)
+    display_stream: Option<*mut Object>,
+    /// Metal device for GPU acceleration
+    metal_device: Option<*mut Object>,
+    /// Configuration
+    config: Arc<RwLock<MacOSCaptureConfig>>,
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MacOSCaptureConfig {
+    pub use_display_stream: bool,
+    pub enable_window_detection: bool,
+    pub enable_app_detection: bool,
+    pub enable_ocr: bool,
+    pub ocr_chunk_size: usize,
+    pub window_cache_ttl_ms: u64,
+    pub use_metal_performance_shaders: bool,
+    pub dispatch_queue_priority: String,
+}
+
+#[cfg(target_os = "macos")]
+impl Default for MacOSCaptureConfig {
+    fn default() -> Self {
+        Self {
+            use_display_stream: std::env::var("MACOS_USE_DISPLAY_STREAM")
+                .unwrap_or_else(|_| "true".to_string())
+                .parse()
+                .unwrap_or(true),
+            enable_window_detection: std::env::var("MACOS_WINDOW_DETECTION")
+                .unwrap_or_else(|_| "true".to_string())
+                .parse()
+                .unwrap_or(true),
+            enable_app_detection: std::env::var("MACOS_APP_DETECTION")
+                .unwrap_or_else(|_| "true".to_string())
+                .parse()
+                .unwrap_or(true),
+            enable_ocr: std::env::var("MACOS_ENABLE_OCR")
+                .unwrap_or_else(|_| "false".to_string())
+                .parse()
+                .unwrap_or(false),
+            ocr_chunk_size: std::env::var("MACOS_OCR_CHUNK_SIZE")
+                .unwrap_or_else(|_| "1024".to_string())
+                .parse()
+                .unwrap_or(1024),
+            window_cache_ttl_ms: std::env::var("MACOS_WINDOW_CACHE_TTL")
+                .unwrap_or_else(|_| "100".to_string())
+                .parse()
+                .unwrap_or(100),
+            use_metal_performance_shaders: std::env::var("MACOS_USE_MPS")
+                .unwrap_or_else(|_| "true".to_string())
+                .parse()
+                .unwrap_or(true),
+            dispatch_queue_priority: std::env::var("MACOS_DISPATCH_PRIORITY")
+                .unwrap_or_else(|_| "high".to_string()),
+        }
+    }
+}
+
+/// Window information cache
+#[cfg(target_os = "macos")]
+#[derive(Debug, Clone, Default)]
+pub struct WindowCache {
+    windows: Vec<WindowInfo>,
+    last_update: Instant,
+    ttl: Duration,
+}
+
+/// Detailed window information
+#[cfg(target_os = "macos")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindowInfo {
+    pub window_id: u32,
+    pub app_name: String,
+    pub window_title: String,
+    pub bounds: CaptureRegion,
+    pub is_visible: bool,
+    pub is_minimized: bool,
+    pub is_focused: bool,
+    pub layer: i32,
+    pub alpha: f32,
+    pub pid: i32,
 }
 
 #[cfg(target_os = "macos")]
 struct MetalCaptureContext {
-    // Metal device and command queue for GPU capture
-    // Placeholder for actual Metal implementation
+    device: *mut Object,
+    command_queue: *mut Object,
+    texture_cache: HashMap<String, *mut Object>,
 }
 
 impl ScreenCapture {
@@ -241,7 +356,7 @@ impl ScreenCapture {
             buffer_pool.push(ZeroCopyBuffer::from_rust(buffer));
         }
         
-        Ok(Self {
+        let mut capture = Self {
             config,
             last_capture_time: None,
             frame_interval,
@@ -251,7 +366,16 @@ impl ScreenCapture {
             capture_stats: CaptureStats::default(),
             #[cfg(target_os = "macos")]
             metal_context: None,
-        })
+            #[cfg(target_os = "macos")]
+            macos_context: None,
+        };
+        
+        #[cfg(target_os = "macos")]
+        {
+            capture.initialize_macos_context()?;
+        }
+        
+        Ok(capture)
     }
     
     /// Estimate buffer size based on configuration
@@ -332,12 +456,82 @@ impl ScreenCapture {
     }
     
     #[cfg(target_os = "macos")]
+    fn initialize_macos_context(&mut self) -> Result<()> {
+        unsafe {
+            // Initialize NSWorkspace
+            let workspace_class = objc::runtime::Class::get("NSWorkspace").unwrap();
+            let workspace: *mut Object = msg_send![workspace_class, sharedWorkspace];
+            
+            // Create dispatch queue with configured priority
+            let priority = match self.config.capture_quality {
+                CaptureQuality::Ultra => QueueAttribute::HighPriority,
+                CaptureQuality::High => QueueAttribute::HighPriority,
+                CaptureQuality::Medium => QueueAttribute::Default,
+                CaptureQuality::Low => QueueAttribute::LowPriority,
+            };
+            
+            let queue = Queue::global(priority);
+            
+            // Initialize Metal if available
+            let metal_device = if self.config.enable_gpu_capture {
+                let device_class = objc::runtime::Class::get("MTLDevice").ok();
+                device_class.and_then(|_| {
+                    let device: *mut Object = msg_send![device_class, MTLCreateSystemDefaultDevice];
+                    if device.is_null() { None } else { Some(device) }
+                })
+            } else {
+                None
+            };
+            
+            let macos_config = MacOSCaptureConfig::default();
+            
+            self.macos_context = Some(MacOSCaptureContext {
+                dispatch_queue: queue,
+                window_cache: Arc::new(RwLock::new(WindowCache {
+                    windows: Vec::new(),
+                    last_update: Instant::now(),
+                    ttl: Duration::from_millis(macos_config.window_cache_ttl_ms),
+                })),
+                workspace,
+                display_stream: None,
+                metal_device,
+                config: Arc::new(RwLock::new(macos_config)),
+            });
+            
+            // Initialize display stream if available (macOS 12.3+)
+            if let Some(ref mut ctx) = self.macos_context {
+                ctx.initialize_display_stream();
+            }
+        }
+        
+        Ok(())
+    }
+    
+    #[cfg(target_os = "macos")]
     fn capture_macos_to_buffer(&mut self, buffer_idx: usize) -> Result<()> {
+        // Try display stream first (most efficient)
+        if let Some(ref mut ctx) = self.macos_context {
+            if ctx.config.read().use_display_stream {
+                if let Ok(()) = ctx.capture_with_display_stream(buffer_idx, &mut self.buffer_pool) {
+                    self.capture_stats.hardware_accelerated = true;
+                    return Ok(());
+                }
+            }
+        }
+        
+        // Fallback to Core Graphics
+        self.capture_with_core_graphics(buffer_idx)
+    }
+    
+    #[cfg(target_os = "macos")]
+    fn capture_with_core_graphics(&mut self, buffer_idx: usize) -> Result<()> {
         use core_graphics::display::*;
         use core_foundation::base::TCFType;
         
         unsafe {
             let display_id = CGMainDisplayID();
+            
+            // Create image with options
             let image_ref = CGDisplayCreateImage(display_id);
             
             if image_ref.is_null() {
@@ -550,6 +744,164 @@ impl ScreenCapture {
     pub fn reset_stats(&mut self) {
         self.capture_stats = CaptureStats::default();
     }
+    
+    /// Get window list with caching (macOS optimized)
+    #[cfg(target_os = "macos")]
+    pub fn get_window_list(&self) -> Result<Vec<WindowInfo>> {
+        if let Some(ref ctx) = self.macos_context {
+            ctx.get_window_list()
+        } else {
+            Err(JarvisError::VisionError("macOS context not initialized".to_string()))
+        }
+    }
+    
+    /// Get active application info
+    #[cfg(target_os = "macos")]
+    pub fn get_active_app(&self) -> Result<AppInfo> {
+        if let Some(ref ctx) = self.macos_context {
+            ctx.get_active_app()
+        } else {
+            Err(JarvisError::VisionError("macOS context not initialized".to_string()))
+        }
+    }
+    
+    /// Detect text in region using Vision framework
+    #[cfg(target_os = "macos")]
+    pub fn detect_text_in_region(&self, region: CaptureRegion) -> Result<Vec<TextDetection>> {
+        if let Some(ref ctx) = self.macos_context {
+            ctx.detect_text_in_region(region)
+        } else {
+            Err(JarvisError::VisionError("macOS context not initialized".to_string()))
+        }
+    }
+}
+
+/// Application information
+#[cfg(target_os = "macos")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppInfo {
+    pub name: String,
+    pub bundle_id: String,
+    pub pid: i32,
+    pub is_active: bool,
+    pub is_hidden: bool,
+    pub windows: Vec<u32>,
+}
+
+/// Text detection result
+#[cfg(target_os = "macos")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextDetection {
+    pub text: String,
+    pub confidence: f32,
+    pub bounds: CaptureRegion,
+}
+
+#[cfg(target_os = "macos")]
+impl MacOSCaptureContext {
+    /// Initialize display stream for efficient capture
+    fn initialize_display_stream(&mut self) {
+        // This would initialize SCStream API for macOS 12.3+
+        // Placeholder for now
+    }
+    
+    /// Capture using display stream
+    fn capture_with_display_stream(&self, buffer_idx: usize, buffers: &mut Vec<ZeroCopyBuffer>) -> Result<()> {
+        // Implementation would use SCStream API
+        Err(JarvisError::VisionError("Display stream not implemented yet".to_string()))
+    }
+    
+    /// Get window list with caching
+    pub fn get_window_list(&self) -> Result<Vec<WindowInfo>> {
+        let mut cache = self.window_cache.write();
+        
+        // Check cache validity
+        if cache.last_update.elapsed() < cache.ttl && !cache.windows.is_empty() {
+            return Ok(cache.windows.clone());
+        }
+        
+        // Update window list using Core Graphics
+        // For now, return empty list - full implementation requires more Core Foundation setup
+        cache.windows = Vec::new();
+        cache.last_update = Instant::now();
+        Ok(Vec::new())
+    }
+    
+    /// Parse window dictionary into WindowInfo
+    fn parse_window_info(&self, window_id: u32, app_name: String) -> Result<WindowInfo> {
+        // Simplified implementation for now
+        Ok(WindowInfo {
+            window_id,
+            app_name,
+            window_title: String::new(),
+            bounds: CaptureRegion { x: 0, y: 0, width: 100, height: 100 },
+            is_visible: true,
+            is_minimized: false,
+            is_focused: false,
+            layer: 0,
+            alpha: 1.0,
+            pid: 0,
+        })
+    }
+    
+    /// Get active application using NSWorkspace
+    pub fn get_active_app(&self) -> Result<AppInfo> {
+        unsafe {
+            let frontmost_app: *mut Object = msg_send![self.workspace, frontmostApplication];
+            
+            if frontmost_app.is_null() {
+                return Err(JarvisError::VisionError("No active application".to_string()));
+            }
+            
+            // Extract app properties
+            let name_obj: *mut Object = msg_send![frontmost_app, localizedName];
+            let name = if !name_obj.is_null() {
+                let c_str: *const i8 = msg_send![name_obj, UTF8String];
+                std::ffi::CStr::from_ptr(c_str).to_string_lossy().to_string()
+            } else {
+                String::new()
+            };
+            
+            let bundle_id_obj: *mut Object = msg_send![frontmost_app, bundleIdentifier];
+            let bundle_id = if !bundle_id_obj.is_null() {
+                let c_str: *const i8 = msg_send![bundle_id_obj, UTF8String];
+                std::ffi::CStr::from_ptr(c_str).to_string_lossy().to_string()
+            } else {
+                String::new()
+            };
+            
+            let pid: i32 = msg_send![frontmost_app, processIdentifier];
+            let is_active: bool = msg_send![frontmost_app, isActive];
+            let is_hidden: bool = msg_send![frontmost_app, isHidden];
+            
+            // Get windows for this app
+            let windows = self.get_window_list()?
+                .into_iter()
+                .filter(|w| w.pid == pid)
+                .map(|w| w.window_id)
+                .collect();
+            
+            Ok(AppInfo {
+                name,
+                bundle_id,
+                pid,
+                is_active,
+                is_hidden,
+                windows,
+            })
+        }
+    }
+    
+    /// Detect text using Vision framework
+    pub fn detect_text_in_region(&self, region: CaptureRegion) -> Result<Vec<TextDetection>> {
+        if !self.config.read().enable_ocr {
+            return Ok(Vec::new());
+        }
+        
+        // This would use Vision framework for text detection
+        // Placeholder for now
+        Ok(Vec::new())
+    }
 }
 
 /// Shared memory handle for zero-copy Python interop
@@ -635,5 +987,16 @@ mod tests {
         let config = CaptureConfig::from_env();
         assert_eq!(config.target_fps, 120);
         assert!(!config.use_hardware_acceleration);
+    }
+    
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_macos_config() {
+        std::env::set_var("MACOS_USE_DISPLAY_STREAM", "true");
+        std::env::set_var("MACOS_WINDOW_DETECTION", "true");
+        
+        let config = MacOSCaptureConfig::default();
+        assert!(config.use_display_stream);
+        assert!(config.enable_window_detection);
     }
 }

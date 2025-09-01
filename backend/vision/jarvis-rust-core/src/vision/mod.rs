@@ -4,6 +4,10 @@
 pub mod capture;
 pub mod compression;
 pub mod processing;
+pub mod sliding_window;
+
+#[cfg(target_os = "macos")]
+pub mod macos_optimization;
 
 use crate::{Result, JarvisError};
 use crate::memory::{MemoryManager, ZeroCopyBuffer};
@@ -28,6 +32,18 @@ pub use processing::{
 pub use compression::{
     ImageCompressor, CompressionFormat, CompressedImage,
     CompressionConfig, CompressionStats, AlgorithmPerformance
+};
+
+#[cfg(target_os = "macos")]
+pub use macos_optimization::{
+    WindowTracker, WindowPosition, AppStateDetector, AppState, AppStateChange,
+    ChunkedTextExtractor, TextChunk, NotificationMonitor, NotificationEvent,
+    WorkspaceOrganizer, WorkspaceRule, RuleCondition, RuleAction, WindowLayout
+};
+
+pub use sliding_window::{
+    SlidingWindowConfig, SlidingWindowCapture, WindowRegion, AnalysisResult,
+    MemoryAwareSlidingWindow, SlidingWindowStats, CachedAnalysis
 };
 
 /// Global vision configuration
