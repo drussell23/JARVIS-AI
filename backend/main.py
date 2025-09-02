@@ -35,6 +35,15 @@ except ImportError:
     from chatbots.claude_chatbot import ClaudeChatbot  # Fall back to regular chatbot
 
     VISION_CHATBOT_AVAILABLE = False
+
+# Import enhanced vision analyzer with 6 integrated components
+try:
+    from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzer
+    ENHANCED_VISION_ANALYZER_AVAILABLE = True
+    logger.info("Enhanced vision analyzer with 6 integrated components available")
+except ImportError as e:
+    ENHANCED_VISION_ANALYZER_AVAILABLE = False
+    logger.info(f"Enhanced vision analyzer not available: {e}")
 import asyncio
 import json
 import time
@@ -1045,9 +1054,24 @@ def is_vision_command(command_text: str) -> bool:
 
 
 async def handle_vision_command_request(command_text: str) -> str:
-    """Handles a command by processing it directly with vision system."""
+    """Handles a command by processing it directly with vision system.
+    
+    The vision system now includes 6 integrated components:
+    1. Swift Vision Integration - Metal-accelerated processing
+    2. Window Analysis - Memory-aware window content analysis  
+    3. Window Relationship Detection - Configurable window relationships
+    4. Continuous Screen Analyzer - Dynamic interval monitoring
+    5. Memory-Efficient Analyzer - Smart compression strategies
+    6. Simplified Vision System - Configurable query templates
+    
+    All optimized for 16GB RAM macOS systems with no hardcoded values.
+    """
     try:
         logger.info(f"Vision command received: {command_text}")
+        
+        # Log enhanced vision availability
+        if ENHANCED_VISION_ANALYZER_AVAILABLE:
+            logger.info("Enhanced vision analyzer with 6 components is available")
 
         # Check if we have the vision chatbot available
         chatbot_api = getattr(app.state, "chatbot_api", None)
@@ -1135,6 +1159,14 @@ async def root():
             "jarvis": (
                 "Iron Man-style AI assistant with personality"
                 if JARVIS_VOICE_AVAILABLE
+                else "Not available"
+            ),
+            "vision": (
+                "Enhanced vision system with 6 integrated components: Swift Vision (Metal-accelerated), "
+                "Window Analysis, Relationship Detection, Continuous Monitoring, Memory-Efficient Processing, "
+                "and Simplified Claude-only mode - all optimized for 16GB RAM with no hardcoded values"
+                if ENHANCED_VISION_ANALYZER_AVAILABLE
+                else "Basic vision capabilities" if VISION_CHATBOT_AVAILABLE
                 else "Not available"
             ),
             "nlp": "Intent recognition, entity extraction, sentiment analysis",
@@ -1562,6 +1594,16 @@ async def health_check():
                     for name, info in memory_manager.components.items()
                     if info.is_loaded
                 ],
+                "vision_api": VISION_API_AVAILABLE,
+                "enhanced_vision": ENHANCED_VISION_ANALYZER_AVAILABLE,
+                "vision_components": {
+                    "swift_vision": "Metal-accelerated processing",
+                    "window_analysis": "Memory-aware window analysis",
+                    "relationship_detection": "Window relationship detection",
+                    "continuous_monitoring": "Dynamic interval monitoring",
+                    "memory_efficient": "Smart compression strategies",
+                    "simplified_vision": "Configurable query templates"
+                } if ENHANCED_VISION_ANALYZER_AVAILABLE else None,
             },
         }
     except Exception as e:

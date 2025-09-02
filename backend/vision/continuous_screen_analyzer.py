@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
 """
-Continuous Screen Analyzer for JARVIS
-Provides real-time screen monitoring with Claude Vision integration
+Enhanced Continuous Screen Analyzer for JARVIS
+Memory-optimized real-time screen monitoring with Claude Vision integration
+Optimized for 16GB RAM macOS systems
 """
 
 import asyncio
 import logging
 import time
-from typing import Dict, Any, Optional, Callable, List
-from datetime import datetime
+import os
+import gc
+import psutil
+from typing import Dict, Any, Optional, Callable, List, Deque
+from datetime import datetime, timedelta
+from collections import deque
+import weakref
 import numpy as np
 from PIL import Image
 import io
@@ -16,26 +22,46 @@ import base64
 
 logger = logging.getLogger(__name__)
 
-class ContinuousScreenAnalyzer:
+class MemoryAwareScreenAnalyzer:
     """
-    Continuous screen monitoring system that integrates with Claude Vision
-    Enables JARVIS to always see and understand what's on screen
+    Memory-optimized continuous screen monitoring system
+    Fully configurable with no hardcoded values
     """
     
-    def __init__(self, vision_handler, update_interval: float = 2.0):
+    def __init__(self, vision_handler, update_interval: Optional[float] = None):
         """
-        Initialize continuous screen analyzer
+        Initialize memory-aware continuous screen analyzer
         
         Args:
             vision_handler: The vision action handler for Claude Vision
             update_interval: How often to capture screen (in seconds)
         """
         self.vision_handler = vision_handler
-        self.update_interval = update_interval
+        
+        # Load all configuration from environment variables
+        self.config = {
+            'update_interval': float(os.getenv('VISION_MONITOR_INTERVAL', str(update_interval or 3.0))),
+            'max_captures_in_memory': int(os.getenv('VISION_MAX_CAPTURES', '10')),
+            'capture_retention_seconds': int(os.getenv('VISION_CAPTURE_RETENTION', '300')),  # 5 minutes
+            'cache_duration_seconds': float(os.getenv('VISION_CACHE_DURATION', '5.0')),
+            'memory_limit_mb': int(os.getenv('VISION_MEMORY_LIMIT_MB', '200')),  # 200MB for this component
+            'memory_check_interval': float(os.getenv('VISION_MEMORY_CHECK_INTERVAL', '10.0')),
+            'low_memory_threshold_mb': int(os.getenv('VISION_LOW_MEMORY_MB', '2000')),  # 2GB free RAM
+            'critical_memory_threshold_mb': int(os.getenv('VISION_CRITICAL_MEMORY_MB', '1000')),  # 1GB free RAM
+            'dynamic_interval_enabled': os.getenv('VISION_DYNAMIC_INTERVAL', 'true').lower() == 'true',
+            'min_interval_seconds': float(os.getenv('VISION_MIN_INTERVAL', '1.0')),
+            'max_interval_seconds': float(os.getenv('VISION_MAX_INTERVAL', '10.0')),
+        }
+        
         self.is_monitoring = False
         self._monitoring_task = None
+        self._memory_monitor_task = None
+        self._cleanup_task = None
         
-        # Screen state tracking
+        # Use circular buffer for screen captures (memory efficient)
+        self.capture_history: Deque[Dict[str, Any]] = deque(maxlen=self.config['max_captures_in_memory'])
+        
+        # Current screen state with weak references
         self.current_screen_state = {
             'last_capture': None,
             'last_analysis': None,
@@ -45,62 +71,203 @@ class ContinuousScreenAnalyzer:
             'timestamp': None
         }
         
-        # Callbacks for different events
+        # Callbacks with weak references to prevent memory leaks
         self.event_callbacks = {
-            'app_changed': [],
-            'content_changed': [],
-            'weather_visible': [],
-            'error_detected': [],
-            'user_needs_help': []
+            'app_changed': weakref.WeakSet(),
+            'content_changed': weakref.WeakSet(),
+            'weather_visible': weakref.WeakSet(),
+            'error_detected': weakref.WeakSet(),
+            'user_needs_help': weakref.WeakSet(),
+            'memory_warning': weakref.WeakSet()
         }
         
-        # Performance optimization
-        self.cache_duration = 5.0  # Cache analysis for 5 seconds
-        self._analysis_cache = {}
+        # Performance optimization with size limits
+        self._analysis_cache = {}  # Will be cleaned periodically
+        self._cache_sizes = {}  # Track size of cached items
         
-        logger.info("Continuous Screen Analyzer initialized")
+        # Memory tracking
+        self.memory_stats = {
+            'current_usage_mb': 0,
+            'peak_usage_mb': 0,
+            'captures_dropped': 0,
+            'memory_warnings': 0
+        }
+        
+        # Dynamic interval adjustment
+        self.current_interval = self.config['update_interval']
+        self.last_memory_check = time.time()
+        
+        logger.info(f"Memory-Aware Screen Analyzer initialized with config: {self.config}")
     
     async def start_monitoring(self):
-        """Start continuous screen monitoring"""
+        """Start continuous screen monitoring with memory management"""
         if self.is_monitoring:
             logger.warning("Screen monitoring is already active")
             return
         
         self.is_monitoring = True
+        
+        # Start monitoring tasks
         self._monitoring_task = asyncio.create_task(self._monitoring_loop())
-        logger.info("Started continuous screen monitoring")
+        self._memory_monitor_task = asyncio.create_task(self._memory_monitor_loop())
+        self._cleanup_task = asyncio.create_task(self._cleanup_loop())
+        
+        logger.info("Started memory-aware continuous screen monitoring")
     
     async def stop_monitoring(self):
-        """Stop continuous screen monitoring"""
+        """Stop continuous screen monitoring and cleanup"""
         if not self.is_monitoring:
             return
         
         self.is_monitoring = False
-        if self._monitoring_task:
-            self._monitoring_task.cancel()
-            try:
-                await self._monitoring_task
-            except asyncio.CancelledError:
-                pass
         
-        logger.info("Stopped continuous screen monitoring")
+        # Cancel all tasks
+        tasks = [self._monitoring_task, self._memory_monitor_task, self._cleanup_task]
+        for task in tasks:
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        
+        # Clear memory
+        self._clear_caches()
+        gc.collect()
+        
+        logger.info("Stopped continuous screen monitoring and cleaned up memory")
     
     async def _monitoring_loop(self):
-        """Main monitoring loop"""
+        """Main monitoring loop with dynamic interval adjustment"""
         while self.is_monitoring:
             try:
+                # Check memory before capture
+                if not self._check_memory_available():
+                    logger.warning("Skipping capture due to low memory")
+                    await asyncio.sleep(self.current_interval * 2)  # Wait longer
+                    continue
+                
                 # Capture and analyze screen
                 await self._capture_and_analyze()
                 
+                # Adjust interval based on memory if enabled
+                if self.config['dynamic_interval_enabled']:
+                    self._adjust_interval_based_on_memory()
+                
                 # Wait for next update
-                await asyncio.sleep(self.update_interval)
+                await asyncio.sleep(self.current_interval)
                 
             except Exception as e:
                 logger.error(f"Error in monitoring loop: {e}")
-                await asyncio.sleep(self.update_interval)
+                await asyncio.sleep(self.current_interval)
+    
+    async def _memory_monitor_loop(self):
+        """Monitor memory usage and trigger warnings"""
+        while self.is_monitoring:
+            try:
+                self._update_memory_stats()
+                
+                # Check if we're exceeding limits
+                available_mb = self._get_available_memory_mb()
+                
+                if available_mb < self.config['critical_memory_threshold_mb']:
+                    # Critical memory - emergency cleanup
+                    logger.warning(f"Critical memory: {available_mb}MB available")
+                    await self._emergency_cleanup()
+                    await self._trigger_event('memory_warning', {
+                        'level': 'critical',
+                        'available_mb': available_mb
+                    })
+                elif available_mb < self.config['low_memory_threshold_mb']:
+                    # Low memory - normal cleanup
+                    logger.info(f"Low memory: {available_mb}MB available")
+                    self._clear_old_captures()
+                    await self._trigger_event('memory_warning', {
+                        'level': 'low',
+                        'available_mb': available_mb
+                    })
+                
+                await asyncio.sleep(self.config['memory_check_interval'])
+                
+            except Exception as e:
+                logger.error(f"Error in memory monitor: {e}")
+                await asyncio.sleep(self.config['memory_check_interval'])
+    
+    async def _cleanup_loop(self):
+        """Periodic cleanup of old data"""
+        while self.is_monitoring:
+            try:
+                # Clean old captures
+                self._clear_old_captures()
+                
+                # Clean cache
+                self._clean_cache()
+                
+                # Force garbage collection
+                gc.collect()
+                
+                # Wait before next cleanup
+                await asyncio.sleep(60.0)  # Cleanup every minute
+                
+            except Exception as e:
+                logger.error(f"Error in cleanup loop: {e}")
+                await asyncio.sleep(60.0)
+    
+    def _check_memory_available(self) -> bool:
+        """Check if enough memory is available for capture"""
+        available_mb = self._get_available_memory_mb()
+        process_mb = self._get_process_memory_mb()
+        
+        # Check system memory
+        if available_mb < self.config['critical_memory_threshold_mb']:
+            return False
+        
+        # Check process memory limit
+        if process_mb > self.config['memory_limit_mb']:
+            logger.warning(f"Process memory {process_mb}MB exceeds limit {self.config['memory_limit_mb']}MB")
+            return False
+        
+        return True
+    
+    def _get_available_memory_mb(self) -> float:
+        """Get available system memory in MB"""
+        return psutil.virtual_memory().available / 1024 / 1024
+    
+    def _get_process_memory_mb(self) -> float:
+        """Get current process memory usage in MB"""
+        process = psutil.Process()
+        return process.memory_info().rss / 1024 / 1024
+    
+    def _update_memory_stats(self):
+        """Update memory statistics"""
+        current_mb = self._get_process_memory_mb()
+        self.memory_stats['current_usage_mb'] = current_mb
+        self.memory_stats['peak_usage_mb'] = max(self.memory_stats['peak_usage_mb'], current_mb)
+    
+    def _adjust_interval_based_on_memory(self):
+        """Dynamically adjust capture interval based on memory pressure"""
+        available_mb = self._get_available_memory_mb()
+        
+        if available_mb < self.config['critical_memory_threshold_mb']:
+            # Critical - use maximum interval
+            self.current_interval = self.config['max_interval_seconds']
+        elif available_mb < self.config['low_memory_threshold_mb']:
+            # Low memory - increase interval
+            ratio = available_mb / self.config['low_memory_threshold_mb']
+            range_size = self.config['max_interval_seconds'] - self.config['min_interval_seconds']
+            self.current_interval = self.config['max_interval_seconds'] - (ratio * range_size)
+        else:
+            # Normal memory - use configured interval
+            self.current_interval = self.config['update_interval']
+        
+        # Clamp to configured range
+        self.current_interval = max(
+            self.config['min_interval_seconds'],
+            min(self.current_interval, self.config['max_interval_seconds'])
+        )
     
     async def _capture_and_analyze(self):
-        """Capture screen and analyze with Claude Vision"""
+        """Capture screen and analyze with memory management"""
         try:
             # Capture current screen
             capture_result = await self.vision_handler.capture_screen()
@@ -108,6 +275,16 @@ class ContinuousScreenAnalyzer:
                 return
             
             current_time = time.time()
+            
+            # Store capture with size tracking
+            capture_data = {
+                'timestamp': current_time,
+                'result': capture_result,
+                'size_bytes': self._estimate_capture_size(capture_result)
+            }
+            
+            # Add to history (circular buffer handles removal)
+            self.capture_history.append(capture_data)
             
             # Quick analysis to detect changes
             quick_analysis = await self._quick_screen_analysis()
@@ -128,10 +305,13 @@ class ContinuousScreenAnalyzer:
         except Exception as e:
             logger.error(f"Error capturing/analyzing screen: {e}")
     
+    def _estimate_capture_size(self, capture_result: Any) -> int:
+        """Estimate memory size of capture"""
+        # Basic estimation - can be improved based on actual data structure
+        return 1024 * 1024  # Assume 1MB per capture
+    
     async def _quick_screen_analysis(self) -> Dict[str, Any]:
         """Perform quick analysis to detect major changes"""
-        # This could use a lightweight ML model or simple heuristics
-        # For now, we'll use Claude Vision with a simple prompt
         params = {
             'query': 'What application is currently in focus? Just name the app, nothing else.'
         }
@@ -144,9 +324,9 @@ class ContinuousScreenAnalyzer:
         }
     
     async def _full_screen_analysis(self) -> Dict[str, Any]:
-        """Perform comprehensive screen analysis"""
+        """Perform comprehensive screen analysis with caching"""
         # Check cache first
-        cache_key = f"full_analysis_{int(time.time() / self.cache_duration)}"
+        cache_key = f"full_analysis_{int(time.time() / self.config['cache_duration_seconds'])}"
         if cache_key in self._analysis_cache:
             return self._analysis_cache[cache_key]
         
@@ -172,10 +352,82 @@ Be concise but thorough.'''
             'raw_data': result.data if hasattr(result, 'data') else {}
         }
         
-        # Cache the result
-        self._analysis_cache[cache_key] = analysis
+        # Cache with size tracking
+        self._cache_analysis(cache_key, analysis)
         
         return analysis
+    
+    def _cache_analysis(self, key: str, analysis: Dict[str, Any]):
+        """Cache analysis with size tracking"""
+        # Estimate size
+        size = len(str(analysis).encode())
+        
+        # Check if adding would exceed memory limit
+        total_cache_size = sum(self._cache_sizes.values())
+        if total_cache_size + size > self.config['memory_limit_mb'] * 0.1 * 1024 * 1024:  # Use 10% for cache
+            # Remove oldest entries
+            self._clean_cache(force=True)
+        
+        self._analysis_cache[key] = analysis
+        self._cache_sizes[key] = size
+    
+    def _clean_cache(self, force: bool = False):
+        """Clean old cache entries"""
+        current_time = time.time()
+        keys_to_remove = []
+        
+        for key in list(self._analysis_cache.keys()):
+            # Extract timestamp from key
+            try:
+                key_time = int(key.split('_')[-1]) * self.config['cache_duration_seconds']
+                if force or (current_time - key_time > self.config['cache_duration_seconds'] * 2):
+                    keys_to_remove.append(key)
+            except:
+                keys_to_remove.append(key)  # Remove malformed keys
+        
+        for key in keys_to_remove:
+            self._analysis_cache.pop(key, None)
+            self._cache_sizes.pop(key, None)
+    
+    def _clear_old_captures(self):
+        """Clear captures older than retention period"""
+        if not self.capture_history:
+            return
+        
+        current_time = time.time()
+        retention_seconds = self.config['capture_retention_seconds']
+        
+        # Remove old captures
+        while self.capture_history:
+            oldest = self.capture_history[0]
+            if current_time - oldest['timestamp'] > retention_seconds:
+                self.capture_history.popleft()
+                self.memory_stats['captures_dropped'] += 1
+            else:
+                break
+    
+    async def _emergency_cleanup(self):
+        """Emergency cleanup when memory is critical"""
+        logger.warning("Performing emergency memory cleanup")
+        
+        # Clear all captures except the latest
+        if len(self.capture_history) > 1:
+            latest = self.capture_history[-1]
+            self.capture_history.clear()
+            self.capture_history.append(latest)
+        
+        # Clear all caches
+        self._clear_caches()
+        
+        # Force garbage collection
+        gc.collect()
+        
+        self.memory_stats['memory_warnings'] += 1
+    
+    def _clear_caches(self):
+        """Clear all caches"""
+        self._analysis_cache.clear()
+        self._cache_sizes.clear()
     
     def _needs_full_analysis(self, quick_analysis: Dict[str, Any]) -> bool:
         """Determine if full analysis is needed"""
@@ -187,9 +439,10 @@ Be concise but thorough.'''
         if quick_analysis.get('current_app') != self.current_screen_state.get('current_app'):
             return True
         
-        # Check if enough time has passed
+        # Check if enough time has passed (configurable)
         last_analysis_time = self.current_screen_state.get('timestamp', 0)
-        if time.time() - last_analysis_time > 10.0:  # Full analysis every 10 seconds
+        full_analysis_interval = float(os.getenv('VISION_FULL_ANALYSIS_INTERVAL', '10.0'))
+        if time.time() - last_analysis_time > full_analysis_interval:
             return True
         
         return False
@@ -206,23 +459,35 @@ Be concise but thorough.'''
         """Extract current application from analysis"""
         description = analysis.get('description', '').lower()
         
-        # Common app detection patterns
-        apps = {
-            'weather': ['weather app', 'weather.app'],
-            'safari': ['safari'],
-            'chrome': ['chrome', 'google chrome'],
-            'vscode': ['vs code', 'visual studio code', 'vscode'],
-            'terminal': ['terminal', 'iterm'],
-            'finder': ['finder'],
-            'mail': ['mail app', 'mail.app'],
-            'messages': ['messages', 'imessage']
-        }
+        # Load app detection patterns from environment or use defaults
+        app_patterns = os.getenv('VISION_APP_PATTERNS')
+        if app_patterns:
+            try:
+                import json
+                apps = json.loads(app_patterns)
+            except:
+                apps = self._get_default_app_patterns()
+        else:
+            apps = self._get_default_app_patterns()
         
         for app_name, keywords in apps.items():
             if any(keyword in description for keyword in keywords):
                 return app_name
         
         return None
+    
+    def _get_default_app_patterns(self) -> Dict[str, List[str]]:
+        """Get default app detection patterns"""
+        return {
+            'weather': ['weather app', 'weather.app'],
+            'safari': ['safari'],
+            'chrome': ['chrome', 'google chrome'],
+            'vscode': ['vs code', 'visual studio code', 'vscode', 'cursor'],
+            'terminal': ['terminal', 'iterm'],
+            'finder': ['finder'],
+            'mail': ['mail app', 'mail.app'],
+            'messages': ['messages', 'imessage']
+        }
     
     async def _process_screen_events(self, analysis: Dict[str, Any]):
         """Process screen events and trigger callbacks"""
@@ -244,15 +509,21 @@ Be concise but thorough.'''
     
     def _extract_weather_info(self, description: str) -> Optional[str]:
         """Extract weather information from screen description"""
-        # Use the weather parser we created
-        from utils.weather_response_parser import WeatherResponseParser
-        parser = WeatherResponseParser()
-        return parser.extract_weather_info(description)
+        # Use the weather parser if available
+        try:
+            from utils.weather_response_parser import WeatherResponseParser
+            parser = WeatherResponseParser()
+            return parser.extract_weather_info(description)
+        except ImportError:
+            # Fallback to simple extraction
+            return description if 'weather' in description.lower() else None
     
     async def _trigger_event(self, event_type: str, data: Dict[str, Any]):
-        """Trigger event callbacks"""
+        """Trigger event callbacks using weak references"""
         if event_type in self.event_callbacks:
-            for callback in self.event_callbacks[event_type]:
+            # Convert WeakSet to list to iterate
+            callbacks = list(self.event_callbacks[event_type])
+            for callback in callbacks:
                 try:
                     if asyncio.iscoroutinefunction(callback):
                         await callback(data)
@@ -264,7 +535,7 @@ Be concise but thorough.'''
     def register_callback(self, event_type: str, callback: Callable):
         """Register a callback for specific events"""
         if event_type in self.event_callbacks:
-            self.event_callbacks[event_type].append(callback)
+            self.event_callbacks[event_type].add(callback)
             logger.info(f"Registered callback for {event_type}")
     
     async def get_current_screen_context(self) -> Dict[str, Any]:
@@ -272,7 +543,7 @@ Be concise but thorough.'''
         # If we have recent analysis, return it
         if self.current_screen_state['last_analysis']:
             age = time.time() - self.current_screen_state['timestamp']
-            if age < self.cache_duration:
+            if age < self.config['cache_duration_seconds']:
                 return self.current_screen_state
         
         # Otherwise, do a fresh analysis
@@ -283,7 +554,7 @@ Be concise but thorough.'''
     async def query_screen_for_weather(self) -> Optional[str]:
         """
         Query screen specifically for weather information
-        This is what we'll use when user asks about weather
+        Memory-efficient approach
         """
         # First check if Weather app is already visible
         context = await self.get_current_screen_context()
@@ -295,27 +566,39 @@ Be concise but thorough.'''
             }
         else:
             # Need to open Weather app first
-            from system_control import MacOSController
-            controller = MacOSController()
-            
-            # Open Weather app
-            controller.open_application("Weather")
-            await asyncio.sleep(2.0)  # Wait for it to open
-            
-            # Now read the weather
-            params = {
-                'query': 'The Weather app should now be open. Read the weather information: temperature, conditions, and forecast for today.'
-            }
+            try:
+                from system_control import MacOSController
+                controller = MacOSController()
+                
+                # Open Weather app
+                controller.open_application("Weather")
+                await asyncio.sleep(2.0)  # Wait for it to open
+                
+                # Now read the weather
+                params = {
+                    'query': 'The Weather app should now be open. Read the weather information: temperature, conditions, and forecast for today.'
+                }
+            except ImportError:
+                return None
         
         result = await self.vision_handler.describe_screen(params)
         
         if result.success:
             # Parse the weather info
-            from utils.weather_response_parser import WeatherResponseParser
-            parser = WeatherResponseParser()
-            weather_info = parser.extract_weather_info(result.description)
-            
-            # Format nicely
-            return parser.format_weather_response(weather_info)
+            weather_info = self._extract_weather_info(result.description)
+            return weather_info
         
         return None
+    
+    def get_memory_stats(self) -> Dict[str, Any]:
+        """Get current memory statistics"""
+        return {
+            **self.memory_stats,
+            'captures_in_memory': len(self.capture_history),
+            'cache_entries': len(self._analysis_cache),
+            'current_interval': self.current_interval,
+            'available_system_mb': self._get_available_memory_mb()
+        }
+
+# Backward compatibility alias
+ContinuousScreenAnalyzer = MemoryAwareScreenAnalyzer

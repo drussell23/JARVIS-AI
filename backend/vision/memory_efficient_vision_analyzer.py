@@ -1,6 +1,7 @@
 """
 Memory-Efficient Claude Vision Analyzer - Optimized for 16GB RAM systems
 Features: Intelligent compression, caching, batch processing, and resource management
+Fully configurable with NO hardcoded values
 """
 
 import base64
@@ -21,6 +22,10 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 import psutil
 import gc
+import logging
+from enum import Enum
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class CachedResult:
@@ -33,56 +38,125 @@ class CachedResult:
     access_count: int = 0
     last_accessed: datetime = None
 
+class AnalysisType(Enum):
+    """Analysis types for different use cases"""
+    TEXT = "text"
+    UI = "ui"
+    ACTIVITY = "activity"
+    DETAILED = "detailed"
+    QUICK = "quick"
+
+class CompressionConfig:
+    """Configurable compression settings"""
+    def __init__(self):
+        self.text_format = os.getenv('VISION_TEXT_FORMAT', 'PNG')
+        self.text_quality = int(os.getenv('VISION_TEXT_QUALITY', '95'))
+        self.text_max_dim = int(os.getenv('VISION_TEXT_MAX_DIM', '2048'))
+        
+        self.ui_format = os.getenv('VISION_UI_FORMAT', 'JPEG')
+        self.ui_quality = int(os.getenv('VISION_UI_QUALITY', '85'))
+        self.ui_max_dim = int(os.getenv('VISION_UI_MAX_DIM', '1920'))
+        
+        self.activity_format = os.getenv('VISION_ACTIVITY_FORMAT', 'JPEG')
+        self.activity_quality = int(os.getenv('VISION_ACTIVITY_QUALITY', '70'))
+        self.activity_max_dim = int(os.getenv('VISION_ACTIVITY_MAX_DIM', '1280'))
+        
+        self.detailed_format = os.getenv('VISION_DETAILED_FORMAT', 'PNG')
+        self.detailed_quality = int(os.getenv('VISION_DETAILED_QUALITY', '90'))
+        self.detailed_max_dim = int(os.getenv('VISION_DETAILED_MAX_DIM', '2560'))
+        
+        self.quick_format = os.getenv('VISION_QUICK_FORMAT', 'JPEG')
+        self.quick_quality = int(os.getenv('VISION_QUICK_QUALITY', '60'))
+        self.quick_max_dim = int(os.getenv('VISION_QUICK_MAX_DIM', '1024'))
+
 class CompressionStrategy:
-    """Intelligent image compression based on analysis needs"""
+    """Intelligent image compression based on analysis needs - fully configurable"""
     
-    @staticmethod
-    def compress_for_text_reading(image: Image.Image) -> Tuple[Image.Image, int]:
+    def __init__(self, config: CompressionConfig):
+        self.config = config
+    
+    def compress_for_text_reading(self, image: Image.Image) -> Tuple[Image.Image, int]:
         """High quality for text extraction"""
-        buffer = io.BytesIO()
-        # Keep high quality for text
-        image.save(buffer, format="PNG", optimize=True)
-        return image, buffer.tell()
-    
-    @staticmethod
-    def compress_for_ui_detection(image: Image.Image) -> Tuple[Image.Image, int]:
-        """Medium quality for UI element detection"""
-        # Reduce size while maintaining UI clarity
-        max_dimension = 1920
-        if max(image.size) > max_dimension:
-            ratio = max_dimension / max(image.size)
+        # Resize if needed
+        if max(image.size) > self.config.text_max_dim:
+            ratio = self.config.text_max_dim / max(image.size)
             new_size = tuple(int(dim * ratio) for dim in image.size)
             image = image.resize(new_size, Image.Resampling.LANCZOS)
         
         buffer = io.BytesIO()
-        image.save(buffer, format="JPEG", quality=85, optimize=True)
+        if self.config.text_format.upper() == 'PNG':
+            image.save(buffer, format="PNG", optimize=True)
+        else:
+            image.save(buffer, format="JPEG", quality=self.config.text_quality, optimize=True)
         return image, buffer.tell()
     
-    @staticmethod
-    def compress_for_activity_monitoring(image: Image.Image) -> Tuple[Image.Image, int]:
+    def compress_for_ui_detection(self, image: Image.Image) -> Tuple[Image.Image, int]:
+        """Medium quality for UI element detection"""
+        # Resize if needed
+        if max(image.size) > self.config.ui_max_dim:
+            ratio = self.config.ui_max_dim / max(image.size)
+            new_size = tuple(int(dim * ratio) for dim in image.size)
+            image = image.resize(new_size, Image.Resampling.LANCZOS)
+        
+        buffer = io.BytesIO()
+        image.save(buffer, format=self.config.ui_format, quality=self.config.ui_quality, optimize=True)
+        return image, buffer.tell()
+    
+    def compress_for_activity_monitoring(self, image: Image.Image) -> Tuple[Image.Image, int]:
         """Lower quality for general activity detection"""
         # More aggressive compression for monitoring
-        max_dimension = 1280
-        if max(image.size) > max_dimension:
-            ratio = max_dimension / max(image.size)
+        if max(image.size) > self.config.activity_max_dim:
+            ratio = self.config.activity_max_dim / max(image.size)
             new_size = tuple(int(dim * ratio) for dim in image.size)
             image = image.resize(new_size, Image.Resampling.BILINEAR)
         
         buffer = io.BytesIO()
-        image.save(buffer, format="JPEG", quality=70, optimize=True)
+        image.save(buffer, format=self.config.activity_format, quality=self.config.activity_quality, optimize=True)
+        return image, buffer.tell()
+    
+    def compress_for_detailed(self, image: Image.Image) -> Tuple[Image.Image, int]:
+        """High quality for detailed analysis"""
+        if max(image.size) > self.config.detailed_max_dim:
+            ratio = self.config.detailed_max_dim / max(image.size)
+            new_size = tuple(int(dim * ratio) for dim in image.size)
+            image = image.resize(new_size, Image.Resampling.LANCZOS)
+        
+        buffer = io.BytesIO()
+        image.save(buffer, format=self.config.detailed_format, quality=self.config.detailed_quality, optimize=True)
+        return image, buffer.tell()
+    
+    def compress_for_quick(self, image: Image.Image) -> Tuple[Image.Image, int]:
+        """Fast compression for quick analysis"""
+        if max(image.size) > self.config.quick_max_dim:
+            ratio = self.config.quick_max_dim / max(image.size)
+            new_size = tuple(int(dim * ratio) for dim in image.size)
+            image = image.resize(new_size, Image.Resampling.BILINEAR)
+        
+        buffer = io.BytesIO()
+        image.save(buffer, format=self.config.quick_format, quality=self.config.quick_quality, optimize=True)
         return image, buffer.tell()
 
 class MemoryEfficientVisionAnalyzer:
     """Memory-efficient Claude Vision Analyzer with caching and optimization"""
     
-    def __init__(self, api_key: str, cache_dir: str = "./vision_cache", 
-                 max_cache_size_mb: int = 500, max_memory_usage_mb: int = 2048):
-        """Initialize with memory constraints"""
+    def __init__(self, api_key: str, cache_dir: Optional[str] = None, 
+                 max_cache_size_mb: Optional[int] = None, 
+                 max_memory_usage_mb: Optional[int] = None):
+        """Initialize with memory constraints - fully configurable"""
         self.client = Anthropic(api_key=api_key)
-        self.model = "claude-3-5-sonnet-20241022"
-        self.cache_dir = cache_dir
-        self.max_cache_size = max_cache_size_mb * 1024 * 1024  # Convert to bytes
-        self.max_memory_usage = max_memory_usage_mb * 1024 * 1024
+        self.model = os.getenv('VISION_MODEL', 'claude-3-5-sonnet-20241022')
+        
+        # Configurable paths and limits
+        self.cache_dir = cache_dir or os.getenv('VISION_CACHE_DIR', './vision_cache')
+        self.max_cache_size = (max_cache_size_mb or int(os.getenv('VISION_CACHE_SIZE_MB', '500'))) * 1024 * 1024
+        self.max_memory_usage = (max_memory_usage_mb or int(os.getenv('VISION_MAX_MEMORY_MB', '2048'))) * 1024 * 1024
+        
+        # Configurable thresholds
+        self.memory_pressure_threshold = float(os.getenv('VISION_MEMORY_PRESSURE_THRESHOLD', '0.8'))
+        self.cache_ttl_hours = int(os.getenv('VISION_CACHE_TTL_HOURS', '24'))
+        self.max_tokens = int(os.getenv('VISION_MAX_TOKENS', '1024'))
+        self.batch_max_regions = int(os.getenv('VISION_BATCH_MAX_REGIONS', '10'))
+        self.change_detection_threshold = float(os.getenv('VISION_CHANGE_THRESHOLD', '0.05'))
         
         # Create cache directory
         os.makedirs(cache_dir, exist_ok=True)
@@ -92,13 +166,20 @@ class MemoryEfficientVisionAnalyzer:
         self._cache_size = 0
         
         # Thread pool for parallel processing
-        self.executor = ThreadPoolExecutor(max_workers=3)
+        max_workers = int(os.getenv('VISION_MAX_WORKERS', '3'))
+        self.executor = ThreadPoolExecutor(max_workers=max_workers)
         
-        # Compression strategies
+        # Initialize compression configuration and strategy
+        self.compression_config = CompressionConfig()
+        self.compression_strategy = CompressionStrategy(self.compression_config)
+        
+        # Compression strategies mapping
         self.compression_strategies = {
-            "text": CompressionStrategy.compress_for_text_reading,
-            "ui": CompressionStrategy.compress_for_ui_detection,
-            "activity": CompressionStrategy.compress_for_activity_monitoring
+            AnalysisType.TEXT.value: self.compression_strategy.compress_for_text_reading,
+            AnalysisType.UI.value: self.compression_strategy.compress_for_ui_detection,
+            AnalysisType.ACTIVITY.value: self.compression_strategy.compress_for_activity_monitoring,
+            AnalysisType.DETAILED.value: self.compression_strategy.compress_for_detailed,
+            AnalysisType.QUICK.value: self.compression_strategy.compress_for_quick
         }
         
         # Performance metrics
@@ -121,7 +202,7 @@ class MemoryEfficientVisionAnalyzer:
     def _check_memory_pressure(self) -> bool:
         """Check if we're under memory pressure"""
         current_usage = self._get_memory_usage()
-        return current_usage > self.max_memory_usage * 0.8  # 80% threshold
+        return current_usage > self.max_memory_usage * self.memory_pressure_threshold
     
     def _compress_image(self, image: Any, analysis_type: str = "ui") -> Tuple[Image.Image, int, int]:
         """Compress image based on analysis type"""
@@ -142,7 +223,7 @@ class MemoryEfficientVisionAnalyzer:
         
         # Apply compression strategy
         compression_func = self.compression_strategies.get(analysis_type, 
-                                                          self.compression_strategies["ui"])
+                                                          self.compression_strategies[AnalysisType.UI.value])
         compressed_image, compressed_size = compression_func(pil_image)
         
         # Track compression savings
@@ -184,8 +265,8 @@ class MemoryEfficientVisionAnalyzer:
                 try:
                     with open(os.path.join(self.cache_dir, filename), 'rb') as f:
                         entry = pickle.load(f)
-                        # Only load recent entries (last 24 hours)
-                        if datetime.now() - entry.timestamp < timedelta(hours=24):
+                        # Only load recent entries based on config
+                        if datetime.now() - entry.timestamp < timedelta(hours=self.cache_ttl_hours):
                             key = filename[:-4]  # Remove .pkl
                             self._memory_cache[key] = entry
                             self._cache_size += entry.size_bytes
@@ -248,7 +329,7 @@ class MemoryEfficientVisionAnalyzer:
             self.metrics["api_calls"] += 1
             message = self.client.messages.create(
                 model=self.model,
-                max_tokens=1024,
+                max_tokens=self.max_tokens,
                 messages=[{
                     "role": "user",
                     "content": [
@@ -321,11 +402,15 @@ class MemoryEfficientVisionAnalyzer:
     
     def _extract_app_names(self, text: str) -> List[str]:
         """Extract application names from Claude's response"""
-        common_apps = [
-            "Chrome", "Safari", "Firefox", "Mail", "Messages", "Slack",
-            "VS Code", "Xcode", "Terminal", "Finder", "System Preferences",
-            "App Store", "Activity Monitor", "Spotify", "Discord"
-        ]
+        # Load app list from environment or use defaults
+        apps_json = os.getenv('VISION_COMMON_APPS')
+        if apps_json:
+            try:
+                common_apps = json.loads(apps_json)
+            except:
+                common_apps = self._get_default_apps()
+        else:
+            common_apps = self._get_default_apps()
         
         found_apps = []
         text_lower = text.lower()
@@ -336,12 +421,25 @@ class MemoryEfficientVisionAnalyzer:
         
         return found_apps
     
+    def _get_default_apps(self) -> List[str]:
+        """Get default app list"""
+        return [
+            "Chrome", "Safari", "Firefox", "Mail", "Messages", "Slack",
+            "VS Code", "Xcode", "Terminal", "Finder", "System Preferences",
+            "App Store", "Activity Monitor", "Spotify", "Discord"
+        ]
+    
     def _extract_actions(self, text: str) -> List[str]:
         """Extract suggested actions from Claude's response"""
-        action_keywords = [
-            "should update", "recommend updating", "needs to be updated",
-            "click on", "open", "close", "restart", "install"
-        ]
+        # Load action keywords from environment or use defaults
+        keywords_json = os.getenv('VISION_ACTION_KEYWORDS')
+        if keywords_json:
+            try:
+                action_keywords = json.loads(keywords_json)
+            except:
+                action_keywords = self._get_default_action_keywords()
+        else:
+            action_keywords = self._get_default_action_keywords()
         
         actions = []
         sentences = text.split('.')
@@ -355,6 +453,13 @@ class MemoryEfficientVisionAnalyzer:
         
         return actions
     
+    def _get_default_action_keywords(self) -> List[str]:
+        """Get default action keywords"""
+        return [
+            "should update", "recommend updating", "needs to be updated",
+            "click on", "open", "close", "restart", "install"
+        ]
+    
     async def batch_analyze_regions(self, image: Any, regions: List[Dict[str, Any]], 
                                   analysis_type: str = "ui") -> List[Dict[str, Any]]:
         """Batch process multiple regions of an image efficiently"""
@@ -364,11 +469,27 @@ class MemoryEfficientVisionAnalyzer:
         else:
             pil_image = image
         
-        # Process regions in parallel
+        # Process regions in parallel with limit
         tasks = []
-        for region in regions:
-            # Extract region
-            x, y, w, h = region.get('x', 0), region.get('y', 0), region.get('width', 100), region.get('height', 100)
+        for i, region in enumerate(regions):
+            if i >= self.batch_max_regions:
+                logger.warning(f"Batch processing limited to {self.batch_max_regions} regions")
+                break
+            # Extract region with configurable defaults
+            default_width = int(os.getenv('VISION_DEFAULT_REGION_WIDTH', '100'))
+            default_height = int(os.getenv('VISION_DEFAULT_REGION_HEIGHT', '100'))
+            
+            x = region.get('x', 0)
+            y = region.get('y', 0)
+            w = region.get('width', default_width)
+            h = region.get('height', default_height)
+            
+            # Ensure region is within bounds
+            x = max(0, min(x, pil_image.width - 1))
+            y = max(0, min(y, pil_image.height - 1))
+            w = min(w, pil_image.width - x)
+            h = min(h, pil_image.height - y)
+            
             region_image = pil_image.crop((x, y, x + w, y + h))
             
             # Create task
@@ -386,7 +507,7 @@ class MemoryEfficientVisionAnalyzer:
         return results
     
     async def analyze_with_change_detection(self, current_image: Any, previous_image: Optional[Any], 
-                                          prompt: str, threshold: float = 0.05) -> Dict[str, Any]:
+                                          prompt: str, threshold: Optional[float] = None) -> Dict[str, Any]:
         """Analyze only if significant changes detected"""
         if previous_image is None:
             return await self.analyze_screenshot(current_image, prompt)
@@ -405,7 +526,10 @@ class MemoryEfficientVisionAnalyzer:
         # Calculate difference
         diff = np.mean(np.abs(current_array.astype(float) - previous_array.astype(float))) / 255.0
         
-        if diff < threshold:
+        # Use configured threshold or provided one
+        detection_threshold = threshold or self.change_detection_threshold
+        
+        if diff < detection_threshold:
             return {
                 "description": "No significant changes detected",
                 "changed": False,
@@ -435,9 +559,10 @@ class MemoryEfficientVisionAnalyzer:
             "memory_usage_mb": self._get_memory_usage() / (1024 * 1024)
         }
     
-    def cleanup_old_cache(self, days: int = 1):
+    def cleanup_old_cache(self, days: Optional[int] = None):
         """Clean up cache entries older than specified days"""
-        cutoff = datetime.now() - timedelta(days=days)
+        cache_cleanup_days = days or int(os.getenv('VISION_CACHE_CLEANUP_DAYS', '1'))
+        cutoff = datetime.now() - timedelta(days=cache_cleanup_days)
         
         # Clean memory cache
         keys_to_remove = []

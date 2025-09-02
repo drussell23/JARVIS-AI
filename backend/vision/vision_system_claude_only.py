@@ -135,7 +135,20 @@ class SimplifiedVisionSystem:
             "last_response_time": f"{self.last_response_time:.2f}s" if self.last_response_time else "N/A",
             "backend": "claude_vision_api",
             "local_models": "none",
-            "memory_usage": "minimal"
+            "memory_usage": "minimal",
+            "memory_stats": self._get_memory_stats() if self.config['enable_memory_stats'] else None
+        }
+    
+    def _get_memory_stats(self) -> Dict[str, Any]:
+        """Get current memory statistics"""
+        process = psutil.Process()
+        memory_info = process.memory_info()
+        
+        return {
+            "process_memory_mb": memory_info.rss / 1024 / 1024,
+            "available_system_mb": psutil.virtual_memory().available / 1024 / 1024,
+            "memory_percent": process.memory_percent(),
+            "cache_size": len(self.response_cache)
         }
     
     async def capture_and_describe(self) -> str:
@@ -146,6 +159,20 @@ class SimplifiedVisionSystem:
             return f"Yes sir, I can see your screen. {result['analysis']}"
         else:
             return f"I'm having trouble seeing your screen: {result['message']}"
+    
+    def add_custom_query_template(self, name: str, template: str):
+        """Add a custom query template at runtime"""
+        self.query_templates.templates[name] = template
+        logger.info(f"Added custom query template: {name}")
+    
+    def get_available_templates(self) -> List[str]:
+        """Get list of available query templates"""
+        return list(self.query_templates.templates.keys())
+    
+    async def analyze_with_template(self, template_name: str, **kwargs) -> Dict[str, Any]:
+        """Analyze screen using a specific template"""
+        query = self.query_templates.get_template(template_name, **kwargs)
+        return await self.analyze_screen(query)
 
 # Global instance for easy access
 _vision_system = None

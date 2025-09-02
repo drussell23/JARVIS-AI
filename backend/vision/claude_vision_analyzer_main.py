@@ -2,6 +2,13 @@
 Claude Vision Analyzer - Advanced screen understanding using Claude's vision capabilities
 Fully dynamic and configurable - NO HARDCODING
 Optimized for macOS with 16GB RAM - includes caching, compression, and memory management
+Integrates all enhanced memory-optimized components:
+- continuous_screen_analyzer.py (MemoryAwareScreenAnalyzer)
+- window_analysis.py (MemoryAwareWindowAnalyzer)
+- window_relationship_detector.py (ConfigurableWindowRelationshipDetector)
+- swift_vision_integration.py (MemoryAwareSwiftVisionIntegration)
+- memory_efficient_vision_analyzer.py (MemoryEfficientVisionAnalyzer)
+- vision_system_claude_only.py (SimplifiedVisionSystem)
 """
 
 import base64
@@ -299,7 +306,51 @@ class ClaudeVisionAnalyzer:
         # Dynamic prompt templates loaded from file or defaults
         self.prompt_templates = self._load_prompt_templates()
         
+        # Initialize enhanced memory-optimized components
+        self._init_enhanced_components()
+        
         logger.info(f"Initialized ClaudeVisionAnalyzer with config: {self.config.to_dict()}")
+    
+    def _init_enhanced_components(self):
+        """Initialize all enhanced memory-optimized components"""
+        # Initialize continuous screen analyzer (lazy loading)
+        self.continuous_analyzer = None
+        self._continuous_analyzer_config = {
+            'enabled': os.getenv('VISION_CONTINUOUS_ENABLED', 'true').lower() == 'true',
+            'update_interval': float(os.getenv('VISION_MONITOR_INTERVAL', '3.0'))
+        }
+        
+        # Initialize window analyzer (lazy loading)
+        self.window_analyzer = None
+        self._window_analyzer_config = {
+            'enabled': os.getenv('VISION_WINDOW_ANALYSIS_ENABLED', 'true').lower() == 'true'
+        }
+        
+        # Initialize window relationship detector (lazy loading)
+        self.relationship_detector = None
+        self._relationship_detector_config = {
+            'enabled': os.getenv('VISION_RELATIONSHIP_ENABLED', 'true').lower() == 'true'
+        }
+        
+        # Initialize Swift vision integration (lazy loading)
+        self.swift_vision = None
+        self._swift_vision_config = {
+            'enabled': os.getenv('VISION_SWIFT_ENABLED', 'true').lower() == 'true'
+        }
+        
+        # Initialize memory-efficient analyzer (lazy loading)
+        self.memory_efficient_analyzer = None
+        self._memory_efficient_config = {
+            'enabled': os.getenv('VISION_MEMORY_EFFICIENT_ENABLED', 'true').lower() == 'true'
+        }
+        
+        # Initialize simplified vision system (lazy loading)
+        self.simplified_vision = None
+        self._simplified_vision_config = {
+            'enabled': os.getenv('VISION_SIMPLIFIED_ENABLED', 'true').lower() == 'true'
+        }
+        
+        logger.info("Enhanced components configured for lazy initialization")
     
     def _load_prompt_templates(self) -> Dict[str, str]:
         """Load prompt templates from file or use defaults"""
@@ -335,6 +386,78 @@ class ClaudeVisionAnalyzer:
                 setattr(self.config, key, value)
                 logger.info(f"Updated config: {key} = {value}")
     
+    async def get_continuous_analyzer(self):
+        """Get continuous screen analyzer with lazy loading"""
+        if self.continuous_analyzer is None and self._continuous_analyzer_config['enabled']:
+            try:
+                from .continuous_screen_analyzer import MemoryAwareScreenAnalyzer
+                self.continuous_analyzer = MemoryAwareScreenAnalyzer(
+                    vision_handler=self,
+                    update_interval=self._continuous_analyzer_config['update_interval']
+                )
+                logger.info("Initialized continuous screen analyzer")
+            except ImportError as e:
+                logger.warning(f"Could not import continuous screen analyzer: {e}")
+        return self.continuous_analyzer
+    
+    async def get_window_analyzer(self):
+        """Get window analyzer with lazy loading"""
+        if self.window_analyzer is None and self._window_analyzer_config['enabled']:
+            try:
+                from .window_analysis import MemoryAwareWindowAnalyzer
+                self.window_analyzer = MemoryAwareWindowAnalyzer()
+                logger.info("Initialized window analyzer")
+            except ImportError as e:
+                logger.warning(f"Could not import window analyzer: {e}")
+        return self.window_analyzer
+    
+    async def get_relationship_detector(self):
+        """Get window relationship detector with lazy loading"""
+        if self.relationship_detector is None and self._relationship_detector_config['enabled']:
+            try:
+                from .window_relationship_detector import ConfigurableWindowRelationshipDetector
+                self.relationship_detector = ConfigurableWindowRelationshipDetector()
+                logger.info("Initialized window relationship detector")
+            except ImportError as e:
+                logger.warning(f"Could not import relationship detector: {e}")
+        return self.relationship_detector
+    
+    async def get_swift_vision(self):
+        """Get Swift vision integration with lazy loading"""
+        if self.swift_vision is None and self._swift_vision_config['enabled']:
+            try:
+                from .swift_vision_integration import get_swift_vision_integration
+                self.swift_vision = get_swift_vision_integration()
+                logger.info("Initialized Swift vision integration")
+            except ImportError as e:
+                logger.warning(f"Could not import Swift vision: {e}")
+        return self.swift_vision
+    
+    async def get_memory_efficient_analyzer(self):
+        """Get memory-efficient analyzer with lazy loading"""
+        if self.memory_efficient_analyzer is None and self._memory_efficient_config['enabled']:
+            try:
+                from .memory_efficient_vision_analyzer import MemoryEfficientVisionAnalyzer
+                # Use same API key
+                api_key = os.getenv('ANTHROPIC_API_KEY', 'dummy')
+                self.memory_efficient_analyzer = MemoryEfficientVisionAnalyzer(api_key)
+                logger.info("Initialized memory-efficient analyzer")
+            except ImportError as e:
+                logger.warning(f"Could not import memory-efficient analyzer: {e}")
+        return self.memory_efficient_analyzer
+    
+    async def get_simplified_vision(self):
+        """Get simplified vision system with lazy loading"""
+        if self.simplified_vision is None and self._simplified_vision_config['enabled']:
+            try:
+                from .vision_system_claude_only import SimplifiedVisionSystem
+                # Pass self as the claude_analyzer
+                self.simplified_vision = SimplifiedVisionSystem(claude_analyzer=self)
+                logger.info("Initialized simplified vision system")
+            except ImportError as e:
+                logger.warning(f"Could not import simplified vision: {e}")
+        return self.simplified_vision
+    
     async def analyze_screenshot(self, image: Any, prompt: str, 
                                use_cache: Optional[bool] = None,
                                priority: str = "normal",
@@ -366,10 +489,25 @@ class ClaudeVisionAnalyzer:
             # Determine if we should use cache
             should_use_cache = use_cache if use_cache is not None else self.config.cache_enabled
             
+            # Try Swift vision acceleration first if available
+            swift_vision = await self.get_swift_vision()
+            if swift_vision and swift_vision.enabled:
+                try:
+                    # Use Swift for preprocessing if memory allows
+                    swift_result = await swift_vision.process_screenshot(image if isinstance(image, Image.Image) else Image.fromarray(image))
+                    if swift_result.method == "swift":
+                        logger.debug(f"Used Swift vision acceleration (processing time: {swift_result.processing_time:.2f}s)")
+                        # Update metrics from Swift
+                        metrics.preprocessing_time = swift_result.processing_time
+                        metrics.image_size_compressed = swift_result.compressed_size
+                except Exception as e:
+                    logger.debug(f"Swift vision fallback: {e}")
+            
             # Convert and preprocess image
             preprocessing_start = time.time()
             pil_image, image_hash = await self._preprocess_image(image)
-            metrics.preprocessing_time = time.time() - preprocessing_start
+            if not hasattr(metrics, 'preprocessing_time') or metrics.preprocessing_time == 0:
+                metrics.preprocessing_time = time.time() - preprocessing_start
             metrics.image_size_original = self._estimate_image_size(pil_image)
             
             # Check cache if enabled
@@ -476,6 +614,17 @@ class ClaudeVisionAnalyzer:
     
     async def _compress_and_encode(self, image: Image.Image) -> Tuple[str, int]:
         """Compress and encode image for API transmission"""
+        # Try Swift compression first if available
+        swift_vision = await self.get_swift_vision()
+        if swift_vision and swift_vision.enabled:
+            try:
+                compressed_bytes = swift_vision.compress_image(image)
+                encoded = base64.b64encode(compressed_bytes).decode()
+                return encoded, len(compressed_bytes)
+            except Exception as e:
+                logger.debug(f"Swift compression fallback: {e}")
+        
+        # Fallback to standard compression
         buffer = io.BytesIO()
         
         # Convert RGBA to RGB if necessary (saves space)
@@ -740,6 +889,129 @@ class ClaudeVisionAnalyzer:
         
         result, metrics = await self.analyze_screenshot(screenshot, prompt)
         return result
+    
+    async def analyze_workspace_comprehensive(self, screenshot: Optional[np.ndarray] = None) -> Dict[str, Any]:
+        """Comprehensive workspace analysis using all enhanced components"""
+        results = {
+            'timestamp': datetime.now().isoformat(),
+            'components_used': [],
+            'memory_stats': {}
+        }
+        
+        # Get window analyzer
+        window_analyzer = await self.get_window_analyzer()
+        if window_analyzer:
+            try:
+                workspace_analysis = await window_analyzer.analyze_workspace()
+                results['workspace'] = workspace_analysis
+                results['components_used'].append('window_analyzer')
+                results['memory_stats']['window_analyzer'] = window_analyzer.get_memory_stats()
+            except Exception as e:
+                logger.error(f"Window analysis failed: {e}")
+                results['workspace'] = {'error': str(e)}
+        
+        # Get relationship detector
+        relationship_detector = await self.get_relationship_detector()
+        if relationship_detector and 'workspace' in results:
+            try:
+                windows = results['workspace'].get('windows', [])
+                if windows:
+                    relationships = relationship_detector.detect_relationships(windows)
+                    groups = relationship_detector.group_windows(windows, relationships)
+                    results['relationships'] = {
+                        'detected': len(relationships),
+                        'groups': len(groups),
+                        'details': relationships[:5]  # Top 5 relationships
+                    }
+                    results['components_used'].append('relationship_detector')
+                    results['memory_stats']['relationship_detector'] = relationship_detector.get_stats()
+            except Exception as e:
+                logger.error(f"Relationship detection failed: {e}")
+                results['relationships'] = {'error': str(e)}
+        
+        # Analyze screenshot if provided
+        if screenshot is not None:
+            try:
+                # Use smart analysis
+                vision_result = await self.smart_analyze(
+                    screenshot,
+                    "Analyze the workspace and identify what the user is working on"
+                )
+                results['vision_analysis'] = vision_result
+                results['components_used'].append('vision_analyzer')
+            except Exception as e:
+                logger.error(f"Vision analysis failed: {e}")
+                results['vision_analysis'] = {'error': str(e)}
+        
+        # Get Swift vision stats if used
+        swift_vision = await self.get_swift_vision()
+        if swift_vision:
+            results['memory_stats']['swift_vision'] = swift_vision.get_memory_stats()
+        
+        # Get memory-efficient analyzer stats
+        mem_analyzer = await self.get_memory_efficient_analyzer()
+        if mem_analyzer:
+            results['memory_stats']['memory_efficient_analyzer'] = mem_analyzer.get_metrics()
+            results['components_used'].append('memory_efficient_analyzer')
+        
+        # Get simplified vision stats
+        simplified = await self.get_simplified_vision()
+        if simplified:
+            results['memory_stats']['simplified_vision'] = simplified.get_performance_stats()
+            results['components_used'].append('simplified_vision')
+        
+        # Overall memory stats
+        results['memory_stats']['system'] = {
+            'available_mb': psutil.virtual_memory().available / 1024 / 1024,
+            'used_percent': psutil.virtual_memory().percent,
+            'process_mb': psutil.Process().memory_info().rss / 1024 / 1024
+        }
+        
+        return results
+    
+    async def start_continuous_monitoring(self, event_callbacks: Optional[Dict[str, Any]] = None) -> bool:
+        """Start continuous screen monitoring with memory management"""
+        analyzer = await self.get_continuous_analyzer()
+        if analyzer:
+            # Register event callbacks if provided
+            if event_callbacks:
+                for event_type, callback in event_callbacks.items():
+                    analyzer.register_callback(event_type, callback)
+            
+            await analyzer.start_monitoring()
+            return True
+        return False
+    
+    async def stop_continuous_monitoring(self) -> bool:
+        """Stop continuous screen monitoring"""
+        if self.continuous_analyzer:
+            await self.continuous_analyzer.stop_monitoring()
+            return True
+        return False
+    
+    async def get_current_screen_context(self) -> Dict[str, Any]:
+        """Get current screen context from continuous analyzer"""
+        analyzer = await self.get_continuous_analyzer()
+        if analyzer and analyzer.is_monitoring:
+            return await analyzer.get_current_screen_context()
+        else:
+            # Fallback to quick analysis
+            return await self.quick_analysis(None, detail_level="brief")
+    
+    async def query_screen_for_weather(self) -> Optional[str]:
+        """Query screen for weather information using continuous analyzer"""
+        analyzer = await self.get_continuous_analyzer()
+        if analyzer:
+            return await analyzer.query_screen_for_weather()
+        
+        # Fallback to simplified vision
+        simplified = await self.get_simplified_vision()
+        if simplified:
+            result = await simplified.check_weather_visible()
+            if result['success']:
+                return result['analysis']
+        
+        return None
     
     async def quick_analysis(self, screenshot: np.ndarray, 
                            detail_level: str = "brief") -> Dict[str, Any]:
@@ -1083,6 +1355,183 @@ Focus on what's visible in this specific region. Be concise but thorough."""
         else:
             return await self.smart_analyze(screenshot, query)
     
+    # New methods for memory-efficient analysis
+    
+    async def analyze_with_compression_strategy(self, screenshot: np.ndarray, prompt: str,
+                                              strategy: str = "ui") -> Dict[str, Any]:
+        """Analyze using memory-efficient compression strategy"""
+        mem_analyzer = await self.get_memory_efficient_analyzer()
+        if mem_analyzer:
+            return await mem_analyzer.analyze_screenshot(screenshot, prompt, strategy)
+        else:
+            # Fallback to standard analysis
+            result, metrics = await self.analyze_screenshot(screenshot, prompt)
+            return result
+    
+    async def batch_analyze_regions(self, screenshot: np.ndarray, 
+                                  regions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Batch analyze multiple regions efficiently"""
+        mem_analyzer = await self.get_memory_efficient_analyzer()
+        if mem_analyzer:
+            return await mem_analyzer.batch_analyze_regions(screenshot, regions)
+        else:
+            # Fallback to sequential analysis
+            results = []
+            for region in regions:
+                x, y, w, h = region.get('x', 0), region.get('y', 0), \
+                           region.get('width', 100), region.get('height', 100)
+                region_img = screenshot[y:y+h, x:x+w]
+                prompt = region.get('prompt', 'Analyze this region')
+                result, _ = await self.analyze_screenshot(region_img, prompt)
+                result['region'] = region
+                results.append(result)
+            return results
+    
+    async def analyze_with_change_detection(self, current: np.ndarray, 
+                                          previous: Optional[np.ndarray],
+                                          prompt: str) -> Dict[str, Any]:
+        """Analyze only if significant changes detected"""
+        mem_analyzer = await self.get_memory_efficient_analyzer()
+        if mem_analyzer:
+            return await mem_analyzer.analyze_with_change_detection(current, previous, prompt)
+        else:
+            # Simple fallback - always analyze
+            result, _ = await self.analyze_screenshot(current, prompt)
+            return result
+    
+    # New methods for simplified vision queries
+    
+    async def check_for_notifications(self) -> Dict[str, Any]:
+        """Check for notifications using simplified vision"""
+        simplified = await self.get_simplified_vision()
+        if simplified:
+            return await simplified.check_for_notifications()
+        else:
+            # Fallback to standard analysis
+            return await self.analyze_with_template(None, 'action')
+    
+    async def check_for_errors(self) -> Dict[str, Any]:
+        """Check for errors on screen"""
+        simplified = await self.get_simplified_vision()
+        if simplified:
+            return await simplified.check_for_errors()
+        else:
+            # Fallback to standard analysis
+            return await self.analyze_with_template(None, 'error')
+    
+    async def find_ui_element(self, element_description: str) -> Dict[str, Any]:
+        """Find specific UI element"""
+        simplified = await self.get_simplified_vision()
+        if simplified:
+            return await simplified.find_element(element_description)
+        else:
+            # Fallback to standard analysis
+            prompt = f"Locate the following element: {element_description}"
+            result, _ = await self.analyze_screenshot(None, prompt)
+            return {'success': True, 'analysis': result.get('description', '')}
+    
+    async def cleanup_all_components(self):
+        """Cleanup all enhanced components"""
+        cleanup_tasks = []
+        
+        # Cleanup continuous analyzer
+        if self.continuous_analyzer:
+            cleanup_tasks.append(self.continuous_analyzer.stop_monitoring())
+        
+        # Cleanup window analyzer
+        if self.window_analyzer:
+            cleanup_tasks.append(self.window_analyzer.cleanup())
+        
+        # Cleanup Swift vision
+        if self.swift_vision:
+            cleanup_tasks.append(self.swift_vision.cleanup())
+        
+        # Cleanup memory-efficient analyzer
+        if self.memory_efficient_analyzer:
+            cleanup_count = self.memory_efficient_analyzer.cleanup_old_cache()
+            logger.info(f"Cleaned up {cleanup_count} cache entries from memory-efficient analyzer")
+        
+        # Cleanup cache
+        if self.cache:
+            cleanup_tasks.append(self.cache.clear())
+        
+        # Wait for all cleanup tasks
+        if cleanup_tasks:
+            await asyncio.gather(*cleanup_tasks, return_exceptions=True)
+        
+        # Force garbage collection
+        gc.collect()
+        
+        logger.info("All enhanced components cleaned up")
+    
+    async def capture_screen(self) -> Any:
+        """Capture screen using the best available method"""
+        # This is a placeholder - in real use, this would integrate with
+        # the actual screen capture functionality
+        # For now, we'll return None and let the caller provide the screenshot
+        return None
+    
+    async def describe_screen(self, params: Dict[str, Any]) -> Any:
+        """Describe screen for continuous analyzer compatibility"""
+        # Extract query from params
+        query = params.get('query', 'Describe what you see on screen')
+        
+        # Use smart analyze for the description
+        # In real use, this would capture the current screen
+        # For now, we expect the screenshot to be provided
+        screenshot = params.get('screenshot')
+        if screenshot is None:
+            return {'success': False, 'description': 'No screenshot provided'}
+        
+        result = await self.smart_analyze(screenshot, query)
+        return {
+            'success': True,
+            'description': result.get('description', result.get('summary', '')),
+            'data': result
+        }
+    
+    def get_all_memory_stats(self) -> Dict[str, Any]:
+        """Get memory statistics from all components"""
+        stats = {
+            'timestamp': datetime.now().isoformat(),
+            'components': {}
+        }
+        
+        # Get stats from each component
+        if self.continuous_analyzer:
+            stats['components']['continuous_analyzer'] = self.continuous_analyzer.get_memory_stats()
+        
+        if self.window_analyzer:
+            stats['components']['window_analyzer'] = self.window_analyzer.get_memory_stats()
+        
+        if self.relationship_detector:
+            stats['components']['relationship_detector'] = self.relationship_detector.get_stats()
+        
+        if self.swift_vision:
+            stats['components']['swift_vision'] = self.swift_vision.get_memory_stats()
+        
+        if self.memory_efficient_analyzer:
+            stats['components']['memory_efficient_analyzer'] = self.memory_efficient_analyzer.get_metrics()
+        
+        if self.simplified_vision:
+            stats['components']['simplified_vision'] = self.simplified_vision.get_performance_stats()
+        
+        # Overall stats
+        stats['system'] = {
+            'available_mb': psutil.virtual_memory().available / 1024 / 1024,
+            'used_percent': psutil.virtual_memory().percent,
+            'process_mb': psutil.Process().memory_info().rss / 1024 / 1024,
+            'cpu_percent': psutil.cpu_percent(interval=0.1)
+        }
+        
+        return stats
+    
     def __del__(self):
         """Cleanup on deletion"""
         self.executor.shutdown(wait=False)
+        # Schedule async cleanup
+        try:
+            asyncio.create_task(self.cleanup_all_components())
+        except RuntimeError:
+            # Event loop might be closed
+            pass
