@@ -1,0 +1,327 @@
+{
+  "timestamp": "2025-09-02 14:28:02",
+  "mode": "mock",
+  "summary": {
+    "total_tests": 20,
+    "passed_tests": 17,
+    "success_rate": 85.0,
+    "total_duration": 13.384716272354126
+  },
+  "categories": {
+    "functionality": {
+      "total": 8,
+      "passed": 6,
+      "tests": [
+        {
+          "name": "smart_analysis",
+          "passed": true,
+          "duration": 1.108290195465088,
+          "details": {
+            "small": {
+              "success": true,
+              "method": "sliding_window",
+              "expected": "full"
+            },
+            "medium": {
+              "success": true,
+              "method": "sliding_window",
+              "expected": "full"
+            },
+            "large": {
+              "success": true,
+              "method": "sliding_window",
+              "expected": "sliding_window"
+            }
+          },
+          "error": null
+        },
+        {
+          "name": "compression_strategies",
+          "passed": true,
+          "duration": 0.7526791095733643,
+          "details": {
+            "text": {
+              "success": true,
+              "has_description": false
+            },
+            "ui": {
+              "success": true,
+              "has_description": false
+            },
+            "activity": {
+              "success": true,
+              "has_description": false
+            },
+            "detailed": {
+              "success": true,
+              "has_description": false
+            },
+            "quick": {
+              "success": true,
+              "has_description": false
+            }
+          },
+          "error": null
+        },
+        {
+          "name": "query_templates",
+          "passed": false,
+          "duration": 0.4293859004974365,
+          "details": {
+            "notifications": {
+              "success": false,
+              "has_data": true
+            },
+            "errors": {
+              "success": false,
+              "has_data": true
+            },
+            "workspace": {
+              "success": false,
+              "has_data": true
+            },
+            "ui_element": {
+              "success": true,
+              "has_data": true
+            }
+          },
+          "error": null
+        },
+        {
+          "name": "batch_processing",
+          "passed": true,
+          "duration": 0.31992602348327637,
+          "details": {
+            "regions_requested": 3,
+            "regions_processed": 3,
+            "all_successful": true
+          },
+          "error": null
+        },
+        {
+          "name": "change_detection",
+          "passed": false,
+          "duration": 0.17296290397644043,
+          "details": {
+            "detected_change": false,
+            "has_description": false
+          },
+          "error": null
+        },
+        {
+          "name": "caching_system",
+          "passed": true,
+          "duration": 0.17197370529174805,
+          "details": {
+            "first_call_success": true,
+            "second_call_success": true,
+            "cache_hit": true,
+            "cache_enabled": true
+          },
+          "error": null
+        },
+        {
+          "name": "memory_awareness",
+          "passed": true,
+          "duration": 0.5851151943206787,
+          "details": {
+            "has_system_stats": true,
+            "process_memory_mb": 202.34375,
+            "memory_threshold_test": true
+          },
+          "error": null
+        },
+        {
+          "name": "rate_limiting",
+          "passed": true,
+          "duration": 0.7088749408721924,
+          "details": {
+            "total_requests": 5,
+            "successful": 5,
+            "rate_limited": 0,
+            "rate_limit": 2
+          },
+          "error": null
+        }
+      ]
+    },
+    "integration": {
+      "total": 4,
+      "passed": 3,
+      "tests": [
+        {
+          "name": "component_availability",
+          "passed": true,
+          "duration": 0.00010228157043457031,
+          "details": {
+            "components": {
+              "swift_vision": false,
+              "memory_efficient": false,
+              "continuous": false,
+              "window_analyzer": false,
+              "relationship": false,
+              "simplified": false
+            },
+            "total_available": 0
+          },
+          "error": null
+        },
+        {
+          "name": "fallback_mechanisms",
+          "passed": true,
+          "duration": 0.4792330265045166,
+          "details": {
+            "fallback_worked": true,
+            "has_result": true,
+            "method_used": "sliding_window"
+          },
+          "error": null
+        },
+        {
+          "name": "error_handling",
+          "passed": false,
+          "duration": 0.1447129249572754,
+          "details": {
+            "invalid_image": {
+              "success": false,
+              "message": "Should have raised error"
+            },
+            "empty_prompt": {
+              "success": true,
+              "message": "Handled empty prompt"
+            },
+            "null_image": {
+              "success": false,
+              "message": "Should have raised error"
+            }
+          },
+          "error": null
+        },
+        {
+          "name": "configuration_system",
+          "passed": true,
+          "duration": 0.3667302131652832,
+          "details": {
+            "config_changed": true,
+            "analysis_worked": true,
+            "restored": true
+          },
+          "error": null
+        }
+      ]
+    },
+    "scenarios": {
+      "total": 5,
+      "passed": 5,
+      "tests": [
+        {
+          "name": "developer_workflow",
+          "passed": true,
+          "duration": 0.0071871280670166016,
+          "details": {
+            "error_check": true,
+            "code_analysis": true,
+            "notifications": true
+          },
+          "error": null
+        },
+        {
+          "name": "content_moderation",
+          "passed": true,
+          "duration": 0.9873838424682617,
+          "details": {
+            "images_analyzed": 3,
+            "all_successful": true,
+            "results": {
+              "document": true,
+              "ui": true,
+              "dashboard": true
+            }
+          },
+          "error": null
+        },
+        {
+          "name": "accessibility_check",
+          "passed": true,
+          "duration": 0.538470983505249,
+          "details": {
+            "ui_check": true,
+            "button_found": true,
+            "mobile_check": true
+          },
+          "error": null
+        },
+        {
+          "name": "automated_testing",
+          "passed": true,
+          "duration": 0.5029311180114746,
+          "details": {
+            "change_detection": true,
+            "regions_analyzed": 3,
+            "all_regions_successful": true
+          },
+          "error": null
+        },
+        {
+          "name": "productivity_monitoring",
+          "passed": true,
+          "duration": 0.5475778579711914,
+          "details": {
+            "workspace_analyzed": true,
+            "distractions_checked": true,
+            "activity_analyzed": true,
+            "resource_monitored": true
+          },
+          "error": null
+        }
+      ]
+    },
+    "performance": {
+      "total": 3,
+      "passed": 3,
+      "tests": [
+        {
+          "name": "response_times",
+          "passed": true,
+          "duration": 0.9847338199615479,
+          "details": {
+            "timings": {
+              "small_image": 0.14501595497131348,
+              "large_image": 0.4877631664276123,
+              "compressed": 0.32096004486083984,
+              "cached": 0.03098297119140625
+            },
+            "max_allowed": 10,
+            "all_within_limit": true
+          },
+          "error": null
+        },
+        {
+          "name": "memory_efficiency",
+          "passed": true,
+          "duration": 3.1533191204071045,
+          "details": {
+            "initial_memory_mb": 230.4375,
+            "final_memory_mb": 230.84375,
+            "increase_mb": 0.40625,
+            "within_limit": true
+          },
+          "error": null
+        },
+        {
+          "name": "concurrent_load",
+          "passed": true,
+          "duration": 1.423125982284546,
+          "details": {
+            "concurrent_requests": 10,
+            "successful": 10,
+            "failed": 0,
+            "total_time": 1.4230992794036865,
+            "avg_time_per_request": 0.14230992794036865
+          },
+          "error": null
+        }
+      ]
+    }
+  }
+}

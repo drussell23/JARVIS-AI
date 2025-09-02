@@ -172,3 +172,17 @@ core.*
 # Benchmark results
 benchmark_results/
 *.bench
+
+# Duplicate files prevention
+* 2.*
+* 2
+*\ 2.*
+*\ 2
+* copy.*
+* copy
+*-copy.*
+*-copy
+*(2).*
+*(2)
+*\(2\).*
+*\(2\)

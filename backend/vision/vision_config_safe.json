@@ -1,0 +1,31 @@
+{
+  "comment": "Memory-safe configuration for Claude Vision Analyzer on 16GB macOS",
+  
+  "max_image_dimension": 1536,
+  "jpeg_quality": 85,
+  "compression_enabled": true,
+  
+  "max_tokens": 1500,
+  "model_name": "claude-3-5-sonnet-20241022",
+  "max_concurrent_requests": 10,
+  "api_timeout": 30,
+  
+  "cache_enabled": true,
+  "cache_size_mb": 100,
+  "cache_max_entries": 50,
+  "cache_ttl_minutes": 30,
+  
+  "memory_threshold_percent": 60,
+  "cpu_threshold_percent": 70,
+  "thread_pool_size": 2,
+  
+  "process_memory_limit_mb": 2048,
+  "memory_warning_threshold_mb": 1536,
+  "min_system_available_gb": 2.0,
+  "enable_memory_safety": true,
+  "reject_on_memory_pressure": true,
+  
+  "enable_metrics": true,
+  "enable_entity_extraction": true,
+  "enable_action_detection": true
+}

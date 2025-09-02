@@ -1,0 +1,139 @@
+{
+  "timestamp": "2025-09-02 14:29:28",
+  "summary": {
+    "total_tests": 27,
+    "passed_tests": 21,
+    "success_rate": 77.77777777777779
+  },
+  "results": {
+    "functionality": {
+      "basic_analysis": {
+        "success": true,
+        "method": "full",
+        "time": 0
+      },
+      "compression_text": {
+        "success": true,
+        "size_reduction": 0.95
+      },
+      "compression_ui": {
+        "success": true,
+        "size_reduction": 0.85
+      },
+      "compression_activity": {
+        "success": true,
+        "size_reduction": 0.8
+      },
+      "compression_detailed": {
+        "success": true,
+        "size_reduction": 1.0
+      },
+      "compression_quick": {
+        "success": true,
+        "size_reduction": 0.6
+      },
+      "template_notifications": {
+        "success": true
+      },
+      "template_errors": {
+        "success": true
+      },
+      "template_ui_element": {
+        "success": true
+      },
+      "template_workspace": {
+        "success": true
+      },
+      "batch_processing": {
+        "success": true,
+        "regions_processed": 3,
+        "regions_requested": 3
+      },
+      "change_detection": {
+        "success": true,
+        "detected": false
+      },
+      "memory_stats": {
+        "success": true,
+        "components_tracked": 0,
+        "system_memory_mb": 238.921875
+      }
+    },
+    "integration": {
+      "swift_window": {
+        "success": false,
+        "reason": "Components not available"
+      },
+      "continuous_memory": {
+        "success": false,
+        "reason": "Component not available"
+      },
+      "relationship_window": {
+        "success": false,
+        "reason": "Components not available"
+      },
+      "all_components": {
+        "success": false,
+        "components_available": 0,
+        "total_time": 0.5442180633544922
+      }
+    },
+    "memory": {
+      "limits": {
+        "success": true,
+        "total_memory_mb": 238.953125
+      },
+      "dynamic_adjustment": {
+        "success": false,
+        "reason": "Component not available"
+      },
+      "emergency_cleanup": {
+        "success": true,
+        "memory_after_cleanup": 238.953125
+      },
+      "lru_eviction": {
+        "success": true,
+        "cache_size": 0,
+        "max_allowed": 10
+      }
+    },
+    "configuration": {
+      "env_override": {
+        "success": true,
+        "applied_vars": 3
+      },
+      "component_toggle": {
+        "success": true,
+        "swift_disabled": true
+      },
+      "custom_templates": {
+        "success": false,
+        "custom_template_loaded": false
+      }
+    },
+    "performance": {
+      "response_time": {
+        "success": true,
+        "times": {
+          "small_image": 0.20298409461975098,
+          "large_image": 0.4982781410217285,
+          "with_compression": 0.31894922256469727
+        }
+      },
+      "throughput": {
+        "success": true,
+        "requests": 10,
+        "successful": 10,
+        "throughput_per_second": 6.915453252517098,
+        "total_time": 1.4460368156433105
+      },
+      "resource_usage": {
+        "success": true,
+        "initial_memory_mb": 240.3125,
+        "final_memory_mb": 241.234375,
+        "memory_increase_mb": 0.921875,
+        "cpu_usage": 0.0
+      }
+    }
+  }
+}

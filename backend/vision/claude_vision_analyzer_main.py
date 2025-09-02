@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class VisionConfig:
-    """Dynamic configuration for vision analyzer"""
+    """Dynamic configuration for vision analyzer with memory safety"""
     # Image processing
     max_image_dimension: int = field(default_factory=lambda: int(os.getenv('VISION_MAX_IMAGE_DIM', '1536')))
     jpeg_quality: int = field(default_factory=lambda: int(os.getenv('VISION_JPEG_QUALITY', '85')))
@@ -45,7 +45,7 @@ class VisionConfig:
     # API settings
     max_tokens: int = field(default_factory=lambda: int(os.getenv('VISION_MAX_TOKENS', '1500')))
     model_name: str = field(default_factory=lambda: os.getenv('VISION_MODEL', 'claude-3-5-sonnet-20241022'))
-    max_concurrent_requests: int = field(default_factory=lambda: int(os.getenv('VISION_MAX_CONCURRENT', '2')))
+    max_concurrent_requests: int = field(default_factory=lambda: int(os.getenv('VISION_MAX_CONCURRENT', '10')))  # Safe default
     api_timeout: int = field(default_factory=lambda: int(os.getenv('VISION_API_TIMEOUT', '30')))
     
     # Cache settings
@@ -55,9 +55,16 @@ class VisionConfig:
     cache_ttl_minutes: int = field(default_factory=lambda: int(os.getenv('VISION_CACHE_TTL_MIN', '30')))
     
     # Performance settings
-    memory_threshold_percent: float = field(default_factory=lambda: float(os.getenv('VISION_MEMORY_THRESHOLD', '70')))
+    memory_threshold_percent: float = field(default_factory=lambda: float(os.getenv('VISION_MEMORY_THRESHOLD', '60')))  # More aggressive
     cpu_threshold_percent: float = field(default_factory=lambda: float(os.getenv('VISION_CPU_THRESHOLD', '70')))
     thread_pool_size: int = field(default_factory=lambda: int(os.getenv('VISION_THREAD_POOL', '2')))
+    
+    # Memory safety settings
+    process_memory_limit_mb: int = field(default_factory=lambda: int(os.getenv('VISION_PROCESS_LIMIT_MB', '2048')))  # 2GB
+    memory_warning_threshold_mb: int = field(default_factory=lambda: int(os.getenv('VISION_MEMORY_WARNING_MB', '1536')))  # 1.5GB
+    min_system_available_gb: float = field(default_factory=lambda: float(os.getenv('VISION_MIN_SYSTEM_RAM_GB', '2.0')))  # 2GB
+    enable_memory_safety: bool = field(default_factory=lambda: os.getenv('VISION_MEMORY_SAFETY', 'true').lower() == 'true')
+    reject_on_memory_pressure: bool = field(default_factory=lambda: os.getenv('VISION_REJECT_ON_MEMORY', 'true').lower() == 'true')
     
     # Feature flags
     enable_metrics: bool = field(default_factory=lambda: os.getenv('VISION_METRICS', 'true').lower() == 'true')
@@ -86,7 +93,13 @@ class VisionConfig:
             'cache_size_mb': self.cache_size_mb,
             'cache_ttl_minutes': self.cache_ttl_minutes,
             'memory_threshold_percent': self.memory_threshold_percent,
-            'enable_metrics': self.enable_metrics
+            'enable_metrics': self.enable_metrics,
+            # Memory safety settings
+            'process_memory_limit_mb': self.process_memory_limit_mb,
+            'memory_warning_threshold_mb': self.memory_warning_threshold_mb,
+            'min_system_available_gb': self.min_system_available_gb,
+            'enable_memory_safety': self.enable_memory_safety,
+            'reject_on_memory_pressure': self.reject_on_memory_pressure
         }
 
 @dataclass
@@ -269,6 +282,183 @@ class MemoryAwareCache:
             self.current_size_bytes = 0
             gc.collect()
 
+
+@dataclass
+class MemorySafetyStatus:
+    """Status of memory safety checks"""
+    is_safe: bool
+    process_mb: float
+    process_limit_mb: float
+    system_available_gb: float
+    system_min_gb: float
+    warnings: List[str] = field(default_factory=list)
+    rejected_count: int = 0
+    last_check: datetime = field(default_factory=datetime.now)
+
+
+class MemorySafetyMonitor:
+    """Monitor and enforce memory safety to prevent crashes"""
+    
+    # Memory estimates by image size (MB)
+    MEMORY_ESTIMATES = {
+        'tiny': 10,      # < 0.5MP
+        'small': 20,     # 0.5-1MP  
+        'medium': 100,   # 1-2MP
+        'large': 300,    # 2MP+
+        'concurrent_overhead': 10
+    }
+    
+    def __init__(self, config: VisionConfig):
+        self.config = config
+        self.rejected_requests = 0
+        self.warnings_issued = 0
+        self._last_gc_time = time.time()
+        self._emergency_mode = False
+        
+    def check_memory_safety(self) -> MemorySafetyStatus:
+        """Check current memory status"""
+        try:
+            memory = psutil.virtual_memory()
+            process = psutil.Process()
+            
+            process_mb = process.memory_info().rss / (1024**2)
+            system_available_gb = memory.available / (1024**3)
+            
+            warnings = []
+            
+            # Check process memory
+            if process_mb > self.config.memory_warning_threshold_mb:
+                warnings.append(f"Process memory high: {process_mb:.0f}MB")
+            
+            # Check system memory
+            if system_available_gb < self.config.min_system_available_gb * 1.5:
+                warnings.append(f"System memory low: {system_available_gb:.1f}GB available")
+            
+            # Determine if safe
+            is_safe = (
+                process_mb < self.config.process_memory_limit_mb and
+                system_available_gb > self.config.min_system_available_gb
+            )
+            
+            # Enter emergency mode if critically low
+            if not is_safe and not self._emergency_mode:
+                self._emergency_mode = True
+                logger.warning("Entering emergency memory mode - aggressive limits enabled")
+            elif is_safe and self._emergency_mode and system_available_gb > self.config.min_system_available_gb * 2:
+                self._emergency_mode = False
+                logger.info("Exiting emergency memory mode")
+            
+            return MemorySafetyStatus(
+                is_safe=is_safe,
+                process_mb=process_mb,
+                process_limit_mb=self.config.process_memory_limit_mb,
+                system_available_gb=system_available_gb,
+                system_min_gb=self.config.min_system_available_gb,
+                warnings=warnings,
+                rejected_count=self.rejected_requests
+            )
+        except Exception as e:
+            logger.error(f"Memory safety check failed: {e}")
+            # Fail safe - assume unsafe
+            return MemorySafetyStatus(
+                is_safe=False,
+                process_mb=0,
+                process_limit_mb=self.config.process_memory_limit_mb,
+                system_available_gb=0,
+                system_min_gb=self.config.min_system_available_gb,
+                warnings=[f"Memory check error: {e}"]
+            )
+    
+    def estimate_memory_usage(self, width: int, height: int, 
+                            concurrent_count: int = 1) -> Dict[str, Any]:
+        """Estimate memory required for operation"""
+        pixels = width * height
+        megapixels = pixels / 1_000_000
+        
+        # Determine size category
+        if megapixels < 0.5:
+            category = 'tiny'
+        elif megapixels < 1:
+            category = 'small'
+        elif megapixels < 2:
+            category = 'medium'
+        else:
+            category = 'large'
+        
+        # Calculate memory
+        base_memory = self.MEMORY_ESTIMATES[category]
+        concurrent_memory = (concurrent_count - 1) * self.MEMORY_ESTIMATES['concurrent_overhead']
+        
+        # Add overhead for emergency mode
+        if self._emergency_mode:
+            base_memory *= 1.5
+        
+        total_estimate = base_memory + concurrent_memory
+        
+        return {
+            'category': category,
+            'megapixels': megapixels,
+            'base_memory_mb': base_memory,
+            'concurrent_memory_mb': concurrent_memory,
+            'total_estimate_mb': total_estimate,
+            'emergency_mode': self._emergency_mode
+        }
+    
+    async def ensure_memory_available(self, width: int, height: int) -> bool:
+        """Ensure enough memory is available for operation"""
+        if not self.config.enable_memory_safety:
+            return True
+        
+        # Check current status
+        status = self.check_memory_safety()
+        
+        # Log warnings
+        for warning in status.warnings:
+            if self.warnings_issued < 10:  # Limit warning spam
+                logger.warning(warning)
+                self.warnings_issued += 1
+        
+        # Reject if already unsafe
+        if not status.is_safe:
+            self.rejected_requests += 1
+            if self.config.reject_on_memory_pressure:
+                return False
+        
+        # Estimate required memory
+        estimate = self.estimate_memory_usage(width, height)
+        projected_memory = status.process_mb + estimate['total_estimate_mb']
+        
+        # Check if operation would exceed limits
+        if projected_memory > self.config.process_memory_limit_mb:
+            self.rejected_requests += 1
+            logger.warning(
+                f"Rejecting {estimate['category']} image ({estimate['megapixels']:.1f}MP). "
+                f"Would exceed memory limit: {projected_memory:.0f}MB > {self.config.process_memory_limit_mb}MB"
+            )
+            if self.config.reject_on_memory_pressure:
+                return False
+        
+        # Force GC if needed
+        if time.time() - self._last_gc_time > 30 and status.process_mb > self.config.memory_warning_threshold_mb:
+            gc.collect()
+            self._last_gc_time = time.time()
+        
+        return True
+    
+    def get_status_dict(self) -> Dict[str, Any]:
+        """Get current status as dictionary"""
+        status = self.check_memory_safety()
+        return {
+            'is_safe': status.is_safe,
+            'process_mb': status.process_mb,
+            'process_limit_mb': status.process_limit_mb,
+            'system_available_gb': status.system_available_gb,
+            'warnings': status.warnings,
+            'rejected_requests': self.rejected_requests,
+            'emergency_mode': self._emergency_mode
+        }
+
+
 class ClaudeVisionAnalyzer:
     """Enhanced Claude vision analyzer - fully dynamic and configurable"""
     
@@ -291,6 +481,9 @@ class ClaudeVisionAnalyzer:
         
         # Initialize API client
         self.client = Anthropic(api_key=api_key)
+        
+        # Initialize memory safety monitor
+        self.memory_monitor = MemorySafetyMonitor(self.config)
         
         # Initialize components based on config
         self.cache = MemoryAwareCache(self.config) if self.config.cache_enabled else None
@@ -486,6 +679,29 @@ class ClaudeVisionAnalyzer:
                     setattr(self.config, key, value)
         
         try:
+            # Memory safety check
+            if self.config.enable_memory_safety:
+                # Get image dimensions
+                if isinstance(image, np.ndarray):
+                    height, width = image.shape[:2]
+                elif isinstance(image, Image.Image):
+                    width, height = image.size
+                else:
+                    # Default conservative estimate
+                    width, height = 1920, 1080
+                
+                # Check if safe to proceed
+                memory_safe = await self.memory_monitor.ensure_memory_available(width, height)
+                if not memory_safe:
+                    metrics.total_time = time.time() - start_time
+                    error_msg = (
+                        f"Analysis rejected due to memory constraints. "
+                        f"Process: {self.memory_monitor.check_memory_safety().process_mb:.0f}MB, "
+                        f"Available: {self.memory_monitor.check_memory_safety().system_available_gb:.1f}GB"
+                    )
+                    logger.error(error_msg)
+                    raise MemoryError(error_msg)
+            
             # Determine if we should use cache
             should_use_cache = use_cache if use_cache is not None else self.config.cache_enabled
             
@@ -634,13 +850,10 @@ class ClaudeVisionAnalyzer:
             image = rgb_image
         
         # Save as JPEG with configured quality
+        # Use lambda to properly pass keyword arguments
         await asyncio.get_event_loop().run_in_executor(
             self.executor,
-            image.save,
-            buffer,
-            "JPEG",
-            self.config.jpeg_quality,
-            True  # optimize=True
+            lambda: image.save(buffer, "JPEG", quality=self.config.jpeg_quality, optimize=True)
         )
         
         buffer.seek(0)
@@ -655,28 +868,30 @@ class ClaudeVisionAnalyzer:
     
     async def _call_claude_api(self, image_base64: str, prompt: str) -> str:
         """Make API call to Claude"""
+        # Use lambda to properly pass arguments to messages.create
         message = await asyncio.get_event_loop().run_in_executor(
             self.executor,
-            self.client.messages.create,
-            self.config.model_name,
-            self.config.max_tokens,
-            [{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "image/jpeg" if self.config.compression_enabled else "image/png",
-                            "data": image_base64
+            lambda: self.client.messages.create(
+                model=self.config.model_name,
+                max_tokens=self.config.max_tokens,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg" if self.config.compression_enabled else "image/png",
+                                "data": image_base64
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
                         }
-                    },
-                    {
-                        "type": "text",
-                        "text": prompt
-                    }
-                ]
-            }]
+                    ]
+                }]
+            )
         )
         return message.content[0].text
     
@@ -889,6 +1104,47 @@ class ClaudeVisionAnalyzer:
         
         result, metrics = await self.analyze_screenshot(screenshot, prompt)
         return result
+    
+    async def analyze_workspace(self, screenshot: Optional[np.ndarray] = None) -> Dict[str, Any]:
+        """Analyze workspace - wrapper for comprehensive analysis"""
+        return await self.analyze_workspace_comprehensive(screenshot)
+    
+    async def read_text_from_area(self, screenshot: np.ndarray, area: Dict[str, int]) -> Dict[str, Any]:
+        """Read text from a specific area of the screenshot"""
+        try:
+            # Crop the image to the specified area
+            x, y, width, height = area['x'], area['y'], area['width'], area['height']
+            
+            # Ensure coordinates are within bounds
+            h, w = screenshot.shape[:2]
+            x = max(0, min(x, w - 1))
+            y = max(0, min(y, h - 1))
+            width = min(width, w - x)
+            height = min(height, h - y)
+            
+            # Crop the area
+            cropped = screenshot[y:y+height, x:x+width]
+            
+            # Analyze the cropped area with text strategy
+            result = await self.analyze_with_compression_strategy(
+                cropped,
+                "Read all text in this area",
+                "text"
+            )
+            
+            return {
+                'success': True,
+                'text': result.get('description', ''),
+                'area': area
+            }
+            
+        except Exception as e:
+            logger.error(f"Error reading text from area: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'area': area
+            }
     
     async def analyze_workspace_comprehensive(self, screenshot: Optional[np.ndarray] = None) -> Dict[str, Any]:
         """Comprehensive workspace analysis using all enhanced components"""
@@ -1524,7 +1780,71 @@ Focus on what's visible in this specific region. Be concise but thorough."""
             'cpu_percent': psutil.cpu_percent(interval=0.1)
         }
         
+        # Memory safety status
+        stats['memory_safety'] = self.memory_monitor.get_status_dict()
+        
         return stats
+    
+    async def check_memory_health(self) -> Dict[str, Any]:
+        """Check memory health and provide recommendations"""
+        status = self.memory_monitor.check_memory_safety()
+        health = {
+            'healthy': status.is_safe,
+            'process_mb': status.process_mb,
+            'system_available_gb': status.system_available_gb,
+            'warnings': status.warnings,
+            'rejected_requests': self.memory_monitor.rejected_requests,
+            'emergency_mode': self.memory_monitor._emergency_mode,
+            'recommendations': []
+        }
+        
+        # Add recommendations based on status
+        if not status.is_safe:
+            health['recommendations'].append("System memory critically low - consider reducing concurrent requests")
+        
+        if status.process_mb > self.config.memory_warning_threshold_mb:
+            health['recommendations'].append(f"Process memory high ({status.process_mb:.0f}MB) - consider clearing cache")
+        
+        if self.memory_monitor._emergency_mode:
+            health['recommendations'].append("Emergency mode active - only critical requests will be processed")
+        
+        if self.memory_monitor.rejected_requests > 10:
+            health['recommendations'].append(f"High rejection rate ({self.memory_monitor.rejected_requests} requests) - consider scaling limits")
+        
+        return health
+    
+    def get_memory_safe_config(self) -> Dict[str, Any]:
+        """Get recommended configuration for current memory conditions"""
+        status = self.memory_monitor.check_memory_safety()
+        
+        # Adjust limits based on available memory
+        if status.system_available_gb < 3:
+            # Very low memory - aggressive limits
+            max_concurrent = 5
+            cache_items = 25
+            max_dimension = 1024
+        elif status.system_available_gb < 5:
+            # Low memory - conservative limits
+            max_concurrent = 10
+            cache_items = 50
+            max_dimension = 1536
+        else:
+            # Normal memory - standard limits
+            max_concurrent = self.config.max_concurrent_requests
+            cache_items = self.config.cache_max_entries
+            max_dimension = self.config.max_image_dimension
+        
+        return {
+            'max_concurrent_requests': max_concurrent,
+            'cache_max_entries': cache_items,
+            'max_image_dimension': max_dimension,
+            'compression_enabled': True,
+            'memory_threshold_percent': 60,
+            'current_memory_status': {
+                'process_mb': status.process_mb,
+                'system_available_gb': status.system_available_gb
+            }
+        }
     
     def __del__(self):
         """Cleanup on deletion"""
