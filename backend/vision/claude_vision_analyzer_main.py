@@ -819,6 +819,270 @@ class ClaudeVisionAnalyzer:
             json.dump(self.config.to_dict(), f, indent=2)
         logger.info(f"Configuration saved to {path}")
     
+    # Sliding Window Integration
+    
+    async def analyze_with_sliding_window(self, screenshot: np.ndarray, 
+                                         query: str,
+                                         window_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Analyze screenshot using sliding window approach for memory efficiency
+        
+        Args:
+            screenshot: Screenshot as numpy array
+            query: Analysis query
+            window_config: Optional window configuration override
+            
+        Returns:
+            Combined analysis results from all windows
+        """
+        # Default sliding window configuration
+        default_window_config = {
+            'window_width': int(os.getenv('VISION_WINDOW_WIDTH', '400')),
+            'window_height': int(os.getenv('VISION_WINDOW_HEIGHT', '300')),
+            'overlap': float(os.getenv('VISION_WINDOW_OVERLAP', '0.3')),
+            'max_windows': int(os.getenv('VISION_MAX_WINDOWS', '4')),
+            'prioritize_center': os.getenv('VISION_PRIORITIZE_CENTER', 'true').lower() == 'true',
+            'adaptive_sizing': os.getenv('VISION_ADAPTIVE_SIZING', 'true').lower() == 'true'
+        }
+        
+        # Merge with provided config
+        if window_config:
+            default_window_config.update(window_config)
+        
+        # Generate sliding windows
+        windows = self._generate_sliding_windows(screenshot, default_window_config)
+        
+        # Analyze each window
+        window_results = []
+        for i, window in enumerate(windows):
+            window_prompt = self._create_window_prompt(query, i, len(windows), window['bounds'])
+            
+            # Extract window region
+            x, y, w, h = window['bounds']
+            window_image = screenshot[y:y+h, x:x+w]
+            
+            # Analyze window with caching
+            result, metrics = await self.analyze_screenshot(
+                window_image, 
+                window_prompt,
+                custom_config={'max_tokens': 300}  # Smaller tokens for windows
+            )
+            
+            window_results.append({
+                'bounds': window['bounds'],
+                'priority': window['priority'],
+                'result': result,
+                'metrics': metrics
+            })
+        
+        # Combine results
+        combined_result = self._combine_window_results(window_results, query)
+        combined_result['metadata'] = {
+            'analysis_method': 'sliding_window',
+            'windows_analyzed': len(windows),
+            'window_config': default_window_config
+        }
+        
+        return combined_result
+    
+    def _generate_sliding_windows(self, image: np.ndarray, config: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Generate sliding windows for the image"""
+        height, width = image.shape[:2]
+        window_width = config['window_width']
+        window_height = config['window_height']
+        
+        # Adaptive sizing based on available memory
+        if config['adaptive_sizing']:
+            available_mb = psutil.virtual_memory().available / 1024 / 1024
+            if available_mb < 2000:  # Less than 2GB available
+                window_width = int(window_width * 0.75)
+                window_height = int(window_height * 0.75)
+        
+        # Calculate step sizes with overlap
+        overlap = config['overlap']
+        step_x = int(window_width * (1 - overlap))
+        step_y = int(window_height * (1 - overlap))
+        
+        windows = []
+        
+        # Generate windows
+        for y in range(0, height - window_height + 1, step_y):
+            for x in range(0, width - window_width + 1, step_x):
+                # Calculate priority (center gets higher priority)
+                priority = 1.0
+                if config['prioritize_center']:
+                    center_x = x + window_width // 2
+                    center_y = y + window_height // 2
+                    image_center_x = width // 2
+                    image_center_y = height // 2
+                    
+                    # Distance from center (normalized)
+                    dx = (center_x - image_center_x) / width
+                    dy = (center_y - image_center_y) / height
+                    distance = np.sqrt(dx**2 + dy**2)
+                    priority = 1.0 - min(distance, 1.0)
+                
+                windows.append({
+                    'bounds': (x, y, window_width, window_height),
+                    'priority': priority
+                })
+        
+        # Sort by priority and limit to max_windows
+        windows.sort(key=lambda w: w['priority'], reverse=True)
+        return windows[:config['max_windows']]
+    
+    def _create_window_prompt(self, base_query: str, window_index: int, 
+                            total_windows: int, bounds: Tuple[int, int, int, int]) -> str:
+        """Create analysis prompt for a specific window"""
+        x, y, w, h = bounds
+        
+        return f"""Analyze this portion of the screen (region {window_index+1}/{total_windows} at position x:{x}, y:{y}).
+This is part of a larger screen being analyzed in sections.
+
+{base_query}
+
+Focus on what's visible in this specific region. Be concise but thorough."""
+    
+    def _combine_window_results(self, window_results: List[Dict[str, Any]], query: str) -> Dict[str, Any]:
+        """Combine results from multiple windows into a unified response"""
+        # Aggregate all findings
+        all_descriptions = []
+        all_entities = {'applications': [], 'files': [], 'urls': [], 'ui_elements': []}
+        all_actions = []
+        total_confidence = 0
+        high_priority_regions = []
+        
+        for window_result in window_results:
+            result = window_result['result']
+            bounds = window_result['bounds']
+            priority = window_result['priority']
+            
+            # Collect descriptions
+            if 'description' in result:
+                all_descriptions.append(f"Region ({bounds[0]}, {bounds[1]}): {result['description']}")
+            
+            # Aggregate entities
+            if 'entities' in result:
+                for key in all_entities:
+                    if key in result['entities']:
+                        all_entities[key].extend(result['entities'][key])
+            
+            # Collect actions
+            if 'actions' in result:
+                all_actions.extend(result['actions'])
+            
+            # Track confidence
+            confidence = result.get('confidence', 0.5)
+            total_confidence += confidence * priority  # Weight by priority
+            
+            # Track high priority regions
+            if priority > 0.7 and confidence > 0.7:
+                high_priority_regions.append({
+                    'bounds': bounds,
+                    'summary': result.get('summary', result.get('description', ''))[:100],
+                    'confidence': confidence
+                })
+        
+        # Remove duplicates from entities
+        for key in all_entities:
+            all_entities[key] = list(dict.fromkeys(all_entities[key]))
+        
+        # Generate combined summary
+        if high_priority_regions:
+            summary = f"Found {len(high_priority_regions)} important regions. "
+            summary += high_priority_regions[0]['summary']
+        else:
+            summary = f"Analyzed {len(window_results)} screen regions. "
+            if all_descriptions:
+                summary += all_descriptions[0].split(': ', 1)[1] if ': ' in all_descriptions[0] else all_descriptions[0]
+        
+        # Calculate average confidence
+        avg_confidence = total_confidence / len(window_results) if window_results else 0
+        
+        return {
+            'summary': summary,
+            'description': '\n'.join(all_descriptions[:5]),  # Top 5 descriptions
+            'entities': all_entities,
+            'actions': all_actions[:10],  # Top 10 actions
+            'confidence': avg_confidence,
+            'important_regions': high_priority_regions[:3],  # Top 3 regions
+            'total_regions_analyzed': len(window_results)
+        }
+    
+    async def smart_analyze(self, screenshot: np.ndarray, query: str, 
+                          force_method: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Smart analysis that automatically chooses between full or sliding window
+        
+        Args:
+            screenshot: Screenshot to analyze
+            query: Analysis query
+            force_method: Force specific method ('full' or 'sliding_window')
+            
+        Returns:
+            Analysis results with metadata about method used
+        """
+        height, width = screenshot.shape[:2]
+        total_pixels = height * width
+        available_mb = psutil.virtual_memory().available / 1024 / 1024
+        
+        # Decision thresholds (configurable)
+        pixel_threshold = int(os.getenv('VISION_SLIDING_THRESHOLD_PX', '800000'))  # 800k pixels
+        memory_threshold = float(os.getenv('VISION_SLIDING_MEMORY_MB', '2000'))  # 2GB
+        
+        # Determine method
+        if force_method:
+            use_sliding = (force_method == 'sliding_window')
+        else:
+            # Use sliding window if:
+            # 1. Image is large
+            # 2. Low memory available
+            # 3. Query suggests detailed search
+            use_sliding = (
+                total_pixels > pixel_threshold or
+                available_mb < memory_threshold or
+                any(word in query.lower() for word in ['find', 'locate', 'search', 'where', 'all'])
+            )
+        
+        # Log decision
+        logger.info(f"Smart analyze: {'sliding window' if use_sliding else 'full'} "
+                   f"(pixels: {total_pixels}, memory: {available_mb:.0f}MB)")
+        
+        # Perform analysis
+        if use_sliding:
+            result = await self.analyze_with_sliding_window(screenshot, query)
+        else:
+            result, metrics = await self.analyze_screenshot(screenshot, query)
+            result['metadata'] = {
+                'analysis_method': 'full',
+                'metrics': metrics.__dict__
+            }
+        
+        return result
+    
+    async def analyze_screenshot_async(self, screenshot: np.ndarray, query: str,
+                                     quick_mode: bool = False,
+                                     use_sliding_window: Optional[bool] = None) -> Dict[str, Any]:
+        """
+        Convenience method for backward compatibility and easy async usage
+        
+        Args:
+            screenshot: Screenshot to analyze
+            query: Analysis query
+            quick_mode: Use quick analysis mode
+            use_sliding_window: Force sliding window mode
+            
+        Returns:
+            Analysis results
+        """
+        if quick_mode:
+            return await self.quick_analysis(screenshot, detail_level="brief")
+        elif use_sliding_window is not None:
+            method = 'sliding_window' if use_sliding_window else 'full'
+            return await self.smart_analyze(screenshot, query, force_method=method)
+        else:
+            return await self.smart_analyze(screenshot, query)
+    
     def __del__(self):
         """Cleanup on deletion"""
         self.executor.shutdown(wait=False)

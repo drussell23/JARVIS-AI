@@ -15,11 +15,7 @@ from dataclasses import dataclass
 import logging
 
 # Import JARVIS vision components
-from sliding_window_claude_analyzer import (
-    RustSlidingWindowAnalyzer,
-    SlidingWindowClaudeConfig
-)
-from claude_vision_analyzer import ClaudeVisionAnalyzer, VisionConfig
+from claude_vision_analyzer_main import ClaudeVisionAnalyzer, VisionConfig
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -42,9 +38,8 @@ class JarvisSlidingWindowVision:
     def __init__(self, api_key: str):
         self.api_key = api_key
         
-        # Initialize both analyzers
-        self.full_analyzer = ClaudeVisionAnalyzer(api_key)
-        self.sliding_analyzer = RustSlidingWindowAnalyzer(api_key)
+        # Initialize the integrated analyzer
+        self.analyzer = ClaudeVisionAnalyzer(api_key)
         
         # Decision thresholds (from environment)
         self.use_sliding_threshold_px = int(os.getenv('JARVIS_SLIDING_THRESHOLD_PX', '800000'))  # 800k pixels
@@ -141,19 +136,28 @@ class JarvisSlidingWindowVision:
     async def _sliding_window_analysis(self, screenshot: np.ndarray, command: JarvisVisionCommand) -> Dict[str, Any]:
         """Perform sliding window analysis"""
         # Configure based on command priority
+        window_config = {}
         if command.priority == 'high':
             # Use higher quality for high priority
-            self.sliding_analyzer.config.window_width = 500
-            self.sliding_analyzer.config.window_height = 400
-            self.sliding_analyzer.config.max_concurrent_windows = 5
+            window_config = {
+                'window_width': 500,
+                'window_height': 400,
+                'max_windows': 5
+            }
         elif command.priority == 'low':
             # Use lower quality for low priority
-            self.sliding_analyzer.config.window_width = 300
-            self.sliding_analyzer.config.window_height = 250
-            self.sliding_analyzer.config.max_concurrent_windows = 2
+            window_config = {
+                'window_width': 300,
+                'window_height': 250,
+                'max_windows': 2
+            }
         
         # Perform analysis
-        result = await self.sliding_analyzer.analyze_screenshot(screenshot)
+        result = await self.analyzer.analyze_with_sliding_window(
+            screenshot, 
+            command.query,
+            window_config=window_config
+        )
         
         # Post-process based on command type
         if command.command_type == 'find_element':
@@ -166,7 +170,7 @@ class JarvisSlidingWindowVision:
     async def _full_analysis(self, screenshot: np.ndarray, command: JarvisVisionCommand) -> Dict[str, Any]:
         """Perform full image analysis"""
         # Use the enhanced Claude analyzer
-        result = await self.full_analyzer.analyze_screenshot_async(
+        result = await self.analyzer.analyze_screenshot_async(
             screenshot=screenshot,
             query=command.query,
             quick_mode=(command.priority == 'low')
@@ -175,9 +179,9 @@ class JarvisSlidingWindowVision:
         # Convert to consistent format
         return {
             'summary': result.get('description', ''),
-            'objects_detected': result.get('entities', []),
-            'text_found': result.get('text', []),
-            'ui_elements': result.get('ui_elements', []),
+            'objects_detected': result.get('entities', {}).get('applications', []),
+            'text_found': result.get('entities', {}).get('text', []),
+            'ui_elements': result.get('entities', {}).get('ui_elements', []),
             'confidence': result.get('confidence', 0.5)
         }
     

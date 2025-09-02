@@ -16,12 +16,8 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
-# Import our sliding window analyzer
-from sliding_window_claude_analyzer import (
-    SlidingWindowClaudeAnalyzer, 
-    RustSlidingWindowAnalyzer,
-    SlidingWindowClaudeConfig
-)
+# Import the integrated Claude vision analyzer
+from claude_vision_analyzer_main import ClaudeVisionAnalyzer
 
 # Set up environment variables for testing
 def setup_test_environment():
@@ -121,29 +117,29 @@ async def test_basic_sliding_window():
         print("Warning: ANTHROPIC_API_KEY not set, using mock mode")
         api_key = "mock_api_key"
     
-    config = SlidingWindowClaudeConfig()
-    analyzer = SlidingWindowClaudeAnalyzer(api_key, config)
+    analyzer = ClaudeVisionAnalyzer(api_key)
     
     # Create test image (1920x1080 with gradient and text regions)
     test_image = create_test_image()
     
-    # Generate sliding windows
-    windows = analyzer.generate_sliding_windows(test_image)
-    print(f"Generated {len(windows)} windows")
+    # Test sliding window analysis
+    result = await analyzer.analyze_with_sliding_window(test_image, "Analyze this screen in detail")
     
-    # Visualize windows
-    visualize_sliding_windows(test_image, windows)
+    print(f"Summary: {result['summary']}")
+    print(f"Windows analyzed: {result['metadata']['windows_analyzed']}")
+    print(f"Important regions found: {len(result.get('important_regions', []))}")
     
     # Display window information
-    print("\nWindow Details:")
-    for i, window in enumerate(windows[:5]):  # Show first 5
-        bounds = window['bounds']
-        priority = window['priority']
-        print(f"  Window {i+1}: pos=({bounds[0]}, {bounds[1]}), "
-              f"size=({bounds[2]}x{bounds[3]}), priority={priority:.2f}")
+    if 'important_regions' in result:
+        print("\nImportant Regions:")
+        for i, region in enumerate(result['important_regions'][:3]):
+            bounds = region['bounds']
+            print(f"  Region {i+1}: pos=({bounds[0]}, {bounds[1]}), "
+                  f"confidence={region['confidence']:.2f}")
+            print(f"    Summary: {region['summary']}")
     
     # Show memory usage
-    memory_mb = analyzer.get_available_memory_mb()
+    memory_mb = psutil.virtual_memory().available / 1024 / 1024
     print(f"\nAvailable memory: {memory_mb:.1f} MB")
     
     return analyzer, test_image
