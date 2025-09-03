@@ -1,0 +1,202 @@
+"""
+Wrapper for claude_vision_analyzer_main.py to provide the expected interface
+This handles the tuple return format and provides backward compatibility
+Now includes real-time monitoring and autonomous behaviors
+"""
+
+from claude_vision_analyzer_main import ClaudeVisionAnalyzer as _ClaudeVisionAnalyzer
+import logging
+from typing import Callable, Optional, Dict, Any, List
+
+logger = logging.getLogger(__name__)
+
+class ClaudeVisionAnalyzer(_ClaudeVisionAnalyzer):
+    """
+    Wrapper that provides clean interface for JARVIS integration
+    Includes real-time vision capabilities and autonomous behaviors
+    """
+    
+    def __init__(self, api_key: str, enable_realtime: bool = True):
+        """Initialize with real-time capabilities enabled by default"""
+        super().__init__(api_key)
+        self.enable_realtime = enable_realtime
+        self._realtime_callbacks = []
+    
+    async def analyze_screenshot(self, image_array, prompt, **kwargs):
+        """
+        Analyze a screenshot and return just the result dictionary
+        
+        Returns:
+            dict: Analysis result with 'description', 'entities', 'actions', etc.
+        """
+        try:
+            # Call parent method which returns (result, metrics) tuple
+            raw_result = await super().analyze_screenshot(image_array, prompt, **kwargs)
+            
+            # Handle different return formats
+            if isinstance(raw_result, tuple) and len(raw_result) >= 2:
+                # Extract just the result dict from the tuple
+                result = raw_result[0]
+                logger.debug(f"Extracted result from tuple: {type(result)}")
+                return result
+            elif isinstance(raw_result, dict):
+                # Already in correct format
+                return raw_result
+            else:
+                logger.warning(f"Unexpected result format: {type(raw_result)}")
+                return raw_result
+                
+        except Exception as e:
+            logger.error(f"Vision analysis failed: {e}")
+            # Return a safe default
+            return {
+                'description': f'Analysis failed: {str(e)}',
+                'entities': {},
+                'actions': [],
+                'error': str(e)
+            }
+    
+    async def get_screen_context(self):
+        """Get current screen context with real-time awareness"""
+        # Use the new real-time context method
+        return await self.get_real_time_context()
+    
+    async def start_jarvis_vision(self, callback: Optional[Callable] = None) -> Dict[str, Any]:
+        """Start JARVIS real-time vision - see everything happening on screen"""
+        logger.info("🤖 Starting JARVIS real-time vision...")
+        
+        # Define internal callback to handle vision events
+        async def vision_callback(event):
+            logger.debug(f"Vision event: {event.get('description', 'Unknown')[:100]}...")
+            
+            # Trigger user callbacks
+            for cb in self._realtime_callbacks:
+                try:
+                    await cb(event)
+                except Exception as e:
+                    logger.error(f"Callback error: {e}")
+        
+        # Add user callback if provided
+        if callback:
+            self._realtime_callbacks.append(callback)
+        
+        # Start real-time monitoring
+        result = await self.start_real_time_monitoring(vision_callback)
+        
+        if result['success']:
+            logger.info(f"✅ JARVIS vision active in {result['mode']} mode")
+        else:
+            logger.error(f"❌ Failed to start vision: {result.get('error', 'Unknown error')}")
+        
+        return result
+    
+    async def stop_jarvis_vision(self) -> Dict[str, Any]:
+        """Stop JARVIS real-time vision"""
+        logger.info("🛑 Stopping JARVIS vision...")
+        
+        # Stop video streaming if active
+        if hasattr(self, 'video_streaming') and self.video_streaming and self.video_streaming.is_capturing:
+            await self.stop_video_streaming()
+        
+        # Stop continuous monitoring
+        if hasattr(self, 'continuous_analyzer') and self.continuous_analyzer and self.continuous_analyzer.is_monitoring:
+            await self.stop_continuous_monitoring()
+        
+        # Clear callbacks
+        self._realtime_callbacks.clear()
+        
+        return {
+            'success': True,
+            'message': 'JARVIS vision stopped'
+        }
+    
+    async def see_and_respond(self, user_command: str) -> Dict[str, Any]:
+        """
+        JARVIS sees the screen and responds to user commands with visual context
+        This is the main method for vision-aware command handling
+        """
+        try:
+            # Get current screen context
+            context = await self.get_real_time_context()
+            
+            if 'error' in context:
+                return {
+                    'success': False,
+                    'error': context['error'],
+                    'response': "I'm having trouble seeing the screen right now."
+                }
+            
+            # Analyze command in context of what's visible
+            screenshot = await self.capture_screen()
+            if screenshot:
+                import numpy as np
+                from PIL import Image
+                
+                # Convert to numpy array if needed
+                if isinstance(screenshot, Image.Image):
+                    screenshot = np.array(screenshot)
+                
+                # Analyze with command context
+                result = await self.analyze_screenshot(
+                    screenshot,
+                    f"The user said: '{user_command}'. Based on what you see on screen, how should I help them? Be specific about what actions to take."
+                )
+                
+                # Check for autonomous behaviors
+                if context.get('behavior_insights'):
+                    result['suggested_behaviors'] = context['behavior_insights']['suggested_actions']
+                
+                return {
+                    'success': True,
+                    'visual_context': context,
+                    'command_analysis': result,
+                    'response': result.get('description', 'I can see the screen and am ready to help.')
+                }
+            
+            return {
+                'success': False,
+                'error': 'Unable to capture screen',
+                'response': "I need to see the screen to help with that."
+            }
+            
+        except Exception as e:
+            logger.error(f"See and respond error: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'response': "I encountered an error while trying to see the screen."
+            }
+    
+    async def monitor_for_notifications(self, duration: float = 300.0) -> List[Dict[str, Any]]:
+        """Monitor screen for notifications and important events"""
+        notifications = []
+        
+        async def notification_callback(event):
+            insights = event.get('insights', {})
+            if 'notification' in insights.get('detected_patterns', []):
+                notifications.append(event)
+                logger.info(f"📬 Notification detected: {event['description'][:100]}...")
+        
+        # Start monitoring with callback
+        await self.start_jarvis_vision(notification_callback)
+        
+        # Watch for changes
+        changes = await self.watch_for_changes(duration, notification_callback)
+        
+        # Stop monitoring
+        await self.stop_jarvis_vision()
+        
+        return notifications
+    
+    def add_realtime_callback(self, callback: Callable):
+        """Add a callback for real-time vision events"""
+        if callback not in self._realtime_callbacks:
+            self._realtime_callbacks.append(callback)
+    
+    def remove_realtime_callback(self, callback: Callable):
+        """Remove a real-time vision callback"""
+        if callback in self._realtime_callbacks:
+            self._realtime_callbacks.remove(callback)
+
+# For backward compatibility
+__all__ = ['ClaudeVisionAnalyzer']

@@ -13,7 +13,7 @@ from collections import defaultdict
 
 from vision.window_detector import WindowInfo
 try:
-    from vision.claude_vision_analyzer import ClaudeVisionAnalyzer
+    from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzer
 except ImportError:
     ClaudeVisionAnalyzer = None
     
@@ -154,11 +154,45 @@ class MessageHandler:
         try:
             # Use vision analyzer to extract text if available
             if self.vision_analyzer:
-                # For now, use window title as we don't have direct screenshot access
-                # TODO: Integrate with screen capture system to get window screenshot
-                # analysis = await self.vision_analyzer.analyze_screenshot(screenshot, "Extract text content")
-                # return analysis.get('text_content', window.window_title)
-                return window.window_title
+                # Get current screen context to understand the message
+                try:
+                    # Analyze current screen for message content
+                    context = await self.vision_analyzer.get_screen_context()
+                    
+                    # If the window is visible, try to extract specific content
+                    if window.app_name in context.get('description', ''):
+                        # More specific analysis for the active window
+                        import subprocess
+                        import tempfile
+                        from PIL import Image
+                        import numpy as np
+                        
+                        # Capture current screen
+                        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                            tmp_path = tmp.name
+                        
+                        subprocess.run(['screencapture', '-x', tmp_path], check=True, capture_output=True)
+                        image = Image.open(tmp_path)
+                        screenshot = np.array(image)
+                        os.unlink(tmp_path)
+                        
+                        # Analyze for message content
+                        result = await self.vision_analyzer.analyze_screenshot(
+                            screenshot,
+                            f"Extract the message content from the {window.app_name} window. Focus on the main text or notification content."
+                        )
+                        
+                        # Extract meaningful content
+                        description = result.get('description', '')
+                        if description and len(description) > len(window.window_title):
+                            return description
+                    
+                    # If no specific content found, use window title
+                    return window.window_title
+                    
+                except Exception as e:
+                    logger.debug(f"Vision analysis error: {e}")
+                    return window.window_title
             else:
                 # Fallback to window title when vision analyzer not available
                 return window.window_title

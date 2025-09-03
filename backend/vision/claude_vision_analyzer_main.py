@@ -19,7 +19,7 @@ import time
 import gc
 import os
 import re
-from typing import Dict, List, Optional, Any, Tuple, Union, Set
+from typing import Dict, List, Optional, Any, Tuple, Union, Set, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from collections import OrderedDict
@@ -467,13 +467,14 @@ class ClaudeVisionAnalyzer:
     """Enhanced Claude vision analyzer - fully dynamic and configurable"""
     
     def __init__(self, api_key: str, config: Optional[VisionConfig] = None,
-                 config_path: Optional[str] = None):
+                 config_path: Optional[str] = None, enable_realtime: bool = True):
         """Initialize enhanced Claude vision analyzer
         
         Args:
             api_key: Anthropic API key
             config: VisionConfig instance (optional)
             config_path: Path to JSON config file (optional)
+            enable_realtime: Enable real-time monitoring capabilities (default: True)
         """
         # Load configuration
         if config:
@@ -482,6 +483,10 @@ class ClaudeVisionAnalyzer:
             self.config = VisionConfig.from_file(config_path)
         else:
             self.config = VisionConfig()
+        
+        # Initialize real-time capabilities
+        self.enable_realtime = enable_realtime
+        self._realtime_callbacks = []
         
         # Initialize API client
         self.client = Anthropic(api_key=api_key)
@@ -1327,7 +1332,7 @@ class ClaudeVisionAnalyzer:
         
         return results
     
-    async def start_continuous_monitoring(self, event_callbacks: Optional[Dict[str, Any]] = None) -> bool:
+    async def start_continuous_monitoring(self, event_callbacks: Optional[Dict[str, Any]] = None) -> Dict[str, bool]:
         """Start continuous screen monitoring with memory management"""
         analyzer = await self.get_continuous_analyzer()
         if analyzer:
@@ -1341,8 +1346,8 @@ class ClaudeVisionAnalyzer:
             # Update config to reflect monitoring is active
             self.config.enable_continuous_monitoring = True
             
-            return True
-        return False
+            return {'success': True}
+        return {'success': False}
     
     async def stop_continuous_monitoring(self) -> bool:
         """Stop continuous screen monitoring"""
@@ -2237,6 +2242,431 @@ Focus on what's visible in this specific region. Be concise but thorough."""
             'mode': 'screenshot',
             'message': 'Switched to screenshot mode'
         }
+    
+    # Real-time monitoring capabilities
+    
+    async def start_real_time_monitoring(self, callback: Optional[Callable] = None) -> Dict[str, Any]:
+        """Start real-time screen monitoring for JARVIS to see continuously"""
+        try:
+            # Check memory before starting
+            memory_status = self.memory_monitor.check_memory_safety()
+            if not memory_status.is_safe:
+                return {
+                    'success': False,
+                    'error': 'Insufficient memory for real-time monitoring',
+                    'memory_status': memory_status.__dict__
+                }
+            
+            # Use video streaming for real-time if available
+            if self._video_streaming_config and self._video_streaming_config.get('enabled', False):
+                result = await self.start_video_streaming()
+                if result.get('success', False):
+                    logger.info("Real-time monitoring using video streaming")
+                    
+                    # Set up real-time analysis callback
+                    if callback:
+                        self.video_streaming.register_callback('frame_analyzed', callback)
+                    
+                    return {
+                        'success': True,
+                        'mode': 'video_streaming',
+                        'message': 'Real-time monitoring active via video streaming'
+                    }
+            
+            # Fall back to continuous screenshot monitoring
+            result = await self.start_continuous_monitoring()
+            if result.get('success', False):
+                logger.info("Real-time monitoring using screenshot capture")
+                
+                # Set up analysis callback
+                if callback and self.continuous_analyzer:
+                    self.continuous_analyzer.set_callback('analysis_complete', callback)
+                
+                return {
+                    'success': True,
+                    'mode': 'screenshot',
+                    'message': 'Real-time monitoring active via screenshots'
+                }
+            
+            return {
+                'success': False,
+                'error': 'Failed to start real-time monitoring'
+            }
+            
+        except Exception as e:
+            logger.error(f"Real-time monitoring error: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    async def get_real_time_context(self) -> Dict[str, Any]:
+        """Get current screen context in real-time (what JARVIS sees right now)"""
+        try:
+            # Capture current screen
+            screenshot = await self.capture_screen()
+            if screenshot is None:
+                return {'error': 'Unable to capture screen'}
+            
+            # Convert to numpy array if needed
+            if isinstance(screenshot, Image.Image):
+                screenshot = np.array(screenshot)
+            
+            # Analyze with context-aware prompt
+            result_tuple = await self.analyze_screenshot(
+                screenshot,
+                "What's currently visible on the screen? Describe the active application, any notifications, dialogs, or important content. Be specific about UI elements and text you can see."
+            )
+            
+            # Extract result from tuple
+            if isinstance(result_tuple, tuple):
+                result = result_tuple[0]
+            else:
+                result = result_tuple
+            
+            # Add real-time metadata
+            result['timestamp'] = datetime.now().isoformat()
+            result['capture_mode'] = 'video_streaming' if self.video_streaming and self.video_streaming.is_capturing else 'screenshot'
+            result['is_real_time'] = True
+            
+            # Add autonomous behavior insights
+            behavior_insights = await self._analyze_for_behaviors(result)
+            if behavior_insights:
+                result['behavior_insights'] = behavior_insights
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Real-time context error: {e}")
+            return {
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            }
+    
+    async def _analyze_for_behaviors(self, analysis_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyze screen content for autonomous behavior triggers"""
+        insights = {
+            'detected_patterns': [],
+            'suggested_actions': []
+        }
+        
+        description = analysis_result.get('description', '').lower()
+        
+        # Check for various patterns
+        patterns = {
+            'notification': ['notification', 'alert', 'message', 'unread', 'new message'],
+            'error': ['error', 'failed', 'exception', 'problem', 'warning', 'issue'],
+            'dialog': ['dialog', 'popup', 'confirm', 'save', 'cancel', 'ok'],
+            'loading': ['loading', 'processing', 'waiting', 'spinner'],
+            'update': ['update available', 'new version', 'install', 'upgrade']
+        }
+        
+        for pattern_type, keywords in patterns.items():
+            if any(keyword in description for keyword in keywords):
+                insights['detected_patterns'].append(pattern_type)
+                
+                # Suggest actions based on pattern
+                if pattern_type == 'notification':
+                    insights['suggested_actions'].append({
+                        'type': 'read_notification',
+                        'description': 'Read or dismiss the notification'
+                    })
+                elif pattern_type == 'error':
+                    insights['suggested_actions'].append({
+                        'type': 'handle_error',
+                        'description': 'Investigate or dismiss the error'
+                    })
+                elif pattern_type == 'dialog':
+                    insights['suggested_actions'].append({
+                        'type': 'handle_dialog',
+                        'description': 'Respond to the dialog box'
+                    })
+        
+        # Check for specific applications
+        apps = analysis_result.get('entities', {}).get('applications', [])
+        for app in apps:
+            app_lower = app.lower()
+            if any(msg_app in app_lower for msg_app in ['slack', 'teams', 'discord', 'messages']):
+                insights['detected_patterns'].append('messaging_app')
+                insights['suggested_actions'].append({
+                    'type': 'check_messages',
+                    'description': f'Check for new messages in {app}'
+                })
+        
+        return insights if insights['detected_patterns'] else None
+    
+    async def watch_for_changes(self, duration: float = 60.0, callback: Optional[Callable] = None) -> List[Dict[str, Any]]:
+        """Watch screen for changes over a duration and collect insights"""
+        changes = []
+        start_time = time.time()
+        last_description = ""
+        
+        while time.time() - start_time < duration:
+            try:
+                # Get current context
+                context = await self.get_real_time_context()
+                
+                if 'error' not in context:
+                    current_description = context.get('description', '')
+                    
+                    # Check if significant change occurred
+                    if current_description != last_description:
+                        change_event = {
+                            'timestamp': context['timestamp'],
+                            'description': current_description,
+                            'insights': context.get('behavior_insights', {}),
+                            'change_detected': True
+                        }
+                        
+                        changes.append(change_event)
+                        last_description = current_description
+                        
+                        # Trigger callback if provided
+                        if callback:
+                            await callback(change_event)
+                
+                # Wait before next check
+                await asyncio.sleep(1.0)  # Check every second
+                
+            except Exception as e:
+                logger.error(f"Change detection error: {e}")
+        
+        return changes
+    
+    async def handle_autonomous_behavior(self, behavior_type: str, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle specific autonomous behaviors based on screen content"""
+        try:
+            if behavior_type == 'check_messages':
+                # Analyze for message content
+                screenshot = await self.capture_screen()
+                if screenshot:
+                    result, _ = await self.analyze_screenshot(
+                        np.array(screenshot) if isinstance(screenshot, Image.Image) else screenshot,
+                        "Extract any message content, sender information, and timestamps visible on screen."
+                    )
+                    return {
+                        'success': True,
+                        'behavior': behavior_type,
+                        'content': result
+                    }
+            
+            elif behavior_type == 'handle_error':
+                # Analyze error details
+                screenshot = await self.capture_screen()
+                if screenshot:
+                    result, _ = await self.analyze_screenshot(
+                        np.array(screenshot) if isinstance(screenshot, Image.Image) else screenshot,
+                        "Extract the error message, error code, and any suggested solutions visible."
+                    )
+                    return {
+                        'success': True,
+                        'behavior': behavior_type,
+                        'error_details': result
+                    }
+            
+            elif behavior_type == 'handle_dialog':
+                # Analyze dialog options
+                screenshot = await self.capture_screen()
+                if screenshot:
+                    result, _ = await self.analyze_screenshot(
+                        np.array(screenshot) if isinstance(screenshot, Image.Image) else screenshot,
+                        "What dialog or popup is shown? List all buttons and options available."
+                    )
+                    return {
+                        'success': True,
+                        'behavior': behavior_type,
+                        'dialog_info': result
+                    }
+            
+            return {
+                'success': False,
+                'behavior': behavior_type,
+                'error': 'Unknown behavior type'
+            }
+            
+        except Exception as e:
+            logger.error(f"Autonomous behavior error: {e}")
+            return {
+                'success': False,
+                'behavior': behavior_type,
+                'error': str(e)
+            }
+    
+    # JARVIS Integration Methods (from wrapper)
+    
+    async def analyze_screenshot_clean(self, image_array, prompt, **kwargs):
+        """
+        Analyze a screenshot and return just the result dictionary (wrapper compatibility)
+        This method provides a clean interface that returns only the result dict
+        
+        Returns:
+            dict: Analysis result with 'description', 'entities', 'actions', etc.
+        """
+        try:
+            # Call the main analyze_screenshot method which returns (result, metrics) tuple
+            raw_result = await self.analyze_screenshot(image_array, prompt, **kwargs)
+            
+            # Handle different return formats
+            if isinstance(raw_result, tuple) and len(raw_result) >= 2:
+                # Extract just the result dict from the tuple
+                result = raw_result[0]
+                logger.debug(f"Extracted result from tuple: {type(result)}")
+                return result
+            elif isinstance(raw_result, dict):
+                # Already in correct format
+                return raw_result
+            else:
+                logger.warning(f"Unexpected result format: {type(raw_result)}")
+                return raw_result
+                
+        except Exception as e:
+            logger.error(f"Vision analysis failed: {e}")
+            # Return a safe default
+            return {
+                'description': f'Analysis failed: {str(e)}',
+                'entities': {},
+                'actions': [],
+                'error': str(e)
+            }
+    
+    async def get_screen_context(self):
+        """Get current screen context with real-time awareness (wrapper compatibility)"""
+        # Use the real-time context method
+        return await self.get_real_time_context()
+    
+    async def start_jarvis_vision(self, callback: Optional[Callable] = None) -> Dict[str, Any]:
+        """Start JARVIS real-time vision - see everything happening on screen"""
+        logger.info("🤖 Starting JARVIS real-time vision...")
+        
+        # Define internal callback to handle vision events
+        async def vision_callback(event):
+            logger.debug(f"Vision event: {event.get('description', 'Unknown')[:100]}...")
+            
+            # Trigger user callbacks
+            for cb in self._realtime_callbacks:
+                try:
+                    await cb(event)
+                except Exception as e:
+                    logger.error(f"Callback error: {e}")
+        
+        # Add user callback if provided
+        if callback:
+            self._realtime_callbacks.append(callback)
+        
+        # Start real-time monitoring
+        result = await self.start_real_time_monitoring(vision_callback)
+        
+        if result['success']:
+            logger.info(f"✅ JARVIS vision active in {result['mode']} mode")
+        else:
+            logger.error(f"❌ Failed to start vision: {result.get('error', 'Unknown error')}")
+        
+        return result
+    
+    async def stop_jarvis_vision(self) -> Dict[str, Any]:
+        """Stop JARVIS real-time vision"""
+        logger.info("🛑 Stopping JARVIS vision...")
+        
+        # Stop video streaming if active
+        if hasattr(self, 'video_streaming') and self.video_streaming and self.video_streaming.is_capturing:
+            await self.stop_video_streaming()
+        
+        # Stop continuous monitoring
+        if hasattr(self, 'continuous_analyzer') and self.continuous_analyzer and self.continuous_analyzer.is_monitoring:
+            await self.stop_continuous_monitoring()
+        
+        # Clear callbacks
+        self._realtime_callbacks.clear()
+        
+        return {
+            'success': True,
+            'message': 'JARVIS vision stopped'
+        }
+    
+    async def see_and_respond(self, user_command: str) -> Dict[str, Any]:
+        """
+        JARVIS sees the screen and responds to user commands with visual context
+        This is the main method for vision-aware command handling
+        """
+        try:
+            # Get current screen context
+            context = await self.get_real_time_context()
+            
+            if 'error' in context:
+                return {
+                    'success': False,
+                    'error': context['error'],
+                    'response': "I'm having trouble seeing the screen right now."
+                }
+            
+            # Analyze command in context of what's visible
+            screenshot = await self.capture_screen()
+            if screenshot:
+                # Convert to numpy array if needed
+                if isinstance(screenshot, Image.Image):
+                    screenshot = np.array(screenshot)
+                
+                # Analyze with command context
+                result = await self.analyze_screenshot_clean(
+                    screenshot,
+                    f"The user said: '{user_command}'. Based on what you see on screen, how should I help them? Be specific about what actions to take."
+                )
+                
+                # Check for autonomous behaviors
+                if context.get('behavior_insights'):
+                    result['suggested_behaviors'] = context['behavior_insights']['suggested_actions']
+                
+                return {
+                    'success': True,
+                    'visual_context': context,
+                    'command_analysis': result,
+                    'response': result.get('description', 'I can see the screen and am ready to help.')
+                }
+            
+            return {
+                'success': False,
+                'error': 'Unable to capture screen',
+                'response': "I need to see the screen to help with that."
+            }
+            
+        except Exception as e:
+            logger.error(f"See and respond error: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'response': "I encountered an error while trying to see the screen."
+            }
+    
+    async def monitor_for_notifications(self, duration: float = 300.0) -> List[Dict[str, Any]]:
+        """Monitor screen for notifications and important events"""
+        notifications = []
+        
+        async def notification_callback(event):
+            insights = event.get('insights', {})
+            if 'notification' in insights.get('detected_patterns', []):
+                notifications.append(event)
+                logger.info(f"📬 Notification detected: {event['description'][:100]}...")
+        
+        # Start monitoring with callback
+        await self.start_jarvis_vision(notification_callback)
+        
+        # Watch for changes
+        changes = await self.watch_for_changes(duration, notification_callback)
+        
+        # Stop monitoring
+        await self.stop_jarvis_vision()
+        
+        return notifications
+    
+    def add_realtime_callback(self, callback: Callable):
+        """Add a callback for real-time vision events"""
+        if callback not in self._realtime_callbacks:
+            self._realtime_callbacks.append(callback)
+    
+    def remove_realtime_callback(self, callback: Callable):
+        """Remove a real-time vision callback"""
+        if callback in self._realtime_callbacks:
+            self._realtime_callbacks.remove(callback)
     
     def __del__(self):
         """Cleanup on deletion"""
