@@ -1495,6 +1495,7 @@ async def speak_text(text: str):
     """Generate and stream audio for text"""
     try:
         import gtts
+        import base64
         
         # Generate audio
         tts = gtts.gTTS(text, lang='en')
@@ -1506,7 +1507,9 @@ async def speak_text(text: str):
             audio_buffer,
             media_type="audio/mpeg",
             headers={
-                "Content-Disposition": f"inline; filename=jarvis_speech.mp3"
+                "Content-Disposition": f"inline; filename=jarvis_speech.mp3",
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "no-cache"
             }
         )
     except ImportError:
@@ -1516,6 +1519,36 @@ async def speak_text(text: str):
     except Exception as e:
         logger.error(f"Audio generation error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/audio/speak")
+async def speak_text_post(request: Request):
+    """Generate audio for text (POST method with base64 response)"""
+    try:
+        import gtts
+        import base64
+        
+        data = await request.json()
+        text = data.get('text', '')
+        
+        if not text:
+            raise HTTPException(status_code=400, detail="No text provided")
+        
+        # Generate audio
+        tts = gtts.gTTS(text, lang='en')
+        audio_buffer = io.BytesIO()
+        tts.write_to_fp(audio_buffer)
+        audio_buffer.seek(0)
+        
+        # Convert to base64
+        audio_base64 = base64.b64encode(audio_buffer.read()).decode('utf-8')
+        
+        return {
+            "success": True,
+            "audio": f"data:audio/mpeg;base64,{audio_base64}"
+        }
+    except Exception as e:
+        logger.error(f"Audio generation error: {e}")
+        return {"success": False, "error": str(e)}
 
 # Redirect old demo URLs to new locations
 from fastapi.responses import RedirectResponse

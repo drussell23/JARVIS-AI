@@ -957,41 +957,94 @@ const JarvisVoice = () => {
     console.log('Playing audio response:', text);
     
     try {
-      // Create audio URL
-      const audioUrl = `${API_URL}/audio/speak/${encodeURIComponent(text)}`;
-      console.log('Audio URL:', audioUrl);
+      // Use POST method with base64 response for better reliability
+      const response = await fetch(`${API_URL}/audio/speak`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ text })
+      });
       
-      // Create audio element and try to play
-      const audio = new Audio(audioUrl);
-      audio.volume = 1.0;
+      const data = await response.json();
       
-      // Set speaking state
-      setIsJarvisSpeaking(true);
-      
-      audio.onended = () => {
-        console.log('Audio playback completed');
-        setIsJarvisSpeaking(false);
-      };
-      
-      audio.onerror = (e) => {
-        console.warn('Audio playback error - falling back to text display:', e);
-        setIsJarvisSpeaking(false);
-        // Don't show error message - just display the text response
-        // This is a graceful fallback, not an error state
-      };
-      
-      await audio.play();
-      console.log('Audio playback started successfully');
+      if (data.success && data.audio) {
+        // Create audio element with base64 data URL
+        const audio = new Audio(data.audio);
+        audio.volume = 1.0;
+        
+        // Set speaking state
+        setIsJarvisSpeaking(true);
+        
+        audio.onended = () => {
+          console.log('Audio playback completed');
+          setIsJarvisSpeaking(false);
+        };
+        
+        audio.onerror = (e) => {
+          console.warn('Audio playback error - falling back to text display:', e);
+          setIsJarvisSpeaking(false);
+        };
+        
+        // Play the audio
+        await audio.play();
+        console.log('Audio playback started successfully');
+      } else {
+        // Fallback: try the GET method
+        console.log('POST method failed, trying GET method...');
+        const audioUrl = `${API_URL}/audio/speak/${encodeURIComponent(text)}`;
+        const audio = new Audio(audioUrl);
+        audio.volume = 1.0;
+        
+        setIsJarvisSpeaking(true);
+        
+        audio.onended = () => {
+          setIsJarvisSpeaking(false);
+        };
+        
+        audio.onerror = () => {
+          console.warn('Audio playback not available');
+          setIsJarvisSpeaking(false);
+        };
+        
+        await audio.play();
+      }
     } catch (audioError) {
-      console.warn('Audio playback failed - using text display:', audioError);
+      console.warn('Audio service unavailable:', audioError.message);
       setIsJarvisSpeaking(false);
-      // This is ok - we'll just show the text response without audio
+      // Text will still be displayed
     }
   };
 
   const speakResponse = async (text) => {
-    // Simply use the audio endpoint
+    // Try audio endpoint first
     await playAudioResponse(text);
+    
+    // If browser supports speech synthesis, we could use it as ultimate fallback
+    if (!isJarvisSpeaking && 'speechSynthesis' in window) {
+      console.log('Using browser speech synthesis as fallback');
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.0;
+      utterance.pitch = 0.9;
+      utterance.volume = 1.0;
+      
+      // Optional: Use a specific voice
+      const voices = window.speechSynthesis.getVoices();
+      const englishVoice = voices.find(voice => 
+        voice.lang.startsWith('en') && voice.name.includes('Google') ||
+        voice.lang.startsWith('en') && voice.name.includes('Microsoft') ||
+        voice.lang.startsWith('en-US')
+      );
+      
+      if (englishVoice) {
+        utterance.voice = englishVoice;
+      }
+      
+      utterance.onstart = () => setIsJarvisSpeaking(true);
+      utterance.onend = () => setIsJarvisSpeaking(false);
+      
+      window.speechSynthesis.speak(utterance);
+    }
   };
 
   return (
