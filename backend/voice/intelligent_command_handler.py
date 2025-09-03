@@ -17,7 +17,7 @@ from python_bridge import IntelligentCommandRouter
 
 # Import existing components
 from system_control import ClaudeCommandInterpreter, CommandCategory
-from chatbots.claude_chatbot import ClaudeChatbot
+from chatbots.claude_vision_chatbot import ClaudeVisionChatbot
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class IntelligentCommandHandler:
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
         if self.api_key:
             self.command_interpreter = ClaudeCommandInterpreter(self.api_key)
-            self.claude_chatbot = ClaudeChatbot(self.api_key)
+            self.claude_chatbot = ClaudeVisionChatbot(self.api_key)
             self.enabled = True
         else:
             self.enabled = False
@@ -153,7 +153,35 @@ class IntelligentCommandHandler:
                 "timestamp": datetime.now().isoformat()
             }
             
-            # Use command interpreter for vision commands too
+            # Check for monitoring commands FIRST
+            monitoring_keywords = [
+                'monitor', 'monitoring', 'watch', 'watching', 'track', 'tracking',
+                'continuous', 'continuously', 'real-time', 'realtime', 'actively',
+                'surveillance', 'observe', 'observing', 'stream', 'streaming'
+            ]
+            
+            screen_keywords = ['screen', 'display', 'desktop', 'workspace', 'monitor']
+            
+            # Check if this is a monitoring command
+            text_lower = text.lower()
+            has_monitoring = any(keyword in text_lower for keyword in monitoring_keywords)
+            has_screen = any(keyword in text_lower for keyword in screen_keywords)
+            
+            if has_monitoring and has_screen:
+                # This is a screen monitoring command - delegate to chatbot
+                if self.claude_chatbot:
+                    try:
+                        response = await self.claude_chatbot.generate_response(text)
+                        # Learn from successful monitoring command
+                        await self.router.provide_feedback(text, 'vision', True)
+                        return response
+                    except Exception as e:
+                        logger.error(f"Error handling monitoring command: {e}")
+                        return f"I encountered an error setting up monitoring, {self.user_name}."
+                else:
+                    return f"I need my vision capabilities to monitor your screen, {self.user_name}."
+            
+            # Use command interpreter for other vision commands
             intent = await self.command_interpreter.interpret_command(text, context)
             
             # For "can you see my screen?" type questions, ensure we get a proper response

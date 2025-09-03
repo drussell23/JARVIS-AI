@@ -33,7 +33,7 @@ except ImportError:
     logger.warning("PyAutoGUI not installed. Install with: pip install pyautogui")
 
 try:
-    from vision.claude_vision_analyzer import ClaudeVisionAnalyzer
+    from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzer
     VISION_ANALYZER_AVAILABLE = True
 except ImportError:
     VISION_ANALYZER_AVAILABLE = False
@@ -87,6 +87,10 @@ You excel at understanding context and providing insightful, well-structured res
         # Conversation history
         self.conversation_history: List[Dict[str, str]] = []
         self.max_history_length = 10
+        
+        # Monitoring state
+        self._monitoring_active = False
+        self._capture_method = 'unknown'
         
         # Screenshot cache (cache for 5 seconds to handle repeated requests)
         self._screenshot_cache = None
@@ -269,12 +273,119 @@ You excel at understanding context and providing insightful, well-structured res
         
         return messages
         
+    async def _is_monitoring_command(self, user_input: str) -> bool:
+        """Check if this is a continuous monitoring command"""
+        monitoring_keywords = [
+            'monitor', 'monitoring', 'watch', 'watching', 'track', 'tracking',
+            'continuous', 'continuously', 'real-time', 'realtime', 'actively',
+            'surveillance', 'observe', 'observing', 'stream', 'streaming'
+        ]
+        
+        screen_keywords = ['screen', 'display', 'desktop', 'workspace', 'monitor']
+        
+        text_lower = user_input.lower()
+        has_monitoring = any(keyword in text_lower for keyword in monitoring_keywords)
+        has_screen = any(keyword in text_lower for keyword in screen_keywords)
+        
+        return has_monitoring and has_screen
+        
+    async def _handle_monitoring_command(self, user_input: str) -> str:
+        """Handle continuous monitoring commands"""
+        text_lower = user_input.lower()
+        
+        # Check if we have the enhanced vision analyzer with video streaming
+        if self.vision_analyzer is not None:
+            try:
+                # Use the already initialized vision analyzer
+                # Handle different monitoring commands
+                if any(word in text_lower for word in ['start', 'enable', 'activate', 'begin', 'turn on']):
+                    # Start video streaming
+                    result = await self.vision_analyzer.start_video_streaming()
+                    if result.get('success'):
+                        # Update monitoring state
+                        self._monitoring_active = True
+                        capture_method = result.get('metrics', {}).get('capture_method', 'unknown')
+                        self._capture_method = capture_method
+                        
+                        # Take a screenshot and describe what we see
+                        screenshot = await self.vision_analyzer.capture_screen()
+                        if screenshot:
+                            # Analyze the current screen
+                            analysis = await self.vision_analyzer.analyze_screenshot(
+                                screenshot,
+                                "Describe what you see on the screen in detail."
+                            )
+                            
+                            if capture_method == 'macos_native':
+                                return f"I've started monitoring your screen with native macOS capture at 30 FPS. The purple recording indicator should now be visible.\n\nCurrently, I can see: {analysis[1] if isinstance(analysis, tuple) else str(analysis)}\n\nI'll continue watching for any changes or important events."
+                            else:
+                                return f"I've started monitoring your screen in {capture_method} mode at 30 FPS.\n\nCurrently, I can see: {analysis[1] if isinstance(analysis, tuple) else str(analysis)}\n\nI'll continue watching for any changes or important events."
+                    else:
+                        return "I encountered an issue starting video streaming. Let me try with standard screenshot monitoring instead."
+                        
+                elif any(word in text_lower for word in ['stop', 'disable', 'deactivate', 'end', 'turn off']):
+                    # Stop video streaming
+                    result = await self.vision_analyzer.stop_video_streaming()
+                    if result.get('success'):
+                        self._monitoring_active = False
+                        self._capture_method = 'unknown'
+                        return "I've stopped monitoring your screen. The video streaming has been disabled and the recording indicator should have disappeared."
+                    else:
+                        self._monitoring_active = False
+                        self._capture_method = 'unknown'
+                        return "The screen monitoring appears to be already stopped."
+                        
+                else:
+                    # Generic monitoring request - start monitoring and describe
+                    result = await self.vision_analyzer.start_video_streaming()
+                    if result.get('success'):
+                        # Update monitoring state
+                        self._monitoring_active = True
+                        self._capture_method = result.get('metrics', {}).get('capture_method', 'unknown')
+                        
+                        # Analyze for 5 seconds
+                        analysis_result = await self.vision_analyzer.analyze_video_stream(
+                            "Monitor the screen and describe any changes or important elements you see.",
+                            duration_seconds=5.0
+                        )
+                        
+                        if analysis_result.get('success'):
+                            frames_analyzed = analysis_result.get('frames_analyzed', 0)
+                            descriptions = []
+                            
+                            if 'results' in analysis_result:
+                                for result in analysis_result['results'][:3]:  # First 3 analyses
+                                    if 'analysis' in result:
+                                        descriptions.append(str(result['analysis']))
+                            
+                            response = f"I'm now continuously monitoring your screen at 30 FPS. I've analyzed {frames_analyzed} frames in the last 5 seconds.\n\n"
+                            
+                            if descriptions:
+                                response += "Here's what I observed:\n" + "\n".join(f"• {desc[:100]}..." for desc in descriptions)
+                            else:
+                                response += "I'm watching your screen for any changes or important events."
+                                
+                            return response
+                        else:
+                            return "I've started monitoring your screen. I'll watch for changes and alert you to anything important."
+                            
+            except Exception as e:
+                logger.error(f"Error in monitoring command: {e}")
+                return "I encountered an error setting up continuous monitoring. Let me fall back to standard screenshot analysis."
+                
+        # Fallback response if enhanced analyzer not available
+        return "I'll need the enhanced vision system to enable continuous monitoring. Currently, I can only take screenshots on demand."
+        
     async def generate_response(self, user_input: str) -> str:
         """
         Process user input and generate response, using vision when appropriate
         """
         if not self.is_available():
             return "Claude API is not available. Please install anthropic package and set API key."
+            
+        # Check for continuous monitoring commands
+        if await self._is_monitoring_command(user_input):
+            return await self._handle_monitoring_command(user_input)
             
         # Check if this is a vision command
         if self.is_vision_command(user_input):

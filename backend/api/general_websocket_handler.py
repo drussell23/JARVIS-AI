@@ -21,15 +21,28 @@ def get_chatbot():
     global _chatbot
     if _chatbot is None:
         try:
-            from chatbots.claude_chatbot import ClaudeChatbot
+            # Try to use vision-enabled chatbot first
+            from chatbots.claude_vision_chatbot import ClaudeVisionChatbot
             import os
             api_key = os.getenv("ANTHROPIC_API_KEY")
             if api_key:
-                _chatbot = ClaudeChatbot(api_key)
+                _chatbot = ClaudeVisionChatbot(api_key)
+                logger.info("Using Claude Vision Chatbot with monitoring capabilities")
             else:
                 logger.warning("No API key found for Claude chatbot")
         except ImportError:
-            logger.warning("Claude chatbot not available")
+            # Fall back to regular chatbot
+            try:
+                from chatbots.claude_chatbot import ClaudeChatbot
+                import os
+                api_key = os.getenv("ANTHROPIC_API_KEY")
+                if api_key:
+                    _chatbot = ClaudeChatbot(api_key)
+                    logger.info("Using regular Claude Chatbot (no vision/monitoring)")
+                else:
+                    logger.warning("No API key found for Claude chatbot")
+            except ImportError:
+                logger.warning("Claude chatbot not available")
     return _chatbot
 
 async def handle_websocket_message(message: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
@@ -82,11 +95,24 @@ async def handle_chat(message: Dict[str, Any], context: Dict[str, Any] = None) -
         # Get response from Claude
         response = await chatbot.generate_response(user_message)
         
-        return {
+        # Check if this was a monitoring command and add metadata
+        monitoring_info = None
+        if hasattr(chatbot, '_monitoring_active'):
+            monitoring_info = {
+                'monitoring_active': chatbot._monitoring_active,
+                'capture_method': getattr(chatbot, '_capture_method', 'unknown')
+            }
+        
+        result = {
             'type': 'chat_response',
             'response': response,
             'success': True
         }
+        
+        if monitoring_info:
+            result['monitoring'] = monitoring_info
+            
+        return result
         
     except Exception as e:
         logger.error(f"Chat error: {e}")
