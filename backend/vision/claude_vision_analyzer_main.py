@@ -70,6 +70,8 @@ class VisionConfig:
     enable_metrics: bool = field(default_factory=lambda: os.getenv('VISION_METRICS', 'true').lower() == 'true')
     enable_entity_extraction: bool = field(default_factory=lambda: os.getenv('VISION_EXTRACT_ENTITIES', 'true').lower() == 'true')
     enable_action_detection: bool = field(default_factory=lambda: os.getenv('VISION_DETECT_ACTIONS', 'true').lower() == 'true')
+    enable_screen_sharing: bool = field(default_factory=lambda: os.getenv('VISION_SCREEN_SHARING', 'true').lower() == 'true')
+    enable_continuous_monitoring: bool = field(default_factory=lambda: os.getenv('VISION_CONTINUOUS_ENABLED', 'true').lower() == 'true')
     
     @classmethod
     def from_file(cls, config_path: str) -> 'VisionConfig':
@@ -543,6 +545,15 @@ class ClaudeVisionAnalyzer:
             'enabled': os.getenv('VISION_SIMPLIFIED_ENABLED', 'true').lower() == 'true'
         }
         
+        # Initialize screen sharing module (lazy loading)
+        self.screen_sharing = None
+        self._screen_sharing_config = {
+            'enabled': self.config.enable_screen_sharing
+        }
+        
+        # Flag to track if analyzer is busy (for screen sharing priority)
+        self.is_analyzing = False
+        
         logger.info("Enhanced components configured for lazy initialization")
     
     def _load_prompt_templates(self) -> Dict[str, str]:
@@ -651,6 +662,48 @@ class ClaudeVisionAnalyzer:
                 logger.warning(f"Could not import simplified vision: {e}")
         return self.simplified_vision
     
+    async def get_screen_sharing(self):
+        """Get screen sharing manager with lazy loading"""
+        if self.screen_sharing is None and self._screen_sharing_config['enabled']:
+            try:
+                from .screen_sharing_module import ScreenSharingManager
+                self.screen_sharing = ScreenSharingManager(vision_analyzer=self)
+                logger.info("Initialized screen sharing manager")
+                
+                # Register callbacks to coordinate with continuous analyzer
+                if self.config.enable_continuous_monitoring:
+                    continuous = await self.get_continuous_analyzer()
+                    if continuous:
+                        # Share memory warnings
+                        continuous.register_callback('memory_warning', 
+                                                   self._handle_memory_warning_for_sharing)
+                        
+                # Register screen sharing callbacks
+                self.screen_sharing.register_callback('memory_warning',
+                                                    self._handle_sharing_memory_warning)
+                self.screen_sharing.register_callback('quality_changed',
+                                                    self._handle_sharing_quality_change)
+                
+            except ImportError as e:
+                logger.warning(f"Could not import screen sharing: {e}")
+        return self.screen_sharing
+    
+    async def _handle_memory_warning_for_sharing(self, data: Dict[str, Any]):
+        """Handle memory warning from continuous analyzer for screen sharing"""
+        if self.screen_sharing and self.screen_sharing.is_sharing:
+            # Reduce screen sharing quality when memory is low
+            logger.warning(f"Memory warning received: {data}")
+            # Screen sharing will automatically adjust based on its own monitoring
+    
+    async def _handle_sharing_memory_warning(self, data: Dict[str, Any]):
+        """Handle memory warning from screen sharing"""
+        logger.warning(f"Screen sharing memory warning: {data}")
+        # Could trigger cleanup in other components if needed
+    
+    async def _handle_sharing_quality_change(self, data: Dict[str, Any]):
+        """Log screen sharing quality changes"""
+        logger.info(f"Screen sharing quality adjusted: {data}")
+    
     async def analyze_screenshot(self, image: Any, prompt: str, 
                                use_cache: Optional[bool] = None,
                                priority: str = "normal",
@@ -677,6 +730,9 @@ class ClaudeVisionAnalyzer:
                 if hasattr(self.config, key):
                     original_config[key] = getattr(self.config, key)
                     setattr(self.config, key, value)
+        
+        # Set analyzing flag for screen sharing coordination
+        self.is_analyzing = True
         
         try:
             # Memory safety check
@@ -788,6 +844,9 @@ class ClaudeVisionAnalyzer:
             metrics.total_time = time.time() - start_time
             return {"error": str(e), "description": "Analysis failed"}, metrics
         finally:
+            # Clear analyzing flag
+            self.is_analyzing = False
+            
             # Restore original config if it was modified
             if custom_config and 'original_config' in locals():
                 for key, value in original_config.items():
@@ -1235,6 +1294,10 @@ class ClaudeVisionAnalyzer:
                     analyzer.register_callback(event_type, callback)
             
             await analyzer.start_monitoring()
+            
+            # Update config to reflect monitoring is active
+            self.config.enable_continuous_monitoring = True
+            
             return True
         return False
     
@@ -1690,6 +1753,10 @@ Focus on what's visible in this specific region. Be concise but thorough."""
         """Cleanup all enhanced components"""
         cleanup_tasks = []
         
+        # Stop screen sharing if active
+        if self.screen_sharing and self.screen_sharing.is_sharing:
+            cleanup_tasks.append(self.screen_sharing.stop_sharing())
+        
         # Cleanup continuous analyzer
         if self.continuous_analyzer:
             cleanup_tasks.append(self.continuous_analyzer.stop_monitoring())
@@ -1722,10 +1789,37 @@ Focus on what's visible in this specific region. Be concise but thorough."""
     
     async def capture_screen(self) -> Any:
         """Capture screen using the best available method"""
-        # This is a placeholder - in real use, this would integrate with
-        # the actual screen capture functionality
-        # For now, we'll return None and let the caller provide the screenshot
-        return None
+        try:
+            # Try macOS screen capture first
+            import subprocess
+            from PIL import ImageGrab
+            import platform
+            
+            if platform.system() == 'Darwin':
+                # Use macOS screencapture command for better performance
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                    tmp_path = tmp.name
+                
+                # Capture screen with reduced quality for memory efficiency
+                result = subprocess.run(
+                    ['screencapture', '-C', '-x', '-t', 'png', tmp_path],
+                    capture_output=True
+                )
+                
+                if result.returncode == 0:
+                    # Load and return the image
+                    image = Image.open(tmp_path)
+                    # Clean up temp file
+                    os.unlink(tmp_path)
+                    return image
+            else:
+                # Fallback to PIL ImageGrab
+                return ImageGrab.grab()
+                
+        except Exception as e:
+            logger.error(f"Screen capture failed: {e}")
+            return None
     
     async def describe_screen(self, params: Dict[str, Any]) -> Any:
         """Describe screen for continuous analyzer compatibility"""
@@ -1771,6 +1865,9 @@ Focus on what's visible in this specific region. Be concise but thorough."""
         
         if self.simplified_vision:
             stats['components']['simplified_vision'] = self.simplified_vision.get_performance_stats()
+        
+        if self.screen_sharing:
+            stats['components']['screen_sharing'] = self.screen_sharing.get_metrics()
         
         # Overall stats
         stats['system'] = {
@@ -1844,6 +1941,99 @@ Focus on what's visible in this specific region. Be concise but thorough."""
                 'process_mb': status.process_mb,
                 'system_available_gb': status.system_available_gb
             }
+        }
+    
+    # Screen sharing integration methods
+    
+    async def start_screen_sharing(self, peer_id: Optional[str] = None) -> Dict[str, Any]:
+        """Start screen sharing with memory safety checks"""
+        # Check memory before starting
+        memory_status = self.memory_monitor.check_memory_safety()
+        if not memory_status.is_safe:
+            return {
+                'success': False,
+                'error': 'Insufficient memory for screen sharing',
+                'memory_status': memory_status.__dict__
+            }
+        
+        # Get screen sharing manager
+        screen_sharing = await self.get_screen_sharing()
+        if not screen_sharing:
+            return {
+                'success': False,
+                'error': 'Screen sharing not available'
+            }
+        
+        # Start continuous monitoring if not already active
+        if not self.continuous_analyzer or not self.continuous_analyzer.is_monitoring:
+            await self.start_continuous_monitoring()
+        
+        # Start screen sharing
+        success = await screen_sharing.start_sharing(peer_id)
+        
+        if success:
+            url = screen_sharing.get_sharing_url()
+            return {
+                'success': True,
+                'sharing_url': url,
+                'metrics': screen_sharing.get_metrics()
+            }
+        else:
+            return {
+                'success': False,
+                'error': 'Failed to start screen sharing'
+            }
+    
+    async def stop_screen_sharing(self) -> Dict[str, Any]:
+        """Stop screen sharing"""
+        if self.screen_sharing:
+            await self.screen_sharing.stop_sharing()
+            return {
+                'success': True,
+                'message': 'Screen sharing stopped'
+            }
+        return {
+            'success': False,
+            'error': 'Screen sharing not active'
+        }
+    
+    async def get_screen_sharing_status(self) -> Dict[str, Any]:
+        """Get current screen sharing status"""
+        if self.screen_sharing:
+            return {
+                'active': self.screen_sharing.is_sharing,
+                'metrics': self.screen_sharing.get_metrics()
+            }
+        return {
+            'active': False,
+            'metrics': None
+        }
+    
+    async def add_screen_sharing_peer(self, peer_id: str, offer: Optional[Dict] = None) -> Dict[str, Any]:
+        """Add a peer to screen sharing session"""
+        if not self.screen_sharing or not self.screen_sharing.is_sharing:
+            return {
+                'success': False,
+                'error': 'Screen sharing not active'
+            }
+        
+        success = await self.screen_sharing.add_peer(peer_id, offer)
+        return {
+            'success': success,
+            'peer_id': peer_id
+        }
+    
+    async def remove_screen_sharing_peer(self, peer_id: str) -> Dict[str, Any]:
+        """Remove a peer from screen sharing session"""
+        if self.screen_sharing:
+            await self.screen_sharing.remove_peer(peer_id)
+            return {
+                'success': True,
+                'peer_id': peer_id
+            }
+        return {
+            'success': False,
+            'error': 'Screen sharing not active'
         }
     
     def __del__(self):

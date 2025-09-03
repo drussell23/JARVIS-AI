@@ -271,16 +271,26 @@ class MemoryAwareScreenAnalyzer:
         try:
             # Capture current screen
             capture_result = await self.vision_handler.capture_screen()
-            if not capture_result.success:
+            if capture_result is None:
                 return
             
             current_time = time.time()
             
+            # Convert to consistent format
+            if hasattr(capture_result, 'success'):
+                # It's a result object
+                if not capture_result.success:
+                    return
+                screenshot = capture_result
+            else:
+                # It's a raw image
+                screenshot = capture_result
+            
             # Store capture with size tracking
             capture_data = {
                 'timestamp': current_time,
-                'result': capture_result,
-                'size_bytes': self._estimate_capture_size(capture_result)
+                'result': screenshot,
+                'size_bytes': self._estimate_capture_size(screenshot)
             }
             
             # Add to history (circular buffer handles removal)
@@ -305,10 +315,22 @@ class MemoryAwareScreenAnalyzer:
         except Exception as e:
             logger.error(f"Error capturing/analyzing screen: {e}")
     
-    def _estimate_capture_size(self, capture_result: Any) -> int:
+    def _estimate_capture_size(self, capture_data: Any) -> int:
         """Estimate memory size of capture"""
-        # Basic estimation - can be improved based on actual data structure
-        return 1024 * 1024  # Assume 1MB per capture
+        # Try to get actual size if it's an image
+        try:
+            if hasattr(capture_data, 'size'):
+                # PIL Image
+                width, height = capture_data.size
+                return width * height * 3  # RGB channels
+            elif hasattr(capture_data, 'shape'):
+                # Numpy array
+                return capture_data.nbytes
+            else:
+                # Basic estimation
+                return 1024 * 1024  # Assume 1MB per capture
+        except:
+            return 1024 * 1024  # Default 1MB
     
     async def _quick_screen_analysis(self) -> Dict[str, Any]:
         """Perform quick analysis to detect major changes"""
@@ -318,8 +340,16 @@ class MemoryAwareScreenAnalyzer:
         
         result = await self.vision_handler.describe_screen(params)
         
+        # Handle different result formats
+        if hasattr(result, 'success'):
+            app_name = result.description if result.success else 'Unknown'
+        elif isinstance(result, dict):
+            app_name = result.get('description', 'Unknown')
+        else:
+            app_name = 'Unknown'
+        
         return {
-            'current_app': result.description if result.success else 'Unknown',
+            'current_app': app_name,
             'timestamp': time.time()
         }
     
