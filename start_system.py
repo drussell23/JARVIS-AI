@@ -135,7 +135,7 @@ class AsyncSystemManager:
         )
 
         # Vision System Enhancement
-        print(f"\n{Colors.BOLD}👁️ ENHANCED VISION SYSTEM (6 Integrated Components):{Colors.ENDC}")
+        print(f"\n{Colors.BOLD}👁️ ENHANCED VISION SYSTEM (7 Integrated Components):{Colors.ENDC}")
         print(
             f"   • {Colors.GREEN}✓ Claude Vision:{Colors.ENDC} Integrated with intelligent caching"
         )
@@ -146,6 +146,9 @@ class AsyncSystemManager:
         print(
             f"   • {Colors.PURPLE}✓ Multi-monitor:{Colors.ENDC} Full workspace analysis"
         )
+        print(
+            f"   • {Colors.CYAN}✓ Video Streaming:{Colors.ENDC} 30 FPS capture with macOS indicator"
+        )
         print(f"\n   {Colors.BOLD}Integrated Components:{Colors.ENDC}")
         print(f"   1. {Colors.CYAN}Swift Vision:{Colors.ENDC} Metal-accelerated processing with circuit breaker")
         print(f"   2. {Colors.GREEN}Window Analysis:{Colors.ENDC} Memory-aware window content analysis")
@@ -153,6 +156,7 @@ class AsyncSystemManager:
         print(f"   4. {Colors.PURPLE}Continuous Monitoring:{Colors.ENDC} Dynamic interval adjustment (1-10s)")
         print(f"   5. {Colors.BLUE}Memory-Efficient:{Colors.ENDC} Smart compression & persistent cache")
         print(f"   6. {Colors.MAGENTA}Simplified Vision:{Colors.ENDC} 9+ configurable query templates")
+        print(f"   7. {Colors.CYAN}🎥 Video Streaming:{Colors.ENDC} Real-time 30 FPS with sliding window")
         print(f"\n   {Colors.BOLD}All optimized for 16GB RAM with NO hardcoded values!{Colors.ENDC}")
 
     async def check_python_version(self):
@@ -516,13 +520,24 @@ class AsyncSystemManager:
             print(f"{Colors.CYAN}Enhanced vision system available with Claude API{Colors.ENDC}")
             if self.claude_configured:
                 print(f"{Colors.GREEN}✓ Claude Vision integration ready{Colors.ENDC}")
-                print(f"{Colors.GREEN}✓ 6 vision components integrated:{Colors.ENDC}")
+                print(f"{Colors.GREEN}✓ 7 vision components integrated:{Colors.ENDC}")
                 print(f"  • Swift Vision (Metal acceleration)")
                 print(f"  • Window Analysis & Relationship Detection")
                 print(f"  • Continuous Monitoring with dynamic intervals")
                 print(f"  • Memory-Efficient processing (5 compression strategies)")
                 print(f"  • Simplified Vision with query templates")
+                print(f"  • 🎥 Video Streaming (30 FPS with native macOS capture)")
                 print(f"  • All configurable via 70+ environment variables")
+                
+                # Check for native video capture
+                try:
+                    from backend.vision.video_stream_capture import MACOS_CAPTURE_AVAILABLE
+                    if MACOS_CAPTURE_AVAILABLE:
+                        print(f"{Colors.GREEN}✓ Native macOS video capture available (🟣 purple indicator){Colors.ENDC}")
+                    else:
+                        print(f"{Colors.YELLOW}⚠ Video streaming using fallback mode{Colors.ENDC}")
+                except ImportError:
+                    pass
             else:
                 print(
                     f"{Colors.YELLOW}⚠ Configure ANTHROPIC_API_KEY for vision features{Colors.ENDC}"

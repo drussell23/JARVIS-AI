@@ -36,14 +36,16 @@ except ImportError:
 
     VISION_CHATBOT_AVAILABLE = False
 
-# Import enhanced vision analyzer with 6 integrated components
+# Import enhanced vision analyzer with 7 integrated components (including video streaming)
 try:
     from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzer
+    from vision.video_stream_capture import VideoStreamCapture, MACOS_CAPTURE_AVAILABLE
     ENHANCED_VISION_ANALYZER_AVAILABLE = True
-    logger.info("Enhanced vision analyzer with 6 integrated components available")
+    VIDEO_STREAMING_AVAILABLE = True
 except ImportError as e:
     ENHANCED_VISION_ANALYZER_AVAILABLE = False
-    logger.info(f"Enhanced vision analyzer not available: {e}")
+    VIDEO_STREAMING_AVAILABLE = False
+    MACOS_CAPTURE_AVAILABLE = False
 import asyncio
 import json
 import time
@@ -65,6 +67,17 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 logger.info("Starting main.py imports...")
+
+# Log vision and video streaming status
+if ENHANCED_VISION_ANALYZER_AVAILABLE:
+    logger.info("✅ Enhanced vision analyzer with 7 integrated components available")
+    if VIDEO_STREAMING_AVAILABLE:
+        if MACOS_CAPTURE_AVAILABLE:
+            logger.info("✅ Video streaming with native macOS capture (purple indicator) available")
+        else:
+            logger.info("⚠️ Video streaming available (fallback mode - no purple indicator)")
+else:
+    logger.info("❌ Enhanced vision analyzer not available")
 
 # Import memory manager first - it's critical
 try:
@@ -1056,13 +1069,14 @@ def is_vision_command(command_text: str) -> bool:
 async def handle_vision_command_request(command_text: str) -> str:
     """Handles a command by processing it directly with vision system.
     
-    The vision system now includes 6 integrated components:
+    The vision system now includes 7 integrated components:
     1. Swift Vision Integration - Metal-accelerated processing
     2. Window Analysis - Memory-aware window content analysis  
     3. Window Relationship Detection - Configurable window relationships
     4. Continuous Screen Analyzer - Dynamic interval monitoring
     5. Memory-Efficient Analyzer - Smart compression strategies
     6. Simplified Vision System - Configurable query templates
+    7. Video Stream Capture - Real-time video streaming with sliding window
     
     All optimized for 16GB RAM macOS systems with no hardcoded values.
     """
@@ -1162,9 +1176,10 @@ async def root():
                 else "Not available"
             ),
             "vision": (
-                "Enhanced vision system with 6 integrated components: Swift Vision (Metal-accelerated), "
+                "Enhanced vision system with 7 integrated components: Swift Vision (Metal-accelerated), "
                 "Window Analysis, Relationship Detection, Continuous Monitoring, Memory-Efficient Processing, "
-                "and Simplified Claude-only mode - all optimized for 16GB RAM with no hardcoded values"
+                "Simplified Claude-only mode, and Real-time Video Streaming with sliding window - "
+                "all optimized for 16GB RAM with no hardcoded values"
                 if ENHANCED_VISION_ANALYZER_AVAILABLE
                 else "Basic vision capabilities" if VISION_CHATBOT_AVAILABLE
                 else "Not available"
@@ -1602,7 +1617,8 @@ async def health_check():
                     "relationship_detection": "Window relationship detection",
                     "continuous_monitoring": "Dynamic interval monitoring",
                     "memory_efficient": "Smart compression strategies",
-                    "simplified_vision": "Configurable query templates"
+                    "simplified_vision": "Configurable query templates",
+                    "video_streaming": "Real-time video capture with sliding window"
                 } if ENHANCED_VISION_ANALYZER_AVAILABLE else None,
             },
         }

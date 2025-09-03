@@ -23,13 +23,14 @@
 
 **THE VISION SYSTEM IS NOW COMPLETE!** All 6 components are fully integrated and optimized for 16GB RAM macOS systems.
 
-### ⚡ 6 Integrated Vision Components
+### ⚡ 7 Integrated Vision Components (NEW: Video Streaming!)
 - **Swift Vision:** Metal-accelerated processing with circuit breaker (300MB)
 - **Window Analysis:** Memory-aware content analysis with LRU cache (100MB)
 - **Relationship Detection:** Configurable window relationships (50MB)
 - **Continuous Monitoring:** Dynamic intervals 1-10s based on memory (200MB)
 - **Memory-Efficient:** 5 compression strategies for different use cases (200MB)
 - **Simplified Vision:** Direct Claude API with 9+ query templates (minimal)
+- **🎥 Video Streaming (NEW):** Real-time 30FPS capture with sliding window (800MB)
 
 ### 🔧 Zero Hardcoding Achievement
 - **70+ Environment Variables:** Everything is configurable
@@ -498,10 +499,11 @@ The Enhanced Vision System now includes **6 fully integrated components**, all o
 
 ### 📊 Memory Management
 
-**Total Memory Budget**: ~1GB maximum across all components
+**Total Memory Budget**: ~1.8GB maximum across all components (including video streaming)
 
 | Component | Memory Limit | Typical Usage |
 |-----------|--------------|---------------|
+| Video Streaming (NEW) | 800MB | 400-700MB |
 | Swift Vision | 300MB | 150-250MB |
 | Memory-Efficient | 200MB | 100-180MB |
 | Continuous Analyzer | 200MB | 50-150MB |
@@ -509,6 +511,112 @@ The Enhanced Vision System now includes **6 fully integrated components**, all o
 | Relationship Detector | 50MB | 10-40MB |
 | Simplified Vision | Minimal | <10MB |
 | Main Analyzer Cache | 100MB | 20-90MB |
+
+### 🎥 Video Streaming (NEW)
+
+**Real-time video capture with Claude Vision integration!** The video streaming component enables continuous 30 FPS screen capture with intelligent memory management for responsive AI understanding.
+
+#### Key Features:
+- **30 FPS real-time capture** with motion detection
+- **macOS screen recording indicator** (purple dot) for privacy awareness
+- **Sliding window processing** for large screens with limited memory
+- **Adaptive quality control** based on available system resources
+- **Motion-triggered analysis** for efficient processing
+
+#### Installation for Native macOS Capture:
+
+To enable native macOS screen recording with the purple indicator, install the required frameworks:
+
+```bash
+# Install macOS frameworks for native capture
+pip3 install pyobjc-framework-AVFoundation \
+             pyobjc-framework-CoreMedia \
+             pyobjc-framework-libdispatch \
+             pyobjc-framework-Cocoa
+
+# Or use the installation script
+cd backend/vision
+bash install_macos_video_frameworks.sh
+```
+
+#### Testing Video Streaming:
+
+```bash
+# Basic video streaming test
+cd backend/vision
+python test_video_streaming.py
+
+# Test purple indicator (30-second demo)
+python test_purple_indicator.py
+
+# Simple integration test
+python test_video_simple.py
+
+# Test with motion detection
+python test_video_streaming.py --motion
+```
+
+#### Native vs Fallback Modes:
+
+| Mode | Indicator | Requirements | Features |
+|------|-----------|--------------|----------|
+| **Native macOS** | 🟣 Purple dot | pyobjc frameworks | AVFoundation capture, hardware acceleration |
+| **OpenCV Fallback** | None | opencv-python | Cross-platform, CPU-based |
+| **Screenshot Loop** | None | PIL only | Universal fallback, lower FPS |
+
+#### Video Streaming Configuration:
+```bash
+# Enable video streaming
+export VISION_VIDEO_STREAMING=true
+export VISION_PREFER_VIDEO=true
+
+# Video quality settings
+export VIDEO_STREAM_FPS=30
+export VIDEO_STREAM_RESOLUTION=1920x1080
+
+# Memory management for video
+export VIDEO_STREAM_MEMORY_LIMIT_MB=800
+export VIDEO_STREAM_SLIDING_WINDOW=true
+export VIDEO_STREAM_ADAPTIVE=true
+```
+
+#### Usage Examples:
+```python
+# Start video streaming (shows macOS indicator)
+await analyzer.start_video_streaming()
+
+# Real-time analysis
+result = await analyzer.analyze_video_stream(
+    "What is the user doing?",
+    duration_seconds=10.0
+)
+
+# Stop streaming (indicator disappears)
+await analyzer.stop_video_streaming()
+```
+
+#### Troubleshooting Video Streaming:
+
+**Purple indicator not showing?**
+1. Check if using native mode: Look for "macos_native" in test output
+2. Grant screen recording permission: System Preferences → Security & Privacy → Screen Recording
+3. Verify frameworks: `python3 -c "import AVFoundation; print('✅ Ready')"`
+
+**ImportError for macOS frameworks?**
+```bash
+# Install all required frameworks
+pip3 install pyobjc  # Installs all pyobjc frameworks
+
+# Or install specific ones
+pip3 install pyobjc-framework-AVFoundation pyobjc-framework-CoreMedia
+```
+
+**Fallback mode being used?**
+- Check logs for "macOS capture frameworks not available"
+- Ensure you're on macOS (not Linux/Windows)
+- Try reinstalling pyobjc frameworks
+
+For comprehensive video streaming documentation, see: `backend/vision/VIDEO_STREAMING_GUIDE.md`
 
 ### 🔧 Configuration Examples
 
@@ -564,6 +672,19 @@ notifications = await analyzer.check_for_notifications()
 # Get memory statistics
 stats = analyzer.get_all_memory_stats()
 print(f"Total memory: {stats['system']['process_mb']}MB")
+
+# Video streaming (NEW)
+# Start real-time video capture
+await analyzer.start_video_streaming()  # Shows macOS purple indicator
+
+# Analyze video stream
+result = await analyzer.analyze_video_stream(
+    "What is happening on screen?", 
+    duration_seconds=10.0
+)
+
+# Stop video streaming
+await analyzer.stop_video_streaming()  # Purple indicator disappears
 ```
 
 ### 🔄 Dynamic Memory Management

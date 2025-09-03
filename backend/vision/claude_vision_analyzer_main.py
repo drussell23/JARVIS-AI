@@ -72,6 +72,8 @@ class VisionConfig:
     enable_action_detection: bool = field(default_factory=lambda: os.getenv('VISION_DETECT_ACTIONS', 'true').lower() == 'true')
     enable_screen_sharing: bool = field(default_factory=lambda: os.getenv('VISION_SCREEN_SHARING', 'true').lower() == 'true')
     enable_continuous_monitoring: bool = field(default_factory=lambda: os.getenv('VISION_CONTINUOUS_ENABLED', 'true').lower() == 'true')
+    enable_video_streaming: bool = field(default_factory=lambda: os.getenv('VISION_VIDEO_STREAMING', 'true').lower() == 'true')
+    prefer_video_over_screenshots: bool = field(default_factory=lambda: os.getenv('VISION_PREFER_VIDEO', 'true').lower() == 'true')
     
     @classmethod
     def from_file(cls, config_path: str) -> 'VisionConfig':
@@ -551,6 +553,12 @@ class ClaudeVisionAnalyzer:
             'enabled': self.config.enable_screen_sharing
         }
         
+        # Initialize video streaming module (lazy loading)
+        self.video_streaming = None
+        self._video_streaming_config = {
+            'enabled': self.config.enable_video_streaming
+        }
+        
         # Flag to track if analyzer is busy (for screen sharing priority)
         self.is_analyzing = False
         
@@ -703,6 +711,41 @@ class ClaudeVisionAnalyzer:
     async def _handle_sharing_quality_change(self, data: Dict[str, Any]):
         """Log screen sharing quality changes"""
         logger.info(f"Screen sharing quality adjusted: {data}")
+    
+    async def get_video_streaming(self):
+        """Get video streaming manager with lazy loading"""
+        if self.video_streaming is None and self._video_streaming_config['enabled']:
+            try:
+                from .video_stream_capture import VideoStreamCapture
+                self.video_streaming = VideoStreamCapture(vision_analyzer=self)
+                logger.info("Initialized video streaming capture")
+                
+                # Register callbacks for analysis
+                self.video_streaming.register_callback('frame_analyzed', 
+                                                     self._handle_video_frame_analyzed)
+                self.video_streaming.register_callback('motion_detected',
+                                                     self._handle_video_motion_detected)
+                self.video_streaming.register_callback('memory_warning',
+                                                     self._handle_video_memory_warning)
+                
+            except ImportError as e:
+                logger.warning(f"Could not import video streaming: {e}")
+        return self.video_streaming
+    
+    async def _handle_video_frame_analyzed(self, data: Dict[str, Any]):
+        """Handle analyzed video frame"""
+        logger.debug(f"Video frame {data['frame_number']} analyzed")
+        # Could trigger additional actions based on analysis
+    
+    async def _handle_video_motion_detected(self, data: Dict[str, Any]):
+        """Handle motion detection in video"""
+        logger.info(f"Motion detected: score={data['motion_score']:.2f}")
+        # Could trigger more detailed analysis on motion
+    
+    async def _handle_video_memory_warning(self, data: Dict[str, Any]):
+        """Handle memory warning from video streaming"""
+        logger.warning(f"Video streaming memory warning: {data}")
+        # Could trigger quality reduction or cleanup
     
     async def analyze_screenshot(self, image: Any, prompt: str, 
                                use_cache: Optional[bool] = None,
@@ -1757,6 +1800,10 @@ Focus on what's visible in this specific region. Be concise but thorough."""
         if self.screen_sharing and self.screen_sharing.is_sharing:
             cleanup_tasks.append(self.screen_sharing.stop_sharing())
         
+        # Stop video streaming if active
+        if self.video_streaming and self.video_streaming.is_capturing:
+            cleanup_tasks.append(self.video_streaming.stop_streaming())
+        
         # Cleanup continuous analyzer
         if self.continuous_analyzer:
             cleanup_tasks.append(self.continuous_analyzer.stop_monitoring())
@@ -1790,7 +1837,15 @@ Focus on what's visible in this specific region. Be concise but thorough."""
     async def capture_screen(self) -> Any:
         """Capture screen using the best available method"""
         try:
-            # Try macOS screen capture first
+            # If video streaming is enabled and running, get frame from there
+            if self.config.prefer_video_over_screenshots and self.video_streaming and self.video_streaming.is_capturing:
+                frame_data = self.video_streaming.frame_buffer.get_latest_frame()
+                if frame_data:
+                    # Convert numpy array to PIL Image
+                    frame = frame_data['data']
+                    return Image.fromarray(frame)
+            
+            # Otherwise use traditional screenshot method
             import subprocess
             from PIL import ImageGrab
             import platform
@@ -1868,6 +1923,9 @@ Focus on what's visible in this specific region. Be concise but thorough."""
         
         if self.screen_sharing:
             stats['components']['screen_sharing'] = self.screen_sharing.get_metrics()
+        
+        if self.video_streaming:
+            stats['components']['video_streaming'] = self.video_streaming.get_metrics()
         
         # Overall stats
         stats['system'] = {
@@ -2034,6 +2092,150 @@ Focus on what's visible in this specific region. Be concise but thorough."""
         return {
             'success': False,
             'error': 'Screen sharing not active'
+        }
+    
+    # Video streaming integration methods
+    
+    async def start_video_streaming(self) -> Dict[str, Any]:
+        """Start video streaming capture with memory safety"""
+        # Check memory before starting
+        memory_status = self.memory_monitor.check_memory_safety()
+        if not memory_status.is_safe:
+            return {
+                'success': False,
+                'error': 'Insufficient memory for video streaming',
+                'memory_status': memory_status.__dict__
+            }
+        
+        # Get video streaming manager
+        video_streaming = await self.get_video_streaming()
+        if not video_streaming:
+            return {
+                'success': False,
+                'error': 'Video streaming not available'
+            }
+        
+        # Start video streaming
+        success = await video_streaming.start_streaming()
+        
+        if success:
+            # Update continuous monitoring to use video frames
+            if self.continuous_analyzer and self.continuous_analyzer.is_monitoring:
+                logger.info("Switching continuous analyzer to use video frames")
+            
+            return {
+                'success': True,
+                'message': 'Video streaming started - macOS will show screen recording indicator',
+                'metrics': video_streaming.get_metrics()
+            }
+        else:
+            return {
+                'success': False,
+                'error': 'Failed to start video streaming'
+            }
+    
+    async def stop_video_streaming(self) -> Dict[str, Any]:
+        """Stop video streaming"""
+        if self.video_streaming:
+            await self.video_streaming.stop_streaming()
+            return {
+                'success': True,
+                'message': 'Video streaming stopped'
+            }
+        return {
+            'success': False,
+            'error': 'Video streaming not active'
+        }
+    
+    async def get_video_streaming_status(self) -> Dict[str, Any]:
+        """Get current video streaming status"""
+        if self.video_streaming:
+            metrics = self.video_streaming.get_metrics()
+            return {
+                'active': self.video_streaming.is_capturing,
+                'metrics': metrics,
+                'capture_method': metrics.get('capture_method', 'unknown')
+            }
+        return {
+            'active': False,
+            'metrics': None
+        }
+    
+    async def analyze_video_stream(self, query: str, duration_seconds: float = 5.0) -> Dict[str, Any]:
+        """Analyze video stream for a specific duration"""
+        if not self.video_streaming or not self.video_streaming.is_capturing:
+            # Start video streaming if not active
+            start_result = await self.start_video_streaming()
+            if not start_result['success']:
+                return start_result
+        
+        # Collect analysis results
+        results = []
+        start_time = time.time()
+        
+        def on_frame_analyzed(data):
+            results.append({
+                'timestamp': time.time() - start_time,
+                'frame_number': data['frame_number'],
+                'analysis': data['results']
+            })
+        
+        # Register callback
+        self.video_streaming.register_callback('frame_analyzed', on_frame_analyzed)
+        
+        # Wait for duration
+        await asyncio.sleep(duration_seconds)
+        
+        # Remove callback
+        self.video_streaming.event_callbacks['frame_analyzed'].discard(on_frame_analyzed)
+        
+        return {
+            'success': True,
+            'duration': duration_seconds,
+            'frames_analyzed': len(results),
+            'results': results,
+            'query': query
+        }
+    
+    async def switch_to_video_mode(self) -> Dict[str, Any]:
+        """Switch from screenshot mode to video streaming mode"""
+        # Start video streaming
+        video_result = await self.start_video_streaming()
+        
+        if video_result['success']:
+            # Update config to prefer video
+            self.config.prefer_video_over_screenshots = True
+            
+            # Stop continuous screenshot monitoring if active
+            if self.continuous_analyzer and self.continuous_analyzer.is_monitoring:
+                await self.continuous_analyzer.stop_monitoring()
+                logger.info("Stopped screenshot-based monitoring in favor of video streaming")
+            
+            return {
+                'success': True,
+                'mode': 'video_streaming',
+                'message': 'Switched to video streaming mode'
+            }
+        
+        return video_result
+    
+    async def switch_to_screenshot_mode(self) -> Dict[str, Any]:
+        """Switch from video streaming to screenshot mode"""
+        # Stop video streaming if active
+        if self.video_streaming and self.video_streaming.is_capturing:
+            await self.video_streaming.stop_streaming()
+        
+        # Update config
+        self.config.prefer_video_over_screenshots = False
+        
+        # Restart continuous monitoring if it was active
+        if self.config.enable_continuous_monitoring:
+            await self.start_continuous_monitoring()
+        
+        return {
+            'success': True,
+            'mode': 'screenshot',
+            'message': 'Switched to screenshot mode'
         }
     
     def __del__(self):
