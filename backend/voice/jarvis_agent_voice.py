@@ -14,7 +14,7 @@ import json
 from voice.ml_enhanced_voice_system import MLEnhancedVoiceSystem
 from voice.jarvis_personality_adapter import PersonalityAdapter
 from system_control import ClaudeCommandInterpreter, CommandCategory, SafetyLevel
-from chatbots.claude_chatbot import ClaudeChatbot
+from chatbots.claude_vision_chatbot import ClaudeVisionChatbot
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
         if self.api_key:
             self.command_interpreter = ClaudeCommandInterpreter(self.api_key)
-            self.claude_chatbot = ClaudeChatbot(self.api_key)
+            self.claude_chatbot = ClaudeVisionChatbot(self.api_key)
             self.system_control_enabled = True
         else:
             self.system_control_enabled = False
@@ -561,6 +561,30 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
 
     async def _handle_vision_command(self, text: str) -> str:
         """Handle vision-related commands"""
+        # Check for monitoring commands FIRST - these should go to the chatbot
+        text_lower = text.lower()
+        monitoring_keywords = [
+            'monitor', 'monitoring', 'watch', 'watching', 'track', 'tracking',
+            'continuous', 'continuously', 'real-time', 'realtime', 'actively',
+            'surveillance', 'observe', 'observing', 'stream', 'streaming'
+        ]
+        screen_keywords = ['screen', 'display', 'desktop', 'workspace', 'monitor']
+        
+        has_monitoring = any(keyword in text_lower for keyword in monitoring_keywords)
+        has_screen = any(keyword in text_lower for keyword in screen_keywords)
+        
+        if has_monitoring and has_screen:
+            # This is a monitoring command - route to Claude Vision Chatbot
+            if self.claude_chatbot:
+                try:
+                    response = await self.claude_chatbot.generate_response(text)
+                    return response
+                except Exception as e:
+                    logger.error(f"Error handling monitoring command: {e}")
+                    return f"I encountered an error setting up monitoring, {self.user_name}."
+            else:
+                return f"I need my vision capabilities to monitor your screen, {self.user_name}."
+        
         # Lazy initialize vision when needed
         self._ensure_vision_initialized()
 
