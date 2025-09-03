@@ -273,7 +273,7 @@ const JarvisVoice = () => {
   const lastSpeechTimeRef = useRef(0);
 
   // Get API URL from environment or use default
-  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8010';
+  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
   const WS_URL = API_URL.replace('http://', 'ws://').replace('https://', 'wss://');
 
   useEffect(() => {
@@ -632,9 +632,14 @@ const JarvisVoice = () => {
         }
 
         // Use ML-enhanced error handling
-        const mlResult = await mlAudioHandler.handleAudioError(event, recognitionRef.current);
+        let mlResult = null;
+        try {
+          mlResult = await mlAudioHandler.handleAudioError(event, recognitionRef.current);
+        } catch (error) {
+          console.warn('ML audio handler error:', error);
+        }
 
-        if (mlResult.success) {
+        if (mlResult && mlResult.success) {
           // Only log recovery for non-no-speech errors
           if (event.error !== 'no-speech') {
             console.log('ML audio recovery successful:', mlResult);
@@ -643,7 +648,7 @@ const JarvisVoice = () => {
           setMicStatus('ready');
 
           // Restart recognition if needed
-          if (mlResult.newContext || mlResult.message.includes('granted')) {
+          if (mlResult && (mlResult.newContext || (mlResult.message && mlResult.message.includes('granted')))) {
             startListening();
           }
         } else {
@@ -952,7 +957,12 @@ const JarvisVoice = () => {
     console.log('Playing audio response:', text);
     
     try {
-      const audio = new Audio(`${API_URL}/audio/speak/${encodeURIComponent(text)}`);
+      // Create audio URL
+      const audioUrl = `${API_URL}/audio/speak/${encodeURIComponent(text)}`;
+      console.log('Audio URL:', audioUrl);
+      
+      // Create audio element and try to play
+      const audio = new Audio(audioUrl);
       audio.volume = 1.0;
       
       // Set speaking state
@@ -964,19 +974,18 @@ const JarvisVoice = () => {
       };
       
       audio.onerror = (e) => {
-        console.error('Audio playback error:', e);
+        console.warn('Audio playback error - falling back to text display:', e);
         setIsJarvisSpeaking(false);
-        // Final fallback: show visual notification
-        setError('Unable to play audio. Response shown above.');
+        // Don't show error message - just display the text response
+        // This is a graceful fallback, not an error state
       };
       
       await audio.play();
       console.log('Audio playback started successfully');
     } catch (audioError) {
-      console.error('Audio endpoint failed:', audioError);
+      console.warn('Audio playback failed - using text display:', audioError);
       setIsJarvisSpeaking(false);
-      // Final fallback: show visual notification
-      setError('Unable to play audio. Response shown above.');
+      // This is ok - we'll just show the text response without audio
     }
   };
 
