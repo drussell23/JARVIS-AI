@@ -64,6 +64,7 @@ def print_optimized_banner():
     ║  ✓ Graceful Degradation Strategies                             ║
     ║  ✓ Comprehensive Error Recovery                                 ║
     ║  ✓ Real-time Performance Dashboard                              ║
+    ║  ✓ Screen Monitoring (30 FPS with macOS purple indicator)       ║
     ║                                                                  ║
     ╚══════════════════════════════════════════════════════════════════╝
     
@@ -162,6 +163,10 @@ async def run_jarvis_optimized():
         print(f"   Event Web UI: http://localhost:8888")
         print(f"   Performance Dashboard: http://localhost:8889")
         print(f"\n💡 Say 'Hey JARVIS' to interact")
+        print(f"\n🎥 Screen Monitoring Commands:")
+        print(f"   'start monitoring my screen' - Begin 30 FPS capture")
+        print(f"   'stop monitoring' - End video streaming")
+        print(f"   (Purple macOS indicator appears when active)")
         print("   Press Ctrl+C to stop\n")
         
         # Keep running

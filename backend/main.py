@@ -40,6 +40,7 @@ except ImportError:
 try:
     from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzer
     from vision.video_stream_capture import VideoStreamCapture, MACOS_CAPTURE_AVAILABLE
+
     ENHANCED_VISION_ANALYZER_AVAILABLE = True
     VIDEO_STREAMING_AVAILABLE = True
 except ImportError as e:
@@ -73,9 +74,13 @@ if ENHANCED_VISION_ANALYZER_AVAILABLE:
     logger.info("✅ Enhanced vision analyzer with 7 integrated components available")
     if VIDEO_STREAMING_AVAILABLE:
         if MACOS_CAPTURE_AVAILABLE:
-            logger.info("✅ Video streaming with native macOS capture (purple indicator) available")
+            logger.info(
+                "✅ Video streaming with native macOS capture (purple indicator) available"
+            )
         else:
-            logger.info("⚠️ Video streaming available (fallback mode - no purple indicator)")
+            logger.info(
+                "⚠️ Video streaming available (fallback mode - no purple indicator)"
+            )
 else:
     logger.info("❌ Enhanced vision analyzer not available")
 
@@ -1063,26 +1068,57 @@ def is_vision_command(command_text: str) -> bool:
         return False
 
     lower_command = command_text.lower()
+
+    # Exclude monitoring commands - they should go through JARVIS voice
+    monitoring_keywords = [
+        "monitor",
+        "monitoring",
+        "watch",
+        "watching",
+        "track",
+        "tracking",
+        "continuous",
+        "continuously",
+        "real-time",
+        "realtime",
+        "actively",
+        "surveillance",
+        "observe",
+        "observing",
+        "stream",
+        "streaming",
+    ]
+    screen_keywords = ["screen", "display", "desktop", "workspace", "monitor"]
+
+    has_monitoring = any(keyword in lower_command for keyword in monitoring_keywords)
+    has_screen = any(keyword in lower_command for keyword in screen_keywords)
+
+    if has_monitoring and has_screen:
+        logger.info(
+            f"[MAIN] Detected monitoring command, routing to JARVIS voice instead of vision"
+        )
+        return False  # Monitoring commands should NOT be handled as vision commands
+
     return any(phrase in lower_command for phrase in VISION_COMMAND_TRIGGERS)
 
 
 async def handle_vision_command_request(command_text: str) -> str:
     """Handles a command by processing it directly with vision system.
-    
+
     The vision system now includes 7 integrated components:
     1. Swift Vision Integration - Metal-accelerated processing
-    2. Window Analysis - Memory-aware window content analysis  
+    2. Window Analysis - Memory-aware window content analysis
     3. Window Relationship Detection - Configurable window relationships
     4. Continuous Screen Analyzer - Dynamic interval monitoring
     5. Memory-Efficient Analyzer - Smart compression strategies
     6. Simplified Vision System - Configurable query templates
     7. Video Stream Capture - Real-time video streaming with sliding window
-    
+
     All optimized for 16GB RAM macOS systems with no hardcoded values.
     """
     try:
         logger.info(f"Vision command received: {command_text}")
-        
+
         # Log enhanced vision availability
         if ENHANCED_VISION_ANALYZER_AVAILABLE:
             logger.info("Enhanced vision analyzer with 6 components is available")
@@ -1181,8 +1217,11 @@ async def root():
                 "Simplified Claude-only mode, and Real-time Video Streaming with sliding window - "
                 "all optimized for 16GB RAM with no hardcoded values"
                 if ENHANCED_VISION_ANALYZER_AVAILABLE
-                else "Basic vision capabilities" if VISION_CHATBOT_AVAILABLE
-                else "Not available"
+                else (
+                    "Basic vision capabilities"
+                    if VISION_CHATBOT_AVAILABLE
+                    else "Not available"
+                )
             ),
             "nlp": "Intent recognition, entity extraction, sentiment analysis",
             "automation": "Calendar, weather, information services, task automation",
@@ -1238,7 +1277,13 @@ class JarvisCommand(BaseModel):
 
 @app.post("/voice/jarvis/command")
 async def jarvis_command(command: JarvisCommand):
-    """Handle JARVIS text commands"""
+    """Handle JARVIS text commands
+
+    Now supports real-time screen monitoring commands:
+    - "start monitoring my screen" - Begins 30 FPS video capture with purple macOS indicator
+    - "stop monitoring my screen" - Stops video streaming and removes indicator
+    - "enable continuous screening monitoring" - Alternative command to start monitoring
+    """
     try:
         # Use the chatbot to process the command with JARVIS personality
         jarvis_prompt = f"You are JARVIS, Tony Stark's AI assistant. Respond to this command in character: {command.command}"
@@ -1345,7 +1390,12 @@ async def jarvis_websocket(websocket: WebSocket):
                     continue
 
                 # Send processing status immediately
-                if is_vision_command(command_text):
+                is_vision = is_vision_command(command_text)
+                logger.info(
+                    f"[MAIN WS] Command '{command_text}' - is_vision: {is_vision}"
+                )
+
+                if is_vision:
                     await websocket.send_json(
                         {
                             "type": "processing",
@@ -1364,44 +1414,65 @@ async def jarvis_websocket(websocket: WebSocket):
 
                 # Route command through JARVIS voice API if available
                 jarvis_api_instance = getattr(app.state, "jarvis_api", None)
+                logger.info(
+                    f"[MAIN WS] JARVIS_VOICE_AVAILABLE: {JARVIS_VOICE_AVAILABLE}, jarvis_api exists: {jarvis_api_instance is not None}"
+                )
                 if JARVIS_VOICE_AVAILABLE and jarvis_api_instance:
                     try:
-                        logger.info(f"Processing command through JARVIS API: {command_text}")
+                        logger.info(
+                            f"[MAIN WS] Processing command through JARVIS API: '{command_text}'"
+                        )
                         # Process through JARVIS with system control
-                        result = await jarvis_api_instance.process_command(JARVISCommand(text=command_text))
-                        
+                        result = await jarvis_api_instance.process_command(
+                            JARVISCommand(text=command_text)
+                        )
+                        logger.info(
+                            f"[MAIN WS] JARVIS API returned result type: {type(result)}"
+                        )
+
                         # Handle different response formats
-                        if hasattr(result, 'body'):
+                        if hasattr(result, "body"):
                             # JSONResponse object
                             import json as json_lib
+
                             result_data = json_lib.loads(result.body.decode())
                             response_text = result_data.get("response", "")
                         elif isinstance(result, dict):
                             response_text = result.get("response", "")
                         else:
                             response_text = str(result)
-                            
+
                         if not response_text:
                             logger.warning("JARVIS API returned empty response")
                             response_text = "I'm processing your request..."
-                            
+
                         logger.info(f"JARVIS voice API response: {response_text}")
                     except Exception as e:
-                        logger.error(f"Error using JARVIS voice API: {e}", exc_info=True)
+                        logger.error(
+                            f"Error using JARVIS voice API: {e}", exc_info=True
+                        )
                         # Fallback to vision or chatbot
                         if is_vision_command(command_text):
-                            response_text = await handle_vision_command_request(command_text)
+                            response_text = await handle_vision_command_request(
+                                command_text
+                            )
                         else:
                             chatbot_api = getattr(app.state, "chatbot_api", None)
-                            response_text = await handle_chatbot_command(command_text, chatbot_api)
+                            response_text = await handle_chatbot_command(
+                                command_text, chatbot_api
+                            )
                 else:
                     # Original routing when JARVIS voice not available
                     if is_vision_command(command_text):
-                        logger.info(f"Vision command detected in WebSocket: {command_text}")
+                        logger.info(
+                            f"Vision command detected in WebSocket: {command_text}"
+                        )
                         import time
 
                         start_time = time.time()
-                        response_text = await handle_vision_command_request(command_text)
+                        response_text = await handle_vision_command_request(
+                            command_text
+                        )
                         end_time = time.time()
                         logger.info(
                             f"Vision command processing took {end_time - start_time:.2f} seconds"
@@ -1496,29 +1567,33 @@ async def speak_text(text: str):
     try:
         import gtts
         import base64
-        
+
         # Generate audio
-        tts = gtts.gTTS(text, lang='en')
+        tts = gtts.gTTS(text, lang="en")
         audio_buffer = io.BytesIO()
         tts.write_to_fp(audio_buffer)
         audio_buffer.seek(0)
-        
+
         return StreamingResponse(
             audio_buffer,
             media_type="audio/mpeg",
             headers={
                 "Content-Disposition": f"inline; filename=jarvis_speech.mp3",
                 "Access-Control-Allow-Origin": "*",
-                "Cache-Control": "no-cache"
-            }
+                "Cache-Control": "no-cache",
+            },
         )
     except ImportError:
         # If gTTS not installed, return error
         logger.error("gTTS not installed. Install with: pip install gtts")
-        raise HTTPException(status_code=503, detail="Text-to-speech service unavailable. Please install gTTS.")
+        raise HTTPException(
+            status_code=503,
+            detail="Text-to-speech service unavailable. Please install gTTS.",
+        )
     except Exception as e:
         logger.error(f"Audio generation error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/audio/speak")
 async def speak_text_post(request: Request):
@@ -1526,29 +1601,27 @@ async def speak_text_post(request: Request):
     try:
         import gtts
         import base64
-        
+
         data = await request.json()
-        text = data.get('text', '')
-        
+        text = data.get("text", "")
+
         if not text:
             raise HTTPException(status_code=400, detail="No text provided")
-        
+
         # Generate audio
-        tts = gtts.gTTS(text, lang='en')
+        tts = gtts.gTTS(text, lang="en")
         audio_buffer = io.BytesIO()
         tts.write_to_fp(audio_buffer)
         audio_buffer.seek(0)
-        
+
         # Convert to base64
-        audio_base64 = base64.b64encode(audio_buffer.read()).decode('utf-8')
-        
-        return {
-            "success": True,
-            "audio": f"data:audio/mpeg;base64,{audio_base64}"
-        }
+        audio_base64 = base64.b64encode(audio_buffer.read()).decode("utf-8")
+
+        return {"success": True, "audio": f"data:audio/mpeg;base64,{audio_base64}"}
     except Exception as e:
         logger.error(f"Audio generation error: {e}")
         return {"success": False, "error": str(e)}
+
 
 # Redirect old demo URLs to new locations
 from fastapi.responses import RedirectResponse
@@ -1644,15 +1717,19 @@ async def health_check():
                 ],
                 "vision_api": VISION_API_AVAILABLE,
                 "enhanced_vision": ENHANCED_VISION_ANALYZER_AVAILABLE,
-                "vision_components": {
-                    "swift_vision": "Metal-accelerated processing",
-                    "window_analysis": "Memory-aware window analysis",
-                    "relationship_detection": "Window relationship detection",
-                    "continuous_monitoring": "Dynamic interval monitoring",
-                    "memory_efficient": "Smart compression strategies",
-                    "simplified_vision": "Configurable query templates",
-                    "video_streaming": "Real-time video capture with sliding window"
-                } if ENHANCED_VISION_ANALYZER_AVAILABLE else None,
+                "vision_components": (
+                    {
+                        "swift_vision": "Metal-accelerated processing",
+                        "window_analysis": "Memory-aware window analysis",
+                        "relationship_detection": "Window relationship detection",
+                        "continuous_monitoring": "Dynamic interval monitoring",
+                        "memory_efficient": "Smart compression strategies",
+                        "simplified_vision": "Configurable query templates",
+                        "video_streaming": "Real-time video capture with sliding window",
+                    }
+                    if ENHANCED_VISION_ANALYZER_AVAILABLE
+                    else None
+                ),
             },
         }
     except Exception as e:
@@ -1673,4 +1750,9 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", args.port))
 
     logger.info(f"Starting M1-optimized chatbot server on {args.host}:{port}...")
+    logger.info("🎥 Screen monitoring commands available:")
+    logger.info("   - 'start monitoring my screen' - Begins real-time video capture")
+    logger.info("   - 'stop monitoring' - Ends video streaming")
+    if MACOS_CAPTURE_AVAILABLE:
+        logger.info("   ✅ Native macOS capture enabled (purple indicator will appear)")
     uvicorn.run(app, host=args.host, port=port)

@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/CPU-1--2%25%20Usage-blue" alt="Low CPU">
   <img src="https://img.shields.io/badge/Picovoice-Integrated%20✅-blueviolet" alt="Picovoice">
   <img src="https://img.shields.io/badge/Hardware-Core%20ML%20%26%20Metal-green" alt="Hardware Accel">
-  <img src="https://img.shields.io/badge/Vision-6%20Components-orange" alt="Enhanced Vision">
+  <img src="https://img.shields.io/badge/Vision-7%20Components-orange" alt="Enhanced Vision">
   <img src="https://img.shields.io/badge/Config-70%2B%20Env%20Vars-yellow" alt="Fully Configurable">
   <img src="https://img.shields.io/badge/Works-First%20Time%20🎯-purple" alt="Reliable">
   <img src="https://img.shields.io/badge/Toronto%20Weather-Fixed%20✅-brightgreen" alt="Weather Fixed">
@@ -19,9 +19,9 @@
 
 ## 🎯 What's New in v12.9 - Enhanced Vision System 👁️
 
-### 👁️ VISION SYSTEM ENHANCEMENTS - 6 Integrated Components!
+### 👁️ VISION SYSTEM ENHANCEMENTS - 7 Integrated Components!
 
-**THE VISION SYSTEM IS NOW COMPLETE!** All 6 components are fully integrated and optimized for 16GB RAM macOS systems.
+**THE VISION SYSTEM IS NOW COMPLETE!** All 7 components are fully integrated and optimized for 16GB RAM macOS systems.
 
 ### ⚡ 7 Integrated Vision Components (NEW: Video Streaming!)
 - **Swift Vision:** Metal-accelerated processing with circuit breaker (300MB)
@@ -31,6 +31,20 @@
 - **Memory-Efficient:** 5 compression strategies for different use cases (200MB)
 - **Simplified Vision:** Direct Claude API with 9+ query templates (minimal)
 - **🎥 Video Streaming (NEW):** Real-time 30FPS capture with sliding window (800MB)
+
+### 🎥 NEW: Real-time Screen Monitoring
+- **Voice Commands:**
+  - "Start monitoring my screen" - Activates 30 FPS video capture
+  - "Stop monitoring" - Deactivates video streaming
+  - "Enable continuous screening monitoring" - Alternative activation
+- **Native macOS Integration:**
+  - Purple screen recording indicator appears when active
+  - Uses AVFoundation for hardware-accelerated capture
+  - Automatic memory management keeps usage under 800MB
+- **Intelligent Features:**
+  - Motion detection triggers analysis
+  - Sliding window for large screens
+  - Adaptive quality based on available memory
 
 ### 🔧 Zero Hardcoding Achievement
 - **70+ Environment Variables:** Everything is configurable
@@ -390,14 +404,22 @@ python start_system.py
 # "What's the weather in Toronto?" → Accurate city-specific weather
 # "What's on my screen?" → Real contextual understanding
 # "Close all distracting apps" → Smart app management
+
+# NEW: Screen monitoring commands
+# "Start monitoring my screen" → Begins 30 FPS video capture (purple indicator)
+# "Stop monitoring" → Ends video streaming
+# "Enable continuous screening monitoring" → Alternative activation
+
+# Install macOS video frameworks (for purple indicator)
+pip install pyobjc-framework-AVFoundation pyobjc-framework-CoreMedia pyobjc-framework-Quartz
 ```
 
 ## 👁️ Enhanced Vision System v12.9 - Complete Documentation
 
 ### Overview
-The Enhanced Vision System now includes **6 fully integrated components**, all optimized for 16GB RAM macOS systems with **zero hardcoded values**. Every aspect is configurable through 70+ environment variables.
+The Enhanced Vision System now includes **7 fully integrated components**, all optimized for 16GB RAM macOS systems with **zero hardcoded values**. Every aspect is configurable through 70+ environment variables.
 
-### 🚀 6 Integrated Vision Components
+### 🚀 7 Integrated Vision Components
 
 #### 1. **Swift Vision Integration** (`swift_vision_integration.py`)
 - **Purpose**: Metal-accelerated vision processing for macOS
@@ -495,6 +517,24 @@ The Enhanced Vision System now includes **6 fully integrated components**, all o
   VISION_QUERY_TEXT_AREA      # Read specific text
   VISION_QUERY_NOTIFICATIONS  # Check notifications
   VISION_QUERY_WEATHER        # Weather analysis
+  ```
+
+#### 7. **Video Streaming** (`video_stream_capture.py`)
+- **Purpose**: Real-time 30 FPS screen capture with native macOS integration
+- **Key Features**:
+  - Native AVFoundation capture (purple indicator)
+  - Motion detection triggers analysis
+  - Sliding window for large screens
+  - Adaptive quality based on memory
+  - Voice-activated monitoring
+- **Memory**: 800MB max
+- **Config Variables**:
+  ```bash
+  VIDEO_STREAM_FPS=30
+  VIDEO_STREAM_BUFFER_SIZE=10
+  VIDEO_STREAM_MEMORY_LIMIT_MB=800
+  VIDEO_STREAM_MOTION_DETECTION=true
+  VIDEO_STREAM_MOTION_THRESHOLD=0.1
   ```
 
 ### 📊 Memory Management

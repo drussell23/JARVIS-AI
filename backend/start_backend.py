@@ -39,6 +39,18 @@ try:
 except ImportError:
     print("⚠️  Deep learning features limited (PyTorch not installed)")
 
+# Check video streaming capability
+try:
+    from vision.video_stream_capture import MACOS_CAPTURE_AVAILABLE
+    from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzer
+    if MACOS_CAPTURE_AVAILABLE:
+        print("✅ Screen monitoring with native macOS capture (purple indicator)")
+    else:
+        print("⚠️  Screen monitoring available (fallback mode)")
+    print("   Commands: 'start/stop monitoring my screen'")
+except ImportError:
+    print("⚠️  Screen monitoring not available")
+
 # Run the backend
 print("\n🎯 Starting FastAPI server on port 8000...")
 print("=" * 50 + "\n")

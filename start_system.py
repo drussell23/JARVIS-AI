@@ -1000,6 +1000,10 @@ class AsyncSystemManager:
         print(f"  • Say '{Colors.GREEN}Hey JARVIS{Colors.ENDC}' to activate")
         print(f"  • '{Colors.GREEN}What can you do?{Colors.ENDC}' - List capabilities")
         print(f"  • '{Colors.GREEN}Can you see my screen?{Colors.ENDC}' - Vision test")
+        print(f"\n{Colors.CYAN}🎥 Screen Monitoring Commands:{Colors.ENDC}")
+        print(f"  • '{Colors.GREEN}Start monitoring my screen{Colors.ENDC}' - Begin 30 FPS capture")
+        print(f"  • '{Colors.GREEN}Stop monitoring{Colors.ENDC}' - End video streaming")
+        print(f"  • macOS: {Colors.PURPLE}Purple indicator{Colors.ENDC} appears when active")
 
         if self.use_optimized:
             print(f"\n{Colors.CYAN}Performance Management:{Colors.ENDC}")

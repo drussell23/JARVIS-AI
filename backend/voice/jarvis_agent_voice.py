@@ -50,23 +50,59 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
 
         # Add personality adapter for compatibility
         self.personality = PersonalityAdapter(self)
-        
+
         # Initialize command mode and confirmations
         self.command_mode = "conversation"  # conversation, system_control, workflow
         self.pending_confirmations = {}
-        
+
         # System control keywords
         self.system_keywords = {
-            "open", "close", "launch", "quit", "switch", "show",
-            "volume", "mute", "screenshot", "sleep", "wifi",
-            "search", "google", "browse", "website", "create",
-            "delete", "file", "folder", "routine", "workflow",
-            "setup", "screen", "update", "monitor", "vision",
-            "see", "check", "messages", "errors", "windows",
-            "workspace", "optimize", "meeting", "privacy",
-            "sensitive", "productivity", "notifications",
-            "notification", "whatsapp", "discord", "slack",
-            "telegram", "chrome", "safari", "spotify"
+            "open",
+            "close",
+            "launch",
+            "quit",
+            "switch",
+            "show",
+            "volume",
+            "mute",
+            "screenshot",
+            "sleep",
+            "wifi",
+            "search",
+            "google",
+            "browse",
+            "website",
+            "create",
+            "delete",
+            "file",
+            "folder",
+            "routine",
+            "workflow",
+            "setup",
+            "screen",
+            "update",
+            "monitor",
+            "vision",
+            "see",
+            "check",
+            "messages",
+            "errors",
+            "windows",
+            "workspace",
+            "optimize",
+            "meeting",
+            "privacy",
+            "sensitive",
+            "productivity",
+            "notifications",
+            "notification",
+            "whatsapp",
+            "discord",
+            "slack",
+            "telegram",
+            "chrome",
+            "safari",
+            "spotify",
         }
 
         # Add special commands compatibility
@@ -117,7 +153,7 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         self.vision_enabled = False
         self.intelligent_vision_enabled = False
         self._vision_initialized = False
-        
+
         # Add agent-specific responses
         self.agent_responses = {
             "app_opened": "I've opened {app} for you, {user}.",
@@ -192,7 +228,7 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
 
     async def process_voice_input(self, text: str) -> str:
         """Process voice input with system control capabilities"""
-        logger.info(f"JARVISAgentVoice received: '{text}'")
+        logger.info(f"[JARVIS DEBUG] process_voice_input received: '{text}'")
 
         # Check if we need to detect wake word in text
         if not self.running:
@@ -216,6 +252,53 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         # Check for pending confirmations
         if self.pending_confirmations:
             return await self._handle_confirmation(text)
+
+        # Check for monitoring commands FIRST - they should go directly to Claude chatbot
+        text_lower = text.lower()
+        monitoring_keywords = [
+            "monitor",
+            "monitoring",
+            "watch",
+            "watching",
+            "track",
+            "tracking",
+            "continuous",
+            "continuously",
+            "real-time",
+            "realtime",
+            "actively",
+            "surveillance",
+            "observe",
+            "observing",
+            "stream",
+            "streaming",
+        ]
+        screen_keywords = ["screen", "display", "desktop", "workspace", "monitor"]
+
+        has_monitoring = any(keyword in text_lower for keyword in monitoring_keywords)
+        has_screen = any(keyword in text_lower for keyword in screen_keywords)
+
+        if has_monitoring and has_screen:
+            logger.info(
+                f"[JARVIS DEBUG] MONITORING COMMAND DETECTED! Routing to Claude chatbot"
+            )
+            # Route directly to Claude chatbot for monitoring
+            if self.claude_chatbot:
+                try:
+                    logger.info(
+                        f"[JARVIS DEBUG] Calling claude_chatbot.generate_response"
+                    )
+                    response = await self.claude_chatbot.generate_response(text)
+                    logger.info(
+                        f"[JARVIS DEBUG] Claude response for monitoring: {response[:100]}..."
+                    )
+                    return response
+                except Exception as e:
+                    logger.error(f"Error handling monitoring command: {e}")
+                    return f"I encountered an error setting up monitoring, {self.user_name}."
+            else:
+
+                return f"I need my vision capabilities to monitor your screen, {self.user_name}."
 
         # Detect if this is a system command
         if self._is_system_command(text):
@@ -266,13 +349,57 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         if self.command_mode == "system_control":
             return True
 
-        # FIRST: Check for direct app control commands (open/close/launch/quit)
+        # FIRST: Check for monitoring commands - these should NOT be treated as app control
+        monitoring_keywords = [
+            "monitor",
+            "monitoring",
+            "watch",
+            "watching",
+            "track",
+            "tracking",
+            "continuous",
+            "continuously",
+            "real-time",
+            "realtime",
+            "actively",
+            "surveillance",
+            "observe",
+            "observing",
+            "stream",
+            "streaming",
+        ]
+        screen_keywords = ["screen", "display", "desktop", "workspace", "monitor"]
+
+        has_monitoring = any(keyword in text_lower for keyword in monitoring_keywords)
+        has_screen = any(keyword in text_lower for keyword in screen_keywords)
+
+        if has_monitoring and has_screen:
+            # This is a monitoring command - NOT a system command
+            return False
+
+        # SECOND: Check for direct app control commands (open/close/launch/quit)
         # These should ALWAYS go to system control, not vision
-        app_control_keywords = ["open", "close", "launch", "quit", "exit", "start", "kill", "terminate"]
+        app_control_keywords = [
+            "open",
+            "close",
+            "launch",
+            "quit",
+            "exit",
+            "start",
+            "kill",
+            "terminate",
+        ]
         for keyword in app_control_keywords:
             if keyword in text_lower:
                 # Make sure it's not a question about these actions
-                question_words = ["what", "which", "how", "can you", "are you able", "is it possible"]
+                question_words = [
+                    "what",
+                    "which",
+                    "how",
+                    "can you",
+                    "are you able",
+                    "is it possible",
+                ]
                 if not any(q_word in text_lower for q_word in question_words):
                     # This is a direct command like "close whatsapp" or "open chrome"
                     return True
@@ -353,7 +480,9 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         is_action_command = False
         logger.debug(f"Checking if '{text_lower}' is an action command")
         for action_type, keywords in action_commands.items():
-            logger.debug(f"Checking action type '{action_type}' with keywords: {keywords}")
+            logger.debug(
+                f"Checking action type '{action_type}' with keywords: {keywords}"
+            )
             if any(keyword in text_lower for keyword in keywords):
                 logger.debug(f"Found keyword match for action type: {action_type}")
                 # This looks like an action command
@@ -403,20 +532,31 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             # If query contains screen-related words, let vision analyze it
             # But be smart about it - don't match partial words like "what" in "whatsapp"
             import re
-            word_boundary_keywords = ["what", "where", "have", "any", "in", "on", "from"]
-            other_keywords = [k for k in screen_content_keywords if k not in word_boundary_keywords]
-            
+
+            word_boundary_keywords = [
+                "what",
+                "where",
+                "have",
+                "any",
+                "in",
+                "on",
+                "from",
+            ]
+            other_keywords = [
+                k for k in screen_content_keywords if k not in word_boundary_keywords
+            ]
+
             # Check word boundaries for short words
             has_keyword = False
             for keyword in word_boundary_keywords:
-                if re.search(r'\b' + keyword + r'\b', text_lower):
+                if re.search(r"\b" + keyword + r"\b", text_lower):
                     has_keyword = True
                     break
-            
+
             # Check regular contains for longer words
             if not has_keyword:
                 has_keyword = any(keyword in text_lower for keyword in other_keywords)
-            
+
             if has_keyword:
                 return await self._handle_workspace_command(text)
 
@@ -444,6 +584,37 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
                 return await self._handle_vision_command(text)
 
         try:
+            # Check for monitoring commands BEFORE command interpreter
+            text_lower = text.lower()
+            monitoring_keywords = [
+                "monitor",
+                "monitoring",
+                "watch",
+                "watching",
+                "track",
+                "tracking",
+                "continuous",
+                "continuously",
+                "real-time",
+                "realtime",
+                "actively",
+                "surveillance",
+                "observe",
+                "observing",
+                "stream",
+                "streaming",
+            ]
+            screen_keywords = ["screen", "display", "desktop", "workspace", "monitor"]
+
+            has_monitoring = any(
+                keyword in text_lower for keyword in monitoring_keywords
+            )
+            has_screen = any(keyword in text_lower for keyword in screen_keywords)
+
+            if has_monitoring and has_screen:
+                # This is a monitoring command - handle it directly
+                return await self._handle_vision_command(text)
+
             # Get system context
             context = {
                 "mode": self.command_mode,
@@ -564,15 +735,28 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         # Check for monitoring commands FIRST - these should go to the chatbot
         text_lower = text.lower()
         monitoring_keywords = [
-            'monitor', 'monitoring', 'watch', 'watching', 'track', 'tracking',
-            'continuous', 'continuously', 'real-time', 'realtime', 'actively',
-            'surveillance', 'observe', 'observing', 'stream', 'streaming'
+            "monitor",
+            "monitoring",
+            "watch",
+            "watching",
+            "track",
+            "tracking",
+            "continuous",
+            "continuously",
+            "real-time",
+            "realtime",
+            "actively",
+            "surveillance",
+            "observe",
+            "observing",
+            "stream",
+            "streaming",
         ]
-        screen_keywords = ['screen', 'display', 'desktop', 'workspace', 'monitor']
-        
+        screen_keywords = ["screen", "display", "desktop", "workspace", "monitor"]
+
         has_monitoring = any(keyword in text_lower for keyword in monitoring_keywords)
         has_screen = any(keyword in text_lower for keyword in screen_keywords)
-        
+
         if has_monitoring and has_screen:
             # This is a monitoring command - route to Claude Vision Chatbot
             if self.claude_chatbot:
@@ -584,7 +768,7 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
                     return f"I encountered an error setting up monitoring, {self.user_name}."
             else:
                 return f"I need my vision capabilities to monitor your screen, {self.user_name}."
-        
+
         # Lazy initialize vision when needed
         self._ensure_vision_initialized()
 
