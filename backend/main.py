@@ -1840,3 +1840,25 @@ async def test_command_route(request: Request):
         route_info["expected_handler"] = "Standard chatbot response"
         
     return route_info
+
+@app.get("/debug/vision_analyzer_state")
+async def check_vision_analyzer_state(request: Request):
+    """Check the state of vision analyzer in chatbot"""
+    chatbot_api = request.app.state.chatbot_api
+    
+    result = {
+        "chatbot_available": chatbot_api is not None,
+        "chatbot_type": type(chatbot_api.bot).__name__ if chatbot_api else None,
+        "vision_analyzer_available": False,
+        "video_streaming_available": False,
+        "video_streaming_config": None
+    }
+    
+    if chatbot_api and hasattr(chatbot_api.bot, 'vision_analyzer'):
+        result["vision_analyzer_available"] = chatbot_api.bot.vision_analyzer is not None
+        
+        if chatbot_api.bot.vision_analyzer:
+            result["video_streaming_config"] = chatbot_api.bot.vision_analyzer._video_streaming_config
+            result["video_streaming_available"] = chatbot_api.bot.vision_analyzer.video_streaming is not None
+            
+    return result

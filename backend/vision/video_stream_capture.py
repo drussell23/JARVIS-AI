@@ -153,21 +153,28 @@ class MacOSVideoCapture:
         logger.info("MacOSVideoCapture.start_capture called")
         self.frame_callback = frame_callback
         
-        # Create capture session
-        self.session = AVFoundation.AVCaptureSession.alloc().init()
-        logger.info("Created AVCaptureSession")
-        
-        # Configure session
-        if self.config.resolution == '1920x1080':
-            self.session.setSessionPreset_(AVFoundation.AVCaptureSessionPreset1920x1080)
-        elif self.config.resolution == '1280x720':
-            self.session.setSessionPreset_(AVFoundation.AVCaptureSessionPreset1280x720)
-        else:
-            self.session.setSessionPreset_(AVFoundation.AVCaptureSessionPreset640x480)
-        
-        # Create screen input
-        display_id = self.config.capture_display_id
-        screen_input = AVFoundation.AVCaptureScreenInput.alloc().initWithDisplayID_(display_id)
+        try:
+            # Create capture session
+            logger.info("[MACOS] Creating AVCaptureSession...")
+            self.session = AVFoundation.AVCaptureSession.alloc().init()
+            logger.info("Created AVCaptureSession")
+            
+            # Configure session
+            logger.info(f"[MACOS] Setting resolution preset for {self.config.resolution}")
+            if self.config.resolution == '1920x1080':
+                self.session.setSessionPreset_(AVFoundation.AVCaptureSessionPreset1920x1080)
+            elif self.config.resolution == '1280x720':
+                self.session.setSessionPreset_(AVFoundation.AVCaptureSessionPreset1280x720)
+            else:
+                self.session.setSessionPreset_(AVFoundation.AVCaptureSessionPreset640x480)
+            
+            # Create screen input
+            display_id = self.config.capture_display_id
+            logger.info(f"[MACOS] Creating screen input for display ID {display_id}")
+            screen_input = AVFoundation.AVCaptureScreenInput.alloc().initWithDisplayID_(display_id)
+        except Exception as e:
+            logger.error(f"[MACOS] Error in start_capture: {e}", exc_info=True)
+            raise
         
         if screen_input:
             # Configure capture settings
@@ -302,27 +309,36 @@ class VideoStreamCapture:
     
     async def start_streaming(self) -> bool:
         """Start video stream capture"""
+        logger.info("[VIDEO] start_streaming called")
+        
         if self.is_capturing:
             logger.warning("Video capture already running")
             return False
         
         try:
             # Check memory before starting
+            logger.info(f"[VIDEO] Checking memory availability...")
             if not self._check_memory_available():
                 logger.error("Insufficient memory for video streaming")
                 return False
+            logger.info(f"[VIDEO] Memory check passed")
             
             # Initialize capture implementation
             if MACOS_CAPTURE_AVAILABLE:
                 logger.info("Using native macOS video capture")
+                logger.info(f"[VIDEO] MACOS_CAPTURE_AVAILABLE = {MACOS_CAPTURE_AVAILABLE}")
+                logger.info(f"[VIDEO] Creating MacOSVideoCapture instance...")
                 self.capture_impl = MacOSVideoCapture(self.config)
+                logger.info(f"[VIDEO] Starting capture with callback...")
                 self.capture_impl.start_capture(self._on_frame_captured)
                 logger.info("MacOS video capture started successfully")
             elif CV2_AVAILABLE:
                 # Fallback to OpenCV
+                logger.info(f"[VIDEO] Using OpenCV fallback (CV2_AVAILABLE = {CV2_AVAILABLE})")
                 self._start_cv2_capture()
             else:
                 # Final fallback to screenshot loop
+                logger.info("[VIDEO] Using screenshot loop fallback")
                 self._start_screenshot_loop()
             
             self.is_capturing = True
@@ -336,20 +352,25 @@ class VideoStreamCapture:
             return True
             
         except Exception as e:
-            logger.error(f"Failed to start video streaming: {e}")
+            logger.error(f"Failed to start video streaming: {e}", exc_info=True)
+            import traceback
+            traceback.print_exc()
             return False
     
     def _on_frame_captured(self, frame: np.ndarray):
         """Handle captured frame"""
-        # Add to buffer
-        self.frame_buffer.add_frame(frame)
-        self.frames_processed += 1
-        
-        # Trigger callback
-        asyncio.create_task(self._trigger_event('frame_captured', {
-            'frame_number': self.frames_processed,
-            'timestamp': time.time()
-        }))
+        try:
+            # Add to buffer
+            self.frame_buffer.add_frame(frame)
+            self.frames_processed += 1
+            
+            # Trigger callback
+            asyncio.create_task(self._trigger_event('frame_captured', {
+                'frame_number': self.frames_processed,
+                'timestamp': time.time()
+            }))
+        except Exception as e:
+            logger.error(f"Error in _on_frame_captured: {e}", exc_info=True)
     
     def _process_frames_loop(self):
         """Process frames in separate thread"""

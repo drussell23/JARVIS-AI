@@ -719,9 +719,15 @@ class ClaudeVisionAnalyzer:
     
     async def get_video_streaming(self):
         """Get video streaming manager with lazy loading"""
+        logger.info(f"[VISION ANALYZER] get_video_streaming called, current: {self.video_streaming is not None}")
+        logger.info(f"[VISION ANALYZER] Video streaming config: {self._video_streaming_config}")
+        
         if self.video_streaming is None and self._video_streaming_config['enabled']:
             try:
+                logger.info("[VISION ANALYZER] Importing VideoStreamCapture...")
                 from .video_stream_capture import VideoStreamCapture
+                
+                logger.info("[VISION ANALYZER] Creating VideoStreamCapture instance...")
                 self.video_streaming = VideoStreamCapture(vision_analyzer=self)
                 logger.info("Initialized video streaming capture")
                 
@@ -2103,9 +2109,14 @@ Focus on what's visible in this specific region. Be concise but thorough."""
     
     async def start_video_streaming(self) -> Dict[str, Any]:
         """Start video streaming capture with memory safety"""
+        logger.info("[VISION ANALYZER] start_video_streaming called")
+        
         # Check memory before starting
         memory_status = self.memory_monitor.check_memory_safety()
+        logger.info(f"[VISION ANALYZER] Memory status: {memory_status.is_safe}")
+        
         if not memory_status.is_safe:
+            logger.error(f"[VISION ANALYZER] Memory not safe: {memory_status.warnings}")
             return {
                 'success': False,
                 'error': 'Insufficient memory for video streaming',
@@ -2113,15 +2124,20 @@ Focus on what's visible in this specific region. Be concise but thorough."""
             }
         
         # Get video streaming manager
+        logger.info("[VISION ANALYZER] Getting video streaming manager...")
         video_streaming = await self.get_video_streaming()
+        
         if not video_streaming:
+            logger.error("[VISION ANALYZER] Video streaming manager not available")
             return {
                 'success': False,
                 'error': 'Video streaming not available'
             }
         
         # Start video streaming
+        logger.info("[VISION ANALYZER] Calling video_streaming.start_streaming()")
         success = await video_streaming.start_streaming()
+        logger.info(f"[VISION ANALYZER] start_streaming returned: {success}")
         
         if success:
             # Update continuous monitoring to use video frames
