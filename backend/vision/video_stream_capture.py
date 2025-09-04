@@ -432,6 +432,7 @@ class VideoStreamCapture:
             logger.error(f"Failed to start video streaming: {e}", exc_info=True)
             import traceback
             traceback.print_exc()
+            self.is_capturing = False  # Reset state on failure
             return False
     
     def _on_frame_captured(self, frame: np.ndarray):

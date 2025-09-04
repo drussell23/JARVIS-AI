@@ -16,7 +16,8 @@ class DirectSwiftCapture:
     """Execute Swift capture directly for purple indicator"""
     
     def __init__(self):
-        self.swift_script = Path(__file__).parent / "simple_swift_capture.swift"
+        # Use continuous capture script
+        self.swift_script = Path(__file__).parent / "continuous_swift_capture.swift"
         self.capture_process = None
         self.is_capturing = False
         
@@ -29,9 +30,9 @@ class DirectSwiftCapture:
         logger.info("[DIRECT] Starting Swift capture for purple indicator...")
         
         try:
-            # Run the Swift script directly
+            # Run the Swift script with --start flag
             self.capture_process = subprocess.Popen(
-                ["swift", str(self.swift_script), "--capture"],
+                ["swift", str(self.swift_script), "--start"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True
@@ -39,46 +40,51 @@ class DirectSwiftCapture:
             
             self.is_capturing = True
             
-            # Don't monitor output asynchronously - it blocks the Swift execution
-            # The Swift script will run for 30 seconds with purple indicator
+            # Give Swift a moment to start
+            import time
+            time.sleep(1.0)
             
-            logger.info("[DIRECT] ✅ Swift capture started - purple indicator should be visible!")
-            return True
+            # Check if process started successfully
+            if self.capture_process.poll() is None:
+                logger.info("[DIRECT] ✅ Swift capture process running - purple indicator should be visible!")
+                
+                # Start a thread to monitor output
+                import threading
+                monitor_thread = threading.Thread(target=self._monitor_swift_output, daemon=True)
+                monitor_thread.start()
+                
+                return True
+            else:
+                # Process ended already - check error
+                stderr = self.capture_process.stderr.read()
+                logger.error(f"[DIRECT] Swift process ended immediately: {stderr}")
+                self.is_capturing = False
+                return False
             
         except Exception as e:
             logger.error(f"[DIRECT] Failed to start Swift capture: {e}")
             return False
     
-    async def _monitor_output(self):
-        """Monitor Swift process output"""
+    
+    def _monitor_swift_output(self):
+        """Monitor Swift output in background"""
         if not self.capture_process:
             return
             
         try:
-            # Read output in real-time
             for line in iter(self.capture_process.stdout.readline, ''):
                 if line:
-                    logger.info(f"[SWIFT OUTPUT] {line.strip()}")
+                    logger.info(f"[SWIFT] {line.strip()}")
                     
-            # Process ended
-            self.is_capturing = False
-            return_code = self.capture_process.wait()
-            
-            if return_code == 0:
-                logger.info("[DIRECT] Swift capture completed successfully")
-            else:
-                stderr = self.capture_process.stderr.read()
-                logger.error(f"[DIRECT] Swift capture failed with code {return_code}: {stderr}")
-                
         except Exception as e:
             logger.error(f"[DIRECT] Error monitoring Swift output: {e}")
-            self.is_capturing = False
     
     def stop_capture(self):
         """Stop capture if running"""
         if self.capture_process and self.is_capturing:
             logger.info("[DIRECT] Stopping Swift capture...")
             self.capture_process.terminate()
+            self.capture_process.wait(timeout=5.0)  # Wait for clean shutdown
             self.capture_process = None
             self.is_capturing = False
             logger.info("[DIRECT] Swift capture stopped")
