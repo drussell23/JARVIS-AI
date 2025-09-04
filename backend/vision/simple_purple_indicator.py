@@ -18,7 +18,8 @@ class SimplePurpleIndicator:
     """Simple implementation that just runs Swift for purple indicator"""
     
     def __init__(self):
-        self.swift_script = Path(__file__).parent / "persistent_capture.swift"
+        # Use infinite capture for true persistence
+        self.swift_script = Path(__file__).parent / "infinite_purple_capture.swift"
         self.capture_process = None
         self.is_capturing = False
         
@@ -44,17 +45,30 @@ class SimplePurpleIndicator:
                 text=True
             )
             
-            # Give it a moment to start
-            await asyncio.sleep(1.5)
+            # Give it more time to start and stabilize
+            await asyncio.sleep(3.0)
             
             # Check if still running
             if self.capture_process.poll() is None:
                 self.is_capturing = True
-                logger.info("[PURPLE] ✅ Swift capture started - purple indicator should be visible!")
+                logger.info("[PURPLE] ✅ Swift capture process is running!")
+                logger.info("[PURPLE] 🟣 PURPLE INDICATOR SHOULD BE VISIBLE AND STAY ON!")
+                
+                # Log initial output
+                try:
+                    # Read any initial output without blocking
+                    import select
+                    if select.select([self.capture_process.stdout], [], [], 0)[0]:
+                        initial_output = self.capture_process.stdout.readline()
+                        if initial_output:
+                            logger.info(f"[PURPLE] Swift output: {initial_output.strip()}")
+                except:
+                    pass
                 
                 # Start monitoring thread
                 monitor_thread = threading.Thread(target=self._monitor_process, daemon=True)
                 monitor_thread.start()
+                logger.info("[PURPLE] Monitor thread started")
                 
                 return True
             else:
@@ -70,13 +84,50 @@ class SimplePurpleIndicator:
             return False
             
     def _monitor_process(self):
-        """Monitor Swift process"""
-        while self.is_capturing and self.capture_process:
-            if self.capture_process.poll() is not None:
-                logger.warning("[PURPLE] Swift process ended unexpectedly")
-                self.is_capturing = False
-                break
-            time.sleep(5)
+        """Monitor Swift process and restart if needed"""
+        restart_count = 0
+        while self.is_capturing:
+            if self.capture_process and self.capture_process.poll() is not None:
+                # Process ended unexpectedly
+                stdout, stderr = self.capture_process.communicate()
+                logger.warning(f"[PURPLE] Swift process ended unexpectedly (restart #{restart_count})")
+                logger.warning(f"[PURPLE] Exit code: {self.capture_process.returncode}")
+                if stdout:
+                    logger.info(f"[PURPLE] Last output: {stdout[-500:]}")  # Last 500 chars
+                if stderr:
+                    logger.error(f"[PURPLE] Error: {stderr}")
+                
+                # Try to restart
+                if self.is_capturing and restart_count < 3:
+                    restart_count += 1
+                    logger.info(f"[PURPLE] Attempting restart #{restart_count}...")
+                    
+                    # Restart the process
+                    try:
+                        self.capture_process = subprocess.Popen(
+                            ["swift", str(self.swift_script), "--start"],
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            text=True
+                        )
+                        time.sleep(2)  # Give it time to start
+                        
+                        if self.capture_process.poll() is None:
+                            logger.info("[PURPLE] ✅ Restart successful!")
+                            restart_count = 0  # Reset counter on success
+                        else:
+                            logger.error("[PURPLE] Restart failed")
+                            
+                    except Exception as e:
+                        logger.error(f"[PURPLE] Failed to restart: {e}")
+                        self.is_capturing = False
+                        break
+                else:
+                    logger.error("[PURPLE] Too many restarts, giving up")
+                    self.is_capturing = False
+                    break
+                    
+            time.sleep(5)  # Check every 5 seconds
             
     def stop(self):
         """Stop capture"""

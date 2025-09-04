@@ -53,6 +53,17 @@ try:
     from vision.swift_video_bridge import SWIFT_BRIDGE_AVAILABLE
 except ImportError:
     SWIFT_BRIDGE_AVAILABLE = False
+
+# Defer purple indicator import to speed up startup
+PURPLE_INDICATOR_AVAILABLE = False
+def check_purple_indicator():
+    global PURPLE_INDICATOR_AVAILABLE
+    try:
+        from vision.simple_purple_indicator import SimplePurpleIndicator
+        PURPLE_INDICATOR_AVAILABLE = True
+    except ImportError:
+        PURPLE_INDICATOR_AVAILABLE = False
+    return PURPLE_INDICATOR_AVAILABLE
 import asyncio
 import json
 import time
@@ -75,11 +86,18 @@ logger = logging.getLogger(__name__)
 
 logger.info("Starting main.py imports...")
 
+# Check purple indicator availability after basic imports
+check_purple_indicator()
+
 # Log vision and video streaming status
 if ENHANCED_VISION_ANALYZER_AVAILABLE:
     logger.info("✅ Enhanced vision analyzer with 7 integrated components available")
     if VIDEO_STREAMING_AVAILABLE:
-        if SWIFT_BRIDGE_AVAILABLE:
+        if PURPLE_INDICATOR_AVAILABLE:
+            logger.info(
+                "✅ Video streaming with infinite purple indicator available (stays on indefinitely)"
+            )
+        elif SWIFT_BRIDGE_AVAILABLE:
             logger.info(
                 "✅ Video streaming with Swift-based macOS capture (enhanced permissions) available"
             )
@@ -1796,14 +1814,26 @@ if __name__ == "__main__":
     logger.info("   - 'stop monitoring' - Ends video streaming")
     
     # Check for video capture capabilities
+    purple_available = False
     swift_available = False
+    
     try:
-        from vision.swift_video_bridge import SWIFT_BRIDGE_AVAILABLE
-        swift_available = SWIFT_BRIDGE_AVAILABLE
+        from vision.simple_purple_indicator import SimplePurpleIndicator
+        purple_available = True
     except:
         pass
+        
+    if not purple_available:
+        try:
+            from vision.swift_video_bridge import SWIFT_BRIDGE_AVAILABLE
+            swift_available = SWIFT_BRIDGE_AVAILABLE
+        except:
+            pass
     
-    if swift_available:
+    if purple_available:
+        logger.info("   ✅ Infinite purple indicator enabled (stays on indefinitely)")
+        logger.info("   ✅ Purple recording indicator will remain visible until you say stop")
+    elif swift_available:
         logger.info("   ✅ Swift-based macOS capture enabled (enhanced permissions handling)")
         logger.info("   ✅ Purple recording indicator will appear in menu bar")
     elif MACOS_CAPTURE_AVAILABLE:

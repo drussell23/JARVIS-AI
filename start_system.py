@@ -632,10 +632,10 @@ class AsyncSystemManager:
             # Check if backend is accessible
             backend_url = f"http://localhost:{self.ports['main_api']}/health"
             print(f"{Colors.CYAN}Checking backend at {backend_url}...{Colors.ENDC}")
-            backend_ready = await self.wait_for_service(backend_url, timeout=60)
+            backend_ready = await self.wait_for_service(backend_url, timeout=120)
 
             if not backend_ready:
-                print(f"{Colors.WARNING}Backend did not respond at {backend_url} after 60 seconds{Colors.ENDC}")
+                print(f"{Colors.WARNING}Backend did not respond at {backend_url} after 120 seconds{Colors.ENDC}")
                 print(f"{Colors.WARNING}Check log file: {log_file}{Colors.ENDC}")
                 # main.py failed, try fallback to minimal
                 print(
