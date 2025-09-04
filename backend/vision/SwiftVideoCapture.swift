@@ -211,6 +211,10 @@ struct CaptureResponse: Codable {
         session.startRunning()
         isCapturing = true
         
+        // Log to confirm session is running
+        print("DEBUG: AVCaptureSession.isRunning = \(session.isRunning)")
+        print("DEBUG: Screen recording should show purple indicator now")
+        
         return CaptureResponse(
             success: true,
             message: "Video capture started successfully",
