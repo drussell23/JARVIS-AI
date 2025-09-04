@@ -1285,14 +1285,31 @@ async def jarvis_command(command: JarvisCommand):
     - "enable continuous screening monitoring" - Alternative command to start monitoring
     """
     try:
-        # Use the chatbot to process the command with JARVIS personality
-        jarvis_prompt = f"You are JARVIS, Tony Stark's AI assistant. Respond to this command in character: {command.command}"
-
-        if hasattr(chatbot_api.bot, "generate_response"):
-            response = await chatbot_api.bot.generate_response(jarvis_prompt)
+        command_text = command.command.lower()
+        
+        # Check if this is a monitoring command - pass it directly without the JARVIS prompt
+        monitoring_keywords = ["monitor", "monitoring", "watch", "watching", "stream", "streaming"]
+        screen_keywords = ["screen", "display", "desktop", "workspace"]
+        
+        has_monitoring = any(keyword in command_text for keyword in monitoring_keywords)
+        has_screen = any(keyword in command_text for keyword in screen_keywords)
+        
+        if has_monitoring and has_screen:
+            logger.info(f"[JARVIS API] Detected monitoring command, passing directly to chatbot")
+            # Pass directly to chatbot without modifying the command
+            if hasattr(chatbot_api.bot, "generate_response"):
+                response = await chatbot_api.bot.generate_response(command.command)
+            else:
+                response = "I need the vision system to monitor your screen."
         else:
-            # Fallback response
-            response = f"Processing command: {command.command}"
+            # Use the chatbot to process the command with JARVIS personality
+            jarvis_prompt = f"You are JARVIS, Tony Stark's AI assistant. Respond to this command in character: {command.command}"
+
+            if hasattr(chatbot_api.bot, "generate_response"):
+                response = await chatbot_api.bot.generate_response(jarvis_prompt)
+            else:
+                # Fallback response
+                response = f"Processing command: {command.command}"
 
         return {
             "success": True,

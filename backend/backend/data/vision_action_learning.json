@@ -1,0 +1,148 @@
+{
+  "patterns": {
+    "vision.screen_vision.ScreenVisionSystem.capture_and_describe": [
+      {
+        "params": {
+          "query": "start monitoring my screen"
+        },
+        "success": true,
+        "timestamp": "2025-09-03T04:26:54.193549"
+      },
+      {
+        "params": {
+          "query": "start monitoring my screen"
+        },
+        "success": true,
+        "timestamp": "2025-09-03T04:44:51.923333"
+      },
+      {
+        "params": {
+          "query": "start modeling my screen"
+        },
+        "success": true,
+        "timestamp": "2025-09-03T05:12:03.433555"
+      },
+      {
+        "params": {
+          "query": "start monitoring my screen"
+        },
+        "success": true,
+        "timestamp": "2025-09-03T05:31:47.888995"
+      },
+      {
+        "params": {
+          "query": "start monitoring my screen"
+        },
+        "success": true,
+        "timestamp": "2025-09-03T05:32:33.027785"
+      },
+      {
+        "params": {
+          "query": "start monitoring my screen"
+        },
+        "success": true,
+        "timestamp": "2025-09-03T19:48:56.371325"
+      },
+      {
+        "params": {
+          "query": "start minor on screen"
+        },
+        "success": true,
+        "timestamp": "2025-09-03T19:50:36.746832"
+      },
+      {
+        "params": {
+          "query": "start monitoring my screen"
+        },
+        "success": true,
+        "timestamp": "2025-09-03T19:50:50.432779"
+      },
+      {
+        "params": {
+          "query": "start monitoring my screen"
+        },
+        "success": true,
+        "timestamp": "2025-09-03T19:51:04.195886"
+      },
+      {
+        "params": {
+          "query": "start monitoring my screen"
+        },
+        "success": true,
+        "timestamp": "2025-09-03T20:03:29.480621"
+      }
+    ]
+  },
+  "action_stats": {
+    "vision.screen_vision.ClaudeVisionAnalyzer.analyze_screenshot": {
+      "success_rate": 0.0,
+      "usage_count": 0,
+      "learned_patterns": []
+    },
+    "vision.screen_vision.ClaudeVisionAnalyzer.analyze_screenshot_fast": {
+      "success_rate": 0.0,
+      "usage_count": 0,
+      "learned_patterns": []
+    },
+    "vision.screen_vision.JARVISVisionIntegration.handle_vision_command": {
+      "success_rate": 0.0,
+      "usage_count": 0,
+      "learned_patterns": []
+    },
+    "vision.screen_vision.ScreenVisionSystem.analyze_for_updates": {
+      "success_rate": 0.0,
+      "usage_count": 0,
+      "learned_patterns": []
+    },
+    "vision.screen_vision.ScreenVisionSystem.capture_and_describe": {
+      "success_rate": 1.0,
+      "usage_count": 10,
+      "learned_patterns": []
+    },
+    "vision.screen_vision.ScreenVisionSystem.capture_screen": {
+      "success_rate": 0.0,
+      "usage_count": 0,
+      "learned_patterns": []
+    },
+    "vision.screen_vision.ScreenVisionSystem.detect_text_regions": {
+      "success_rate": 0.0,
+      "usage_count": 0,
+      "learned_patterns": []
+    },
+    "vision.screen_vision.ScreenVisionSystem.detect_ui_elements": {
+      "success_rate": 0.0,
+      "usage_count": 0,
+      "learned_patterns": []
+    },
+    "vision.screen_vision.ScreenVisionSystem.get_screen_context": {
+      "success_rate": 0.0,
+      "usage_count": 0,
+      "learned_patterns": []
+    },
+    "vision.screen_vision.ScreenVisionSystem.monitor_screen_continuously": {
+      "success_rate": 0.0,
+      "usage_count": 0,
+      "learned_patterns": []
+    },
+    "vision.screen_vision.ScreenVisionSystem.scan_for_updates": {
+      "success_rate": 0.0,
+      "usage_count": 0,
+      "learned_patterns": []
+    },
+    "vision.screen_capture_fallback.analyze_with_claude_vision": {
+      "success_rate": 0.0,
+      "usage_count": 0,
+      "learned_patterns": []
+    },
+    "vision.screen_capture_fallback.capture_screen_fallback": {
+      "success_rate": 0.0,
+      "usage_count": 0,
+      "learned_patterns": []
+    },
+    "vision.screen_capture_fallback.capture_with_intelligence": {
+      "success_rate": 0.0,
+      "usage_count": 0,
+      "learned_patterns": []
+    }
+  }
+}

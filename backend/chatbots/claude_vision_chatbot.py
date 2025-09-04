@@ -78,11 +78,17 @@ You excel at understanding context and providing insightful, well-structured res
         else:
             self.client = None
             
-        # Initialize vision analyzer
+        # Initialize vision analyzer with real-time capabilities
         if VISION_ANALYZER_AVAILABLE and self.api_key:
-            self.vision_analyzer = ClaudeVisionAnalyzer(self.api_key)
+            # Enable real-time monitoring by default for video streaming
+            self.vision_analyzer = ClaudeVisionAnalyzer(
+                self.api_key, 
+                enable_realtime=True
+            )
+            logger.info("Initialized Claude Vision Analyzer with real-time monitoring capabilities")
         else:
             self.vision_analyzer = None
+            logger.warning("Vision analyzer not available - real-time monitoring disabled")
             
         # Conversation history
         self.conversation_history: List[Dict[str, str]] = []
@@ -292,15 +298,19 @@ You excel at understanding context and providing insightful, well-structured res
     async def _handle_monitoring_command(self, user_input: str) -> str:
         """Handle continuous monitoring commands"""
         text_lower = user_input.lower()
+        logger.info(f"[MONITORING] Processing monitoring command: {user_input}")
         
         # Check if we have the enhanced vision analyzer with video streaming
         if self.vision_analyzer is not None:
+            logger.info("[MONITORING] Vision analyzer is available, attempting to handle monitoring")
             try:
                 # Use the already initialized vision analyzer
                 # Handle different monitoring commands
                 if any(word in text_lower for word in ['start', 'enable', 'activate', 'begin', 'turn on']):
+                    logger.info("[MONITORING] Starting video streaming...")
                     # Start video streaming
                     result = await self.vision_analyzer.start_video_streaming()
+                    logger.info(f"[MONITORING] Video streaming result: {result}")
                     if result.get('success'):
                         # Update monitoring state
                         self._monitoring_active = True
@@ -321,7 +331,9 @@ You excel at understanding context and providing insightful, well-structured res
                             else:
                                 return f"I've started monitoring your screen in {capture_method} mode at 30 FPS.\n\nCurrently, I can see: {analysis[1] if isinstance(analysis, tuple) else str(analysis)}\n\nI'll continue watching for any changes or important events."
                     else:
-                        return "I encountered an issue starting video streaming. Let me try with standard screenshot monitoring instead."
+                        error_msg = result.get('error', 'Unknown error')
+                        logger.error(f"[MONITORING] Failed to start video streaming: {error_msg}")
+                        return f"I encountered an issue starting video streaming: {error_msg}. Let me try with standard screenshot monitoring instead."
                         
                 elif any(word in text_lower for word in ['stop', 'disable', 'deactivate', 'end', 'turn off']):
                     # Stop video streaming
@@ -371,10 +383,13 @@ You excel at understanding context and providing insightful, well-structured res
                             
             except Exception as e:
                 logger.error(f"Error in monitoring command: {e}")
-                return "I encountered an error setting up continuous monitoring. Let me fall back to standard screenshot analysis."
+                return f"I encountered an error setting up continuous monitoring: {str(e)}. Let me fall back to standard screenshot analysis."
                 
+        else:
+            logger.warning("[MONITORING] Vision analyzer is None - cannot start monitoring")
+        
         # Fallback response if enhanced analyzer not available
-        return "I'll need the enhanced vision system to enable continuous monitoring. Currently, I can only take screenshots on demand."
+        return "I'll need the enhanced vision system to enable continuous monitoring. Currently, I can only take screenshots on demand. Please ensure the vision system is properly initialized."
         
     async def generate_response(self, user_input: str) -> str:
         """

@@ -56,7 +56,9 @@ print("\n🎯 Starting FastAPI server on port 8000...")
 print("=" * 50 + "\n")
 
 try:
-    subprocess.run([sys.executable, "main.py", "--port", "8000"])
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    main_path = os.path.join(backend_dir, "main.py")
+    subprocess.run([sys.executable, main_path, "--port", "8000"])
 except KeyboardInterrupt:
     print("\n\n✋ Backend stopped by user")
 except Exception as e:
