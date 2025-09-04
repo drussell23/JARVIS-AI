@@ -47,6 +47,12 @@ except ImportError as e:
     ENHANCED_VISION_ANALYZER_AVAILABLE = False
     VIDEO_STREAMING_AVAILABLE = False
     MACOS_CAPTURE_AVAILABLE = False
+
+# Import Swift video bridge for enhanced macOS integration
+try:
+    from vision.swift_video_bridge import SWIFT_BRIDGE_AVAILABLE
+except ImportError:
+    SWIFT_BRIDGE_AVAILABLE = False
 import asyncio
 import json
 import time
@@ -73,7 +79,11 @@ logger.info("Starting main.py imports...")
 if ENHANCED_VISION_ANALYZER_AVAILABLE:
     logger.info("✅ Enhanced vision analyzer with 7 integrated components available")
     if VIDEO_STREAMING_AVAILABLE:
-        if MACOS_CAPTURE_AVAILABLE:
+        if SWIFT_BRIDGE_AVAILABLE:
+            logger.info(
+                "✅ Video streaming with Swift-based macOS capture (enhanced permissions) available"
+            )
+        elif MACOS_CAPTURE_AVAILABLE:
             logger.info(
                 "✅ Video streaming with native macOS capture (purple indicator) available"
             )
@@ -1784,8 +1794,22 @@ if __name__ == "__main__":
     logger.info("🎥 Screen monitoring commands available:")
     logger.info("   - 'start monitoring my screen' - Begins real-time video capture")
     logger.info("   - 'stop monitoring' - Ends video streaming")
-    if MACOS_CAPTURE_AVAILABLE:
+    
+    # Check for video capture capabilities
+    swift_available = False
+    try:
+        from vision.swift_video_bridge import SWIFT_BRIDGE_AVAILABLE
+        swift_available = SWIFT_BRIDGE_AVAILABLE
+    except:
+        pass
+    
+    if swift_available:
+        logger.info("   ✅ Swift-based macOS capture enabled (enhanced permissions handling)")
+        logger.info("   ✅ Purple recording indicator will appear in menu bar")
+    elif MACOS_CAPTURE_AVAILABLE:
         logger.info("   ✅ Native macOS capture enabled (purple indicator will appear)")
+    else:
+        logger.info("   ⚠️  Using screenshot-based capture (no purple indicator)")
     uvicorn.run(app, host=args.host, port=port)
 
 # Debug endpoints for monitoring command verification

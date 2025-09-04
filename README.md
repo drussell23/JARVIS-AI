@@ -1,13 +1,14 @@
-# 🤖 JARVIS AI System v12.9 - Enhanced Vision System 👁️
+# 🤖 JARVIS AI System v12.9 - Swift Video Capture 🎥
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-12.9%20Enhanced%20Vision-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Version-12.9%20Swift%20Video-brightgreen" alt="Version">
   <img src="https://img.shields.io/badge/Wake%20Word-10ms%20⚡-ff69b4" alt="Ultra Fast Wake Word">
   <img src="https://img.shields.io/badge/Memory-350MB%20Voice-success" alt="Low Memory Voice">
   <img src="https://img.shields.io/badge/CPU-1--2%25%20Usage-blue" alt="Low CPU">
   <img src="https://img.shields.io/badge/Picovoice-Integrated%20✅-blueviolet" alt="Picovoice">
   <img src="https://img.shields.io/badge/Hardware-Core%20ML%20%26%20Metal-green" alt="Hardware Accel">
   <img src="https://img.shields.io/badge/Vision-7%20Components-orange" alt="Enhanced Vision">
+  <img src="https://img.shields.io/badge/Swift-Video%20Capture%20✅-ff5733" alt="Swift Integration">
   <img src="https://img.shields.io/badge/Config-70%2B%20Env%20Vars-yellow" alt="Fully Configurable">
   <img src="https://img.shields.io/badge/Works-First%20Time%20🎯-purple" alt="Reliable">
   <img src="https://img.shields.io/badge/Toronto%20Weather-Fixed%20✅-brightgreen" alt="Weather Fixed">
@@ -32,19 +33,26 @@
 - **Simplified Vision:** Direct Claude API with 9+ query templates (minimal)
 - **🎥 Video Streaming (NEW):** Real-time 30FPS capture with sliding window (800MB)
 
-### 🎥 NEW: Real-time Screen Monitoring
+### 🎥 NEW: Real-time Screen Monitoring with Swift Integration
 - **Voice Commands:**
   - "Start monitoring my screen" - Activates 30 FPS video capture
   - "Stop monitoring" - Deactivates video streaming
   - "Enable continuous screening monitoring" - Alternative activation
-- **Native macOS Integration:**
-  - Purple screen recording indicator appears when active
-  - Uses AVFoundation for hardware-accelerated capture
-  - Automatic memory management keeps usage under 800MB
+- **Swift-Based macOS Integration (NEW!):**
+  - **Enhanced Permissions:** Swift handles screen recording permissions properly
+  - **Purple Indicator:** macOS recording confirmation in menu bar
+  - **Automatic Permission Request:** No manual System Preferences needed
+  - **Native Performance:** Direct AVFoundation integration
+- **Technical Features:**
+  - Uses Swift video bridge for better macOS integration
+  - Automatic compilation on first use
+  - Fallback to Python capture if Swift unavailable
+  - Hardware-accelerated capture with AVFoundation
 - **Intelligent Features:**
   - Motion detection triggers analysis
-  - Sliding window for large screens
+  - Sliding window for large screens (640x480 default)
   - Adaptive quality based on available memory
+  - Memory budget: 800MB for video streaming
 
 ### 🔧 Zero Hardcoding Achievement
 - **70+ Environment Variables:** Everything is configurable
@@ -197,6 +205,15 @@ export USE_PICOVOICE=true           # Ultra-fast detection
 export ENABLE_VAD=true              # Voice activity detection
 export ENABLE_STREAMING=true        # Chunk processing
 export JARVIS_USE_COREML=true       # macOS acceleration
+
+# Swift Video Capture Settings (NEW!)
+export VIDEO_CAPTURE_DISPLAY_ID=0   # Main display (default)
+export VIDEO_CAPTURE_FPS=30         # Frames per second
+export VIDEO_CAPTURE_RESOLUTION=1920x1080  # Full HD default
+export VIDEO_STREAM_MEMORY_LIMIT_MB=800    # Memory budget
+export VIDEO_STREAM_SLIDING_WINDOW=true    # Enable sliding window
+export VIDEO_STREAM_WINDOW_SIZE=640x480    # Window size for analysis
+export VIDEO_STREAM_MOTION_DETECTION=true  # Enable motion detection
 ```
 
 ## 🎯 Performance Comparison
@@ -637,10 +654,34 @@ await analyzer.stop_video_streaming()
 
 #### Troubleshooting Video Streaming:
 
+**🆕 Swift Video Capture Issues (v12.9):**
+
+**"Failed to start video streaming" error?**
+1. **Test Swift permissions:**
+   ```bash
+   python backend/test_swift_permissions.py
+   ```
+   This will check and request screen recording permissions properly.
+
+2. **Grant permissions in System Preferences:**
+   - Go to System Preferences → Security & Privacy → Privacy → Screen Recording
+   - Add Terminal (or your IDE) and check the box
+   - Restart your terminal after granting permission
+
+3. **Verify Swift is available:**
+   ```bash
+   swift --version  # Should show Swift version
+   ```
+
+4. **Check if Swift module compiled:**
+   ```bash
+   ls backend/vision/SwiftVideoCapture  # Should exist after first run
+   ```
+
 **Purple indicator not showing?**
-1. Check if using native mode: Look for "macos_native" in test output
-2. Grant screen recording permission: System Preferences → Security & Privacy → Screen Recording
-3. Verify frameworks: `python3 -c "import AVFoundation; print('✅ Ready')"`
+1. Look for "swift_native" or "macos_native" in response
+2. Grant screen recording permission as above
+3. Check logs for "Swift video capture started successfully"
 
 **ImportError for macOS frameworks?**
 ```bash
@@ -652,9 +693,9 @@ pip3 install pyobjc-framework-AVFoundation pyobjc-framework-CoreMedia
 ```
 
 **Fallback mode being used?**
-- Check logs for "macOS capture frameworks not available"
-- Ensure you're on macOS (not Linux/Windows)
-- Try reinstalling pyobjc frameworks
+- Check logs for "Swift capture failed, falling back"
+- Ensure screen recording permissions are granted
+- Try the test script: `python backend/test_swift_permissions.py`
 
 For comprehensive video streaming documentation, see: `backend/vision/VIDEO_STREAMING_GUIDE.md`
 

@@ -324,6 +324,8 @@ You excel at understanding context and providing insightful, well-structured res
                             # IMPORTANT: Return the proper response about video capture activation
                             if capture_method == 'macos_native':
                                 return "I have successfully activated native macOS video capturing for monitoring your screen. The purple recording indicator should now be visible in your menu bar, confirming that screen recording is active. I'm capturing at 30 FPS and will continuously monitor for any changes or important events on your screen."
+                            elif capture_method == 'swift_native':
+                                return "I have successfully activated Swift-based macOS video capturing for monitoring your screen. The purple recording indicator should now be visible in your menu bar, confirming that screen recording is active. I'm capturing at 30 FPS with enhanced permission handling and will continuously monitor for any changes or important events on your screen."
                             else:
                                 return f"I've started monitoring your screen using {capture_method} capture mode at 30 FPS. I'll continuously watch for any changes or important events on your screen."
                         else:

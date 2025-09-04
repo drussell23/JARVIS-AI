@@ -147,7 +147,10 @@ class AsyncSystemManager:
             f"   • {Colors.PURPLE}✓ Multi-monitor:{Colors.ENDC} Full workspace analysis"
         )
         print(
-            f"   • {Colors.CYAN}✓ Video Streaming:{Colors.ENDC} 30 FPS capture with macOS indicator"
+            f"   • {Colors.CYAN}✓ Swift Video:{Colors.ENDC} Native macOS capture with enhanced permissions"
+        )
+        print(
+            f"   • {Colors.MAGENTA}✓ Purple Indicator:{Colors.ENDC} macOS recording confirmation in menu bar"
         )
         print(f"\n   {Colors.BOLD}Integrated Components:{Colors.ENDC}")
         print(f"   1. {Colors.CYAN}Swift Vision:{Colors.ENDC} Metal-accelerated processing with circuit breaker")
@@ -226,6 +229,8 @@ class AsyncSystemManager:
 
         # Check for Swift availability
         swift_lib = Path("backend/swift_bridge/.build/release/libPerformanceCore.dylib")
+        swift_video = Path("backend/vision/SwiftVideoCapture")
+        
         if swift_lib.exists():
             print(f"\n{Colors.GREEN}✓ Swift performance layer available{Colors.ENDC}")
             print(f"  • AudioProcessor: Voice processing (50x faster)")
@@ -233,9 +238,21 @@ class AsyncSystemManager:
             print(f"  • SystemMonitor: IOKit monitoring (24x faster)")
         else:
             print(
-                f"\n{Colors.YELLOW}⚠ Swift not built - using Python monitoring{Colors.ENDC}"
+                f"\n{Colors.YELLOW}⚠ Swift performance library not built{Colors.ENDC}"
             )
             print(f"  Build with: cd backend/swift_bridge && ./build_performance.sh")
+            
+        # Check for Swift video capture
+        if swift_video.exists():
+            print(f"\n{Colors.GREEN}✓ Swift video capture available{Colors.ENDC}")
+            print(f"  • Enhanced screen recording permissions")
+            print(f"  • Native macOS integration")
+            print(f"  • Purple recording indicator support")
+        else:
+            print(
+                f"\n{Colors.YELLOW}⚠ Swift video capture not compiled{Colors.ENDC}"
+            )
+            print(f"  • Will be compiled automatically on first use")
 
         # Check for Rust availability (legacy)
         rust_lib = Path(

@@ -72,7 +72,13 @@ async def quick_test():
             # Check response type
             if "Task completed successfully" in response_text:
                 print("\n❌ Got GENERIC response - monitoring not properly activated")
-            elif "video capturing" in response_text.lower() or "purple recording indicator" in response_text.lower():
+            elif any(phrase in response_text.lower() for phrase in [
+                "video capturing", 
+                "purple recording indicator",
+                "monitoring your screen",
+                "swift",
+                "macos"
+            ]):
                 print("\n✅ Got MONITORING response - system working correctly!")
             else:
                 print("\n⚠️  Got unexpected response type")

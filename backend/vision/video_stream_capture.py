@@ -34,6 +34,14 @@ except ImportError as e:
     MACOS_CAPTURE_AVAILABLE = False
     logging.warning(f"macOS capture frameworks not available - will use fallback: {e}")
 
+# Import Swift bridge for better macOS integration
+try:
+    from .swift_video_bridge import SwiftVideoBridge, SwiftCaptureConfig
+    SWIFT_BRIDGE_AVAILABLE = True
+except ImportError as e:
+    SWIFT_BRIDGE_AVAILABLE = False
+    logging.warning(f"Swift video bridge not available: {e}")
+
 # Try to import alternative capture methods
 try:
     import cv2
@@ -324,7 +332,25 @@ class VideoStreamCapture:
             logger.info(f"[VIDEO] Memory check passed")
             
             # Initialize capture implementation
-            if MACOS_CAPTURE_AVAILABLE:
+            # Try Swift bridge first for better permissions handling
+            if SWIFT_BRIDGE_AVAILABLE:
+                logger.info("Using Swift video bridge for capture")
+                logger.info(f"[VIDEO] SWIFT_BRIDGE_AVAILABLE = {SWIFT_BRIDGE_AVAILABLE}")
+                success = await self._start_swift_capture()
+                if success:
+                    logger.info("Swift video capture started successfully")
+                else:
+                    logger.warning("Swift capture failed, falling back to other methods")
+                    # Try native macOS capture
+                    if MACOS_CAPTURE_AVAILABLE:
+                        logger.info("Falling back to native macOS video capture")
+                        self.capture_impl = MacOSVideoCapture(self.config)
+                        self.capture_impl.start_capture(self._on_frame_captured)
+                        logger.info("MacOS video capture started successfully")
+                    else:
+                        logger.info("[VIDEO] Using screenshot loop fallback")
+                        self._start_screenshot_loop()
+            elif MACOS_CAPTURE_AVAILABLE:
                 logger.info("Using native macOS video capture")
                 logger.info(f"[VIDEO] MACOS_CAPTURE_AVAILABLE = {MACOS_CAPTURE_AVAILABLE}")
                 logger.info(f"[VIDEO] Creating MacOSVideoCapture instance...")
@@ -613,7 +639,15 @@ class VideoStreamCapture:
         """Stop video streaming"""
         self.is_capturing = False
         
-        # Stop capture
+        # Stop Swift capture if active
+        if hasattr(self, 'swift_bridge') and self.swift_bridge:
+            try:
+                await self.swift_bridge.stop_capture()
+                self.swift_bridge.cleanup()
+            except Exception as e:
+                logger.error(f"Error stopping Swift capture: {e}")
+        
+        # Stop other capture implementations
         if self.capture_impl:
             if hasattr(self.capture_impl, 'stop_capture'):
                 self.capture_impl.stop_capture()
@@ -621,6 +655,9 @@ class VideoStreamCapture:
         # Wait for threads
         if self.process_thread:
             self.process_thread.join(timeout=2.0)
+        
+        if self.capture_thread:
+            self.capture_thread.join(timeout=2.0)
         
         # Clear buffers
         self.frame_buffer.clear()
@@ -649,6 +686,15 @@ class VideoStreamCapture:
         """Get streaming metrics"""
         recent_metrics = self.metrics[-10:] if self.metrics else []
         
+        # Determine capture method
+        capture_method = 'unknown'
+        if hasattr(self, 'swift_bridge') and self.swift_bridge:
+            capture_method = 'swift_native'
+        elif self.capture_impl and isinstance(self.capture_impl, MacOSVideoCapture):
+            capture_method = 'macos_native'
+        elif self.capture_thread:
+            capture_method = 'screenshot_loop'
+        
         return {
             'is_capturing': self.is_capturing,
             'frames_processed': self.frames_processed,
@@ -656,7 +702,9 @@ class VideoStreamCapture:
             'buffer_size': len(self.frame_buffer.frames),
             'memory_usage_mb': psutil.Process().memory_info().rss / 1024 / 1024,
             'recent_analysis': recent_metrics,
-            'capture_method': 'macos_native' if MACOS_CAPTURE_AVAILABLE else 'fallback'
+            'capture_method': capture_method,
+            'swift_available': SWIFT_BRIDGE_AVAILABLE,
+            'macos_available': MACOS_CAPTURE_AVAILABLE
         }
     
     # Fallback methods
@@ -665,6 +713,70 @@ class VideoStreamCapture:
         logger.info("Starting OpenCV video capture (fallback)")
         # Implementation would go here
         pass
+    
+    async def _start_swift_capture(self) -> bool:
+        """Start capture using Swift video bridge"""
+        logger.info("[VIDEO] Attempting Swift video capture...")
+        
+        try:
+            # Create Swift configuration
+            swift_config = SwiftCaptureConfig(
+                display_id=self.config.capture_display_id,
+                fps=self.config.target_fps,
+                resolution=self.config.resolution
+            )
+            
+            # Create bridge
+            self.swift_bridge = SwiftVideoBridge(swift_config)
+            
+            # Ensure permissions
+            logger.info("[VIDEO] Checking screen recording permissions...")
+            has_permission = await self.swift_bridge.ensure_permission()
+            
+            if not has_permission:
+                logger.error("[VIDEO] Screen recording permission denied")
+                return False
+            
+            logger.info("[VIDEO] Screen recording permission granted")
+            
+            # Start capture
+            result = await self.swift_bridge.start_capture()
+            
+            if result.get('success'):
+                logger.info(f"[VIDEO] Swift capture started: {result.get('message')}")
+                
+                # Start monitoring thread for Swift capture
+                self.capture_thread = threading.Thread(
+                    target=self._swift_capture_loop,
+                    daemon=True
+                )
+                self.capture_thread.start()
+                
+                return True
+            else:
+                logger.error(f"[VIDEO] Swift capture failed: {result.get('error')}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"[VIDEO] Error starting Swift capture: {e}")
+            return False
+    
+    def _swift_capture_loop(self):
+        """Monitor Swift capture and process frames"""
+        while self.is_capturing:
+            try:
+                # For now, use screenshot fallback for frame processing
+                # In a full implementation, Swift would send frames directly
+                screenshot = asyncio.run(self.vision_analyzer.capture_screen())
+                if screenshot:
+                    frame = np.array(screenshot)
+                    self._on_frame_captured(frame)
+                
+                # Sleep to achieve target FPS
+                time.sleep(1.0 / self.config.target_fps)
+                
+            except Exception as e:
+                logger.error(f"Swift capture loop error: {e}")
     
     def _start_screenshot_loop(self):
         """Start capture using screenshot loop"""
