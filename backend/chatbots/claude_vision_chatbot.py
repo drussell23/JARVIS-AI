@@ -399,7 +399,11 @@ You excel at understanding context and providing insightful, well-structured res
             return "Claude API is not available. Please install anthropic package and set API key."
             
         # Check for continuous monitoring commands
-        if await self._is_monitoring_command(user_input):
+        is_monitoring = await self._is_monitoring_command(user_input)
+        logger.info(f"[VISION DEBUG] Is monitoring command: {is_monitoring} for input: {user_input}")
+        
+        if is_monitoring:
+            logger.info(f"[VISION DEBUG] Routing to _handle_monitoring_command")
             return await self._handle_monitoring_command(user_input)
             
         # Check if this is a vision command

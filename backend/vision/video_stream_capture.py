@@ -150,10 +150,12 @@ class MacOSVideoCapture:
     
     def start_capture(self, frame_callback: Callable):
         """Start video capture session"""
+        logger.info("MacOSVideoCapture.start_capture called")
         self.frame_callback = frame_callback
         
         # Create capture session
         self.session = AVFoundation.AVCaptureSession.alloc().init()
+        logger.info("Created AVCaptureSession")
         
         # Configure session
         if self.config.resolution == '1920x1080':
@@ -197,10 +199,12 @@ class MacOSVideoCapture:
                 self.session.addOutput_(self.output)
             
             # Start capture
+            logger.info("Starting capture session...")
             self.session.startRunning()
             self.is_running = True
-            logger.info("Started macOS video capture")
+            logger.info("Started macOS video capture - purple indicator should be visible")
         else:
+            logger.error("Failed to create screen input")
             raise RuntimeError("Failed to create screen input")
     
     def _handle_frame(self, sample_buffer):
@@ -310,8 +314,10 @@ class VideoStreamCapture:
             
             # Initialize capture implementation
             if MACOS_CAPTURE_AVAILABLE:
+                logger.info("Using native macOS video capture")
                 self.capture_impl = MacOSVideoCapture(self.config)
                 self.capture_impl.start_capture(self._on_frame_captured)
+                logger.info("MacOS video capture started successfully")
             elif CV2_AVAILABLE:
                 # Fallback to OpenCV
                 self._start_cv2_capture()
