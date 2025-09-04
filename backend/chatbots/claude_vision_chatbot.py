@@ -308,32 +308,32 @@ You excel at understanding context and providing insightful, well-structured res
                 # Handle different monitoring commands
                 if any(word in text_lower for word in ['start', 'enable', 'activate', 'begin', 'turn on']):
                     logger.info("[MONITORING] Starting video streaming...")
+                    logger.info(f"[MONITORING] Vision analyzer available: {self.vision_analyzer is not None}")
+                    
                     # Start video streaming
-                    result = await self.vision_analyzer.start_video_streaming()
-                    logger.info(f"[MONITORING] Video streaming result: {result}")
-                    if result.get('success'):
-                        # Update monitoring state
-                        self._monitoring_active = True
-                        capture_method = result.get('metrics', {}).get('capture_method', 'unknown')
-                        self._capture_method = capture_method
+                    try:
+                        result = await self.vision_analyzer.start_video_streaming()
+                        logger.info(f"[MONITORING] Video streaming result: {result}")
+                        logger.info(f"[MONITORING] Result success: {result.get('success')}")
                         
-                        # Take a screenshot and describe what we see
-                        screenshot = await self.vision_analyzer.capture_screen()
-                        if screenshot:
-                            # Analyze the current screen
-                            analysis = await self.vision_analyzer.analyze_screenshot(
-                                screenshot,
-                                "Describe what you see on the screen in detail."
-                            )
+                        if result.get('success'):
+                            # Update monitoring state
+                            self._monitoring_active = True
+                            capture_method = result.get('metrics', {}).get('capture_method', 'unknown')
                             
+                            # IMPORTANT: Return the proper response about video capture activation
                             if capture_method == 'macos_native':
-                                return f"I've started monitoring your screen with native macOS capture at 30 FPS. The purple recording indicator should now be visible.\n\nCurrently, I can see: {analysis[1] if isinstance(analysis, tuple) else str(analysis)}\n\nI'll continue watching for any changes or important events."
+                                return "I have successfully activated native macOS video capturing for monitoring your screen. The purple recording indicator should now be visible in your menu bar, confirming that screen recording is active. I'm capturing at 30 FPS and will continuously monitor for any changes or important events on your screen."
                             else:
-                                return f"I've started monitoring your screen in {capture_method} mode at 30 FPS.\n\nCurrently, I can see: {analysis[1] if isinstance(analysis, tuple) else str(analysis)}\n\nI'll continue watching for any changes or important events."
-                    else:
-                        error_msg = result.get('error', 'Unknown error')
-                        logger.error(f"[MONITORING] Failed to start video streaming: {error_msg}")
-                        return f"I encountered an issue starting video streaming: {error_msg}. Let me try with standard screenshot monitoring instead."
+                                return f"I've started monitoring your screen using {capture_method} capture mode at 30 FPS. I'll continuously watch for any changes or important events on your screen."
+                        else:
+                            error_msg = result.get('error', 'Unknown error')
+                            logger.error(f"[MONITORING] Failed to start video streaming: {error_msg}")
+                            return f"I encountered an issue starting video streaming: {error_msg}. Please check that screen recording permissions are enabled in System Preferences."
+                            
+                    except Exception as e:
+                        logger.error(f"[MONITORING] Exception starting video streaming: {e}")
+                        return f"I encountered an error starting video monitoring: {str(e)}. Please ensure screen recording permissions are enabled."
                         
                 elif any(word in text_lower for word in ['stop', 'disable', 'deactivate', 'end', 'turn off']):
                     # Stop video streaming

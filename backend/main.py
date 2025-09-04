@@ -1069,26 +1069,21 @@ def is_vision_command(command_text: str) -> bool:
 
     lower_command = command_text.lower()
 
-    # Exclude monitoring commands - they should go through JARVIS voice
+    # VERY IMPORTANT: Exclude monitoring commands - they should go through JARVIS voice for video streaming
+    # These commands need special handling for native macOS video capture (purple indicator)
     monitoring_keywords = [
-        "monitor",
-        "monitoring",
-        "watch",
-        "watching",
-        "track",
-        "tracking",
-        "continuous",
-        "continuously",
-        "real-time",
-        "realtime",
+        "monitor", "monitoring",
+        "watch", "watching", 
+        "track", "tracking",
+        "continuous", "continuously",
+        "real-time", "realtime",
         "actively",
         "surveillance",
-        "observe",
-        "observing",
-        "stream",
-        "streaming",
+        "observe", "observing",
+        "stream", "streaming",
+        "keep an eye", "keep watching"
     ]
-    screen_keywords = ["screen", "display", "desktop", "workspace", "monitor"]
+    screen_keywords = ["screen", "display", "desktop", "workspace", "window"]
 
     has_monitoring = any(keyword in lower_command for keyword in monitoring_keywords)
     has_screen = any(keyword in lower_command for keyword in screen_keywords)
@@ -1134,6 +1129,11 @@ async def handle_vision_command_request(command_text: str) -> str:
                     f"Has analyze_screen_with_vision: {hasattr(chatbot_api.bot, 'analyze_screen_with_vision')}"
                 )
 
+        # IMPORTANT: Check if this is a monitoring command that shouldn't be here
+        if "monitor" in command_text.lower() and "screen" in command_text.lower():
+            logger.error(f"[VISION HANDLER ERROR] Monitoring command '{command_text}' should NOT be handled as vision command!")
+            return "ERROR: Monitoring commands should be handled by JARVIS voice for proper video streaming activation."
+        
         if (
             chatbot_api
             and hasattr(chatbot_api, "bot")
@@ -1420,6 +1420,11 @@ async def jarvis_websocket(websocket: WebSocket):
                 logger.info(
                     f"[MAIN WS] Command '{command_text}' - is_vision: {is_vision}"
                 )
+                
+                # Log monitoring detection
+                lower_cmd = command_text.lower()
+                if "monitor" in lower_cmd and "screen" in lower_cmd:
+                    logger.info(f"[MAIN WS] MONITORING COMMAND DETECTED: '{command_text}'")
 
                 if is_vision:
                     await websocket.send_json(
@@ -1782,3 +1787,56 @@ if __name__ == "__main__":
     if MACOS_CAPTURE_AVAILABLE:
         logger.info("   ✅ Native macOS capture enabled (purple indicator will appear)")
     uvicorn.run(app, host=args.host, port=port)
+
+# Debug endpoints for monitoring command verification
+@app.get("/debug/monitoring")
+async def debug_monitoring():
+    """Debug endpoint to check monitoring system state"""
+    from datetime import datetime
+    
+    debug_info = {
+        "timestamp": datetime.now().isoformat(),
+        "vision_system": {
+            "enhanced_vision_available": ENHANCED_VISION_ANALYZER_AVAILABLE,
+            "video_streaming_available": VIDEO_STREAMING_AVAILABLE if 'VIDEO_STREAMING_AVAILABLE' in globals() else False,
+            "macos_capture_available": MACOS_CAPTURE_AVAILABLE if 'MACOS_CAPTURE_AVAILABLE' in globals() else False
+        },
+        "jarvis_system": {
+            "jarvis_voice_available": JARVIS_VOICE_AVAILABLE,
+            "jarvis_api_exists": hasattr(app.state, "jarvis_api") if 'app' in globals() else False,
+            "claude_chatbot_available": hasattr(app.state, "chatbot_api") and hasattr(app.state.chatbot_api, "bot") if 'app' in globals() else False
+        },
+        "command_routing": {
+            "monitoring_triggers": ["start monitoring", "begin monitoring", "monitor my screen", "watch my screen"],
+            "vision_triggers": VISION_COMMAND_TRIGGERS[:5] if 'VISION_COMMAND_TRIGGERS' in globals() else []
+        },
+        "test_command": "start monitoring my screen",
+        "is_vision_command": is_vision_command("start monitoring my screen") if 'is_vision_command' in globals() else None,
+        "expected_route": "JARVIS voice -> Claude chatbot -> _handle_monitoring_command -> start_video_streaming"
+    }
+    
+    return debug_info
+
+@app.post("/debug/test_command_route")
+async def test_command_route(request: Request):
+    """Test how a command would be routed"""
+    data = await request.json()
+    command = data.get("command", "start monitoring my screen")
+    
+    route_info = {
+        "command": command,
+        "is_vision_command": is_vision_command(command) if 'is_vision_command' in globals() else None,
+        "has_monitoring_keywords": any(kw in command.lower() for kw in ["monitor", "monitoring", "watch"]),
+        "has_screen_keywords": any(kw in command.lower() for kw in ["screen", "display", "desktop"]),
+        "expected_handler": "Unknown"
+    }
+    
+    # Determine expected handler
+    if route_info["is_vision_command"]:
+        route_info["expected_handler"] = "Vision command handler (analyze_screen_with_vision)"
+    elif route_info["has_monitoring_keywords"] and route_info["has_screen_keywords"]:
+        route_info["expected_handler"] = "JARVIS voice -> Claude chatbot monitoring handler"
+    else:
+        route_info["expected_handler"] = "Standard chatbot response"
+        
+    return route_info

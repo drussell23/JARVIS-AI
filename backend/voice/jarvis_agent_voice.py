@@ -162,7 +162,7 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             "screenshot_taken": "Screenshot captured and saved, {user}.",
             "workflow_started": "Initiating {workflow} routine, {user}.",
             "confirmation_needed": "This action requires your confirmation, {user}. Say 'confirm' to proceed or 'cancel' to abort.",
-            "action_completed": "Task completed successfully, {user}.",
+            "action_completed": "[GENERIC] Task completed successfully, {user}.",
             "action_failed": "I apologize, {user}, but I couldn't complete that action.",
             "system_control_mode": "Switching to system control mode. I can now help you control your Mac.",
             "conversation_mode": "Returning to conversation mode, {user}.",
@@ -286,11 +286,23 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             if self.claude_chatbot:
                 try:
                     logger.info(
-                        f"[JARVIS DEBUG] Calling claude_chatbot.generate_response"
+                        f"[JARVIS DEBUG] Calling claude_chatbot.generate_response for monitoring command: '{text}'"
                     )
+                    
+                    # IMPORTANT: For monitoring commands, we need to ensure they go through the monitoring handler
+                    # not the regular vision command handler
                     response = await self.claude_chatbot.generate_response(text)
+                    
+                    # If we get a generic response, it means the command wasn't properly handled
+                    if "Task completed successfully" in response and "Yes sir, I can see your screen" in response:
+                        logger.error("[JARVIS DEBUG] Got generic response - monitoring command not properly handled!")
+                        # Try to force it through the monitoring handler
+                        if hasattr(self.claude_chatbot, '_handle_monitoring_command'):
+                            logger.info("[JARVIS DEBUG] Forcing through monitoring handler")
+                            response = await self.claude_chatbot._handle_monitoring_command(text)
+                    
                     logger.info(
-                        f"[JARVIS DEBUG] Claude response for monitoring: {response[:100]}..."
+                        f"[JARVIS DEBUG] Claude response for monitoring: {response[:200]}..."
                     )
                     return response
                 except Exception as e:

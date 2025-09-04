@@ -573,7 +573,25 @@ class JARVISVisionIntegration:
         command_lower = command.lower()
 
         # More flexible pattern matching for screen analysis
+        # IMPORTANT: Handle monitoring commands FIRST (they should start video capture)
         if any(
+            phrase in command_lower
+            for phrase in [
+                "start monitoring",
+                "begin monitoring",
+                "monitor my screen",
+                "watch my screen continuously",
+                "enable monitoring",
+                "activate monitoring",
+                "start watching my screen",
+                "keep watching my screen"
+            ]
+        ):
+            # This should be handled by the monitoring system, not here
+            return "Monitoring commands should be handled by the JARVIS voice system for proper video capture activation."
+        
+        # Then handle regular screen viewing commands
+        elif any(
             phrase in command_lower
             for phrase in [
                 "can you see my screen",

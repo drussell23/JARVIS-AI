@@ -268,7 +268,9 @@ class JARVISVoiceAPI:
                 logger.info("Activating JARVIS for command processing")
             
             # Process command through JARVIS agent (with system control)
+            logger.info(f"[JARVIS API] Processing command: '{command.text}'")
             response = await self.jarvis.process_voice_input(command.text)
+            logger.info(f"[JARVIS API] Response: '{response[:100]}...' (truncated)")
             
             # Get contextual info if available
             context = {}
