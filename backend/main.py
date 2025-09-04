@@ -970,12 +970,12 @@ elif "VOICE_FIX_AVAILABLE" in globals() and VOICE_FIX_AVAILABLE:
 
 # Include Vision WebSocket API for real-time monitoring
 # Commented out - vision_api.py already includes WebSocket at /vision/ws/vision
-# try:
-#     from api import vision_websocket
-#     app.include_router(vision_websocket.router, prefix="/vision")
-#     logger.info("Vision WebSocket API routes added - Real-time monitoring enabled!")
-# except Exception as e:
-#     logger.warning(f"Failed to initialize Vision WebSocket API: {e}")
+try:
+    from api import vision_websocket
+    app.include_router(vision_websocket.router, prefix="/vision")
+    logger.info("Vision WebSocket API routes added - Real-time monitoring enabled!")
+except Exception as e:
+    logger.warning(f"Failed to initialize Vision WebSocket API: {e}")
 
 # Skip notification vision API
 NOTIFICATION_API_AVAILABLE = False
@@ -1286,16 +1286,25 @@ async def jarvis_command(command: JarvisCommand):
     """
     try:
         command_text = command.command.lower()
-        
+
         # Check if this is a monitoring command - pass it directly without the JARVIS prompt
-        monitoring_keywords = ["monitor", "monitoring", "watch", "watching", "stream", "streaming"]
+        monitoring_keywords = [
+            "monitor",
+            "monitoring",
+            "watch",
+            "watching",
+            "stream",
+            "streaming",
+        ]
         screen_keywords = ["screen", "display", "desktop", "workspace"]
-        
+
         has_monitoring = any(keyword in command_text for keyword in monitoring_keywords)
         has_screen = any(keyword in command_text for keyword in screen_keywords)
-        
+
         if has_monitoring and has_screen:
-            logger.info(f"[JARVIS API] Detected monitoring command, passing directly to chatbot")
+            logger.info(
+                f"[JARVIS API] Detected monitoring command, passing directly to chatbot"
+            )
             # Pass directly to chatbot without modifying the command
             if hasattr(chatbot_api.bot, "generate_response"):
                 response = await chatbot_api.bot.generate_response(command.command)
