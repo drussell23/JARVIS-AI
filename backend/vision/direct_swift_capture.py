@@ -16,8 +16,8 @@ class DirectSwiftCapture:
     """Execute Swift capture directly for purple indicator"""
     
     def __init__(self):
-        # Use continuous capture script
-        self.swift_script = Path(__file__).parent / "continuous_swift_capture.swift"
+        # Use persistent capture script for better reliability
+        self.swift_script = Path(__file__).parent / "persistent_capture.swift"
         self.capture_process = None
         self.is_capturing = False
         
@@ -76,8 +76,23 @@ class DirectSwiftCapture:
                 if line:
                     logger.info(f"[SWIFT] {line.strip()}")
                     
+                    # Check if capture stopped unexpectedly
+                    if "Session stopped" in line or "Failed" in line:
+                        logger.warning(f"[DIRECT] Swift capture issue detected: {line.strip()}")
+                        
+            # Process ended
+            logger.info("[DIRECT] Swift process ended")
+            return_code = self.capture_process.wait()
+            
+            if return_code != 0 and self.is_capturing:
+                stderr = self.capture_process.stderr.read()
+                logger.error(f"[DIRECT] Swift capture ended with error {return_code}: {stderr}")
+                
+            self.is_capturing = False
+                    
         except Exception as e:
             logger.error(f"[DIRECT] Error monitoring Swift output: {e}")
+            self.is_capturing = False
     
     def stop_capture(self):
         """Stop capture if running"""

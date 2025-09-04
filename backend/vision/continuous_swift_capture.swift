@@ -88,16 +88,25 @@ class ContinuousCapture {
     }
 }
 
+// Global run loop reference
+var mainRunLoop: CFRunLoop?
+
 // Handle termination signal
 signal(SIGTERM) { _ in
     print("\n[SWIFT] Received termination signal")
     ContinuousCapture.stopCapture()
+    if let runLoop = mainRunLoop {
+        CFRunLoopStop(runLoop)
+    }
     exit(0)
 }
 
 signal(SIGINT) { _ in
     print("\n[SWIFT] Received interrupt signal")
     ContinuousCapture.stopCapture()
+    if let runLoop = mainRunLoop {
+        CFRunLoopStop(runLoop)
+    }
     exit(0)
 }
 
@@ -109,8 +118,26 @@ if CommandLine.arguments.count > 1 {
     case "--start":
         if ContinuousCapture.startCapture() {
             print("[SWIFT] Capture running. Process will continue until terminated.")
-            // Keep the process alive
-            RunLoop.main.run()
+            print("[SWIFT] Purple indicator should be visible now.")
+            
+            // Store main run loop reference
+            mainRunLoop = CFRunLoopGetCurrent()
+            
+            // Keep checking that the session is still running
+            DispatchQueue.global().async {
+                var checkCount = 0
+                while ContinuousCapture.isRunning() {
+                    Thread.sleep(forTimeInterval: 5.0)
+                    checkCount += 1
+                    print("[SWIFT] Session check #\(checkCount): Still running = \(ContinuousCapture.isRunning())")
+                }
+                print("[SWIFT] Session stopped, exiting...")
+                CFRunLoopStop(mainRunLoop!)
+            }
+            
+            // Keep the process alive with run loop
+            CFRunLoopRun()
+            print("[SWIFT] Run loop ended")
         } else {
             print("[SWIFT] Failed to start capture")
             exit(1)

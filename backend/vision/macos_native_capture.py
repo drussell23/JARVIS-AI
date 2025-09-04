@@ -132,9 +132,23 @@ class MacOSNativeCapture:
             
             # Keep the run loop alive to maintain the session
             run_loop = NSRunLoop.currentRunLoop()
-            while self.is_running and self.session.isRunning():
-                # Process run loop events
-                run_loop.runMode_beforeDate_(NSDefaultRunLoopMode, NSDate.dateWithTimeIntervalSinceNow_(0.1))
+            loop_count = 0
+            
+            while self.is_running:
+                # Check if session is still running
+                if not self.session.isRunning():
+                    logger.warning("[NATIVE] Session stopped unexpectedly, restarting...")
+                    self.session.startRunning()
+                
+                loop_count += 1
+                if loop_count % 50 == 0:  # Log every 5 seconds (50 * 0.1)
+                    logger.info(f"[NATIVE] Run loop active, iteration {loop_count}, session running: {self.session.isRunning()}")
+                
+                # Process run loop events with longer timeout
+                run_loop.runMode_beforeDate_(NSDefaultRunLoopMode, NSDate.dateWithTimeIntervalSinceNow_(1.0))
+                
+                # Small delay to prevent CPU overload
+                time.sleep(0.1)
                 
         except Exception as e:
             logger.error(f"[NATIVE] Error in capture loop: {e}", exc_info=True)

@@ -332,30 +332,35 @@ class VideoStreamCapture:
             logger.info(f"[VIDEO] Memory check passed")
             
             # Initialize capture implementation
-            # Try direct Swift capture first for purple indicator
+            # Try simple purple indicator first
+            swift_capture_started = False
             try:
-                from .direct_swift_capture import start_direct_swift_capture
+                from .simple_purple_indicator import start_purple_indicator
                 
-                logger.info("🟣 Starting direct Swift capture for purple indicator...")
-                success = await start_direct_swift_capture()
+                logger.info("🟣 Starting purple indicator...")
+                success = await start_purple_indicator()
                 
                 if success:
-                    logger.info("✅ Direct Swift capture started - purple indicator visible!")
-                    self.capture_method = 'direct_swift'
+                    logger.info("✅ Purple indicator active!")
+                    self.capture_method = 'purple_indicator'
+                    swift_capture_started = True
                     
-                    # Start processing thread for frame analysis
+                    # Start processing thread for frame analysis using screenshots
                     self.capture_thread = threading.Thread(
-                        target=self._direct_swift_capture_loop,
+                        target=self._screenshot_capture_loop,
                         daemon=True
                     )
                     self.capture_thread.start()
                     
                 else:
-                    logger.warning("Direct Swift capture failed, trying fallbacks...")
-                    raise Exception("Direct Swift capture failed")
+                    logger.warning("Purple indicator failed, trying other methods...")
                     
+            except ImportError as e:
+                logger.warning(f"Purple indicator module not available: {e}")
             except Exception as e:
-                logger.warning(f"Direct Swift capture not available: {e}")
+                logger.warning(f"Purple indicator error: {e}")
+                
+            if not swift_capture_started:
                 
                 # Try other methods as fallback
                 if MACOS_CAPTURE_AVAILABLE:
@@ -691,8 +696,16 @@ class VideoStreamCapture:
         """Stop video streaming"""
         self.is_capturing = False
         
+        # Stop purple indicator if using it
+        if hasattr(self, 'capture_method') and self.capture_method == 'purple_indicator':
+            try:
+                from .simple_purple_indicator import stop_purple_indicator
+                stop_purple_indicator()
+                logger.info("Stopped purple indicator")
+            except Exception as e:
+                logger.error(f"Error stopping purple indicator: {e}")
         # Stop direct Swift capture if using it
-        if hasattr(self, 'capture_method') and self.capture_method == 'direct_swift':
+        elif hasattr(self, 'capture_method') and self.capture_method == 'direct_swift':
             try:
                 from .direct_swift_capture import stop_direct_swift_capture
                 stop_direct_swift_capture()
@@ -914,6 +927,23 @@ class VideoStreamCapture:
                 
             except Exception as e:
                 logger.error(f"Direct Swift capture loop error: {e}")
+                
+    def _screenshot_capture_loop(self):
+        """Capture screenshots while purple indicator is active"""
+        logger.info("[SCREENSHOT] Capture loop started with purple indicator")
+        while self.is_capturing:
+            try:
+                # Use vision analyzer's capture method
+                screenshot = asyncio.run(self.vision_analyzer.capture_screen())
+                if screenshot:
+                    frame = np.array(screenshot)
+                    self._on_frame_captured(frame)
+                
+                # Sleep to achieve target FPS
+                time.sleep(1.0 / self.config.target_fps)
+                
+            except Exception as e:
+                logger.error(f"Screenshot capture error: {e}")
     
     def _start_screenshot_loop(self):
         """Start capture using screenshot loop"""

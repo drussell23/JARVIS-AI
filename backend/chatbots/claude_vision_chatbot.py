@@ -328,6 +328,8 @@ You excel at understanding context and providing insightful, well-structured res
                                 return "I have successfully activated Swift-based macOS video capturing for monitoring your screen. The purple recording indicator should now be visible in your menu bar, confirming that screen recording is active. I'm capturing at 30 FPS with enhanced permission handling and will continuously monitor for any changes or important events on your screen."
                             elif capture_method == 'direct_swift':
                                 return "I have successfully activated direct Swift video capturing for monitoring your screen. The purple recording indicator should now be visible in your menu bar, confirming that screen recording is active. I'm monitoring continuously at 30 FPS and will watch for any changes or important events on your screen until you tell me to stop."
+                            elif capture_method == 'purple_indicator':
+                                return "I have successfully started monitoring your screen. The purple recording indicator should now be visible in your menu bar, confirming that screen recording is active. I'm capturing your screen at 30 FPS and will continuously monitor for any changes or important events until you tell me to stop."
                             else:
                                 return f"I've started monitoring your screen using {capture_method} capture mode at 30 FPS. I'll continuously watch for any changes or important events on your screen."
                         else:
