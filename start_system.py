@@ -576,147 +576,28 @@ class AsyncSystemManager:
                 await self.kill_process_on_port(port)
                 await asyncio.sleep(1)
 
-        # Use main.py directly since we've fixed it
+        # Use main.py which now has integrated parallel startup
         if (self.backend_dir / "main.py").exists():
-            # Use main.py with graceful fallbacks
-            print(f"{Colors.CYAN}Starting backend with main.py...{Colors.ENDC}")
+            # Use main.py with parallel startup capabilities
+            print(f"{Colors.CYAN}Starting backend with main.py (parallel startup integrated)...{Colors.ENDC}")
+            server_script = "main.py"
+        else:
+            print(f"{Colors.WARNING}Main backend not available, using fallback...{Colors.ENDC}")
+            return await self.start_backend_standard()
 
-            env = os.environ.copy()
-            env["PYTHONPATH"] = str(self.backend_dir)
-            env["JARVIS_USER"] = os.getenv("JARVIS_USER", "Sir")
-
-            # Set Swift library path
-            swift_lib_path = str(
-                self.backend_dir / "swift_bridge" / ".build" / "release"
-            )
-            if platform.system() == "Darwin":
-                env["DYLD_LIBRARY_PATH"] = swift_lib_path
-            else:
-                env["LD_LIBRARY_PATH"] = swift_lib_path
-
-            if os.getenv("ANTHROPIC_API_KEY"):
-                env["ANTHROPIC_API_KEY"] = os.getenv("ANTHROPIC_API_KEY")
-
-            # Create log file
-            log_dir = self.backend_dir / "logs"
-            log_dir.mkdir(exist_ok=True)
-            log_file = (
-                log_dir
-                / f"jarvis_optimized_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-            )
-
-            print(f"{Colors.CYAN}Log file: {log_file}{Colors.ENDC}")
-
-            # Start main.py directly
-            # Open log file without 'with' statement to keep it open for subprocess
-            log = open(log_file, "w")
-            self.open_files.append(log)  # Track for cleanup
-            
-            process = await asyncio.create_subprocess_exec(
-                sys.executable,
-                "main.py",
-                "--port",
-                str(self.ports["main_api"]),
-                cwd=str(self.backend_dir.absolute()),
-                stdout=log,
-                stderr=asyncio.subprocess.STDOUT,
-                env=env,
-            )
-
-            self.processes.append(process)
-
-            # Wait for backend to start up
-            print(f"{Colors.YELLOW}Waiting for backend to initialize...{Colors.ENDC}")
-            await asyncio.sleep(15)
-
-            # Check if backend is accessible
-            backend_url = f"http://localhost:{self.ports['main_api']}/health"
-            print(f"{Colors.CYAN}Checking backend at {backend_url}...{Colors.ENDC}")
-            backend_ready = await self.wait_for_service(backend_url, timeout=120)
-
-            if not backend_ready:
-                print(f"{Colors.WARNING}Backend did not respond at {backend_url} after 120 seconds{Colors.ENDC}")
-                print(f"{Colors.WARNING}Check log file: {log_file}{Colors.ENDC}")
-                # main.py failed, try fallback to minimal
-                print(
-                    f"{Colors.WARNING}Main backend failed to start, trying minimal fallback...{Colors.ENDC}"
-                )
-                # Check if process is still running before killing
-                if process.returncode is None:
-                    print(f"{Colors.YELLOW}Backend process is still running, terminating...{Colors.ENDC}")
-                    try:
-                        process.terminate()
-                        await asyncio.sleep(2)
-                        if process.returncode is None:
-                            process.kill()
-                    except:
-                        pass
-                else:
-                    print(f"{Colors.WARNING}Backend process already exited with code: {process.returncode}{Colors.ENDC}")
-                self.processes.remove(process)
-
-                minimal_path = self.backend_dir / "main_minimal.py"
-                if minimal_path.exists():
-                    print(
-                        f"{Colors.CYAN}Starting minimal backend as fallback...{Colors.ENDC}"
-                    )
-                    # Re-open log file for fallback process
-                    log = open(log_file, "a")  # Append mode for fallback
-                    self.open_files.append(log)
-                    
-                    process = await asyncio.create_subprocess_exec(
-                        sys.executable,
-                        "main_minimal.py",
-                        "--port",
-                        str(self.ports["main_api"]),
-                        cwd=str(self.backend_dir.absolute()),
-                        stdout=log,
-                        stderr=asyncio.subprocess.STDOUT,
-                        env=env,
-                    )
-                    self.processes.append(process)
-                    print(
-                        f"{Colors.GREEN}✓ Minimal backend started (PID: {process.pid}){Colors.ENDC}"
-                    )
-                    print(
-                        f"{Colors.WARNING}⚠️  Running in minimal mode - some features limited{Colors.ENDC}"
-                    )
-                else:
-                    print(
-                        f"{Colors.FAIL}✗ No fallback minimal backend available{Colors.ENDC}"
-                    )
-                    return None
-            else:
-                print(
-                    f"{Colors.GREEN}✓ Optimized backend started (PID: {process.pid}){Colors.ENDC}"
-                )
-                print(f"{Colors.GREEN}✓ Swift performance bridges loaded{Colors.ENDC}")
-                print(f"{Colors.GREEN}✓ Smart startup manager integrated{Colors.ENDC}")
-                print(
-                    f"{Colors.GREEN}✓ CPU usage: 0% idle (Swift monitoring){Colors.ENDC}"
-                )
-                print(
-                    f"{Colors.GREEN}✓ Memory quantizer active (4GB target){Colors.ENDC}"
-                )
-                print(
-                    f"{Colors.GREEN}✓ Server running on port {self.ports['main_api']}{Colors.ENDC}"
-                )
-
-            return process
-
-        # Fallback to standard backend if main.py doesn't exist
-        print(
-            f"{Colors.WARNING}Main backend not available, using standard backend...{Colors.ENDC}"
-        )
-        return await self.start_backend_standard()
-
-        # Use old optimized script
         env = os.environ.copy()
         env["PYTHONPATH"] = str(self.backend_dir)
         env["JARVIS_USER"] = os.getenv("JARVIS_USER", "Sir")
+        
+        # Enable optimized startup for faster initialization
+        env["OPTIMIZE_STARTUP"] = "true"
+        env["BACKEND_PARALLEL_IMPORTS"] = "true"
+        env["BACKEND_LAZY_LOAD_MODELS"] = "true"
 
         # Set Swift library path
-        swift_lib_path = str(self.backend_dir / "swift_bridge" / ".build" / "release")
+        swift_lib_path = str(
+            self.backend_dir / "swift_bridge" / ".build" / "release"
+        )
         if platform.system() == "Darwin":
             env["DYLD_LIBRARY_PATH"] = swift_lib_path
         else:
@@ -729,30 +610,118 @@ class AsyncSystemManager:
         log_dir = self.backend_dir / "logs"
         log_dir.mkdir(exist_ok=True)
         log_file = (
-            log_dir / f"jarvis_optimized_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+            log_dir
+            / f"jarvis_optimized_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
         )
 
         print(f"{Colors.CYAN}Log file: {log_file}{Colors.ENDC}")
 
-        # Start the optimized backend
-        with open(log_file, "w") as log:
-            process = await asyncio.create_subprocess_exec(
-                sys.executable,
-                str(startup_script),
-                cwd=str(self.backend_dir.absolute()),
-                stdout=log,
-                stderr=asyncio.subprocess.STDOUT,
-                env=env,
-            )
+        # Start the selected script (main_optimized.py or main.py)
+        # Open log file without 'with' statement to keep it open for subprocess
+        log = open(log_file, "w")
+        self.open_files.append(log)  # Track for cleanup
+        
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            server_script,
+            "--port",
+            str(self.ports["main_api"]),
+            cwd=str(self.backend_dir.absolute()),
+            stdout=log,
+            stderr=asyncio.subprocess.STDOUT,
+            env=env,
+        )
 
         self.processes.append(process)
 
-        print(
-            f"{Colors.GREEN}✓ Optimized backend starting (PID: {process.pid}){Colors.ENDC}"
-        )
-        print(f"{Colors.GREEN}✓ Resource management initialized{Colors.ENDC}")
-        print(f"{Colors.GREEN}✓ Health monitoring active{Colors.ENDC}")
-        print(f"{Colors.GREEN}✓ Event UI at http://localhost:8888{Colors.ENDC}")
+        # Wait for backend to start up (reduced time due to parallel imports)
+        print(f"{Colors.YELLOW}Waiting for backend to initialize (parallel startup enabled)...{Colors.ENDC}")
+        await asyncio.sleep(10)
+
+        # Check if backend is accessible
+        backend_url = f"http://localhost:{self.ports['main_api']}/health"
+        print(f"{Colors.CYAN}Checking backend at {backend_url}...{Colors.ENDC}")
+        backend_ready = await self.wait_for_service(backend_url, timeout=120)
+
+        if not backend_ready:
+            print(f"{Colors.WARNING}Backend did not respond at {backend_url} after 120 seconds{Colors.ENDC}")
+            print(f"{Colors.WARNING}Check log file: {log_file}{Colors.ENDC}")
+            
+            # Show last few lines of log for debugging
+            try:
+                with open(log_file, 'r') as f:
+                    lines = f.readlines()
+                    if lines:
+                        print(f"{Colors.YELLOW}Last log entries:{Colors.ENDC}")
+                        for line in lines[-5:]:
+                            print(f"  {line.strip()}")
+            except Exception:
+                pass
+            
+            # main.py failed, try fallback to minimal
+            print(
+                f"{Colors.WARNING}Main backend failed to start, trying minimal fallback...{Colors.ENDC}"
+            )
+            # Check if process is still running before killing
+            if process.returncode is None:
+                print(f"{Colors.YELLOW}Backend process is still running, terminating...{Colors.ENDC}")
+                try:
+                    process.terminate()
+                    await asyncio.sleep(2)
+                    if process.returncode is None:
+                        process.kill()
+                except:
+                    pass
+            else:
+                print(f"{Colors.WARNING}Backend process already exited with code: {process.returncode}{Colors.ENDC}")
+            self.processes.remove(process)
+
+            minimal_path = self.backend_dir / "main_minimal.py"
+            if minimal_path.exists():
+                print(
+                    f"{Colors.CYAN}Starting minimal backend as fallback...{Colors.ENDC}"
+                )
+                # Re-open log file for fallback process
+                log = open(log_file, "a")  # Append mode for fallback
+                self.open_files.append(log)
+                
+                process = await asyncio.create_subprocess_exec(
+                    sys.executable,
+                    "main_minimal.py",
+                    "--port",
+                    str(self.ports["main_api"]),
+                    cwd=str(self.backend_dir.absolute()),
+                    stdout=log,
+                    stderr=asyncio.subprocess.STDOUT,
+                    env=env,
+                )
+                self.processes.append(process)
+                print(
+                    f"{Colors.GREEN}✓ Minimal backend started (PID: {process.pid}){Colors.ENDC}"
+                )
+                print(
+                    f"{Colors.WARNING}⚠️  Running in minimal mode - some features limited{Colors.ENDC}"
+                )
+            else:
+                print(
+                    f"{Colors.FAIL}✗ No fallback minimal backend available{Colors.ENDC}"
+                )
+                return None
+        else:
+            print(
+                f"{Colors.GREEN}✓ Optimized backend started (PID: {process.pid}){Colors.ENDC}"
+            )
+            print(f"{Colors.GREEN}✓ Swift performance bridges loaded{Colors.ENDC}")
+            print(f"{Colors.GREEN}✓ Smart startup manager integrated{Colors.ENDC}")
+            print(
+                f"{Colors.GREEN}✓ CPU usage: 0% idle (Swift monitoring){Colors.ENDC}"
+            )
+            print(
+                f"{Colors.GREEN}✓ Memory quantizer active (4GB target){Colors.ENDC}"
+            )
+            print(
+                f"{Colors.GREEN}✓ Server running on port {self.ports['main_api']}{Colors.ENDC}"
+            )
 
         return process
 

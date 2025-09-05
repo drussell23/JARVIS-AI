@@ -3,7 +3,13 @@ Claude Vision-enabled Chatbot for JARVIS
 Extends the basic Claude chatbot with vision capabilities for screen analysis
 """
 
+# Fix import path for vision modules
+import sys
 import os
+backend_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if backend_path not in sys.path:
+    sys.path.insert(0, backend_path)
+
 import logging
 import asyncio
 from typing import Dict, List, Optional, Any

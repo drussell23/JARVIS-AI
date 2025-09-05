@@ -152,8 +152,28 @@ if CommandLine.arguments.contains("--start") {
         print("❌ Failed to start capture")
         exit(1)
     }
+} else if CommandLine.arguments.contains("--test") {
+    print("\n🧪 TESTING SCREEN RECORDING PERMISSIONS")
+    print("=" * 60)
+    
+    manager.checkPermissions()
+    
+    print("\n📋 Quick Test:")
+    if manager.startCapture() {
+        print("✅ Screen recording is working!")
+        print("🟣 Purple indicator should be visible for 3 seconds...")
+        Thread.sleep(forTimeInterval: 3.0)
+        manager.stopCapture()
+        print("✅ Test completed successfully!")
+    } else {
+        print("❌ Screen recording failed!")
+        print("\n🔧 To fix:")
+        print("1. Open System Preferences > Security & Privacy > Screen Recording")
+        print("2. Add Terminal (or your terminal app) to the list")
+        print("3. Restart your terminal")
+    }
 } else {
-    print("Usage: swift persistent_capture.swift --start")
+    print("Usage: swift persistent_capture.swift --start | --test")
 }
 
 // Helper extension
