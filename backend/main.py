@@ -361,6 +361,14 @@ def mount_routers():
     if monitoring and monitoring.get('router'):
         app.include_router(monitoring['router'], prefix="/monitoring", tags=["monitoring"])
         logger.info("✅ Monitoring API mounted")
+    
+    # Vision WebSocket API
+    try:
+        from api.vision_websocket import router as vision_ws_router
+        app.include_router(vision_ws_router, prefix="/vision", tags=["vision"])
+        logger.info("✅ Vision WebSocket API mounted")
+    except ImportError as e:
+        logger.warning(f"Could not import vision WebSocket router: {e}")
 
 # Note: Startup tasks are now handled in the lifespan handler above
 
