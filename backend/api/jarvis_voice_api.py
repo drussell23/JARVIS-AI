@@ -85,26 +85,45 @@ class JARVISVoiceAPI:
         """Initialize JARVIS Voice API"""
         self.router = APIRouter()
         
-        # Initialize JARVIS if API key and imports are available
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if api_key and JARVIS_IMPORTS_AVAILABLE:
-            try:
-                # Use the new JARVIS Agent with system control
-                self.jarvis = JARVISAgentVoice()
-                self.jarvis_available = True
-                self.system_control_enabled = self.jarvis.system_control_enabled
-                logger.info("JARVIS Agent Voice System initialized with system control")
-            except Exception as e:
-                self.jarvis_available = False
-                self.system_control_enabled = False
-                logger.error(f"Failed to initialize JARVIS Agent: {e}")
-        else:
-            self.jarvis = None
-            self.jarvis_available = False
-            self.system_control_enabled = False
+        # Lazy initialization - don't create JARVIS yet
+        self._jarvis = None
+        self._jarvis_initialized = False
+        
+        # Check if we have API key
+        self.api_key = os.getenv("ANTHROPIC_API_KEY")
+        self.jarvis_available = self.api_key and JARVIS_IMPORTS_AVAILABLE
+        
+        # We'll initialize on first use
+        if not self.jarvis_available:
             logger.warning("JARVIS Voice System not available - ANTHROPIC_API_KEY not set")
         
         self._register_routes()
+    
+    @property
+    def jarvis(self):
+        """Get JARVIS instance, initializing if needed"""
+        if not self._jarvis_initialized and self.jarvis_available:
+            try:
+                # Try to use factory for proper dependency injection
+                try:
+                    from api.jarvis_factory import create_jarvis_agent
+                    self._jarvis = create_jarvis_agent()
+                    logger.info("JARVIS Agent created using factory with shared vision analyzer")
+                except ImportError:
+                    # Fallback to direct creation
+                    self._jarvis = JARVISAgentVoice()
+                    logger.info("JARVIS Agent created directly (no shared vision analyzer)")
+                
+                self.system_control_enabled = self._jarvis.system_control_enabled if self._jarvis else False
+                logger.info("JARVIS Agent Voice System initialized with system control")
+            except Exception as e:
+                logger.error(f"Failed to initialize JARVIS Agent: {e}")
+                self._jarvis = None
+                self.system_control_enabled = False
+            finally:
+                self._jarvis_initialized = True
+        
+        return self._jarvis
         
     def _register_routes(self):
         """Register JARVIS-specific routes"""

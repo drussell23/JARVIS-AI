@@ -57,7 +57,8 @@ class ClaudeVisionChatbot:
         model: str = "claude-3-5-sonnet-20241022",  # Vision-capable model
         max_tokens: int = 1024,
         temperature: float = 0.7,
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
+        vision_analyzer: Optional[Any] = None  # Allow passing existing analyzer
     ):
         """Initialize Claude vision chatbot"""
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
@@ -84,14 +85,18 @@ You excel at understanding context and providing insightful, well-structured res
         else:
             self.client = None
             
-        # Initialize vision analyzer with real-time capabilities
-        if VISION_ANALYZER_AVAILABLE and self.api_key:
-            # Enable real-time monitoring by default for video streaming
+        # Use provided vision analyzer or initialize new one
+        if vision_analyzer:
+            # Use the provided analyzer (e.g., from app.state)
+            self.vision_analyzer = vision_analyzer
+            logger.info("Using provided vision analyzer instance")
+        elif VISION_ANALYZER_AVAILABLE and self.api_key:
+            # Create new analyzer with real-time monitoring by default
             self.vision_analyzer = ClaudeVisionAnalyzer(
                 self.api_key, 
                 enable_realtime=True
             )
-            logger.info("Initialized Claude Vision Analyzer with real-time monitoring capabilities")
+            logger.info("Initialized new Claude Vision Analyzer with real-time monitoring capabilities")
         else:
             self.vision_analyzer = None
             logger.warning("Vision analyzer not available - real-time monitoring disabled")
@@ -318,6 +323,8 @@ You excel at understanding context and providing insightful, well-structured res
                     
                     # Start video streaming
                     try:
+                        logger.info(f"[MONITORING] Vision analyzer type: {type(self.vision_analyzer).__name__}")
+                        logger.info(f"[MONITORING] Vision analyzer has start_video_streaming: {hasattr(self.vision_analyzer, 'start_video_streaming')}")
                         result = await self.vision_analyzer.start_video_streaming()
                         logger.info(f"[MONITORING] Video streaming result: {result}")
                         logger.info(f"[MONITORING] Result success: {result.get('success')}")

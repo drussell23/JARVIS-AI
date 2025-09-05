@@ -31,7 +31,7 @@ except ImportError:
 class JARVISAgentVoice(MLEnhancedVoiceSystem):
     """JARVIS AI Agent with system control capabilities"""
 
-    def __init__(self, user_name: str = "Sir"):
+    def __init__(self, user_name: str = "Sir", vision_analyzer=None):
         super().__init__(user_name)
         self.user_name = user_name
         self.wake_words = ["jarvis", "hey jarvis", "okay jarvis", "yo jarvis"]
@@ -42,7 +42,8 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
         if self.api_key:
             self.command_interpreter = ClaudeCommandInterpreter(self.api_key)
-            self.claude_chatbot = ClaudeVisionChatbot(self.api_key)
+            # Pass vision analyzer to chatbot if provided
+            self.claude_chatbot = ClaudeVisionChatbot(self.api_key, vision_analyzer=vision_analyzer)
             self.system_control_enabled = True
         else:
             self.system_control_enabled = False

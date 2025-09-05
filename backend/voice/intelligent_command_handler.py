@@ -27,7 +27,7 @@ class IntelligentCommandHandler:
     No hardcoding - learns and adapts dynamically
     """
     
-    def __init__(self, user_name: str = "Sir"):
+    def __init__(self, user_name: str = "Sir", vision_analyzer: Optional[Any] = None):
         self.user_name = user_name
         self.router = IntelligentCommandRouter()
         
@@ -35,7 +35,8 @@ class IntelligentCommandHandler:
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
         if self.api_key:
             self.command_interpreter = ClaudeCommandInterpreter(self.api_key)
-            self.claude_chatbot = ClaudeVisionChatbot(self.api_key)
+            # Pass the vision analyzer to the chatbot
+            self.claude_chatbot = ClaudeVisionChatbot(self.api_key, vision_analyzer=vision_analyzer)
             self.enabled = True
         else:
             self.enabled = False

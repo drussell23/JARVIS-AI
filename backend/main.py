@@ -257,6 +257,14 @@ async def lifespan(app: FastAPI):
         if analyzer_class and api_key:
             app.state.vision_analyzer = analyzer_class(api_key)
             logger.info("✅ Vision analyzer initialized")
+            
+            # Set app state in JARVIS factory for dependency injection
+            try:
+                from api.jarvis_factory import set_app_state
+                set_app_state(app.state)
+                logger.info("✅ App state set in JARVIS factory")
+            except ImportError:
+                logger.warning("⚠️ JARVIS factory not available for dependency injection")
         elif analyzer_class:
             logger.warning("⚠️ Vision analyzer available but no ANTHROPIC_API_KEY set")
     

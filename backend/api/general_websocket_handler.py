@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 # Lazy imports
 _chatbot = None
 
-def get_chatbot():
-    """Get chatbot instance lazily"""
+def get_chatbot(app_state=None):
+    """Get chatbot instance lazily, preferring app.state vision analyzer"""
     global _chatbot
     if _chatbot is None:
         try:
@@ -26,7 +26,13 @@ def get_chatbot():
             import os
             api_key = os.getenv("ANTHROPIC_API_KEY")
             if api_key:
-                _chatbot = ClaudeVisionChatbot(api_key)
+                # Check if we have a vision analyzer in app state
+                vision_analyzer = None
+                if app_state and hasattr(app_state, 'vision_analyzer'):
+                    vision_analyzer = app_state.vision_analyzer
+                    logger.info("Using vision analyzer from app.state")
+                
+                _chatbot = ClaudeVisionChatbot(api_key, vision_analyzer=vision_analyzer)
                 logger.info("Using Claude Vision Chatbot with monitoring capabilities")
             else:
                 logger.warning("No API key found for Claude chatbot")
@@ -80,7 +86,9 @@ async def handle_websocket_message(message: Dict[str, Any], context: Dict[str, A
 
 async def handle_chat(message: Dict[str, Any], context: Dict[str, Any] = None) -> Dict[str, Any]:
     """Handle chat messages"""
-    chatbot = get_chatbot()
+    # Get app_state from context if available
+    app_state = context.get('app_state') if context else None
+    chatbot = get_chatbot(app_state)
     
     if not chatbot:
         return {
