@@ -113,7 +113,13 @@ class VisionConnection {
   }
 
   handleWorkspaceUpdate(data) {
-    console.log(`🔄 Workspace update: ${data.workspace.window_count} windows`);
+    // Check if workspace data exists
+    if (!data || !data.workspace) {
+      console.warn('Workspace update missing workspace data:', data);
+      return;
+    }
+
+    console.log(`🔄 Workspace update: ${data.workspace.window_count || 0} windows`);
 
     this.workspaceData = data.workspace;
 
@@ -248,6 +254,24 @@ class VisionConnection {
 
   isMonitoring() {
     return this.isConnected && this.monitoringActive;
+  }
+
+  async startMonitoring() {
+    if (this.isConnected && this.socket.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify({
+        type: 'start_monitoring'
+      }));
+      this.monitoringActive = true;
+    }
+  }
+
+  async stopMonitoring() {
+    if (this.isConnected && this.socket.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify({
+        type: 'stop_monitoring'
+      }));
+      this.monitoringActive = false;
+    }
   }
 }
 

@@ -73,6 +73,17 @@ class VisionWebSocketManager:
                 "type": "initial_state",
                 "monitoring_active": self.monitoring_active,
                 "vision_available": self.vision_analyzer is not None,
+                "workspace": {
+                    'window_count': 0,
+                    'focused_app': None,
+                    'notifications': [],
+                    'notification_details': {
+                        'badges': 0,
+                        'messages': 0,
+                        'meetings': 0,
+                        'alerts': 0
+                    }
+                },
                 "timestamp": datetime.now().isoformat()
             }
             
@@ -138,10 +149,33 @@ class VisionWebSocketManager:
                     )
                     
                     if analysis.get('success'):
+                        # Parse analysis for workspace info
+                        workspace_data = {
+                            'window_count': 0,  # Will be updated from analysis
+                            'focused_app': None,
+                            'notifications': [],
+                            'notification_details': {
+                                'badges': 0,
+                                'messages': 0,
+                                'meetings': 0,
+                                'alerts': 0
+                            }
+                        }
+                        
+                        # Extract workspace info from analysis text if available
+                        analysis_text = analysis.get('analysis', '')
+                        if 'window' in analysis_text.lower():
+                            # Simple extraction - can be improved
+                            import re
+                            window_match = re.search(r'(\d+)\s*window', analysis_text.lower())
+                            if window_match:
+                                workspace_data['window_count'] = int(window_match.group(1))
+                        
                         # Send update to clients
                         await self.broadcast_message({
                             'type': 'workspace_update',
-                            'analysis': analysis.get('analysis', ''),
+                            'workspace': workspace_data,
+                            'analysis': analysis_text,
                             'frames_analyzed': analysis.get('frames_analyzed', 0),
                             'timestamp': datetime.now().isoformat()
                         })
