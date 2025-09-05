@@ -144,6 +144,7 @@ class JARVISVoiceAPI:
         # Command processing
         self.router.add_api_route("/command", self.process_command, methods=["POST"])
         self.router.add_api_route("/speak", self.speak, methods=["POST"])
+        self.router.add_api_route("/speak/{text}", self.speak_get, methods=["GET"])
         
         # Configuration
         self.router.add_api_route("/config", self.get_config, methods=["GET"])
@@ -370,32 +371,82 @@ class JARVISVoiceAPI:
     @graceful_endpoint
     async def speak(self, request: Dict[str, str]) -> Response:
         """Make JARVIS speak the given text"""
-        if not self.jarvis_available:
-            # Return empty audio to prevent 503
-            return Response(content=b"", media_type="audio/wav")
-            
         text = request.get("text", "")
         if not text:
             raise HTTPException(status_code=400, detail="No text provided")
             
+        # Always use macOS say command for simplicity and reliability
         try:
-            # Use JARVIS voice engine to speak
-            # In a real implementation, this would return audio data
-            self.jarvis.voice_engine.speak(text)
+            import subprocess
+            import tempfile
+            
+            # Create temp file for audio
+            with tempfile.NamedTemporaryFile(suffix='.aiff', delete=False) as tmp:
+                tmp_path = tmp.name
+            
+            # Use macOS say command to generate audio with British voice
+            subprocess.run([
+                'say', '-v', 'Daniel',  # British voice for JARVIS
+                '-o', tmp_path,
+                text
+            ], check=True)
+            
+            # Convert to MP3 for smaller file size
+            mp3_path = tmp_path.replace('.aiff', '.mp3')
+            subprocess.run([
+                'afconvert', '-f', 'mp4f', '-d', 'aac', 
+                tmp_path, mp3_path
+            ], check=True)
+            
+            # Read the MP3 file
+            with open(mp3_path, 'rb') as f:
+                audio_data = f.read()
+            
+            # Clean up
+            os.unlink(tmp_path)
+            os.unlink(mp3_path)
             
             return Response(
-                content=json.dumps({
-                    "status": "success",
-                    "message": "Speech synthesized",
-                    "text": text
-                }),
-                media_type="application/json"
+                content=audio_data,
+                media_type="audio/mpeg",
+                headers={
+                    "Content-Disposition": f"inline; filename=jarvis_speech.mp3",
+                    "Cache-Control": "no-cache"
+                }
             )
-            
         except Exception as e:
             logger.error(f"Error in text-to-speech: {e}")
-            # Graceful handler will catch this and return a successful response
-            raise
+            
+            # Last resort: return a simple wave file with silence
+            # This prevents the frontend from erroring out
+            import struct
+            
+            # Generate a simple WAV header with 0.1 second of silence
+            sample_rate = 44100
+            duration = 0.1
+            num_samples = int(sample_rate * duration)
+            
+            # WAV header
+            wav_header = struct.pack('<4sI4s4sIHHIIHH4sI',
+                b'RIFF', 36 + num_samples * 2, b'WAVE', b'fmt ',
+                16, 1, 1, sample_rate, sample_rate * 2, 2, 16,
+                b'data', num_samples * 2)
+            
+            # Silent audio data (zeros)
+            audio_data = wav_header + (b'\x00\x00' * num_samples)
+            
+            return Response(
+                content=audio_data,
+                media_type="audio/wav",
+                headers={
+                    "Content-Disposition": "inline; filename=silence.wav"
+                }
+            )
+    
+    @graceful_endpoint
+    async def speak_get(self, text: str) -> Response:
+        """GET endpoint for text-to-speech (fallback for frontend)"""
+        return await self.speak({"text": text})
             
     async def get_config(self) -> Dict:
         """Get JARVIS configuration"""

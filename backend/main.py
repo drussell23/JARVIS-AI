@@ -222,8 +222,9 @@ def import_voice_system():
         voice['enhanced_available'] = False
     
     try:
-        from api.jarvis_voice_api import router as jarvis_voice_router
+        from api.jarvis_voice_api import jarvis_api, router as jarvis_voice_router
         voice['jarvis_router'] = jarvis_voice_router
+        voice['jarvis_api'] = jarvis_api
         voice['jarvis_available'] = True
     except ImportError:
         voice['jarvis_available'] = False
@@ -463,6 +464,25 @@ async def root():
             name: bool(comp) for name, comp in components.items() if comp is not None
         }
     }
+
+# Audio endpoints for frontend compatibility
+@app.post("/audio/speak")
+async def audio_speak_post(request: dict):
+    """Forward audio speak requests to JARVIS voice API"""
+    from fastapi import HTTPException
+    voice = components.get('voice', {})
+    jarvis_api = voice.get('jarvis_api')
+    
+    if not jarvis_api:
+        raise HTTPException(status_code=503, detail="JARVIS voice not available")
+    
+    # Forward to JARVIS speak endpoint
+    return await jarvis_api.speak(request)
+
+@app.get("/audio/speak/{text}")
+async def audio_speak_get(text: str):
+    """GET endpoint for audio speak (frontend fallback)"""
+    return await audio_speak_post({"text": text})
 
 # Add more endpoints based on loaded components...
 # (The rest of your API endpoints would go here)

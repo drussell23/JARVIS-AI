@@ -1024,58 +1024,63 @@ const JarvisVoice = () => {
     console.log('Playing audio response:', text);
     
     try {
-      // Use POST method with base64 response for better reliability
-      const response = await fetch(`${API_URL}/audio/speak`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ text })
-      });
+      // First try: Use GET method with URL (simpler and more reliable)
+      const audioUrl = `${API_URL}/audio/speak/${encodeURIComponent(text)}`;
+      const audio = new Audio(audioUrl);
+      audio.volume = 1.0;
       
-      const data = await response.json();
+      setIsJarvisSpeaking(true);
       
-      if (data.success && data.audio) {
-        // Create audio element with base64 data URL
-        const audio = new Audio(data.audio);
-        audio.volume = 1.0;
+      audio.onended = () => {
+        console.log('Audio playback completed');
+        setIsJarvisSpeaking(false);
+      };
+      
+      audio.onerror = async (e) => {
+        console.warn('GET method failed, trying POST with blob...');
         
-        // Set speaking state
-        setIsJarvisSpeaking(true);
-        
-        audio.onended = () => {
-          console.log('Audio playback completed');
+        // Fallback: Try POST method and handle as blob
+        try {
+          const response = await fetch(`${API_URL}/audio/speak`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ text })
+          });
+          
+          if (response.ok) {
+            // Get audio data as blob
+            const blob = await response.blob();
+            const audioUrl = URL.createObjectURL(blob);
+            
+            const audio2 = new Audio(audioUrl);
+            audio2.volume = 1.0;
+            
+            audio2.onended = () => {
+              console.log('Audio playback completed');
+              setIsJarvisSpeaking(false);
+              URL.revokeObjectURL(audioUrl); // Clean up
+            };
+            
+            audio2.onerror = () => {
+              console.warn('Audio playback not available');
+              setIsJarvisSpeaking(false);
+              URL.revokeObjectURL(audioUrl); // Clean up
+            };
+            
+            await audio2.play();
+          } else {
+            throw new Error('Audio generation failed');
+          }
+        } catch (postError) {
+          console.warn('Both audio methods failed:', postError.message);
           setIsJarvisSpeaking(false);
-        };
-        
-        audio.onerror = (e) => {
-          console.warn('Audio playback error - falling back to text display:', e);
-          setIsJarvisSpeaking(false);
-        };
-        
-        // Play the audio
-        await audio.play();
-        console.log('Audio playback started successfully');
-      } else {
-        // Fallback: try the GET method
-        console.log('POST method failed, trying GET method...');
-        const audioUrl = `${API_URL}/audio/speak/${encodeURIComponent(text)}`;
-        const audio = new Audio(audioUrl);
-        audio.volume = 1.0;
-        
-        setIsJarvisSpeaking(true);
-        
-        audio.onended = () => {
-          setIsJarvisSpeaking(false);
-        };
-        
-        audio.onerror = () => {
-          console.warn('Audio playback not available');
-          setIsJarvisSpeaking(false);
-        };
-        
-        await audio.play();
-      }
+        }
+      };
+      
+      // Try to play the audio
+      await audio.play();
     } catch (audioError) {
       console.warn('Audio service unavailable:', audioError.message);
       setIsJarvisSpeaking(false);
