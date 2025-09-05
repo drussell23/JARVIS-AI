@@ -1,7 +1,41 @@
 #!/usr/bin/env python3
 """
-Optimized main.py with Parallel Initialization Support
-Reduces startup time through concurrent imports and lazy loading
+JARVIS AI Backend - Optimized Main Entry Point
+
+This backend loads 6 critical components that power the JARVIS AI system:
+
+1. CHATBOTS (Claude Vision Chatbot)
+   - Powers conversational AI with Claude 3.5 Sonnet
+   - Enables screen analysis and vision capabilities
+   - Handles all natural language understanding and generation
+   
+2. VISION (Screen Capture & Analysis)
+   - Real-time screen monitoring with Swift-based capture
+   - Video streaming at 30 FPS with purple recording indicator
+   - Computer vision analysis for understanding screen content
+   
+3. MEMORY (M1 Mac Optimized Memory Manager)
+   - Prevents memory leaks and manages resources efficiently
+   - Critical for long-running sessions and video processing
+   - Provides memory pressure alerts and automatic cleanup
+   
+4. VOICE (JARVIS Voice Interface)
+   - Voice activation with "Hey JARVIS" wake word
+   - Text-to-speech with multiple voice options
+   - Real-time voice command processing
+   
+5. ML_MODELS (Machine Learning Models)
+   - Sentiment analysis and NLP capabilities
+   - Lazy-loaded to optimize startup time
+   - Powers intelligent text understanding
+   
+6. MONITORING (System Health & Metrics)
+   - Tracks API performance and resource usage
+   - Provides health checks and status endpoints
+   - Essential for production stability
+
+All 6 components must load successfully for full JARVIS functionality.
+The system uses parallel imports to reduce startup time from ~20s to ~7-9s.
 """
 
 import os
@@ -290,11 +324,34 @@ async def lifespan(app: FastAPI):
     # Mount routers during startup
     mount_routers()
     
-    # Log final status
+    # Log final status with component details
     logger.info("\n" + "=" * 60)
     logger.info("🤖 JARVIS Backend (Optimized) Ready!")
-    logger.info(f"📊 Components loaded: {sum(1 for c in components.values() if c)}/{len(components)}")
+    
+    # Count and display loaded components
+    loaded_count = sum(1 for c in components.values() if c)
+    logger.info(f"📊 Components loaded: {loaded_count}/{len(components)}")
+    
+    # Show status of each component
+    component_status = [
+        ("✅" if components.get('chatbots') else "❌", "CHATBOTS    - AI conversation & vision analysis"),
+        ("✅" if components.get('vision') else "❌", "VISION      - Screen capture & real-time monitoring"),
+        ("✅" if components.get('memory') else "❌", "MEMORY      - Resource management & optimization"),
+        ("✅" if components.get('voice') else "❌", "VOICE       - Voice activation & speech synthesis"),
+        ("✅" if components.get('ml_models') else "❌", "ML_MODELS   - NLP & sentiment analysis"),
+        ("✅" if components.get('monitoring') else "❌", "MONITORING  - System health & metrics")
+    ]
+    
+    for status, desc in component_status:
+        logger.info(f"   {status} {desc}")
+    
     logger.info(f"🚀 Mode: {'Optimized' if OPTIMIZE_STARTUP else 'Legacy'}")
+    
+    if loaded_count == 6:
+        logger.info("✨ All systems operational - JARVIS is fully functional!")
+    else:
+        logger.warning(f"⚠️  Only {loaded_count}/6 components loaded - some features may be limited")
+    
     logger.info("=" * 60 + "\n")
     
     yield

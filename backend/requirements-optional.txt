@@ -1,0 +1,9 @@
+# Optional dependencies that may have compatibility issues with miniforge
+
+# PyAutoGUI - Has known compatibility issues with miniforge Python on macOS
+# due to PyObjC dlsym errors. Only install if absolutely needed.
+# pyautogui>=0.9.54
+
+# Alternative for PyAutoGUI on macOS with miniforge:
+# Use the native macOS screen capture APIs through PyObjC directly
+# or implement Swift-based capture solutions
