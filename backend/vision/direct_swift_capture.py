@@ -24,8 +24,8 @@ class DirectSwiftCapture:
         
     async def start_capture(self) -> bool:
         """Start Swift capture - shows purple indicator"""
-        if self.is_capturing:
-            logger.warning("Capture already running")
+        if self.is_capturing and self.capture_process and self.capture_process.poll() is None:
+            logger.info("[DIRECT] Capture already running with active process")
             return True
             
         logger.info("[DIRECT] Starting Swift capture for purple indicator...")

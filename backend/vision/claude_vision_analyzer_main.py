@@ -73,7 +73,7 @@ class VisionConfig:
     enable_action_detection: bool = field(default_factory=lambda: os.getenv('VISION_DETECT_ACTIONS', 'true').lower() == 'true')
     enable_screen_sharing: bool = field(default_factory=lambda: os.getenv('VISION_SCREEN_SHARING', 'true').lower() == 'true')
     enable_continuous_monitoring: bool = field(default_factory=lambda: os.getenv('VISION_CONTINUOUS_ENABLED', 'true').lower() == 'true')
-    enable_video_streaming: bool = field(default_factory=lambda: os.getenv('VISION_VIDEO_STREAMING', 'true').lower() == 'true')
+    enable_video_streaming: bool = field(default_factory=lambda: True)  # Always enable video streaming
     prefer_video_over_screenshots: bool = field(default_factory=lambda: os.getenv('VISION_PREFER_VIDEO', 'true').lower() == 'true')
     
     @classmethod
@@ -564,6 +564,7 @@ class ClaudeVisionAnalyzer:
         self._video_streaming_config = {
             'enabled': self.config.enable_video_streaming
         }
+        logger.info(f"[VISION ANALYZER INIT] Instance {id(self)} created with video streaming enabled: {self.config.enable_video_streaming}")
         
         # Flag to track if analyzer is busy (for screen sharing priority)
         self.is_analyzing = False
@@ -723,7 +724,8 @@ class ClaudeVisionAnalyzer:
         logger.info(f"[VISION ANALYZER] get_video_streaming called, current: {self.video_streaming is not None}")
         logger.info(f"[VISION ANALYZER] Video streaming config: {self._video_streaming_config}")
         
-        if self.video_streaming is None and self._video_streaming_config['enabled']:
+        # Always try to initialize video streaming if not already done
+        if self.video_streaming is None:
             try:
                 logger.info("[VISION ANALYZER] Importing VideoStreamCapture...")
                 from .video_stream_capture import VideoStreamCapture
@@ -2130,9 +2132,24 @@ Focus on what's visible in this specific region. Be concise but thorough."""
         
         if not video_streaming:
             logger.error("[VISION ANALYZER] Video streaming manager not available")
+            # Try to initialize it now
+            logger.info("[VISION ANALYZER] Attempting to initialize video streaming...")
+            try:
+                from .video_stream_capture import VideoStreamCapture
+                self.video_streaming = VideoStreamCapture(vision_analyzer=self)
+                logger.info("[VISION ANALYZER] Video streaming initialized successfully")
+                video_streaming = self.video_streaming
+            except Exception as e:
+                logger.error(f"[VISION ANALYZER] Failed to initialize video streaming: {e}")
+                return {
+                    'success': False,
+                    'error': f'Failed to initialize video streaming: {str(e)}'
+                }
+        
+        if not video_streaming:
             return {
                 'success': False,
-                'error': 'Video streaming not available'
+                'error': 'Video streaming not available after initialization attempt'
             }
         
         # Start video streaming

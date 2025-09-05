@@ -102,7 +102,7 @@ class JARVISVoiceAPI:
     @property
     def jarvis(self):
         """Get JARVIS instance, initializing if needed"""
-        logger.debug(f"[INIT ORDER] JARVIS property getter called - initialized: {self._jarvis_initialized}, available: {self.jarvis_available}")
+        logger.info(f"[JARVIS API] JARVIS property getter called - initialized: {self._jarvis_initialized}, available: {self.jarvis_available}")
         
         if not self._jarvis_initialized and self.jarvis_available:
             try:
@@ -112,10 +112,10 @@ class JARVISVoiceAPI:
                     
                     # Check if vision analyzer is available before creating JARVIS
                     vision_analyzer = get_vision_analyzer()
-                    logger.info(f"[INIT ORDER] Vision analyzer available during JARVIS creation: {vision_analyzer is not None}")
+                    logger.info(f"[JARVIS API] Vision analyzer available during JARVIS creation: {vision_analyzer is not None}")
                     
                     self._jarvis = create_jarvis_agent()
-                    logger.info("JARVIS Agent created using factory with shared vision analyzer")
+                    logger.info("[JARVIS API] JARVIS Agent created using factory with shared vision analyzer")
                 except ImportError:
                     # Fallback to direct creation
                     logger.warning("[INIT ORDER] Factory not available, falling back to direct creation")
@@ -597,6 +597,7 @@ class JARVISVoiceAPI:
                     })
                     
                     # Process with JARVIS - FAST
+                    logger.info(f"[JARVIS WS] Processing command: {command_text}")
                     voice_command = VoiceCommand(
                         raw_text=command_text,
                         confidence=0.9,
@@ -614,6 +615,7 @@ class JARVISVoiceAPI:
                     
                     response = await response_task
                     context = await context_task
+                    logger.info(f"[JARVIS WS] Response: {response[:100]}...")
                     
                     # Send response immediately
                     await websocket.send_json({

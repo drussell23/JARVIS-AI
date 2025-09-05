@@ -318,10 +318,11 @@ class VideoStreamCapture:
     async def start_streaming(self) -> bool:
         """Start video stream capture"""
         logger.info("[VIDEO] start_streaming called")
+        logger.info(f"[VIDEO] Current state - is_capturing: {self.is_capturing}")
         
         if self.is_capturing:
             logger.warning("Video capture already running")
-            return False
+            return True  # Return True if already capturing instead of False
         
         try:
             # Check memory before starting

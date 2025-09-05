@@ -34,9 +34,9 @@ except ImportError:
 try:
     import pyautogui
     SCREENSHOT_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError) as e:
     SCREENSHOT_AVAILABLE = False
-    logger.warning("PyAutoGUI not installed. Install with: pip install pyautogui")
+    logger.warning(f"PyAutoGUI not available: {e}. Screenshot fallback disabled.")
 
 try:
     from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzer
@@ -320,11 +320,20 @@ You excel at understanding context and providing insightful, well-structured res
                 if any(word in text_lower for word in ['start', 'enable', 'activate', 'begin', 'turn on']):
                     logger.info("[MONITORING] Starting video streaming...")
                     logger.info(f"[MONITORING] Vision analyzer available: {self.vision_analyzer is not None}")
+                    logger.info(f"[MONITORING] Vision analyzer ID: {id(self.vision_analyzer) if self.vision_analyzer else None}")
+                    
+                    # Check video streaming module before starting
+                    if hasattr(self.vision_analyzer, 'get_video_streaming'):
+                        vs = await self.vision_analyzer.get_video_streaming()
+                        logger.info(f"[MONITORING] Video streaming module exists: {vs is not None}")
+                        if vs:
+                            logger.info(f"[MONITORING] Video streaming already capturing: {vs.is_capturing}")
                     
                     # Start video streaming
                     try:
                         logger.info(f"[MONITORING] Vision analyzer type: {type(self.vision_analyzer).__name__}")
                         logger.info(f"[MONITORING] Vision analyzer has start_video_streaming: {hasattr(self.vision_analyzer, 'start_video_streaming')}")
+                        logger.info(f"[MONITORING] Vision analyzer config: enable_video_streaming={self.vision_analyzer.config.enable_video_streaming}")
                         result = await self.vision_analyzer.start_video_streaming()
                         logger.info(f"[MONITORING] Video streaming result: {result}")
                         logger.info(f"[MONITORING] Result success: {result.get('success')}")

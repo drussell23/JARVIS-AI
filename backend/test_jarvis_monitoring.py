@@ -1,49 +1,36 @@
 #!/usr/bin/env python3
-"""
-Test JARVIS monitoring command with purple indicator
-"""
+"""Test JARVIS monitoring through the API"""
 
-import requests
+import asyncio
+import os
+import httpx
 import json
-import time
 
-def test_monitoring_command():
-    print("\n🟣 Testing JARVIS Monitoring Command")
-    print("=" * 60)
+async def test_jarvis_monitoring():
+    """Test JARVIS monitoring through the API"""
     
-    # Send monitoring command to JARVIS
-    url = "http://localhost:8000/chat"
-    
-    command = "start monitoring my screen"
-    
-    print(f"📤 Sending command: '{command}'")
-    
-    try:
-        response = requests.post(
-            url,
-            json={"message": command}
+    # First check JARVIS status
+    async with httpx.AsyncClient() as client:
+        print("🔍 Checking JARVIS status...")
+        response = await client.get("http://localhost:8000/voice/jarvis/status")
+        status = response.json()
+        print(f"✅ JARVIS Status: {json.dumps(status, indent=2)}")
+        
+        # Process monitoring command
+        print("\n🎙️ Sending monitoring command...")
+        response = await client.post(
+            "http://localhost:8000/voice/jarvis/command",
+            json={"text": "start monitoring my screen"}
         )
         
-        if response.status_code == 200:
-            result = response.json()
-            print(f"✅ Response received:")
-            print(f"   Message: {result.get('message', 'No message')}")
-            
-            # Check if it's the correct monitoring response
-            if "activated" in result.get('message', '').lower() and "purple" in result.get('message', '').lower():
-                print("\n🟣 SUCCESS! Purple indicator should be visible!")
-                print("⏳ Check your menu bar for the purple recording indicator")
-            else:
-                print("\n⚠️ Response doesn't mention purple indicator")
-                
+        result = response.json()
+        print(f"\n📨 Response: {json.dumps(result, indent=2)}")
+        
+        # Check if failed
+        if "Failed to start" in result.get('response', ''):
+            print("\n❌ Monitoring command failed!")
         else:
-            print(f"❌ Error: Status {response.status_code}")
-            print(f"   Response: {response.text}")
-            
-    except Exception as e:
-        print(f"❌ Error sending command: {e}")
-    
-    print("\n" + "=" * 60)
+            print("\n✅ Monitoring command successful!")
 
 if __name__ == "__main__":
-    test_monitoring_command()
+    asyncio.run(test_jarvis_monitoring())

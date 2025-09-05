@@ -12,9 +12,17 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Optional, Dict, Any
 
-# Configure logging early
-logging.basicConfig(level=logging.INFO)
+# Configure logging early with more detail
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
+
+# Enable debug logging for specific modules
+logging.getLogger("api.jarvis_voice_api").setLevel(logging.DEBUG)
+logging.getLogger("api.jarvis_factory").setLevel(logging.DEBUG)
+logging.getLogger("chatbots.claude_vision_chatbot").setLevel(logging.DEBUG)
 
 # Check if we're in optimized mode - default to True for faster startup
 OPTIMIZE_STARTUP = os.getenv('OPTIMIZE_STARTUP', 'true').lower() == 'true'
