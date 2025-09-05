@@ -13,7 +13,9 @@ try:
     import CoreMedia
     from Quartz import CoreVideo
     from Cocoa import NSObject, NSRunLoop, NSDefaultRunLoopMode, NSDate
+    from Foundation import NSThread, NSAutoreleasePool
     import objc
+    import libdispatch
     MACOS_AVAILABLE = True
 except ImportError:
     MACOS_AVAILABLE = False
@@ -107,8 +109,8 @@ class MacOSNativeCapture:
             self.capture_thread = threading.Thread(target=self._run_capture_loop, daemon=True)
             self.capture_thread.start()
             
-            # Wait a moment for the session to start
-            time.sleep(0.5)
+            # Wait a bit longer for the session to fully initialize
+            time.sleep(1.0)
             
             if self.is_running:
                 logger.info("[NATIVE] ✅ Capture started successfully - purple indicator should be visible!")
@@ -123,33 +125,53 @@ class MacOSNativeCapture:
             return False
     
     def _run_capture_loop(self):
-        """Run the capture session in a separate thread with run loop"""
+        """Run the capture session with proper run loop to maintain purple indicator"""
         try:
             logger.info("[NATIVE] Starting capture session...")
+            
+            # Create autorelease pool for this thread
+            pool = NSAutoreleasePool.alloc().init()
+            
+            # Start the capture session
             self.session.startRunning()
             self.is_running = True
             logger.info("[NATIVE] Session started, entering run loop...")
             
-            # Keep the run loop alive to maintain the session
+            # Get current run loop and add an input source to keep it alive
             run_loop = NSRunLoop.currentRunLoop()
-            loop_count = 0
             
+            # Create a port to keep the run loop active
+            from Foundation import NSPort
+            port = NSPort.port()
+            run_loop.addPort_forMode_(port, NSDefaultRunLoopMode)
+            
+            # Monitor loop iterations
+            loop_count = 0
+            last_check = time.time()
+            
+            # Run the run loop indefinitely until stopped
             while self.is_running:
-                # Check if session is still running
-                if not self.session.isRunning():
-                    logger.warning("[NATIVE] Session stopped unexpectedly, restarting...")
-                    self.session.startRunning()
+                # Check session status periodically
+                current_time = time.time()
+                if current_time - last_check > 5.0:  # Check every 5 seconds
+                    loop_count += 1
+                    is_running = self.session.isRunning() if self.session else False
+                    logger.info(f"[NATIVE] Status check #{loop_count}: Session running = {is_running}")
+                    
+                    if not is_running and self.is_running:
+                        logger.warning("[NATIVE] Session stopped unexpectedly, attempting restart...")
+                        self.session.startRunning()
+                    
+                    last_check = current_time
                 
-                loop_count += 1
-                if loop_count % 50 == 0:  # Log every 5 seconds (50 * 0.1)
-                    logger.info(f"[NATIVE] Run loop active, iteration {loop_count}, session running: {self.session.isRunning()}")
-                
-                # Process run loop events with longer timeout
-                run_loop.runMode_beforeDate_(NSDefaultRunLoopMode, NSDate.dateWithTimeIntervalSinceNow_(1.0))
-                
-                # Small delay to prevent CPU overload
-                time.sleep(0.1)
-                
+                # Run the run loop for a short interval
+                # This processes events and maintains the purple indicator
+                run_loop.runMode_beforeDate_(NSDefaultRunLoopMode, NSDate.dateWithTimeIntervalSinceNow_(0.1))
+            
+            # Clean up
+            run_loop.removePort_forMode_(port, NSDefaultRunLoopMode)
+            pool.drain()
+            
         except Exception as e:
             logger.error(f"[NATIVE] Error in capture loop: {e}", exc_info=True)
         finally:

@@ -666,12 +666,14 @@ const JarvisVoice = () => {
 
             case 'no-speech':
               // Silently restart for no-speech
+              console.log('No speech detected, checking continuous listening state...');
               if (continuousListening && isListening) {
+                console.log('Restarting speech recognition for continuous listening...');
                 setTimeout(() => {
                   try {
                     recognitionRef.current.start();
                   } catch (e) {
-                    console.log('Restarting recognition...');
+                    console.log('Restarting recognition after no-speech error');
                   }
                 }, 100);
               }
@@ -693,15 +695,31 @@ const JarvisVoice = () => {
       };
 
       recognitionRef.current.onend = () => {
+        console.log('Speech recognition ended');
         // Restart if continuous listening is enabled
-        if (continuousListening) {
+        if (continuousListening && isListening) {
+          console.log('Restarting continuous listening...');
           setTimeout(() => {
             try {
               recognitionRef.current.start();
+              console.log('Successfully restarted speech recognition');
             } catch (e) {
               console.log('Recognition restart failed:', e);
+              // Try again after a short delay
+              if (continuousListening && isListening) {
+                setTimeout(() => {
+                  try {
+                    recognitionRef.current.start();
+                  } catch (e2) {
+                    console.log('Second restart attempt failed:', e2);
+                  }
+                }, 1000);
+              }
             }
           }, 100);
+        } else {
+          setIsListening(false);
+          setIsWaitingForCommand(false);
         }
       };
     } else {
@@ -856,6 +874,7 @@ const JarvisVoice = () => {
   const enableContinuousListening = () => {
     if (recognitionRef.current) {
       setContinuousListening(true);
+      setIsListening(true);
       try {
         recognitionRef.current.start();
         console.log('Continuous listening enabled - say "Hey JARVIS"');
@@ -867,6 +886,8 @@ const JarvisVoice = () => {
 
   const disableContinuousListening = () => {
     setContinuousListening(false);
+    setIsListening(false);
+    setIsWaitingForCommand(false);
     if (recognitionRef.current) {
       recognitionRef.current.stop();
     }
@@ -1138,8 +1159,9 @@ const JarvisVoice = () => {
             <button
               onClick={continuousListening ? disableContinuousListening : enableContinuousListening}
               className={`jarvis-button ${continuousListening ? 'continuous-active' : 'start'}`}
+              title={continuousListening ? 'Click to stop microphone' : 'Click to keep microphone on'}
             >
-              {continuousListening ? 'Stop Listening' : 'Start Listening'}
+              {continuousListening ? '🔴 Stop Listening' : '🎤 Start Listening'}
             </button>
 
             <button

@@ -332,36 +332,64 @@ class VideoStreamCapture:
             logger.info(f"[VIDEO] Memory check passed")
             
             # Initialize capture implementation
-            # Try simple purple indicator first
+            # Try direct Swift capture first (most reliable for purple indicator)
             swift_capture_started = False
             try:
-                from .simple_purple_indicator import start_purple_indicator
+                from .direct_swift_capture import start_direct_swift_capture
                 
-                logger.info("🟣 Starting purple indicator...")
-                success = await start_purple_indicator()
+                logger.info("🟣 Starting direct Swift capture for purple indicator...")
+                success = await start_direct_swift_capture()
                 
                 if success:
-                    logger.info("✅ Purple indicator active!")
-                    self.capture_method = 'purple_indicator'
+                    logger.info("✅ Direct Swift capture active - purple indicator visible!")
+                    self.capture_method = 'direct_swift'
                     swift_capture_started = True
                     
                     # Start processing thread for frame analysis using screenshots
                     self.capture_thread = threading.Thread(
-                        target=self._screenshot_capture_loop,
+                        target=self._direct_swift_capture_loop,
                         daemon=True
                     )
                     self.capture_thread.start()
                     
                 else:
-                    logger.warning("Purple indicator failed, trying other methods...")
+                    logger.warning("Direct Swift capture failed, trying other methods...")
                     
             except ImportError as e:
-                logger.warning(f"Purple indicator module not available: {e}")
+                logger.warning(f"Direct Swift capture module not available: {e}")
             except Exception as e:
-                logger.warning(f"Purple indicator error: {e}")
+                logger.warning(f"Direct Swift capture error: {e}")
                 
             if not swift_capture_started:
                 
+                # Try simple purple indicator as second option
+                try:
+                    from .simple_purple_indicator import start_purple_indicator
+                    
+                    logger.info("🟣 Trying simple purple indicator...")
+                    success = await start_purple_indicator()
+                    
+                    if success:
+                        logger.info("✅ Purple indicator active!")
+                        self.capture_method = 'purple_indicator'
+                        swift_capture_started = True
+                        
+                        # Start processing thread for frame analysis using screenshots
+                        self.capture_thread = threading.Thread(
+                            target=self._screenshot_capture_loop,
+                            daemon=True
+                        )
+                        self.capture_thread.start()
+                        
+                    else:
+                        logger.warning("Purple indicator failed, trying other methods...")
+                        
+                except ImportError as e:
+                    logger.warning(f"Purple indicator module not available: {e}")
+                except Exception as e:
+                    logger.warning(f"Purple indicator error: {e}")
+                    
+            if not swift_capture_started:
                 # Try other methods as fallback
                 if MACOS_CAPTURE_AVAILABLE:
                     logger.info("Trying native macOS capture...")
