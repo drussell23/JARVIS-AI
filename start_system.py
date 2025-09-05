@@ -1163,7 +1163,7 @@ class AsyncSystemManager:
                 pass
         self.open_files.clear()
 
-        # Terminate all processes gracefully
+        # First try graceful termination
         tasks = []
         for proc in self.processes:
             if proc and proc.returncode is None:
@@ -1180,9 +1180,10 @@ class AsyncSystemManager:
             # Wait for processes to terminate with a timeout
             try:
                 await asyncio.wait_for(
-                    asyncio.gather(*tasks, return_exceptions=True), timeout=5.0
+                    asyncio.gather(*tasks, return_exceptions=True), timeout=3.0
                 )
             except asyncio.TimeoutError:
+                print(f"{Colors.YELLOW}Some processes not responding, force killing...{Colors.ENDC}")
                 # Force kill any remaining processes
                 for proc in self.processes:
                     if proc and proc.returncode is None:
@@ -1191,7 +1192,52 @@ class AsyncSystemManager:
                         except ProcessLookupError:
                             pass
 
+        # Double-check by killing processes on known ports
+        print(f"{Colors.BLUE}Cleaning up port processes...{Colors.ENDC}")
+        cleanup_tasks = []
+        for service_name, port in self.ports.items():
+            cleanup_tasks.append(self.kill_process_on_port(port))
+        
+        if cleanup_tasks:
+            await asyncio.gather(*cleanup_tasks, return_exceptions=True)
+        
+        # Clean up any lingering Node.js processes
+        try:
+            # Kill npm processes
+            npm_kill = await asyncio.create_subprocess_shell(
+                "pkill -f 'npm.*start' || true",
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await npm_kill.wait()
+            
+            # Kill node processes running our apps
+            node_kill = await asyncio.create_subprocess_shell(
+                "pkill -f 'node.*websocket|node.*3000' || true",
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await node_kill.wait()
+            
+            # Kill python processes running our backend
+            python_kill = await asyncio.create_subprocess_shell(
+                "pkill -f 'python.*main.py|python.*jarvis' || true",
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await python_kill.wait()
+            
+        except Exception:
+            pass  # Ignore errors in cleanup
+        
+        # Give a moment for processes to die
+        await asyncio.sleep(0.5)
+        
         print(f"{Colors.GREEN}✓ All services stopped{Colors.ENDC}")
+        
+        # Flush output to ensure all messages are printed
+        sys.stdout.flush()
+        sys.stderr.flush()
 
     async def start_websocket_router(self) -> Optional[asyncio.subprocess.Process]:
         """Start TypeScript WebSocket Router"""
@@ -1406,10 +1452,16 @@ class AsyncSystemManager:
         try:
             await self.monitor_services()
         except KeyboardInterrupt:
-            pass
+            print(f"\n{Colors.YELLOW}Interrupt received, shutting down gracefully...{Colors.ENDC}")
+        except Exception as e:
+            print(f"\n{Colors.FAIL}Monitor error: {e}{Colors.ENDC}")
 
         # Cleanup
         await self.cleanup()
+        
+        # Ensure clean exit
+        print(f"\n{Colors.BLUE}Goodbye! 👋{Colors.ENDC}\n")
+        
         return True
 
 
@@ -1492,11 +1544,16 @@ async def main():
 if __name__ == "__main__":
     try:
         exit_code = asyncio.run(main())
-        sys.exit(exit_code)
+        sys.exit(exit_code if exit_code else 0)
     except KeyboardInterrupt:
         # Don't print anything extra - cleanup() already handles the shutdown message
+        print("\r", end="")  # Clear the ^C from the terminal
         sys.exit(0)
     except Exception as e:
         print(f"\n{Colors.FAIL}Fatal error: {e}{Colors.ENDC}")
         logger.exception("Fatal error during startup")
         sys.exit(1)
+    finally:
+        # Ensure terminal is restored
+        sys.stdout.flush()
+        sys.stderr.flush()

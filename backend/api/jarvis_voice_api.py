@@ -137,24 +137,24 @@ class JARVISVoiceAPI:
     def _register_routes(self):
         """Register JARVIS-specific routes"""
         # Status and control
-        self.router.add_api_route("/jarvis/status", self.get_status, methods=["GET"])
-        self.router.add_api_route("/jarvis/activate", self.activate, methods=["POST"])
-        self.router.add_api_route("/jarvis/deactivate", self.deactivate, methods=["POST"])
+        self.router.add_api_route("/status", self.get_status, methods=["GET"])
+        self.router.add_api_route("/activate", self.activate, methods=["POST"])
+        self.router.add_api_route("/deactivate", self.deactivate, methods=["POST"])
         
         # Command processing
-        self.router.add_api_route("/jarvis/command", self.process_command, methods=["POST"])
-        self.router.add_api_route("/jarvis/speak", self.speak, methods=["POST"])
+        self.router.add_api_route("/command", self.process_command, methods=["POST"])
+        self.router.add_api_route("/speak", self.speak, methods=["POST"])
         
         # Configuration
-        self.router.add_api_route("/jarvis/config", self.get_config, methods=["GET"])
-        self.router.add_api_route("/jarvis/config", self.update_config, methods=["POST"])
+        self.router.add_api_route("/config", self.get_config, methods=["GET"])
+        self.router.add_api_route("/config", self.update_config, methods=["POST"])
         
         # Personality
-        self.router.add_api_route("/jarvis/personality", self.get_personality, methods=["GET"])
+        self.router.add_api_route("/personality", self.get_personality, methods=["GET"])
         
         # WebSocket for real-time interaction
         # Note: WebSocket routes must be added using the decorator pattern in FastAPI
-        @self.router.websocket("/jarvis/stream")
+        @self.router.websocket("/stream")
         async def websocket_endpoint(websocket: WebSocket):
             await self.jarvis_stream(websocket)
         
@@ -304,6 +304,21 @@ class JARVISVoiceAPI:
     @graceful_endpoint
     async def process_command(self, command: JARVISCommand) -> Dict:
         """Process a JARVIS command"""
+        # First check if this is a vision command
+        try:
+            from .vision_command_handler import vision_command_handler
+            vision_result = await vision_command_handler.handle_command(command.text)
+            if vision_result.get('handled'):
+                return {
+                    "response": vision_result['response'],
+                    "status": "success",
+                    "confidence": 1.0,
+                    "command_type": "vision",
+                    "monitoring_active": vision_result.get('monitoring_active')
+                }
+        except Exception as e:
+            logger.warning(f"Vision command handler error: {e}")
+        
         if not self.jarvis_available:
             # Return fallback response to prevent 503
             return {
@@ -573,6 +588,22 @@ class JARVISVoiceAPI:
                                 "timestamp": datetime.now().isoformat()
                             })
                             continue
+                    
+                    # Check for vision commands first
+                    try:
+                        from .vision_command_handler import vision_command_handler
+                        vision_result = await vision_command_handler.handle_command(command_text)
+                        if vision_result.get('handled'):
+                            await websocket.send_json({
+                                "type": "response",
+                                "text": vision_result['response'],
+                                "command_type": "vision",
+                                "monitoring_active": vision_result.get('monitoring_active'),
+                                "timestamp": datetime.now().isoformat()
+                            })
+                            continue
+                    except Exception as e:
+                        logger.warning(f"Vision command check error: {e}")
                     
                     # Ensure JARVIS is active for WebSocket commands
                     if not self.jarvis.running:

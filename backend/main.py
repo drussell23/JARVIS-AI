@@ -360,6 +360,13 @@ async def lifespan(app: FastAPI):
     if hasattr(app.state, 'memory_manager'):
         await app.state.memory_manager.stop_monitoring()
 
+# Apply vision monitoring fix
+try:
+    import api.direct_vision_fix
+    logger.info("Vision monitoring fix applied")
+except Exception as e:
+    logger.warning(f"Could not apply vision fix: {e}")
+
 # Create FastAPI app
 logger.info("Creating optimized FastAPI app...")
 app = FastAPI(
@@ -434,6 +441,14 @@ def mount_routers():
         logger.info("✅ Vision WebSocket API mounted")
     except ImportError as e:
         logger.warning(f"Could not import vision WebSocket router: {e}")
+    
+    # ML Audio API
+    try:
+        from api.ml_audio_api import router as ml_audio_router
+        app.include_router(ml_audio_router, tags=["ML Audio"])
+        logger.info("✅ ML Audio API mounted")
+    except ImportError as e:
+        logger.warning(f"Could not import ML Audio router: {e}")
 
 # Note: Startup tasks are now handled in the lifespan handler above
 

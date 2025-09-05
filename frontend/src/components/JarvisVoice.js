@@ -30,7 +30,7 @@ class VisionConnection {
       console.log('🔌 Connecting to Vision WebSocket...');
 
       // Use main backend port for vision WebSocket
-      const wsUrl = `ws://localhost:8000/vision/ws/vision`;
+      const wsUrl = `ws://localhost:8010/vision/ws`;
       this.socket = new WebSocket(wsUrl);
 
       this.socket.onopen = () => {
@@ -420,7 +420,14 @@ const JarvisVoice = () => {
       const response = await fetch(`${API_URL}/voice/jarvis/status`);
       const data = await response.json();
       console.log('JARVIS status check result:', data);
-      setJarvisStatus(data.status);
+      
+      // Map backend status to frontend status
+      const status = data.status || 'offline';
+      if (status === 'standby') {
+        setJarvisStatus('online'); // Show as online when in standby
+      } else {
+        setJarvisStatus(status);
+      }
 
       // Connect WebSocket if JARVIS is available (including standby and active)
       if (data.status === 'online' || data.status === 'standby' || data.status === 'active') {
@@ -1130,8 +1137,8 @@ const JarvisVoice = () => {
       </div>
 
       <div className="jarvis-status">
-        <div className={`status-indicator ${jarvisStatus}`}></div>
-        <span>JARVIS {jarvisStatus === 'active' ? 'READY' : jarvisStatus.toUpperCase()}</span>
+        <div className={`status-indicator ${jarvisStatus || 'offline'}`}></div>
+        <span>JARVIS {jarvisStatus === 'active' ? 'READY' : (jarvisStatus || 'offline').toUpperCase()}</span>
         {micStatus === 'error' && (
           <span className="mic-status error">
             <span className="error-dot"></span> MIC ERROR
