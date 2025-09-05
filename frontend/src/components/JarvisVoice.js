@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import './JarvisVoice.css';
 import '../styles/JarvisVoiceError.css';
 import MicrophonePermissionHelper from './MicrophonePermissionHelper';
+import MicrophoneIndicator from './MicrophoneIndicator';
 import mlAudioHandler from '../utils/MLAudioHandler'; // ML-enhanced audio handling
 
 // VisionConnection class for real-time workspace monitoring
@@ -875,9 +876,22 @@ const JarvisVoice = () => {
     if (recognitionRef.current) {
       setContinuousListening(true);
       setIsListening(true);
+      
+      // Configure for continuous listening
+      recognitionRef.current.continuous = true;
+      recognitionRef.current.interimResults = true;
+      
       try {
         recognitionRef.current.start();
-        console.log('Continuous listening enabled - say "Hey JARVIS"');
+        console.log('Continuous listening enabled - microphone will stay on');
+        
+        // Inform user that mic is active
+        if ('Notification' in window && Notification.permission === 'granted') {
+          new Notification('JARVIS is listening', {
+            body: 'Microphone is active. Click the button to stop.',
+            icon: '/favicon.ico'
+          });
+        }
       } catch (e) {
         console.log('Recognition already started');
       }
@@ -1070,6 +1084,9 @@ const JarvisVoice = () => {
 
   return (
     <div className="jarvis-voice-container">
+      {/* Orange microphone indicator when listening */}
+      <MicrophoneIndicator isListening={isListening && continuousListening} />
+      
       {microphonePermission !== 'granted' && (
         <MicrophonePermissionHelper
           onPermissionGranted={() => {
@@ -1159,9 +1176,9 @@ const JarvisVoice = () => {
             <button
               onClick={continuousListening ? disableContinuousListening : enableContinuousListening}
               className={`jarvis-button ${continuousListening ? 'continuous-active' : 'start'}`}
-              title={continuousListening ? 'Click to stop microphone' : 'Click to keep microphone on'}
+              title={continuousListening ? 'Click to turn off microphone' : 'Click to turn on microphone (stays on)'}
             >
-              {continuousListening ? '🔴 Stop Listening' : '🎤 Start Listening'}
+              {continuousListening ? '🔴 Turn Off Microphone' : '🎤 Turn On Microphone'}
             </button>
 
             <button
