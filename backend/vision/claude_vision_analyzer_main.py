@@ -19,6 +19,7 @@ import time
 import gc
 import os
 import re
+import subprocess
 from typing import Dict, List, Optional, Any, Tuple, Union, Set, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -2150,9 +2151,22 @@ Focus on what's visible in this specific region. Be concise but thorough."""
                 'metrics': video_streaming.get_metrics()
             }
         else:
+            # Try to get more specific error information
+            error_msg = 'Failed to start video streaming'
+            try:
+                # Check if there are existing Swift processes blocking
+                existing_pids = subprocess.check_output(
+                    ["pgrep", "-f", "(persistent_capture|infinite_purple_capture).swift"],
+                    text=True
+                ).strip()
+                if existing_pids:
+                    error_msg = 'Failed to start video streaming - existing capture process detected. Please try again.'
+            except:
+                pass
+                
             return {
                 'success': False,
-                'error': 'Failed to start video streaming'
+                'error': error_msg
             }
     
     async def stop_video_streaming(self) -> Dict[str, Any]:

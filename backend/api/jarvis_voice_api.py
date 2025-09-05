@@ -102,27 +102,36 @@ class JARVISVoiceAPI:
     @property
     def jarvis(self):
         """Get JARVIS instance, initializing if needed"""
+        logger.debug(f"[INIT ORDER] JARVIS property getter called - initialized: {self._jarvis_initialized}, available: {self.jarvis_available}")
+        
         if not self._jarvis_initialized and self.jarvis_available:
             try:
                 # Try to use factory for proper dependency injection
                 try:
-                    from api.jarvis_factory import create_jarvis_agent
+                    from api.jarvis_factory import create_jarvis_agent, get_vision_analyzer
+                    
+                    # Check if vision analyzer is available before creating JARVIS
+                    vision_analyzer = get_vision_analyzer()
+                    logger.info(f"[INIT ORDER] Vision analyzer available during JARVIS creation: {vision_analyzer is not None}")
+                    
                     self._jarvis = create_jarvis_agent()
                     logger.info("JARVIS Agent created using factory with shared vision analyzer")
                 except ImportError:
                     # Fallback to direct creation
+                    logger.warning("[INIT ORDER] Factory not available, falling back to direct creation")
                     self._jarvis = JARVISAgentVoice()
                     logger.info("JARVIS Agent created directly (no shared vision analyzer)")
                 
                 self.system_control_enabled = self._jarvis.system_control_enabled if self._jarvis else False
                 logger.info("JARVIS Agent Voice System initialized with system control")
             except Exception as e:
-                logger.error(f"Failed to initialize JARVIS Agent: {e}")
+                logger.error(f"[INIT ORDER] Failed to initialize JARVIS Agent: {e}")
                 self._jarvis = None
                 self.system_control_enabled = False
             finally:
                 self._jarvis_initialized = True
         
+        logger.debug(f"[INIT ORDER] Returning JARVIS instance: {self._jarvis is not None}")
         return self._jarvis
         
     def _register_routes(self):
@@ -151,6 +160,8 @@ class JARVISVoiceAPI:
         
     async def get_status(self) -> Dict:
         """Get JARVIS system status"""
+        logger.debug("[INIT ORDER] get_status called")
+        
         if not self.jarvis_available:
             return {
                 "status": "offline",
@@ -167,34 +178,64 @@ class JARVISVoiceAPI:
             "humor_and_wit"
         ]
         
-        if self.system_control_enabled:
+        # Check if JARVIS is already initialized before accessing properties
+        jarvis_instance = self._jarvis if self._jarvis_initialized else None
+        
+        if hasattr(self, 'system_control_enabled') and self.system_control_enabled:
             features.extend([
                 "system_control",
-                "app_management",
+                "app_management", 
                 "file_operations",
                 "web_integration",
                 "workflow_automation"
             ])
         
-        return {
-            "status": "online" if self.jarvis.running else "standby",
-            "message": "JARVIS Agent at your service" if self.jarvis.running else "JARVIS in standby mode",
-            "user_name": self.jarvis.user_name,
-            "features": features,
-            "wake_words": {
-                "primary": self.jarvis.wake_words,
-                "variations": getattr(self.jarvis, 'wake_word_variations', []),
-                "urgent": getattr(self.jarvis, 'urgent_wake_words', [])
-            },
-            "voice_engine": {
-                "calibrated": hasattr(self.jarvis, 'voice_engine'),
-                "listening": self.jarvis.running
-            },
-            "system_control": {
-                "enabled": self.system_control_enabled,
-                "mode": getattr(self.jarvis, 'command_mode', 'conversation')
+        # Only initialize JARVIS if we actually need its properties for the response
+        if jarvis_instance:
+            running = jarvis_instance.running if hasattr(jarvis_instance, 'running') else False
+            user_name = jarvis_instance.user_name if hasattr(jarvis_instance, 'user_name') else "Sir"
+            wake_words = jarvis_instance.wake_words if hasattr(jarvis_instance, 'wake_words') else ["hey jarvis", "jarvis"]
+            
+            return {
+                "status": "online" if running else "standby",
+                "message": "JARVIS Agent at your service" if running else "JARVIS in standby mode",
+                "user_name": user_name,
+                "features": features,
+                "wake_words": {
+                    "primary": wake_words,
+                    "variations": getattr(jarvis_instance, 'wake_word_variations', []),
+                    "urgent": getattr(jarvis_instance, 'urgent_wake_words', [])
+                },
+                "voice_engine": {
+                    "calibrated": hasattr(jarvis_instance, 'voice_engine'),
+                    "listening": running
+                },
+                "system_control": {
+                    "enabled": getattr(self, 'system_control_enabled', False),
+                    "mode": getattr(jarvis_instance, 'command_mode', 'conversation')
+                }
             }
-        }
+        else:
+            # Return status without triggering JARVIS initialization
+            return {
+                "status": "standby",
+                "message": "JARVIS ready to initialize on first command",
+                "user_name": "Sir",
+                "features": features,
+                "wake_words": {
+                    "primary": ["hey jarvis", "jarvis"],
+                    "variations": [],
+                    "urgent": []
+                },
+                "voice_engine": {
+                    "calibrated": False,
+                    "listening": False
+                },
+                "system_control": {
+                    "enabled": getattr(self, 'system_control_enabled', False),
+                    "mode": "conversation"
+                }
+            }
         
     async def activate(self) -> Dict:
         """Activate JARVIS voice system"""
@@ -343,6 +384,8 @@ class JARVISVoiceAPI:
             
     async def get_config(self) -> Dict:
         """Get JARVIS configuration"""
+        logger.debug("[INIT ORDER] get_config called")
+        
         if not self.jarvis_available:
             # Return default config to prevent 503
             return {
@@ -351,13 +394,25 @@ class JARVISVoiceAPI:
                 "context_history_size": 0,
                 "special_commands": []
             }
-            
-        return {
-            "preferences": self.jarvis.personality.user_preferences,
-            "wake_words": self.jarvis.wake_words,
-            "context_history_size": len(self.jarvis.personality.context),
-            "special_commands": list(self.jarvis.special_commands.keys())
-        }
+        
+        # Only initialize JARVIS if it's already been created
+        jarvis_instance = self._jarvis if self._jarvis_initialized else None
+        
+        if jarvis_instance:
+            return {
+                "preferences": getattr(jarvis_instance.personality, 'user_preferences', {"name": "Sir"}) if hasattr(jarvis_instance, 'personality') else {"name": "Sir"},
+                "wake_words": getattr(jarvis_instance, 'wake_words', ["hey jarvis", "jarvis"]),
+                "context_history_size": len(getattr(jarvis_instance.personality, 'context', [])) if hasattr(jarvis_instance, 'personality') else 0,
+                "special_commands": list(getattr(jarvis_instance, 'special_commands', {}).keys())
+            }
+        else:
+            # Return default config without initializing JARVIS
+            return {
+                "preferences": {"name": "Sir"},
+                "wake_words": {"primary": ["hey jarvis", "jarvis"], "secondary": []},
+                "context_history_size": 0,
+                "special_commands": []
+            }
         
     async def update_config(self, config: JARVISConfig) -> Dict:
         """Update JARVIS configuration"""
@@ -395,6 +450,8 @@ class JARVISVoiceAPI:
         
     async def get_personality(self) -> Dict:
         """Get JARVIS personality information"""
+        logger.debug("[INIT ORDER] get_personality called")
+        
         if not self.jarvis_available:
             # Return default personality to prevent 503
             return {
@@ -403,8 +460,11 @@ class JARVISVoiceAPI:
                 "personality_type": "JARVIS",
                 "capabilities": ["conversation", "assistance"]
             }
-            
-        return {
+        
+        # Only initialize JARVIS if it's already been created
+        jarvis_instance = self._jarvis if self._jarvis_initialized else None
+        
+        base_personality = {
             "personality_traits": [
                 "Professional yet personable",
                 "British accent and sophisticated vocabulary",
@@ -419,10 +479,23 @@ class JARVISVoiceAPI:
                 "Sir, your heart rate suggests you haven't taken a break in 3 hours.",
                 "I've taken the liberty of ordering your usual coffee, sir.",
                 "Might I suggest the Mark 42? It's a personal favorite."
-            ],
-            "current_context": self.jarvis.personality._get_context_info(),
-            "humor_level": self.jarvis.personality.user_preferences['humor_level']
+            ]
         }
+        
+        if jarvis_instance and hasattr(jarvis_instance, 'personality'):
+            personality = jarvis_instance.personality
+            base_personality.update({
+                "current_context": getattr(personality, '_get_context_info', lambda: {})() if hasattr(personality, '_get_context_info') else {},
+                "humor_level": getattr(personality, 'user_preferences', {}).get('humor_level', 'moderate')
+            })
+        else:
+            # Return default without initializing JARVIS
+            base_personality.update({
+                "current_context": {},
+                "humor_level": "moderate"
+            })
+        
+        return base_personality
         
     async def jarvis_stream(self, websocket: WebSocket):
         """WebSocket endpoint for real-time JARVIS interaction"""
@@ -608,3 +681,7 @@ class JARVISVoiceAPI:
                 "type": "error",
                 "message": str(e)
             })
+
+# Create and export the router instance
+jarvis_api = JARVISVoiceAPI()
+router = jarvis_api.router

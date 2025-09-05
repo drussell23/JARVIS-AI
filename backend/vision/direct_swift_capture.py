@@ -6,6 +6,7 @@ This bypasses all the complex bridging and runs Swift directly
 
 import subprocess
 import os
+import signal
 import logging
 import asyncio
 from pathlib import Path
@@ -28,6 +29,30 @@ class DirectSwiftCapture:
             return True
             
         logger.info("[DIRECT] Starting Swift capture for purple indicator...")
+        
+        # Kill any existing Swift capture processes first
+        try:
+            # Check for any Swift capture processes
+            existing_pids = subprocess.check_output(
+                ["pgrep", "-f", "(persistent_capture|infinite_purple_capture).swift"],
+                text=True
+            ).strip().split('\n')
+            
+            for pid in existing_pids:
+                if pid:
+                    logger.info(f"[DIRECT] Found existing Swift capture process: {pid}, terminating...")
+                    try:
+                        os.kill(int(pid), signal.SIGTERM)
+                    except:
+                        pass
+            
+            # Give processes time to terminate
+            await asyncio.sleep(0.5)
+        except subprocess.CalledProcessError:
+            # No existing processes
+            pass
+        except Exception as e:
+            logger.warning(f"[DIRECT] Error checking for existing processes: {e}")
         
         try:
             # Run the Swift script with --start flag
