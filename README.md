@@ -1,7 +1,7 @@
-# 🤖 JARVIS AI System v12.9 - Swift Video Capture 🎥
+# 🤖 JARVIS AI System v12.9.1 - Audio Fixed & Vision Roadmap 🎥
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-12.9%20Swift%20Video-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Version-12.9.1%20Audio%20Fixed-brightgreen" alt="Version">
   <img src="https://img.shields.io/badge/Wake%20Word-10ms%20⚡-ff69b4" alt="Ultra Fast Wake Word">
   <img src="https://img.shields.io/badge/Memory-350MB%20Voice-success" alt="Low Memory Voice">
   <img src="https://img.shields.io/badge/CPU-1--2%25%20Usage-blue" alt="Low CPU">
@@ -12,6 +12,7 @@
   <img src="https://img.shields.io/badge/Config-70%2B%20Env%20Vars-yellow" alt="Fully Configurable">
   <img src="https://img.shields.io/badge/Works-First%20Time%20🎯-purple" alt="Reliable">
   <img src="https://img.shields.io/badge/Toronto%20Weather-Fixed%20✅-brightgreen" alt="Weather Fixed">
+  <img src="https://img.shields.io/badge/Audio%20Playback-Fixed%20🔊-success" alt="Audio Fixed">
 </p>
 
 <p align="center">
@@ -67,6 +68,100 @@
 - **Circuit Breaker:** Failing components auto-disable
 - **Emergency Cleanup:** Automatic when memory < 1GB
 - **Compression Strategies:** Choose based on use case
+
+## 🚨 Recent Fixes & Current Status (v12.9.1)
+
+### ✅ What's Working
+1. **Audio Playback Fixed** 
+   - Issue: Frontend expected JSON but received audio data
+   - Solution: Updated frontend to handle audio blobs directly
+   - Backend now generates MP3 audio using macOS `say` command with British voice
+   - Both GET and POST endpoints work correctly
+   
+2. **Vision System Operational**
+   - Screen monitoring with "start/stop monitoring my screen" commands
+   - Swift video capture with purple recording indicator
+   - Real-time WebSocket streaming to frontend
+   - Motion detection and sliding window analysis
+
+3. **Voice Commands Active**
+   - "Hey JARVIS" wake word detection
+   - Natural conversation processing
+   - Context-aware responses
+   - System control commands
+
+### ⚠️ Known Limitations
+1. **Audio Generation**
+   - Currently uses macOS `say` command (requires macOS)
+   - Limited to system voices (using Daniel - British voice)
+   - No cross-platform TTS solution yet
+
+2. **Vision Processing**
+   - Single monitor support only
+   - Fixed sliding window size (640x480)
+   - No multi-window tracking yet
+   - Limited to 30 FPS capture rate
+
+## 🎯 Vision System Enhancement Roadmap
+
+### Phase 1: Core Improvements (v12.10)
+- [ ] **Multi-Monitor Support**
+  - Detect all connected displays
+  - Allow monitor selection via voice command
+  - Track windows across displays
+  
+- [ ] **Dynamic Window Sizing**
+  - Adaptive sliding window based on content
+  - Zoom in/out on areas of interest
+  - Follow mouse cursor option
+
+- [ ] **Enhanced Object Detection**
+  - UI element recognition (buttons, text fields)
+  - Application identification
+  - Text extraction from screen regions
+
+### Phase 2: Intelligence Layer (v12.11)
+- [ ] **Activity Recognition**
+  - Understand user workflows
+  - Detect repetitive tasks for automation
+  - Context-aware suggestions
+  
+- [ ] **Visual Memory System**
+  - Remember screen layouts
+  - Track changes over time
+  - Visual diff detection
+
+- [ ] **Smart Focus Management**
+  - Auto-focus on active applications
+  - Ignore static regions
+  - Priority-based monitoring
+
+### Phase 3: Advanced Features (v13.0)
+- [ ] **Cross-Platform TTS**
+  - Implement edge-tts integration
+  - Multiple voice options
+  - Emotion-based voice modulation
+  
+- [ ] **Vision-Language Integration**
+  - Natural language screen queries ("What's in my terminal?")
+  - Visual question answering
+  - Screen-based task automation
+
+- [ ] **Performance Optimizations**
+  - GPU-accelerated processing
+  - Reduce memory footprint to 500MB
+  - 60 FPS capture capability
+
+### Phase 4: Autonomous Capabilities (v13.1)
+- [ ] **Proactive Monitoring**
+  - Detect anomalies automatically
+  - Alert on important changes
+  - Learn user preferences
+
+- [ ] **Visual Automation**
+  - Record and replay UI interactions
+  - Create visual macros
+  - Cross-application workflows
 
 ## 🎠 Backend Architecture - 6 Critical Components
 
