@@ -450,6 +450,14 @@ def mount_routers():
         logger.info("✅ ML Audio API mounted")
     except ImportError as e:
         logger.warning(f"Could not import ML Audio router: {e}")
+    
+    # Network Recovery API
+    try:
+        from api.network_recovery_api import router as network_recovery_router
+        app.include_router(network_recovery_router, tags=["Network Recovery"])
+        logger.info("✅ Network Recovery API mounted")
+    except ImportError as e:
+        logger.warning(f"Could not import Network Recovery router: {e}")
 
 # Note: Startup tasks are now handled in the lifespan handler above
 

@@ -200,8 +200,34 @@ class MLAudioHandler {
                 }
                 
             case 'network':
-                // Network error, try to reconnect
-                return { success: false, message: 'Network error - check connection' };
+                // Network error - implement retry logic
+                console.log('Handling network error with retry strategy');
+                
+                // Stop current recognition
+                try {
+                    recognition.stop();
+                } catch (e) {
+                    console.log('Recognition already stopped');
+                }
+                
+                // Wait a bit then restart
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                try {
+                    recognition.start();
+                    return { 
+                        success: true, 
+                        message: 'Network error recovered - recognition restarted',
+                        strategy: 'network_retry'
+                    };
+                } catch (e) {
+                    console.error('Failed to restart after network error:', e);
+                    return { 
+                        success: false, 
+                        message: 'Network error - unable to restart recognition',
+                        needsManualRestart: true
+                    };
+                }
                 
             default:
                 // Unknown error

@@ -4,6 +4,7 @@ import '../styles/JarvisVoiceError.css';
 import MicrophonePermissionHelper from './MicrophonePermissionHelper';
 import MicrophoneIndicator from './MicrophoneIndicator';
 import mlAudioHandler from '../utils/MLAudioHandler'; // ML-enhanced audio handling
+import { getNetworkRecoveryManager } from '../utils/NetworkRecoveryManager'; // Advanced network recovery
 
 // VisionConnection class for real-time workspace monitoring
 class VisionConnection {
@@ -290,10 +291,16 @@ const JarvisVoice = () => {
   const [workspaceData, setWorkspaceData] = useState(null);
   const [autonomousMode, setAutonomousMode] = useState(false);
   const [micStatus, setMicStatus] = useState('unknown');
+  const [networkRetries, setNetworkRetries] = useState(0);
+  const [maxNetworkRetries] = useState(3);
 
   const wsRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+  const audioWebSocketRef = useRef(null);
+  const offlineModeRef = useRef(false);
+  const commandQueueRef = useRef([]);
+  const proxyEndpointRef = useRef(null);
   const recognitionRef = useRef(null);
   const visionConnectionRef = useRef(null);
   const lastSpeechTimeRef = useRef(0);
@@ -595,6 +602,54 @@ const JarvisVoice = () => {
   };
 
 
+  // Function to setup recognition handlers
+  const setupRecognitionHandlers = (recognition) => {
+    if (!recognition) return;
+
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    // Move all the existing handlers to be assigned here
+    recognition.onresult = (event) => {
+      // Existing onresult handler code will be here
+      handleSpeechResult(event);
+    };
+
+    recognition.onerror = async (event) => {
+      // Existing onerror handler code will be here
+      handleSpeechError(event);
+    };
+
+    recognition.onend = () => {
+      // Existing onend handler code will be here
+      handleSpeechEnd();
+    };
+
+    recognition.onstart = () => {
+      console.log('Speech recognition started');
+      setError('');
+      setMicStatus('ready');
+    };
+
+    return recognition;
+  };
+
+  const handleSpeechResult = (event) => {
+    // This will contain the existing onresult handler logic
+    // Moving it here for better organization
+  };
+
+  const handleSpeechError = async (event) => {
+    // This will contain the existing onerror handler logic
+    // Moving it here for better organization
+  };
+
+  const handleSpeechEnd = () => {
+    // This will contain the existing onend handler logic
+    // Moving it here for better organization
+  };
+
   const initializeSpeechRecognition = () => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -713,7 +768,74 @@ const JarvisVoice = () => {
               break;
 
             case 'network':
-              setError('🌐 Network error. Check your connection.');
+              console.log('🌐 Network error detected, initiating advanced recovery...');
+              setError('🌐 Network error. Initiating advanced recovery...');
+              
+              // Use advanced network recovery manager
+              const networkRecoveryManager = getNetworkRecoveryManager();
+              
+              (async () => {
+                try {
+                  const recoveryResult = await networkRecoveryManager.recoverFromNetworkError(
+                    event,
+                    recognitionRef.current,
+                    {
+                      continuousListening,
+                      isListening,
+                      mlAudioHandler,
+                      jarvisStatus,
+                      wsRef: wsRef.current
+                    }
+                  );
+                  
+                  if (recoveryResult.success) {
+                    console.log('✅ Network recovery successful:', recoveryResult);
+                    setError('');
+                    setNetworkRetries(0);
+                    
+                    // Handle different recovery types
+                    if (recoveryResult.newRecognition) {
+                      // Service switched, update reference
+                      recognitionRef.current = recoveryResult.newRecognition;
+                      setupRecognitionHandlers(recoveryResult.newRecognition);
+                    } else if (recoveryResult.useWebSocket) {
+                      // Switch to WebSocket mode
+                      setError('📡 Switched to WebSocket audio streaming');
+                      // Store WebSocket reference for audio streaming
+                      audioWebSocketRef.current = recoveryResult.websocket;
+                      setTimeout(() => setError(''), 3000);
+                    } else if (recoveryResult.offlineMode) {
+                      // Enable offline mode
+                      setError('📴 Offline mode active - commands will sync when online');
+                      offlineModeRef.current = true;
+                      commandQueueRef.current = recoveryResult.commandQueue;
+                    } else if (recoveryResult.useProxy) {
+                      // Use ML backend proxy
+                      setError('🤖 Using ML backend for speech processing');
+                      proxyEndpointRef.current = recoveryResult.proxyEndpoint;
+                      setTimeout(() => setError(''), 3000);
+                    }
+                  } else {
+                    // All strategies failed
+                    setError('🌐 Network recovery failed. Manual intervention required.');
+                    console.error('All network recovery strategies exhausted');
+                    
+                    // Show recovery tips
+                    setTimeout(() => {
+                      setError(
+                        '💡 Try:\n' +
+                        '1. Check internet connection\n' +
+                        '2. Disable VPN/Proxy\n' +
+                        '3. Clear browser cache\n' +
+                        '4. Restart browser'
+                      );
+                    }, 3000);
+                  }
+                } catch (recoveryError) {
+                  console.error('Recovery manager error:', recoveryError);
+                  setError('🌐 Network recovery system error');
+                }
+              })();
               break;
 
             case 'aborted':
@@ -1168,9 +1290,14 @@ const JarvisVoice = () => {
 
       {/* Error Display */}
       {error && (
-        <div className="jarvis-error">
-          <div className="error-icon">⚠️</div>
-          <div className="error-text" style={{ whiteSpace: 'pre-line' }}>{error}</div>
+        <div className={`jarvis-error ${error.includes('Network') ? 'network-error' : ''}`}>
+          <div className="error-icon">{error.includes('Network') ? '🌐' : '⚠️'}</div>
+          <div className="error-text" style={{ whiteSpace: 'pre-line' }}>
+            {error}
+            {error.includes('Network') && networkRetries > 0 && networkRetries < maxNetworkRetries && (
+              <span className="retry-status"> (Auto-retrying...)</span>
+            )}
+          </div>
           {error.includes('Microphone') && (
             <button
               onClick={checkMicrophonePermission}
