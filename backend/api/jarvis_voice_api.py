@@ -380,6 +380,12 @@ class JARVISVoiceAPI:
             import subprocess
             import tempfile
             
+            # Truncate very long text to prevent audio generation issues
+            audio_text = text
+            if len(text) > 1000:
+                # For very long text, just speak a summary
+                audio_text = text[:200] + "... Full details shown on screen."
+            
             # Create temp file for audio
             with tempfile.NamedTemporaryFile(suffix='.aiff', delete=False) as tmp:
                 tmp_path = tmp.name
@@ -388,7 +394,7 @@ class JARVISVoiceAPI:
             subprocess.run([
                 'say', '-v', 'Daniel',  # British voice for JARVIS
                 '-o', tmp_path,
-                text
+                audio_text
             ], check=True)
             
             # Convert to MP3 for smaller file size

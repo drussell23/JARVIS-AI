@@ -548,7 +548,14 @@ const JarvisVoice = () => {
         
         // Use audio endpoint directly
         if (data.text) {
-          playAudioResponse(data.text);
+          // For vision responses that are very long, speak a shorter summary
+          let audioText = data.text;
+          if (data.command_type === 'vision' && data.text.length > 1000) {
+            // Extract just the first sentence for audio
+            const firstSentence = data.text.match(/^[^.!?]+[.!?]/);
+            audioText = firstSentence ? firstSentence[0] + ' Check the text display for full details.' : 'I can see your screen. Check the text display for full analysis.';
+          }
+          playAudioResponse(audioText);
         }
 
         // Check for autonomy activation commands in response
@@ -1143,70 +1150,83 @@ const JarvisVoice = () => {
   };
 
   const playAudioResponse = async (text) => {
-    console.log('Playing audio response:', text);
+    console.log('Playing audio response:', text.substring(0, 100) + '...');
     
     try {
-      // First try: Use GET method with URL (simpler and more reliable)
-      const audioUrl = `${API_URL}/audio/speak/${encodeURIComponent(text)}`;
-      const audio = new Audio(audioUrl);
-      audio.volume = 1.0;
+      // For long text, always use POST method to avoid URL length limits
+      // GET requests have a limit of ~2000 characters in the URL
+      const usePost = text.length > 500 || text.includes('\n');
       
-      setIsJarvisSpeaking(true);
-      
-      audio.onended = () => {
-        console.log('Audio playback completed');
-        setIsJarvisSpeaking(false);
-      };
-      
-      audio.onerror = async (e) => {
-        console.warn('GET method failed, trying POST with blob...');
+      if (!usePost) {
+        // Short text: Use GET method with URL (simpler and more reliable)
+        const audioUrl = `${API_URL}/audio/speak/${encodeURIComponent(text)}`;
+        const audio = new Audio(audioUrl);
+        audio.volume = 1.0;
         
-        // Fallback: Try POST method and handle as blob
-        try {
-          const response = await fetch(`${API_URL}/audio/speak`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ text })
-          });
-          
-          if (response.ok) {
-            // Get audio data as blob
-            const blob = await response.blob();
-            const audioUrl = URL.createObjectURL(blob);
-            
-            const audio2 = new Audio(audioUrl);
-            audio2.volume = 1.0;
-            
-            audio2.onended = () => {
-              console.log('Audio playback completed');
-              setIsJarvisSpeaking(false);
-              URL.revokeObjectURL(audioUrl); // Clean up
-            };
-            
-            audio2.onerror = () => {
-              console.warn('Audio playback not available');
-              setIsJarvisSpeaking(false);
-              URL.revokeObjectURL(audioUrl); // Clean up
-            };
-            
-            await audio2.play();
-          } else {
-            throw new Error('Audio generation failed');
-          }
-        } catch (postError) {
-          console.warn('Both audio methods failed:', postError.message);
+        setIsJarvisSpeaking(true);
+        
+        audio.onended = () => {
+          console.log('Audio playback completed');
           setIsJarvisSpeaking(false);
-        }
-      };
-      
-      // Try to play the audio
-      await audio.play();
-    } catch (audioError) {
-      console.warn('Audio service unavailable:', audioError.message);
+        };
+        
+        audio.onerror = async (e) => {
+          console.warn('GET method failed, trying POST with blob...');
+          
+          // Fallback to POST
+          await playAudioUsingPost(text);
+        };
+        
+        await audio.play();
+      } else {
+        // Long text: Use POST method directly
+        await playAudioUsingPost(text);
+      }
+    } catch (error) {
+      console.error('Audio playback failed:', error);
       setIsJarvisSpeaking(false);
-      // Text will still be displayed
+    }
+  };
+  
+  const playAudioUsingPost = async (text) => {
+    try {
+      const response = await fetch(`${API_URL}/audio/speak`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ text })
+      });
+      
+      if (response.ok) {
+        // Get audio data as blob
+        const blob = await response.blob();
+        const audioUrl = URL.createObjectURL(blob);
+        
+        const audio2 = new Audio(audioUrl);
+        audio2.volume = 1.0;
+        
+        setIsJarvisSpeaking(true);
+        
+        audio2.onended = () => {
+          console.log('Audio playback completed');
+          setIsJarvisSpeaking(false);
+          URL.revokeObjectURL(audioUrl); // Clean up
+        };
+        
+        audio2.onerror = () => {
+          console.warn('Audio playback not available');
+          setIsJarvisSpeaking(false);
+          URL.revokeObjectURL(audioUrl); // Clean up
+        };
+        
+        await audio2.play();
+      } else {
+        throw new Error('Audio generation failed');
+      }
+    } catch (postError) {
+      console.warn('Audio POST method failed:', postError.message);
+      setIsJarvisSpeaking(false);
     }
   };
 
