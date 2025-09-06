@@ -122,12 +122,31 @@ class VisionCommandHandler:
             }
         
         try:
-            # Take a screenshot and analyze
-            result = await self.vision_manager.vision_analyzer.analyze_screen_with_query(query)
+            # First capture the screen
+            screenshot = await self.vision_manager.vision_analyzer.capture_screen()
+            
+            if screenshot is None:
+                return {
+                    "handled": True,
+                    "response": "I couldn't capture your screen. Please make sure screen recording permissions are granted.",
+                    "error": True
+                }
+            
+            # Convert PIL Image to numpy array if needed
+            import numpy as np
+            from PIL import Image
+            
+            if isinstance(screenshot, Image.Image):
+                screenshot_array = np.array(screenshot)
+            else:
+                screenshot_array = screenshot
+            
+            # Analyze the screenshot
+            result = await self.vision_manager.vision_analyzer.analyze_screenshot_async(screenshot_array, query)
             
             return {
                 "handled": True,
-                "response": result.get('analysis', 'I captured the screen but couldn\'t analyze it properly.'),
+                "response": result.get('description', result.get('analysis', 'I captured the screen but couldn\'t analyze it properly.')),
                 "screenshot_taken": True
             }
         except Exception as e:
