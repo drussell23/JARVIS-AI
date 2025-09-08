@@ -11,6 +11,7 @@ pub mod anomaly_detection;
 pub mod intervention_engine;
 pub mod solution_matching;
 pub mod spatial_quadtree;
+pub mod semantic_cache_lsh;
 
 #[cfg(target_os = "macos")]
 pub mod macos_optimization;
@@ -55,6 +56,11 @@ pub use sliding_window::{
 pub use spatial_quadtree::{
     QuadNode, SpatialQuadtree, QuadtreeStats, RegionBatchProcessor,
     ImportanceCalculator
+};
+
+pub use semantic_cache_lsh::{
+    SemanticCacheLSH, CacheEntry, LSHIndex, SimilarityComputer,
+    CachePredictor, PredictiveEntry
 };
 
 /// Global vision configuration

@@ -720,6 +720,22 @@ class ClaudeVisionAnalyzer:
         # Initialize quadtree spatial intelligence (lazy loading)
         self.quadtree_spatial = None
         
+        # Initialize Semantic Cache with LSH configuration
+        self._semantic_cache_config = {
+            'enabled': os.getenv('SEMANTIC_CACHE_ENABLED', 'true').lower() == 'true',
+            'use_lsh': os.getenv('SEMANTIC_CACHE_USE_LSH', 'true').lower() == 'true',
+            'l1_enabled': os.getenv('SEMANTIC_CACHE_L1_ENABLED', 'true').lower() == 'true',
+            'l2_enabled': os.getenv('SEMANTIC_CACHE_L2_ENABLED', 'true').lower() == 'true',
+            'l3_enabled': os.getenv('SEMANTIC_CACHE_L3_ENABLED', 'true').lower() == 'true',
+            'l4_enabled': os.getenv('SEMANTIC_CACHE_L4_ENABLED', 'true').lower() == 'true',
+            'similarity_threshold': float(os.getenv('SEMANTIC_CACHE_SIMILARITY', '0.85')),
+            'use_rust_acceleration': os.getenv('SEMANTIC_CACHE_USE_RUST', 'true').lower() == 'true',
+            'use_swift_cache': os.getenv('SEMANTIC_CACHE_USE_SWIFT', 'true').lower() == 'true'
+        }
+        
+        # Initialize semantic cache (lazy loading)
+        self.semantic_cache = None
+        
         if self._vsms_core_config['enabled']:
             logger.info("VSMS Core available and enabled")
         self._screen_sharing_config = {
@@ -996,6 +1012,28 @@ class ClaudeVisionAnalyzer:
                 self._quadtree_spatial_config['enabled'] = False
         return self.quadtree_spatial
     
+    async def get_semantic_cache(self):
+        """Get Semantic Cache with LSH with lazy loading"""
+        if self.semantic_cache is None and self._semantic_cache_config['enabled']:
+            try:
+                from .intelligence.semantic_cache_lsh import (
+                    get_semantic_cache, SemanticCacheWithLSH, CacheLevel
+                )
+                self.semantic_cache = await get_semantic_cache()
+                
+                # Set integration points
+                if self.goal_system:
+                    self.semantic_cache.set_integration_points(
+                        goal_system=self.goal_system,
+                        anomaly_detector=await self.get_anomaly_detector()
+                    )
+                
+                logger.info("Initialized Semantic Cache with LSH")
+            except Exception as e:
+                logger.warning(f"Could not initialize Semantic Cache: {e}")
+                self._semantic_cache_config['enabled'] = False
+        return self.semantic_cache
+    
     async def get_simplified_vision(self):
         """Get simplified vision system with lazy loading"""
         if self.simplified_vision is None and self._simplified_vision_config['enabled']:
@@ -1170,8 +1208,64 @@ class ClaudeVisionAnalyzer:
                 metrics.preprocessing_time = time.time() - preprocessing_start
             metrics.image_size_original = self._estimate_image_size(pil_image)
             
-            # Check cache if enabled
-            if should_use_cache and self.cache:
+            # Check semantic cache if enabled (replaces basic cache)
+            semantic_cache_result = None
+            if should_use_cache and self._semantic_cache_config['enabled']:
+                try:
+                    semantic_cache = await self.get_semantic_cache()
+                    if semantic_cache:
+                        # Generate context for cache
+                        cache_context = {
+                            'image_hash': image_hash,
+                            'image_size': f"{pil_image.size[0]}x{pil_image.size[1]}",
+                            'timestamp': datetime.now().isoformat()
+                        }
+                        
+                        # Add VSMS context if available
+                        if self.vsms_core:
+                            try:
+                                current_state = self.vsms_core.get_current_state()
+                                if current_state:
+                                    cache_context['app'] = current_state.active_application
+                                    cache_context['goal'] = current_state.inferred_goal
+                            except:
+                                pass
+                        
+                        # Generate embedding for semantic search
+                        embedding = None
+                        if self._semantic_cache_config['l2_enabled']:
+                            # Use prompt as basis for embedding
+                            # In production, this would use a proper embedding model
+                            embedding = self._generate_prompt_embedding(prompt)
+                        
+                        # Check if should bypass cache
+                        bypass_cache = semantic_cache.should_bypass_cache(cache_context)
+                        
+                        if not bypass_cache:
+                            # Query semantic cache
+                            cache_result = await semantic_cache.get(
+                                key=prompt,
+                                context=cache_context,
+                                embedding=embedding
+                            )
+                            
+                            if cache_result:
+                                value, cache_level, similarity = cache_result
+                                metrics.cache_hit = True
+                                metrics.total_time = time.time() - start_time
+                                logger.debug(f"Semantic cache hit: {cache_level.value} "
+                                           f"(similarity: {similarity:.2f})")
+                                
+                                # Record cache hit in pattern predictor
+                                semantic_cache.pattern_predictor.record_access(prompt)
+                                
+                                return value, metrics
+                
+                except Exception as e:
+                    logger.warning(f"Semantic cache check failed: {e}")
+            
+            # Fallback to basic cache if semantic cache not available
+            elif should_use_cache and self.cache:
                 cache_key = self._generate_cache_key(image_hash, prompt)
                 cached_entry = await self.cache.get(cache_key)
                 if cached_entry and self._is_cache_valid(cached_entry):
@@ -1684,14 +1778,40 @@ class ClaudeVisionAnalyzer:
                     logger.warning(f"Solution Memory Bank integration failed: {e}")
             
             # Cache result if enabled
-            if should_use_cache and self.cache:
-                cache_entry = CacheEntry(
-                    result=parsed_result,
-                    timestamp=datetime.now(),
-                    prompt_hash=hashlib.md5(prompt.encode()).hexdigest(),
-                    image_hash=image_hash
-                )
-                await self.cache.put(cache_key, cache_entry)
+            if should_use_cache:
+                if self._semantic_cache_config['enabled'] and self._semantic_cache_instance:
+                    # Store in semantic cache with embedding and context
+                    prompt_embedding = await self._generate_prompt_embedding(prompt)
+                    
+                    cache_context = {
+                        'prompt': prompt,
+                        'image_hash': image_hash,
+                        'timestamp': datetime.now().isoformat(),
+                        'app_id': self._context.get('app_id', 'unknown'),
+                        'workflow': self._context.get('workflow', 'unknown')
+                    }
+                    
+                    # Import CacheLevel if not already imported
+                    from backend.vision.intelligence.semantic_cache_lsh import CacheLevel
+                    
+                    await self._semantic_cache_instance.put(
+                        key=cache_key,
+                        value=parsed_result,
+                        context=cache_context,
+                        embedding=prompt_embedding,
+                        cache_levels=[CacheLevel.L1_EXACT, CacheLevel.L2_SEMANTIC]
+                    )
+                    
+                    logger.info(f"Cached result in semantic cache for prompt: {prompt[:50]}...")
+                elif self.cache:
+                    # Fallback to basic cache
+                    cache_entry = CacheEntry(
+                        result=parsed_result,
+                        timestamp=datetime.now(),
+                        prompt_hash=hashlib.md5(prompt.encode()).hexdigest(),
+                        image_hash=image_hash
+                    )
+                    await self.cache.put(cache_key, cache_entry)
             
             # Track metrics
             metrics.total_time = time.time() - start_time
@@ -1814,6 +1934,30 @@ class ClaudeVisionAnalyzer:
             )
         )
         return message.content[0].text
+    
+    def _generate_prompt_embedding_sync(self, prompt: str) -> Optional[np.ndarray]:
+        """Generate embedding for prompt (simplified for now)"""
+        # In production, use a proper sentence transformer
+        # For now, use a simple hash-based approach
+        prompt_hash = hashlib.sha384(prompt.encode()).digest()
+        # Convert to float array
+        embedding = np.frombuffer(prompt_hash, dtype=np.uint8).astype(np.float32)
+        # Normalize
+        norm = np.linalg.norm(embedding)
+        if norm > 0:
+            embedding = embedding / norm
+        # Pad or truncate to standard dimension (384)
+        if len(embedding) < 384:
+            embedding = np.pad(embedding, (0, 384 - len(embedding)))
+        else:
+            embedding = embedding[:384]
+        return embedding
+    
+    async def _generate_prompt_embedding(self, prompt: str) -> Optional[np.ndarray]:
+        """Async version of prompt embedding generation"""
+        return await asyncio.get_event_loop().run_in_executor(
+            self.executor, self._generate_prompt_embedding_sync, prompt
+        )
     
     def _extract_app_context(self, prompt: str, result: Dict[str, Any]) -> str:
         """Extract application context from prompt or analysis result"""
