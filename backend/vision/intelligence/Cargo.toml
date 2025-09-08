@@ -51,6 +51,10 @@ regex = "1.10"
 aho-corasick = "1.1"
 fuzzy-matcher = "0.3"
 
+# Workflow pattern dependencies
+parking_lot = "0.12"
+flate2 = "1.0"
+
 # Time and metrics
 chrono = { version = "0.4", features = ["serde"] }
 metrics = "0.21"

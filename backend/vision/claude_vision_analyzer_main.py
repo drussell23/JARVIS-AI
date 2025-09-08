@@ -108,6 +108,16 @@ class VisionConfig:
     scene_graph_element_detection: bool = field(default_factory=lambda: os.getenv('SCENE_GRAPH_ELEMENTS', 'true').lower() == 'true')
     scene_graph_relationship_discovery: bool = field(default_factory=lambda: os.getenv('SCENE_GRAPH_RELATIONSHIPS', 'true').lower() == 'true')
     
+    # Temporal Context Engine configuration
+    temporal_context_enabled: bool = field(default_factory=lambda: os.getenv('TEMPORAL_CONTEXT_ENABLED', 'true').lower() == 'true')
+    temporal_pattern_extraction: bool = field(default_factory=lambda: os.getenv('TEMPORAL_PATTERNS', 'true').lower() == 'true')
+    temporal_prediction_enabled: bool = field(default_factory=lambda: os.getenv('TEMPORAL_PREDICTIONS', 'true').lower() == 'true')
+    
+    # Activity Recognition Engine configuration
+    activity_recognition_enabled: bool = field(default_factory=lambda: os.getenv('ACTIVITY_RECOGNITION_ENABLED', 'true').lower() == 'true')
+    task_inference_enabled: bool = field(default_factory=lambda: os.getenv('TASK_INFERENCE', 'true').lower() == 'true')
+    progress_monitoring_enabled: bool = field(default_factory=lambda: os.getenv('PROGRESS_MONITORING', 'true').lower() == 'true')
+    
     vision_intelligence_consensus: bool = field(default_factory=lambda: os.getenv('VISION_INTELLIGENCE_CONSENSUS', 'true').lower() == 'true')
     state_persistence_enabled: bool = field(default_factory=lambda: os.getenv('VISION_STATE_PERSISTENCE', 'true').lower() == 'true')
     
@@ -622,12 +632,75 @@ class ClaudeVisionAnalyzer:
             'stuck_threshold_minutes': self.config.vsms_stuck_threshold_minutes
         }
         
+        # Initialize Workflow Pattern configuration
+        self._workflow_pattern_config = {
+            'enabled': os.getenv('WORKFLOW_PATTERN_ENABLED', 'true').lower() == 'true',
+            'min_support': float(os.getenv('WORKFLOW_MIN_SUPPORT', '0.2')),
+            'automation_enabled': os.getenv('WORKFLOW_AUTOMATION_ENABLED', 'true').lower() == 'true',
+            'clustering_method': os.getenv('WORKFLOW_CLUSTERING_METHOD', 'hybrid'),
+            'max_pattern_length': int(os.getenv('WORKFLOW_MAX_PATTERN_LENGTH', '20')),
+            'use_rust_mining': os.getenv('WORKFLOW_USE_RUST', 'true').lower() == 'true',
+            'neural_predictions': os.getenv('WORKFLOW_NEURAL_PREDICTIONS', 'true').lower() == 'true'
+        }
+        
+        # Initialize workflow pattern engine (lazy loading)
+        self.workflow_engine = None
+        self.enhanced_workflow_engine = None
+        
         # Initialize Scene Graph configuration
         self._scene_graph_config = {
             'enabled': self.config.scene_graph_enabled,
             'element_detection': self.config.scene_graph_element_detection,
             'relationship_discovery': self.config.scene_graph_relationship_discovery
         }
+        
+        # Initialize Temporal Context configuration
+        self._temporal_context_config = {
+            'enabled': self.config.temporal_context_enabled,
+            'pattern_extraction': self.config.temporal_pattern_extraction,
+            'predictions': self.config.temporal_prediction_enabled
+        }
+        
+        # Initialize Activity Recognition configuration
+        self._activity_recognition_config = {
+            'enabled': self.config.activity_recognition_enabled,
+            'task_inference': self.config.task_inference_enabled,
+            'progress_monitoring': self.config.progress_monitoring_enabled
+        }
+        
+        # Initialize Anomaly Detection Framework configuration
+        self._anomaly_detection_config = {
+            'enabled': os.getenv('ANOMALY_DETECTION_ENABLED', 'true').lower() == 'true',
+            'ml_enabled': os.getenv('ANOMALY_ML_ENABLED', 'true').lower() == 'true',
+            'baseline_samples': int(os.getenv('ANOMALY_BASELINE_SAMPLES', '50')),
+            'detection_cooldown': int(os.getenv('ANOMALY_COOLDOWN_SECONDS', '30'))
+        }
+        
+        # Initialize anomaly detector (lazy loading)
+        self.anomaly_detector = None
+        
+        # Initialize Intervention Decision Engine configuration
+        self._intervention_config = {
+            'enabled': os.getenv('INTERVENTION_ENABLED', 'true').lower() == 'true',
+            'min_confidence': float(os.getenv('INTERVENTION_MIN_CONFIDENCE', '0.7')),
+            'cooldown_minutes': int(os.getenv('INTERVENTION_COOLDOWN_MINUTES', '5')),
+            'learning_enabled': os.getenv('INTERVENTION_LEARNING_ENABLED', 'true').lower() == 'true'
+        }
+        
+        # Initialize intervention engine (lazy loading)
+        self.intervention_engine = None
+        
+        # Initialize Solution Memory Bank configuration
+        self._solution_memory_config = {
+            'enabled': os.getenv('SOLUTION_MEMORY_ENABLED', 'true').lower() == 'true',
+            'auto_capture': os.getenv('SOLUTION_AUTO_CAPTURE', 'true').lower() == 'true',
+            'min_confidence': float(os.getenv('SOLUTION_MIN_CONFIDENCE', '0.6')),
+            'auto_apply_threshold': float(os.getenv('SOLUTION_AUTO_APPLY_THRESHOLD', '0.9')),
+            'capture_screenshots': os.getenv('SOLUTION_CAPTURE_SCREENSHOTS', 'true').lower() == 'true'
+        }
+        
+        # Initialize solution memory bank (lazy loading)
+        self.solution_memory_bank = None
         
         if self._vsms_core_config['enabled']:
             logger.info("VSMS Core available and enabled")
@@ -779,6 +852,117 @@ class ClaudeVisionAnalyzer:
                 self._vsms_core_config['enabled'] = False
         
         return self.vsms_core
+    
+    async def get_workflow_engine(self):
+        """Get Workflow Pattern Engine with lazy loading"""
+        if self.workflow_engine is None and self._workflow_pattern_config['enabled']:
+            try:
+                from .intelligence.workflow_pattern_engine import (
+                    get_workflow_pattern_engine, WorkflowEvent
+                )
+                self.workflow_engine = get_workflow_pattern_engine()
+                
+                # Use enhanced engine if neural predictions enabled
+                if self._workflow_pattern_config['neural_predictions']:
+                    try:
+                        from .intelligence.enhanced_workflow_engine import get_enhanced_workflow_engine
+                        self.enhanced_workflow_engine = get_enhanced_workflow_engine()
+                        logger.info("Initialized enhanced workflow engine with neural predictions")
+                    except Exception as e:
+                        logger.warning(f"Could not initialize enhanced workflow engine: {e}")
+                
+                logger.info("Initialized Workflow Pattern Engine")
+            except Exception as e:
+                logger.warning(f"Could not initialize Workflow Pattern Engine: {e}")
+                self._workflow_pattern_config['enabled'] = False
+        
+        # Return enhanced engine if available, otherwise basic engine
+        return self.enhanced_workflow_engine or self.workflow_engine
+    
+    async def get_workflow_patterns(self, pattern_type: Optional[str] = None):
+        """Get discovered workflow patterns"""
+        engine = await self.get_workflow_engine()
+        if not engine:
+            return []
+        
+        if pattern_type:
+            return engine.get_patterns_by_type(pattern_type)
+        return list(engine.patterns.values())
+    
+    async def predict_workflow(self, current_sequence: List[str], top_k: int = 5):
+        """Predict next actions in workflow"""
+        engine = await self.get_workflow_engine()
+        if not engine:
+            return []
+        
+        return await engine.predict_next_actions(current_sequence, top_k)
+    
+    async def get_automation_suggestions(self, context: Dict[str, Any] = None):
+        """Get workflow automation suggestions"""
+        engine = await self.get_workflow_engine()
+        if not engine or not hasattr(engine, 'suggest_automation'):
+            return []
+        
+        # Build context from current state
+        if context is None:
+            context = {
+                'time_of_day': datetime.now().strftime('%H:%M'),
+                'recent_actions': []
+            }
+            
+            # Add VSMS context if available
+            if self.vsms_core:
+                try:
+                    current_state = self.vsms_core.get_current_state()
+                    if current_state:
+                        context['active_app'] = current_state.active_application
+                        context['goal'] = current_state.inferred_goal
+                except:
+                    pass
+        
+        return engine.suggest_automation(context)
+    
+    async def get_anomaly_detector(self):
+        """Get Anomaly Detection Framework with lazy loading"""
+        if self.anomaly_detector is None and self._anomaly_detection_config['enabled']:
+            try:
+                from .intelligence.anomaly_detection_framework import (
+                    get_anomaly_detection_framework, AnomalyType
+                )
+                self.anomaly_detector = get_anomaly_detection_framework()
+                logger.info("Initialized Anomaly Detection Framework")
+            except Exception as e:
+                logger.warning(f"Could not initialize Anomaly Detection Framework: {e}")
+                self._anomaly_detection_config['enabled'] = False
+        return self.anomaly_detector
+    
+    async def get_intervention_engine(self):
+        """Get Intervention Decision Engine with lazy loading"""
+        if self.intervention_engine is None and self._intervention_config['enabled']:
+            try:
+                from .intelligence.intervention_decision_engine import (
+                    get_intervention_decision_engine, UserStateSignal, InterventionType
+                )
+                self.intervention_engine = get_intervention_decision_engine()
+                logger.info("Initialized Intervention Decision Engine")
+            except Exception as e:
+                logger.warning(f"Could not initialize Intervention Decision Engine: {e}")
+                self._intervention_config['enabled'] = False
+        return self.intervention_engine
+    
+    async def get_solution_memory_bank(self):
+        """Get Solution Memory Bank with lazy loading"""
+        if self.solution_memory_bank is None and self._solution_memory_config['enabled']:
+            try:
+                from .intelligence.solution_memory_bank import (
+                    get_solution_memory_bank, ProblemSignature, ProblemType
+                )
+                self.solution_memory_bank = get_solution_memory_bank()
+                logger.info("Initialized Solution Memory Bank")
+            except Exception as e:
+                logger.warning(f"Could not initialize Solution Memory Bank: {e}")
+                self._solution_memory_config['enabled'] = False
+        return self.solution_memory_bank
     
     async def get_simplified_vision(self):
         """Get simplified vision system with lazy loading"""
@@ -1080,6 +1264,16 @@ class ClaudeVisionAnalyzer:
                                 'recommendations': vsms_result.get('recommendations', {})
                             }
                             
+                            # Add activity recognition data if enabled and available
+                            if self._activity_recognition_config['enabled'] and 'activity' in vsms_result:
+                                parsed_result['vsms_core']['activity'] = vsms_result['activity']
+                            
+                            # Add temporal context if enabled
+                            if self._temporal_context_config['enabled']:
+                                temporal_context = await self.get_temporal_context(app_id)
+                                if temporal_context.get('enabled'):
+                                    parsed_result['temporal_context'] = temporal_context
+                            
                             # Add workflow insights if detected
                             if vsms_result.get('recommendations', {}).get('workflow_hint'):
                                 workflow = vsms_result['recommendations']['workflow_hint']
@@ -1108,6 +1302,281 @@ class ClaudeVisionAnalyzer:
                 except Exception as e:
                     logger.warning(f"VSMS Core enhancement failed: {e}")
                     metrics.vsms_core_time = time.time() - vsms_start
+            
+            # Record workflow event if pattern engine enabled
+            if self._workflow_pattern_config['enabled']:
+                try:
+                    workflow_engine = await self.get_workflow_engine()
+                    if workflow_engine:
+                        # Extract action from analysis
+                        action = None
+                        if 'actions' in parsed_result and parsed_result['actions']:
+                            action = parsed_result['actions'][0]  # Use first detected action
+                        elif 'entities' in parsed_result and 'action' in parsed_result['entities']:
+                            action = parsed_result['entities']['action']
+                        elif 'vsms_core' in parsed_result and 'detected_state' in parsed_result['vsms_core']:
+                            action = parsed_result['vsms_core']['detected_state']
+                        
+                        # Record event if action detected
+                        if action:
+                            from .intelligence.workflow_pattern_engine import WorkflowEvent
+                            
+                            event = WorkflowEvent(
+                                timestamp=datetime.now(),
+                                event_type='visual_observation',
+                                source_system='claude_vision_analyzer',
+                                event_data={
+                                    'action': action,
+                                    'app_id': app_id if 'app_id' in locals() else 'unknown',
+                                    'prompt': prompt[:100],  # First 100 chars
+                                    'confidence': parsed_result.get('confidence', 0.5)
+                                }
+                            )
+                            
+                            await workflow_engine.record_event(event)
+                            
+                            # Mine patterns periodically
+                            if hasattr(self, '_workflow_event_count'):
+                                self._workflow_event_count += 1
+                            else:
+                                self._workflow_event_count = 1
+                            
+                            # Mine patterns every 50 events
+                            if self._workflow_event_count % 50 == 0:
+                                await workflow_engine.mine_patterns(
+                                    min_support=self._workflow_pattern_config['min_support']
+                                )
+                                logger.info("Mined workflow patterns after 50 events")
+                        
+                        # Add workflow predictions to result if available
+                        if action and hasattr(workflow_engine, 'predict_next_actions'):
+                            predictions = await workflow_engine.predict_next_actions([action], top_k=3)
+                            if predictions:
+                                parsed_result['workflow_predictions'] = [
+                                    {'action': act, 'confidence': conf} 
+                                    for act, conf in predictions
+                                ]
+                
+                except Exception as e:
+                    logger.warning(f"Workflow pattern recording failed: {e}")
+            
+            # Detect anomalies if enabled
+            if self._anomaly_detection_config['enabled']:
+                try:
+                    anomaly_detector = await self.get_anomaly_detector()
+                    if anomaly_detector:
+                        # Create observation from analysis
+                        from .intelligence.anomaly_detection_framework import Observation, AnomalyType
+                        
+                        observation = Observation(
+                            timestamp=datetime.now(),
+                            observation_type='screenshot_analysis',
+                            data={
+                                'prompt': prompt[:100],
+                                'entities': parsed_result.get('entities', {}),
+                                'actions': parsed_result.get('actions', []),
+                                'app_id': app_id if 'app_id' in locals() else 'unknown'
+                            },
+                            source='claude_vision_analyzer',
+                            metadata={
+                                'has_error': 'error' in parsed_result or 'warning' in parsed_result,
+                                'confidence': parsed_result.get('confidence', 0.5)
+                            }
+                        )
+                        
+                        # Detect anomalies
+                        anomaly = await anomaly_detector.detect_anomaly(observation)
+                        
+                        if anomaly:
+                            # Add anomaly to result
+                            parsed_result['anomaly_detected'] = {
+                                'type': anomaly.anomaly_type.value,
+                                'severity': anomaly.severity.value,
+                                'confidence': anomaly.confidence,
+                                'description': anomaly.description,
+                                'requires_intervention': anomaly.severity.value in ['HIGH', 'CRITICAL']
+                            }
+                            
+                            # Process intervention if enabled and needed
+                            if (self._intervention_config['enabled'] and 
+                                anomaly.severity.value in ['HIGH', 'CRITICAL']):
+                                
+                                intervention_engine = await self.get_intervention_engine()
+                                if intervention_engine:
+                                    # Create user state signal from anomaly
+                                    from .intelligence.intervention_decision_engine import UserStateSignal
+                                    
+                                    signal = UserStateSignal(
+                                        signal_type='error_rate' if anomaly.anomaly_type == AnomalyType.VISUAL else 'anomaly_detected',
+                                        value=0.7 if anomaly.severity.value == 'HIGH' else 0.9,
+                                        confidence=anomaly.confidence,
+                                        timestamp=datetime.now(),
+                                        source='anomaly_detector',
+                                        metadata={
+                                            'anomaly_type': anomaly.anomaly_type.value,
+                                            'anomaly_id': anomaly.anomaly_id
+                                        }
+                                    )
+                                    
+                                    await intervention_engine.process_user_signal(signal)
+                                    
+                                    # Assess situation
+                                    situation_data = {
+                                        'has_error': True,
+                                        'error_type': 'anomaly',
+                                        'anomaly_type': anomaly.anomaly_type.value,
+                                        'severity': anomaly.severity.value,
+                                        'context_type': 'visual_analysis',
+                                        'app_context': app_id if 'app_id' in locals() else 'unknown'
+                                    }
+                                    
+                                    await intervention_engine.assess_situation(situation_data)
+                                    
+                                    # Decide on intervention
+                                    opportunity = await intervention_engine.decide_intervention()
+                                    if opportunity:
+                                        parsed_result['intervention_suggested'] = {
+                                            'type': opportunity.intervention_type.value,
+                                            'timing': opportunity.timing_strategy.value,
+                                            'confidence': opportunity.confidence_score,
+                                            'urgency': opportunity.urgency_score,
+                                            'rationale': opportunity.rationale
+                                        }
+                                        
+                                        logger.info(f"Intervention suggested: {opportunity.intervention_type.value} "
+                                                  f"with timing {opportunity.timing_strategy.value}")
+                
+                except Exception as e:
+                    logger.warning(f"Anomaly detection/intervention failed: {e}")
+            
+            # Solution Memory Bank integration
+            if self._solution_memory_config['enabled']:
+                try:
+                    solution_memory = await self.get_solution_memory_bank()
+                    if solution_memory:
+                        # Check if this looks like a problem
+                        has_problem = (
+                            'error' in parsed_result or 
+                            'warning' in parsed_result or
+                            'anomaly_detected' in parsed_result or
+                            (parsed_result.get('entities', {}).get('errors', []))
+                        )
+                        
+                        if has_problem:
+                            # Create problem signature from analysis
+                            from .intelligence.solution_memory_bank import ProblemSignature, ProblemType
+                            
+                            # Determine problem type
+                            problem_type = ProblemType.UNKNOWN
+                            if 'error' in parsed_result:
+                                problem_type = ProblemType.ERROR
+                            elif parsed_result.get('performance_issue'):
+                                problem_type = ProblemType.PERFORMANCE
+                            elif parsed_result.get('configuration_issue'):
+                                problem_type = ProblemType.CONFIGURATION
+                            
+                            # Extract error messages and symptoms
+                            error_messages = []
+                            symptoms = []
+                            
+                            if isinstance(parsed_result.get('error'), str):
+                                error_messages.append(parsed_result['error'])
+                            if isinstance(parsed_result.get('description'), str):
+                                # Extract error-like text from description
+                                desc = parsed_result['description']
+                                if 'error' in desc.lower() or 'fail' in desc.lower():
+                                    symptoms.append(desc[:200])  # First 200 chars
+                            
+                            # Add entities as symptoms
+                            if 'entities' in parsed_result:
+                                for entity_type, values in parsed_result['entities'].items():
+                                    if 'error' in entity_type.lower() or 'warning' in entity_type.lower():
+                                        symptoms.extend(values[:3])  # First 3
+                            
+                            # Create problem signature
+                            problem = ProblemSignature(
+                                visual_pattern={
+                                    'app': app_id if 'app_id' in locals() else 'unknown',
+                                    'screenshot_hash': image_hash[:8],
+                                    'ui_state': parsed_result.get('ui_state', 'unknown')
+                                },
+                                error_messages=error_messages,
+                                context_state={
+                                    'prompt': prompt[:100],
+                                    'timestamp': datetime.now().isoformat(),
+                                    'app_id': app_id if 'app_id' in locals() else 'unknown'
+                                },
+                                symptoms=symptoms,
+                                problem_type=problem_type
+                            )
+                            
+                            # Find similar solutions
+                            similar_solutions = await solution_memory.find_similar_solutions(
+                                problem, 
+                                threshold=self._solution_memory_config['min_confidence']
+                            )
+                            
+                            if similar_solutions:
+                                # Get recommendations
+                                context = {
+                                    'app': app_id if 'app_id' in locals() else 'unknown',
+                                    'os': 'macOS',  # Could be detected dynamically
+                                    'urgency': 'normal'
+                                }
+                                
+                                recommendations = await solution_memory.get_solution_recommendations(
+                                    problem, context
+                                )
+                                
+                                if recommendations:
+                                    # Add to result
+                                    parsed_result['solution_recommendations'] = []
+                                    for rec in recommendations[:3]:  # Top 3
+                                        parsed_result['solution_recommendations'].append({
+                                            'solution_id': rec['solution_id'],
+                                            'score': rec['score'],
+                                            'success_rate': rec['success_rate'],
+                                            'auto_applicable': rec['auto_applicable'],
+                                            'estimated_time': rec['estimated_time']
+                                        })
+                                    
+                                    # Auto-apply if confidence is high enough
+                                    best_rec = recommendations[0]
+                                    if (best_rec['auto_applicable'] and 
+                                        self._solution_memory_config['auto_capture']):
+                                        
+                                        logger.info(f"Found high-confidence solution: {best_rec['solution_id']}")
+                                        parsed_result['solution_available'] = True
+                                        parsed_result['solution_auto_applicable'] = True
+                        
+                        # Capture solution if enabled and problem was resolved
+                        elif (self._solution_memory_config['auto_capture'] and 
+                              'solution_steps' in parsed_result):
+                            # This means Claude detected and provided a solution
+                            # We should capture it for future use
+                            
+                            # Extract problem that was solved
+                            if hasattr(self, '_last_problem_signature'):
+                                solution_steps = parsed_result.get('solution_steps', [])
+                                if solution_steps:
+                                    execution_time = metrics.total_time if metrics else 30.0
+                                    
+                                    captured_solution = await solution_memory.capture_solution(
+                                        problem=self._last_problem_signature,
+                                        solution_steps=solution_steps,
+                                        success=True,  # Assume success if Claude provided solution
+                                        execution_time=execution_time,
+                                        context={
+                                            'app': app_id if 'app_id' in locals() else 'unknown',
+                                            'source': 'claude_vision'
+                                        }
+                                    )
+                                    
+                                    logger.info(f"Captured solution: {captured_solution.solution_details.solution_id}")
+                                    parsed_result['solution_captured'] = True
+                
+                except Exception as e:
+                    logger.warning(f"Solution Memory Bank integration failed: {e}")
             
             # Cache result if enabled
             if should_use_cache and self.cache:
@@ -1721,6 +2190,57 @@ class ClaudeVisionAnalyzer:
             },
             "config": self.config.to_dict()
         }
+        
+        return stats
+    
+    async def get_workflow_stats(self) -> Dict[str, Any]:
+        """Get workflow pattern statistics"""
+        stats = {
+            'enabled': self._workflow_pattern_config['enabled'],
+            'patterns': {},
+            'predictions': {},
+            'automation_potential': {}
+        }
+        
+        if not self._workflow_pattern_config['enabled']:
+            return stats
+        
+        try:
+            engine = await self.get_workflow_engine()
+            if not engine:
+                return stats
+            
+            # Get pattern statistics
+            if hasattr(engine, 'get_pattern_statistics'):
+                pattern_stats = engine.get_pattern_statistics()
+                stats['patterns'] = pattern_stats
+            
+            # Get memory usage
+            if hasattr(engine, 'get_memory_usage'):
+                stats['memory_usage'] = engine.get_memory_usage()
+            
+            # Get pattern counts by type
+            patterns = await self.get_workflow_patterns()
+            stats['pattern_counts'] = {}
+            for pattern in patterns:
+                ptype = pattern.pattern_type.value if hasattr(pattern.pattern_type, 'value') else str(pattern.pattern_type)
+                stats['pattern_counts'][ptype] = stats['pattern_counts'].get(ptype, 0) + 1
+            
+            # Get automation suggestions count
+            suggestions = await self.get_automation_suggestions()
+            stats['automation_potential'] = {
+                'total_suggestions': len(suggestions),
+                'high_benefit': len([s for s in suggestions if s.get('benefit_score', 0) > 0.8]),
+                'estimated_time_savings': sum(s.get('estimated_time_saved', 0) for s in suggestions)
+            }
+            
+            # Add event count if available
+            if hasattr(self, '_workflow_event_count'):
+                stats['events_recorded'] = self._workflow_event_count
+            
+        except Exception as e:
+            logger.error(f"Error getting workflow stats: {e}")
+            stats['error'] = str(e)
         
         return stats
     
@@ -3135,6 +3655,39 @@ Focus on what's visible in this specific region. Be concise but thorough."""
             logger.error(f"Failed to get state recommendations: {e}")
             return {"error": str(e)}
     
+    async def get_temporal_context(self, app_id: Optional[str] = None) -> Dict[str, Any]:
+        """Get temporal context for an application"""
+        if not self._temporal_context_config['enabled'] or not self.vsms_core:
+            return {'enabled': False, 'reason': 'Temporal Context not enabled or VSMS Core not available'}
+        
+        try:
+            # Get temporal context from VSMS Core
+            context = await self.vsms_core.get_temporal_context(app_id)
+            
+            return {
+                'enabled': True,
+                **context
+            }
+        except Exception as e:
+            logger.error(f"Failed to get temporal context: {e}")
+            return {
+                'enabled': True,
+                'error': str(e)
+            }
+    
+    async def get_temporal_predictions(self, lookahead_seconds: int = 60) -> List[Dict[str, Any]]:
+        """Get predictions for next likely events"""
+        if not self._temporal_context_config['enabled'] or not self._temporal_context_config['predictions']:
+            return []
+        
+        try:
+            if hasattr(self.vsms_core, 'temporal_engine'):
+                return await self.vsms_core.temporal_engine.predict_next_events(lookahead_seconds)
+            return []
+        except Exception as e:
+            logger.error(f"Failed to get temporal predictions: {e}")
+            return []
+    
     async def get_scene_graph_insights(self) -> Dict[str, Any]:
         """Get insights from the Semantic Scene Graph"""
         if not self._scene_graph_config['enabled'] or not self.vsms_core:
@@ -3239,3 +3792,603 @@ Focus on what's visible in this specific region. Be concise but thorough."""
         except Exception as e:
             logger.error(f"Failed to create state definition: {e}")
             return {"success": False, "error": str(e)}
+    
+    async def get_current_activities(self) -> List[Dict[str, Any]]:
+        """Get current active tasks/activities from Activity Recognition Engine
+        
+        Returns:
+            List of current activities with detailed insights
+        """
+        if not self._activity_recognition_config['enabled']:
+            return []
+        
+        try:
+            vsms = await self.get_vsms_core()
+            if not vsms:
+                return []
+            
+            # Get current activities from VSMS
+            activities = vsms.get_current_activities()
+            
+            # Transform for API response
+            return [{
+                'task_id': activity.get('task_id'),
+                'task_name': activity.get('task_name'),
+                'primary_activity': activity.get('primary_activity'),
+                'status': activity.get('status'),
+                'completion_percentage': activity.get('completion_percentage', 0),
+                'elapsed_time': activity.get('elapsed_time'),
+                'estimated_remaining': activity.get('estimated_remaining'),
+                'is_stuck': activity.get('is_stuck', False),
+                'applications': activity.get('applications', []),
+                'key_insights': activity.get('key_insights', [])
+            } for activity in activities]
+            
+        except Exception as e:
+            logger.error(f"Failed to get current activities: {e}")
+            return []
+    
+    async def get_activity_summary(self) -> Dict[str, Any]:
+        """Get summary of all activities from Activity Recognition Engine
+        
+        Returns:
+            Summary with statistics and insights about all activities
+        """
+        if not self._activity_recognition_config['enabled']:
+            return {
+                'enabled': False,
+                'message': 'Activity Recognition Engine not enabled'
+            }
+        
+        try:
+            vsms = await self.get_vsms_core()
+            if not vsms:
+                return {
+                    'enabled': False,
+                    'message': 'VSMS Core not available'
+                }
+            
+            # Get activity summary from VSMS
+            summary = vsms.get_activity_summary()
+            
+            return {
+                'enabled': True,
+                'total_tasks': summary.get('total_tasks', 0),
+                'active_tasks': summary.get('active_tasks', 0),
+                'completed_tasks': summary.get('completed_tasks', 0),
+                'stuck_tasks': summary.get('stuck_tasks', 0),
+                'primary_activities': summary.get('primary_activities', {}),
+                'productivity_score': summary.get('productivity_score', 0.0),
+                'time_distribution': summary.get('time_distribution', {}),
+                'workflow_patterns': summary.get('workflow_patterns', []),
+                'recommendations': summary.get('recommendations', [])
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get activity summary: {e}")
+            return {
+                'enabled': False,
+                'error': str(e)
+            }
+    
+    async def get_activity_insights(self, task_id: str) -> Dict[str, Any]:
+        """Get detailed insights for a specific activity/task
+        
+        Args:
+            task_id: The ID of the task to get insights for
+            
+        Returns:
+            Detailed insights about the task including progress, blockers, and suggestions
+        """
+        if not self._activity_recognition_config['enabled']:
+            return {
+                'enabled': False,
+                'message': 'Activity Recognition Engine not enabled'
+            }
+        
+        try:
+            vsms = await self.get_vsms_core()
+            if not vsms or not hasattr(vsms, 'activity_engine'):
+                return {
+                    'enabled': False,
+                    'message': 'Activity Recognition not available'
+                }
+            
+            # Get task insights from activity engine
+            insights = vsms.activity_engine.get_task_insights(task_id)
+            
+            if not insights:
+                return {
+                    'enabled': True,
+                    'found': False,
+                    'task_id': task_id
+                }
+            
+            return {
+                'enabled': True,
+                'found': True,
+                **insights
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get activity insights for {task_id}: {e}")
+            return {
+                'enabled': False,
+                'error': str(e)
+            }
+    
+    async def get_inferred_goals(self) -> Dict[str, Any]:
+        """Get currently inferred user goals from Goal Inference System
+        
+        Returns:
+            Dictionary with goals organized by level (high, intermediate, immediate)
+        """
+        try:
+            vsms = await self.get_vsms_core()
+            if not vsms or not hasattr(vsms, 'goal_inference'):
+                return {
+                    'enabled': False,
+                    'message': 'Goal Inference System not available'
+                }
+            
+            # Get active goals summary
+            summary = vsms.goal_inference.get_active_goals_summary()
+            
+            return {
+                'enabled': True,
+                'total_active': summary.get('total_active', 0),
+                'by_level': summary.get('by_level', {}),
+                'high_confidence_goals': summary.get('high_confidence', []),
+                'recently_updated': summary.get('recently_updated', []),
+                'near_completion': summary.get('near_completion', [])
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get inferred goals: {e}")
+            return {
+                'enabled': False,
+                'error': str(e)
+            }
+    
+    async def get_goal_insights(self, goal_id: str) -> Dict[str, Any]:
+        """Get detailed insights for a specific goal
+        
+        Args:
+            goal_id: The ID of the goal to get insights for
+            
+        Returns:
+            Detailed insights about the goal including progress and relationships
+        """
+        try:
+            vsms = await self.get_vsms_core()
+            if not vsms or not hasattr(vsms, 'goal_inference'):
+                return {
+                    'enabled': False,
+                    'message': 'Goal Inference System not available'
+                }
+            
+            # Get goal insights
+            insights = vsms.goal_inference.get_goal_insights(goal_id)
+            
+            if not insights:
+                return {
+                    'enabled': True,
+                    'found': False,
+                    'goal_id': goal_id
+                }
+            
+            return {
+                'enabled': True,
+                'found': True,
+                **insights
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get goal insights for {goal_id}: {e}")
+            return {
+                'enabled': False,
+                'error': str(e)
+            }
+    
+    async def track_goal_progress(self, goal_id: str, progress_delta: float) -> Dict[str, Any]:
+        """Update goal progress
+        
+        Args:
+            goal_id: The ID of the goal to update
+            progress_delta: Progress increment (0.0 to 1.0)
+            
+        Returns:
+            Success status and updated goal info
+        """
+        try:
+            vsms = await self.get_vsms_core()
+            if not vsms or not hasattr(vsms, 'goal_inference'):
+                return {
+                    'success': False,
+                    'message': 'Goal Inference System not available'
+                }
+            
+            # Update progress
+            vsms.goal_inference.track_goal_progress(goal_id, progress_delta)
+            
+            # Get updated insights
+            insights = vsms.goal_inference.get_goal_insights(goal_id)
+            
+            return {
+                'success': True,
+                'goal_id': goal_id,
+                'current_progress': insights.get('progress', 0.0) if insights else 0.0
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to track goal progress: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    async def process_intervention_signal(self, signal_type: str, value: float, 
+                                        confidence: float = 0.8, metadata: Dict[str, Any] = None):
+        """Process user state signal for intervention decision"""
+        intervention_engine = await self.get_intervention_engine()
+        if not intervention_engine:
+            return {"error": "Intervention engine not available"}
+        
+        from .intelligence.intervention_decision_engine import UserStateSignal
+        
+        signal = UserStateSignal(
+            signal_type=signal_type,
+            value=value,
+            confidence=confidence,
+            timestamp=datetime.now(),
+            source='manual_input',
+            metadata=metadata or {}
+        )
+        
+        await intervention_engine.process_user_signal(signal)
+        
+        return {
+            "success": True,
+            "current_state": intervention_engine.current_user_state.value if intervention_engine.current_user_state else "unknown",
+            "state_confidence": intervention_engine.state_confidence
+        }
+    
+    async def check_intervention_opportunity(self, situation_data: Dict[str, Any] = None):
+        """Check if intervention is recommended based on current state"""
+        intervention_engine = await self.get_intervention_engine()
+        if not intervention_engine:
+            return {"error": "Intervention engine not available"}
+        
+        # Assess situation if data provided
+        if situation_data:
+            await intervention_engine.assess_situation(situation_data)
+        
+        # Get intervention decision
+        opportunity = await intervention_engine.decide_intervention()
+        
+        if opportunity:
+            return {
+                "intervention_recommended": True,
+                "type": opportunity.intervention_type.value,
+                "timing": opportunity.timing_strategy.value,
+                "confidence": opportunity.confidence_score,
+                "urgency": opportunity.urgency_score,
+                "rationale": opportunity.rationale,
+                "content": opportunity.content
+            }
+        else:
+            return {
+                "intervention_recommended": False,
+                "current_state": intervention_engine.current_user_state.value if intervention_engine.current_user_state else "unknown",
+                "reason": "No intervention needed at this time"
+            }
+    
+    async def get_intervention_stats(self) -> Dict[str, Any]:
+        """Get intervention engine statistics"""
+        intervention_engine = await self.get_intervention_engine()
+        if not intervention_engine:
+            return {"error": "Intervention engine not available"}
+        
+        return intervention_engine.get_statistics()
+    
+    async def detect_anomalies_in_screenshot(self, screenshot: np.ndarray, 
+                                           context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Detect anomalies in a screenshot"""
+        anomaly_detector = await self.get_anomaly_detector()
+        if not anomaly_detector:
+            return {"error": "Anomaly detector not available"}
+        
+        # First analyze the screenshot
+        result, _ = await self.analyze_screenshot(
+            screenshot, 
+            "Analyze this screenshot for any unusual or anomalous patterns"
+        )
+        
+        # Create observation
+        from .intelligence.anomaly_detection_framework import Observation
+        
+        observation = Observation(
+            timestamp=datetime.now(),
+            observation_type='manual_screenshot',
+            data={
+                'analysis': result,
+                'context': context or {}
+            },
+            source='manual_detection',
+            metadata={
+                'has_errors': 'error' in str(result).lower(),
+                'has_warnings': 'warning' in str(result).lower()
+            }
+        )
+        
+        # Detect anomaly
+        anomaly = await anomaly_detector.detect_anomaly(observation)
+        
+        if anomaly:
+            return {
+                "anomaly_detected": True,
+                "type": anomaly.anomaly_type.value,
+                "severity": anomaly.severity.value,
+                "confidence": anomaly.confidence,
+                "description": anomaly.description,
+                "detection_method": anomaly.detection_method,
+                "requires_intervention": anomaly.severity.value in ['HIGH', 'CRITICAL']
+            }
+        else:
+            return {
+                "anomaly_detected": False,
+                "message": "No anomalies detected in screenshot"
+            }
+    
+    async def get_anomaly_history(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recent anomaly detection history"""
+        anomaly_detector = await self.get_anomaly_detector()
+        if not anomaly_detector:
+            return []
+        
+        history = anomaly_detector.get_anomaly_history(limit)
+        return [
+            {
+                "anomaly_id": a.anomaly_id,
+                "type": a.anomaly_type.value,
+                "severity": a.severity.value,
+                "timestamp": a.timestamp.isoformat(),
+                "confidence": a.confidence,
+                "description": a.description
+            }
+            for a in history
+        ]
+    
+    async def test_intervention_system(self, scenario: str = "frustrated_user") -> Dict[str, Any]:
+        """Test the intervention system with predefined scenarios"""
+        intervention_engine = await self.get_intervention_engine()
+        if not intervention_engine:
+            return {"error": "Intervention engine not available"}
+        
+        from .intelligence.intervention_decision_engine import UserStateSignal
+        
+        scenarios = {
+            "frustrated_user": [
+                UserStateSignal("error_rate", 0.7, 0.9, datetime.now(), "test"),
+                UserStateSignal("repeated_actions", 0.8, 0.85, datetime.now(), "test"),
+                UserStateSignal("mouse_movement", 0.9, 0.8, datetime.now(), "test", 
+                              {"velocity": 2.5, "acceleration": 1.8})
+            ],
+            "productive_user": [
+                UserStateSignal("typing_pattern", 0.8, 0.9, datetime.now(), "test",
+                              {"wpm": 65, "accuracy": 0.95}),
+                UserStateSignal("task_completion", 0.9, 0.9, datetime.now(), "test"),
+                UserStateSignal("focus_duration", 0.85, 0.9, datetime.now(), "test")
+            ],
+            "struggling_user": [
+                UserStateSignal("help_searches", 0.7, 0.9, datetime.now(), "test"),
+                UserStateSignal("documentation_views", 0.8, 0.8, datetime.now(), "test"),
+                UserStateSignal("pause_duration", 0.7, 0.85, datetime.now(), "test")
+            ]
+        }
+        
+        if scenario not in scenarios:
+            return {"error": f"Unknown scenario. Available: {list(scenarios.keys())}"}
+        
+        # Process signals
+        for signal in scenarios[scenario]:
+            await intervention_engine.process_user_signal(signal)
+        
+        # Force state update
+        await intervention_engine._update_user_state()
+        
+        # Create situation based on scenario
+        situation_data = {
+            "frustrated_user": {
+                'has_error': True,
+                'error_type': 'repeated_failures',
+                'failure_count': 5,
+                'context_type': 'debugging'
+            },
+            "productive_user": {
+                'has_error': False,
+                'context_type': 'coding',
+                'task_completion_rate': 0.9
+            },
+            "struggling_user": {
+                'has_error': False,
+                'context_type': 'learning',
+                'documentation_available': True
+            }
+        }
+        
+        await intervention_engine.assess_situation(situation_data[scenario])
+        
+        # Get intervention decision
+        opportunity = await intervention_engine.decide_intervention()
+        
+        result = {
+            "scenario": scenario,
+            "detected_state": intervention_engine.current_user_state.value,
+            "state_confidence": intervention_engine.state_confidence,
+            "intervention_recommended": opportunity is not None
+        }
+        
+        if opportunity:
+            result.update({
+                "intervention_type": opportunity.intervention_type.value,
+                "timing_strategy": opportunity.timing_strategy.value,
+                "confidence": opportunity.confidence_score,
+                "rationale": opportunity.rationale
+            })
+        
+        return result
+    
+    async def capture_problem_solution(self, problem_description: str, 
+                                     solution_steps: List[Dict[str, Any]],
+                                     success: bool = True,
+                                     execution_time: Optional[float] = None) -> Dict[str, Any]:
+        """Manually capture a problem and its solution"""
+        solution_memory = await self.get_solution_memory_bank()
+        if not solution_memory:
+            return {"error": "Solution Memory Bank not available"}
+        
+        from .intelligence.solution_memory_bank import ProblemSignature, ProblemType
+        
+        # Create problem signature
+        problem = ProblemSignature(
+            visual_pattern={'manual_entry': True},
+            error_messages=[problem_description] if problem_description else [],
+            symptoms=['user_reported'],
+            problem_type=ProblemType.UNKNOWN
+        )
+        
+        # Capture solution
+        solution = await solution_memory.capture_solution(
+            problem=problem,
+            solution_steps=solution_steps,
+            success=success,
+            execution_time=execution_time or 60.0,
+            context={'source': 'manual_capture'}
+        )
+        
+        return {
+            "success": True,
+            "solution_id": solution.solution_details.solution_id,
+            "status": solution.status.value
+        }
+    
+    async def find_solutions_for_screenshot(self, screenshot: np.ndarray,
+                                          context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Find solutions for problems in a screenshot"""
+        solution_memory = await self.get_solution_memory_bank()
+        if not solution_memory:
+            return {"error": "Solution Memory Bank not available"}
+        
+        # First analyze the screenshot
+        result, _ = await self.analyze_screenshot(
+            screenshot,
+            "Identify any errors, problems, or issues in this screenshot"
+        )
+        
+        # Check if problems were found
+        if 'solution_recommendations' in result:
+            return {
+                "found_solutions": True,
+                "recommendations": result['solution_recommendations'],
+                "analysis": result.get('description', '')
+            }
+        else:
+            return {
+                "found_solutions": False,
+                "message": "No problems detected requiring solutions",
+                "analysis": result.get('description', '')
+            }
+    
+    async def apply_recommended_solution(self, solution_id: str,
+                                       execute_callback=None) -> Dict[str, Any]:
+        """Apply a recommended solution"""
+        solution_memory = await self.get_solution_memory_bank()
+        if not solution_memory:
+            return {"error": "Solution Memory Bank not available"}
+        
+        # Get current context
+        context = {
+            'timestamp': datetime.now().isoformat(),
+            'source': 'vision_analyzer'
+        }
+        
+        # Apply solution
+        result = await solution_memory.apply_solution(
+            solution_id,
+            context,
+            execute_callback=execute_callback
+        )
+        
+        return result
+    
+    async def refine_solution_with_feedback(self, solution_id: str,
+                                          feedback: str,
+                                          rating: Optional[float] = None,
+                                          refinements: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Provide feedback to improve a solution"""
+        solution_memory = await self.get_solution_memory_bank()
+        if not solution_memory:
+            return {"error": "Solution Memory Bank not available"}
+        
+        await solution_memory.refine_solution(
+            solution_id,
+            refinements or {},
+            user_feedback=feedback,
+            rating=rating
+        )
+        
+        return {
+            "success": True,
+            "message": "Solution refined with feedback"
+        }
+    
+    async def get_solution_stats(self) -> Dict[str, Any]:
+        """Get Solution Memory Bank statistics"""
+        solution_memory = await self.get_solution_memory_bank()
+        if not solution_memory:
+            return {"error": "Solution Memory Bank not available"}
+        
+        stats = solution_memory.get_statistics()
+        memory = solution_memory.get_memory_usage()
+        
+        return {
+            "statistics": stats,
+            "memory_usage": {
+                "database_mb": memory['solution_database'] / 1024 / 1024,
+                "indices_mb": memory['index_structures'] / 1024 / 1024,
+                "total_mb": memory['total'] / 1024 / 1024
+            }
+        }
+    
+    async def search_solutions_by_error(self, error_message: str) -> List[Dict[str, Any]]:
+        """Search for solutions by error message"""
+        solution_memory = await self.get_solution_memory_bank()
+        if not solution_memory:
+            return []
+        
+        from .intelligence.solution_memory_bank import ProblemSignature, ProblemType
+        
+        # Create problem signature from error
+        problem = ProblemSignature(
+            error_messages=[error_message],
+            symptoms=['error_search'],
+            problem_type=ProblemType.ERROR
+        )
+        
+        # Find similar solutions
+        similar = await solution_memory.find_similar_solutions(problem, threshold=0.5)
+        
+        results = []
+        for solution_id, similarity in similar[:5]:
+            solution = solution_memory.solutions.get(solution_id)
+            if solution:
+                results.append({
+                    "solution_id": solution_id,
+                    "similarity": similarity,
+                    "success_rate": solution.solution_details.success_rate,
+                    "usage_count": solution.learning_metadata.usage_count,
+                    "status": solution.status.value
+                })
+        
+        return results

@@ -5,6 +5,11 @@ pub mod capture;
 pub mod compression;
 pub mod processing;
 pub mod sliding_window;
+pub mod goal_patterns;
+pub mod pattern_mining;
+pub mod anomaly_detection;
+pub mod intervention_engine;
+pub mod solution_matching;
 
 #[cfg(target_os = "macos")]
 pub mod macos_optimization;

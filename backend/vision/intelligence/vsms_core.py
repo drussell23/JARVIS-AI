@@ -368,6 +368,19 @@ class VisualStateManager:
         from .element_detector import ElementDetector
         self.element_detector = ElementDetector()
         
+        # Temporal Context Engine
+        from .temporal_context_engine import get_temporal_engine, EventType
+        self.temporal_engine = get_temporal_engine()
+        self.EventType = EventType
+        
+        # Activity Recognition Engine
+        from .activity_recognition_engine import get_activity_engine
+        self.activity_engine = get_activity_engine()
+        
+        # Goal Inference System
+        from .goal_inference_system import get_goal_inference_engine
+        self.goal_inference = get_goal_inference_engine()
+        
         # Memory monitoring
         self.memory_usage = {
             'state_definitions': 0,
@@ -410,6 +423,13 @@ class VisualStateManager:
         if not self._check_memory_limits():
             logger.warning("Memory limits exceeded, cleaning up...")
             self._cleanup_memory()
+        
+        # Record screenshot capture event
+        await self.temporal_engine.process_visual_event(
+            event_type=self.EventType.SCREENSHOT_CAPTURED,
+            app_id=app_id or 'unknown',
+            data={'shape': screenshot.shape}
+        )
         
         # Extract application boundaries if not provided
         if not app_id:
@@ -469,6 +489,19 @@ class VisualStateManager:
                 )
                 self.state_history.add_transition(transition)
                 
+                # Record temporal event
+                await self.temporal_engine.process_visual_event(
+                    event_type=self.EventType.STATE_CHANGE,
+                    app_id=app_id,
+                    state_id=detected_state,
+                    data={
+                        'from_state': previous_state,
+                        'to_state': detected_state,
+                        'confidence': confidence,
+                        'duration': duration.total_seconds() if duration else None
+                    }
+                )
+                
                 # Record in state intelligence
                 from .state_intelligence import StateVisit
                 visit = StateVisit(
@@ -506,6 +539,112 @@ class VisualStateManager:
                 'title': self.content_contexts[app_id].title,
                 'modified': self.content_contexts[app_id].is_modified
             }
+        
+        # Activity Recognition
+        try:
+            # Build context for activity recognition
+            activity_context = {
+                'active_applications': [app_id] if app_id != 'unknown' else [],
+                'visited_states': [self.current_states.get(app_id)] if app_id in self.current_states else [],
+                'text_content': content_features.get('text_content', []) if content_features else [],
+                'scene_graph': result.get('scene_graph', {}),
+                'temporal_context': await self.temporal_engine.get_temporal_context(app_id)
+            }
+            
+            # Recognize activity
+            recognized_task = await self.activity_engine.recognize_activity(activity_context)
+            
+            # Add to result
+            result['activity'] = {
+                'task_id': recognized_task.task_id,
+                'task_name': recognized_task.name,
+                'primary_activity': recognized_task.primary_activity.value,
+                'confidence': recognized_task.confidence,
+                'completion_percentage': recognized_task.completion_percentage,
+                'is_stuck': recognized_task.is_stuck,
+                'status': recognized_task.status.name
+            }
+            
+            # Record task event
+            await self.temporal_engine.process_visual_event(
+                event_type=self.EventType.TASK_START if recognized_task.completion_percentage < 10 else self.EventType.WORKFLOW_STEP,
+                app_id=app_id,
+                state_id=detected_state,
+                data={
+                    'task_id': recognized_task.task_id,
+                    'task_name': recognized_task.name,
+                    'activity': recognized_task.primary_activity.value
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"Activity recognition failed: {e}")
+            result['activity_error'] = str(e)
+        
+        # Goal Inference
+        try:
+            # Build context for goal inference
+            goal_context = {
+                'active_applications': [app_id] if app_id != 'unknown' else [],
+                'recent_actions': [],  # Extract from temporal context
+                'content': {
+                    'type': content_features.get('type', 'unknown') if content_features else 'unknown',
+                    'has_errors': detected_state and 'error' in detected_state.lower() if detected_state else False
+                },
+                'time_context': {
+                    'time_of_day': self._get_time_of_day(),
+                    'day_of_week': 'weekday' if datetime.now().weekday() < 5 else 'weekend'
+                }
+            }
+            
+            # Add recent actions from temporal context
+            if 'temporal_context' in activity_context:
+                recent_events = activity_context['temporal_context'].get('immediate_context', {}).get('recent_events', [])
+                goal_context['recent_actions'] = [e.get('event_type', '') for e in recent_events[-5:]]
+            
+            # Add history context
+            if app_id in self.current_states:
+                goal_context['history'] = {
+                    'current_state': self.current_states[app_id],
+                    'recent_states': list(self.state_history.transitions)[-10:]
+                }
+            
+            # Infer goals
+            inferred_goals = await self.goal_inference.infer_goals(goal_context)
+            
+            # Add to result
+            result['goals'] = {
+                'high_level': [{
+                    'goal_id': g.goal_id,
+                    'type': g.goal_type,
+                    'description': g.description,
+                    'confidence': g.confidence
+                } for g in inferred_goals.get(self.goal_inference.GoalLevel.HIGH_LEVEL, [])],
+                'intermediate': [{
+                    'goal_id': g.goal_id,
+                    'type': g.goal_type,
+                    'description': g.description,
+                    'confidence': g.confidence
+                } for g in inferred_goals.get(self.goal_inference.GoalLevel.INTERMEDIATE, [])],
+                'immediate': [{
+                    'goal_id': g.goal_id,
+                    'type': g.goal_type,
+                    'description': g.description,
+                    'confidence': g.confidence
+                } for g in inferred_goals.get(self.goal_inference.GoalLevel.IMMEDIATE, [])]
+            }
+            
+            # Link goals to activities
+            if 'activity' in result and inferred_goals:
+                # Find most relevant goals for the activity
+                for level_goals in inferred_goals.values():
+                    for goal in level_goals:
+                        if goal.confidence >= 0.8:
+                            goal.related_task_ids.append(recognized_task.task_id)
+                            
+        except Exception as e:
+            logger.error(f"Goal inference failed: {e}")
+            result['goal_error'] = str(e)
         
         # Add predictions
         if app_id in self.current_states:
@@ -672,6 +811,19 @@ class VisualStateManager:
         except Exception as e:
             logger.error(f"Failed to save state definitions: {e}")
     
+    async def get_temporal_context(self, app_id: Optional[str] = None) -> Dict[str, Any]:
+        """Get temporal context for application"""
+        return await self.temporal_engine.get_temporal_context(app_id)
+    
+    def get_current_activities(self) -> List[Dict[str, Any]]:
+        """Get current active tasks/activities"""
+        tasks = self.activity_engine.get_current_activities()
+        return [self.activity_engine.get_task_insights(task.task_id) for task in tasks]
+    
+    def get_activity_summary(self) -> Dict[str, Any]:
+        """Get summary of all activities"""
+        return self.activity_engine.get_activity_summary()
+    
     def get_insights(self) -> Dict[str, Any]:
         """Get VSMS insights"""
         # Get state intelligence insights
@@ -731,6 +883,20 @@ class VisualStateManager:
                          if a['transition'].from_state in app_states or 
                          a['transition'].to_state in app_states][:5]
         }
+    
+    def _get_time_of_day(self) -> str:
+        """Get current time of day category"""
+        hour = datetime.now().hour
+        if 5 <= hour < 8:
+            return 'early_morning'
+        elif 8 <= hour < 12:
+            return 'morning'
+        elif 12 <= hour < 17:
+            return 'afternoon'
+        elif 17 <= hour < 21:
+            return 'evening'
+        else:
+            return 'night'
     
     def _get_app_transition_patterns(self, app_id: str) -> List[Dict[str, Any]]:
         """Get transition patterns for an application"""

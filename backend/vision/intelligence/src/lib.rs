@@ -2,6 +2,7 @@ pub mod pattern_recognition;
 pub mod state_detection;
 pub mod visual_features;
 pub mod memory_pool;
+pub mod workflow_patterns;
 pub mod python_bridge;
 
 use pyo3::prelude::*;
@@ -24,6 +25,9 @@ fn vision_intelligence(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     
     // Register memory pool for efficient processing
     m.add_class::<memory_pool::VisionMemoryPool>()?;
+    
+    // Register workflow pattern components
+    workflow_patterns::register_workflow_patterns(m)?;
     
     // Add initialization function
     m.add_function(wrap_pyfunction!(initialize_vision_intelligence, m)?)?;
