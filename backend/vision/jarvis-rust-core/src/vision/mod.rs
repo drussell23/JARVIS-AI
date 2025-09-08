@@ -10,6 +10,7 @@ pub mod pattern_mining;
 pub mod anomaly_detection;
 pub mod intervention_engine;
 pub mod solution_matching;
+pub mod spatial_quadtree;
 
 #[cfg(target_os = "macos")]
 pub mod macos_optimization;
@@ -49,6 +50,11 @@ pub use macos_optimization::{
 pub use sliding_window::{
     SlidingWindowConfig, SlidingWindowCapture, WindowRegion, AnalysisResult,
     MemoryAwareSlidingWindow, SlidingWindowStats, CachedAnalysis
+};
+
+pub use spatial_quadtree::{
+    QuadNode, SpatialQuadtree, QuadtreeStats, RegionBatchProcessor,
+    ImportanceCalculator
 };
 
 /// Global vision configuration

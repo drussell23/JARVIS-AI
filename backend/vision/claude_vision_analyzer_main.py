@@ -182,6 +182,7 @@ class AnalysisMetrics:
     compression_ratio: float = 0.0
     vision_intelligence_time: float = 0.0  # Time for Vision Intelligence analysis
     vsms_core_time: float = 0.0  # Time for VSMS Core analysis
+    quadtree_time: float = 0.0  # Time for Quadtree spatial analysis
 
 class DynamicEntityExtractor:
     """Dynamic entity extraction without hardcoded patterns"""
@@ -702,6 +703,23 @@ class ClaudeVisionAnalyzer:
         # Initialize solution memory bank (lazy loading)
         self.solution_memory_bank = None
         
+        # Initialize Quadtree Spatial Intelligence configuration
+        self._quadtree_spatial_config = {
+            'enabled': os.getenv('QUADTREE_SPATIAL_ENABLED', 'true').lower() == 'true',
+            'max_depth': int(os.getenv('QUADTREE_MAX_DEPTH', '6')),
+            'min_node_size': int(os.getenv('QUADTREE_MIN_NODE_SIZE', '50')),
+            'importance_threshold': float(os.getenv('QUADTREE_IMPORTANCE_THRESHOLD', '0.7')),
+            'enable_caching': os.getenv('QUADTREE_ENABLE_CACHING', 'true').lower() == 'true',
+            'cache_duration_minutes': int(os.getenv('QUADTREE_CACHE_DURATION', '5')),
+            'use_rust_acceleration': os.getenv('QUADTREE_USE_RUST', 'true').lower() == 'true',
+            'use_swift_detection': os.getenv('QUADTREE_USE_SWIFT', 'true').lower() == 'true',
+            'optimize_api_calls': os.getenv('QUADTREE_OPTIMIZE_API', 'true').lower() == 'true',
+            'max_regions_per_analysis': int(os.getenv('QUADTREE_MAX_REGIONS', '10'))
+        }
+        
+        # Initialize quadtree spatial intelligence (lazy loading)
+        self.quadtree_spatial = None
+        
         if self._vsms_core_config['enabled']:
             logger.info("VSMS Core available and enabled")
         self._screen_sharing_config = {
@@ -964,6 +982,20 @@ class ClaudeVisionAnalyzer:
                 self._solution_memory_config['enabled'] = False
         return self.solution_memory_bank
     
+    async def get_quadtree_spatial(self):
+        """Get Quadtree Spatial Intelligence with lazy loading"""
+        if self.quadtree_spatial is None and self._quadtree_spatial_config['enabled']:
+            try:
+                from .intelligence.quadtree_spatial_intelligence import (
+                    get_quadtree_spatial_intelligence, RegionImportance, QueryResult
+                )
+                self.quadtree_spatial = get_quadtree_spatial_intelligence()
+                logger.info("Initialized Quadtree Spatial Intelligence")
+            except Exception as e:
+                logger.warning(f"Could not initialize Quadtree Spatial Intelligence: {e}")
+                self._quadtree_spatial_config['enabled'] = False
+        return self.quadtree_spatial
+    
     async def get_simplified_vision(self):
         """Get simplified vision system with lazy loading"""
         if self.simplified_vision is None and self._simplified_vision_config['enabled']:
@@ -1148,6 +1180,57 @@ class ClaudeVisionAnalyzer:
                     logger.debug(f"Cache hit for prompt: {prompt[:50]}...")
                     return cached_entry.result, metrics
             
+            # Apply Quadtree Spatial Intelligence if enabled
+            quadtree_regions = None
+            if self._quadtree_spatial_config['enabled'] and self._quadtree_spatial_config['optimize_api_calls']:
+                quadtree_start = time.time()
+                try:
+                    quadtree = await self.get_quadtree_spatial()
+                    if quadtree:
+                        # Convert PIL image to numpy for quadtree analysis
+                        np_image = np.array(pil_image)
+                        
+                        # Build quadtree for image
+                        tree_id = f"img_{image_hash[:8]}"
+                        await quadtree.build_quadtree(np_image, tree_id)
+                        
+                        # Query important regions based on configuration
+                        query_result = await quadtree.query_regions(
+                            tree_id,
+                            importance_threshold=self._quadtree_spatial_config['importance_threshold'],
+                            max_regions=self._quadtree_spatial_config['max_regions_per_analysis']
+                        )
+                        
+                        if query_result.nodes:
+                            quadtree_regions = []
+                            for node in query_result.nodes:
+                                quadtree_regions.append({
+                                    'x': node.x,
+                                    'y': node.y,
+                                    'width': node.width,
+                                    'height': node.height,
+                                    'importance': node.importance,
+                                    'complexity': node.complexity
+                                })
+                            
+                            # Get processing recommendations
+                            recommendations = quadtree.get_processing_recommendations(
+                                tree_id,
+                                available_api_calls=self._quadtree_spatial_config['max_regions_per_analysis']
+                            )
+                            
+                            logger.info(f"Quadtree identified {len(quadtree_regions)} important regions "
+                                      f"(coverage: {query_result.coverage_ratio:.1%})")
+                            
+                            if recommendations:
+                                logger.debug(f"Quadtree recommendations: {recommendations[0]['reason']}")
+                        
+                        # Add quadtree time to metrics
+                        metrics.quadtree_time = time.time() - quadtree_start
+                            
+                except Exception as e:
+                    logger.warning(f"Quadtree spatial analysis failed: {e}")
+            
             # Compress image if enabled
             if self.config.compression_enabled:
                 compression_start = time.time()
@@ -1163,20 +1246,42 @@ class ClaudeVisionAnalyzer:
             # Make API call with rate limiting
             api_start = time.time()
             async with self.api_semaphore:
+                # Enhance prompt with quadtree information if available
+                enhanced_prompt = prompt
+                if quadtree_regions and len(quadtree_regions) > 1:
+                    region_info = f"\n\n[Spatial Analysis: Found {len(quadtree_regions)} important regions. "
+                    region_info += "Focus on these key areas: "
+                    for i, region in enumerate(quadtree_regions[:5]):  # Top 5 regions
+                        region_info += f"Region {i+1} at ({region['x']},{region['y']}) "
+                        region_info += f"{region['width']}x{region['height']}px "
+                        region_info += f"(importance: {region['importance']:.2f}), "
+                    region_info = region_info.rstrip(", ") + "]"
+                    enhanced_prompt = prompt + region_info
+                
                 if priority == "high":
                     # High priority requests get processed immediately
-                    result = await self._call_claude_api(image_base64, prompt)
+                    result = await self._call_claude_api(image_base64, enhanced_prompt)
                 else:
                     # Normal priority may be delayed if system is busy
                     if self._get_system_load() > (self.config.cpu_threshold_percent / 100):
                         await asyncio.sleep(0.5)  # Brief delay to reduce load
-                    result = await self._call_claude_api(image_base64, prompt)
+                    result = await self._call_claude_api(image_base64, enhanced_prompt)
             metrics.api_call_time = time.time() - api_start
             
             # Parse response
             parsing_start = time.time()
             parsed_result = self._parse_claude_response(result)
             metrics.parsing_time = time.time() - parsing_start
+            
+            # Add quadtree spatial information to result if available
+            if quadtree_regions:
+                parsed_result['spatial_analysis'] = {
+                    'regions_detected': len(quadtree_regions),
+                    'important_regions': quadtree_regions,
+                    'optimization_applied': True,
+                    'coverage_ratio': query_result.coverage_ratio if 'query_result' in locals() else 0.0
+                }
+                logger.debug(f"Added {len(quadtree_regions)} spatial regions to result")
             
             # Enhance with Vision Intelligence if enabled
             if self._vision_intelligence_config['enabled']:
@@ -4360,6 +4465,106 @@ Focus on what's visible in this specific region. Be concise but thorough."""
                 "total_mb": memory['total'] / 1024 / 1024
             }
         }
+    
+    async def optimize_regions_with_quadtree(self, screenshot: np.ndarray,
+                                           importance_threshold: float = 0.6) -> Dict[str, Any]:
+        """Use Quadtree to find and optimize important regions in screenshot"""
+        quadtree = await self.get_quadtree_spatial()
+        if not quadtree:
+            return {"error": "Quadtree spatial intelligence not available"}
+        
+        # Build quadtree
+        tree_id = f"optimize_{hashlib.md5(screenshot.tobytes()).hexdigest()[:8]}"
+        await quadtree.build_quadtree(screenshot, tree_id)
+        
+        # Query regions
+        query_result = await quadtree.query_regions(
+            tree_id,
+            importance_threshold=importance_threshold,
+            max_regions=20
+        )
+        
+        # Get recommendations
+        recommendations = quadtree.get_processing_recommendations(
+            tree_id,
+            available_api_calls=10
+        )
+        
+        return {
+            "regions_found": len(query_result.nodes),
+            "coverage_ratio": query_result.coverage_ratio,
+            "from_cache": query_result.from_cache,
+            "regions": [
+                {
+                    "x": node.x,
+                    "y": node.y,
+                    "width": node.width,
+                    "height": node.height,
+                    "importance": node.importance,
+                    "complexity": node.complexity,
+                    "level": node.level
+                }
+                for node in query_result.nodes[:10]
+            ],
+            "recommendations": recommendations,
+            "stats": quadtree.get_statistics()
+        }
+    
+    async def analyze_with_spatial_focus(self, screenshot: np.ndarray, prompt: str,
+                                       focus_regions: List[Dict[str, int]] = None) -> Dict[str, Any]:
+        """Analyze screenshot with spatial focus on specific regions"""
+        quadtree = await self.get_quadtree_spatial()
+        if not quadtree:
+            # Fallback to standard analysis
+            result, _ = await self.analyze_screenshot(screenshot, prompt)
+            return result
+        
+        # Convert focus regions to tuples
+        focus_tuples = None
+        if focus_regions:
+            focus_tuples = [
+                (r['x'], r['y'], r['x'] + r['width'], r['y'] + r['height'])
+                for r in focus_regions
+            ]
+        
+        # Build quadtree with focus regions
+        tree_id = f"focus_{hashlib.md5(screenshot.tobytes()).hexdigest()[:8]}"
+        await quadtree.build_quadtree(screenshot, tree_id, focus_regions=focus_tuples)
+        
+        # Query with higher threshold for focused analysis
+        query_result = await quadtree.query_regions(
+            tree_id,
+            importance_threshold=0.5,
+            max_regions=15
+        )
+        
+        # Create enhanced prompt with spatial information
+        spatial_prompt = prompt
+        if query_result.nodes:
+            spatial_prompt += f"\n\nPay special attention to {len(query_result.nodes)} important regions identified."
+            if focus_regions:
+                spatial_prompt += " User has indicated specific areas of interest."
+        
+        # Analyze with spatial context
+        result, metrics = await self.analyze_screenshot(screenshot, spatial_prompt)
+        
+        # Add detailed spatial information
+        result['spatial_focus'] = {
+            'method': 'quadtree_focused',
+            'focus_regions': focus_regions,
+            'detected_regions': len(query_result.nodes),
+            'coverage': query_result.coverage_ratio
+        }
+        
+        return result
+    
+    async def get_quadtree_stats(self) -> Dict[str, Any]:
+        """Get Quadtree spatial intelligence statistics"""
+        quadtree = await self.get_quadtree_spatial()
+        if not quadtree:
+            return {"error": "Quadtree spatial intelligence not available"}
+        
+        return quadtree.get_statistics()
     
     async def search_solutions_by_error(self, error_message: str) -> List[Dict[str, Any]]:
         """Search for solutions by error message"""
