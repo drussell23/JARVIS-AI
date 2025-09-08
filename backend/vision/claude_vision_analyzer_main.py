@@ -33,6 +33,24 @@ import logging
 import psutil
 from pathlib import Path
 
+# Import Vision Intelligence System
+try:
+    from .intelligence import (
+        VisionIntelligenceBridge,
+        get_vision_intelligence_bridge,
+        VisualStateManagementSystem
+    )
+    from .intelligence.vsms_core import get_vsms, StateCategory
+    from .intelligence.state_intelligence import get_state_intelligence
+    VISION_INTELLIGENCE_AVAILABLE = True
+    VSMS_CORE_AVAILABLE = True
+except ImportError as e:
+    VISION_INTELLIGENCE_AVAILABLE = False
+    VSMS_CORE_AVAILABLE = False
+    VisionIntelligenceBridge = None
+    get_vsms = None
+    logger.warning(f"Vision Intelligence System not fully available - install with ./intelligence/build.sh: {e}")
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -75,6 +93,30 @@ class VisionConfig:
     enable_continuous_monitoring: bool = field(default_factory=lambda: os.getenv('VISION_CONTINUOUS_ENABLED', 'true').lower() == 'true')
     enable_video_streaming: bool = field(default_factory=lambda: True)  # Always enable video streaming
     prefer_video_over_screenshots: bool = field(default_factory=lambda: os.getenv('VISION_PREFER_VIDEO', 'true').lower() == 'true')
+    
+    # Vision Intelligence enhancement
+    vision_intelligence_enabled: bool = field(default_factory=lambda: os.getenv('VISION_INTELLIGENCE_ENABLED', 'false').lower() == 'true')
+    vision_intelligence_confidence_threshold: float = field(default_factory=lambda: float(os.getenv('VISION_INTELLIGENCE_CONFIDENCE', '0.7')))
+    
+    # VSMS Core configuration
+    vsms_core_enabled: bool = field(default_factory=lambda: os.getenv('VSMS_CORE_ENABLED', 'false').lower() == 'true')
+    vsms_state_learning_enabled: bool = field(default_factory=lambda: os.getenv('VSMS_STATE_LEARNING', 'true').lower() == 'true')
+    vsms_pattern_detection_enabled: bool = field(default_factory=lambda: os.getenv('VSMS_PATTERN_DETECTION', 'true').lower() == 'true')
+    
+    # Semantic Scene Graph configuration
+    scene_graph_enabled: bool = field(default_factory=lambda: os.getenv('SCENE_GRAPH_ENABLED', 'true').lower() == 'true')
+    scene_graph_element_detection: bool = field(default_factory=lambda: os.getenv('SCENE_GRAPH_ELEMENTS', 'true').lower() == 'true')
+    scene_graph_relationship_discovery: bool = field(default_factory=lambda: os.getenv('SCENE_GRAPH_RELATIONSHIPS', 'true').lower() == 'true')
+    
+    vision_intelligence_consensus: bool = field(default_factory=lambda: os.getenv('VISION_INTELLIGENCE_CONSENSUS', 'true').lower() == 'true')
+    state_persistence_enabled: bool = field(default_factory=lambda: os.getenv('VISION_STATE_PERSISTENCE', 'true').lower() == 'true')
+    
+    # VSMS Core settings
+    enable_vsms_core: bool = field(default_factory=lambda: os.getenv('VSMS_CORE_ENABLED', 'true').lower() == 'true')
+    vsms_track_workflows: bool = field(default_factory=lambda: os.getenv('VSMS_TRACK_WORKFLOWS', 'true').lower() == 'true')
+    vsms_detect_anomalies: bool = field(default_factory=lambda: os.getenv('VSMS_DETECT_ANOMALIES', 'true').lower() == 'true')
+    vsms_personalization: bool = field(default_factory=lambda: os.getenv('VSMS_PERSONALIZATION', 'true').lower() == 'true')
+    vsms_stuck_threshold_minutes: int = field(default_factory=lambda: int(os.getenv('VSMS_STUCK_THRESHOLD', '5')))
     
     @classmethod
     def from_file(cls, config_path: str) -> 'VisionConfig':
@@ -128,6 +170,8 @@ class AnalysisMetrics:
     image_size_original: int = 0
     image_size_compressed: int = 0
     compression_ratio: float = 0.0
+    vision_intelligence_time: float = 0.0  # Time for Vision Intelligence analysis
+    vsms_core_time: float = 0.0  # Time for VSMS Core analysis
 
 class DynamicEntityExtractor:
     """Dynamic entity extraction without hardcoded patterns"""
@@ -555,6 +599,38 @@ class ClaudeVisionAnalyzer:
         
         # Initialize screen sharing module (lazy loading)
         self.screen_sharing = None
+        
+        # Initialize Vision Intelligence System (lazy loading)
+        self.vision_intelligence = None
+        self._vision_intelligence_config = {
+            'enabled': self.config.enable_vision_intelligence and VISION_INTELLIGENCE_AVAILABLE,
+            'learning': self.config.vision_intelligence_learning,
+            'consensus': self.config.vision_intelligence_consensus,
+            'persistence': self.config.state_persistence_enabled
+        }
+        
+        if self._vision_intelligence_config['enabled']:
+            logger.info("Vision Intelligence System available and enabled")
+        
+        # Initialize VSMS Core (lazy loading)
+        self.vsms_core = None
+        self._vsms_core_config = {
+            'enabled': self.config.enable_vsms_core and VSMS_CORE_AVAILABLE,
+            'track_workflows': self.config.vsms_track_workflows,
+            'detect_anomalies': self.config.vsms_detect_anomalies,
+            'personalization': self.config.vsms_personalization,
+            'stuck_threshold_minutes': self.config.vsms_stuck_threshold_minutes
+        }
+        
+        # Initialize Scene Graph configuration
+        self._scene_graph_config = {
+            'enabled': self.config.scene_graph_enabled,
+            'element_detection': self.config.scene_graph_element_detection,
+            'relationship_discovery': self.config.scene_graph_relationship_discovery
+        }
+        
+        if self._vsms_core_config['enabled']:
+            logger.info("VSMS Core available and enabled")
         self._screen_sharing_config = {
             'enabled': self.config.enable_screen_sharing
         }
@@ -664,6 +740,45 @@ class ClaudeVisionAnalyzer:
             except ImportError as e:
                 logger.warning(f"Could not import memory-efficient analyzer: {e}")
         return self.memory_efficient_analyzer
+    
+    async def get_vision_intelligence(self):
+        """Get Vision Intelligence System with lazy loading"""
+        if self.vision_intelligence is None and self._vision_intelligence_config['enabled']:
+            try:
+                self.vision_intelligence = get_vision_intelligence_bridge()
+                
+                # Configure learning mode
+                if hasattr(self.vision_intelligence, 'vsms') and self.vision_intelligence.vsms:
+                    self.vision_intelligence.vsms.enable_learning(self._vision_intelligence_config['learning'])
+                
+                logger.info("Initialized Vision Intelligence System")
+            except Exception as e:
+                logger.warning(f"Could not initialize Vision Intelligence: {e}")
+                self._vision_intelligence_config['enabled'] = False
+        
+        return self.vision_intelligence
+    
+    async def get_vsms_core(self):
+        """Get VSMS Core with lazy loading"""
+        if self.vsms_core is None and self._vsms_core_config['enabled']:
+            try:
+                self.vsms_core = get_vsms()
+                
+                # Configure VSMS settings
+                if self.vsms_core:
+                    # Set stuck threshold
+                    if hasattr(self.vsms_core, 'state_intelligence'):
+                        from datetime import timedelta
+                        self.vsms_core.state_intelligence.stuck_threshold = timedelta(
+                            minutes=self._vsms_core_config['stuck_threshold_minutes']
+                        )
+                
+                logger.info("Initialized VSMS Core")
+            except Exception as e:
+                logger.warning(f"Could not initialize VSMS Core: {e}")
+                self._vsms_core_config['enabled'] = False
+        
+        return self.vsms_core
     
     async def get_simplified_vision(self):
         """Get simplified vision system with lazy loading"""
@@ -879,6 +994,121 @@ class ClaudeVisionAnalyzer:
             parsed_result = self._parse_claude_response(result)
             metrics.parsing_time = time.time() - parsing_start
             
+            # Enhance with Vision Intelligence if enabled
+            if self._vision_intelligence_config['enabled']:
+                vi_start = time.time()
+                try:
+                    vision_intelligence = await self.get_vision_intelligence()
+                    if vision_intelligence:
+                        # Extract application context from prompt or result
+                        app_id = self._extract_app_context(prompt, parsed_result)
+                        
+                        # Analyze visual state
+                        vi_result = await vision_intelligence.analyze_visual_state(
+                            screenshot=image if isinstance(image, np.ndarray) else np.array(pil_image),
+                            app_id=app_id,
+                            metadata={
+                                'prompt': prompt,
+                                'claude_result': parsed_result
+                            }
+                        )
+                        
+                        # Merge Vision Intelligence insights
+                        if vi_result and 'final_state' in vi_result:
+                            parsed_result['_vision_intelligence'] = {
+                                'state': vi_result['final_state'],
+                                'app_id': app_id,
+                                'components_used': vi_result.get('components_used', []),
+                                'confidence': vi_result['final_state'].get('confidence', 0.0)
+                            }
+                            
+                            # Add state insights to entities if available
+                            if 'entities' not in parsed_result:
+                                parsed_result['entities'] = {}
+                            
+                            parsed_result['entities']['application_state'] = {
+                                'state_id': vi_result['final_state'].get('state_id', 'unknown'),
+                                'consensus': vi_result['final_state'].get('consensus', False),
+                                'sources': vi_result['final_state'].get('sources', [])
+                            }
+                        
+                        metrics.vision_intelligence_time = time.time() - vi_start
+                        logger.debug(f"Vision Intelligence analysis completed in {metrics.vision_intelligence_time:.2f}s")
+                        
+                        # Save learned states periodically
+                        if hasattr(vision_intelligence, 'save_learned_states'):
+                            # Save every 100 analyses (configurable)
+                            if hasattr(self, '_vi_analysis_count'):
+                                self._vi_analysis_count += 1
+                            else:
+                                self._vi_analysis_count = 1
+                            
+                            if self._vi_analysis_count % 100 == 0:
+                                vision_intelligence.save_learned_states()
+                                logger.info("Saved Vision Intelligence learned states")
+                                
+                except Exception as e:
+                    logger.warning(f"Vision Intelligence enhancement failed: {e}")
+                    metrics.vision_intelligence_time = time.time() - vi_start
+            
+            # Enhance with VSMS Core if enabled
+            if self._vsms_core_config['enabled']:
+                vsms_start = time.time()
+                try:
+                    vsms_core = await self.get_vsms_core()
+                    if vsms_core:
+                        # Use same app_id if available
+                        if 'app_id' not in locals():
+                            app_id = self._extract_app_context(prompt, parsed_result)
+                        
+                        # Process through VSMS Core
+                        vsms_result = await vsms_core.process_visual_observation(
+                            screenshot=image if isinstance(image, np.ndarray) else np.array(pil_image),
+                            app_id=app_id
+                        )
+                        
+                        # Add VSMS Core insights
+                        if vsms_result:
+                            parsed_result['vsms_core'] = {
+                                'detected_state': vsms_result.get('detected_state'),
+                                'confidence': vsms_result.get('confidence', 0.0),
+                                'app_identity': vsms_result.get('app_identity'),
+                                'scene_graph': vsms_result.get('scene_graph'),
+                                'scene_context': vsms_result.get('scene_context'),
+                                'content': vsms_result.get('content'),
+                                'predictions': vsms_result.get('predictions', []),
+                                'recommendations': vsms_result.get('recommendations', {})
+                            }
+                            
+                            # Add workflow insights if detected
+                            if vsms_result.get('recommendations', {}).get('workflow_hint'):
+                                workflow = vsms_result['recommendations']['workflow_hint']
+                                if 'entities' not in parsed_result:
+                                    parsed_result['entities'] = {}
+                                parsed_result['entities']['workflow'] = {
+                                    'detected': workflow['detected_workflow'],
+                                    'next_step': workflow.get('next_in_workflow'),
+                                    'steps_remaining': workflow.get('completion_steps', 0)
+                                }
+                            
+                            # Add warnings if any
+                            if vsms_result.get('recommendations', {}).get('warnings'):
+                                if 'warnings' not in parsed_result:
+                                    parsed_result['warnings'] = []
+                                for warning in vsms_result['recommendations']['warnings']:
+                                    parsed_result['warnings'].append({
+                                        'type': warning['type'],
+                                        'message': warning['message'],
+                                        'source': 'vsms_core'
+                                    })
+                        
+                        metrics.vsms_core_time = time.time() - vsms_start
+                        logger.debug(f"VSMS Core analysis completed in {metrics.vsms_core_time:.2f}s")
+                        
+                except Exception as e:
+                    logger.warning(f"VSMS Core enhancement failed: {e}")
+                    metrics.vsms_core_time = time.time() - vsms_start
+            
             # Cache result if enabled
             if should_use_cache and self.cache:
                 cache_entry = CacheEntry(
@@ -1010,6 +1240,45 @@ class ClaudeVisionAnalyzer:
             )
         )
         return message.content[0].text
+    
+    def _extract_app_context(self, prompt: str, result: Dict[str, Any]) -> str:
+        """Extract application context from prompt or analysis result"""
+        # Try to extract from entities
+        if 'entities' in result:
+            if 'application' in result['entities']:
+                return result['entities']['application']
+            if 'app_name' in result['entities']:
+                return result['entities']['app_name']
+        
+        # Try to extract from prompt
+        app_patterns = [
+            r'in (\w+)\s*app',
+            r'(\w+)\s*application',
+            r'using (\w+)',
+            r'on (\w+)',
+        ]
+        
+        for pattern in app_patterns:
+            match = re.search(pattern, prompt, re.IGNORECASE)
+            if match:
+                return match.group(1).lower()
+        
+        # Try to extract from window title in result
+        if 'description' in result:
+            desc_lower = result['description'].lower()
+            # Common app names
+            common_apps = ['chrome', 'safari', 'firefox', 'vscode', 'code', 'terminal', 
+                          'finder', 'slack', 'discord', 'zoom', 'teams', 'outlook',
+                          'mail', 'messages', 'whatsapp', 'telegram', 'notion',
+                          'obsidian', 'spotify', 'music', 'preview', 'photoshop',
+                          'illustrator', 'figma', 'sketch', 'xcode', 'intellij']
+            
+            for app in common_apps:
+                if app in desc_lower:
+                    return app
+        
+        # Default to generic identifier
+        return 'unknown_app'
     
     def _parse_claude_response(self, response: str) -> Dict[str, Any]:
         """Enhanced response parsing with dynamic extraction"""
@@ -1834,6 +2103,14 @@ Focus on what's visible in this specific region. Be concise but thorough."""
         if self.memory_efficient_analyzer:
             cleanup_count = self.memory_efficient_analyzer.cleanup_old_cache()
             logger.info(f"Cleaned up {cleanup_count} cache entries from memory-efficient analyzer")
+        
+        # Save VSMS states
+        if hasattr(self, '_vsms_core') and self._vsms_core:
+            self.save_vsms_states()
+        
+        # Save Vision Intelligence states
+        if hasattr(self, '_vision_intelligence') and self._vision_intelligence:
+            self._vision_intelligence.save_learned_states()
         
         # Cleanup cache
         if self.cache:
@@ -2724,3 +3001,241 @@ Focus on what's visible in this specific region. Be concise but thorough."""
         except RuntimeError:
             # Event loop might be closed
             pass
+    
+    # Vision Intelligence Methods
+    
+    async def get_vision_intelligence_insights(self, app_id: Optional[str] = None) -> Dict[str, Any]:
+        """Get insights from Vision Intelligence System"""
+        try:
+            vision_intelligence = await self.get_vision_intelligence()
+            if not vision_intelligence:
+                return {"enabled": False, "message": "Vision Intelligence not available"}
+            
+            insights = vision_intelligence.get_system_insights()
+            
+            # Add specific app insights if requested
+            if app_id and 'app_insights' in insights and app_id in insights['app_insights']:
+                insights['requested_app'] = insights['app_insights'][app_id]
+            
+            return insights
+        except Exception as e:
+            logger.error(f"Failed to get Vision Intelligence insights: {e}")
+            return {"error": str(e)}
+    
+    async def train_vision_intelligence(self, 
+                                      screenshot: Union[np.ndarray, Image.Image],
+                                      app_id: str,
+                                      state_id: str,
+                                      state_type: Optional[str] = None) -> Dict[str, Any]:
+        """Train Vision Intelligence on a labeled example"""
+        try:
+            vision_intelligence = await self.get_vision_intelligence()
+            if not vision_intelligence:
+                return {"success": False, "message": "Vision Intelligence not available"}
+            
+            # Convert image to numpy array if needed
+            if isinstance(screenshot, Image.Image):
+                screenshot = np.array(screenshot)
+            
+            result = await vision_intelligence.train_on_labeled_state(
+                screenshot=screenshot,
+                app_id=app_id,
+                state_id=state_id,
+                state_type=state_type
+            )
+            
+            return {"success": True, "result": result}
+        except Exception as e:
+            logger.error(f"Failed to train Vision Intelligence: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def save_vision_intelligence_states(self):
+        """Save all learned states from Vision Intelligence"""
+        try:
+            if (self._vision_intelligence_config.get('enabled') and 
+                self._vision_intelligence_config.get('persistence') and
+                self.vision_intelligence):
+                self.vision_intelligence.save_learned_states()
+                logger.info("Saved Vision Intelligence learned states")
+                return True
+        except Exception as e:
+            logger.error(f"Failed to save Vision Intelligence states: {e}")
+        return False
+    
+    async def analyze_with_state_tracking(self, 
+                                        image: Any,
+                                        prompt: str,
+                                        app_id: Optional[str] = None,
+                                        **kwargs) -> Tuple[Dict[str, Any], AnalysisMetrics]:
+        """Analyze screenshot with automatic state tracking"""
+        # Perform normal analysis
+        result, metrics = await self.analyze_screenshot(image, prompt, **kwargs)
+        
+        # If app_id not provided, try to extract it
+        if not app_id and '_vision_intelligence' in result:
+            app_id = result['_vision_intelligence'].get('app_id')
+        
+        # Get state insights for this app if available
+        if app_id:
+            insights = await self.get_vision_intelligence_insights(app_id)
+            if 'requested_app' in insights:
+                result['state_insights'] = insights['requested_app']
+        
+        return result, metrics
+    
+    # VSMS Core Methods
+    
+    async def get_vsms_insights(self, app_id: Optional[str] = None) -> Dict[str, Any]:
+        """Get insights from VSMS Core"""
+        try:
+            vsms = await self.get_vsms_core()
+            if not vsms:
+                return {"enabled": False, "message": "VSMS Core not available"}
+            
+            # Get general insights
+            insights = vsms.get_insights()
+            
+            # Add app-specific insights if requested
+            if app_id:
+                app_insights = vsms.get_application_insights(app_id)
+                insights['app_specific'] = app_insights
+                
+                # Get productivity insights from state intelligence
+                if hasattr(vsms, 'state_intelligence'):
+                    productivity = vsms.state_intelligence.get_productivity_insights()
+                    insights['productivity'] = productivity
+            
+            return insights
+        except Exception as e:
+            logger.error(f"Failed to get VSMS insights: {e}")
+            return {"error": str(e)}
+    
+    async def get_state_recommendations(self, app_id: str, current_state: Optional[str] = None) -> Dict[str, Any]:
+        """Get intelligent state recommendations from VSMS"""
+        try:
+            vsms = await self.get_vsms_core()
+            if not vsms or not hasattr(vsms, 'state_intelligence'):
+                return {"enabled": False, "message": "VSMS state intelligence not available"}
+            
+            # If current state not provided, get from VSMS
+            if not current_state:
+                current_state = vsms.current_states.get(app_id)
+            
+            if not current_state:
+                return {"error": "No current state detected for application"}
+            
+            # Get recommendations
+            recommendations = vsms.state_intelligence.get_state_recommendations(current_state)
+            
+            # Add personalization score
+            recommendations['personalization_score'] = vsms.state_intelligence.user_preference.personalization_score
+            
+            return recommendations
+        except Exception as e:
+            logger.error(f"Failed to get state recommendations: {e}")
+            return {"error": str(e)}
+    
+    async def get_scene_graph_insights(self) -> Dict[str, Any]:
+        """Get insights from the Semantic Scene Graph"""
+        if not self._scene_graph_config['enabled'] or not self.vsms_core:
+            return {'enabled': False, 'reason': 'Scene Graph not enabled or VSMS Core not available'}
+        
+        try:
+            # Get current scene graph from VSMS Core
+            if hasattr(self.vsms_core, 'scene_graph') and self.vsms_core.scene_graph:
+                scene_graph = self.vsms_core.scene_graph
+                
+                # Get current graph metrics
+                if scene_graph.current_graph:
+                    analysis = scene_graph.intelligence.analyze_graph(scene_graph.current_graph)
+                    
+                    return {
+                        'enabled': True,
+                        'graph_metrics': analysis.get('graph_metrics', {}),
+                        'key_nodes': analysis.get('key_nodes', [])[:5],
+                        'information_flow': len(analysis.get('information_flow', [])),
+                        'interaction_patterns': analysis.get('interaction_patterns', {}),
+                        'anomalies': analysis.get('anomalies', []),
+                        'memory_usage_mb': sum(scene_graph.memory_usage.values()) / 1024 / 1024
+                    }
+                else:
+                    return {
+                        'enabled': True,
+                        'status': 'No scene graph built yet',
+                        'memory_usage_mb': 0
+                    }
+            else:
+                return {
+                    'enabled': True,
+                    'status': 'Scene Graph not initialized',
+                    'memory_usage_mb': 0
+                }
+                
+        except Exception as e:
+            logger.error(f"Failed to get Scene Graph insights: {e}")
+            return {
+                'enabled': True,
+                'error': str(e)
+            }
+    
+    def save_vsms_states(self):
+        """Save all VSMS learned states"""
+        try:
+            saved_components = []
+            
+            # Save Vision Intelligence states
+            if self.vision_intelligence:
+                self.vision_intelligence.save_learned_states()
+                saved_components.append("vision_intelligence")
+            
+            # Save VSMS Core states
+            if self.vsms_core:
+                self.vsms_core.state_history.save_to_disk()
+                self.vsms_core._save_state_definitions()
+                if hasattr(self.vsms_core, 'state_intelligence'):
+                    self.vsms_core.state_intelligence._save_intelligence_data()
+                saved_components.append("vsms_core")
+            
+            logger.info(f"Saved states for: {', '.join(saved_components)}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save VSMS states: {e}")
+            return False
+    
+    async def create_state_definition(self, 
+                                    app_id: str,
+                                    state_id: str,
+                                    state_name: str,
+                                    category: str = "CUSTOM",
+                                    visual_signatures: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+        """Create a new state definition in VSMS"""
+        try:
+            vsms = await self.get_vsms_core()
+            if not vsms:
+                return {"success": False, "message": "VSMS Core not available"}
+            
+            # Map category string to enum
+            from .intelligence.vsms_core import StateCategory
+            category_enum = getattr(StateCategory, category.upper(), StateCategory.CUSTOM)
+            
+            # Create state definition
+            state = vsms.create_state_definition(
+                app_id=app_id,
+                state_id=state_id,
+                category=category_enum,
+                name=state_name,
+                visual_signatures=visual_signatures or []
+            )
+            
+            return {
+                "success": True,
+                "state": {
+                    "state_id": state.state_id,
+                    "name": state.name,
+                    "category": state.category.name,
+                    "detection_count": state.detection_count
+                }
+            }
+        except Exception as e:
+            logger.error(f"Failed to create state definition: {e}")
+            return {"success": False, "error": str(e)}
