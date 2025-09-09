@@ -962,43 +962,584 @@ Note: The current date and time is {current_datetime}. Always use this as the re
             logger.error(f"Error generating response: {e}")
             return f"I encountered an error: {str(e)}"
             
-    def _build_messages(self, user_input: str) -> List[Dict[str, str]]:
-        """Build message list for Claude API including conversation history"""
+    def _build_messages(self, user_input: str, context_window: Optional[int] = None, 
+                       include_system_messages: bool = False,
+                       filter_strategy: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Build message list with intelligent context management"""
         messages = []
         
-        # Add conversation history
-        for entry in self.conversation_history[-5:]:
-            messages.append({"role": "user", "content": entry["user"]})
-            messages.append({"role": "assistant", "content": entry["assistant"]})
+        # Determine context window size dynamically
+        if context_window is None:
+            context_window = self._calculate_optimal_context_window(user_input)
             
-        # Add current user input
-        messages.append({"role": "user", "content": user_input})
+        # Get relevant history based on strategy
+        relevant_history = self._get_relevant_history(context_window, filter_strategy)
+        
+        # Add system messages if needed
+        if include_system_messages and hasattr(self, '_last_system_message'):
+            messages.append({"role": "system", "content": self._last_system_message})
+            
+        # Build conversation context intelligently
+        for entry in relevant_history:
+            # Add user message
+            user_msg = {
+                "role": "user", 
+                "content": entry["user"]
+            }
+            
+            # Add metadata if available
+            if "user_metadata" in entry:
+                user_msg["metadata"] = entry["user_metadata"]
+                
+            messages.append(user_msg)
+            
+            # Add assistant message
+            assistant_msg = {
+                "role": "assistant", 
+                "content": entry["assistant"]
+            }
+            
+            if "assistant_metadata" in entry:
+                assistant_msg["metadata"] = entry["assistant_metadata"]
+                
+            messages.append(assistant_msg)
+            
+        # Add current user input with enhanced context
+        current_msg = {
+            "role": "user", 
+            "content": user_input
+        }
+        
+        # Add query metadata
+        if hasattr(self, '_last_vision_intent'):
+            current_msg["metadata"] = {
+                "intent": self._last_vision_intent,
+                "timestamp": datetime.now().isoformat(),
+                "is_vision": self.is_vision_command(user_input)
+            }
+            
+        messages.append(current_msg)
+        
+        # Validate message size
+        messages = self._validate_message_size(messages)
         
         return messages
+    
+    def _calculate_optimal_context_window(self, user_input: str) -> int:
+        """Calculate optimal context window based on query type"""
+        # Base window size
+        base_window = 5
         
-    def _update_history(self, user_input: str, ai_response: str):
-        """Update conversation history"""
-        self.conversation_history.append({
+        # Adjust based on query complexity
+        if self.is_vision_command(user_input):
+            # Vision commands may need less context
+            base_window = 3
+        elif any(keyword in user_input.lower() for keyword in ['continue', 'more', 'explain', 'why']):
+            # Follow-up questions need more context
+            base_window = 7
+        elif len(user_input) > 200:
+            # Complex queries benefit from more context
+            base_window = 6
+            
+        # Adjust based on available history
+        available_history = len(self.conversation_history)
+        
+        # Dynamic adjustment based on conversation flow
+        if available_history > 0:
+            recent_lengths = [len(h['user']) + len(h['assistant']) 
+                            for h in self.conversation_history[-3:]]
+            avg_length = sum(recent_lengths) / len(recent_lengths) if recent_lengths else 0
+            
+            # Reduce context for very long conversations
+            if avg_length > 1000:
+                base_window = max(2, base_window - 2)
+            
+        return min(base_window, available_history)
+    
+    def _get_relevant_history(self, context_window: int, filter_strategy: Optional[str]) -> List[Dict]:
+        """Get relevant history based on filtering strategy"""
+        if not self.conversation_history:
+            return []
+            
+        if filter_strategy == 'importance':
+            # Score conversations by importance
+            scored_history = []
+            for i, entry in enumerate(self.conversation_history):
+                score = self._calculate_conversation_importance(entry, i)
+                scored_history.append((score, entry))
+                
+            # Sort by importance and take top entries
+            scored_history.sort(key=lambda x: x[0], reverse=True)
+            return [entry for _, entry in scored_history[:context_window]]
+            
+        elif filter_strategy == 'semantic':
+            # Get semantically similar conversations
+            return self._get_semantically_similar_history(context_window)
+            
+        elif filter_strategy == 'recent_topics':
+            # Filter by recent topics
+            recent_topics = self._extract_recent_topics()
+            filtered = []
+            for entry in reversed(self.conversation_history):
+                if any(topic in entry['user'].lower() for topic in recent_topics):
+                    filtered.append(entry)
+                    if len(filtered) >= context_window:
+                        break
+            return list(reversed(filtered))
+            
+        else:
+            # Default: most recent conversations
+            return self.conversation_history[-context_window:]
+    
+    def _calculate_conversation_importance(self, entry: Dict, index: int) -> float:
+        """Calculate importance score for a conversation"""
+        score = 0.0
+        
+        # Recency factor (more recent = higher score)
+        recency_weight = (index + 1) / len(self.conversation_history)
+        score += recency_weight * 0.3
+        
+        # Length factor (longer = more substantial)
+        total_length = len(entry['user']) + len(entry['assistant'])
+        length_score = min(total_length / 500, 1.0)
+        score += length_score * 0.2
+        
+        # Keyword importance
+        important_keywords = ['error', 'important', 'remember', 'note', 'key', 'critical']
+        keyword_count = sum(1 for kw in important_keywords if kw in entry['user'].lower() or kw in entry['assistant'].lower())
+        score += (keyword_count * 0.1)
+        
+        # Vision relevance
+        if self.is_vision_command(entry['user']):
+            score += 0.2
+            
+        # Question/Answer quality
+        if '?' in entry['user'] and len(entry['assistant']) > 100:
+            score += 0.2
+            
+        return score
+    
+    def _validate_message_size(self, messages: List[Dict]) -> List[Dict]:
+        """Validate and trim messages to fit API limits"""
+        # Estimate token count (rough approximation)
+        total_chars = sum(len(msg.get('content', '')) for msg in messages)
+        estimated_tokens = total_chars / 4  # Rough estimate
+        
+        # Claude's context limit (adjust based on model)
+        max_tokens = 100000 if 'claude-3' in self.model else 9000
+        
+        # If within limits, return as-is
+        if estimated_tokens < max_tokens * 0.8:  # Leave 20% buffer
+            return messages
+            
+        # Intelligent trimming
+        logger.warning(f"Message size ({estimated_tokens} tokens) exceeds limit, trimming...")
+        
+        # Keep system messages and current query
+        essential_messages = [
+            msg for msg in messages 
+            if msg.get('role') == 'system' or msg == messages[-1]
+        ]
+        
+        # Progressively remove older messages
+        other_messages = [msg for msg in messages if msg not in essential_messages]
+        
+        while len(other_messages) > 2 and estimated_tokens > max_tokens * 0.8:
+            # Remove oldest exchange (user + assistant)
+            if len(other_messages) >= 2:
+                other_messages = other_messages[2:]
+                
+            # Recalculate
+            total_chars = sum(len(msg.get('content', '')) for msg in essential_messages + other_messages)
+            estimated_tokens = total_chars / 4
+            
+        return essential_messages + other_messages
+    
+    def _extract_recent_topics(self) -> List[str]:
+        """Extract recent topics from conversation"""
+        topics = []
+        
+        # Simple topic extraction from recent conversations
+        for entry in self.conversation_history[-3:]:
+            text = entry['user'].lower() + ' ' + entry['assistant'].lower()
+            
+            # Extract nouns and key phrases
+            topic_indicators = ['about', 'regarding', 'concerning', 'related to']
+            for indicator in topic_indicators:
+                if indicator in text:
+                    # Extract words after indicator
+                    parts = text.split(indicator)
+                    if len(parts) > 1:
+                        potential_topic = parts[1].split()[0:3]
+                        topics.extend(potential_topic)
+                        
+        return list(set(topics))  # Unique topics
+        
+    def _update_history(self, user_input: str, ai_response: str, 
+                       metadata: Optional[Dict[str, Any]] = None,
+                       preserve_important: bool = True):
+        """Update conversation history with intelligent management"""
+        # Create enhanced history entry
+        history_entry = {
             "user": user_input,
             "assistant": ai_response,
-            "timestamp": datetime.now().isoformat()
-        })
-        
-        # Trim history if needed
-        if len(self.conversation_history) > self.max_history_length:
-            self.conversation_history = self.conversation_history[-self.max_history_length:]
-            
-    async def generate_response_with_context(self, user_input: str) -> Dict[str, Any]:
-        """Generate response with additional context information"""
-        response = await self.generate_response(user_input)
-        
-        return {
-            "response": response,
-            "conversation_id": "claude-vision",
-            "message_count": len(self.conversation_history),
-            "vision_capable": True,
-            "model": self.model
+            "timestamp": datetime.now().isoformat(),
+            "id": self._generate_conversation_id(),
+            "metadata": {
+                "user_length": len(user_input),
+                "assistant_length": len(ai_response),
+                "is_vision": self.is_vision_command(user_input),
+                "model_used": self.model,
+                "temperature": self.temperature,
+            }
         }
+        
+        # Add additional metadata if provided
+        if metadata:
+            history_entry["metadata"].update(metadata)
+            
+        # Add performance metrics if available
+        if hasattr(self, '_last_response_time'):
+            history_entry["metadata"]["response_time_ms"] = self._last_response_time
+            
+        # Add to history
+        self.conversation_history.append(history_entry)
+        
+        # Update analytics
+        if hasattr(self, '_usage_analytics'):
+            if history_entry["metadata"].get("is_vision"):
+                self._usage_analytics["vision_requests"] += 1
+                
+        # Intelligent history management
+        if len(self.conversation_history) > self.max_history_length:
+            if preserve_important:
+                self._intelligent_history_trim()
+            else:
+                # Simple FIFO trimming
+                self.conversation_history = self.conversation_history[-self.max_history_length:]
+                
+        # Trigger cleanup if needed
+        if len(self.conversation_history) > self.max_history_length * 1.5:
+            asyncio.create_task(self.optimize_for_performance())
+    
+    def _generate_conversation_id(self) -> str:
+        """Generate unique conversation ID"""
+        timestamp = datetime.now().timestamp()
+        random_component = hashlib.md5(str(timestamp).encode()).hexdigest()[:8]
+        return f"conv_{int(timestamp)}_{random_component}"
+    
+    def _intelligent_history_trim(self):
+        """Trim history while preserving important conversations"""
+        if len(self.conversation_history) <= self.max_history_length:
+            return
+            
+        # Score all conversations
+        scored_conversations = []
+        for i, entry in enumerate(self.conversation_history):
+            score = self._calculate_preservation_score(entry, i)
+            scored_conversations.append((score, i, entry))
+            
+        # Sort by score (higher = more important)
+        scored_conversations.sort(key=lambda x: x[0], reverse=True)
+        
+        # Keep top conversations up to max_history_length
+        conversations_to_keep = []
+        for score, original_index, entry in scored_conversations[:self.max_history_length]:
+            conversations_to_keep.append((original_index, entry))
+            
+        # Sort by original index to maintain order
+        conversations_to_keep.sort(key=lambda x: x[0])
+        
+        # Update history
+        self.conversation_history = [entry for _, entry in conversations_to_keep]
+        
+        logger.info(f"Intelligently trimmed history from {len(scored_conversations)} to {len(self.conversation_history)} entries")
+    
+    def _calculate_preservation_score(self, entry: Dict, index: int) -> float:
+        """Calculate score for preserving a conversation"""
+        score = 0.0
+        metadata = entry.get('metadata', {})
+        
+        # Recency (exponential decay)
+        age_factor = index / len(self.conversation_history)
+        score += (1 - age_factor) * 0.3
+        
+        # Vision queries are often important
+        if metadata.get('is_vision'):
+            score += 0.25
+            
+        # Long responses indicate substantial content
+        if metadata.get('assistant_length', 0) > 500:
+            score += 0.2
+            
+        # Error or important keywords
+        important_patterns = ['error', 'important', 'remember', 'save', 'critical', 'bug', 'issue']
+        text = (entry.get('user', '') + entry.get('assistant', '')).lower()
+        if any(pattern in text for pattern in important_patterns):
+            score += 0.3
+            
+        # Questions with detailed answers
+        if '?' in entry.get('user', '') and metadata.get('assistant_length', 0) > 200:
+            score += 0.15
+            
+        # Performance anomalies (very slow or fast responses)
+        response_time = metadata.get('response_time_ms', 0)
+        if response_time > 5000 or (response_time > 0 and response_time < 100):
+            score += 0.1  # Might be interesting edge cases
+            
+        return score
+            
+    async def generate_response_with_context(self, 
+                                           user_input: str,
+                                           include_analytics: bool = True,
+                                           include_suggestions: bool = True,
+                                           custom_context: Optional[Dict] = None) -> Dict[str, Any]:
+        """Generate response with comprehensive context and metadata"""
+        # Track timing
+        start_time = datetime.now()
+        
+        # Analyze input before processing
+        input_analysis = self._analyze_user_input(user_input)
+        
+        # Generate response with error handling
+        try:
+            response = await self.generate_response(user_input)
+            success = True
+            error_info = None
+        except Exception as e:
+            logger.error(f"Error generating response: {e}")
+            response = self._get_error_response(e)
+            success = False
+            error_info = str(e)
+            
+        # Calculate metrics
+        response_time = (datetime.now() - start_time).total_seconds() * 1000
+        
+        # Build comprehensive context
+        context_data = {
+            "response": response,
+            "success": success,
+            "conversation_id": self._get_or_create_conversation_id(),
+            "message_id": self._generate_message_id(),
+            "timestamp": datetime.now().isoformat(),
+            "response_time_ms": response_time,
+            
+            # Conversation state
+            "conversation": {
+                "message_count": len(self.conversation_history),
+                "session_duration": self._calculate_session_duration(),
+                "topics": self._extract_conversation_topics(),
+                "context_window_used": self._get_last_context_window_size()
+            },
+            
+            # Model information
+            "model_info": {
+                "model": self.model,
+                "temperature": self.temperature,
+                "max_tokens": self.max_tokens,
+                "vision_capable": True,
+                "model_type": self._get_model_type()
+            },
+            
+            # Input analysis
+            "input_analysis": input_analysis,
+            
+            # Platform capabilities
+            "capabilities": {
+                "vision_available": self.is_available(),
+                "screenshot_methods": len(getattr(self, '_capture_methods', [])),
+                "platform": getattr(self, '_platform', 'unknown')
+            }
+        }
+        
+        # Add error info if applicable
+        if error_info:
+            context_data["error"] = {
+                "message": error_info,
+                "type": type(e).__name__ if 'e' in locals() else "Unknown",
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        # Add analytics if requested
+        if include_analytics and hasattr(self, '_usage_analytics'):
+            context_data["analytics"] = self._get_session_analytics()
+            
+        # Add suggestions if requested
+        if include_suggestions:
+            context_data["suggestions"] = self._generate_follow_up_suggestions(user_input, response)
+            
+        # Add custom context if provided
+        if custom_context:
+            context_data["custom"] = custom_context
+            
+        # Update internal tracking
+        self._last_response_time = response_time
+        self._last_context_data = context_data
+        
+        return context_data
+    
+    def _analyze_user_input(self, user_input: str) -> Dict[str, Any]:
+        """Analyze user input for insights"""
+        analysis = {
+            "length": len(user_input),
+            "word_count": len(user_input.split()),
+            "is_question": '?' in user_input,
+            "is_command": any(cmd in user_input.lower() for cmd in ['show', 'tell', 'explain', 'describe']),
+            "is_vision": self.is_vision_command(user_input),
+            "sentiment": self._detect_simple_sentiment(user_input),
+            "complexity": self._estimate_query_complexity(user_input),
+            "language_hints": self._detect_language_hints(user_input)
+        }
+        
+        # Add intent if vision command
+        if analysis["is_vision"] and hasattr(self, '_last_vision_intent'):
+            analysis["vision_intent"] = self._last_vision_intent
+            
+        return analysis
+    
+    def _detect_simple_sentiment(self, text: str) -> str:
+        """Detect basic sentiment from text"""
+        positive_words = ['thanks', 'great', 'awesome', 'perfect', 'excellent', 'good']
+        negative_words = ['error', 'wrong', 'bad', 'issue', 'problem', 'fail']
+        
+        text_lower = text.lower()
+        positive_count = sum(1 for word in positive_words if word in text_lower)
+        negative_count = sum(1 for word in negative_words if word in text_lower)
+        
+        if positive_count > negative_count:
+            return "positive"
+        elif negative_count > positive_count:
+            return "negative"
+        else:
+            return "neutral"
+    
+    def _estimate_query_complexity(self, text: str) -> str:
+        """Estimate query complexity"""
+        word_count = len(text.split())
+        
+        # Check for complex indicators
+        complex_indicators = ['how', 'why', 'explain', 'analyze', 'compare', 'multiple']
+        has_complex = any(indicator in text.lower() for indicator in complex_indicators)
+        
+        if word_count > 50 or has_complex:
+            return "complex"
+        elif word_count > 20:
+            return "moderate"
+        else:
+            return "simple"
+    
+    def _detect_language_hints(self, text: str) -> List[str]:
+        """Detect language or communication hints"""
+        hints = []
+        
+        text_lower = text.lower()
+        
+        # Formality
+        if any(word in text_lower for word in ['please', 'could you', 'would you']):
+            hints.append("polite")
+            
+        # Urgency
+        if any(word in text_lower for word in ['urgent', 'asap', 'quickly', 'now']):
+            hints.append("urgent")
+            
+        # Technical
+        if any(word in text_lower for word in ['api', 'code', 'debug', 'error', 'function']):
+            hints.append("technical")
+            
+        return hints
+    
+    def _get_or_create_conversation_id(self) -> str:
+        """Get or create conversation ID for session"""
+        if not hasattr(self, '_conversation_id'):
+            self._conversation_id = f"conv_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hashlib.md5(str(id(self)).encode()).hexdigest()[:8]}"
+        return self._conversation_id
+    
+    def _generate_message_id(self) -> str:
+        """Generate unique message ID"""
+        return f"msg_{int(datetime.now().timestamp() * 1000)}_{hashlib.md5(str(datetime.now()).encode()).hexdigest()[:6]}"
+    
+    def _calculate_session_duration(self) -> float:
+        """Calculate current session duration in seconds"""
+        if not self.conversation_history:
+            return 0.0
+            
+        first_timestamp = datetime.fromisoformat(self.conversation_history[0]['timestamp'])
+        return (datetime.now() - first_timestamp).total_seconds()
+    
+    def _extract_conversation_topics(self) -> List[str]:
+        """Extract main topics from conversation"""
+        topics = set()
+        
+        # Analyze recent conversations
+        for entry in self.conversation_history[-5:]:
+            text = entry['user'] + ' ' + entry['assistant']
+            
+            # Simple topic extraction
+            if 'vision' in text.lower() or 'screen' in text.lower():
+                topics.add('vision_analysis')
+            if 'error' in text.lower() or 'debug' in text.lower():
+                topics.add('troubleshooting')
+            if 'code' in text.lower() or 'program' in text.lower():
+                topics.add('programming')
+            if 'help' in text.lower() or 'how' in text.lower():
+                topics.add('assistance')
+                
+        return list(topics)
+    
+    def _get_last_context_window_size(self) -> int:
+        """Get the size of the last context window used"""
+        return getattr(self, '_last_context_window_size', 0)
+    
+    def _get_session_analytics(self) -> Dict[str, Any]:
+        """Get current session analytics"""
+        analytics = {
+            "total_messages": len(self.conversation_history),
+            "vision_queries": sum(1 for h in self.conversation_history if h.get('metadata', {}).get('is_vision')),
+            "avg_response_time_ms": self._usage_analytics.get('avg_response_time', 0),
+            "error_count": self._usage_analytics.get('errors', 0),
+            "cache_hit_rate": self._calculate_cache_hit_rate() if hasattr(self, '_calculate_cache_hit_rate') else 0
+        }
+        
+        return analytics
+    
+    def _generate_follow_up_suggestions(self, user_input: str, response: str) -> List[str]:
+        """Generate intelligent follow-up suggestions"""
+        suggestions = []
+        
+        # Based on query type
+        if self.is_vision_command(user_input):
+            suggestions.extend([
+                "Can you analyze a specific part of the screen?",
+                "What else do you notice in the image?",
+                "Can you describe the layout in more detail?"
+            ])
+        elif '?' in user_input:
+            suggestions.extend([
+                "Would you like more details?",
+                "Can I clarify anything else?",
+                "Do you have a follow-up question?"
+            ])
+            
+        # Based on response content
+        if 'error' in response.lower():
+            suggestions.append("How can I help troubleshoot this issue?")
+        elif len(response) > 500:
+            suggestions.append("Would you like a summary of the key points?")
+            
+        return suggestions[:3]  # Limit to 3 suggestions
+    
+    def _get_error_response(self, error: Exception) -> str:
+        """Generate appropriate error response"""
+        error_type = type(error).__name__
+        
+        if "API" in error_type:
+            return "I'm experiencing API connectivity issues. Please try again in a moment."
+        elif "Permission" in error_type:
+            return "I need additional permissions to complete this request. Please check system settings."
+        elif "Timeout" in error_type:
+            return "The request took too long to process. Please try again with a simpler query."
+        else:
+            return f"I encountered an unexpected error: {error_type}. Please try again."
         
     async def clear_history(self, preserve_context: bool = False, preserve_last_n: int = 0):
         """Enhanced history clearing with intelligent options"""
