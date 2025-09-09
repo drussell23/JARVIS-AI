@@ -40,14 +40,18 @@ class VisionWebSocketManager:
     @property
     def vision_analyzer(self):
         """Get vision analyzer from app state if not already set"""
+        logger.info(f"[VISION WS] vision_analyzer getter called, current value: {self._vision_analyzer}")
         if self._vision_analyzer is None:
             try:
+                logger.info("[VISION WS] Attempting to get vision analyzer from app state")
                 from main import app
                 if hasattr(app.state, 'vision_analyzer'):
                     self._vision_analyzer = app.state.vision_analyzer
-                    logger.info("Using vision analyzer from app state")
+                    logger.info(f"[VISION WS] Got vision analyzer from app state: {self._vision_analyzer}")
+                else:
+                    logger.warning("[VISION WS] app.state has no vision_analyzer attribute")
             except Exception as e:
-                logger.error(f"Failed to get vision analyzer from app state: {e}")
+                logger.error(f"[VISION WS] Failed to get vision analyzer from app state: {e}", exc_info=True)
                 
                 # Fallback: create our own if needed
                 if VISION_ANALYZER_AVAILABLE:

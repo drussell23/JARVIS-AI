@@ -65,7 +65,11 @@ class VisionCommandHandler:
         if not self.vision_manager:
             try:
                 logger.info("[VISION INIT] Attempting to import vision_manager from vision_websocket...")
-                from api.vision_websocket import vision_manager
+                try:
+                    from api.vision_websocket import vision_manager
+                except ImportError:
+                    # Try relative import if absolute fails
+                    from .vision_websocket import vision_manager
                 self.vision_manager = vision_manager
                 logger.info(f"[VISION INIT] Vision manager imported: {vision_manager}")
                 logger.info(f"[VISION INIT] Vision analyzer present: {hasattr(vision_manager, 'vision_analyzer') and vision_manager.vision_analyzer is not None}")
@@ -76,6 +80,10 @@ class VisionCommandHandler:
                     # Try to get from app state
                     try:
                         from fastapi import FastAPI
+                        import sys
+                        import os
+                        # Add parent directory to path to import main
+                        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
                         from main import app
                         if hasattr(app.state, 'vision_analyzer'):
                             vision_manager.vision_analyzer = app.state.vision_analyzer
@@ -84,11 +92,18 @@ class VisionCommandHandler:
                         logger.error(f"[VISION INIT] Failed to get vision analyzer from app state: {e}")
                         
                 logger.info("[VISION INIT] Vision manager initialization complete")
+                
+                # Force check of vision_analyzer property to trigger getter
+                if self.vision_manager:
+                    analyzer = self.vision_manager.vision_analyzer
+                    logger.info(f"[VISION INIT] Vision analyzer after property access: {analyzer}")
+                
             except Exception as e:
                 logger.error(f"[VISION INIT] Failed to initialize vision manager: {e}", exc_info=True)
     
     async def handle_command(self, command: str) -> Dict[str, Any]:
         """Process a vision-related command"""
+        logger.info(f"[VISION HANDLER] handle_command called with: {command}")
         try:
             command_lower = command.lower().strip()
             
@@ -99,6 +114,7 @@ class VisionCommandHandler:
             
             # Check for general vision queries
             if any(word in command_lower for word in ['see', 'screen', 'monitor', 'vision', 'looking']):
+                logger.info(f"[VISION HANDLER] Detected vision query, calling analyze_screen")
                 return await self.analyze_screen(command)
             
             return {
@@ -170,13 +186,38 @@ class VisionCommandHandler:
     
     async def analyze_screen(self, query: str) -> Dict[str, Any]:
         """Analyze current screen content"""
+        logger.info(f"[ANALYZE SCREEN] Starting with query: {query}")
         await ws_logger.log(f"analyze_screen called with query: {query}")
+        
+        # Try to get vision analyzer directly from app state first
+        try:
+            import sys
+            import os
+            sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from main import app
+            if hasattr(app.state, 'vision_analyzer') and app.state.vision_analyzer:
+                logger.info(f"[ANALYZE SCREEN] Found vision_analyzer in app.state: {app.state.vision_analyzer}")
+                await ws_logger.log(f"Vision analyzer found in app state: {type(app.state.vision_analyzer).__name__}")
+            else:
+                logger.warning("[ANALYZE SCREEN] No vision_analyzer in app.state")
+                await ws_logger.log("No vision analyzer in app state", "warning")
+        except Exception as e:
+            logger.error(f"[ANALYZE SCREEN] Failed to check app.state: {e}")
+            await ws_logger.log(f"Failed to check app state: {e}", "error")
         
         await ws_logger.log("Step 1: Initializing vision manager...")
         await self.initialize_vision_manager()
+        logger.info(f"[ANALYZE SCREEN] Vision manager: {self.vision_manager}")
         
         if not self.vision_manager or not self.vision_manager.vision_analyzer:
             await ws_logger.log("No vision manager available", "warning")
+            await ws_logger.log(f"Vision manager exists: {self.vision_manager is not None}")
+            if self.vision_manager:
+                await ws_logger.log(f"Vision analyzer exists: {hasattr(self.vision_manager, 'vision_analyzer') and self.vision_manager.vision_analyzer is not None}")
+                if hasattr(self.vision_manager, 'vision_analyzer'):
+                    await ws_logger.log(f"Vision analyzer value: {self.vision_manager.vision_analyzer}")
+            
+            logger.error(f"[ANALYZE SCREEN] Vision not available - manager: {self.vision_manager}, analyzer: {getattr(self.vision_manager, 'vision_analyzer', None) if self.vision_manager else None}")
             return {
                 "handled": True,
                 "response": "I need to start monitoring your screen first. Would you like me to do that?",
@@ -237,17 +278,29 @@ class VisionCommandHandler:
                     conversational_query = "You are JARVIS, Tony Stark's AI assistant. Describe what you see on this screen in a natural, conversational way as if you were looking over the user's shoulder. Focus on the main content, applications, or activities visible. Be helpful and observant like JARVIS would be. Don't break it down by regions or technical details - just tell them what's happening on their screen."
                     
                     # Force full-screen analysis (no sliding window) for conversational queries
-                    await ws_logger.log("Step 6: Starting conversational analysis with 15s timeout...")
+                    await ws_logger.log("Step 6: Starting conversational analysis with 30s timeout...")
+                    await ws_logger.log(f"Vision analyzer type: {type(self.vision_manager.vision_analyzer)}")
+                    await ws_logger.log(f"Has client: {hasattr(self.vision_manager.vision_analyzer, 'client')}")
+                    if hasattr(self.vision_manager.vision_analyzer, 'client'):
+                        await ws_logger.log(f"Client type: {type(self.vision_manager.vision_analyzer.client) if self.vision_manager.vision_analyzer.client else 'None'}")
                     await ws_logger.log("Calling analyze_screenshot_async...")
-                    result = await asyncio.wait_for(
-                        self.vision_manager.vision_analyzer.analyze_screenshot_async(
-                            screenshot_array, 
-                            conversational_query,
-                            use_sliding_window=False  # Force full screen analysis
-                        ),
-                        timeout=15.0  # Reduced to 15 second timeout
-                    )
-                    await ws_logger.log("Step 6 complete: Analysis returned")
+                    
+                    try:
+                        result = await asyncio.wait_for(
+                            self.vision_manager.vision_analyzer.analyze_screenshot_async(
+                                screenshot_array, 
+                                conversational_query,
+                                use_sliding_window=False  # Force full screen analysis
+                            ),
+                            timeout=30.0  # Increased to 30 second timeout to match API timeout
+                        )
+                        await ws_logger.log("Step 6 complete: Analysis returned")
+                    except asyncio.TimeoutError:
+                        await ws_logger.log("Analysis timed out after 30 seconds", "error")
+                        raise
+                    except Exception as e:
+                        await ws_logger.log(f"Analysis error: {str(e)}", "error")
+                        raise
                     
                     # Extract the natural response
                     response_text = result.get('description', result.get('analysis', ''))

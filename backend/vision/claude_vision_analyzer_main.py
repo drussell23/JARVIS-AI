@@ -2409,8 +2409,14 @@ class ClaudeVisionAnalyzer:
             return parsed_result, metrics
             
         except Exception as e:
-            logger.error(f"Error in analyze_screenshot: {e}", exc_info=True)
+            logger.error(f"Error in analyze_screenshot: {type(e).__name__}: {e}", exc_info=True)
             metrics.total_time = time.time() - start_time
+            
+            # Log additional context for debugging
+            logger.error(f"Error type: {type(e).__name__}")
+            logger.error(f"API client exists: {hasattr(self, 'client') and self.client is not None}")
+            logger.error(f"Config model: {self.config.model_name if hasattr(self, 'config') else 'No config'}")
+            logger.error(f"API key present in env: {bool(os.getenv('ANTHROPIC_API_KEY'))}")
             
             # Provide more specific error messages
             error_message = str(e)
@@ -2423,9 +2429,9 @@ class ClaudeVisionAnalyzer:
             elif "network" in error_message.lower() or "connection" in error_message.lower():
                 description = "I'm having trouble connecting to the vision API. Please check your internet connection."
             else:
-                description = f"Analysis failed: {error_message}"
+                description = f"Analysis failed: {type(e).__name__}: {error_message}"
             
-            return {"error": str(e), "description": description}, metrics
+            return {"error": str(e), "error_type": type(e).__name__, "description": description}, metrics
         finally:
             # Clear analyzing flag
             self.is_analyzing = False
@@ -2511,7 +2517,13 @@ class ClaudeVisionAnalyzer:
     async def _call_claude_api(self, image_base64: str, prompt: str) -> str:
         """Make API call to Claude with timeout"""
         try:
-            logger.info("[CLAUDE API] Making API call to Claude...")
+            logger.info(f"[CLAUDE API] Making API call to Claude with prompt: {prompt[:100]}...")
+            logger.info(f"[CLAUDE API] Image size: {len(image_base64)} chars")
+            logger.info(f"[CLAUDE API] Model: {self.config.model_name}, Max tokens: {self.config.max_tokens}")
+            
+            # Ensure we have a client
+            if not hasattr(self, 'client') or self.client is None:
+                raise Exception("Anthropic client not initialized")
             
             # Create a future for the API call
             api_future = asyncio.get_event_loop().run_in_executor(
@@ -3528,22 +3540,27 @@ Focus on what's visible in this specific region. Be concise but thorough."""
     
     async def capture_screen(self) -> Any:
         """Capture screen using the best available method"""
+        logger.info("[CAPTURE SCREEN] Starting screen capture")
         try:
             # If video streaming is enabled and running, get frame from there
             if self.config.prefer_video_over_screenshots and hasattr(self, 'video_streaming') and self.video_streaming and self.video_streaming.is_capturing:
+                logger.info("[CAPTURE SCREEN] Attempting to get frame from video stream")
                 frame_data = self.video_streaming.frame_buffer.get_latest_frame() if hasattr(self.video_streaming, 'frame_buffer') else None
                 if frame_data:
                     # Convert numpy array to PIL Image
                     frame = frame_data['data']
+                    logger.info(f"[CAPTURE SCREEN] Got frame from video stream: {frame.shape}")
                     return Image.fromarray(frame)
             
             # Otherwise use traditional screenshot method
+            logger.info("[CAPTURE SCREEN] Using traditional screenshot method")
             import subprocess
             from PIL import ImageGrab
             import platform
             
             if platform.system() == 'Darwin':
                 # Use macOS screencapture command for better performance
+                logger.info("[CAPTURE SCREEN] Using macOS screencapture")
                 import tempfile
                 with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
                     tmp_path = tmp.name
@@ -3557,15 +3574,18 @@ Focus on what's visible in this specific region. Be concise but thorough."""
                 if result.returncode == 0:
                     # Load and return the image
                     image = Image.open(tmp_path)
+                    logger.info(f"[CAPTURE SCREEN] Successfully captured screen: {image.size}")
                     # Clean up temp file
                     os.unlink(tmp_path)
                     return image
+                else:
+                    logger.error(f"[CAPTURE SCREEN] screencapture failed with code {result.returncode}: {result.stderr}")
             else:
                 # Fallback to PIL ImageGrab
                 return ImageGrab.grab()
                 
         except Exception as e:
-            logger.error(f"Screen capture failed: {e}")
+            logger.error(f"[CAPTURE SCREEN] Screen capture failed: {type(e).__name__}: {e}", exc_info=True)
             return None
     
     async def describe_screen(self, params: Dict[str, Any]) -> Any:
