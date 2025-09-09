@@ -16,6 +16,7 @@ from voice.ml_enhanced_voice_system import MLEnhancedVoiceSystem
 from voice.jarvis_personality_adapter import PersonalityAdapter
 from system_control import ClaudeCommandInterpreter, CommandCategory, SafetyLevel
 from chatbots.claude_vision_chatbot import ClaudeVisionChatbot
+from system_control.weather_bridge import WeatherBridge
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,9 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
 
         # Add personality adapter for compatibility
         self.personality = PersonalityAdapter(self)
+        
+        # Initialize weather bridge
+        self.weather_bridge = WeatherBridge()
 
         # Initialize command mode and confirmations
         self.command_mode = "conversation"  # conversation, system_control, workflow
@@ -74,6 +78,13 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             "afternoon",
             "evening",
             "night",
+            "weather",  # Add weather as a system keyword
+            "temperature",  # Add temperature
+            "forecast",  # Add forecast
+            "rain",  # Weather conditions
+            "snow",
+            "sunny",
+            "cloudy",
             "show",
             "volume",
             "mute",
@@ -489,7 +500,12 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         # Check for vision commands with expanded patterns
         text_lower = text.lower()
         
-        # CHECK FOR TIME COMMANDS FIRST - handle immediately without vision
+        # CHECK FOR WEATHER COMMANDS FIRST - weather takes priority over time
+        # because "weather for today" should be weather, not time
+        if self._is_weather_command(text_lower):
+            return await self._handle_weather_command(text_lower)
+        
+        # CHECK FOR TIME COMMANDS - handle immediately without vision
         if self._is_time_command(text_lower):
             return await self._handle_time_command(text_lower)
 
@@ -1005,6 +1021,11 @@ System Control Commands:
         # Convert to lowercase for case-insensitive matching
         text_lower = text.lower().strip()
         
+        # EXCLUDE weather queries - they should not be treated as time queries
+        weather_indicators = ['weather', 'temperature', 'forecast', 'rain', 'snow', 'sunny', 'cloudy']
+        if any(indicator in text_lower for indicator in weather_indicators):
+            return False
+        
         # Dynamic regex patterns for flexible matching
         time_regex_patterns = [
             # Time queries with various formats
@@ -1439,3 +1460,30 @@ System Control Commands:
         except Exception as e:
             logger.debug(f"Calendar context check failed: {e}")
             return None
+    
+    def _is_weather_command(self, text: str) -> bool:
+        """Check if this is a weather-related query using pattern matching"""
+        return self.weather_bridge.is_weather_query(text)
+    
+    async def _handle_weather_command(self, text: str) -> str:
+        """Handle weather-related commands with intelligent, location-aware responses"""
+        try:
+            # Set a timeout for weather processing
+            response = await asyncio.wait_for(
+                self.weather_bridge.process_weather_query(text),
+                timeout=8.0  # 8 second timeout
+            )
+            
+            # Add personalization
+            if self.user_name and self.user_name != "User":
+                response += f", {self.user_name}"
+            
+            return response
+            
+        except asyncio.TimeoutError:
+            logger.warning("Weather command timed out")
+            # Provide immediate fallback response
+            return f"I'll check the weather for you, {self.user_name}. For now, you can open the Weather app on your Mac for detailed information."
+        except Exception as e:
+            logger.error(f"Error handling weather command: {e}", exc_info=True)
+            return f"I'm having trouble accessing weather information right now, {self.user_name}. You can check the Weather app for current conditions."

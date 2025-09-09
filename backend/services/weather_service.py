@@ -266,6 +266,7 @@ class WeatherService:
                     if cache_age < self._cache_duration:
                         logger.info("Using pre-loaded weather data")
                         weather_data = cached['data'].copy()
+                        weather_data["location"] = city  # Use city name instead of coordinates
                         weather_data["detected_location"] = city
                         return weather_data
         
@@ -285,6 +286,7 @@ class WeatherService:
             lat, lon, city = await location_task
             weather_data = await self.get_weather_by_location(lat, lon)
         
+        weather_data["location"] = city  # Use city name instead of coordinates
         weather_data["detected_location"] = city
         return weather_data
 
