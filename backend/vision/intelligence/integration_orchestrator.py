@@ -477,7 +477,7 @@ class IntegrationOrchestrator:
         # Bloom filter check
         if self.components['bloom_filter'] is None:
             try:
-                from backend.vision.bloom_filter_network import get_bloom_filter_network
+                from vision.bloom_filter_network import get_bloom_filter_network
                 self.components['bloom_filter'] = get_bloom_filter_network()
             except:
                 pass

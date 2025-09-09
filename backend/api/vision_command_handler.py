@@ -72,6 +72,11 @@ class VisionCommandHandler:
                     from .vision_websocket import vision_manager
                 self.vision_manager = vision_manager
                 logger.info(f"[VISION INIT] Vision manager imported: {vision_manager}")
+                logger.info(f"[VISION INIT] Vision manager type: {type(vision_manager)}")
+                logger.info(f"[VISION INIT] Has vision_analyzer attr: {hasattr(vision_manager, 'vision_analyzer')}")
+                logger.info(f"[VISION INIT] Has _vision_analyzer attr: {hasattr(vision_manager, '_vision_analyzer')}")
+                if hasattr(vision_manager, '_vision_analyzer'):
+                    logger.info(f"[VISION INIT] _vision_analyzer value: {vision_manager._vision_analyzer}")
                 logger.info(f"[VISION INIT] Vision analyzer present: {hasattr(vision_manager, 'vision_analyzer') and vision_manager.vision_analyzer is not None}")
                 
                 # Check if vision_analyzer needs initialization

@@ -315,6 +315,14 @@ async def lifespan(app: FastAPI):
             app.state.vision_analyzer = analyzer_class(api_key)
             logger.info("✅ Vision analyzer initialized")
             
+            # Set vision analyzer in vision websocket manager
+            try:
+                from api.vision_websocket import set_vision_analyzer
+                set_vision_analyzer(app.state.vision_analyzer)
+                logger.info("✅ Vision analyzer set in vision websocket manager")
+            except ImportError as e:
+                logger.warning(f"⚠️ Could not set vision analyzer in websocket: {e}")
+            
             # Set app state in JARVIS factory for dependency injection
             try:
                 from api.jarvis_factory import set_app_state

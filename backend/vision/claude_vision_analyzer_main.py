@@ -2118,27 +2118,28 @@ class ClaudeVisionAnalyzer:
                 try:
                     anomaly_detector = await self.get_anomaly_detector()
                     if anomaly_detector:
-                        # Create observation from analysis
-                        from .intelligence.anomaly_detection_framework import Observation, AnomalyType
-                        
-                        observation = Observation(
-                            timestamp=datetime.now(),
-                            observation_type='screenshot_analysis',
-                            data={
-                                'prompt': prompt[:100],
-                                'entities': parsed_result.get('entities', {}),
-                                'actions': parsed_result.get('actions', []),
-                                'app_id': app_id if 'app_id' in locals() else 'unknown'
-                            },
-                            source='claude_vision_analyzer',
-                            metadata={
-                                'has_error': 'error' in parsed_result or 'warning' in parsed_result,
-                                'confidence': parsed_result.get('confidence', 0.5)
-                            }
-                        )
-                        
-                        # Detect anomalies
-                        anomaly = await anomaly_detector.detect_anomaly(observation)
+                        # TODO: Fix Observation import - class doesn't exist
+                        # from .intelligence.anomaly_detection_framework import Observation, AnomalyType
+                        # 
+                        # observation = Observation(
+                        #     timestamp=datetime.now(),
+                        #     observation_type='screenshot_analysis',
+                        #     data={
+                        #         'prompt': prompt[:100],
+                        #         'entities': parsed_result.get('entities', {}),
+                        #         'actions': parsed_result.get('actions', []),
+                        #         'app_id': app_id if 'app_id' in locals() else 'unknown'
+                        #     },
+                        #     source='claude_vision_analyzer',
+                        #     metadata={
+                        #         'has_error': 'error' in parsed_result or 'warning' in parsed_result,
+                        #         'confidence': parsed_result.get('confidence', 0.5)
+                        #     }
+                        # )
+                        # 
+                        # # Detect anomalies
+                        # anomaly = await anomaly_detector.detect_anomaly(observation)
+                        anomaly = None  # TODO: Fix when Observation class is available
                         
                         if anomaly:
                             # Add anomaly to result
@@ -2346,7 +2347,7 @@ class ClaudeVisionAnalyzer:
                     }
                     
                     # Import CacheLevel if not already imported
-                    from backend.vision.intelligence.semantic_cache_lsh import CacheLevel
+                    from vision.intelligence.semantic_cache_lsh import CacheLevel
                     
                     await self.semantic_cache.put(
                         key=cache_key,
@@ -5005,25 +5006,26 @@ Focus on what's visible in this specific region. Be concise but thorough."""
             "Analyze this screenshot for any unusual or anomalous patterns"
         )
         
-        # Create observation
-        from .intelligence.anomaly_detection_framework import Observation
-        
-        observation = Observation(
-            timestamp=datetime.now(),
-            observation_type='manual_screenshot',
-            data={
-                'analysis': result,
-                'context': context or {}
-            },
-            source='manual_detection',
-            metadata={
-                'has_errors': 'error' in str(result).lower(),
-                'has_warnings': 'warning' in str(result).lower()
-            }
-        )
-        
-        # Detect anomaly
-        anomaly = await anomaly_detector.detect_anomaly(observation)
+        # TODO: Fix Observation import
+        # from .intelligence.anomaly_detection_framework import Observation
+        # 
+        # observation = Observation(
+        #     timestamp=datetime.now(),
+        #     observation_type='manual_screenshot',
+        #     data={
+        #         'analysis': result,
+        #         'context': context or {}
+        #     },
+        #     source='manual_detection',
+        #     metadata={
+        #         'has_errors': 'error' in str(result).lower(),
+        #         'has_warnings': 'warning' in str(result).lower()
+        #     }
+        # )
+        # 
+        # # Detect anomaly
+        # anomaly = await anomaly_detector.detect_anomaly(observation)
+        anomaly = None  # TODO: Fix when Observation class is available
         
         if anomaly:
             return {

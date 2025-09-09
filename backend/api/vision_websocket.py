@@ -44,12 +44,27 @@ class VisionWebSocketManager:
         if self._vision_analyzer is None:
             try:
                 logger.info("[VISION WS] Attempting to get vision analyzer from app state")
-                from main import app
-                if hasattr(app.state, 'vision_analyzer'):
+                # Try different import approaches
+                app = None
+                try:
+                    # First try importing from __main__ which is how FastAPI runs
+                    import __main__
+                    if hasattr(__main__, 'app'):
+                        app = __main__.app
+                        logger.info("[VISION WS] Got app from __main__")
+                except:
+                    pass
+                
+                if app is None:
+                    # Fallback to direct import
+                    from main import app
+                    logger.info("[VISION WS] Got app from main import")
+                
+                if app and hasattr(app, 'state') and hasattr(app.state, 'vision_analyzer'):
                     self._vision_analyzer = app.state.vision_analyzer
                     logger.info(f"[VISION WS] Got vision analyzer from app state: {self._vision_analyzer}")
                 else:
-                    logger.warning("[VISION WS] app.state has no vision_analyzer attribute")
+                    logger.warning(f"[VISION WS] app.state has no vision_analyzer attribute. app: {app}, has state: {hasattr(app, 'state') if app else False}")
             except Exception as e:
                 logger.error(f"[VISION WS] Failed to get vision analyzer from app state: {e}", exc_info=True)
                 
@@ -231,6 +246,11 @@ class VisionWebSocketManager:
 
 # Create global manager instance
 vision_manager = VisionWebSocketManager()
+
+def set_vision_analyzer(analyzer):
+    """Set the vision analyzer on the global vision manager"""
+    logger.info(f"[VISION WS] Setting vision analyzer: {analyzer}")
+    vision_manager._vision_analyzer = analyzer
 
 @router.websocket("/ws/vision")
 async def vision_websocket_endpoint(websocket: WebSocket):
