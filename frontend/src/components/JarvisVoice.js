@@ -548,14 +548,8 @@ const JarvisVoice = () => {
         
         // Use audio endpoint directly
         if (data.text) {
-          // For vision responses that are very long, speak a shorter summary
-          let audioText = data.text;
-          if (data.command_type === 'vision' && data.text.length > 1000) {
-            // Extract just the first sentence for audio
-            const firstSentence = data.text.match(/^[^.!?]+[.!?]/);
-            audioText = firstSentence ? firstSentence[0] + ' Check the text display for full details.' : 'I can see your screen. Check the text display for full analysis.';
-          }
-          playAudioResponse(audioText);
+          // Always speak the full response, regardless of length or type
+          playAudioResponse(data.text);
         }
 
         // Check for autonomy activation commands in response

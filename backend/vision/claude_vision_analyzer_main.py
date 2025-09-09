@@ -1782,7 +1782,7 @@ class ClaudeVisionAnalyzer:
                         if self._semantic_cache_config['l2_enabled']:
                             # Use prompt as basis for embedding
                             # In production, this would use a proper embedding model
-                            embedding = self._generate_prompt_embedding(prompt)
+                            embedding = await self._generate_prompt_embedding(prompt)
                         
                         # Check if should bypass cache
                         bypass_cache = semantic_cache.should_bypass_cache(cache_context)

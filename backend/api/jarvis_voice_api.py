@@ -731,7 +731,8 @@ class JARVISVoiceAPI:
                                     "text": vision_result['response'],
                                     "command_type": "vision",
                                     "monitoring_active": vision_result.get('monitoring_active'),
-                                    "timestamp": datetime.now().isoformat()
+                                    "timestamp": datetime.now().isoformat(),
+                                    "speak": True  # Explicitly tell frontend to speak this
                                 })
                                 continue
                         except Exception as e:
@@ -803,7 +804,8 @@ class JARVISVoiceAPI:
                         "text": response,
                         "command": command_text,
                         "context": context,
-                        "timestamp": datetime.now().isoformat()
+                        "timestamp": datetime.now().isoformat(),
+                        "speak": True  # Tell frontend to speak this
                     })
                     
                     # Don't speak on backend to avoid delays - let frontend handle TTS
