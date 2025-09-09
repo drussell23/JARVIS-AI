@@ -12,7 +12,7 @@ if backend_path not in sys.path:
 
 import logging
 import asyncio
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union, Tuple
 from datetime import datetime, timedelta
 import json
 import base64
@@ -1000,46 +1000,675 @@ Note: The current date and time is {current_datetime}. Always use this as the re
             "model": self.model
         }
         
-    async def clear_history(self):
-        """Clear conversation history"""
-        self.conversation_history.clear()
-        logger.info("Conversation history cleared")
+    async def clear_history(self, preserve_context: bool = False, preserve_last_n: int = 0):
+        """Enhanced history clearing with intelligent options"""
+        if not hasattr(self, '_history_metadata'):
+            self._history_metadata = {}
+            
+        # Store metadata about the cleared history
+        cleared_count = len(self.conversation_history)
+        cleared_timestamp = datetime.now()
+        
+        if preserve_context:
+            # Preserve important context from history
+            context_summary = await self._extract_context_summary()
+            self._history_metadata['last_context'] = context_summary
+            
+        if preserve_last_n > 0:
+            # Keep the most recent N exchanges
+            preserved = self.conversation_history[-preserve_last_n:]
+            self.conversation_history.clear()
+            self.conversation_history.extend(preserved)
+            logger.info(f"Conversation history cleared, preserved last {preserve_last_n} exchanges")
+        else:
+            # Complete clear
+            self.conversation_history.clear()
+            logger.info(f"Conversation history cleared ({cleared_count} exchanges removed)")
+            
+        # Track clearing events for analytics
+        if not hasattr(self, '_clear_history_log'):
+            self._clear_history_log = []
+            
+        self._clear_history_log.append({
+            'timestamp': cleared_timestamp,
+            'cleared_count': cleared_count,
+            'preserved_count': preserve_last_n,
+            'preserve_context': preserve_context
+        })
+        
+        # Cleanup old logs (keep last 100)
+        if len(self._clear_history_log) > 100:
+            self._clear_history_log = self._clear_history_log[-100:]
         
     def is_available(self) -> bool:
-        """Check if Claude API is available"""
-        return ANTHROPIC_AVAILABLE and self.client is not None
+        """Comprehensive availability check with diagnostics"""
+        # Basic availability
+        basic_available = ANTHROPIC_AVAILABLE and self.client is not None
+        
+        if not basic_available:
+            return False
+            
+        # Extended health checks
+        if not hasattr(self, '_last_health_check'):
+            self._last_health_check = None
+            self._health_check_cache = None
+            
+        # Cache health check for 60 seconds
+        if (self._last_health_check is None or 
+            datetime.now() - self._last_health_check > timedelta(seconds=60)):
+            
+            self._health_check_cache = self._perform_health_check()
+            self._last_health_check = datetime.now()
+            
+        return self._health_check_cache
+    
+    def _perform_health_check(self) -> bool:
+        """Perform comprehensive health check"""
+        checks = {
+            'api_key': bool(self.api_key),
+            'client': self.client is not None,
+            'model_valid': self._is_valid_model(self.model),
+            'screenshot_available': self._check_screenshot_capability(),
+            'vision_analyzer': self.vision_analyzer is not None
+        }
+        
+        # Log any issues
+        failed_checks = [k for k, v in checks.items() if not v]
+        if failed_checks:
+            logger.warning(f"Health check failures: {failed_checks}")
+            
+        # Require at least API key and client
+        return checks['api_key'] and checks['client']
+    
+    def _is_valid_model(self, model: str) -> bool:
+        """Check if model is valid and supported"""
+        valid_models = [
+            'claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku',
+            'claude-3-5-sonnet', 'claude-2.1', 'claude-2.0',
+            'claude-instant-1.2'
+        ]
+        return any(valid in model.lower() for valid in valid_models)
+    
+    def _check_screenshot_capability(self) -> bool:
+        """Check screenshot capability for current platform"""
+        if SCREENSHOT_AVAILABLE:
+            return True
+            
+        # Check platform-specific alternatives
+        if hasattr(self, '_capture_methods'):
+            return len(self._capture_methods) > 0
+            
+        return False
         
     def get_usage_stats(self) -> Dict[str, Any]:
-        """Get API usage statistics"""
-        return {
+        """Get comprehensive usage statistics and analytics"""
+        # Initialize analytics tracking if needed
+        if not hasattr(self, '_usage_analytics'):
+            self._usage_analytics = {
+                'total_requests': 0,
+                'vision_requests': 0,
+                'errors': 0,
+                'total_tokens': 0,
+                'cache_hits': 0,
+                'cache_misses': 0,
+                'avg_response_time': 0,
+                'response_times': []
+            }
+            
+        # Calculate dynamic statistics
+        stats = {
+            # Basic info
             "model": self.model,
-            "history_length": len(self.conversation_history),
-            "vision_capable": True,
-            "screenshot_available": SCREENSHOT_AVAILABLE
+            "model_type": self._get_model_type(),
+            "api_available": self.is_available(),
+            
+            # History stats
+            "history": {
+                "current_length": len(self.conversation_history),
+                "max_length": self.max_history_length,
+                "total_characters": sum(len(h.get('user', '')) + len(h.get('assistant', '')) 
+                                       for h in self.conversation_history),
+                "avg_exchange_length": self._calculate_avg_exchange_length()
+            },
+            
+            # Vision capabilities
+            "vision": {
+                "capable": True,
+                "screenshot_available": SCREENSHOT_AVAILABLE,
+                "capture_methods": len(getattr(self, '_capture_methods', [])),
+                "analyzer_available": self.vision_analyzer is not None,
+                "supported_formats": self._get_supported_image_formats()
+            },
+            
+            # Performance metrics
+            "performance": {
+                "total_requests": self._usage_analytics['total_requests'],
+                "vision_requests": self._usage_analytics['vision_requests'],
+                "error_rate": self._calculate_error_rate(),
+                "avg_response_time_ms": self._usage_analytics['avg_response_time'],
+                "cache_hit_rate": self._calculate_cache_hit_rate()
+            },
+            
+            # Platform info
+            "platform": {
+                "os": platform.system(),
+                "python_version": platform.python_version(),
+                "timezone": self._get_timezone_name() or "Unknown"
+            },
+            
+            # Configuration
+            "config": {
+                "temperature": self.temperature,
+                "max_tokens": self.max_tokens,
+                "cache_duration": getattr(self, '_cache_config', {}).get('duration', timedelta(seconds=5)).total_seconds()
+            }
         }
+        
+        return stats
+    
+    def _get_model_type(self) -> str:
+        """Determine model type from model name"""
+        model_lower = self.model.lower()
+        if 'opus' in model_lower:
+            return 'opus'
+        elif 'sonnet' in model_lower:
+            return 'sonnet'
+        elif 'haiku' in model_lower:
+            return 'haiku'
+        elif 'instant' in model_lower:
+            return 'instant'
+        else:
+            return 'unknown'
+    
+    def _calculate_avg_exchange_length(self) -> float:
+        """Calculate average conversation exchange length"""
+        if not self.conversation_history:
+            return 0.0
+            
+        total_length = sum(len(h.get('user', '')) + len(h.get('assistant', '')) 
+                          for h in self.conversation_history)
+        return total_length / len(self.conversation_history)
+    
+    def _get_supported_image_formats(self) -> List[str]:
+        """Get list of supported image formats"""
+        formats = ['JPEG', 'PNG']
+        
+        try:
+            from PIL import Image
+            # Add more formats if PIL supports them
+            additional_formats = ['GIF', 'BMP', 'WEBP']
+            for fmt in additional_formats:
+                try:
+                    Image.new('RGB', (1, 1)).save(io.BytesIO(), format=fmt)
+                    formats.append(fmt)
+                except:
+                    pass
+        except:
+            pass
+            
+        return formats
+    
+    def _calculate_error_rate(self) -> float:
+        """Calculate error rate percentage"""
+        total = self._usage_analytics['total_requests']
+        if total == 0:
+            return 0.0
+        return (self._usage_analytics['errors'] / total) * 100
+    
+    def _calculate_cache_hit_rate(self) -> float:
+        """Calculate cache hit rate percentage"""
+        total_cache_requests = (self._usage_analytics['cache_hits'] + 
+                               self._usage_analytics['cache_misses'])
+        if total_cache_requests == 0:
+            return 0.0
+        return (self._usage_analytics['cache_hits'] / total_cache_requests) * 100
         
     @property
     def model_name(self) -> str:
-        """Get model name for compatibility"""
-        return self.model
+        """Get model name with dynamic information"""
+        # Add context about model capabilities
+        base_model = self.model
         
-    async def generate_response_stream(self, user_input: str):
-        """Generate streaming response (falls back to non-streaming for vision)"""
-        response = await self.generate_response(user_input)
-        # Simulate streaming by yielding chunks
-        chunk_size = 50
-        for i in range(0, len(response), chunk_size):
-            yield response[i:i+chunk_size]
-            await asyncio.sleep(0.01)
+        # Add capability indicators
+        capabilities = []
+        if 'vision' in base_model.lower() or '3' in base_model:
+            capabilities.append('vision')
+        if 'instant' in base_model.lower() or 'haiku' in base_model.lower():
+            capabilities.append('fast')
+        if 'opus' in base_model.lower():
+            capabilities.append('advanced')
             
-    async def get_conversation_history(self) -> List[Dict[str, str]]:
-        """Get conversation history"""
-        return self.conversation_history
+        if capabilities:
+            return f"{base_model} [{', '.join(capabilities)}]"
+        return base_model
         
-    def set_system_prompt(self, prompt: str):
-        """Update system prompt"""
-        self.system_prompt = prompt
+    async def generate_response_stream(self, user_input: str, adaptive: bool = True):
+        """Enhanced streaming with adaptive chunk sizes and timing"""
+        # Check if this is a vision command
+        is_vision = self.is_vision_command(user_input)
         
-    async def get_response(self, prompt: str) -> str:
-        """Alias for generate_response for compatibility"""
-        return await self.generate_response(prompt)
+        # Get the response
+        start_time = datetime.now()
+        response = await self.generate_response(user_input)
+        response_time = (datetime.now() - start_time).total_seconds()
+        
+        # Determine optimal streaming parameters
+        if adaptive:
+            stream_params = self._calculate_stream_parameters(response, response_time, is_vision)
+        else:
+            stream_params = {'chunk_size': 50, 'delay': 0.01}
+            
+        # Track streaming metrics
+        chunks_sent = 0
+        total_delay = 0
+        
+        # Stream with dynamic parameters
+        chunk_size = stream_params['chunk_size']
+        base_delay = stream_params['delay']
+        
+        for i in range(0, len(response), chunk_size):
+            chunk = response[i:i+chunk_size]
+            
+            # Dynamic delay based on content
+            delay = self._calculate_chunk_delay(chunk, base_delay, chunks_sent)
+            
+            yield chunk
+            
+            await asyncio.sleep(delay)
+            chunks_sent += 1
+            total_delay += delay
+            
+            # Adaptive adjustment mid-stream
+            if adaptive and chunks_sent % 10 == 0:
+                # Adjust parameters based on performance
+                remaining = len(response) - i
+                if remaining > chunk_size * 5:  # Still have significant content
+                    chunk_size = min(chunk_size * 2, 200)  # Speed up
+                    
+        # Log streaming metrics
+        if hasattr(self, '_streaming_metrics'):
+            self._streaming_metrics.append({
+                'response_length': len(response),
+                'chunks': chunks_sent,
+                'total_delay': total_delay,
+                'avg_chunk_size': len(response) / chunks_sent if chunks_sent > 0 else 0,
+                'is_vision': is_vision
+            })
+    
+    def _calculate_stream_parameters(self, response: str, response_time: float, is_vision: bool) -> Dict[str, Any]:
+        """Calculate optimal streaming parameters"""
+        response_length = len(response)
+        
+        # Base parameters
+        params = {
+            'chunk_size': 50,
+            'delay': 0.01
+        }
+        
+        # Adjust for response length
+        if response_length < 200:
+            # Short response - larger chunks
+            params['chunk_size'] = 100
+            params['delay'] = 0.02
+        elif response_length > 2000:
+            # Long response - smaller initial chunks, will adapt
+            params['chunk_size'] = 30
+            params['delay'] = 0.005
+            
+        # Adjust for response time (simulate realistic typing)
+        if response_time < 1.0:
+            # Fast response - slow down streaming to seem more natural
+            params['delay'] *= 2
+        elif response_time > 5.0:
+            # Slow response - speed up streaming
+            params['delay'] *= 0.5
+            
+        # Adjust for content type
+        if is_vision:
+            # Vision responses often have structured content
+            params['chunk_size'] = 75  # Larger chunks for descriptions
+            
+        return params
+    
+    def _calculate_chunk_delay(self, chunk: str, base_delay: float, chunk_index: int) -> float:
+        """Calculate delay for specific chunk based on content"""
+        # Natural pauses at punctuation
+        if chunk.rstrip().endswith(('.', '!', '?')):
+            return base_delay * 3  # Longer pause at sentence end
+        elif chunk.rstrip().endswith((',', ';', ':')):
+            return base_delay * 2  # Medium pause at clause breaks
+        elif '\n' in chunk:
+            return base_delay * 2.5  # Pause at line breaks
+            
+        # Speed up after initial chunks
+        if chunk_index > 5:
+            return base_delay * 0.8
+            
+        return base_delay
+            
+    async def get_conversation_history(self, 
+                                       include_metadata: bool = False,
+                                       last_n: Optional[int] = None,
+                                       filter_by: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get conversation history with filtering and metadata options"""
+        history = self.conversation_history.copy()
+        
+        # Apply filtering
+        if filter_by:
+            if filter_by == 'vision':
+                # Filter for vision-related exchanges
+                history = [h for h in history 
+                          if self.is_vision_command(h.get('user', ''))]
+            elif filter_by == 'long':
+                # Filter for substantial exchanges
+                history = [h for h in history 
+                          if len(h.get('user', '')) + len(h.get('assistant', '')) > 200]
+            elif filter_by == 'recent':
+                # Filter for recent exchanges (last hour)
+                cutoff = datetime.now() - timedelta(hours=1)
+                history = [h for h in history 
+                          if datetime.fromisoformat(h.get('timestamp', datetime.now().isoformat())) > cutoff]
+        
+        # Limit to last N if specified
+        if last_n and last_n > 0:
+            history = history[-last_n:]
+            
+        # Add metadata if requested
+        if include_metadata:
+            enriched_history = []
+            for i, exchange in enumerate(history):
+                enriched = exchange.copy()
+                enriched['metadata'] = {
+                    'index': i,
+                    'user_length': len(exchange.get('user', '')),
+                    'assistant_length': len(exchange.get('assistant', '')),
+                    'is_vision': self.is_vision_command(exchange.get('user', '')),
+                    'timestamp_parsed': datetime.fromisoformat(exchange.get('timestamp', datetime.now().isoformat()))
+                }
+                enriched_history.append(enriched)
+            return enriched_history
+            
+        return history
+        
+    def set_system_prompt(self, prompt: str, merge_with_default: bool = False):
+        """Update system prompt with validation and options"""
+        # Validate prompt
+        if not prompt or not isinstance(prompt, str):
+            logger.warning("Invalid system prompt provided")
+            return
+            
+        # Store original if first time
+        if not hasattr(self, '_original_system_prompt'):
+            self._original_system_prompt = self.system_prompt
+            
+        if merge_with_default:
+            # Merge with current dynamic prompt
+            self._initialize_dynamic_system_prompt(prompt)
+        else:
+            # Direct replacement but add current context
+            current_datetime = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
+            timezone = self._get_timezone_name()
+            
+            # Add context to custom prompt
+            context_suffix = f"\n\nCurrent date/time: {current_datetime}"
+            if timezone:
+                context_suffix += f" ({timezone})"
+                
+            self.system_prompt = prompt + context_suffix
+            
+        # Track prompt changes
+        if not hasattr(self, '_prompt_history'):
+            self._prompt_history = []
+            
+        self._prompt_history.append({
+            'timestamp': datetime.now(),
+            'prompt': self.system_prompt,
+            'merged': merge_with_default
+        })
+        
+        # Limit history
+        if len(self._prompt_history) > 20:
+            self._prompt_history = self._prompt_history[-20:]
+            
+        logger.info(f"System prompt updated (merged: {merge_with_default})")
+        
+    async def get_response(self, prompt: str, **kwargs) -> str:
+        """Enhanced alias with additional options and tracking"""
+        # Track API usage
+        if hasattr(self, '_usage_analytics'):
+            self._usage_analytics['total_requests'] += 1
+            
+        start_time = datetime.now()
+        
+        try:
+            # Check for any kwargs that modify behavior
+            if kwargs.get('stream', False):
+                # Return streaming generator
+                return self.generate_response_stream(prompt, adaptive=kwargs.get('adaptive', True))
+                
+            # Standard response
+            response = await self.generate_response(prompt)
+            
+            # Track success
+            response_time = (datetime.now() - start_time).total_seconds() * 1000  # ms
+            if hasattr(self, '_usage_analytics'):
+                self._usage_analytics['response_times'].append(response_time)
+                # Keep only last 100 response times
+                if len(self._usage_analytics['response_times']) > 100:
+                    self._usage_analytics['response_times'] = self._usage_analytics['response_times'][-100:]
+                # Update average
+                self._usage_analytics['avg_response_time'] = sum(self._usage_analytics['response_times']) / len(self._usage_analytics['response_times'])
+                
+            return response
+            
+        except Exception as e:
+            # Track errors
+            if hasattr(self, '_usage_analytics'):
+                self._usage_analytics['errors'] += 1
+            logger.error(f"Error in get_response: {e}")
+            raise
+    
+    async def _extract_context_summary(self) -> str:
+        """Extract important context from conversation history"""
+        if not self.conversation_history:
+            return ""
+            
+        # Extract key topics and entities
+        topics = set()
+        for exchange in self.conversation_history[-5:]:  # Last 5 exchanges
+            user_text = exchange.get('user', '').lower()
+            # Simple topic extraction
+            if 'screen' in user_text or 'vision' in user_text:
+                topics.add('vision_analysis')
+            if 'error' in user_text or 'bug' in user_text:
+                topics.add('troubleshooting')
+            if 'code' in user_text:
+                topics.add('programming')
+                
+        return f"Previous topics: {', '.join(topics)}" if topics else ""
+    
+    def get_health_status(self) -> Dict[str, Any]:
+        """Get detailed health and status information"""
+        health = {
+            'status': 'healthy' if self.is_available() else 'unhealthy',
+            'checks': {}
+        }
+        
+        # Detailed checks
+        checks = [
+            ('api_key_present', bool(self.api_key)),
+            ('client_initialized', self.client is not None),
+            ('model_valid', self._is_valid_model(self.model) if hasattr(self, '_is_valid_model') else True),
+            ('anthropic_library', ANTHROPIC_AVAILABLE),
+            ('screenshot_capability', self._check_screenshot_capability() if hasattr(self, '_check_screenshot_capability') else SCREENSHOT_AVAILABLE),
+            ('vision_analyzer', self.vision_analyzer is not None),
+            ('conversation_history', hasattr(self, 'conversation_history') and isinstance(self.conversation_history, list))
+        ]
+        
+        for check_name, check_result in checks:
+            health['checks'][check_name] = check_result
+            
+        # Overall status
+        critical_checks = ['api_key_present', 'client_initialized', 'anthropic_library']
+        health['critical_ok'] = all(health['checks'].get(check, False) for check in critical_checks)
+        
+        return health
+    
+    async def optimize_for_performance(self):
+        """Optimize chatbot for better performance"""
+        optimizations_applied = []
+        
+        # Clear old history if too long
+        if len(self.conversation_history) > self.max_history_length * 2:
+            await self.clear_history(preserve_last_n=self.max_history_length)
+            optimizations_applied.append('trimmed_history')
+            
+        # Clean up cache
+        if hasattr(self, '_screenshot_cache_store'):
+            current_time = datetime.now()
+            cache_config = getattr(self, '_cache_config', {'duration': timedelta(seconds=5)})
+            
+            # Remove expired entries
+            expired_keys = []
+            for key, (timestamp, _, _) in self._screenshot_cache_store.items():
+                if current_time - timestamp > cache_config['duration'] * 2:
+                    expired_keys.append(key)
+                    
+            for key in expired_keys:
+                del self._screenshot_cache_store[key]
+                
+            if expired_keys:
+                optimizations_applied.append(f'cleared_{len(expired_keys)}_cache_entries')
+                
+        # Reset analytics if too large
+        if hasattr(self, '_usage_analytics') and len(self._usage_analytics.get('response_times', [])) > 1000:
+            self._usage_analytics['response_times'] = self._usage_analytics['response_times'][-100:]
+            optimizations_applied.append('trimmed_analytics')
+            
+        # Clear old prompt history
+        if hasattr(self, '_prompt_history') and len(self._prompt_history) > 50:
+            self._prompt_history = self._prompt_history[-20:]
+            optimizations_applied.append('trimmed_prompt_history')
+            
+        logger.info(f"Performance optimizations applied: {optimizations_applied}")
+        return optimizations_applied
+    
+    async def export_conversation(self, format: str = 'json', include_system: bool = False) -> Union[str, Dict]:
+        """Export conversation in various formats"""
+        history = await self.get_conversation_history(include_metadata=True)
+        
+        if format == 'json':
+            export_data = {
+                'exported_at': datetime.now().isoformat(),
+                'model': self.model,
+                'conversation_count': len(history),
+                'conversations': history
+            }
+            
+            if include_system:
+                export_data['system_prompt'] = self.system_prompt
+                export_data['configuration'] = {
+                    'temperature': self.temperature,
+                    'max_tokens': self.max_tokens
+                }
+                
+            return export_data
+            
+        elif format == 'markdown':
+            md_lines = [f"# Conversation Export\n"]
+            md_lines.append(f"**Date**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            md_lines.append(f"**Model**: {self.model}\n")
+            
+            if include_system:
+                md_lines.append(f"\n## System Prompt\n```\n{self.system_prompt}\n```\n")
+                
+            md_lines.append(f"\n## Conversation\n")
+            
+            for i, exchange in enumerate(history):
+                timestamp = exchange.get('timestamp', '')
+                md_lines.append(f"\n### Exchange {i+1} - {timestamp}\n")
+                md_lines.append(f"**User**: {exchange.get('user', '')}\n")
+                md_lines.append(f"**Assistant**: {exchange.get('assistant', '')}\n")
+                
+            return "\n".join(md_lines)
+            
+        elif format == 'txt':
+            txt_lines = [f"Conversation Export - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"]
+            txt_lines.append(f"Model: {self.model}")
+            txt_lines.append("=" * 50)
+            
+            for exchange in history:
+                txt_lines.append(f"\nUser: {exchange.get('user', '')}")
+                txt_lines.append(f"Assistant: {exchange.get('assistant', '')}")
+                txt_lines.append("-" * 30)
+                
+            return "\n".join(txt_lines)
+            
+        else:
+            raise ValueError(f"Unsupported export format: {format}")
+    
+    def get_capabilities(self) -> Dict[str, Any]:
+        """Get detailed capabilities of the chatbot"""
+        return {
+            'text_generation': True,
+            'vision_analysis': True,
+            'streaming': True,
+            'conversation_memory': True,
+            'max_conversation_length': self.max_history_length,
+            'supported_image_formats': self._get_supported_image_formats() if hasattr(self, '_get_supported_image_formats') else ['JPEG', 'PNG'],
+            'platform_support': {
+                'macos': self._platform == 'darwin' if hasattr(self, '_platform') else True,
+                'windows': self._platform == 'win32' if hasattr(self, '_platform') else True,
+                'linux': 'linux' in self._platform if hasattr(self, '_platform') else True
+            },
+            'api_features': {
+                'models': ['claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku', 'claude-3-5-sonnet'],
+                'max_tokens': 4096,
+                'vision_enabled': True,
+                'temperature_range': (0.0, 1.0)
+            },
+            'performance_features': {
+                'caching': hasattr(self, '_screenshot_cache_store'),
+                'adaptive_streaming': True,
+                'multi_method_capture': hasattr(self, '_capture_methods'),
+                'intent_analysis': hasattr(self, '_analyze_vision_intent')
+            }
+        }
+    
+    async def reset(self, keep_config: bool = True):
+        """Reset the chatbot to initial state"""
+        logger.info(f"Resetting chatbot (keep_config: {keep_config})")
+        
+        # Clear conversation
+        await self.clear_history()
+        
+        # Reset analytics
+        if hasattr(self, '_usage_analytics'):
+            self._usage_analytics = {
+                'total_requests': 0,
+                'vision_requests': 0,
+                'errors': 0,
+                'total_tokens': 0,
+                'cache_hits': 0,
+                'cache_misses': 0,
+                'avg_response_time': 0,
+                'response_times': []
+            }
+            
+        # Clear caches
+        if hasattr(self, '_screenshot_cache_store'):
+            self._screenshot_cache_store.clear()
+            
+        if hasattr(self, '_pattern_cache'):
+            self._pattern_cache.clear()
+            
+        # Reset to original prompt
+        if hasattr(self, '_original_system_prompt') and not keep_config:
+            self.system_prompt = self._original_system_prompt
+            
+        # Re-initialize if needed
+        if not keep_config:
+            self.temperature = 0.7
+            self.max_tokens = 1024
+            
+        logger.info("Chatbot reset complete")
