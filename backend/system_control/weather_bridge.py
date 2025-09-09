@@ -4,18 +4,12 @@ Provides intelligent weather data using macOS WeatherKit or fallback to APIs
 """
 
 import os
-import json
 import asyncio
 import subprocess
-import platform
 import logging
-from typing import Dict, Optional, Tuple, List
-from datetime import datetime, timedelta
-from pathlib import Path
+from typing import Dict, Optional, List
+from datetime import datetime
 import re
-import aiohttp
-from functools import lru_cache
-import hashlib
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +21,10 @@ class WeatherBridge:
         
         # Pattern recognition for weather queries
         self._weather_patterns = self._compile_weather_patterns()
+        
+        # Initialize weather widget extractor (HIGHEST PRIORITY)
+        from .weather_widget_extractor import WeatherWidgetExtractor
+        self.widget_extractor = WeatherWidgetExtractor()
         
         # Initialize NEW macOS system integration (primary)
         from .macos_system_integration import MacOSSystemIntegration
@@ -172,10 +170,19 @@ class WeatherBridge:
         """Get weather for current location - ALWAYS REAL-TIME"""
         # NO CACHING - always get fresh data
         
-        # First try NEW system integration for accurate data
+        # FIRST: Try weather widget extractor for most accurate data
+        try:
+            widget_data = await self.widget_extractor.get_weather_with_fallback()
+            if widget_data:
+                logger.info(f"Got weather from widget: {widget_data}")
+                return widget_data
+        except Exception as e:
+            logger.error(f"Widget extraction failed: {e}")
+        
+        # Second: try NEW system integration for accurate data
         try:
             weather_data = await self.system_integration.get_accurate_weather()
-            if weather_data:
+            if weather_data and self._is_valid_weather_data(weather_data):
                 logger.info(f"Got real-time weather: {weather_data}")
                 return weather_data
         except Exception as e:
@@ -184,7 +191,7 @@ class WeatherBridge:
         # Try macOS Weather app directly
         try:
             weather_data = await self.macos_weather_app.get_weather_with_location()
-            if weather_data and weather_data.get("source") != "fallback":
+            if weather_data and weather_data.get("source") != "fallback" and self._is_valid_weather_data(weather_data):
                 logger.info("Got weather from macOS Weather app")
                 return weather_data
         except Exception as e:
@@ -194,7 +201,7 @@ class WeatherBridge:
         if self.macos_provider:
             try:
                 weather_data = await self.macos_provider.get_weather_data()
-                if weather_data and weather_data.get("source") != "fallback":
+                if weather_data and weather_data.get("source") != "fallback" and self._is_valid_weather_data(weather_data):
                     return weather_data
             except Exception as e:
                 logger.error(f"macOS weather provider failed: {e}")
@@ -203,7 +210,9 @@ class WeatherBridge:
         if self.api_weather_service:
             logger.info("Using fallback weather API")
             try:
-                return await self.api_weather_service.get_current_weather()
+                api_data = await self.api_weather_service.get_current_weather()
+                if api_data and self._is_valid_weather_data(api_data):
+                    return api_data
             except Exception as e:
                 logger.error(f"Fallback weather API failed: {e}")
         
@@ -276,25 +285,39 @@ class WeatherBridge:
         """Get fallback weather response when no service is available"""
         return {
             "location": city,
-            "temperature": 20,
+            "temperature": None,  # No fake temperature
             "temperature_unit": "°C",
-            "feels_like": 18,
+            "feels_like": None,
             "description": "Weather data temporarily unavailable",
-            "condition": "unknown",
-            "humidity": 50,
-            "wind_speed": 10,
-            "wind_direction": "N",
+            "condition": "unavailable",
+            "humidity": None,
+            "wind_speed": None,
+            "wind_direction": None,
             "source": "unavailable",
             "message": "Weather services are currently unavailable. Please check your internet connection or try again later.",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "error": True  # Flag to indicate this is an error response
         }
     
     def format_for_speech(self, weather_data: Dict, query_type: str = "current") -> str:
         """Format weather data for natural speech output"""
         location = weather_data.get("location", "your location")
         
+        # Check if this is an error response
+        if weather_data.get("error", False):
+            return f"I'm unable to get weather data for {location} right now. Please try again in a moment or check the Weather app directly."
+        
         # Handle temperature based on system preference
-        temp_c = weather_data.get("temperature", 0)
+        temp_c = weather_data.get("temperature")
+        
+        # If no temperature data, return a different response
+        if temp_c is None:
+            condition = weather_data.get("condition", "current conditions")
+            if condition and condition != "unavailable" and condition != "unknown":
+                return f"The weather in {location} shows {condition}, but I couldn't get the temperature data."
+            else:
+                return f"I'm having trouble accessing complete weather data for {location} right now. Please check the Weather app for current conditions."
+        
         feels_like_c = weather_data.get("feels_like", temp_c)
         
         # Convert to user's preferred unit
@@ -349,7 +372,7 @@ class WeatherBridge:
         # Build natural response based on query type
         if query_type == "temperature":
             # Convert temp thresholds based on unit
-            if temp_unit == "°F":
+            if temp_unit == "°F" and temp is not None:
                 if temp > 86:  # 30°C
                     response = f"It's quite hot in {location} at {temp_display}"
                 elif temp > 77:  # 25°C
@@ -364,7 +387,7 @@ class WeatherBridge:
                     response = f"It's rather chilly at {temp_display} in {location}"
                 else:
                     response = f"It's quite cold in {location} at {temp_display}"
-            else:
+            elif temp_unit == "°C" and temp is not None:
                 # Celsius thresholds
                 if temp > 30:
                     response = f"It's quite hot in {location} at {temp_display}"
@@ -381,7 +404,7 @@ class WeatherBridge:
                 else:
                     response = f"It's quite cold in {location} at {temp_display}"
             
-            if abs(feels_like - temp) > 3:
+            if temp is not None and feels_like is not None and abs(feels_like - temp) > 3:
                 if feels_like > temp:
                     response += f", but it feels warmer at {feels_display}"
                 else:
@@ -407,7 +430,7 @@ class WeatherBridge:
             # Add temperature in a natural way
             response += f", currently {temp_display}"
             
-            if abs(feels_like - temp) > 3:
+            if temp is not None and feels_like is not None and abs(feels_like - temp) > 3:
                 if feels_like > temp:
                     response += f" but feeling more like {feels_display}"
                 else:
@@ -417,14 +440,14 @@ class WeatherBridge:
         advice_added = False
         
         # Use appropriate thresholds based on unit
-        if temp_unit == "°F":
+        if temp_unit == "°F" and temp is not None:
             if temp < 41:  # 5°C
                 response += ". Bundle up warmly today"
                 advice_added = True
             elif temp > 86:  # 30°C
                 response += ". Stay cool and hydrated"
                 advice_added = True
-        else:
+        elif temp is not None:
             if temp < 5:
                 response += ". Bundle up warmly today"
                 advice_added = True
@@ -446,7 +469,7 @@ class WeatherBridge:
             advice_added = True
         
         # Add a pleasant closing for nice weather
-        if not advice_added:
+        if not advice_added and temp is not None:
             if temp_unit == "°F":
                 # 68-82°F is pleasant
                 if temp >= 68 and temp <= 82 and "clear" in description:
@@ -478,9 +501,10 @@ class WeatherBridge:
         try:
             # If user wants to open Weather app
             if "open" in query.lower() and "weather" in query.lower():
-                if await self.macos_direct.open_weather_app():
+                try:
+                    subprocess.run(['open', '-a', 'Weather'], check=True)
                     return "I've opened the Weather app for you"
-                else:
+                except:
                     return "I couldn't open the Weather app. Please try opening it manually"
             
             # First, try to get weather from macOS Weather app directly
@@ -501,51 +525,43 @@ class WeatherBridge:
             except Exception as e:
                 logger.debug(f"Weather app access failed: {e}")
             
-            # Try system integration
-            response = "I'm checking the weather for you"
+            # Determine query type
+            query_lower = query.lower()
+            query_type = "current"
             
-            # Try to get actual weather data if available
+            if "temperature" in query_lower or "hot" in query_lower or "cold" in query_lower:
+                query_type = "temperature"
+            elif any(word in query_lower for word in ["rain", "snow", "sunny", "cloudy", "foggy"]):
+                query_type = "condition"
+            
+            # Extract location if specified
+            location = self.extract_location_from_query(query)
+            
+            # Get weather data with longer timeout for system integration
+            weather_data = None
             try:
-                # Determine query type
-                query_lower = query.lower()
-                query_type = "current"
-                
-                if "temperature" in query_lower or "hot" in query_lower or "cold" in query_lower:
-                    query_type = "temperature"
-                elif any(word in query_lower for word in ["rain", "snow", "sunny", "cloudy", "foggy"]):
-                    query_type = "condition"
-                
-                # Extract location if specified
-                location = self.extract_location_from_query(query)
-                
-                # Get weather data with timeout
-                weather_data = None
-                try:
-                    if location:
-                        logger.info(f"Getting weather for city: {location}")
-                        weather_data = await asyncio.wait_for(
-                            self.get_weather_by_city(location), 
-                            timeout=5.0
-                        )
-                    else:
-                        logger.info("Getting current location weather")
-                        weather_data = await asyncio.wait_for(
-                            self.get_current_weather(), 
-                            timeout=5.0
-                        )
-                except asyncio.TimeoutError:
-                    logger.warning("Weather data fetch timed out")
-                    return response  # Return simple response
-                
-                # If we got weather data, format it properly
-                if weather_data and weather_data.get("source") != "fallback":
-                    return self.format_for_speech(weather_data, query_type)
+                if location:
+                    logger.info(f"Getting weather for city: {location}")
+                    weather_data = await asyncio.wait_for(
+                        self.get_weather_by_city(location), 
+                        timeout=10.0  # Increased timeout
+                    )
                 else:
-                    return response  # Return simple response
-                    
-            except Exception as e:
-                logger.error(f"Error getting weather data: {e}")
-                return response  # Return simple response
+                    logger.info("Getting current location weather")
+                    weather_data = await asyncio.wait_for(
+                        self.get_current_weather(), 
+                        timeout=10.0  # Increased timeout
+                    )
+            except asyncio.TimeoutError:
+                logger.warning("Weather data fetch timed out")
+                return "I'm having trouble getting the weather data right now. The Weather app might have more current information."
+            
+            # If we got weather data, format it properly
+            if weather_data and self._is_valid_weather_data(weather_data):
+                return self.format_for_speech(weather_data, query_type)
+            else:
+                # Try to provide helpful guidance
+                return "I'm having difficulty accessing current weather data. You might want to check the Weather app directly for the most accurate information."
                 
         except Exception as e:
             logger.error(f"Error processing weather query: {e}")
@@ -554,6 +570,23 @@ class WeatherBridge:
     def clear_cache(self):
         """NO CACHING - this method is deprecated"""
         logger.info("Cache clearing not needed - using real-time data")
+    
+    def _is_valid_weather_data(self, data: Dict) -> bool:
+        """Check if weather data is valid and not a fallback"""
+        # Must have real temperature data
+        if data.get("temperature") is None:
+            return False
+        
+        # Must not be error or unavailable
+        if data.get("error", False) or data.get("source") == "unavailable":
+            return False
+        
+        # Must have some meaningful data
+        has_location = bool(data.get("location") and data["location"] != "your location")
+        has_condition = bool(data.get("condition") and data["condition"] not in ["unknown", "unavailable"])
+        has_description = bool(data.get("description") and data["description"] not in ["unknown", "unavailable", "Weather data temporarily unavailable"])
+        
+        return has_location or has_condition or has_description
     
     async def close(self):
         """Clean up resources"""

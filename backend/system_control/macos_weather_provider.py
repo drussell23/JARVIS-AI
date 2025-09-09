@@ -201,8 +201,8 @@ class MacOSWeatherProvider:
         except:
             pass
         
-        # Final fallback - but we should rarely get here
-        return 43.6532, -79.3832, "your location"
+        # Final fallback - return None to indicate failure
+        return None, None, None
     
     async def get_current_location(self) -> Tuple[float, float, str]:
         """Get current location with caching"""
@@ -216,14 +216,17 @@ class MacOSWeatherProvider:
         location = await self.get_system_location()
         
         # Fallback to IP location
-        if not location:
+        if not location or location == (None, None, None):
             location = await self.get_location_from_ip()
         
-        # Cache the result
-        self._location_cache = location
-        self._location_cache_time = datetime.now()
+        # Only cache valid results
+        if location and location != (None, None, None):
+            self._location_cache = location
+            self._location_cache_time = datetime.now()
+            return location
         
-        return location
+        # Return a reasonable default if all methods fail
+        return None, None, "Current Location"
     
     async def get_weather_data(self, location: Optional[str] = None) -> Dict:
         """Get weather data for current or specified location"""
@@ -237,6 +240,11 @@ class MacOSWeatherProvider:
             
             # Otherwise, try to get basic weather info
             lat, lon, city = await self.get_current_location()
+            
+            # Check if we got valid location
+            if lat is None or lon is None:
+                logger.warning("Could not determine location")
+                return self._get_fallback_weather(location or "your location")
             
             # Use detected location if no specific location requested
             final_location = location if location else city
