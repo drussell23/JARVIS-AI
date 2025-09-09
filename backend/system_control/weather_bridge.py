@@ -23,27 +23,24 @@ class WeatherBridge:
     """Intelligent weather bridge that prioritizes macOS WeatherKit over external APIs"""
     
     def __init__(self):
-        # Cache configuration
-        self._weather_cache = {}
-        self._location_cache = {}
-        self._cache_duration = 300  # 5 minutes
+        # NO CACHING for real-time data
         
         # Pattern recognition for weather queries
         self._weather_patterns = self._compile_weather_patterns()
         
-        # Initialize macOS Weather app integration (primary)
+        # Initialize NEW macOS system integration (primary)
+        from .macos_system_integration import MacOSSystemIntegration
+        self.system_integration = MacOSSystemIntegration()
+        
+        # Initialize macOS Weather app integration (secondary)
         from .macos_weather_app import MacOSWeatherApp
         self.macos_weather_app = MacOSWeatherApp()
-        
-        # Initialize macOS direct weather
-        from .macos_weather_direct import MacOSWeatherDirect
-        self.macos_direct = MacOSWeatherDirect()
         
         # Check temperature unit preference
         from .temperature_units import should_use_fahrenheit
         self.use_fahrenheit = should_use_fahrenheit()
         
-        # Initialize macOS weather provider
+        # Initialize macOS weather provider as backup
         try:
             from .macos_weather_provider import MacOSWeatherProvider
             self.macos_provider = MacOSWeatherProvider()
@@ -171,28 +168,36 @@ class WeatherBridge:
         return None
     
     
-    async def get_current_weather(self, use_cache: bool = True) -> Dict:
-        """Get weather for current location using best available method"""
-        # Check cache
-        cache_key = "current_location"
-        if use_cache and cache_key in self._weather_cache:
-            cached = self._weather_cache[cache_key]
-            if (datetime.now() - cached['timestamp']).seconds < self._cache_duration:
-                logger.info("Returning cached weather data")
-                return cached['data']
+    async def get_current_weather(self, use_cache: bool = False) -> Dict:
+        """Get weather for current location - ALWAYS REAL-TIME"""
+        # NO CACHING - always get fresh data
         
-        # Use macOS weather provider
+        # First try NEW system integration for accurate data
         try:
-            weather_data = await self.macos_provider.get_weather_data()
-            if weather_data and weather_data.get("source") != "fallback":
-                # Cache the result
-                self._weather_cache[cache_key] = {
-                    'data': weather_data,
-                    'timestamp': datetime.now()
-                }
+            weather_data = await self.system_integration.get_accurate_weather()
+            if weather_data:
+                logger.info(f"Got real-time weather: {weather_data}")
                 return weather_data
         except Exception as e:
-            logger.error(f"macOS weather provider failed: {e}")
+            logger.error(f"System integration weather failed: {e}")
+        
+        # Try macOS Weather app directly
+        try:
+            weather_data = await self.macos_weather_app.get_weather_with_location()
+            if weather_data and weather_data.get("source") != "fallback":
+                logger.info("Got weather from macOS Weather app")
+                return weather_data
+        except Exception as e:
+            logger.error(f"macOS Weather app failed: {e}")
+        
+        # Try macOS weather provider
+        if self.macos_provider:
+            try:
+                weather_data = await self.macos_provider.get_weather_data()
+                if weather_data and weather_data.get("source") != "fallback":
+                    return weather_data
+            except Exception as e:
+                logger.error(f"macOS weather provider failed: {e}")
         
         # Fallback to API service if available
         if self.api_weather_service:
@@ -205,27 +210,18 @@ class WeatherBridge:
         # Last resort - return informative message
         return self._get_fallback_weather_response()
     
-    async def get_weather_by_city(self, city: str, use_cache: bool = True) -> Dict:
-        """Get weather for specific city"""
-        # Normalize city name
+    async def get_weather_by_city(self, city: str, use_cache: bool = False) -> Dict:
+        """Get weather for specific city - ALWAYS REAL-TIME"""
+        # NO CACHING - always get fresh data
         city_normalized = city.strip().title()
-        cache_key = f"city:{city_normalized.lower()}"
         
-        # Check cache
-        if use_cache and cache_key in self._weather_cache:
-            cached = self._weather_cache[cache_key]
-            if (datetime.now() - cached['timestamp']).seconds < self._cache_duration:
-                return cached['data']
-        
-        # Use macOS weather provider
+        # Try system integration first
         try:
-            weather_data = await self.macos_provider.get_weather_data(city_normalized)
-            if weather_data and weather_data.get("source") != "fallback":
-                self._weather_cache[cache_key] = {
-                    'data': weather_data,
-                    'timestamp': datetime.now()
-                }
-                return weather_data
+            # For specific city, we need to use provider
+            if self.macos_provider:
+                weather_data = await self.macos_provider.get_weather_data(city_normalized)
+                if weather_data and weather_data.get("source") != "fallback":
+                    return weather_data
         except Exception as e:
             logger.error(f"macOS weather provider failed for {city}: {e}")
         
@@ -505,8 +501,8 @@ class WeatherBridge:
             except Exception as e:
                 logger.debug(f"Weather app access failed: {e}")
             
-            # Fallback to simple direct approach
-            response = await self.macos_direct.get_simple_weather_response(query)
+            # Try system integration
+            response = "I'm checking the weather for you"
             
             # Try to get actual weather data if available
             try:
@@ -556,10 +552,8 @@ class WeatherBridge:
             return "I'm having trouble accessing weather information right now. You can check the Weather app for current conditions"
     
     def clear_cache(self):
-        """Clear all weather caches"""
-        self._weather_cache.clear()
-        self._location_cache.clear()
-        logger.info("Weather cache cleared")
+        """NO CACHING - this method is deprecated"""
+        logger.info("Cache clearing not needed - using real-time data")
     
     async def close(self):
         """Clean up resources"""

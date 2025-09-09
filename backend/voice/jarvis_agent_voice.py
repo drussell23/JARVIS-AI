@@ -1103,35 +1103,48 @@ System Control Commands:
         import platform
         
         try:
-            # Get current time with multiple timezone detection methods
-            now = None
-            timezone_name = None
+            # ALWAYS get real system time - NO manipulation
+            import subprocess
             
-            # Method 1: Try system timezone detection
-            timezone_methods = [
-                # macOS specific
-                lambda: self._get_macos_timezone(),
-                # Unix/Linux general
-                lambda: self._get_unix_timezone(),
-                # Python timezone
-                lambda: self._get_python_timezone(),
-                # Environment variable
-                lambda: os.environ.get('TZ', None)
-            ]
-            
-            for method in timezone_methods:
-                try:
-                    tz_result = method()
-                    if tz_result:
-                        timezone_name = tz_result
-                        local_tz = pytz.timezone(timezone_name)
-                        now = datetime.now(local_tz)
-                        break
-                except:
-                    continue
-            
-            # Fallback to system local time
-            if not now:
+            # Get actual system time directly
+            try:
+                # Use date command for REAL system time
+                result = subprocess.run(
+                    ["date", "+%Y-%m-%d %H:%M:%S %Z %A %B"],
+                    capture_output=True,
+                    text=True,
+                    timeout=1
+                )
+                
+                if result.returncode == 0:
+                    # Parse real system time
+                    system_time = result.stdout.strip()
+                    parts = system_time.split()
+                    
+                    # Extract date and time
+                    date_parts = parts[0].split('-')
+                    time_parts = parts[1].split(':')
+                    timezone_name = parts[2] if len(parts) > 2 else "local"
+                    
+                    # Create datetime from REAL system values
+                    now = datetime(
+                        year=int(date_parts[0]),
+                        month=int(date_parts[1]),
+                        day=int(date_parts[2]),
+                        hour=int(time_parts[0]),
+                        minute=int(time_parts[1]),
+                        second=int(time_parts[2])
+                    )
+                    
+                    logger.info(f"Using REAL system time: {system_time}")
+                else:
+                    # Fallback but with warning
+                    now = datetime.now()
+                    timezone_name = "local"
+                    logger.warning("Failed to get real system time, using Python datetime")
+                    
+            except Exception as e:
+                logger.error(f"Error getting system time: {e}")
                 now = datetime.now()
                 timezone_name = "local"
             
