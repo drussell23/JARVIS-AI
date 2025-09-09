@@ -63,6 +63,7 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             "launch",
             "quit",
             "switch",
+            "time",  # Add time as a system keyword
             "show",
             "volume",
             "mute",
@@ -167,6 +168,11 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             "action_failed": "I apologize, {user}, but I couldn't complete that action.",
             "system_control_mode": "Switching to system control mode. I can now help you control your Mac.",
             "conversation_mode": "Returning to conversation mode, {user}.",
+            # Time-related responses
+            "current_time": "It's {time}, {user}.",
+            "current_time_with_context": "It's {time}, {user}. {context}",
+            "current_date_time": "It's {time} on {date}, {user}.",
+            "time_with_appointment": "It's {time}, {user}. {appointment_info}",
         }
 
     def _ensure_vision_v2_initialized(self):
@@ -472,6 +478,10 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
 
         # Check for vision commands with expanded patterns
         text_lower = text.lower()
+        
+        # CHECK FOR TIME COMMANDS FIRST - handle immediately without vision
+        if self._is_time_command(text_lower):
+            return await self._handle_time_command(text_lower)
 
         # CHECK FOR ACTION COMMANDS FIRST - these should execute, not analyze
         action_commands = {
@@ -977,3 +987,160 @@ System Control Commands:
             """
 
         return help_text
+    
+    def _is_time_command(self, text: str) -> bool:
+        """Check if this is a time-related query"""
+        # Comprehensive time-related patterns
+        time_patterns = [
+            # Direct time queries
+            "what time", "what's the time", "whats the time",
+            "current time", "time is it", "tell me the time",
+            "give me the time", "check the time",
+            # Indirect time queries
+            "what hour", "which hour", 
+            # Date queries
+            "what day", "what's the date", "current date",
+            "today's date", "todays date", "what date",
+            # Combined queries
+            "time and date", "date and time",
+            # Casual queries
+            "got the time", "have the time",
+            # Clock references
+            "check clock", "look at clock",
+            # Specific time queries
+            "is it morning", "is it afternoon", "is it evening",
+            "is it night", "is it late", "is it early"
+        ]
+        
+        return any(pattern in text for pattern in time_patterns)
+    
+    async def _handle_time_command(self, text: str) -> str:
+        """Handle time-related commands with robust, context-aware responses"""
+        from datetime import datetime
+        import pytz
+        
+        try:
+            # Get current time with timezone awareness
+            now = datetime.now()
+            
+            # Try to get system timezone, fallback to UTC if needed
+            try:
+                import subprocess
+                # Get macOS system timezone
+                result = subprocess.run(['systemsetup', '-gettimezone'], 
+                                      capture_output=True, text=True)
+                if result.returncode == 0:
+                    tz_string = result.stdout.strip()
+                    # Extract timezone name from output like "Time Zone: America/New_York"
+                    if "Time Zone:" in tz_string:
+                        tz_name = tz_string.split("Time Zone:")[1].strip()
+                        local_tz = pytz.timezone(tz_name)
+                        now = datetime.now(local_tz)
+            except:
+                # Fallback to system local time
+                pass
+            
+            # Determine what kind of time information to provide
+            include_date = any(word in text for word in ["date", "day", "today"])
+            include_context = any(word in text for word in ["morning", "afternoon", "evening", "night", "late", "early"])
+            
+            # Format time in 12-hour format with AM/PM
+            time_str = now.strftime("%-I:%M %p")  # e.g., "3:30 PM"
+            
+            # Build response based on query type
+            if include_date and include_context:
+                # Full date and time with context
+                date_str = now.strftime("%A, %B %-d")  # e.g., "Monday, September 9"
+                context = self._get_time_context(now)
+                return self._format_response("current_date_time", 
+                                           time=time_str, 
+                                           date=date_str) + f" {context}"
+                                           
+            elif include_date:
+                # Date and time
+                date_str = now.strftime("%A, %B %-d")
+                return self._format_response("current_date_time", 
+                                           time=time_str, 
+                                           date=date_str)
+                                           
+            elif include_context:
+                # Time with contextual information
+                context = self._get_time_context(now)
+                return self._format_response("current_time_with_context",
+                                           time=time_str,
+                                           context=context)
+            else:
+                # Check if we should add appointment context
+                appointment_info = await self._check_calendar_context(now)
+                if appointment_info:
+                    return self._format_response("time_with_appointment",
+                                               time=time_str,
+                                               appointment_info=appointment_info)
+                else:
+                    # Simple time response
+                    return self._format_response("current_time", time=time_str)
+                    
+        except Exception as e:
+            logger.error(f"Error handling time command: {e}")
+            # Fallback response
+            simple_time = datetime.now().strftime("%-I:%M %p")
+            return f"It's {simple_time}, {self.user_name}."
+    
+    def _get_time_context(self, dt: datetime) -> str:
+        """Get contextual information about the time"""
+        hour = dt.hour
+        
+        # Determine time of day
+        if 5 <= hour < 9:
+            time_period = "early morning"
+            greeting = "Good morning"
+        elif 9 <= hour < 12:
+            time_period = "morning"
+            greeting = "Good morning"
+        elif 12 <= hour < 17:
+            time_period = "afternoon"
+            greeting = "Good afternoon"
+        elif 17 <= hour < 21:
+            time_period = "evening"
+            greeting = "Good evening"
+        else:
+            time_period = "night"
+            greeting = "It's quite late"
+            
+        # Add contextual suggestions based on time
+        if hour < 6:
+            context = f"{greeting}. It's quite early."
+        elif 22 <= hour or hour < 2:
+            context = f"{greeting}. Perhaps it's time to rest soon."
+        elif 11 <= hour <= 13:
+            context = f"{greeting}. It might be a good time for lunch."
+        elif 14 <= hour <= 16:
+            context = f"{greeting}. I hope you're having a productive {time_period}."
+        else:
+            context = f"{greeting}."
+            
+        return context
+    
+    async def _check_calendar_context(self, current_time: datetime) -> Optional[str]:
+        """Check for relevant calendar events near the current time"""
+        try:
+            # If we have calendar integration, check for nearby events
+            # This is a placeholder for actual calendar integration
+            # In production, this would connect to the calendar_context_provider.swift
+            
+            # For now, return None - can be extended later
+            return None
+            
+            # Future implementation would look like:
+            # events = await self.calendar_provider.get_nearby_events(current_time)
+            # if events:
+            #     next_event = events[0]
+            #     minutes_until = (next_event.start_time - current_time).total_seconds() / 60
+            #     if minutes_until <= 15:
+            #         return f"Your {next_event.title} starts in {int(minutes_until)} minutes"
+            #     elif minutes_until <= 60:
+            #         return f"You have {next_event.title} coming up in about {int(minutes_until)} minutes"
+            
+        except Exception as e:
+            logger.debug(f"Calendar context check failed: {e}")
+            return None

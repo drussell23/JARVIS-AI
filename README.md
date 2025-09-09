@@ -19,7 +19,7 @@
   <em>"Perfection is achieved not when there is nothing more to add, but when there is nothing left to take away." - Antoine de Saint-Exupéry</em>
 </p>
 
-## 🆕 What's New in v12.9.3 - Full Voice Vision Response
+## 🆕 What's New in v12.9.3 - Full Voice Vision Response & Time Intelligence
 
 ### 🗣️ JARVIS Now Speaks Everything He Sees!
 **THE VISION SYSTEM NOW TALKS!** When you ask "Can you see my screen?", JARVIS will:
@@ -28,7 +28,17 @@
 - ✅ **No truncation** - complete responses regardless of length
 - ✅ **Natural conversation** - explains what's on your screen conversationally
 
+### ⏰ Direct Time Intelligence (NEW!)
+**NO MORE VISION SYSTEM FOR TIME!** JARVIS now handles time queries instantly:
+- ✅ **Instant response** - Uses system time, no screenshot needed
+- ✅ **Context-aware** - "Good evening" at night, "Time for lunch" at noon
+- ✅ **Multiple formats** - Time only, date & time, or contextual responses
+- ✅ **Timezone aware** - Automatically uses your system timezone
+- ✅ **Natural queries** - "What time is it?", "Is it late?", "What's the date?"
+
 ### 🔧 Recent Improvements
+- **Added robust time command handler** with 20+ query patterns
+- **Context-aware responses** based on time of day
 - **Fixed async/await issues** in vision analysis pipeline
 - **Removed all response truncation** in both frontend and backend
 - **Enhanced anomaly detection** with dynamic, non-hardcoded implementation
@@ -487,6 +497,13 @@ Audio Input → Chunk (1024 samples) → VAD Filter → Wake Word Check → ML P
 "JARVIS, what's on my screen?"           # Complete analysis read aloud
 "Hey JARVIS, describe what you see"      # Detailed voice explanation
 "JARVIS, what am I looking at?"          # Natural conversational response
+
+# Time Commands (NEW - Instant Response!)
+"Hey JARVIS, what time is it?"           # "It's 3:30 PM, sir."
+"JARVIS, what's the date?"               # "It's 3:30 PM on Monday, September 9, sir."
+"Hey JARVIS, is it late?"                # "It's 11:30 PM, sir. Perhaps it's time to rest soon."
+"JARVIS, what day is it?"                # Full date response
+"Hey JARVIS, do you have the time?"      # Casual time query
 
 # Screen Monitoring
 "Hey JARVIS, start monitoring my screen" # Activates 30 FPS video capture
