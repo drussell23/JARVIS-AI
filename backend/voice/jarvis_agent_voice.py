@@ -64,6 +64,9 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             "quit",
             "switch",
             "time",  # Add time as a system keyword
+            "date",  # Add date as a system keyword
+            "day",   # Add day as a system keyword
+            "today", # Add today as a system keyword
             "show",
             "volume",
             "mute",
@@ -1001,6 +1004,7 @@ System Control Commands:
             # Date queries
             "what day", "what's the date", "current date",
             "today's date", "todays date", "what date",
+            "what is the date", "what is today",
             # Combined queries
             "time and date", "date and time",
             # Casual queries

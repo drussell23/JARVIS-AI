@@ -73,11 +73,14 @@ class ClaudeVisionChatbot:
         self.temperature = temperature
         
         # Enhanced JARVIS system prompt with vision capabilities
-        self.system_prompt = system_prompt or """You are JARVIS, an intelligent AI assistant inspired by Tony Stark's AI from Iron Man. 
+        current_datetime = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
+        self.system_prompt = system_prompt or f"""You are JARVIS, an intelligent AI assistant inspired by Tony Stark's AI from Iron Man. 
 You have advanced vision capabilities and can see and analyze the user's screen when asked.
 You are helpful, witty, and highly capable. You speak with a refined, professional tone while being personable and occasionally adding subtle humor. 
 When analyzing screens, you provide detailed, accurate descriptions and helpful insights about what you observe.
-You excel at understanding context and providing insightful, well-structured responses."""
+You excel at understanding context and providing insightful, well-structured responses.
+
+Current date and time: {current_datetime}"""
         
         # Initialize client
         if ANTHROPIC_AVAILABLE:
@@ -228,7 +231,11 @@ You excel at understanding context and providing insightful, well-structured res
             
             # For vision requests, we can't stream unfortunately
             # But we can use a shorter system prompt for faster processing
-            quick_system_prompt = "You are JARVIS. You can see the user's screen. Be concise and helpful." if "can you see" in user_input.lower() else self.system_prompt
+            current_datetime = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
+            if "can you see" in user_input.lower():
+                quick_system_prompt = f"You are JARVIS. You can see the user's screen. Be concise and helpful. Current date/time: {current_datetime}"
+            else:
+                quick_system_prompt = f"{self.system_prompt}\n\nNote: The current date and time is {current_datetime}."
             
             response = await asyncio.to_thread(
                 self.client.messages.create,
@@ -444,6 +451,12 @@ You excel at understanding context and providing insightful, well-structured res
             # Build messages for the API
             messages = self._build_messages(user_input)
             
+            # Update system prompt with current date
+            current_datetime = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
+            dynamic_system_prompt = f"""{self.system_prompt}
+
+Note: The current date and time is {current_datetime}. Always use this as the reference for any time-related queries."""
+            
             # Make API call
             start_time = datetime.now()
             
@@ -452,7 +465,7 @@ You excel at understanding context and providing insightful, well-structured res
                 model=self.model,
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
-                system=self.system_prompt,
+                system=dynamic_system_prompt,
                 messages=messages
             )
             
