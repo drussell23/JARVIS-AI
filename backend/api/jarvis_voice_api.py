@@ -380,11 +380,8 @@ class JARVISVoiceAPI:
             import subprocess
             import tempfile
             
-            # Truncate very long text to prevent audio generation issues
+            # Use the full text for audio generation
             audio_text = text
-            if len(text) > 1000:
-                # For very long text, just speak a summary
-                audio_text = text[:200] + "... Full details shown on screen."
             
             # Create temp file for audio
             with tempfile.NamedTemporaryFile(suffix='.aiff', delete=False) as tmp:
