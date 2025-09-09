@@ -74,6 +74,48 @@ class AnomalyBaseline:
 
 
 @dataclass
+class Observation:
+    """Observation data for anomaly detection"""
+    timestamp: datetime
+    observation_type: str  # screenshot_analysis, manual_screenshot, user_action, system_event
+    data: Dict[str, Any]  # The actual observation data
+    source: str  # Source of the observation (e.g., 'claude_vision_analyzer', 'manual_detection')
+    metadata: Dict[str, Any] = field(default_factory=dict)  # Additional metadata
+    
+    def extract_features(self) -> Dict[str, float]:
+        """Extract numerical features from observation for anomaly detection"""
+        features = {}
+        
+        # Extract basic features
+        features['has_error'] = 1.0 if self.metadata.get('has_error', False) else 0.0
+        features['has_warning'] = 1.0 if self.metadata.get('has_warning', False) else 0.0
+        features['confidence'] = float(self.metadata.get('confidence', 0.5))
+        
+        # Extract data-specific features
+        if isinstance(self.data, dict):
+            # Count entities
+            entities = self.data.get('entities', {})
+            features['entity_count'] = float(len(entities))
+            
+            # Count actions
+            actions = self.data.get('actions', [])
+            features['action_count'] = float(len(actions))
+            
+            # Text analysis features
+            if 'analysis' in self.data:
+                analysis_text = str(self.data['analysis'])
+                features['text_length'] = float(len(analysis_text))
+                features['error_mentions'] = float(analysis_text.lower().count('error'))
+                features['warning_mentions'] = float(analysis_text.lower().count('warning'))
+                features['failed_mentions'] = float(analysis_text.lower().count('fail'))
+            
+            # App-specific features
+            features['is_known_app'] = 1.0 if self.data.get('app_id', 'unknown') != 'unknown' else 0.0
+        
+        return features
+
+
+@dataclass
 class DetectionRule:
     """Anomaly detection rule"""
     rule_id: str
@@ -1046,6 +1088,31 @@ class AnomalyDetectionFramework:
             ])
         
         return investigation
+    
+    async def detect_anomaly(self, observation: Observation) -> Optional[DetectedAnomaly]:
+        """Detect anomalies in an observation using the Observation class"""
+        # Convert Observation to dict format for compatibility
+        obs_dict = {
+            'timestamp': observation.timestamp.isoformat(),
+            'type': observation.observation_type,
+            'source': observation.source,
+            'confidence': observation.metadata.get('confidence', 0.7),
+            **observation.data
+        }
+        
+        # Add metadata fields to observation dict
+        for key, value in observation.metadata.items():
+            if key not in obs_dict:
+                obs_dict[key] = value
+        
+        # Use existing monitor_realtime method
+        anomalies = await self.monitor_realtime(obs_dict)
+        
+        # Return the highest severity anomaly if multiple detected
+        if anomalies:
+            return max(anomalies, key=lambda a: a.severity.value)
+        
+        return None
     
     def get_statistics(self) -> Dict[str, Any]:
         """Get anomaly detection statistics"""

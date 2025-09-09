@@ -2118,28 +2118,78 @@ class ClaudeVisionAnalyzer:
                 try:
                     anomaly_detector = await self.get_anomaly_detector()
                     if anomaly_detector:
-                        # TODO: Fix Observation import - class doesn't exist
-                        # from .intelligence.anomaly_detection_framework import Observation, AnomalyType
-                        # 
-                        # observation = Observation(
-                        #     timestamp=datetime.now(),
-                        #     observation_type='screenshot_analysis',
-                        #     data={
-                        #         'prompt': prompt[:100],
-                        #         'entities': parsed_result.get('entities', {}),
-                        #         'actions': parsed_result.get('actions', []),
-                        #         'app_id': app_id if 'app_id' in locals() else 'unknown'
-                        #     },
-                        #     source='claude_vision_analyzer',
-                        #     metadata={
-                        #         'has_error': 'error' in parsed_result or 'warning' in parsed_result,
-                        #         'confidence': parsed_result.get('confidence', 0.5)
-                        #     }
-                        # )
-                        # 
-                        # # Detect anomalies
-                        # anomaly = await anomaly_detector.detect_anomaly(observation)
-                        anomaly = None  # TODO: Fix when Observation class is available
+                        from .intelligence.anomaly_detection_framework import Observation, AnomalyType
+                        
+                        # Extract app_id dynamically
+                        current_app_id = self._context.get('app_id', 'unknown')
+                        if 'app_id' in locals():
+                            current_app_id = app_id
+                        elif 'entities' in parsed_result and 'application' in parsed_result['entities']:
+                            current_app_id = parsed_result['entities']['application'].get('name', 'unknown')
+                        
+                        # Build observation data dynamically
+                        observation_data = {
+                            'prompt': prompt[:200] if len(prompt) > 200 else prompt,
+                            'entities': parsed_result.get('entities', {}),
+                            'actions': parsed_result.get('actions', []),
+                            'app_id': current_app_id,
+                            'analysis_text': parsed_result.get('analysis', ''),
+                            'elements_detected': len(parsed_result.get('elements', [])),
+                            'suggestions_count': len(parsed_result.get('suggestions', []))
+                        }
+                        
+                        # Add any additional analysis results
+                        if 'spatial_analysis' in parsed_result:
+                            observation_data['spatial_data'] = parsed_result['spatial_analysis']
+                        if 'temporal_context' in parsed_result:
+                            observation_data['temporal_data'] = parsed_result['temporal_context']
+                        if 'workflow' in parsed_result:
+                            observation_data['workflow_state'] = parsed_result['workflow']
+                        
+                        # Determine confidence dynamically
+                        confidence = parsed_result.get('confidence', 0.5)
+                        if '_metrics' in parsed_result:
+                            # Use API confidence if available
+                            confidence = max(confidence, parsed_result['_metrics'].get('api_confidence', 0.5))
+                        
+                        # Check for errors/warnings dynamically
+                        has_error = False
+                        has_warning = False
+                        
+                        # Check in various fields for error indicators
+                        error_indicators = ['error', 'failed', 'failure', 'exception', 'crash']
+                        warning_indicators = ['warning', 'warn', 'caution', 'alert']
+                        
+                        check_fields = [
+                            str(parsed_result.get('analysis', '')),
+                            str(parsed_result.get('description', '')),
+                            ' '.join(str(s) for s in parsed_result.get('suggestions', [])),
+                            ' '.join(parsed_result.get('warnings', []))
+                        ]
+                        
+                        combined_text = ' '.join(check_fields).lower()
+                        has_error = any(indicator in combined_text for indicator in error_indicators)
+                        has_warning = any(indicator in combined_text for indicator in warning_indicators)
+                        
+                        observation = Observation(
+                            timestamp=datetime.now(),
+                            observation_type='screenshot_analysis',
+                            data=observation_data,
+                            source='claude_vision_analyzer',
+                            metadata={
+                                'has_error': has_error,
+                                'has_warning': has_warning,
+                                'confidence': confidence,
+                                'image_size': metrics.image_size_original if hasattr(metrics, 'image_size_original') else 0,
+                                'processing_time': metrics.total_time if hasattr(metrics, 'total_time') else 0,
+                                'cache_hit': metrics.cache_hit if hasattr(metrics, 'cache_hit') else False,
+                                'priority': priority,
+                                'custom_config_applied': bool(custom_config)
+                            }
+                        )
+                        
+                        # Detect anomalies
+                        anomaly = await anomaly_detector.detect_anomaly(observation)
                         
                         if anomaly:
                             # Add anomaly to result
@@ -2334,6 +2384,9 @@ class ClaudeVisionAnalyzer:
             
             # Cache result if enabled
             if should_use_cache:
+                # Generate cache key for both cache types
+                cache_key = self._generate_cache_key(image_hash, prompt)
+                
                 if self._semantic_cache_config['enabled'] and self.semantic_cache:
                     # Store in semantic cache with embedding and context
                     prompt_embedding = await self._generate_prompt_embedding(prompt)
@@ -5000,32 +5053,109 @@ Focus on what's visible in this specific region. Be concise but thorough."""
         if not anomaly_detector:
             return {"error": "Anomaly detector not available"}
         
-        # First analyze the screenshot
-        result, _ = await self.analyze_screenshot(
+        # Build dynamic analysis prompt based on context
+        analysis_prompt = "Analyze this screenshot for any unusual or anomalous patterns"
+        if context:
+            # Add context-specific analysis requests
+            if 'expected_state' in context:
+                analysis_prompt += f". Expected state: {context['expected_state']}"
+            if 'previous_action' in context:
+                analysis_prompt += f". Previous action: {context['previous_action']}"
+            if 'focus_areas' in context:
+                areas = ', '.join(context['focus_areas'])
+                analysis_prompt += f". Pay special attention to: {areas}"
+        
+        # Analyze the screenshot with custom config for anomaly detection
+        anomaly_config = {
+            'max_tokens': 1000,  # More tokens for detailed analysis
+            'enable_entity_extraction': True,
+            'enable_spatial_analysis': True
+        }
+        
+        result, metrics = await self.analyze_screenshot(
             screenshot, 
-            "Analyze this screenshot for any unusual or anomalous patterns"
+            analysis_prompt,
+            priority='high',  # High priority for anomaly detection
+            custom_config=anomaly_config
         )
         
-        # TODO: Fix Observation import
-        # from .intelligence.anomaly_detection_framework import Observation
-        # 
-        # observation = Observation(
-        #     timestamp=datetime.now(),
-        #     observation_type='manual_screenshot',
-        #     data={
-        #         'analysis': result,
-        #         'context': context or {}
-        #     },
-        #     source='manual_detection',
-        #     metadata={
-        #         'has_errors': 'error' in str(result).lower(),
-        #         'has_warnings': 'warning' in str(result).lower()
-        #     }
-        # )
-        # 
-        # # Detect anomaly
-        # anomaly = await anomaly_detector.detect_anomaly(observation)
-        anomaly = None  # TODO: Fix when Observation class is available
+        from .intelligence.anomaly_detection_framework import Observation
+        
+        # Extract detailed information from result
+        analysis_text = ''
+        detected_issues = []
+        confidence_score = 0.5
+        
+        if isinstance(result, dict):
+            analysis_text = result.get('analysis', result.get('description', str(result)))
+            detected_issues.extend(result.get('warnings', []))
+            detected_issues.extend(result.get('errors', []))
+            confidence_score = result.get('confidence', 0.5)
+            
+            # Check for anomaly indicators in various fields
+            if 'elements' in result:
+                for element in result.get('elements', []):
+                    if element.get('is_error') or element.get('is_warning'):
+                        detected_issues.append(f"Anomalous element: {element.get('text', 'Unknown')}")
+        else:
+            analysis_text = str(result)
+        
+        # Build comprehensive observation data
+        observation_data = {
+            'analysis': analysis_text,
+            'context': context or {},
+            'screenshot_shape': screenshot.shape,
+            'detected_issues': detected_issues,
+            'metrics': {
+                'processing_time': metrics.total_time if hasattr(metrics, 'total_time') else 0,
+                'api_call_time': metrics.api_call_time if hasattr(metrics, 'api_call_time') else 0,
+                'cache_hit': metrics.cache_hit if hasattr(metrics, 'cache_hit') else False
+            }
+        }
+        
+        # Add result details if available
+        if isinstance(result, dict):
+            observation_data.update({
+                'entities': result.get('entities', {}),
+                'suggestions': result.get('suggestions', []),
+                'spatial_analysis': result.get('spatial_analysis'),
+                'elements_count': len(result.get('elements', [])),
+                'app_id': result.get('app_id', 'unknown')
+            })
+        
+        # Determine error and warning presence dynamically
+        combined_text = f"{analysis_text} {' '.join(detected_issues)}".lower()
+        has_errors = any(term in combined_text for term in ['error', 'fail', 'crash', 'exception', 'critical'])
+        has_warnings = any(term in combined_text for term in ['warning', 'warn', 'alert', 'issue', 'problem'])
+        
+        # Add contextual metadata
+        metadata = {
+            'has_errors': has_errors,
+            'has_warnings': has_warnings,
+            'confidence': confidence_score,
+            'issue_count': len(detected_issues),
+            'context_provided': bool(context),
+            'screenshot_analyzed': True
+        }
+        
+        # Add context-specific metadata
+        if context:
+            metadata.update({
+                'has_expected_state': 'expected_state' in context,
+                'has_previous_action': 'previous_action' in context,
+                'focus_area_count': len(context.get('focus_areas', []))
+            })
+        
+        observation = Observation(
+            timestamp=datetime.now(),
+            observation_type='manual_screenshot',
+            data=observation_data,
+            source='detect_anomalies_in_screenshot',
+            metadata=metadata
+        )
+        
+        # Detect anomaly
+        anomaly = await anomaly_detector.detect_anomaly(observation)
         
         if anomaly:
             return {
@@ -5038,9 +5168,20 @@ Focus on what's visible in this specific region. Be concise but thorough."""
                 "requires_intervention": anomaly.severity.value in ['HIGH', 'CRITICAL']
             }
         else:
+            # Return detailed analysis even when no anomaly detected
             return {
                 "anomaly_detected": False,
-                "message": "No anomalies detected in screenshot"
+                "message": "No anomalies detected in screenshot",
+                "analysis_summary": {
+                    "issues_found": len(detected_issues),
+                    "has_errors": has_errors,
+                    "has_warnings": has_warnings,
+                    "confidence": confidence_score,
+                    "elements_analyzed": observation_data.get('elements_count', 0),
+                    "processing_time_ms": observation_data['metrics']['processing_time'] * 1000 if observation_data['metrics']['processing_time'] else 0
+                },
+                "context_used": bool(context),
+                "timestamp": datetime.now().isoformat()
             }
     
     async def get_anomaly_history(self, limit: int = 10) -> List[Dict[str, Any]]:
