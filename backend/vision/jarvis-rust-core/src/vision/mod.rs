@@ -12,6 +12,9 @@ pub mod intervention_engine;
 pub mod solution_matching;
 pub mod spatial_quadtree;
 pub mod semantic_cache_lsh;
+pub mod predictive_engine;
+pub mod bloom_filter_network;
+pub mod integration_pipeline;
 
 #[cfg(target_os = "macos")]
 pub mod macos_optimization;
@@ -61,6 +64,21 @@ pub use spatial_quadtree::{
 pub use semantic_cache_lsh::{
     SemanticCacheLSH, CacheEntry, LSHIndex, SimilarityComputer,
     CachePredictor, PredictiveEntry
+};
+
+pub use predictive_engine::{
+    StateVector, TransitionMatrix, PredictionTask, PredictionQueue,
+    SimdStateMatcher, PredictiveEngine
+};
+
+pub use bloom_filter_network::{
+    BloomFilterLevel, BloomFilterMetrics, AdaptiveBloomFilter, BloomFilterNetwork,
+    get_global_bloom_network
+};
+
+pub use integration_pipeline::{
+    IntegrationPipeline, SystemMode, Priority, MemoryAllocation, ProcessingResult,
+    MemoryStatus, ComponentMemory
 };
 
 /// Global vision configuration

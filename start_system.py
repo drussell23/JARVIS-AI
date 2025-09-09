@@ -1,22 +1,26 @@
 #!/usr/bin/env python3
 """
-Unified startup script for JARVIS AI System v12.8
-Resource Optimized Edition with Performance Enhancements
+Unified startup script for JARVIS AI System v12.9.2
+Integration Architecture Edition with Dynamic Resource Management
 
 The JARVIS backend loads 6 critical components:
 
 1. CHATBOTS - Claude Vision AI for conversation and screen understanding
-2. VISION - Real-time screen capture with Swift integration (purple indicator)
-3. MEMORY - M1-optimized memory management for stability
+2. VISION - Real-time screen capture with Integration Architecture
+   • 9-stage processing pipeline with intelligent orchestration
+   • Dynamic memory allocation (1.2GB budget)
+   • Cross-language optimization (Python, Rust, Swift)
+   • Bloom Filter, Predictive Engine, Semantic Cache, VSMS integrated
+3. MEMORY - M1-optimized memory management with orchestrator integration
 4. VOICE - Voice activation ("Hey JARVIS") and speech synthesis
 5. ML_MODELS - NLP and sentiment analysis (lazy-loaded)
-6. MONITORING - System health tracking and performance metrics
+6. MONITORING - System health tracking and component metrics
 
 Key Features:
 - Fixed CPU usage issues (87% → <25%)
-- Memory quantization for 4GB target
+- Memory quantization with 4 operating modes
 - Parallel component loading (~7-9s startup)
-- Rust performance layer integration
+- Integration Architecture coordinates all vision components
 - Vision system with 30 FPS screen monitoring
 
 All 6 components must load for full functionality.
@@ -103,7 +107,7 @@ class AsyncSystemManager:
         """Print system header with resource optimization info"""
         print(f"\n{Colors.HEADER}{'='*70}")
         print(
-            f"{Colors.BOLD}🤖 JARVIS AI Agent v12.8 - Performance Enhanced Edition 🚀{Colors.ENDC}"
+            f"{Colors.BOLD}🤖 JARVIS AI Agent v12.9.2 - Integration Architecture Edition 🚀{Colors.ENDC}"
         )
         print(
             f"{Colors.GREEN}⚡ CPU<25% • 🧠 4GB Memory • 🎯 Swift Acceleration • 📊 Real-time Monitoring{Colors.ENDC}"
@@ -148,32 +152,32 @@ class AsyncSystemManager:
         )
 
         # Vision System Enhancement
-        print(f"\n{Colors.BOLD}👁️ ENHANCED VISION SYSTEM (7 Integrated Components):{Colors.ENDC}")
-        print(
-            f"   • {Colors.GREEN}✓ Claude Vision:{Colors.ENDC} Integrated with intelligent caching"
-        )
-        print(f"   • {Colors.CYAN}✓ Compression:{Colors.ENDC} 5 strategies (text/ui/activity/detailed/quick)")
-        print(
-            f"   • {Colors.GREEN}✓ Real-time:{Colors.ENDC} Change detection & automation triggers"
-        )
-        print(
-            f"   • {Colors.PURPLE}✓ Multi-monitor:{Colors.ENDC} Full workspace analysis"
-        )
-        print(
-            f"   • {Colors.CYAN}✓ Swift Video:{Colors.ENDC} Native macOS capture with enhanced permissions"
-        )
-        print(
-            f"   • {Colors.MAGENTA}✓ Purple Indicator:{Colors.ENDC} macOS recording confirmation in menu bar"
-        )
-        print(f"\n   {Colors.BOLD}Integrated Components:{Colors.ENDC}")
-        print(f"   1. {Colors.CYAN}Swift Vision:{Colors.ENDC} Metal-accelerated processing with circuit breaker")
-        print(f"   2. {Colors.GREEN}Window Analysis:{Colors.ENDC} Memory-aware window content analysis")
-        print(f"   3. {Colors.YELLOW}Relationship Detection:{Colors.ENDC} Configurable window relationships")
-        print(f"   4. {Colors.PURPLE}Continuous Monitoring:{Colors.ENDC} Dynamic interval adjustment (1-10s)")
-        print(f"   5. {Colors.BLUE}Memory-Efficient:{Colors.ENDC} Smart compression & persistent cache")
-        print(f"   6. {Colors.MAGENTA}Simplified Vision:{Colors.ENDC} 9+ configurable query templates")
-        print(f"   7. {Colors.CYAN}🎥 Video Streaming:{Colors.ENDC} Real-time 30 FPS with sliding window")
-        print(f"\n   {Colors.BOLD}All optimized for 16GB RAM with NO hardcoded values!{Colors.ENDC}")
+        print(f"\n{Colors.BOLD}👁️ ENHANCED VISION SYSTEM (Integration Architecture v12.9.2):{Colors.ENDC}")
+        print(f"\n   {Colors.BOLD}🎯 Integration Orchestrator:{Colors.ENDC}")
+        print(f"   • {Colors.GREEN}✓ 9-Stage Pipeline:{Colors.ENDC} Visual Input → Spatial → State → Intelligence → Cache → Prediction → API → Integration → Proactive")
+        print(f"   • {Colors.CYAN}✓ Memory Budget:{Colors.ENDC} 1.2GB dynamically allocated across components")
+        print(f"   • {Colors.YELLOW}✓ Operating Modes:{Colors.ENDC} Normal (<60%) → Pressure (60-80%) → Critical (80-95%) → Emergency (>95%)")
+        print(f"   • {Colors.PURPLE}✓ Cross-Language:{Colors.ENDC} Python orchestrator + Rust SIMD + Swift native")
+        
+        print(f"\n   {Colors.BOLD}Intelligence Components (600MB):{Colors.ENDC}")
+        print(f"   1. {Colors.CYAN}VSMS Core:{Colors.ENDC} Visual State Management (150MB)")
+        print(f"   2. {Colors.GREEN}Scene Graph:{Colors.ENDC} Spatial understanding (100MB)")
+        print(f"   3. {Colors.YELLOW}Temporal Context:{Colors.ENDC} Time-based analysis (200MB)")
+        print(f"   4. {Colors.PURPLE}Activity Recognition:{Colors.ENDC} User action detection (100MB)")
+        print(f"   5. {Colors.MAGENTA}Goal Inference:{Colors.ENDC} Intent prediction (80MB)")
+        
+        print(f"\n   {Colors.BOLD}Optimization Components (460MB):{Colors.ENDC}")
+        print(f"   6. {Colors.CYAN}Bloom Filter Network:{Colors.ENDC} Hierarchical duplicate detection (10MB)")
+        print(f"   7. {Colors.GREEN}Semantic Cache LSH:{Colors.ENDC} Intelligent result caching (250MB)")
+        print(f"   8. {Colors.YELLOW}Predictive Engine:{Colors.ENDC} Markov chain predictions (150MB)")
+        print(f"   9. {Colors.PURPLE}Quadtree Spatial:{Colors.ENDC} Region-based processing (50MB)")
+        
+        print(f"\n   {Colors.BOLD}Additional Features:{Colors.ENDC}")
+        print(f"   • {Colors.GREEN}✓ Claude Vision:{Colors.ENDC} Integrated with all components")
+        print(f"   • {Colors.CYAN}✓ Swift Video:{Colors.ENDC} 30 FPS capture with purple indicator")
+        print(f"   • {Colors.YELLOW}✓ Dynamic Quality:{Colors.ENDC} Adapts based on memory pressure")
+        print(f"   • {Colors.PURPLE}✓ Component Priority:{Colors.ENDC} 1-10 scale for resource allocation")
+        print(f"\n   {Colors.BOLD}All components coordinate through Integration Orchestrator!{Colors.ENDC}")
 
     async def check_python_version(self):
         """Check Python version"""
@@ -550,14 +554,16 @@ class AsyncSystemManager:
             print(f"{Colors.CYAN}Enhanced vision system available with Claude API{Colors.ENDC}")
             if self.claude_configured:
                 print(f"{Colors.GREEN}✓ Claude Vision integration ready{Colors.ENDC}")
-                print(f"{Colors.GREEN}✓ 7 vision components integrated:{Colors.ENDC}")
-                print(f"  • Swift Vision (Metal acceleration)")
-                print(f"  • Window Analysis & Relationship Detection")
-                print(f"  • Continuous Monitoring with dynamic intervals")
-                print(f"  • Memory-Efficient processing (5 compression strategies)")
-                print(f"  • Simplified Vision with query templates")
-                print(f"  • 🎥 Video Streaming (30 FPS with native macOS capture)")
-                print(f"  • All configurable via 70+ environment variables")
+                print(f"{Colors.GREEN}✓ Integration Architecture active (v12.9.2):{Colors.ENDC}")
+                print(f"  • Integration Orchestrator (9-stage pipeline)")
+                print(f"  • VSMS Core (Visual State Management)")
+                print(f"  • Bloom Filter Network (hierarchical deduplication)")
+                print(f"  • Predictive Engine (Markov chain predictions)")
+                print(f"  • Semantic Cache LSH (intelligent caching)")
+                print(f"  • Quadtree Spatial (region optimization)")
+                print(f"  • 🎥 Video Streaming (30 FPS with purple indicator)")
+                print(f"  • Dynamic memory allocation (1.2GB budget)")
+                print(f"  • Cross-language optimization (Python/Rust/Swift)")
                 
                 # Check for native video capture
                 try:
@@ -1482,7 +1488,7 @@ async def main():
     global _manager
 
     parser = argparse.ArgumentParser(
-        description="J.A.R.V.I.S. Advanced AI System v12.8 - Resource Optimized Edition"
+        description="J.A.R.V.I.S. Advanced AI System v12.9.2 - Integration Architecture Edition"
     )
     parser.add_argument("--no-browser", action="store_true", help="Don't open browser")
     parser.add_argument(
