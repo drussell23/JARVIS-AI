@@ -57,15 +57,17 @@ struct TimeContext: Codable {
 /// Calendar context provider for goal inference
 class CalendarContextProvider: NSObject {
     private let eventStore = EKEventStore()
-    private var authorizationStatus: EKAuthorizationStatus = .notDetermined
+    var authorizationStatus: EKAuthorizationStatus = .notDetermined
     private let contextUpdateSubject = PassthroughSubject<TimeContext, Never>()
     private var updateTimer: Timer?
     
     // Configuration
-    private let hoursAhead: Int = 4  // Look ahead hours for upcoming events
-    private let maxEvents: Int = 10  // Maximum events to return
+    private let hoursAhead: Int
+    private let maxEvents: Int
     
-    override init() {
+    init(hoursAhead: Int = 4, maxEvents: Int = 10) {
+        self.hoursAhead = hoursAhead
+        self.maxEvents = maxEvents
         super.init()
         requestCalendarAccess()
         startPeriodicUpdates()
@@ -96,9 +98,17 @@ class CalendarContextProvider: NSObject {
     
     /// Get current time context
     func getCurrentTimeContext() -> TimeContext? {
-        guard authorizationStatus == .authorized || authorizationStatus == .fullAccess else {
-            print("[CalendarContext] Calendar access not authorized")
-            return nil
+        // Check authorization status
+        if #available(macOS 14.0, *) {
+            if authorizationStatus != .fullAccess {
+                print("[CalendarContext] Calendar access not authorized (status: \(authorizationStatus.rawValue))")
+                return nil
+            }
+        } else {
+            if authorizationStatus != .authorized {
+                print("[CalendarContext] Calendar access not authorized (status: \(authorizationStatus.rawValue))")
+                return nil
+            }
         }
         
         let now = Date()
@@ -249,7 +259,9 @@ public func calendar_context_get_json(_ providerPtr: UnsafeMutableRawPointer) ->
         return nil
     }
     
-    return strdup(json)
+    // Create a mutable copy and return as immutable pointer
+    let cString = strdup(json)
+    return UnsafePointer(cString)
 }
 
 @_cdecl("calendar_context_free_string")
@@ -272,7 +284,47 @@ extension Optional where Wrapped: Collection {
 
 // MARK: - Command Line Interface
 
-if CommandLine.arguments.count > 1 {
+// Main entry point for Python bridge
+if CommandLine.argc > 0 {
+    // Parse command line arguments
+    var hoursAhead = 24
+    var maxEvents = 50
+    
+    for i in 1..<Int(CommandLine.argc) {
+        let arg = CommandLine.arguments[i]
+        if arg == "--hours" && i + 1 < Int(CommandLine.argc) {
+            hoursAhead = Int(CommandLine.arguments[i + 1]) ?? 24
+        } else if arg == "--max-events" && i + 1 < Int(CommandLine.argc) {
+            maxEvents = Int(CommandLine.arguments[i + 1]) ?? 50
+        }
+    }
+    
+    // Create provider and get context
+    let provider = CalendarContextProvider(hoursAhead: hoursAhead, maxEvents: maxEvents)
+    
+    // Give a moment for authorization
+    Thread.sleep(forTimeInterval: 0.5)
+    
+    if let json = provider.getContextJSON() {
+        print(json)
+        exit(0)
+    } else {
+        // Provide helpful error message
+        let errorMessage: String
+        if provider.authorizationStatus == .denied {
+            errorMessage = "Calendar access denied. Please grant calendar permissions in System Settings > Privacy & Security > Calendar"
+        } else if provider.authorizationStatus == .notDetermined {
+            errorMessage = "Calendar access not yet requested. The system will prompt for permission."
+        } else {
+            errorMessage = "Failed to get calendar context"
+        }
+        print("{\"error\": \"\(errorMessage)\"}")
+        exit(1)
+    }
+}
+
+// Original test interface
+if CommandLine.arguments.count > 1 && CommandLine.arguments[0].contains("test") {
     let command = CommandLine.arguments[1]
     
     switch command {

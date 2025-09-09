@@ -1124,23 +1124,50 @@ System Control Commands:
     async def _check_calendar_context(self, current_time: datetime) -> Optional[str]:
         """Check for relevant calendar events near the current time"""
         try:
-            # If we have calendar integration, check for nearby events
-            # This is a placeholder for actual calendar integration
-            # In production, this would connect to the calendar_context_provider.swift
+            # Import calendar bridge
+            from system_control.calendar_bridge import get_calendar_bridge
             
-            # For now, return None - can be extended later
+            # Get calendar bridge instance
+            calendar_bridge = get_calendar_bridge()
+            
+            # Get smart calendar context
+            context = await calendar_bridge.get_smart_time_context(current_time)
+            
+            if context:
+                logger.debug(f"Calendar context: {context}")
+                return context
+            
+            # If no smart context, check for simple next event
+            current_event, next_event, upcoming_events = await calendar_bridge.get_contextual_info(current_time)
+            
+            # Priority 1: Current event
+            if current_event:
+                return calendar_bridge.format_event_context(current_event, current_time, "current")
+            
+            # Priority 2: Urgent next event (within 30 minutes)
+            if next_event:
+                minutes_until = next_event.time_until_minutes(current_time)
+                if minutes_until <= 30:
+                    return calendar_bridge.format_event_context(next_event, current_time, "next")
+                
+                # Priority 3: Important event types within 2 hours
+                from system_control.calendar_bridge import EventType
+                if (minutes_until <= 120 and 
+                    next_event.event_type in [EventType.MEETING, EventType.APPOINTMENT]):
+                    return calendar_bridge.format_event_context(next_event, current_time, "next")
+            
+            # Priority 4: Multiple events warning
+            if len(upcoming_events) >= 3:
+                events_soon = sum(1 for e in upcoming_events if e.time_until_minutes() <= 60)
+                if events_soon >= 2:
+                    return f"You have {events_soon} events in the next hour"
+            
+            # No relevant calendar context
             return None
             
-            # Future implementation would look like:
-            # events = await self.calendar_provider.get_nearby_events(current_time)
-            # if events:
-            #     next_event = events[0]
-            #     minutes_until = (next_event.start_time - current_time).total_seconds() / 60
-            #     if minutes_until <= 15:
-            #         return f"Your {next_event.title} starts in {int(minutes_until)} minutes"
-            #     elif minutes_until <= 60:
-            #         return f"You have {next_event.title} coming up in about {int(minutes_until)} minutes"
-            
+        except ImportError as e:
+            logger.debug(f"Calendar bridge not available: {e}")
+            return None
         except Exception as e:
             logger.debug(f"Calendar context check failed: {e}")
             return None
