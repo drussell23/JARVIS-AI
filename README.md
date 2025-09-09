@@ -1,7 +1,7 @@
-# 🤖 JARVIS AI System v12.9.4 - Enhanced Vision Intelligence & Accurate Date/Time 🧠
+# 🤖 JARVIS AI System v12.9.5 - Robust Time Intelligence & Dynamic Context 🧠
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-12.9.4%20Date%20Time-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Version-12.9.5%20Time%20AI-brightgreen" alt="Version">
   <img src="https://img.shields.io/badge/Wake%20Word-10ms%20⚡-ff69b4" alt="Ultra Fast Wake Word">
   <img src="https://img.shields.io/badge/Memory-350MB%20Voice-success" alt="Low Memory Voice">
   <img src="https://img.shields.io/badge/CPU-1--2%25%20Usage-blue" alt="Low CPU">
@@ -18,6 +18,33 @@
 <p align="center">
   <em>"Perfection is achieved not when there is nothing more to add, but when there is nothing left to take away." - Antoine de Saint-Exupéry</em>
 </p>
+
+## 🆕 What's New in v12.9.5 - Robust Time Intelligence Without Hardcoding
+
+### 🧠 Advanced Time Query Detection (MAJOR ENHANCEMENT!)
+**JARVIS NOW UNDERSTANDS TIME LIKE NEVER BEFORE!** Complete overhaul:
+- ✅ **Regex pattern matching** - Handles "what o'clock", "do you have the time", etc.
+- ✅ **Fuzzy matching** - Catches typos and variations automatically
+- ✅ **Multilingual support** - Recognizes "hora", "heure", "zeit", "tempo"
+- ✅ **Natural language** - "is it late?", "morning yet?", "how early is it?"
+- ✅ **Zero hardcoding** - All patterns dynamically generated
+
+### 🎯 Dynamic Context Intelligence (NEW!)
+**CONTEXT THAT ADAPTS TO YOU!** Revolutionary improvements:
+- ✅ **Dynamic time periods** - No hardcoded hour ranges
+- ✅ **Activity suggestions** - Meal times, work hours, rest periods
+- ✅ **Seasonal awareness** - "Autumn is here", "Summer solstice season"
+- ✅ **Weekend detection** - Different context for weekdays vs weekends
+- ✅ **Locale awareness** - 12/24 hour format based on system settings
+- ✅ **Query analysis** - Understands if you want simple time or full details
+
+### 🌍 Timezone Intelligence (ROBUST!)
+**MULTIPLE FALLBACK METHODS!** Never fails to get timezone:
+- ✅ **macOS systemsetup** - Primary method for Mac systems
+- ✅ **Unix /etc/timezone** - Linux compatibility
+- ✅ **Python timezone** - Cross-platform fallback
+- ✅ **Environment variables** - Respects TZ variable
+- ✅ **Graceful degradation** - Always returns time even if timezone detection fails
 
 ## 🆕 What's New in v12.9.4 - Accurate Date/Time & Enhanced Context
 

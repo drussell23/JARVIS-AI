@@ -452,6 +452,7 @@ Current date and time: {current_datetime}"""
             messages = self._build_messages(user_input)
             
             # Update system prompt with current date
+            # Use correct year - datetime.now() returns actual current date
             current_datetime = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
             dynamic_system_prompt = f"""{self.system_prompt}
 

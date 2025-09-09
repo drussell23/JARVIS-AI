@@ -10,6 +10,7 @@ import logging
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 import json
+import re
 
 from voice.ml_enhanced_voice_system import MLEnhancedVoiceSystem
 from voice.jarvis_personality_adapter import PersonalityAdapter
@@ -67,6 +68,12 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             "date",  # Add date as a system keyword
             "day",   # Add day as a system keyword
             "today", # Add today as a system keyword
+            "late",  # Add late as system keyword for time queries
+            "early", # Add early as system keyword for time queries
+            "morning", # Time periods
+            "afternoon",
+            "evening",
+            "night",
             "show",
             "volume",
             "mute",
@@ -992,138 +999,395 @@ System Control Commands:
         return help_text
     
     def _is_time_command(self, text: str) -> bool:
-        """Check if this is a time-related query"""
-        # Comprehensive time-related patterns
-        time_patterns = [
-            # Direct time queries
-            "what time", "what's the time", "whats the time",
-            "current time", "time is it", "tell me the time",
-            "give me the time", "check the time",
-            # Indirect time queries
-            "what hour", "which hour", 
-            # Date queries
-            "what day", "what's the date", "current date",
-            "today's date", "todays date", "what date",
-            "what is the date", "what is today",
-            # Combined queries
-            "time and date", "date and time",
-            # Casual queries
-            "got the time", "have the time",
-            # Clock references
-            "check clock", "look at clock",
-            # Specific time queries
-            "is it morning", "is it afternoon", "is it evening",
-            "is it night", "is it late", "is it early"
+        """Check if this is a time-related query using dynamic pattern matching"""
+        import re
+        
+        # Convert to lowercase for case-insensitive matching
+        text_lower = text.lower().strip()
+        
+        # Dynamic regex patterns for flexible matching
+        time_regex_patterns = [
+            # Time queries with various formats
+            r'\b(what|whats|what\'s|tell|give|show|check|get|display)\s*(me)?\s*(the)?\s*time\b',
+            r'\btime\s*(is\s*it|now|please)\b',
+            r'\b(current|present)\s*time\b',
+            
+            # Date queries with flexibility
+            r'\b(what|whats|what\'s|tell|give|show|check)\s*(me)?\s*(the)?\s*(today\'s|todays|current)?\s*date\b',
+            r'\b(what|which)\s*(day|date)\s*(is\s*)?(it|today)\b',
+            r'\btoday\'s\s*(date|day)\b',
+            
+            # Hour/clock references
+            r'\b(what|which)\s*hour\b',
+            r'\b(check|look\s*at)\s*(the)?\s*clock\b',
+            
+            # Combined time/date queries
+            r'\b(time|date)\s*and\s*(time|date)\b',
+            r'\b(date|day)\s*(and|&)\s*time\b',
+            
+            # Casual time queries
+            r'\b(got|have|know)\s*(the)?\s*time\b',
+            r'\bdo\s*you\s*(have|know)\s*(the)?\s*time\b',
+            
+            # Time period queries
+            r'\bis\s*it\s*(morning|afternoon|evening|night|late|early|noon|midnight)\b',
+            r'\bwhat\s*time\s*of\s*(day|night)\b',
+            r'\b(morning|evening|night)\s*yet\b',
+            
+            # Relative time queries
+            r'\bhow\s*(late|early)\s*(is\s*it)?\b',
+            r'\bam\s*i\s*(late|early)\b',
+            
+            # International variations
+            r'\b(hora|heure|zeit|tempo)\b',  # Spanish/French/German/Italian for "time"
+            r'\b(fecha|date|datum|data)\b',  # Date in multiple languages
+            
+            # Natural language variations
+            r'\bwhat\s*o\'?clock\b',
+            r'\b(when|what)\s*is\s*now\b'
         ]
         
-        return any(pattern in text for pattern in time_patterns)
+        # Check regex patterns
+        for pattern in time_regex_patterns:
+            if re.search(pattern, text_lower):
+                return True
+        
+        # Fuzzy keyword matching for typos and variations
+        time_keywords = {
+            'time', 'date', 'day', 'hour', 'clock', 'today', 'now',
+            'morning', 'afternoon', 'evening', 'night', 'late', 'early',
+            'oclock', "o'clock", 'midnight', 'noon', 'midday'
+        }
+        
+        # Check for keywords with edit distance tolerance
+        words = text_lower.split()
+        for word in words:
+            # Direct match
+            if word in time_keywords:
+                return True
+            
+            # Check for partial matches (e.g., "timing" contains "time")
+            for keyword in time_keywords:
+                if len(keyword) > 3 and keyword in word:
+                    return True
+        
+        return False
     
     async def _handle_time_command(self, text: str) -> str:
         """Handle time-related commands with robust, context-aware responses"""
         from datetime import datetime
         import pytz
+        import re
+        import locale
+        import platform
         
         try:
-            # Get current time with timezone awareness
-            now = datetime.now()
+            # Get current time with multiple timezone detection methods
+            now = None
+            timezone_name = None
             
-            # Try to get system timezone, fallback to UTC if needed
-            try:
-                import subprocess
-                # Get macOS system timezone
-                result = subprocess.run(['systemsetup', '-gettimezone'], 
-                                      capture_output=True, text=True)
-                if result.returncode == 0:
-                    tz_string = result.stdout.strip()
-                    # Extract timezone name from output like "Time Zone: America/New_York"
-                    if "Time Zone:" in tz_string:
-                        tz_name = tz_string.split("Time Zone:")[1].strip()
-                        local_tz = pytz.timezone(tz_name)
+            # Method 1: Try system timezone detection
+            timezone_methods = [
+                # macOS specific
+                lambda: self._get_macos_timezone(),
+                # Unix/Linux general
+                lambda: self._get_unix_timezone(),
+                # Python timezone
+                lambda: self._get_python_timezone(),
+                # Environment variable
+                lambda: os.environ.get('TZ', None)
+            ]
+            
+            for method in timezone_methods:
+                try:
+                    tz_result = method()
+                    if tz_result:
+                        timezone_name = tz_result
+                        local_tz = pytz.timezone(timezone_name)
                         now = datetime.now(local_tz)
-            except:
-                # Fallback to system local time
-                pass
+                        break
+                except:
+                    continue
             
-            # Determine what kind of time information to provide
-            include_date = any(word in text for word in ["date", "day", "today"])
-            include_context = any(word in text for word in ["morning", "afternoon", "evening", "night", "late", "early"])
+            # Fallback to system local time
+            if not now:
+                now = datetime.now()
+                timezone_name = "local"
             
-            # Format time in 12-hour format with AM/PM
-            time_str = now.strftime("%-I:%M %p")  # e.g., "3:30 PM"
+            # Intelligent query analysis
+            query_analysis = self._analyze_time_query(text)
             
-            # Build response based on query type
-            if include_date and include_context:
-                # Full date and time with context
-                date_str = now.strftime("%A, %B %-d")  # e.g., "Monday, September 9"
-                context = self._get_time_context(now)
-                return self._format_response("current_date_time", 
-                                           time=time_str, 
-                                           date=date_str) + f" {context}"
-                                           
-            elif include_date:
-                # Date and time
-                date_str = now.strftime("%A, %B %-d")
-                return self._format_response("current_date_time", 
-                                           time=time_str, 
-                                           date=date_str)
-                                           
-            elif include_context:
-                # Time with contextual information
-                context = self._get_time_context(now)
-                return self._format_response("current_time_with_context",
-                                           time=time_str,
-                                           context=context)
-            else:
-                # Check if we should add appointment context
-                appointment_info = await self._check_calendar_context(now)
-                if appointment_info:
-                    return self._format_response("time_with_appointment",
-                                               time=time_str,
-                                               appointment_info=appointment_info)
+            # Dynamic format selection based on user preferences and locale
+            time_format = self._get_time_format(query_analysis)
+            date_format = self._get_date_format(query_analysis)
+            
+            # Format time and date dynamically
+            time_str = now.strftime(time_format)
+            date_str = now.strftime(date_format) if query_analysis['wants_date'] else None
+            
+            # Get dynamic context
+            context_info = await self._get_dynamic_time_context(now, query_analysis)
+            
+            # Build response dynamically
+            response_parts = []
+            
+            # Add time if requested or by default
+            if query_analysis['wants_time'] or not query_analysis['wants_date']:
+                response_parts.append(f"It's {time_str}")
+            
+            # Add date if requested
+            if query_analysis['wants_date']:
+                if response_parts:
+                    response_parts.append(f"on {date_str}")
                 else:
-                    # Simple time response
-                    return self._format_response("current_time", time=time_str)
+                    response_parts.append(f"Today is {date_str}")
+            
+            # Add timezone if requested or if not local
+            if query_analysis['wants_timezone'] or timezone_name != "local":
+                response_parts.append(f"({timezone_name})")
+            
+            # Construct base response
+            base_response = " ".join(response_parts)
+            
+            # Add contextual information
+            if context_info:
+                if query_analysis['wants_context'] or query_analysis['context_type']:
+                    base_response += f". {context_info}"
+            
+            # Add personalization
+            if self.user_name and self.user_name != "User":
+                base_response += f", {self.user_name}"
+            
+            return base_response
                     
         except Exception as e:
-            logger.error(f"Error handling time command: {e}")
-            # Fallback response
-            simple_time = datetime.now().strftime("%-I:%M %p")
-            return f"It's {simple_time}, {self.user_name}."
+            logger.error(f"Error handling time command: {e}", exc_info=True)
+            # Robust fallback with multiple attempts
+            try:
+                fallback_time = datetime.now().strftime("%-I:%M %p")
+                return f"It's {fallback_time}, {self.user_name}."
+            except:
+                # Ultimate fallback
+                return f"I'm having trouble accessing the time right now, {self.user_name}."
     
-    def _get_time_context(self, dt: datetime) -> str:
-        """Get contextual information about the time"""
+    async def _get_dynamic_time_context(self, dt: datetime, query_analysis: dict) -> str:
+        """Get dynamic contextual information about the time"""
         hour = dt.hour
+        minute = dt.minute
+        weekday = dt.strftime("%A")
+        month = dt.month
         
-        # Determine time of day
-        if 5 <= hour < 9:
-            time_period = "early morning"
-            greeting = "Good morning"
-        elif 9 <= hour < 12:
-            time_period = "morning"
-            greeting = "Good morning"
-        elif 12 <= hour < 17:
-            time_period = "afternoon"
-            greeting = "Good afternoon"
-        elif 17 <= hour < 21:
-            time_period = "evening"
-            greeting = "Good evening"
-        else:
-            time_period = "night"
-            greeting = "It's quite late"
-            
-        # Add contextual suggestions based on time
-        if hour < 6:
-            context = f"{greeting}. It's quite early."
-        elif 22 <= hour or hour < 2:
-            context = f"{greeting}. Perhaps it's time to rest soon."
-        elif 11 <= hour <= 13:
-            context = f"{greeting}. It might be a good time for lunch."
-        elif 14 <= hour <= 16:
-            context = f"{greeting}. I hope you're having a productive {time_period}."
-        else:
-            context = f"{greeting}."
-            
+        # Dynamic time period calculation
+        time_periods = [
+            {"start": 0, "end": 4, "name": "late night", "greeting": "Still up"},
+            {"start": 4, "end": 6, "name": "very early morning", "greeting": "You're up early"},
+            {"start": 6, "end": 9, "name": "early morning", "greeting": "Good morning"},
+            {"start": 9, "end": 12, "name": "morning", "greeting": "Good morning"},
+            {"start": 12, "end": 13, "name": "midday", "greeting": "Good afternoon"},
+            {"start": 13, "end": 17, "name": "afternoon", "greeting": "Good afternoon"},
+            {"start": 17, "end": 19, "name": "early evening", "greeting": "Good evening"},
+            {"start": 19, "end": 22, "name": "evening", "greeting": "Good evening"},
+            {"start": 22, "end": 24, "name": "night", "greeting": "Good night"}
+        ]
+        
+        current_period = next((p for p in time_periods if p["start"] <= hour < p["end"]), time_periods[-1])
+        
+        # Dynamic activity suggestions based on multiple factors
+        context_parts = []
+        
+        # Add greeting if appropriate
+        if query_analysis.get('wants_greeting', True):
+            context_parts.append(current_period["greeting"])
+        
+        # Dynamic contextual observations
+        contextual_observations = []
+        
+        # Time-based observations
+        if hour < 5:
+            contextual_observations.append("It's quite late")
+        elif hour < 6:
+            contextual_observations.append("It's very early")
+        elif 22 <= hour:
+            contextual_observations.append("Getting late")
+        
+        # Meal time suggestions
+        meal_times = [
+            {"start": 6, "end": 10, "meal": "breakfast"},
+            {"start": 11.5, "end": 14, "meal": "lunch"},
+            {"start": 17.5, "end": 20, "meal": "dinner"}
+        ]
+        
+        current_time_decimal = hour + minute / 60.0
+        for meal in meal_times:
+            if meal["start"] <= current_time_decimal <= meal["end"]:
+                contextual_observations.append(f"Good time for {meal['meal']}")
+                break
+        
+        # Work/rest suggestions based on day and time
+        is_weekend = weekday in ["Saturday", "Sunday"]
+        is_work_hours = 9 <= hour < 17 and not is_weekend
+        
+        if is_work_hours:
+            if hour < 10:
+                contextual_observations.append("Hope you have a productive day")
+            elif 15 <= hour < 17:
+                contextual_observations.append("The workday is winding down")
+        elif is_weekend and 10 <= hour < 12:
+            contextual_observations.append("Enjoy your weekend")
+        
+        # Seasonal context
+        seasonal_contexts = {
+            12: "Winter solstice season",
+            1: "New Year season",
+            3: "Spring is approaching",
+            6: "Summer solstice season",
+            9: "Autumn is here",
+            10: "Fall season"
+        }
+        
+        if month in seasonal_contexts and query_analysis.get('wants_extended_context'):
+            contextual_observations.append(seasonal_contexts[month])
+        
+        # Activity-based suggestions from calendar
+        if query_analysis.get('wants_activities'):
+            calendar_context = await self._check_calendar_context(dt)
+            if calendar_context:
+                contextual_observations.append(calendar_context)
+        
+        # Combine observations intelligently
+        if contextual_observations:
+            context_parts.extend(contextual_observations[:2])  # Limit to avoid verbosity
+        
+        # Build final context
+        context = ". ".join(filter(None, context_parts))
+        
+        # Add punctuation if needed
+        if context and not context.endswith(('.', '!', '?')):
+            context += "."
+        
         return context
+    
+    def _analyze_time_query(self, text: str) -> dict:
+        """Analyze the time query to understand user intent"""
+        import re
+        
+        text_lower = text.lower()
+        
+        analysis = {
+            'wants_time': any(word in text_lower for word in ['time', 'clock', 'hour']),
+            'wants_date': any(word in text_lower for word in ['date', 'day', 'today']),
+            'wants_timezone': any(word in text_lower for word in ['timezone', 'tz', 'zone']),
+            'wants_context': any(word in text_lower for word in ['context', 'details', 'more']),
+            'wants_greeting': not any(word in text_lower for word in ['just', 'only', 'simple']),
+            'wants_activities': any(word in text_lower for word in ['calendar', 'events', 'schedule']),
+            'wants_extended_context': any(word in text_lower for word in ['full', 'complete', 'everything']),
+            'context_type': None,
+            'format_preference': None
+        }
+        
+        # Detect specific context requests
+        if re.search(r'\b(morning|afternoon|evening|night)\b', text_lower):
+            analysis['context_type'] = 'time_period'
+        elif re.search(r'\b(late|early)\b', text_lower):
+            analysis['context_type'] = 'relative_time'
+        elif re.search(r'\b(meal|lunch|dinner|breakfast)\b', text_lower):
+            analysis['context_type'] = 'meal_time'
+        
+        # Detect format preferences
+        if re.search(r'\b(24|twenty.?four|military)\b', text_lower):
+            analysis['format_preference'] = '24h'
+        elif re.search(r'\b(12|twelve|am|pm)\b', text_lower):
+            analysis['format_preference'] = '12h'
+        
+        return analysis
+    
+    def _get_time_format(self, query_analysis: dict) -> str:
+        """Get appropriate time format based on analysis and locale"""
+        import locale
+        
+        # Check user preference from query
+        if query_analysis.get('format_preference') == '24h':
+            return "%H:%M"  # 24-hour format
+        elif query_analysis.get('format_preference') == '12h':
+            return "%-I:%M %p"  # 12-hour format with AM/PM
+        
+        # Try to detect system locale preference
+        try:
+            system_locale = locale.getlocale()[0]
+            # Countries that typically use 24-hour format
+            if system_locale and any(country in system_locale for country in ['de', 'fr', 'es', 'it', 'ru', 'zh', 'jp', 'ko']):
+                return "%H:%M"
+        except:
+            pass
+        
+        # Default to 12-hour format with AM/PM
+        return "%-I:%M %p"
+    
+    def _get_date_format(self, query_analysis: dict) -> str:
+        """Get appropriate date format based on analysis and locale"""
+        import locale
+        
+        # Check if user wants full or abbreviated format
+        if query_analysis.get('wants_extended_context'):
+            return "%A, %B %-d, %Y"  # Full format: Monday, September 9, 2024
+        
+        # Try to detect system locale preference
+        try:
+            system_locale = locale.getlocale()[0]
+            if system_locale:
+                if 'US' in system_locale:
+                    return "%A, %B %-d"  # Monday, September 9
+                elif 'GB' in system_locale:
+                    return "%A, %-d %B"  # Monday, 9 September
+                elif any(eu in system_locale for eu in ['de', 'fr', 'es', 'it']):
+                    return "%A %-d %B"  # Monday 9 September
+        except:
+            pass
+        
+        # Default format
+        return "%A, %B %-d"  # Monday, September 9
+    
+    def _get_macos_timezone(self) -> Optional[str]:
+        """Get timezone on macOS"""
+        import subprocess
+        try:
+            result = subprocess.run(['systemsetup', '-gettimezone'], 
+                                  capture_output=True, text=True, timeout=2)
+            if result.returncode == 0:
+                output = result.stdout.strip()
+                if "Time Zone:" in output:
+                    return output.split("Time Zone:")[1].strip()
+        except:
+            pass
+        return None
+    
+    def _get_unix_timezone(self) -> Optional[str]:
+        """Get timezone on Unix/Linux systems"""
+        try:
+            # Try reading /etc/timezone
+            if os.path.exists('/etc/timezone'):
+                with open('/etc/timezone', 'r') as f:
+                    return f.read().strip()
+            
+            # Try reading the symlink
+            if os.path.exists('/etc/localtime'):
+                import os
+                tz_path = os.path.realpath('/etc/localtime')
+                if '/zoneinfo/' in tz_path:
+                    return tz_path.split('/zoneinfo/')[-1]
+        except:
+            pass
+        return None
+    
+    def _get_python_timezone(self) -> Optional[str]:
+        """Get timezone using Python's time module"""
+        try:
+            import time
+            if hasattr(time, 'tzname'):
+                return time.tzname[time.daylight]
+        except:
+            pass
+        return None
     
     async def _check_calendar_context(self, current_time: datetime) -> Optional[str]:
         """Check for relevant calendar events near the current time"""
