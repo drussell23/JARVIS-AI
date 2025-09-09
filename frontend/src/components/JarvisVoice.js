@@ -603,6 +603,18 @@ const JarvisVoice = () => {
         setError(data.message);
         setIsProcessing(false);
         break;
+      case 'debug_log':
+        // Display debug logs in console with styling
+        const logStyle = data.level === 'error' 
+          ? 'color: red; font-weight: bold;' 
+          : data.level === 'warning'
+          ? 'color: orange;'
+          : 'color: #4CAF50; font-weight: bold;';
+        console.log(`%c[JARVIS DEBUG ${new Date(data.timestamp).toLocaleTimeString()}] ${data.message}`, logStyle);
+        if (data.level === 'error') {
+          console.error('Full error details:', data);
+        }
+        break;
       default:
         break;
     }

@@ -5,9 +5,41 @@ Handles commands related to screen monitoring and vision system
 
 import asyncio
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Callable
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+class WebSocketLogger:
+    """Logger that sends logs to WebSocket for browser console"""
+    def __init__(self):
+        self.websocket_callback: Optional[Callable] = None
+        
+    def set_websocket_callback(self, callback: Callable):
+        """Set callback to send logs through WebSocket"""
+        self.websocket_callback = callback
+        
+    async def log(self, message: str, level: str = "info"):
+        """Send log message through WebSocket"""
+        if self.websocket_callback:
+            try:
+                await self.websocket_callback({
+                    "type": "debug_log",
+                    "message": f"[VISION] {message}",
+                    "level": level,
+                    "timestamp": datetime.now().isoformat()
+                })
+            except Exception as e:
+                logger.error(f"Failed to send WebSocket log: {e}")
+        
+        # Also log to server console
+        if level == "error":
+            logger.error(message)
+        else:
+            logger.info(message)
+
+# Global WebSocket logger instance
+ws_logger = WebSocketLogger()
 
 class VisionCommandHandler:
     """Handles vision-related commands"""
@@ -32,29 +64,54 @@ class VisionCommandHandler:
         """Initialize vision manager if not already done"""
         if not self.vision_manager:
             try:
+                logger.info("[VISION INIT] Attempting to import vision_manager from vision_websocket...")
                 from api.vision_websocket import vision_manager
                 self.vision_manager = vision_manager
-                logger.info("Vision manager initialized for command handling")
+                logger.info(f"[VISION INIT] Vision manager imported: {vision_manager}")
+                logger.info(f"[VISION INIT] Vision analyzer present: {hasattr(vision_manager, 'vision_analyzer') and vision_manager.vision_analyzer is not None}")
+                
+                # Check if vision_analyzer needs initialization
+                if hasattr(vision_manager, 'vision_analyzer') and vision_manager.vision_analyzer is None:
+                    logger.info("[VISION INIT] Vision analyzer is None, checking app state...")
+                    # Try to get from app state
+                    try:
+                        from fastapi import FastAPI
+                        from main import app
+                        if hasattr(app.state, 'vision_analyzer'):
+                            vision_manager.vision_analyzer = app.state.vision_analyzer
+                            logger.info("[VISION INIT] Set vision analyzer from app state")
+                    except Exception as e:
+                        logger.error(f"[VISION INIT] Failed to get vision analyzer from app state: {e}")
+                        
+                logger.info("[VISION INIT] Vision manager initialization complete")
             except Exception as e:
-                logger.error(f"Failed to initialize vision manager: {e}")
+                logger.error(f"[VISION INIT] Failed to initialize vision manager: {e}", exc_info=True)
     
     async def handle_command(self, command: str) -> Dict[str, Any]:
         """Process a vision-related command"""
-        command_lower = command.lower().strip()
-        
-        # Check if this is a monitoring command
-        for cmd_pattern, handler in self.monitoring_commands.items():
-            if cmd_pattern in command_lower:
-                return await handler()
-        
-        # Check for general vision queries
-        if any(word in command_lower for word in ['see', 'screen', 'monitor', 'vision', 'looking']):
-            return await self.analyze_screen(command)
-        
-        return {
-            "handled": False,
-            "response": None
-        }
+        try:
+            command_lower = command.lower().strip()
+            
+            # Check if this is a monitoring command
+            for cmd_pattern, handler in self.monitoring_commands.items():
+                if cmd_pattern in command_lower:
+                    return await handler()
+            
+            # Check for general vision queries
+            if any(word in command_lower for word in ['see', 'screen', 'monitor', 'vision', 'looking']):
+                return await self.analyze_screen(command)
+            
+            return {
+                "handled": False,
+                "response": None
+            }
+        except Exception as e:
+            logger.error(f"Error in handle_command: {e}", exc_info=True)
+            return {
+                "handled": True,
+                "response": "I'm having trouble processing your vision request. Please make sure the vision system is properly configured.",
+                "error": True
+            }
     
     async def start_monitoring(self) -> Dict[str, Any]:
         """Start screen monitoring"""
@@ -113,12 +170,13 @@ class VisionCommandHandler:
     
     async def analyze_screen(self, query: str) -> Dict[str, Any]:
         """Analyze current screen content"""
-        logger.info(f"[VISION] analyze_screen called with query: {query}")
+        await ws_logger.log(f"analyze_screen called with query: {query}")
         
+        await ws_logger.log("Step 1: Initializing vision manager...")
         await self.initialize_vision_manager()
         
         if not self.vision_manager or not self.vision_manager.vision_analyzer:
-            logger.warning("[VISION] No vision manager available")
+            await ws_logger.log("No vision manager available", "warning")
             return {
                 "handled": True,
                 "response": "I need to start monitoring your screen first. Would you like me to do that?",
@@ -126,44 +184,47 @@ class VisionCommandHandler:
             }
         
         # Check if we have an API key
+        await ws_logger.log("Step 2: Checking API key...")
         import os
         if not os.getenv("ANTHROPIC_API_KEY"):
-            logger.error("[VISION] No ANTHROPIC_API_KEY found")
+            await ws_logger.log("No ANTHROPIC_API_KEY found", "error")
             return {
                 "handled": True,
                 "response": "I can't analyze screens right now. The vision API is not configured properly.",
                 "error": True,
                 "missing_api_key": True
             }
+        await ws_logger.log("API key found")
         
         try:
             # First capture the screen
-            logger.info("[VISION] Capturing screen...")
+            await ws_logger.log("Step 3: Capturing screen...")
             screenshot = await self.vision_manager.vision_analyzer.capture_screen()
+            await ws_logger.log(f"Step 3 complete: Screenshot captured = {screenshot is not None}")
             
             if screenshot is None:
-                logger.error("[VISION] Screenshot capture returned None")
+                await ws_logger.log("Screenshot capture returned None", "error")
                 return {
                     "handled": True,
                     "response": "I couldn't capture your screen. Please make sure screen recording permissions are granted.",
                     "error": True
                 }
             
-            logger.info(f"[VISION] Screenshot captured, type: {type(screenshot)}")
+            await ws_logger.log(f"Screenshot captured, type: {type(screenshot)}")
             
             # Convert PIL Image to numpy array if needed
             import numpy as np
             from PIL import Image
             
             if isinstance(screenshot, Image.Image):
-                logger.info(f"[VISION] Converting PIL Image to numpy array, size: {screenshot.size}")
+                await ws_logger.log(f"Step 4: Converting PIL Image to numpy array, size: {screenshot.size}")
                 screenshot_array = np.array(screenshot)
             else:
                 screenshot_array = screenshot
-                logger.info(f"[VISION] Screenshot already numpy array, shape: {screenshot_array.shape if hasattr(screenshot_array, 'shape') else 'unknown'}")
+                await ws_logger.log(f"Screenshot already numpy array, shape: {screenshot_array.shape if hasattr(screenshot_array, 'shape') else 'unknown'}")
             
             # Analyze the screenshot with timeout
-            logger.info("[VISION] Starting screenshot analysis with Claude...")
+            await ws_logger.log("Step 5: Starting screenshot analysis with Claude...")
             try:
                 # For conversational queries about screen visibility, provide a natural response
                 if any(phrase in query.lower() for phrase in [
@@ -176,14 +237,17 @@ class VisionCommandHandler:
                     conversational_query = "You are JARVIS, Tony Stark's AI assistant. Describe what you see on this screen in a natural, conversational way as if you were looking over the user's shoulder. Focus on the main content, applications, or activities visible. Be helpful and observant like JARVIS would be. Don't break it down by regions or technical details - just tell them what's happening on their screen."
                     
                     # Force full-screen analysis (no sliding window) for conversational queries
+                    await ws_logger.log("Step 6: Starting conversational analysis with 15s timeout...")
+                    await ws_logger.log("Calling analyze_screenshot_async...")
                     result = await asyncio.wait_for(
                         self.vision_manager.vision_analyzer.analyze_screenshot_async(
                             screenshot_array, 
                             conversational_query,
                             use_sliding_window=False  # Force full screen analysis
                         ),
-                        timeout=30.0  # 30 second timeout
+                        timeout=15.0  # Reduced to 15 second timeout
                     )
+                    await ws_logger.log("Step 6 complete: Analysis returned")
                     
                     # Extract the natural response
                     response_text = result.get('description', result.get('analysis', ''))
@@ -210,9 +274,9 @@ class VisionCommandHandler:
                     )
                     response_text = result.get('description', result.get('analysis', 'I captured the screen but couldn\'t analyze it properly.'))
                 
-                logger.info(f"[VISION] Analysis complete, result keys: {list(result.keys()) if result else 'None'}")
+                await ws_logger.log(f"Analysis complete, result keys: {list(result.keys()) if result else 'None'}")
             except asyncio.TimeoutError:
-                logger.error("[VISION] Screenshot analysis timed out after 30 seconds")
+                await ws_logger.log("Screenshot analysis timed out after 15 seconds", "error")
                 return {
                     "handled": True,
                     "response": "I'm having trouble analyzing the screen right now. The analysis is taking too long. Please try again.",
@@ -226,7 +290,8 @@ class VisionCommandHandler:
                 "screenshot_taken": True
             }
         except Exception as e:
-            logger.error(f"Failed to analyze screen: {e}")
+            await ws_logger.log(f"Failed to analyze screen: {e}", "error")
+            logger.error(f"Failed to analyze screen: {e}", exc_info=True)
             return {
                 "handled": True,
                 "response": "I had trouble analyzing your screen. Please try again.",

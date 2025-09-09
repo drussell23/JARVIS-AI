@@ -33,20 +33,34 @@ class VisionWebSocketManager:
         self.monitoring_active = False
         self.monitoring_task = None
         
-        # Initialize vision analyzer if available
-        if VISION_ANALYZER_AVAILABLE:
-            api_key = os.getenv('ANTHROPIC_API_KEY')
-            if api_key:
-                self.vision_analyzer = ClaudeVisionAnalyzer(api_key, enable_realtime=True)
-                logger.info("Initialized vision analyzer for WebSocket")
-            else:
-                self.vision_analyzer = None
-                logger.warning("No API key found for vision analyzer")
-        else:
-            self.vision_analyzer = None
-            logger.warning("Vision analyzer not available")
-        
+        # Don't create a new analyzer here - will get from app state
+        self._vision_analyzer = None
         self.monitoring_interval = 2.0  # seconds
+        
+    @property
+    def vision_analyzer(self):
+        """Get vision analyzer from app state if not already set"""
+        if self._vision_analyzer is None:
+            try:
+                from main import app
+                if hasattr(app.state, 'vision_analyzer'):
+                    self._vision_analyzer = app.state.vision_analyzer
+                    logger.info("Using vision analyzer from app state")
+            except Exception as e:
+                logger.error(f"Failed to get vision analyzer from app state: {e}")
+                
+                # Fallback: create our own if needed
+                if VISION_ANALYZER_AVAILABLE:
+                    api_key = os.getenv('ANTHROPIC_API_KEY')
+                    if api_key:
+                        self._vision_analyzer = ClaudeVisionAnalyzer(api_key, enable_realtime=True)
+                        logger.info("Created fallback vision analyzer for WebSocket")
+        return self._vision_analyzer
+    
+    @vision_analyzer.setter
+    def vision_analyzer(self, value):
+        """Allow setting vision analyzer"""
+        self._vision_analyzer = value
         
     async def connect(self, websocket: WebSocket):
         """Accept new WebSocket connection"""

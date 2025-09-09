@@ -648,9 +648,30 @@ class JARVISVoiceAPI:
                     
                     # Check for vision commands first
                     try:
-                        from .vision_command_handler import vision_command_handler
+                        # Send debug log to frontend
+                        await websocket.send_json({
+                            "type": "debug_log",
+                            "message": f"Checking if '{command_text}' is a vision command...",
+                            "timestamp": datetime.now().isoformat()
+                        })
+                        
+                        from .vision_command_handler import vision_command_handler, ws_logger
+                        
+                        # Set up WebSocket callback for vision logs
+                        async def send_vision_log(log_data):
+                            await websocket.send_json(log_data)
+                        
+                        ws_logger.set_websocket_callback(send_vision_log)
+                        
                         vision_result = await vision_command_handler.handle_command(command_text)
+                        
                         if vision_result.get('handled'):
+                            await websocket.send_json({
+                                "type": "debug_log",
+                                "message": "Vision command handled, sending response",
+                                "timestamp": datetime.now().isoformat()
+                            })
+                            
                             await websocket.send_json({
                                 "type": "response",
                                 "text": vision_result['response'],
@@ -660,7 +681,24 @@ class JARVISVoiceAPI:
                             })
                             continue
                     except Exception as e:
-                        logger.warning(f"Vision command check error: {e}")
+                        logger.error(f"Vision command check error: {e}", exc_info=True)
+                        
+                        await websocket.send_json({
+                            "type": "debug_log",
+                            "message": f"Vision command error: {str(e)}",
+                            "level": "error",
+                            "timestamp": datetime.now().isoformat()
+                        })
+                        
+                        # Send error response to frontend so it doesn't hang
+                        await websocket.send_json({
+                            "type": "response",
+                            "text": "I'm having trouble with the vision system right now. Please try again.",
+                            "command_type": "vision",
+                            "error": True,
+                            "timestamp": datetime.now().isoformat()
+                        })
+                        continue
                     
                     # Ensure JARVIS is active for WebSocket commands
                     if not self.jarvis.running:

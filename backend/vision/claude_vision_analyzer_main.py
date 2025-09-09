@@ -18,6 +18,7 @@ import asyncio
 import time
 import gc
 import os
+import sys
 import re
 import subprocess
 from typing import Dict, List, Optional, Any, Tuple, Union, Set, Callable
@@ -546,7 +547,13 @@ class ClaudeVisionAnalyzer:
         self._realtime_callbacks = []
         
         # Initialize API client
-        self.client = Anthropic(api_key=api_key)
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY is required for Claude Vision Analyzer. Please set it in your environment.")
+        
+        try:
+            self.client = Anthropic(api_key=api_key)
+        except Exception as e:
+            raise ValueError(f"Failed to initialize Anthropic client: {str(e)}")
         
         # Initialize memory safety monitor
         self.memory_monitor = MemorySafetyMonitor(self.config)
@@ -558,6 +565,12 @@ class ClaudeVisionAnalyzer:
         
         # Metrics storage
         self.recent_metrics: List[AnalysisMetrics] = []
+        
+        # Initialize context dictionary
+        self._context = {
+            'app_id': 'unknown',
+            'workflow': 'unknown'
+        }
         
         # Dynamic entity extractor
         self.entity_extractor = DynamicEntityExtractor()
@@ -615,8 +628,8 @@ class ClaudeVisionAnalyzer:
         # Initialize Vision Intelligence System (lazy loading)
         self.vision_intelligence = None
         self._vision_intelligence_config = {
-            'enabled': self.config.enable_vision_intelligence and VISION_INTELLIGENCE_AVAILABLE,
-            'learning': self.config.vision_intelligence_learning,
+            'enabled': self.config.vision_intelligence_enabled and VISION_INTELLIGENCE_AVAILABLE,
+            'learning': getattr(self.config, 'vision_intelligence_learning', True),
             'consensus': self.config.vision_intelligence_consensus,
             'persistence': self.config.state_persistence_enabled
         }
@@ -1068,7 +1081,7 @@ class ClaudeVisionAnalyzer:
                 self.semantic_cache = await get_semantic_cache()
                 
                 # Set integration points
-                if self.goal_system:
+                if hasattr(self, 'goal_system') and self.goal_system:
                     self.semantic_cache.set_integration_points(
                         goal_system=self.goal_system,
                         anomaly_detector=await self.get_anomaly_detector()
@@ -1403,19 +1416,19 @@ class ClaudeVisionAnalyzer:
         
         # Pass existing component references
         components_map = {
-            'vsms': ('vsms_core', self.vsms_core),
+            'vsms': ('vsms_core', getattr(self, 'vsms_core', None)),
             'scene_graph': ('scene_graph', None),  # Would get from intelligence bridge
             'temporal_context': ('temporal_context_engine', None),
             'activity_recognition': ('activity_recognizer', None),
-            'goal_inference': ('goal_system', self.goal_system),
-            'workflow_patterns': ('pattern_miner', self.pattern_miner),
+            'goal_inference': ('goal_system', getattr(self, 'goal_system', None)),
+            'workflow_patterns': ('pattern_miner', getattr(self, 'pattern_miner', None)),
             'anomaly_detection': ('anomaly_detector', None),
-            'intervention_engine': ('intervention_engine', self.intervention_engine),
-            'solution_bank': ('solution_memory_bank', self.solution_memory_bank),
-            'quadtree': ('quadtree_spatial', self.quadtree_spatial),
-            'semantic_cache': ('semantic_cache', self.semantic_cache),
-            'predictive_engine': ('predictive_engine', self.predictive_engine),
-            'bloom_filter': ('bloom_filter', self.bloom_filter),
+            'intervention_engine': ('intervention_engine', getattr(self, 'intervention_engine', None)),
+            'solution_bank': ('solution_memory_bank', getattr(self, 'solution_memory_bank', None)),
+            'quadtree': ('quadtree_spatial', getattr(self, 'quadtree_spatial', None)),
+            'semantic_cache': ('semantic_cache', getattr(self, 'semantic_cache', None)),
+            'predictive_engine': ('predictive_engine', getattr(self, 'predictive_engine', None)),
+            'bloom_filter': ('bloom_filter', getattr(self, 'bloom_filter', None)),
         }
         
         for orchestrator_name, (attr_name, component) in components_map.items():
@@ -2396,9 +2409,23 @@ class ClaudeVisionAnalyzer:
             return parsed_result, metrics
             
         except Exception as e:
-            logger.error(f"Error in analyze_screenshot: {e}")
+            logger.error(f"Error in analyze_screenshot: {e}", exc_info=True)
             metrics.total_time = time.time() - start_time
-            return {"error": str(e), "description": "Analysis failed"}, metrics
+            
+            # Provide more specific error messages
+            error_message = str(e)
+            if "ANTHROPIC_API_KEY" in error_message or "api_key" in error_message.lower():
+                description = "I need the Claude Vision API key to analyze your screen. Please set ANTHROPIC_API_KEY in your environment."
+            elif "rate_limit" in error_message.lower():
+                description = "I'm being rate limited. Please try again in a moment."
+            elif "timeout" in error_message.lower():
+                description = "The analysis timed out. Please try again."
+            elif "network" in error_message.lower() or "connection" in error_message.lower():
+                description = "I'm having trouble connecting to the vision API. Please check your internet connection."
+            else:
+                description = f"Analysis failed: {error_message}"
+            
+            return {"error": str(e), "description": description}, metrics
         finally:
             # Clear analyzing flag
             self.is_analyzing = False
@@ -2482,33 +2509,51 @@ class ClaudeVisionAnalyzer:
         return base64.b64encode(buffer.getvalue()).decode()
     
     async def _call_claude_api(self, image_base64: str, prompt: str) -> str:
-        """Make API call to Claude"""
-        # Use lambda to properly pass arguments to messages.create
-        message = await asyncio.get_event_loop().run_in_executor(
-            self.executor,
-            lambda: self.client.messages.create(
-                model=self.config.model_name,
-                max_tokens=self.config.max_tokens,
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "image/jpeg" if self.config.compression_enabled else "image/png",
-                                "data": image_base64
+        """Make API call to Claude with timeout"""
+        try:
+            logger.info("[CLAUDE API] Making API call to Claude...")
+            
+            # Create a future for the API call
+            api_future = asyncio.get_event_loop().run_in_executor(
+                self.executor,
+                lambda: self.client.messages.create(
+                    model=self.config.model_name,
+                    max_tokens=self.config.max_tokens,
+                    messages=[{
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "image/jpeg" if self.config.compression_enabled else "image/png",
+                                    "data": image_base64
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "text": prompt
                             }
-                        },
-                        {
-                            "type": "text",
-                            "text": prompt
-                        }
-                    ]
-                }]
+                        ]
+                    }]
+                )
             )
-        )
-        return message.content[0].text
+            
+            # Wait with timeout (use configured timeout or default to 20 seconds)
+            timeout = getattr(self.config, 'api_timeout', 20)
+            message = await asyncio.wait_for(api_future, timeout=timeout)
+            
+            logger.info("[CLAUDE API] API call successful")
+            return message.content[0].text
+            
+        except asyncio.TimeoutError:
+            logger.error(f"Claude API call timed out after {timeout} seconds")
+            raise Exception("Claude API timeout - the vision analysis is taking too long")
+        except Exception as e:
+            # Log the full error for debugging
+            logger.error(f"Claude API call failed: {e}", exc_info=True)
+            # Re-raise with more context
+            raise Exception(f"Claude API error: {str(e)}")
     
     def _generate_prompt_embedding_sync(self, prompt: str) -> Optional[np.ndarray]:
         """Generate embedding for prompt (simplified for now)"""
@@ -3440,7 +3485,7 @@ Focus on what's visible in this specific region. Be concise but thorough."""
             cleanup_tasks.append(self.screen_sharing.stop_sharing())
         
         # Stop video streaming if active
-        if self.video_streaming and self.video_streaming.is_capturing:
+        if hasattr(self, 'video_streaming') and self.video_streaming and self.video_streaming.is_capturing:
             cleanup_tasks.append(self.video_streaming.stop_streaming())
         
         # Cleanup continuous analyzer
@@ -3485,8 +3530,8 @@ Focus on what's visible in this specific region. Be concise but thorough."""
         """Capture screen using the best available method"""
         try:
             # If video streaming is enabled and running, get frame from there
-            if self.config.prefer_video_over_screenshots and self.video_streaming and self.video_streaming.is_capturing:
-                frame_data = self.video_streaming.frame_buffer.get_latest_frame()
+            if self.config.prefer_video_over_screenshots and hasattr(self, 'video_streaming') and self.video_streaming and self.video_streaming.is_capturing:
+                frame_data = self.video_streaming.frame_buffer.get_latest_frame() if hasattr(self.video_streaming, 'frame_buffer') else None
                 if frame_data:
                     # Convert numpy array to PIL Image
                     frame = frame_data['data']
@@ -3571,7 +3616,7 @@ Focus on what's visible in this specific region. Be concise but thorough."""
         if self.screen_sharing:
             stats['components']['screen_sharing'] = self.screen_sharing.get_metrics()
         
-        if self.video_streaming:
+        if hasattr(self, 'video_streaming') and self.video_streaming:
             stats['components']['video_streaming'] = self.video_streaming.get_metrics()
         
         # Overall stats
@@ -3821,7 +3866,7 @@ Focus on what's visible in this specific region. Be concise but thorough."""
     
     async def stop_video_streaming(self) -> Dict[str, Any]:
         """Stop video streaming"""
-        if self.video_streaming:
+        if hasattr(self, 'video_streaming') and self.video_streaming:
             await self.video_streaming.stop_streaming()
             return {
                 'success': True,
@@ -3834,7 +3879,7 @@ Focus on what's visible in this specific region. Be concise but thorough."""
     
     async def get_video_streaming_status(self) -> Dict[str, Any]:
         """Get current video streaming status"""
-        if self.video_streaming:
+        if hasattr(self, 'video_streaming') and self.video_streaming:
             metrics = self.video_streaming.get_metrics()
             return {
                 'active': self.video_streaming.is_capturing,
@@ -3848,7 +3893,7 @@ Focus on what's visible in this specific region. Be concise but thorough."""
     
     async def analyze_video_stream(self, query: str, duration_seconds: float = 5.0) -> Dict[str, Any]:
         """Analyze video stream for a specific duration"""
-        if not self.video_streaming or not self.video_streaming.is_capturing:
+        if not hasattr(self, 'video_streaming') or not self.video_streaming or not self.video_streaming.is_capturing:
             # Start video streaming if not active
             start_result = await self.start_video_streaming()
             if not start_result['success']:
@@ -3907,7 +3952,7 @@ Focus on what's visible in this specific region. Be concise but thorough."""
     async def switch_to_screenshot_mode(self) -> Dict[str, Any]:
         """Switch from video streaming to screenshot mode"""
         # Stop video streaming if active
-        if self.video_streaming and self.video_streaming.is_capturing:
+        if hasattr(self, 'video_streaming') and self.video_streaming and self.video_streaming.is_capturing:
             await self.video_streaming.stop_streaming()
         
         # Update config
@@ -4006,7 +4051,7 @@ Focus on what's visible in this specific region. Be concise but thorough."""
             
             # Add real-time metadata
             result['timestamp'] = datetime.now().isoformat()
-            result['capture_mode'] = 'video_streaming' if self.video_streaming and self.video_streaming.is_capturing else 'screenshot'
+            result['capture_mode'] = 'video_streaming' if hasattr(self, 'video_streaming') and self.video_streaming and self.video_streaming.is_capturing else 'screenshot'
             result['is_real_time'] = True
             
             # Add autonomous behavior insights
