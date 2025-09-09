@@ -1,7 +1,7 @@
-# 🤖 JARVIS AI System v12.9.5 - Robust Time Intelligence & Dynamic Context 🧠
+# 🤖 JARVIS AI System v12.9.6 - Enhanced Vision Intelligence & Dynamic Optimization 🧠
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-12.9.5%20Time%20AI-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Version-12.9.6%20Vision%20AI-brightgreen" alt="Version">
   <img src="https://img.shields.io/badge/Wake%20Word-10ms%20⚡-ff69b4" alt="Ultra Fast Wake Word">
   <img src="https://img.shields.io/badge/Memory-350MB%20Voice-success" alt="Low Memory Voice">
   <img src="https://img.shields.io/badge/CPU-1--2%25%20Usage-blue" alt="Low CPU">
@@ -18,6 +18,42 @@
 <p align="center">
   <em>"Perfection is achieved not when there is nothing more to add, but when there is nothing left to take away." - Antoine de Saint-Exupéry</em>
 </p>
+
+## 🆕 What's New in v12.9.6 - Dynamic Vision System Without Hardcoding
+
+### 👁️ Intelligent Vision Detection (REVOLUTIONARY!)
+**JARVIS UNDERSTANDS VISION QUERIES LIKE NEVER BEFORE!** Complete overhaul:
+- ✅ **Regex pattern generation** - Dynamic patterns for "can you see", "analyze my screen", etc.
+- ✅ **Intent analysis** - Understands urgency, detail level, and focus areas
+- ✅ **Fuzzy matching** - Catches typos with similarity detection
+- ✅ **Multi-language support** - Ready for international keywords
+- ✅ **Zero hardcoding** - All patterns dynamically generated from word lists
+
+### 📸 Multi-Method Screenshot Capture (ROBUST!)
+**NEVER FAILS TO CAPTURE!** Platform-aware fallback system:
+- ✅ **PyAutoGUI** - Cross-platform primary method
+- ✅ **Native macOS** - Direct system integration
+- ✅ **screencapture command** - macOS fallback with cursor options
+- ✅ **Windows ImageGrab** - Native Windows capture
+- ✅ **Linux support** - gnome-screenshot, scrot, import
+- ✅ **Vision analyzer fallback** - Ultimate fallback method
+
+### 🚀 Dynamic Performance Optimization (SMART!)
+**ADAPTS TO YOUR NEEDS!** Intent-based optimization:
+- ✅ **Image sizing** - 1280px for quick checks, 2560px for detailed analysis
+- ✅ **Format selection** - PNG for quality, JPEG for speed
+- ✅ **Quality adjustment** - 70% for urgent, 95% for detailed
+- ✅ **API configuration** - Dynamic tokens and temperature
+- ✅ **Smart caching** - LRU cache with access frequency tracking
+- ✅ **Platform detection** - Optimizes for macOS/Windows/Linux
+
+### 🧠 Context-Aware Processing (INTELLIGENT!)
+**UNDERSTANDS WHAT YOU WANT!** Query analysis system:
+- ✅ **Query type detection** - Confirmation vs analysis vs general
+- ✅ **Urgency detection** - "quick", "asap", "immediately"
+- ✅ **Focus area extraction** - Errors, code, text, images
+- ✅ **Detail level** - Brief summary vs comprehensive analysis
+- ✅ **Dynamic prompts** - Tailored instructions based on intent
 
 ## 🆕 What's New in v12.9.5 - Robust Time Intelligence Without Hardcoding
 
