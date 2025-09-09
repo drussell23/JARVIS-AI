@@ -31,9 +31,17 @@ class WeatherBridge:
         # Pattern recognition for weather queries
         self._weather_patterns = self._compile_weather_patterns()
         
+        # Initialize macOS Weather app integration (primary)
+        from .macos_weather_app import MacOSWeatherApp
+        self.macos_weather_app = MacOSWeatherApp()
+        
         # Initialize macOS direct weather
         from .macos_weather_direct import MacOSWeatherDirect
         self.macos_direct = MacOSWeatherDirect()
+        
+        # Check temperature unit preference
+        from .temperature_units import should_use_fahrenheit
+        self.use_fahrenheit = should_use_fahrenheit()
         
         # Initialize macOS weather provider
         try:
@@ -111,19 +119,53 @@ class WeatherBridge:
     
     def extract_location_from_query(self, text: str) -> Optional[str]:
         """Extract location from weather query"""
-        # Patterns to extract location
+        text_lower = text.lower()
+        
+        # Check if this is asking about current location (time-based queries)
+        current_location_patterns = [
+            r'weather\s+(?:for\s+)?today',
+            r'weather\s+(?:for\s+)?tomorrow',
+            r'weather\s+(?:for\s+)?tonight',
+            r'weather\s+(?:for\s+)?now',
+            r'weather\s+(?:for\s+)?this\s+(?:week|weekend|morning|afternoon|evening)',
+            r'current\s+weather',
+            r'weather\s+outside',
+            r'weather\s+here',
+            r"what's\s+(?:the\s+)?weather\s*$",  # Just "what's the weather" with nothing after
+            r"what\s+is\s+(?:the\s+)?weather\s*$",  # Just "what is the weather" with nothing after
+        ]
+        
+        # Check if it matches current location patterns
+        for pattern in current_location_patterns:
+            if re.search(pattern, text_lower):
+                return None  # Current location
+        
+        # Patterns to extract specific location
         location_patterns = [
-            r'weather\s*(?:in|at|for)\s*([A-Za-z]+(?:\s+[A-Za-z]+)*)',
-            r'(?:what|whats|what\'s)\s*(?:the)?\s*weather\s*(?:like)?\s*(?:in|at)\s*([A-Za-z]+(?:\s+[A-Za-z]+)*)',
-            r'(?:in|at)\s*([A-Za-z]+(?:\s+[A-Za-z]+)*)\s*weather',
+            # "weather in Tokyo", "weather at Paris", "weather for London"
+            r'weather\s+(?:in|at|for)\s+([A-Za-z]+(?:\s+[A-Za-z]+)*?)(?:\s|$)',
+            # "what's the weather like in New York"
+            r'weather\s+(?:like\s+)?(?:in|at)\s+([A-Za-z]+(?:\s+[A-Za-z]+)*?)(?:\s|$)',
+            # "Tokyo weather"
+            r'^([A-Za-z]+(?:\s+[A-Za-z]+)*?)\s+weather',
         ]
         
         for pattern in location_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 location = match.group(1).strip()
-                # Filter out common words
-                if location.lower() not in ['the', 'a', 'an', 'it', 'there']:
+                # Filter out common words, time-related words, and query words
+                excluded_words = [
+                    'the', 'a', 'an', 'it', 'there', 'is', 'are', 'was', 'were',
+                    'today', 'tomorrow', 'tonight', 'yesterday', 'now',
+                    'current', 'this', 'that', 'here', 'outside'
+                ]
+                
+                # Check if location is meaningful (not just excluded words)
+                location_words = location.lower().split()
+                meaningful_words = [w for w in location_words if w not in excluded_words]
+                
+                if meaningful_words and len(location) > 2:
                     return location
         
         return None
@@ -254,9 +296,27 @@ class WeatherBridge:
     def format_for_speech(self, weather_data: Dict, query_type: str = "current") -> str:
         """Format weather data for natural speech output"""
         location = weather_data.get("location", "your location")
-        temp = weather_data.get("temperature", 0)
-        temp_unit = weather_data.get("temperature_unit", "°C")
-        feels_like = weather_data.get("feels_like", temp)
+        
+        # Handle temperature based on system preference
+        temp_c = weather_data.get("temperature", 0)
+        feels_like_c = weather_data.get("feels_like", temp_c)
+        
+        # Convert to user's preferred unit
+        if self.use_fahrenheit:
+            # Convert to Fahrenheit
+            temp = weather_data.get("temperature_f", round(temp_c * 9/5 + 32))
+            feels_like = weather_data.get("feels_like_f", round(feels_like_c * 9/5 + 32))
+            temp_display = f"{temp}°F"
+            feels_display = f"{feels_like}°F"
+            temp_unit = "°F"
+        else:
+            # Use Celsius
+            temp = temp_c
+            feels_like = feels_like_c
+            temp_display = f"{temp}°C"
+            feels_display = f"{feels_like}°C"
+            temp_unit = "°C"
+        
         description = weather_data.get("description", "unknown conditions")
         condition = weather_data.get("condition", description)
         wind_speed = weather_data.get("wind_speed", 0)
@@ -292,30 +352,48 @@ class WeatherBridge:
         
         # Build natural response based on query type
         if query_type == "temperature":
-            if temp > 30:
-                response = f"It's quite hot in {location} at {temp} degrees"
-            elif temp > 25:
-                response = f"It's a warm {temp} degrees in {location}"
-            elif temp > 20:
-                response = f"It's a pleasant {temp} degrees in {location}"
-            elif temp > 15:
-                response = f"It's {temp} degrees in {location} - quite mild"
-            elif temp > 10:
-                response = f"It's a cool {temp} degrees in {location}"
-            elif temp > 5:
-                response = f"It's rather chilly at {temp} degrees in {location}"
+            # Convert temp thresholds based on unit
+            if temp_unit == "°F":
+                if temp > 86:  # 30°C
+                    response = f"It's quite hot in {location} at {temp_display}"
+                elif temp > 77:  # 25°C
+                    response = f"It's a warm {temp_display} in {location}"
+                elif temp > 68:  # 20°C
+                    response = f"It's a pleasant {temp_display} in {location}"
+                elif temp > 59:  # 15°C
+                    response = f"It's {temp_display} in {location} - quite mild"
+                elif temp > 50:  # 10°C
+                    response = f"It's a cool {temp_display} in {location}"
+                elif temp > 41:  # 5°C
+                    response = f"It's rather chilly at {temp_display} in {location}"
+                else:
+                    response = f"It's quite cold in {location} at {temp_display}"
             else:
-                response = f"It's quite cold in {location} at {temp} degrees"
+                # Celsius thresholds
+                if temp > 30:
+                    response = f"It's quite hot in {location} at {temp_display}"
+                elif temp > 25:
+                    response = f"It's a warm {temp_display} in {location}"
+                elif temp > 20:
+                    response = f"It's a pleasant {temp_display} in {location}"
+                elif temp > 15:
+                    response = f"It's {temp_display} in {location} - quite mild"
+                elif temp > 10:
+                    response = f"It's a cool {temp_display} in {location}"
+                elif temp > 5:
+                    response = f"It's rather chilly at {temp_display} in {location}"
+                else:
+                    response = f"It's quite cold in {location} at {temp_display}"
             
             if abs(feels_like - temp) > 3:
                 if feels_like > temp:
-                    response += f", but it feels warmer at {feels_like}"
+                    response += f", but it feels warmer at {feels_display}"
                 else:
-                    response += f", but it feels colder at {feels_like}"
+                    response += f", but it feels colder at {feels_display}"
         
         elif query_type == "condition":
             response = f"We have {description} in {location} {time_greeting}"
-            response += f" with temperatures around {temp} degrees"
+            response += f" with temperatures around {temp_display}"
         
         else:  # General weather query for "today"
             # Make it more conversational
@@ -331,24 +409,34 @@ class WeatherBridge:
                 response = f"The weather in {location} today is {description}"
             
             # Add temperature in a natural way
-            response += f", currently {temp} degrees"
+            response += f", currently {temp_display}"
             
             if abs(feels_like - temp) > 3:
                 if feels_like > temp:
-                    response += f" but feeling more like {feels_like}"
+                    response += f" but feeling more like {feels_display}"
                 else:
-                    response += f" but feeling closer to {feels_like}"
+                    response += f" but feeling closer to {feels_display}"
         
         # Add contextual advice based on conditions
         advice_added = False
         
-        if temp < 5:
-            response += ". Bundle up warmly today"
-            advice_added = True
-        elif temp > 30:
-            response += ". Stay cool and hydrated"
-            advice_added = True
-        elif "rain" in description.lower() and not advice_added:
+        # Use appropriate thresholds based on unit
+        if temp_unit == "°F":
+            if temp < 41:  # 5°C
+                response += ". Bundle up warmly today"
+                advice_added = True
+            elif temp > 86:  # 30°C
+                response += ". Stay cool and hydrated"
+                advice_added = True
+        else:
+            if temp < 5:
+                response += ". Bundle up warmly today"
+                advice_added = True
+            elif temp > 30:
+                response += ". Stay cool and hydrated"
+                advice_added = True
+        
+        if "rain" in description.lower() and not advice_added:
             response += ". Don't forget your umbrella"
             advice_added = True
         elif "snow" in description.lower() and not advice_added:
@@ -362,8 +450,15 @@ class WeatherBridge:
             advice_added = True
         
         # Add a pleasant closing for nice weather
-        if not advice_added and temp >= 20 and temp <= 28 and "clear" in description:
-            response += ". Perfect weather to be outside"
+        if not advice_added:
+            if temp_unit == "°F":
+                # 68-82°F is pleasant
+                if temp >= 68 and temp <= 82 and "clear" in description:
+                    response += ". Perfect weather to be outside"
+            else:
+                # 20-28°C is pleasant
+                if temp >= 20 and temp <= 28 and "clear" in description:
+                    response += ". Perfect weather to be outside"
         
         # Add insights if available and relevant
         insights = weather_data.get("insights", [])
@@ -385,15 +480,33 @@ class WeatherBridge:
     async def process_weather_query(self, query: str) -> str:
         """Process a weather query and return formatted response"""
         try:
-            # First, try the simple direct approach
-            response = await self.macos_direct.get_simple_weather_response(query)
-            
             # If user wants to open Weather app
             if "open" in query.lower() and "weather" in query.lower():
                 if await self.macos_direct.open_weather_app():
                     return "I've opened the Weather app for you"
                 else:
                     return "I couldn't open the Weather app. Please try opening it manually"
+            
+            # First, try to get weather from macOS Weather app directly
+            try:
+                weather_data = await self.macos_weather_app.get_weather_with_location()
+                if weather_data and weather_data.get("source") != "fallback":
+                    logger.info("Got weather from macOS Weather app")
+                    # Determine query type and format response
+                    query_lower = query.lower()
+                    query_type = "current"
+                    
+                    if "temperature" in query_lower or "hot" in query_lower or "cold" in query_lower:
+                        query_type = "temperature"
+                    elif any(word in query_lower for word in ["rain", "snow", "sunny", "cloudy", "foggy"]):
+                        query_type = "condition"
+                    
+                    return self.format_for_speech(weather_data, query_type)
+            except Exception as e:
+                logger.debug(f"Weather app access failed: {e}")
+            
+            # Fallback to simple direct approach
+            response = await self.macos_direct.get_simple_weather_response(query)
             
             # Try to get actual weather data if available
             try:

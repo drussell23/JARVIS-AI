@@ -22,6 +22,10 @@ class MacOSWeatherProvider:
         # Try to use existing weather service as primary source
         self._init_weather_service()
         
+        # Initialize location service
+        from .location_service import MacOSLocationService
+        self.location_service = MacOSLocationService()
+        
         # Location cache
         self._location_cache = None
         self._location_cache_time = None
@@ -51,36 +55,27 @@ class MacOSWeatherProvider:
             logger.debug(f"Weather service not available: {e}")
     
     async def get_system_location(self) -> Optional[Tuple[float, float, str]]:
-        """Get location using macOS CoreLocationCLI if available"""
+        """Get actual device location using location services"""
         try:
-            # Check if CoreLocationCLI is installed
-            result = subprocess.run(
-                ["which", "CoreLocationCLI"],
-                capture_output=True,
-                text=True
-            )
+            # Use the location service to get actual location
+            location_data = await self.location_service.get_current_location()
             
-            if result.returncode != 0:
-                logger.debug("CoreLocationCLI not found")
-                return None
-            
-            # Get location from CoreLocationCLI
-            result = subprocess.run(
-                ["CoreLocationCLI", "-once", "-format", "%latitude,%longitude"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            
-            if result.returncode == 0 and result.stdout:
-                parts = result.stdout.strip().split(',')
-                if len(parts) == 2:
-                    lat = float(parts[0])
-                    lon = float(parts[1])
+            if location_data:
+                lat = location_data.get("latitude")
+                lon = location_data.get("longitude")
+                
+                if lat and lon:
+                    # Check if we have city from location data
+                    city = location_data.get("city", "")
                     
-                    # Get city name through reverse geocoding
-                    city = await self._reverse_geocode(lat, lon)
+                    # If no city, reverse geocode
+                    if not city:
+                        city = await self._reverse_geocode(lat, lon)
+                    
+                    logger.info(f"Got actual location: {city} ({lat}, {lon})")
                     return lat, lon, city
+            
+            logger.debug("No location data from location service")
                     
         except Exception as e:
             logger.debug(f"Error getting system location: {e}")
@@ -184,8 +179,30 @@ class MacOSWeatherProvider:
         except Exception as e:
             logger.debug(f"Error getting IP location: {e}")
         
-        # Default fallback
-        return 43.6532, -79.3832, "Toronto"
+        # Get more accurate location from IP
+        try:
+            # Try ip-api.com for better accuracy
+            url = "http://ip-api.com/json/?fields=status,city,regionName,country,lat,lon,timezone"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=3) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get("status") == "success":
+                            city = data.get("city", "Unknown")
+                            region = data.get("regionName", "")
+                            lat = data.get("lat", 0)
+                            lon = data.get("lon", 0)
+                            
+                            if city and city != "Unknown":
+                                if region:
+                                    return lat, lon, f"{city}, {region}"
+                                else:
+                                    return lat, lon, city
+        except:
+            pass
+        
+        # Final fallback - but we should rarely get here
+        return 43.6532, -79.3832, "your location"
     
     async def get_current_location(self) -> Tuple[float, float, str]:
         """Get current location with caching"""
@@ -221,8 +238,12 @@ class MacOSWeatherProvider:
             # Otherwise, try to get basic weather info
             lat, lon, city = await self.get_current_location()
             
+            # Use detected location if no specific location requested
+            final_location = location if location else city
+            logger.info(f"Getting weather for: {final_location}")
+            
             # Try free weather API without key
-            return await self._get_weather_from_wttr(city if not location else location)
+            return await self._get_weather_from_wttr(final_location)
             
         except Exception as e:
             logger.error(f"Error getting weather data: {e}")
