@@ -46,14 +46,15 @@ class SwiftWeatherProvider:
                 self.tool_available = True
                 logger.info(f"Swift weather tool available at: {self.tool_path}")
         
-        # If Swift tool not available, check for fallback
-        if not self.tool_available and self.fallback_path.exists():
-            self.use_fallback = True
-            self.tool_path = self.fallback_path
-            self.tool_available = True
-            logger.info(f"Using Python fallback weather tool at: {self.fallback_path}")
-        elif not self.tool_available:
-            logger.warning(f"Neither Swift tool nor fallback found")
+        # Always check for fallback as backup
+        if self.fallback_path.exists():
+            if not self.tool_available:
+                self.use_fallback = True
+                self.tool_path = self.fallback_path
+                self.tool_available = True
+                logger.info(f"Using Python fallback weather tool at: {self.fallback_path}")
+            else:
+                logger.info(f"Python fallback available at: {self.fallback_path}")
             logger.info("Run './build.sh' in the native directory to build the Swift tool")
     
     async def get_weather_data(self, location: Optional[str] = None) -> Optional[Dict]:
@@ -129,9 +130,21 @@ class SwiftWeatherProvider:
             
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse Swift tool output: {e}")
+            # Try fallback if available
+            if self.fallback_path.exists() and not self.use_fallback:
+                logger.info("Falling back to Python weather tool")
+                self.use_fallback = True
+                self.tool_path = self.fallback_path
+                return await self.get_weather_data(location)
             return None
         except Exception as e:
             logger.error(f"Error running Swift weather tool: {e}")
+            # Try fallback if available
+            if self.fallback_path.exists() and not self.use_fallback:
+                logger.info("Falling back to Python weather tool")
+                self.use_fallback = True
+                self.tool_path = self.fallback_path
+                return await self.get_weather_data(location)
             return None
     
     async def get_weather_with_forecast(self, location: Optional[str] = None) -> Optional[Dict]:

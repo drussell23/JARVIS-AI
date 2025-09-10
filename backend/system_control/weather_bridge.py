@@ -22,7 +22,16 @@ class WeatherBridge:
         # Pattern recognition for weather queries
         self._weather_patterns = self._compile_weather_patterns()
         
-        # HIGHEST PRIORITY: Swift native weather tool
+        # HIGHEST PRIORITY: Precise location weather with Core Location
+        try:
+            from .precise_weather_provider import PreciseWeatherProvider
+            self.precise_provider = PreciseWeatherProvider()
+            logger.info("Precise weather provider with Core Location initialized")
+        except Exception as e:
+            logger.warning(f"Could not initialize precise weather provider: {e}")
+            self.precise_provider = None
+        
+        # SECOND PRIORITY: Swift native weather tool
         try:
             from .swift_weather_provider import SwiftWeatherProvider
             self.swift_provider = SwiftWeatherProvider()
@@ -179,7 +188,18 @@ class WeatherBridge:
         """Get weather for current location - ALWAYS REAL-TIME"""
         # NO CACHING - always get fresh data
         
-        # FIRST PRIORITY: Try Swift native weather tool
+        # FIRST PRIORITY: Try Precise weather provider with Core Location
+        if self.precise_provider:
+            try:
+                precise_data = await self.precise_provider.get_weather_data()
+                if precise_data and self._is_valid_weather_data(precise_data):
+                    logger.info(f"Got precise weather from Core Location: {precise_data.get('location')} - "
+                               f"{precise_data.get('temperature')}°C, {precise_data.get('condition')}")
+                    return precise_data
+            except Exception as e:
+                logger.error(f"Precise weather provider failed: {e}")
+        
+        # SECOND PRIORITY: Try Swift native weather tool
         if self.swift_provider:
             try:
                 swift_data = await self.swift_provider.get_weather_data()
@@ -190,7 +210,7 @@ class WeatherBridge:
             except Exception as e:
                 logger.error(f"Swift weather provider failed: {e}")
         
-        # SECOND: Try weather widget extractor for accurate data
+        # THIRD: Try weather widget extractor for accurate data
         try:
             widget_data = await self.widget_extractor.get_weather_with_fallback()
             if widget_data:
@@ -244,7 +264,18 @@ class WeatherBridge:
         # NO CACHING - always get fresh data
         city_normalized = city.strip().title()
         
-        # FIRST: Try Swift native weather tool
+        # FIRST: Try Precise weather provider
+        if self.precise_provider:
+            try:
+                precise_data = await self.precise_provider.get_weather_data(city)
+                if precise_data and self._is_valid_weather_data(precise_data):
+                    logger.info(f"Got city weather from precise provider: {city} - "
+                               f"{precise_data.get('temperature')}°C")
+                    return precise_data
+            except Exception as e:
+                logger.error(f"Precise provider city weather failed: {e}")
+        
+        # SECOND: Try Swift native weather tool
         if self.swift_provider:
             try:
                 swift_data = await self.swift_provider.get_weather_data(city)
