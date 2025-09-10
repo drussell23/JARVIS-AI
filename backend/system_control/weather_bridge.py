@@ -22,15 +22,24 @@ class WeatherBridge:
         # Pattern recognition for weather queries
         self._weather_patterns = self._compile_weather_patterns()
         
-        # Initialize weather widget extractor (HIGHEST PRIORITY)
+        # HIGHEST PRIORITY: Swift native weather tool
+        try:
+            from .swift_weather_provider import SwiftWeatherProvider
+            self.swift_provider = SwiftWeatherProvider()
+            logger.info("Swift weather provider initialized")
+        except Exception as e:
+            logger.warning(f"Could not initialize Swift weather provider: {e}")
+            self.swift_provider = None
+        
+        # Initialize weather widget extractor (second priority)
         from .weather_widget_extractor import WeatherWidgetExtractor
         self.widget_extractor = WeatherWidgetExtractor()
         
-        # Initialize NEW macOS system integration (primary)
+        # Initialize NEW macOS system integration (third)
         from .macos_system_integration import MacOSSystemIntegration
         self.system_integration = MacOSSystemIntegration()
         
-        # Initialize macOS Weather app integration (secondary)
+        # Initialize macOS Weather app integration (fourth)
         from .macos_weather_app import MacOSWeatherApp
         self.macos_weather_app = MacOSWeatherApp()
         
@@ -170,7 +179,18 @@ class WeatherBridge:
         """Get weather for current location - ALWAYS REAL-TIME"""
         # NO CACHING - always get fresh data
         
-        # FIRST: Try weather widget extractor for most accurate data
+        # FIRST PRIORITY: Try Swift native weather tool
+        if self.swift_provider:
+            try:
+                swift_data = await self.swift_provider.get_weather_data()
+                if swift_data and self._is_valid_weather_data(swift_data):
+                    logger.info(f"Got weather from Swift tool: {swift_data.get('location')} - "
+                               f"{swift_data.get('temperature')}°C, {swift_data.get('condition')}")
+                    return swift_data
+            except Exception as e:
+                logger.error(f"Swift weather provider failed: {e}")
+        
+        # SECOND: Try weather widget extractor for accurate data
         try:
             widget_data = await self.widget_extractor.get_weather_with_fallback()
             if widget_data:
@@ -179,7 +199,7 @@ class WeatherBridge:
         except Exception as e:
             logger.error(f"Widget extraction failed: {e}")
         
-        # Second: try NEW system integration for accurate data
+        # Third: try NEW system integration for accurate data
         try:
             weather_data = await self.system_integration.get_accurate_weather()
             if weather_data and self._is_valid_weather_data(weather_data):
@@ -224,7 +244,18 @@ class WeatherBridge:
         # NO CACHING - always get fresh data
         city_normalized = city.strip().title()
         
-        # Try system integration first
+        # FIRST: Try Swift native weather tool
+        if self.swift_provider:
+            try:
+                swift_data = await self.swift_provider.get_weather_data(city)
+                if swift_data and self._is_valid_weather_data(swift_data):
+                    logger.info(f"Got city weather from Swift tool: {city} - "
+                               f"{swift_data.get('temperature')}°C, {swift_data.get('condition')}")
+                    return swift_data
+            except Exception as e:
+                logger.error(f"Swift weather provider failed for {city}: {e}")
+        
+        # Try system integration second
         try:
             # For specific city, we need to use provider
             if self.macos_provider:
