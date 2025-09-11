@@ -31,17 +31,34 @@ except ImportError:
 
 # Import JARVIS voice components with error handling
 try:
-    from voice.jarvis_voice import EnhancedJARVISVoiceAssistant, EnhancedJARVISPersonality, VoiceCommand
-    from voice.jarvis_agent_voice import JARVISAgentVoice
-    # Temporarily disable the patch to avoid import issues
-    # from voice.jarvis_agent_voice_fix import patch_jarvis_voice_agent
+    # Try absolute import first
+    from backend.voice.jarvis_voice import EnhancedJARVISVoiceAssistant, EnhancedJARVISPersonality, VoiceCommand
+    from backend.voice.jarvis_agent_voice import JARVISAgentVoice
     JARVIS_IMPORTS_AVAILABLE = True
-    # Apply the intelligent routing fix
-    # patch_jarvis_voice_agent(JARVISAgentVoice)
-    # logger.info("Applied intelligent command routing patch to JARVISAgentVoice")
-except (ImportError, OSError, AttributeError) as e:
-    logger.warning(f"Failed to import JARVIS voice components: {e}")
-    JARVIS_IMPORTS_AVAILABLE = False
+except ImportError:
+    try:
+        # Fallback to relative import
+        from ..voice.jarvis_voice import EnhancedJARVISVoiceAssistant, EnhancedJARVISPersonality, VoiceCommand
+        from ..voice.jarvis_agent_voice import JARVISAgentVoice
+        JARVIS_IMPORTS_AVAILABLE = True
+    except ImportError:
+        try:
+            # Try direct import as last resort
+            import sys
+            import os
+            # Add parent directory to path temporarily
+            parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            sys.path.insert(0, parent_dir)
+            from voice.jarvis_voice import EnhancedJARVISVoiceAssistant, EnhancedJARVISPersonality, VoiceCommand
+            from voice.jarvis_agent_voice import JARVISAgentVoice
+            sys.path.remove(parent_dir)
+            JARVIS_IMPORTS_AVAILABLE = True
+        except ImportError as e:
+            logger.warning(f"All import attempts failed for JARVIS voice components: {e}")
+            JARVIS_IMPORTS_AVAILABLE = False
+            
+if not JARVIS_IMPORTS_AVAILABLE:
+    logger.warning("JARVIS voice components could not be imported")
     # Create stub classes to prevent NameError
     class EnhancedJARVISVoiceAssistant:
         def __init__(self, *args, **kwargs):

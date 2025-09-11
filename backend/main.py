@@ -95,6 +95,7 @@ os.environ["USE_TF"] = "0"
 # FastAPI and core imports (always needed)
 from fastapi import FastAPI, APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # Load environment variables
@@ -311,6 +312,17 @@ async def lifespan(app: FastAPI):
         await app.state.memory_manager.start_monitoring()
         logger.info("✅ Memory manager initialized")
     
+    # Discover running services (if dynamic CORS is available)
+    try:
+        from api.dynamic_cors_handler import AutoPortDiscovery
+        services = await AutoPortDiscovery.discover_services()
+        if services:
+            logger.info(f"🔍 Discovered services: {services}")
+            config = AutoPortDiscovery.get_recommended_config(services)
+            logger.info(f"📝 Recommended config: {config}")
+    except Exception as e:
+        logger.debug(f"Service discovery skipped: {e}")
+    
     # Initialize vision analyzer if available
     vision = components.get('vision', {})
     if vision.get('available'):
@@ -416,21 +428,77 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configure CORS
-origins = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://localhost:3001').split(',')
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Configure Dynamic CORS
+try:
+    from api.dynamic_cors_handler import DynamicCORSMiddleware, AutoPortDiscovery
+    
+    # Add dynamic CORS middleware
+    class DynamicCORSWrapper:
+        def __init__(self, app):
+            self.cors_handler = DynamicCORSMiddleware(app)
+        
+        async def __call__(self, scope, receive, send):
+            if scope['type'] == 'http':
+                # Create request object from scope
+                from starlette.requests import Request
+                request = Request(scope, receive)
+                
+                async def call_next(request):
+                    # Create response by calling the app
+                    async def receive_wrapper():
+                        return await receive()
+                    
+                    async def send_wrapper(message):
+                        pass
+                    
+                    # Execute the app and capture response
+                    await self.cors_handler.app(scope, receive, send)
+                
+                # Let the middleware handle it
+                await self.cors_handler(request, call_next)
+            else:
+                # Non-HTTP, pass through
+                await self.cors_handler.app(scope, receive, send)
+    
+    # For now, use standard CORS with dynamic configuration
+    origins = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://localhost:3001,http://localhost:8000,http://localhost:8010').split(',')
+    backend_port = os.getenv('BACKEND_PORT', '8000')
+    if backend_port == '8010':
+        origins.extend(['http://localhost:8010', 'ws://localhost:8010'])
+        
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins + ['http://127.0.0.1:3000', 'http://127.0.0.1:8000', 'http://127.0.0.1:8010'],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["*"]
+    )
+    
+    logger.info("✅ CORS configured with dynamic origins")
+    
+except Exception as e:
+    # Fallback to static CORS if dynamic handler not available
+    logger.warning(f"Dynamic CORS handler error: {e}, using static configuration")
+    origins = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://localhost:3001').split(',')
+    backend_port = os.getenv('BACKEND_PORT', '8000')
+    if backend_port == '8010':
+        origins.extend(['http://localhost:8010', 'ws://localhost:8010'])
+        
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # Health check endpoint
 @app.get("/health")
 async def health_check():
     """Quick health check endpoint"""
     vision_details = {}
+    ml_audio_details = {}
     
     # Check vision component status
     if hasattr(app.state, 'vision_analyzer'):
@@ -450,6 +518,19 @@ async def health_check():
         except:
             vision_details['orchestrator'] = {'enabled': False}
     
+    # Check ML audio system status
+    if hasattr(app.state, 'ml_audio_state'):
+        ml_state = app.state.ml_audio_state
+        ml_audio_details = {
+            'enabled': True,
+            'active_streams': len(ml_state.active_streams),
+            'total_processed': ml_state.total_processed,
+            'uptime_hours': round(ml_state.get_uptime(), 2),
+            'capabilities': ml_state.system_capabilities,
+            'performance': ml_state.get_performance_metrics(),
+            'quality_insights': ml_state.get_quality_insights()
+        }
+    
     return {
         "status": "healthy",
         "mode": "optimized" if OPTIMIZE_STARTUP else "legacy",
@@ -458,7 +539,8 @@ async def health_check():
         "components": {
             name: bool(comp) for name, comp in components.items() if comp is not None
         },
-        "vision_enhanced": vision_details
+        "vision_enhanced": vision_details,
+        "ml_audio_system": ml_audio_details
     }
 
 # Mount routers based on available components
@@ -527,6 +609,39 @@ def mount_routers():
         logger.info("✅ Network Recovery API mounted")
     except ImportError as e:
         logger.warning(f"Could not import Network Recovery router: {e}")
+    
+    # ML Audio Compatibility API (for frontend backward compatibility)
+    try:
+        from api.ml_audio_compatibility import router as ml_audio_compat_router, system_state
+        app.include_router(ml_audio_compat_router, tags=["ML Audio Compatibility"])
+        
+        # Store ML audio system state in app for access
+        app.state.ml_audio_state = system_state
+        
+        logger.info("✅ ML Audio Compatibility API mounted with enhanced features")
+        logger.info(f"   - System capabilities: {system_state.system_capabilities}")
+        logger.info(f"   - Models available: {'PyTorch' if system_state.system_capabilities.get('pytorch_available') else 'NumPy'}-based")
+    except ImportError as e:
+        logger.warning(f"Could not import ML Audio Compatibility router: {e}")
+    
+    # Auto Configuration API (for dynamic client configuration)
+    try:
+        from api.auto_config_endpoint import router as auto_config_router
+        app.include_router(auto_config_router, tags=["Auto Configuration"])
+        logger.info("✅ Auto Configuration API mounted - clients can auto-discover settings")
+    except ImportError as e:
+        logger.warning(f"Could not import Auto Config router: {e}")
+    
+    # Mount static files for auto-config script
+    try:
+        import os
+        static_dir = os.path.join(os.path.dirname(__file__), "static")
+        if not os.path.exists(static_dir):
+            os.makedirs(static_dir)
+        app.mount("/static", StaticFiles(directory=static_dir), name="static")
+        logger.info("✅ Static files mounted - auto-config script available at /static/jarvis-auto-config.js")
+    except Exception as e:
+        logger.warning(f"Could not mount static files: {e}")
 
 # Note: Startup tasks are now handled in the lifespan handler above
 
@@ -544,6 +659,86 @@ async def root():
 
 # Note: Main WebSocket endpoint is now handled by unified_websocket router at /ws
 # This provides a single endpoint for all WebSocket communication
+
+# ML Audio WebSocket compatibility endpoint
+@app.websocket("/audio/ml/stream")
+async def ml_audio_websocket_compat(websocket: WebSocket):
+    """ML Audio WebSocket endpoint for backward compatibility with enhanced features"""
+    await websocket.accept()
+    logger.info("ML Audio WebSocket connection (legacy endpoint) - providing enhanced compatibility")
+    
+    try:
+        # Import unified handler and datetime
+        from api.unified_websocket import ws_manager, connection_capabilities
+        from datetime import datetime
+        import json
+        
+        # Get client info
+        client_host = websocket.client.host if websocket.client else "unknown"
+        client_id = f"ml_audio_{client_host}_{datetime.now().timestamp()}"
+        
+        # Send enhanced welcome message with system capabilities
+        ml_state = getattr(app.state, 'ml_audio_state', None)
+        welcome_msg = {
+            "type": "connection_established",
+            "client_id": client_id,
+            "server_time": datetime.now().isoformat(),
+            "capabilities": ml_state.system_capabilities if ml_state else {},
+            "recommended_config": ml_state.get_client_recommendations(client_id, "") if ml_state else {
+                "chunk_size": 512,
+                "sample_rate": 16000,
+                "format": "base64"
+            },
+            "migration_notice": {
+                "message": "This endpoint provides full compatibility. For best performance, consider using /ws",
+                "new_endpoint": "/ws",
+                "benefits": ["unified_interface", "better_performance", "more_features"]
+            }
+        }
+        await websocket.send_json(welcome_msg)
+        
+        # Add to unified connections with ML audio context
+        ws_manager.connections[client_id] = websocket
+        connection_capabilities[client_id] = {"ml_audio_stream", "legacy_client"}
+        
+        # Track stream if ML state available
+        if ml_state:
+            ml_state.active_streams[client_id] = {
+                "started_at": datetime.now(),
+                "processed_chunks": 0,
+                "total_bytes": 0,
+                "quality_scores": [],
+                "websocket": True
+            }
+        
+        while True:
+            # Receive message
+            data = await websocket.receive_json()
+            
+            # Convert to unified format
+            unified_msg = {
+                "type": "ml_audio_stream",
+                "audio_data": data.get("audio_data", data.get("data", "")),
+                "sample_rate": data.get("sample_rate", 16000),
+                "format": data.get("format", "base64")
+            }
+            
+            # Handle through unified manager
+            response = await ws_manager.handle_message(client_id, unified_msg)
+            
+            # Send response
+            await websocket.send_json(response)
+            
+    except WebSocketDisconnect:
+        logger.info("ML Audio WebSocket disconnected (legacy)")
+        if client_id in ws_manager.connections:
+            ws_manager.disconnect(client_id)
+    except Exception as e:
+        logger.error(f"ML Audio WebSocket error: {e}")
+        try:
+            await websocket.close()
+        except:
+            pass
 
 # Audio endpoints for frontend compatibility
 @app.post("/audio/speak")

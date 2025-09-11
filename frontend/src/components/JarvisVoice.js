@@ -6,6 +6,20 @@ import MicrophoneIndicator from './MicrophoneIndicator';
 import mlAudioHandler from '../utils/MLAudioHandler'; // ML-enhanced audio handling
 import { getNetworkRecoveryManager } from '../utils/NetworkRecoveryManager'; // Advanced network recovery
 
+// Inline styles to ensure button visibility
+const buttonVisibilityStyle = `
+  .jarvis-button {
+    display: inline-block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  .voice-controls {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+`;
+
 // VisionConnection class for real-time workspace monitoring
 class VisionConnection {
   constructor(onUpdate, onAction) {
@@ -319,6 +333,62 @@ const JarvisVoice = () => {
     // Predict potential audio issues
     mlAudioHandler.predictAudioIssue();
 
+    // Inject style to ensure button visibility
+    const styleElement = document.createElement('style');
+    styleElement.textContent = buttonVisibilityStyle;
+    document.head.appendChild(styleElement);
+
+    // Button visibility checker
+    const checkButtonsInterval = setInterval(() => {
+      const container = document.querySelector('.jarvis-voice-container');
+      if (!container) return;
+      
+      // Look for control buttons
+      const hasButtons = container.querySelector('.jarvis-button');
+      
+      if (!hasButtons) {
+        console.warn('JARVIS buttons missing - injecting emergency button');
+        // Find the voice-controls div
+        const voiceControls = container.querySelector('.voice-controls');
+        if (voiceControls && !document.getElementById('jarvis-emergency-button')) {
+          // Inject a fallback activate button
+          const buttonDiv = document.createElement('div');
+          buttonDiv.id = 'jarvis-emergency-button';
+          buttonDiv.style.cssText = 'text-align: center; margin-top: 10px;';
+          buttonDiv.innerHTML = `
+            <button 
+              class="jarvis-button activate" 
+              style="
+                display: inline-block;
+                padding: 12px 24px;
+                font-size: 16px;
+                background: linear-gradient(135deg, #ff6b35 0%, #ff4500 100%);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+                margin: 5px;
+                transition: all 0.3s;
+              "
+              onclick="
+                console.log('Emergency activate button clicked');
+                // Try to call the activate function
+                const event = new CustomEvent('jarvis-emergency-activate');
+                window.dispatchEvent(event);
+              "
+            >
+              🚀 Activate JARVIS (Emergency)
+            </button>
+            <div style="margin-top: 5px; font-size: 12px; color: #888;">
+              If buttons are missing, click here to activate JARVIS
+            </div>
+          `;
+          voiceControls.appendChild(buttonDiv);
+          console.log('Injected emergency JARVIS button');
+        }
+      }
+    }, 1000);
+
     // Set up ML event listeners
     const handleAudioPrediction = (event) => {
       const { prediction, suggestedAction } = event.detail;
@@ -355,6 +425,13 @@ const JarvisVoice = () => {
     window.addEventListener('audioAnomaly', handleAudioAnomaly);
     window.addEventListener('audioMetricsUpdate', handleAudioMetrics);
     window.addEventListener('enableTextFallback', handleTextFallback);
+
+    // Add emergency activate listener
+    const handleEmergencyActivate = () => {
+      console.log('Emergency activate event received');
+      activateJarvis();
+    };
+    window.addEventListener('jarvis-emergency-activate', handleEmergencyActivate);
 
 
     // Initialize Vision Connection
@@ -419,6 +496,19 @@ const JarvisVoice = () => {
       window.removeEventListener('audioAnomaly', handleAudioAnomaly);
       window.removeEventListener('audioMetricsUpdate', handleAudioMetrics);
       window.removeEventListener('enableTextFallback', handleTextFallback);
+      
+      // Remove emergency activate listener
+      window.removeEventListener('jarvis-emergency-activate', handleEmergencyActivate);
+      
+      // Clear button checker interval
+      if (checkButtonsInterval) {
+        clearInterval(checkButtonsInterval);
+      }
+      
+      // Remove injected style
+      if (styleElement && styleElement.parentNode) {
+        styleElement.parentNode.removeChild(styleElement);
+      }
     };
   }, [autonomousMode]);
 
@@ -1353,15 +1443,23 @@ const JarvisVoice = () => {
         </div>
       )}
 
-      <div className="voice-controls">
+      <div className="voice-controls" style={{ minHeight: '60px', padding: '10px' }}>
         {console.log('Current jarvisStatus:', jarvisStatus)}
-        {(jarvisStatus === 'offline' || jarvisStatus === 'active') && (
-          <button onClick={activateJarvis} className="jarvis-button activate">
-            Activate JARVIS
+        {/* Always show appropriate buttons regardless of exact status string */}
+        {(!jarvisStatus || jarvisStatus === 'offline' || jarvisStatus === 'error' || jarvisStatus === 'active' || jarvisStatus === 'ready' || jarvisStatus === 'standby') ? (
+          <button 
+            onClick={activateJarvis} 
+            className="jarvis-button activate"
+            style={{ 
+              display: 'inline-block', 
+              visibility: 'visible',
+              opacity: 1,
+              margin: '5px'
+            }}
+          >
+            🚀 Activate JARVIS
           </button>
-        )}
-
-        {(jarvisStatus === 'online' || jarvisStatus === 'activating') && (
+        ) : (
           <>
             <button
               onClick={continuousListening ? disableContinuousListening : enableContinuousListening}
@@ -1379,6 +1477,27 @@ const JarvisVoice = () => {
             </button>
           </>
         )}
+        
+        {/* Fallback button if status is unclear */}
+        {jarvisStatus && !['offline', 'error', 'active', 'ready', 'online', 'activating', 'standby'].includes(jarvisStatus) && (
+          <div style={{ marginTop: '10px' }}>
+            <button onClick={activateJarvis} className="jarvis-button activate">
+              🔧 Initialize JARVIS (Status: {jarvisStatus})
+            </button>
+          </div>
+        )}
+        
+        {/* Debug status display - remove this after troubleshooting */}
+        <div style={{ 
+          marginTop: '10px', 
+          fontSize: '11px', 
+          color: '#666',
+          backgroundColor: '#f0f0f0',
+          padding: '5px',
+          borderRadius: '4px'
+        }}>
+          Debug: Status="{jarvisStatus}" | Expected: offline/active/online/activating
+        </div>
       </div>
 
       <div className="voice-input">
