@@ -436,7 +436,51 @@ class JARVISVoiceAPI:
             logger.warning(f"Vision command handler error: {e}")
         
         if not self.jarvis_available:
-            # Return fallback response to prevent 503
+            # Check if this is a weather command - we can handle it even in limited mode
+            if any(word in command.text.lower() for word in ['weather', 'temperature', 'forecast', 'rain', 'sunny', 'cloudy']):
+                try:
+                    from system_control.weather_system_config import get_weather_system
+                    weather_system = get_weather_system()
+                    
+                    if weather_system:
+                        logger.info("[JARVIS API] Processing weather command in limited mode")
+                        result = await weather_system.get_weather(command.text)
+                        
+                        if result.get('success') and result.get('data'):
+                            weather_data = result['data']
+                            current = weather_data.get('current', {})
+                            location = weather_data.get('location', 'your area')
+                            temp = current.get('temperature', 'unknown')
+                            condition = current.get('condition', 'unknown')
+                            
+                            return {
+                                "response": f"The weather in {location} is {condition} with a temperature of {temp}°C, Sir.",
+                                "status": "success",
+                                "confidence": 0.9,
+                                "command_type": "weather"
+                            }
+                    
+                    # Fallback: Open Weather app
+                    logger.info("[JARVIS API] Weather system unavailable, opening Weather app")
+                    import subprocess
+                    subprocess.run(['open', '-a', 'Weather'], check=False)
+                    
+                    return {
+                        "response": "I'm opening the Weather app for you to check the weather details, Sir. Once it's open, I can analyze the weather information for you.",
+                        "status": "success",
+                        "confidence": 0.8,
+                        "command_type": "weather_fallback"
+                    }
+                    
+                except Exception as e:
+                    logger.error(f"[JARVIS API] Weather error in limited mode: {e}")
+                    return {
+                        "response": "I'm having difficulty accessing weather data. Let me open the Weather app for you.",
+                        "status": "fallback",
+                        "confidence": 0.5
+                    }
+            
+            # For non-weather commands, return the default limited mode response
             return {
                 "response": "I'm currently in limited mode, but I can still help. What do you need?",
                 "status": "fallback",
@@ -965,7 +1009,43 @@ class JARVISVoiceAPI:
                     else:
                         # Provide basic response without full personality
                         if "weather" in data['text'].lower():
-                            response = "I'm unable to access weather data in limited mode. Please try again later."
+                            # Try to use weather system even in limited mode
+                            try:
+                                from system_control.weather_system_config import get_weather_system
+                                weather_system = get_weather_system()
+                                
+                                if weather_system:
+                                    logger.info("[JARVIS WS] Using weather system in limited mode")
+                                    result = await weather_system.get_weather(data['text'])
+                                    
+                                    if result.get('success') and result.get('data'):
+                                        weather_data = result['data']
+                                        current = weather_data.get('current', {})
+                                        location = weather_data.get('location', 'your area')
+                                        temp = current.get('temperature', 'unknown')
+                                        condition = current.get('condition', 'unknown')
+                                        
+                                        response = f"The weather in {location} is {condition} with a temperature of {temp}°C, Sir."
+                                    else:
+                                        # Fallback: Open Weather app
+                                        logger.info("[JARVIS WS] Weather system failed, opening Weather app")
+                                        import subprocess
+                                        subprocess.run(['open', '-a', 'Weather'], check=False)
+                                        response = "I'm opening the Weather app for you to check the weather details, Sir."
+                                else:
+                                    # No weather system, just open the app
+                                    import subprocess
+                                    subprocess.run(['open', '-a', 'Weather'], check=False)
+                                    response = "I'm opening the Weather app for you to check the weather, Sir."
+                                    
+                            except Exception as e:
+                                logger.error(f"[JARVIS WS] Weather error in limited mode: {e}")
+                                try:
+                                    import subprocess
+                                    subprocess.run(['open', '-a', 'Weather'], check=False)
+                                    response = "I've opened the Weather app for you to check the weather, Sir."
+                                except:
+                                    response = "I'm having difficulty accessing weather data at the moment."
                         elif "time" in data['text'].lower():
                             response = f"The current time is {datetime.now().strftime('%I:%M %p')}."
                         else:

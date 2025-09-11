@@ -160,8 +160,9 @@ class UnifiedVisionWeather:
                 result = await asyncio.wait_for(
                     self.vision_handler.describe_screen({
                         'query': """Look at the Weather app sidebar on the left.
-                        Find the location marked as "My Location" or with a HOME indicator.
-                        Tell me the exact text and describe where it is in the list."""
+                        Find the location that says "My Location" or has a location/home icon.
+                        It's usually the first item in the list.
+                        Tell me exactly what it says and which position it is (first, second, etc.)."""
                     }),
                     timeout=5.0  # 5 second timeout for location finding
                 )
@@ -561,20 +562,106 @@ Return all found information in a structured format."""
     def _parse_location_from_vision(self, vision_response: str) -> Optional[Dict]:
         """Parse location info from vision response"""
         # Look for location indicators
-        for pattern in self.ui_patterns['my_location']:
-            if re.search(pattern, vision_response, re.IGNORECASE):
-                # Extract position info
-                return {
-                    'found': True,
-                    'description': vision_response
-                }
+        response_lower = vision_response.lower()
+        
+        # Check for My Location or home indicators
+        location_found = False
+        for pattern in ['my location', 'home', 'current location', 'your location']:
+            if pattern in response_lower:
+                location_found = True
+                break
+        
+        # Also check regex patterns
+        if not location_found:
+            for pattern in self.ui_patterns['my_location']:
+                if re.search(pattern, vision_response, re.IGNORECASE):
+                    location_found = True
+                    break
+        
+        if location_found:
+            return {
+                'found': True,
+                'description': vision_response
+            }
+        
+        # If no specific location found but Weather app is open, 
+        # assume we can proceed with current selection
+        if 'weather' in response_lower:
+            return {
+                'found': True,
+                'description': 'Weather app open, proceeding with current location'
+            }
+        
         return None
     
     async def _click_location(self, location_info: Dict):
         """Click on location in sidebar"""
-        # This would integrate with your controller to click
-        # For now, we rely on it being already selected
-        pass
+        if not self.controller:
+            logger.warning("No controller available to click location")
+            return
+        
+        try:
+            # First, try to find and click "My Location" or the home location
+            description = location_info.get('description', '')
+            
+            # Look for coordinates or specific text patterns
+            if 'my location' in description.lower() or 'home' in description.lower():
+                logger.info("Attempting to click on My Location/Home")
+                
+                # Try different strategies to click the location
+                # Strategy 1: Look for the location in the sidebar (left side)
+                if self.vision_handler:
+                    # Ask vision to find the exact position
+                    click_result = await self.vision_handler.describe_screen({
+                        'query': '''Look at the Weather app sidebar on the left side.
+                        Find the item that says "My Location" or has a home/location icon.
+                        Describe its exact position in the list (e.g., "first item", "second item", etc.)'''
+                    })
+                    
+                    if click_result.success:
+                        # Parse position and click
+                        position_text = click_result.description.lower()
+                        
+                        # Determine click coordinates based on position
+                        # Weather app sidebar is typically on the left
+                        base_x = 150  # X coordinate for sidebar
+                        base_y = 200  # Starting Y coordinate
+                        item_height = 40  # Approximate height of each item
+                        
+                        y_offset = 0
+                        if 'first' in position_text:
+                            y_offset = 0
+                        elif 'second' in position_text:
+                            y_offset = item_height
+                        elif 'third' in position_text:
+                            y_offset = item_height * 2
+                        elif 'fourth' in position_text:
+                            y_offset = item_height * 3
+                        
+                        # Click at the calculated position
+                        click_x = base_x
+                        click_y = base_y + y_offset
+                        
+                        await self.controller.click_at(click_x, click_y)
+                        logger.info(f"Clicked at ({click_x}, {click_y}) for My Location")
+                        return
+                
+                # Strategy 2: Use keyboard navigation as fallback
+                # Press up arrow multiple times to ensure we're at the top
+                # Then down arrow to select first item (usually My Location)
+                await self.controller.key_press('up')
+                await asyncio.sleep(0.1)
+                await self.controller.key_press('up')
+                await asyncio.sleep(0.1)
+                await self.controller.key_press('up')
+                await asyncio.sleep(0.1)
+                await self.controller.key_press('down')
+                await asyncio.sleep(0.1)
+                await self.controller.key_press('return')
+                logger.info("Used keyboard navigation to select My Location")
+                
+        except Exception as e:
+            logger.error(f"Failed to click location: {e}")
     
     def _check_cache(self, key: str) -> Optional[Dict]:
         """Check if we have valid cached data"""

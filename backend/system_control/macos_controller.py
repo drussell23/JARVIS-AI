@@ -367,6 +367,60 @@ class MacOSController:
         if success:
             return True, "Display sleeping"
         return False, f"Failed to sleep display: {message}"
+    
+    async def click_at(self, x: int, y: int) -> Tuple[bool, str]:
+        """Click at specific coordinates"""
+        try:
+            # Use AppleScript to click at coordinates
+            script = f'''
+            tell application "System Events"
+                click at {{{x}, {y}}}
+            end tell
+            '''
+            success, result = self.execute_applescript(script)
+            if success:
+                return True, f"Clicked at ({x}, {y})"
+            else:
+                # Fallback: Use cliclick if available
+                try:
+                    subprocess.run(["cliclick", f"c:{x},{y}"], check=True, capture_output=True)
+                    return True, f"Clicked at ({x}, {y})"
+                except:
+                    return False, f"Failed to click: {result}"
+        except Exception as e:
+            return False, f"Click error: {str(e)}"
+    
+    async def key_press(self, key: str) -> Tuple[bool, str]:
+        """Press a keyboard key"""
+        try:
+            # Map key names to AppleScript key codes
+            key_map = {
+                'up': 'key code 126',
+                'down': 'key code 125',
+                'left': 'key code 123',
+                'right': 'key code 124',
+                'return': 'key code 36',
+                'enter': 'key code 36',
+                'space': 'key code 49',
+                'tab': 'key code 48',
+                'delete': 'key code 51',
+                'escape': 'key code 53'
+            }
+            
+            # Get the key code or use the key directly
+            key_action = key_map.get(key.lower(), f'keystroke "{key}"')
+            
+            script = f'''
+            tell application "System Events"
+                {key_action}
+            end tell
+            '''
+            
+            success, result = self.execute_applescript(script)
+            return (True, f"Pressed {key}") if success else (False, result)
+            
+        except Exception as e:
+            return False, f"Key press error: {str(e)}"
         
     # Web Integration
     
