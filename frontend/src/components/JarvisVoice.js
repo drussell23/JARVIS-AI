@@ -330,8 +330,8 @@ const JarvisVoice = () => {
     // Check microphone permission first
     checkMicrophonePermission();
 
-    // Predict potential audio issues
-    mlAudioHandler.predictAudioIssue();
+    // Predict potential audio issues - disabled to prevent CORS errors
+    // mlAudioHandler.predictAudioIssue();
 
     // Inject style to ensure button visibility
     const styleElement = document.createElement('style');
@@ -341,10 +341,14 @@ const JarvisVoice = () => {
     // Button visibility checker
     const checkButtonsInterval = setInterval(() => {
       const container = document.querySelector('.jarvis-voice-container');
-      if (!container) return;
+      if (!container) {
+        console.log('Button checker: Container not found yet');
+        return;
+      }
       
       // Look for control buttons
       const hasButtons = container.querySelector('.jarvis-button');
+      // Only log when buttons are missing
       
       if (!hasButtons) {
         console.warn('JARVIS buttons missing - injecting emergency button');
@@ -520,14 +524,14 @@ const JarvisVoice = () => {
       
       // Map backend status to frontend status
       const status = data.status || 'offline';
-      if (status === 'standby') {
-        setJarvisStatus('online'); // Show as online when in standby
+      if (status === 'standby' || status === 'ready') {
+        setJarvisStatus('online'); // Show as online when in standby or ready
       } else {
         setJarvisStatus(status);
       }
 
-      // Connect WebSocket if JARVIS is available (including standby and active)
-      if (data.status === 'online' || data.status === 'standby' || data.status === 'active') {
+      // Connect WebSocket if JARVIS is available (including standby, ready, and active)
+      if (data.status === 'online' || data.status === 'standby' || data.status === 'active' || data.status === 'ready') {
         console.log('JARVIS is available, connecting WebSocket...');
         setTimeout(() => {
           connectWebSocket();
@@ -1444,7 +1448,6 @@ const JarvisVoice = () => {
       )}
 
       <div className="voice-controls" style={{ minHeight: '60px', padding: '10px' }}>
-        {console.log('Current jarvisStatus:', jarvisStatus)}
         {/* Always show appropriate buttons regardless of exact status string */}
         {(!jarvisStatus || jarvisStatus === 'offline' || jarvisStatus === 'error' || jarvisStatus === 'active' || jarvisStatus === 'ready' || jarvisStatus === 'standby') ? (
           <button 
@@ -1498,6 +1501,34 @@ const JarvisVoice = () => {
         }}>
           Debug: Status="{jarvisStatus}" | Expected: offline/active/online/activating
         </div>
+        
+        {/* Ultimate fallback - always show at least one button */}
+        {!document.querySelector('.jarvis-button') && (
+          <div style={{ marginTop: '10px', border: '2px solid red', padding: '10px' }}>
+            <button 
+              onClick={activateJarvis} 
+              className="jarvis-button activate emergency-fallback"
+              style={{ 
+                display: 'block !important', 
+                visibility: 'visible !important',
+                opacity: '1 !important',
+                margin: '5px auto',
+                padding: '10px 20px',
+                fontSize: '16px',
+                backgroundColor: '#ff4500',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer'
+              }}
+            >
+              🚨 EMERGENCY: Activate JARVIS
+            </button>
+            <p style={{ color: 'red', fontSize: '12px', textAlign: 'center' }}>
+              Normal buttons failed to render - using emergency activation
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="voice-input">

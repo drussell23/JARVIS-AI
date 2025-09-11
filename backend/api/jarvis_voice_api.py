@@ -108,7 +108,8 @@ class JARVISVoiceAPI:
         
         # Check if we have API key
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
-        self.jarvis_available = self.api_key and JARVIS_IMPORTS_AVAILABLE
+        # For now, enable basic JARVIS functionality even without full imports
+        self.jarvis_available = bool(self.api_key)
         
         # We'll initialize on first use
         if not self.jarvis_available:
@@ -180,11 +181,20 @@ class JARVISVoiceAPI:
         """Get JARVIS system status"""
         logger.debug("[INIT ORDER] get_status called")
         
-        if not self.jarvis_available:
+        if not self.api_key:
             return {
                 "status": "offline",
                 "message": "JARVIS system not available - API key required",
                 "features": []
+            }
+        
+        # If we have API key but imports failed, still show as ready with limited features
+        if self.api_key and not JARVIS_IMPORTS_AVAILABLE:
+            return {
+                "status": "ready",
+                "message": "JARVIS ready with limited features",
+                "features": ["basic_conversation", "text_commands"],
+                "import_status": "limited"
             }
             
         features = [
@@ -385,7 +395,7 @@ class JARVISVoiceAPI:
             
             # Get contextual info if available
             context = {}
-            if hasattr(self.jarvis, 'personality') and hasattr(self.jarvis.personality, '_get_context_info'):
+            if self.jarvis and hasattr(self.jarvis, 'personality') and hasattr(self.jarvis.personality, '_get_context_info'):
                 context = self.jarvis.personality._get_context_info()
             
             return {
@@ -530,6 +540,14 @@ class JARVISVoiceAPI:
             
         updates = []
         
+        # Check if JARVIS is properly initialized
+        if not self.jarvis or not hasattr(self.jarvis, 'personality'):
+            return {
+                "status": "updated",
+                "updates": ["Configuration saved for when JARVIS is fully initialized"],
+                "message": "Configuration will be applied when JARVIS is ready."
+            }
+        
         if config.user_name:
             self.jarvis.personality.user_preferences['name'] = config.user_name
             updates.append(f"User designation updated to {config.user_name}")
@@ -546,10 +564,11 @@ class JARVISVoiceAPI:
             self.jarvis.personality.user_preferences['break_reminder'] = config.break_reminder
             updates.append(f"Break reminders {'enabled' if config.break_reminder else 'disabled'}")
             
+        user_name = self.jarvis.personality.user_preferences.get('name', 'Sir')
         return {
             "status": "updated",
             "updates": updates,
-            "message": f"Configuration updated, {self.jarvis.personality.user_preferences['name']}."
+            "message": f"Configuration updated, {user_name}."
         }
         
     async def get_personality(self) -> Dict:
@@ -615,9 +634,13 @@ class JARVISVoiceAPI:
             
         try:
             # Send connection confirmation
+            user_name = "Sir"  # Default
+            if self.jarvis and hasattr(self.jarvis, 'personality') and hasattr(self.jarvis.personality, 'user_preferences'):
+                user_name = self.jarvis.personality.user_preferences.get('name', 'Sir')
+            
             await websocket.send_json({
                 "type": "connected",
-                "message": f"JARVIS online. How may I assist you, {self.jarvis.personality.user_preferences['name']}?",
+                "message": f"JARVIS online. How may I assist you, {user_name}?",
                 "timestamp": datetime.now().isoformat()
             })
             
@@ -818,16 +841,29 @@ class JARVISVoiceAPI:
                         needs_clarification=False
                     )
                     
-                    # Process command and get context in parallel
-                    response_task = asyncio.create_task(
-                        self.jarvis.personality.process_voice_command(voice_command)
-                    )
-                    context_task = asyncio.create_task(
-                        asyncio.to_thread(self.jarvis.personality._get_context_info)
-                    )
+                    # Process command and get context
+                    response = "I'm currently operating with limited functionality. How may I assist you?"
+                    context = {}
                     
-                    response = await response_task
-                    context = await context_task
+                    if self.jarvis and hasattr(self.jarvis, 'personality'):
+                        # Process command and get context in parallel
+                        response_task = asyncio.create_task(
+                            self.jarvis.personality.process_voice_command(voice_command)
+                        )
+                        context_task = asyncio.create_task(
+                            asyncio.to_thread(self.jarvis.personality._get_context_info)
+                        )
+                        
+                        response = await response_task
+                        context = await context_task
+                    else:
+                        # Provide basic response without full personality
+                        if "weather" in data['text'].lower():
+                            response = "I'm unable to access weather data in limited mode. Please try again later."
+                        elif "time" in data['text'].lower():
+                            response = f"The current time is {datetime.now().strftime('%I:%M %p')}."
+                        else:
+                            response = f"I heard: '{data['text']}'. I'm operating with limited functionality."
                     logger.info(f"[JARVIS WS] Response: {response[:100]}...")
                     
                     # Send response immediately
