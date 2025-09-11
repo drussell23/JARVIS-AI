@@ -1506,6 +1506,13 @@ System Control Commands:
             
             # Use vision to read whatever is on screen
             if hasattr(self, 'vision_handler') and self.vision_handler:
+                # Use fast weather analysis instead of describe_screen
+                if hasattr(self.vision_handler, 'analyze_weather_fast'):
+                    result_dict = await self.vision_handler.analyze_weather_fast()
+                    if result_dict.get('success') and result_dict.get('analysis'):
+                        return result_dict['analysis']
+                    
+                # Fallback to describe_screen if fast analysis not available
                 vision_params = {
                     'query': 'Look at the Weather app on screen. Read the current temperature number, weather condition (sunny/cloudy/etc), and today\'s high/low temperatures. Be specific with the exact numbers you see.'
                 }
@@ -1601,8 +1608,8 @@ System Control Commands:
         
         try:
             # Try vision workflow with overall timeout
-            logger.info("[WEATHER HANDLER] Starting main weather processing with 10s timeout")
-            result = await asyncio.wait_for(get_weather_with_timeout(), timeout=10.0)
+            logger.info("[WEATHER HANDLER] Starting main weather processing with 20s timeout")
+            result = await asyncio.wait_for(get_weather_with_timeout(), timeout=20.0)
             logger.info(f"[WEATHER HANDLER] Main weather processing result: {result[:100] if result else 'None'}...")
             if result:
                 return result

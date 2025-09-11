@@ -1,0 +1,45 @@
+{
+  "run_time": "2025-09-11T17:41:37.120246",
+  "results": [
+    {
+      "test": "Weather App Control",
+      "passed": false,
+      "details": "Failed to bring Weather to front",
+      "timestamp": "2025-09-11T17:40:44.755380"
+    },
+    {
+      "test": "Navigation to My Location",
+      "passed": true,
+      "details": null,
+      "timestamp": "2025-09-11T17:40:48.587518"
+    },
+    {
+      "test": "Vision Analysis",
+      "passed": true,
+      "details": "From the code output visible in the terminal, I can see this weather data:\n\nLocation: New York, Temp",
+      "timestamp": "2025-09-11T17:40:51.573612"
+    },
+    {
+      "test": "Weather System",
+      "passed": true,
+      "details": "Looking at the Weather app for New York. it's 84\u00b0F with sunny. Today's high will be 84\u00b0F with a low of 62\u00b0F.",
+      "timestamp": "2025-09-11T17:41:01.885065"
+    },
+    {
+      "test": "JARVIS Integration",
+      "passed": true,
+      "details": "Looking at the Weather app for New York. it's 84\u00b0F with sunny. Today's high will be 84\u00b0F with a low ",
+      "timestamp": "2025-09-11T17:41:23.919684"
+    },
+    {
+      "test": "Performance",
+      "passed": true,
+      "details": {
+        "screenshot": 0.3739159107208252,
+        "fast_analysis": 4.147806882858276,
+        "complete_flow": 8.677113056182861
+      },
+      "timestamp": "2025-09-11T17:41:37.118554"
+    }
+  ]
+}

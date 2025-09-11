@@ -148,114 +148,112 @@ class UnifiedVisionWeather:
     
     async def _select_my_location(self):
         """
-        Dynamically find and click on user's location in sidebar
-        Works with any location name, any position
+        Navigate to My Location using keyboard shortcuts
+        More reliable than trying to find and click
         """
-        if not self.vision_handler:
+        if not self.controller:
+            logger.warning("No controller available for navigation")
             return
         
         try:
-            # Ask vision to find user's location with timeout
-            try:
-                result = await asyncio.wait_for(
-                    self.vision_handler.describe_screen({
-                        'query': """Look at the Weather app sidebar on the left.
-                        Find the location that says "My Location" or has a location/home icon.
-                        It's usually the first item in the list.
-                        Tell me exactly what it says and which position it is (first, second, etc.)."""
-                    }),
-                    timeout=5.0  # 5 second timeout for location finding
-                )
-            except asyncio.TimeoutError:
-                logger.warning("Location finding timed out")
-                return
+            logger.info("Navigating to My Location using keyboard")
             
-            if result.success:
-                # Parse location from response
-                location_info = self._parse_location_from_vision(result.description)
-                
-                if location_info and self.controller:
-                    # Click on the location
-                    await self._click_location(location_info)
-                    await asyncio.sleep(0.5)  # Wait for weather to update
-                    
+            # First, ensure Weather app is active
+            success, _ = self.controller.execute_applescript('''
+                tell application "Weather"
+                    activate
+                    set frontmost to true
+                end tell
+            ''')
+            await asyncio.sleep(0.5)
+            
+            # Use keyboard navigation to select My Location
+            # Press up arrows to go to top of list
+            await self.controller.key_press('up')
+            await asyncio.sleep(0.2)
+            await self.controller.key_press('up')
+            await asyncio.sleep(0.2)
+            await self.controller.key_press('up')
+            await asyncio.sleep(0.2)
+            
+            # Now press down once to select first item (usually My Location)
+            await self.controller.key_press('down')
+            await asyncio.sleep(0.2)
+            
+            # Press enter to select
+            await self.controller.key_press('return')
+            await asyncio.sleep(1.0)  # Wait for weather to load
+            
+            logger.info("Successfully navigated to My Location")
+            
         except Exception as e:
-            logger.error(f"Failed to select location: {e}")
+            logger.error(f"Failed to navigate to My Location: {e}")
+            # Continue anyway - maybe it's already selected
     
     async def _extract_comprehensive_weather(self) -> Dict[str, Any]:
         """
-        Extract ALL weather data visible on screen
-        Completely dynamic - no assumptions about layout
+        Extract weather data using fast single-region analysis
         """
         if not self.vision_handler:
             return {}
         
         try:
-            # Use the built-in analyze_weather_directly method if available
-            if hasattr(self.vision_handler, 'analyze_weather_directly'):
-                logger.info("Using analyze_weather_directly method")
-                weather_description = await asyncio.wait_for(
-                    self.vision_handler.analyze_weather_directly(),
-                    timeout=10.0  # 10 second timeout
+            # Use the new fast weather analysis method
+            if hasattr(self.vision_handler, 'analyze_weather_fast'):
+                logger.info("Using fast weather analysis method")
+                result = await asyncio.wait_for(
+                    self.vision_handler.analyze_weather_fast(),
+                    timeout=8.0  # 8 second timeout for fast analysis
                 )
                 
-                if weather_description:
-                    logger.info("Successfully got weather description from direct analysis")
-                    return self._parse_comprehensive_weather(weather_description)
+                if result.get('success'):
+                    logger.info("Successfully got weather from fast analysis")
+                    return self._parse_comprehensive_weather(result.get('analysis', ''))
                 else:
-                    logger.warning("No weather description returned")
+                    logger.warning(f"Fast weather analysis failed: {result.get('error')}")
             
-            # Fallback to manual screenshot analysis
-            logger.info("Falling back to manual weather analysis")
-            
-            # Capture screen
+            # Fallback to simple screenshot with direct API call
+            logger.info("Using fallback weather analysis")
             screenshot = await self.vision_handler.capture_screen()
             if screenshot is None:
                 logger.error("Failed to capture screenshot")
                 return {}
             
-            # Convert PIL to numpy if needed
+            # Use the simplest API call possible
             import numpy as np
             from PIL import Image
             if isinstance(screenshot, Image.Image):
-                screenshot = np.array(screenshot)
+                screenshot_np = np.array(screenshot)
+            else:
+                screenshot_np = screenshot
+                
+            # Direct simple prompt
+            weather_prompt = "Read the Weather app: What's the location, current temperature, and weather condition?"
             
-            # Use smart_analyze for weather
-            focused_prompt = """Look at the Weather app currently on screen. Extract:
-1. The location name showing
-2. The current temperature (large number) 
-3. Current weather condition (Clear, Cloudy, etc.)
-4. Today's high and low temperatures
-Be specific with exact numbers and text you see."""
-            
+            # Try analyze_screenshot with no sliding window
             result = await asyncio.wait_for(
-                self.vision_handler.smart_analyze(
-                    screenshot,
-                    focused_prompt
+                self.vision_handler.analyze_screenshot(
+                    screenshot_np,
+                    weather_prompt,
+                    use_cache=False,
+                    priority="high"
                 ),
-                timeout=10.0
+                timeout=8.0
             )
             
-            # Parse result based on type
-            if isinstance(result, dict):
-                description = result.get('description', result.get('summary', ''))
-            elif isinstance(result, str):
-                description = result
-            else:
-                description = ""
-                
-            if description:
-                logger.info("Successfully analyzed weather from screenshot")
+            if result:
+                description = result[0].get('description', '') if isinstance(result, tuple) else str(result)
+                logger.info("Got weather from fallback analysis")
                 return self._parse_comprehensive_weather(description)
             else:
-                logger.warning("No weather data extracted from analysis")
+                logger.warning("No weather data from fallback")
                 return {}
                     
         except asyncio.TimeoutError:
-            logger.error("Weather vision analysis timed out")
+            logger.error("Weather analysis timed out after 8 seconds")
             return {}
         except Exception as e:
-            logger.error(f"Weather vision analysis error: {e}")
+            logger.error(f"Weather analysis error: {e}")
             import traceback
             traceback.print_exc()
             return {}
@@ -277,14 +275,23 @@ Be specific with exact numbers and text you see."""
             'alerts': []
         }
         
-        # Extract location
-        location_match = re.search(
-            r'(?:location|city|place)[:\s]+([^,\n]+)', 
-            vision_response, 
-            re.IGNORECASE
-        )
-        if location_match:
-            data['location'] = location_match.group(1).strip()
+        # Handle direct format like "New York: 80°F, Condition: Sunny, High/Low: 80°/62°"
+        simple_format_match = re.match(r'^([^:]+):\s*(\d+)°F', vision_response)
+        if simple_format_match:
+            data['location'] = simple_format_match.group(1).strip()
+        
+        # Extract location - try multiple patterns
+        if not data['location']:
+            location_patterns = [
+                r'^([^:,]+):\s*\d+°',  # "New York: 80°"
+                r'(?:location|city|place)[:\s]+([^,\n]+)',  # "Location: New York"
+                r'(?:in|at|for)\s+([A-Z][a-zA-Z\s]+)(?:[,.]|$)'  # "in New York"
+            ]
+            for pattern in location_patterns:
+                location_match = re.search(pattern, vision_response, re.IGNORECASE)
+                if location_match:
+                    data['location'] = location_match.group(1).strip()
+                    break
         
         # Extract current temperature
         temp_matches = re.findall(r'(\d+)°[CF]?', vision_response)
@@ -302,14 +309,21 @@ Be specific with exact numbers and text you see."""
         
         # Extract conditions dynamically
         vision_lower = vision_response.lower()
-        for condition in self.ui_patterns['conditions']:
-            if condition in vision_lower:
-                # Find the context around the condition
-                pattern = rf'(?:currently|now|condition)[:\s]*.*?({condition}[\w\s]*)'
-                match = re.search(pattern, vision_lower, re.IGNORECASE)
-                if match:
-                    data['current']['condition'] = match.group(1).strip().title()
-                    break
+        
+        # First try direct condition format
+        condition_match = re.search(r'condition[:\s]+(\w+)', vision_response, re.IGNORECASE)
+        if condition_match:
+            data['current']['condition'] = condition_match.group(1).strip().title()
+        else:
+            # Fall back to pattern matching
+            for condition in self.ui_patterns['conditions']:
+                if condition in vision_lower:
+                    # Find the context around the condition
+                    pattern = rf'(?:currently|now|condition)[:\s]*.*?({condition}[\w\s]*)'
+                    match = re.search(pattern, vision_lower, re.IGNORECASE)
+                    if match:
+                        data['current']['condition'] = match.group(1).strip().title()
+                        break
         
         # Extract detailed conditions
         detail_patterns = {

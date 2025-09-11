@@ -3105,6 +3105,123 @@ class ClaudeVisionAnalyzer:
             logger.error(f"Direct weather analysis failed: {e}")
             return None
     
+    async def analyze_weather_fast(self, screenshot: Optional[np.ndarray] = None) -> Dict[str, Any]:
+        """Fast single-region weather analysis optimized for speed"""
+        try:
+            # Capture screen if not provided
+            if screenshot is None:
+                screenshot = await self.capture_screen()
+                if screenshot is None:
+                    return {"success": False, "error": "Failed to capture screen"}
+            
+            # Convert PIL to numpy if needed
+            if isinstance(screenshot, Image.Image):
+                screenshot = np.array(screenshot)
+            
+            # Use direct API call with optimized settings
+            prompt = """You are looking at the macOS Weather app. Extract ONLY this information:
+1. Location name (shown at top or in sidebar)
+2. Current temperature (the large number)
+3. Current condition (Clear, Cloudy, Rain, etc.)
+4. Today's high/low if visible
+5. Any precipitation percentage shown
+
+Be concise. Format: Location: X, Temp: X°F, Condition: X, High/Low: X/X"""
+
+            # Prepare image for API
+            from PIL import Image as PILImage
+            import io
+            import base64
+            
+            # Convert and resize
+            img = PILImage.fromarray(screenshot)
+            
+            # Convert RGBA to RGB if necessary
+            if img.mode == 'RGBA':
+                rgb_img = PILImage.new('RGB', img.size, (255, 255, 255))
+                rgb_img.paste(img, mask=img.split()[3] if img.mode == 'RGBA' else None)
+                img = rgb_img
+            
+            # Resize if needed
+            max_dim = 1280
+            if img.width > max_dim or img.height > max_dim:
+                img.thumbnail((max_dim, max_dim), PILImage.Resampling.LANCZOS)
+            
+            # Convert to base64
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG", quality=85)
+            base64_image = base64.b64encode(buffer.getvalue()).decode()
+            
+            # Direct API call using httpx
+            import httpx
+            
+            # Get API key from client
+            api_key = self.client.api_key if hasattr(self.client, 'api_key') else os.getenv('ANTHROPIC_API_KEY')
+            if not api_key:
+                return {"success": False, "error": "No API key available"}
+                
+            headers = {
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+            }
+            
+            data = {
+                "model": "claude-3-5-sonnet-20241022",
+                "max_tokens": 200,
+                "temperature": 0.3,
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": base64_image
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
+                        }
+                    ]
+                }]
+            }
+            
+            # Make the API call
+            logger.info("[WEATHER] Making direct API call to Claude")
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers=headers,
+                    json=data,
+                    timeout=10.0
+                )
+            
+            if response.status_code == 200:
+                result = response.json()
+                content = result.get('content', [{}])[0].get('text', '')
+                logger.info(f"[WEATHER] Got response: {content[:100]}...")
+                return {
+                    "success": True,
+                    "analysis": content,
+                    "method": "direct_api_call"
+                }
+            else:
+                logger.error(f"[WEATHER] API error: {response.status_code}")
+                return {
+                    "success": False,
+                    "error": f"API error: {response.status_code}"
+                }
+                
+        except Exception as e:
+            logger.error(f"Fast weather analysis failed: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
     async def quick_analysis(self, screenshot: np.ndarray, 
                            detail_level: str = "brief") -> Dict[str, Any]:
         """Configurable quick analysis"""
