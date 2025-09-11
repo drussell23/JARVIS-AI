@@ -220,7 +220,9 @@ class JARVISVoiceAPI:
         
         # Only initialize JARVIS if we actually need its properties for the response
         if jarvis_instance:
-            running = jarvis_instance.running if hasattr(jarvis_instance, 'running') else False
+            running = False
+            if hasattr(jarvis_instance, 'running'):
+                running = jarvis_instance.running
             user_name = jarvis_instance.user_name if hasattr(jarvis_instance, 'user_name') else "Sir"
             wake_words = jarvis_instance.wake_words if hasattr(jarvis_instance, 'wake_words') else ["hey jarvis", "jarvis"]
             
@@ -285,8 +287,10 @@ class JARVISVoiceAPI:
             result = await activate_jarvis_dynamic(context)
             
             # If we have the actual JARVIS instance and it's not running, start it
-            if self.jarvis_available and hasattr(self, 'jarvis') and self.jarvis and not self.jarvis.running:
-                asyncio.create_task(self.jarvis.start())
+            if self.jarvis_available and hasattr(self, 'jarvis') and self.jarvis:
+                if hasattr(self.jarvis, 'running') and not self.jarvis.running:
+                    if hasattr(self.jarvis, 'start'):
+                        asyncio.create_task(self.jarvis.start())
             
             return result
             
@@ -316,13 +320,14 @@ class JARVISVoiceAPI:
                 "message": "JARVIS deactivated"
             }
             
-        if not self.jarvis.running:
+        if self.jarvis and hasattr(self.jarvis, 'running') and not self.jarvis.running:
             return {
                 "status": "already_inactive",
                 "message": "JARVIS is already in standby mode"
             }
             
-        await self.jarvis._shutdown()
+        if self.jarvis and hasattr(self.jarvis, '_shutdown'):
+            await self.jarvis._shutdown()
         
         return {
             "status": "deactivated",
@@ -366,9 +371,10 @@ class JARVISVoiceAPI:
                 }
             
             # Ensure JARVIS is active
-            if not self.jarvis.running:
-                self.jarvis.running = True
-                logger.info("Activating JARVIS for command processing")
+            if self.jarvis and hasattr(self.jarvis, 'running'):
+                if not self.jarvis.running:
+                    self.jarvis.running = True
+                    logger.info("Activating JARVIS for command processing")
             
             # Process command through JARVIS agent (with system control)
             logger.info(f"[JARVIS API] Processing command: '{command.text}'")
@@ -811,9 +817,10 @@ class JARVISVoiceAPI:
                             continue
                     
                     # Ensure JARVIS is active for WebSocket commands
-                    if not self.jarvis.running:
-                        self.jarvis.running = True
-                        logger.info("Activating JARVIS for WebSocket command")
+                    if self.jarvis and hasattr(self.jarvis, 'running'):
+                        if not self.jarvis.running:
+                            self.jarvis.running = True
+                            logger.info("Activating JARVIS for WebSocket command")
                     
                     # Handle activation command specially
                     if command_text.lower() == "activate":
