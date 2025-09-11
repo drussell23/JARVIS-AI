@@ -200,11 +200,27 @@ async def handle_voice_command(
         command = message.get("command", "")
         logger.info(f"[WEBSOCKET DEBUG] Processing command: '{command}'")
 
-        # Process command through JARVIS
-        response = await jarvis.process_voice_input(command)
-        logger.info(
-            f"[WEBSOCKET DEBUG] JARVIS response: {response[:100] if response else 'None'}..."
-        )
+        # Process command through JARVIS with timeout
+        try:
+            response = await asyncio.wait_for(
+                jarvis.process_voice_input(command),
+                timeout=25.0  # 25 second timeout
+            )
+            logger.info(
+                f"[WEBSOCKET DEBUG] JARVIS response: {response[:100] if response else 'None'}..."
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"[WEBSOCKET DEBUG] Command timed out: '{command}'")
+            # Handle timeout based on command type
+            if any(word in command.lower() for word in ['weather', 'temperature', 'forecast', 'rain']):
+                try:
+                    import subprocess
+                    subprocess.run(['open', '-a', 'Weather'], check=False)
+                    response = "I'm having trouble reading the weather data. I've opened the Weather app for you to check directly, Sir."
+                except:
+                    response = "I'm experiencing a delay accessing the weather information. Please check the Weather app directly, Sir."
+            else:
+                response = "I apologize, but that request is taking too long to process. Please try again, Sir."
 
         return {
             "type": "command_result",

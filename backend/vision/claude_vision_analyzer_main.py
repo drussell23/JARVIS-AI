@@ -3072,7 +3072,38 @@ class ClaudeVisionAnalyzer:
             if result['success']:
                 return result['analysis']
         
-        return None
+        # Final fallback - direct weather analysis
+        return await self.analyze_weather_directly()
+    
+    async def analyze_weather_directly(self) -> Optional[str]:
+        """Direct weather analysis by capturing and reading Weather app"""
+        try:
+            # Capture current screen
+            screenshot = await self.capture_screen()
+            if screenshot is None:
+                return None
+            
+            # Convert to numpy array if needed
+            if isinstance(screenshot, Image.Image):
+                screenshot = np.array(screenshot)
+            
+            # Analyze for weather specifically
+            result = await self.smart_analyze(
+                screenshot,
+                "Focus ONLY on the Weather app if visible. Extract: 1) Current temperature (exact number), 2) Current conditions (sunny/cloudy/etc), 3) Today's high/low temperatures, 4) Location city name, 5) Any precipitation chance. Be very specific with the numbers you see."
+            )
+            
+            # Extract description from result
+            if isinstance(result, dict):
+                description = result.get('description', result.get('summary', ''))
+                if description and any(word in description.lower() for word in ['temperature', 'degrees', '°', 'weather']):
+                    return description
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Direct weather analysis failed: {e}")
+            return None
     
     async def quick_analysis(self, screenshot: np.ndarray, 
                            detail_level: str = "brief") -> Dict[str, Any]:
@@ -3647,12 +3678,18 @@ Focus on what's visible in this specific region. Be concise but thorough."""
         # Extract query from params
         query = params.get('query', 'Describe what you see on screen')
         
-        # Use smart analyze for the description
-        # In real use, this would capture the current screen
-        # For now, we expect the screenshot to be provided
+        # Check if screenshot provided, otherwise capture
         screenshot = params.get('screenshot')
         if screenshot is None:
-            return {'success': False, 'description': 'No screenshot provided'}
+            # Capture current screen
+            logger.info("No screenshot provided, capturing current screen")
+            screenshot = await self.capture_screen()
+            if screenshot is None:
+                return {'success': False, 'description': 'Unable to capture screen'}
+            
+            # Convert to numpy array if needed
+            if isinstance(screenshot, Image.Image):
+                screenshot = np.array(screenshot)
         
         result = await self.smart_analyze(screenshot, query)
         return {

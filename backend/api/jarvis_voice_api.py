@@ -345,8 +345,26 @@ class JARVISVoiceAPI:
             
             # Process command through JARVIS agent (with system control)
             logger.info(f"[JARVIS API] Processing command: '{command.text}'")
-            response = await self.jarvis.process_voice_input(command.text)
-            logger.info(f"[JARVIS API] Response: '{response[:100]}...' (truncated)")
+            
+            # Add timeout to prevent hanging
+            try:
+                response = await asyncio.wait_for(
+                    self.jarvis.process_voice_input(command.text),
+                    timeout=25.0  # 25 second timeout for API calls
+                )
+                logger.info(f"[JARVIS API] Response: '{response[:100]}...' (truncated)")
+            except asyncio.TimeoutError:
+                logger.error(f"[JARVIS API] Command processing timed out after 25s: '{command.text}'")
+                # For weather commands, open the Weather app as fallback
+                if any(word in command.text.lower() for word in ['weather', 'temperature', 'forecast', 'rain']):
+                    try:
+                        import subprocess
+                        subprocess.run(['open', '-a', 'Weather'], check=False)
+                        response = "I'm having trouble reading the weather data. I've opened the Weather app for you to check directly, Sir."
+                    except:
+                        response = "I'm experiencing a delay accessing the weather information. Please check the Weather app directly, Sir."
+                else:
+                    response = "I apologize, but that request is taking too long to process. Please try again, Sir."
             
             # Get contextual info if available
             context = {}
