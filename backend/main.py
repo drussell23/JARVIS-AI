@@ -71,6 +71,11 @@ logger = logging.getLogger(__name__)
 logging.getLogger("api.jarvis_voice_api").setLevel(logging.DEBUG)
 logging.getLogger("api.jarvis_factory").setLevel(logging.DEBUG)
 logging.getLogger("chatbots.claude_vision_chatbot").setLevel(logging.DEBUG)
+# Add weather-specific debug logging
+logging.getLogger("voice.jarvis_agent_voice").setLevel(logging.DEBUG)
+logging.getLogger("workflows.weather_app_vision_unified").setLevel(logging.DEBUG)
+logging.getLogger("system_control.unified_vision_weather").setLevel(logging.DEBUG)
+logging.getLogger("api.voice_websocket_handler").setLevel(logging.DEBUG)
 
 # Check if we're in optimized mode - default to True for faster startup
 OPTIMIZE_STARTUP = os.getenv('OPTIMIZE_STARTUP', 'true').lower() == 'true'
@@ -330,6 +335,19 @@ async def lifespan(app: FastAPI):
                 logger.info("✅ App state set in JARVIS factory")
             except ImportError:
                 logger.warning("⚠️ JARVIS factory not available for dependency injection")
+            
+            # Initialize weather system with vision
+            try:
+                from system_control.weather_system_config import initialize_weather_system
+                from system_control.macos_controller import MacOSController
+                
+                controller = MacOSController()
+                weather_bridge = initialize_weather_system(app.state.vision_analyzer, controller)
+                app.state.weather_system = weather_bridge
+                logger.info("✅ Weather system initialized with vision")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not initialize weather system: {e}")
+                
         elif analyzer_class:
             logger.warning("⚠️ Vision analyzer available but no ANTHROPIC_API_KEY set")
     
@@ -478,23 +496,31 @@ def mount_routers():
         app.include_router(monitoring['router'], prefix="/monitoring", tags=["monitoring"])
         logger.info("✅ Monitoring API mounted")
     
-    # Vision WebSocket API
+    # Unified WebSocket API - replaces individual WebSocket endpoints
     try:
-        from api.vision_websocket import router as vision_ws_router
-        app.include_router(vision_ws_router, prefix="/vision", tags=["vision"])
-        logger.info("✅ Vision WebSocket API mounted")
+        from api.unified_websocket import router as unified_ws_router
+        app.include_router(unified_ws_router, tags=["websocket"])
+        logger.info("✅ Unified WebSocket API mounted at /ws")
     except ImportError as e:
-        logger.warning(f"Could not import vision WebSocket router: {e}")
+        logger.warning(f"Could not import unified WebSocket router: {e}")
+        
+        # Fallback to individual WebSocket APIs if unified not available
+        try:
+            from api.vision_websocket import router as vision_ws_router
+            app.include_router(vision_ws_router, prefix="/vision", tags=["vision"])
+            logger.info("✅ Vision WebSocket API mounted (fallback)")
+        except ImportError as e:
+            logger.warning(f"Could not import vision WebSocket router: {e}")
+        
+        # ML Audio API
+        try:
+            from api.ml_audio_api import router as ml_audio_router
+            app.include_router(ml_audio_router, tags=["ML Audio"])
+            logger.info("✅ ML Audio API mounted (fallback)")
+        except ImportError as e:
+            logger.warning(f"Could not import ML Audio router: {e}")
     
-    # ML Audio API
-    try:
-        from api.ml_audio_api import router as ml_audio_router
-        app.include_router(ml_audio_router, tags=["ML Audio"])
-        logger.info("✅ ML Audio API mounted")
-    except ImportError as e:
-        logger.warning(f"Could not import ML Audio router: {e}")
-    
-    # Network Recovery API
+    # Network Recovery API (kept separate as it's not WebSocket)
     try:
         from api.network_recovery_api import router as network_recovery_router
         app.include_router(network_recovery_router, tags=["Network Recovery"])
@@ -515,6 +541,9 @@ async def root():
             name: bool(comp) for name, comp in components.items() if comp is not None
         }
     }
+
+# Note: Main WebSocket endpoint is now handled by unified_websocket router at /ws
+# This provides a single endpoint for all WebSocket communication
 
 # Audio endpoints for frontend compatibility
 @app.post("/audio/speak")
