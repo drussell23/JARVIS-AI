@@ -3119,13 +3119,15 @@ class ClaudeVisionAnalyzer:
                 screenshot = np.array(screenshot)
             
             # Use direct API call with optimized settings
-            prompt = """You are looking at the macOS Weather app. Extract ONLY this information:
-1. Location name (shown at top or in sidebar)
-2. Current temperature (the large number)
+            prompt = """You are looking at the macOS Weather app. Focus on the MAIN WEATHER DISPLAY (center/right part of screen), NOT the sidebar.
+Extract from the MAIN display only:
+1. Location name (shown at top of main display)
+2. Current temperature (the large number in center)
 3. Current condition (Clear, Cloudy, Rain, etc.)
 4. Today's high/low if visible
 5. Any precipitation percentage shown
 
+IMPORTANT: Read the currently selected location's weather, not locations from the sidebar.
 Be concise. Format: Location: X, Temp: X°F, Condition: X, High/Low: X/X"""
 
             # Prepare image for API

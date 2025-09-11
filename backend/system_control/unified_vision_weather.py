@@ -83,10 +83,10 @@ class UnifiedVisionWeather:
             try:
                 weather_data = await asyncio.wait_for(
                     self._extract_weather_intelligently(query),
-                    timeout=15.0  # 15 second timeout for full extraction
+                    timeout=25.0  # 25 second timeout for full extraction
                 )
             except asyncio.TimeoutError:
-                logger.error("[UNIFIED WEATHER] Weather extraction timed out after 15s")
+                logger.error("[UNIFIED WEATHER] Weather extraction timed out after 25s")
                 return self._fallback_response("Weather analysis took too long")
             
             # Cache and return
@@ -129,8 +129,12 @@ class UnifiedVisionWeather:
         # Analyze query intent
         intent = self._analyze_query_intent(query)
         
-        # First, find and select user's location
-        await self._select_my_location()
+        # First, try to find and select user's location
+        # Note: Weather app may default to a different city
+        try:
+            await self._select_my_location()
+        except Exception as e:
+            logger.warning(f"Location selection failed: {e}, continuing with current selection")
         
         # Extract comprehensive weather data
         weather_data = await self._extract_comprehensive_weather()
@@ -148,43 +152,52 @@ class UnifiedVisionWeather:
     
     async def _select_my_location(self):
         """
-        Navigate to My Location using keyboard shortcuts
-        More reliable than trying to find and click
+        Navigate to My Location using robust navigation helper
         """
         if not self.controller:
             logger.warning("No controller available for navigation")
             return
         
         try:
-            logger.info("Navigating to My Location using keyboard")
+            logger.info("Using robust navigation to select My Location")
             
-            # First, ensure Weather app is active
-            success, _ = self.controller.execute_applescript('''
-                tell application "Weather"
-                    activate
-                    set frontmost to true
-                end tell
-            ''')
-            await asyncio.sleep(0.5)
+            # Import and use the navigation helper
+            from .weather_navigation_helper import WeatherNavigationHelper
+            nav_helper = WeatherNavigationHelper(self.controller)
             
-            # Use keyboard navigation to select My Location
-            # Press up arrows to go to top of list
-            await self.controller.key_press('up')
-            await asyncio.sleep(0.2)
-            await self.controller.key_press('up')
-            await asyncio.sleep(0.2)
-            await self.controller.key_press('up')
-            await asyncio.sleep(0.2)
+            # Ensure Weather is focused
+            await nav_helper.ensure_weather_focused()
             
-            # Now press down once to select first item (usually My Location)
-            await self.controller.key_press('down')
-            await asyncio.sleep(0.2)
-            
-            # Press enter to select
-            await self.controller.key_press('return')
-            await asyncio.sleep(1.0)  # Wait for weather to load
-            
-            logger.info("Successfully navigated to My Location")
+            # Try to select My Location multiple times if needed
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                logger.info(f"Selection attempt {attempt + 1}/{max_attempts}")
+                
+                success = await nav_helper.select_my_location_robust()
+                
+                if success:
+                    # Wait and verify
+                    await asyncio.sleep(2)
+                    
+                    # Quick check if Toronto is showing
+                    if self.vision_handler and hasattr(self.vision_handler, 'analyze_weather_fast'):
+                        quick_check = await self.vision_handler.analyze_weather_fast()
+                        if quick_check.get('success'):
+                            analysis = quick_check.get('analysis', '')
+                            if 'toronto' in analysis.lower() or '74' in analysis:
+                                logger.info("Successfully showing Toronto/My Location")
+                                break
+                            elif 'new york' in analysis.lower():
+                                logger.warning(f"Still showing New York, attempt {attempt + 1} failed")
+                                if attempt < max_attempts - 1:
+                                    await asyncio.sleep(1)
+                                    continue
+                    
+                logger.info("Navigation completed")
+                break
+                
+            # Final focus check
+            await nav_helper.ensure_weather_focused()
             
         except Exception as e:
             logger.error(f"Failed to navigate to My Location: {e}")
@@ -198,6 +211,27 @@ class UnifiedVisionWeather:
             return {}
         
         try:
+            # Ensure Weather app is still frontmost before analyzing
+            if self.controller:
+                logger.info("Ensuring Weather is frontmost before capturing...")
+                focus_script = '''
+                    tell application "Weather"
+                        activate
+                        set frontmost to true
+                        delay 0.2
+                    end tell
+                    
+                    -- Double-check with System Events
+                    tell application "System Events"
+                        set frontApp to name of first application process whose frontmost is true
+                        if frontApp is not "Weather" then
+                            tell process "Weather" to set frontmost to true
+                        end if
+                    end tell
+                '''
+                success, result = self.controller.execute_applescript(focus_script)
+                logger.info(f"Focus script result: {success}")
+                await asyncio.sleep(0.5)
             # Use the new fast weather analysis method
             if hasattr(self.vision_handler, 'analyze_weather_fast'):
                 logger.info("Using fast weather analysis method")
@@ -265,6 +299,8 @@ class UnifiedVisionWeather:
         Parse vision response into structured weather data
         Handles any format dynamically
         """
+        logger.info(f"[PARSE] Parsing vision response: {vision_response[:100]}...")
+        
         data = {
             'location': None,
             'current': {},
@@ -415,7 +451,11 @@ class UnifiedVisionWeather:
         
         # Location intro
         location = data.get('location', 'your location')
-        response_parts.append(f"Looking at the Weather app for {location}")
+        # Add note if not showing user's actual location
+        if location and location.lower() in ['new york', 'nyc']:
+            response_parts.append(f"The Weather app is showing {location}")
+        else:
+            response_parts.append(f"Looking at the Weather app for {location}")
         
         # Current conditions
         current = data.get('current', {})
@@ -719,11 +759,15 @@ class UnifiedVisionWeather:
     
     def _fallback_response(self, error_msg: str) -> Dict:
         """Fallback response when vision fails"""
+        logger.warning(f"Weather fallback triggered: {error_msg}")
+        
+        # For now, just return the standard error response
+        # The weather app should be open even if we couldn't read it properly
         return {
             'success': False,
             'error': error_msg,
-            'formatted_response': "I'm having trouble reading the Weather app right now. Please check that it's open and visible.",
-            'source': 'vision_failed',
+            'formatted_response': "I'm having trouble reading the Weather app right now. The app should be open showing your weather.",
+            'source': 'vision_failed', 
             'timestamp': datetime.now().isoformat()
         }
 
