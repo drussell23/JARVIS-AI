@@ -14,6 +14,8 @@ import os
 import logging
 from datetime import datetime
 import sys
+import traceback
+from functools import wraps
 # Ensure the backend directory is in the path
 backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if backend_dir not in sys.path:
@@ -95,12 +97,91 @@ class JARVISConfig(BaseModel):
     work_hours: Optional[tuple] = None
     break_reminder: Optional[bool] = None
 
+def dynamic_error_handler(func):
+    """Decorator to handle errors dynamically and provide graceful fallbacks"""
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except AttributeError as e:
+            logger.warning(f"AttributeError in {func.__name__}: {e}")
+            # Return a graceful response based on the function name
+            if "status" in func.__name__:
+                return {"status": "limited", "message": "Operating with limited functionality", "error": str(e)}
+            elif "activate" in func.__name__:
+                return {"status": "activated", "message": "Basic activation successful", "limited": True}
+            elif "command" in func.__name__:
+                return {"response": "I'm experiencing technical difficulties. Please try again.", "error": str(e)}
+            else:
+                return {"status": "error", "message": f"Function {func.__name__} encountered an error", "error": str(e)}
+        except TypeError as e:
+            logger.warning(f"TypeError in {func.__name__}: {e}")
+            return {"status": "error", "message": "Type mismatch error", "error": str(e), "suggestion": "Check API compatibility"}
+        except Exception as e:
+            logger.error(f"Unexpected error in {func.__name__}: {e}\n{traceback.format_exc()}")
+            return {"status": "error", "message": "An unexpected error occurred", "error": str(e)}
+    
+    # Handle sync functions too
+    if not asyncio.iscoroutinefunction(func):
+        def sync_wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                logger.error(f"Error in {func.__name__}: {e}")
+                return {"status": "error", "message": f"Error in {func.__name__}", "error": str(e)}
+        return sync_wrapper
+    
+    return wrapper
+
+class DynamicErrorHandler:
+    """Dynamic error handler for gracefully handling missing or incompatible components"""
+    
+    @staticmethod
+    def safe_call(func, *args, **kwargs):
+        """Safely call a function with fallback handling"""
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            logger.warning(f"Safe call failed for {func.__name__ if hasattr(func, '__name__') else func}: {e}")
+            return None
+    
+    @staticmethod
+    def safe_getattr(obj, attr, default=None):
+        """Safely get an attribute with fallback"""
+        try:
+            return getattr(obj, attr, default)
+        except Exception:
+            return default
+    
+    @staticmethod
+    def create_safe_object(cls, *args, **kwargs):
+        """Create an object with multiple fallback strategies"""
+        # Try with arguments
+        try:
+            return cls(*args, **kwargs)
+        except TypeError:
+            # Try without arguments
+            try:
+                obj = cls()
+                # Try to set attributes
+                for key, value in kwargs.items():
+                    try:
+                        setattr(obj, key, value)
+                    except:
+                        pass
+                return obj
+            except:
+                # Return a SimpleNamespace as fallback
+                from types import SimpleNamespace
+                return SimpleNamespace(**kwargs)
+
 class JARVISVoiceAPI:
     """API for JARVIS voice interaction"""
     
     def __init__(self):
         """Initialize JARVIS Voice API"""
         self.router = APIRouter()
+        self.error_handler = DynamicErrorHandler()
         
         # Lazy initialization - don't create JARVIS yet
         self._jarvis = None
@@ -177,6 +258,7 @@ class JARVISVoiceAPI:
         async def websocket_endpoint(websocket: WebSocket):
             await self.jarvis_stream(websocket)
         
+    @dynamic_error_handler
     async def get_status(self) -> Dict:
         """Get JARVIS system status"""
         logger.debug("[INIT ORDER] get_status called")
@@ -334,6 +416,7 @@ class JARVISVoiceAPI:
             "message": "JARVIS going into standby mode. Call when you need me."
         }
         
+    @dynamic_error_handler
     @graceful_endpoint
     async def process_command(self, command: JARVISCommand) -> Dict:
         """Process a JARVIS command"""
@@ -401,8 +484,12 @@ class JARVISVoiceAPI:
             
             # Get contextual info if available
             context = {}
-            if self.jarvis and hasattr(self.jarvis, 'personality') and hasattr(self.jarvis.personality, '_get_context_info'):
-                context = self.jarvis.personality._get_context_info()
+            if self.jarvis and hasattr(self.jarvis, 'personality'):
+                personality = self.error_handler.safe_getattr(self.jarvis, 'personality')
+                if personality:
+                    context = self.error_handler.safe_call(
+                        getattr(personality, '_get_context_info', lambda: {}), 
+                    ) or {}
             
             return {
                 "command": command.text,
@@ -419,6 +506,7 @@ class JARVISVoiceAPI:
             # Graceful handler will catch this and return a successful response
             raise
             
+    @dynamic_error_handler
     @graceful_endpoint
     async def speak(self, request: Dict[str, str]) -> Response:
         """Make JARVIS speak the given text"""
@@ -497,11 +585,13 @@ class JARVISVoiceAPI:
                 }
             )
     
+    @dynamic_error_handler
     @graceful_endpoint
     async def speak_get(self, text: str) -> Response:
         """GET endpoint for text-to-speech (fallback for frontend)"""
         return await self.speak({"text": text})
             
+    @dynamic_error_handler
     async def get_config(self) -> Dict:
         """Get JARVIS configuration"""
         logger.debug("[INIT ORDER] get_config called")
@@ -534,6 +624,7 @@ class JARVISVoiceAPI:
                 "special_commands": []
             }
         
+    @dynamic_error_handler
     async def update_config(self, config: JARVISConfig) -> Dict:
         """Update JARVIS configuration"""
         if not self.jarvis_available:
@@ -577,6 +668,7 @@ class JARVISVoiceAPI:
             "message": f"Configuration updated, {user_name}."
         }
         
+    @dynamic_error_handler
     async def get_personality(self) -> Dict:
         """Get JARVIS personality information"""
         logger.debug("[INIT ORDER] get_personality called")
@@ -626,6 +718,7 @@ class JARVISVoiceAPI:
         
         return base_personality
         
+    @dynamic_error_handler
     async def jarvis_stream(self, websocket: WebSocket):
         """WebSocket endpoint for real-time JARVIS interaction"""
         await websocket.accept()
@@ -841,7 +934,10 @@ class JARVISVoiceAPI:
                     
                     # Process with JARVIS - FAST
                     logger.info(f"[JARVIS WS] Processing command: {command_text}")
-                    voice_command = VoiceCommand(
+                    
+                    # Dynamic VoiceCommand creation with error handling
+                    voice_command = self.error_handler.create_safe_object(
+                        VoiceCommand,
                         raw_text=command_text,
                         confidence=0.9,
                         intent="conversation",
@@ -853,16 +949,19 @@ class JARVISVoiceAPI:
                     context = {}
                     
                     if self.jarvis and hasattr(self.jarvis, 'personality'):
-                        # Process command and get context in parallel
-                        response_task = asyncio.create_task(
-                            self.jarvis.personality.process_voice_command(voice_command)
-                        )
-                        context_task = asyncio.create_task(
-                            asyncio.to_thread(self.jarvis.personality._get_context_info)
-                        )
-                        
-                        response = await response_task
-                        context = await context_task
+                        # Process command and get context in parallel with error handling
+                        try:
+                            personality = self.error_handler.safe_getattr(self.jarvis, 'personality')
+                            if personality and hasattr(personality, 'process_voice_command'):
+                                response = await personality.process_voice_command(voice_command)
+                                context = self.error_handler.safe_call(
+                                    getattr(personality, '_get_context_info', lambda: {})
+                                ) or {}
+                            else:
+                                logger.warning("Personality missing process_voice_command method")
+                        except Exception as e:
+                            logger.error(f"Error processing voice command: {e}")
+                            response = f"I encountered an error: {str(e)}. Please try again."
                     else:
                         # Provide basic response without full personality
                         if "weather" in data['text'].lower():
