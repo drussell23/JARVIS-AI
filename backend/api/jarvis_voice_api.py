@@ -439,45 +439,84 @@ class JARVISVoiceAPI:
             # Check if this is a weather command - we can handle it even in limited mode
             if any(word in command.text.lower() for word in ['weather', 'temperature', 'forecast', 'rain', 'sunny', 'cloudy']):
                 try:
-                    from system_control.weather_system_config import get_weather_system
-                    weather_system = get_weather_system()
+                    # Try to get the full weather system with vision
+                    weather_system = None
+                    vision_available = False
                     
-                    if weather_system:
-                        logger.info("[JARVIS API] Processing weather command in limited mode")
+                    # Check if we have access to app state
+                    try:
+                        from api.jarvis_factory import get_app_state
+                        app_state = get_app_state()
+                        if app_state and hasattr(app_state, 'weather_system'):
+                            weather_system = app_state.weather_system
+                            vision_available = hasattr(app_state, 'vision_analyzer')
+                            logger.info(f"[JARVIS API] Got weather system from app state, vision: {vision_available}")
+                    except:
+                        pass
+                    
+                    # Fallback to get_weather_system
+                    if not weather_system:
+                        from system_control.weather_system_config import get_weather_system
+                        weather_system = get_weather_system()
+                    
+                    if weather_system and vision_available:
+                        # FULL MODE with vision
+                        logger.info("[JARVIS API] FULL MODE: Processing weather with vision analysis")
                         result = await weather_system.get_weather(command.text)
                         
-                        if result.get('success') and result.get('data'):
-                            weather_data = result['data']
-                            current = weather_data.get('current', {})
-                            location = weather_data.get('location', 'your area')
-                            temp = current.get('temperature', 'unknown')
-                            condition = current.get('condition', 'unknown')
-                            
+                        if result.get('success') and result.get('formatted_response'):
                             return {
-                                "response": f"The weather in {location} is {condition} with a temperature of {temp}°C, Sir.",
+                                "response": result['formatted_response'],
                                 "status": "success",
-                                "confidence": 0.9,
-                                "command_type": "weather"
+                                "confidence": 1.0,
+                                "command_type": "weather_vision",
+                                "mode": "full_vision"
+                            }
+                        else:
+                            # Vision failed
+                            return {
+                                "response": "I attempted to analyze the weather visually but encountered an issue. Let me open the Weather app for you.",
+                                "status": "partial",
+                                "confidence": 0.7,
+                                "command_type": "weather_vision_failed"
                             }
                     
-                    # Fallback: Open Weather app
-                    logger.info("[JARVIS API] Weather system unavailable, opening Weather app")
+                    # LIMITED MODE - No vision
+                    logger.info("[JARVIS API] LIMITED MODE: Opening Weather app with navigation")
                     import subprocess
                     subprocess.run(['open', '-a', 'Weather'], check=False)
                     
+                    # Navigate to My Location
+                    await asyncio.sleep(1.5)
+                    subprocess.run(['osascript', '-e', '''
+                        tell application "System Events"
+                            key code 126
+                            delay 0.2
+                            key code 126
+                            delay 0.2  
+                            key code 125
+                            delay 0.2
+                            key code 36
+                        end tell
+                    '''])
+                    
                     return {
-                        "response": "I'm opening the Weather app for you to check the weather details, Sir. Once it's open, I can analyze the weather information for you.",
-                        "status": "success",
+                        "response": "I'm operating in limited mode without vision analysis. I've opened the Weather app and navigated to your location. For automatic weather reading, please ensure the vision system is initialized with your ANTHROPIC_API_KEY.",
+                        "status": "limited",
                         "confidence": 0.8,
-                        "command_type": "weather_fallback"
+                        "command_type": "weather_limited",
+                        "mode": "limited_no_vision"
                     }
                     
                 except Exception as e:
-                    logger.error(f"[JARVIS API] Weather error in limited mode: {e}")
+                    logger.error(f"[JARVIS API] Weather error: {e}")
+                    import traceback
+                    traceback.print_exc()
                     return {
-                        "response": "I'm having difficulty accessing weather data. Let me open the Weather app for you.",
+                        "response": "I'm having difficulty with the weather system. Let me open the Weather app for you.",
                         "status": "fallback",
-                        "confidence": 0.5
+                        "confidence": 0.5,
+                        "mode": "error"
                     }
             
             # For non-weather commands, return the default limited mode response
@@ -1011,39 +1050,90 @@ class JARVISVoiceAPI:
                         if "weather" in data['text'].lower():
                             # Try to use weather system even in limited mode
                             try:
-                                from system_control.weather_system_config import get_weather_system
-                                weather_system = get_weather_system()
+                                # First, try to get the initialized weather system
+                                weather_system = None
+                                vision_available = False
                                 
-                                if weather_system:
-                                    logger.info("[JARVIS WS] Using weather system in limited mode")
+                                # Check if we have access to app state (for full weather system)
+                                try:
+                                    from api.jarvis_factory import get_app_state
+                                    app_state = get_app_state()
+                                    if app_state and hasattr(app_state, 'weather_system'):
+                                        weather_system = app_state.weather_system
+                                        vision_available = hasattr(app_state, 'vision_analyzer')
+                                        logger.info(f"[JARVIS WS] Got weather system from app state, vision: {vision_available}")
+                                except:
+                                    pass
+                                
+                                # Fallback to get_weather_system
+                                if not weather_system:
+                                    from system_control.weather_system_config import get_weather_system
+                                    weather_system = get_weather_system()
+                                    logger.info("[JARVIS WS] Using fallback weather system")
+                                
+                                if weather_system and vision_available:
+                                    # Full mode with vision
+                                    logger.info("[JARVIS WS] FULL MODE: Using weather system with vision analysis")
+                                    response = "I'm checking the weather for you using vision analysis. One moment..."
+                                    
+                                    # Send immediate response
+                                    await websocket.send_json({
+                                        "type": "response",
+                                        "text": response,
+                                        "command": command_text,
+                                        "timestamp": datetime.now().isoformat(),
+                                        "speak": True
+                                    })
+                                    
+                                    # Get weather with vision
                                     result = await weather_system.get_weather(data['text'])
                                     
-                                    if result.get('success') and result.get('data'):
-                                        weather_data = result['data']
-                                        current = weather_data.get('current', {})
-                                        location = weather_data.get('location', 'your area')
-                                        temp = current.get('temperature', 'unknown')
-                                        condition = current.get('condition', 'unknown')
-                                        
-                                        response = f"The weather in {location} is {condition} with a temperature of {temp}°C, Sir."
+                                    if result.get('success') and result.get('formatted_response'):
+                                        response = result['formatted_response']
+                                        logger.info("[JARVIS WS] Weather vision analysis successful")
                                     else:
-                                        # Fallback: Open Weather app
-                                        logger.info("[JARVIS WS] Weather system failed, opening Weather app")
-                                        import subprocess
-                                        subprocess.run(['open', '-a', 'Weather'], check=False)
-                                        response = "I'm opening the Weather app for you to check the weather details, Sir."
+                                        # Vision failed, but we tried
+                                        response = "I attempted to analyze the weather visually but encountered an issue. The Weather app is open for you to check manually."
+                                        
+                                elif weather_system:
+                                    # Limited mode - no vision
+                                    logger.info("[JARVIS WS] LIMITED MODE: Weather system without vision")
+                                    import subprocess
+                                    
+                                    # Open Weather app
+                                    subprocess.run(['open', '-a', 'Weather'], check=False)
+                                    
+                                    # Try to navigate to My Location
+                                    await asyncio.sleep(1.5)  # Wait for app to open
+                                    subprocess.run(['osascript', '-e', '''
+                                        tell application "System Events"
+                                            key code 126
+                                            delay 0.2
+                                            key code 126
+                                            delay 0.2
+                                            key code 125
+                                            delay 0.2
+                                            key code 36
+                                        end tell
+                                    '''])
+                                    
+                                    response = "I'm operating in limited mode without vision capabilities. I've opened the Weather app and navigated to your location. To enable full weather analysis with automatic reading, please ensure all JARVIS components are loaded."
+                                    
                                 else:
-                                    # No weather system, just open the app
+                                    # No weather system at all
+                                    logger.info("[JARVIS WS] NO WEATHER SYSTEM: Basic fallback")
                                     import subprocess
                                     subprocess.run(['open', '-a', 'Weather'], check=False)
-                                    response = "I'm opening the Weather app for you to check the weather, Sir."
+                                    response = "I'm in basic mode. I've opened the Weather app for you. For automatic weather analysis, please ensure the weather system is properly initialized."
                                     
                             except Exception as e:
-                                logger.error(f"[JARVIS WS] Weather error in limited mode: {e}")
+                                logger.error(f"[JARVIS WS] Weather error: {e}")
+                                import traceback
+                                traceback.print_exc()
                                 try:
                                     import subprocess
                                     subprocess.run(['open', '-a', 'Weather'], check=False)
-                                    response = "I've opened the Weather app for you to check the weather, Sir."
+                                    response = "I encountered an error accessing the weather system. I've opened the Weather app for manual viewing."
                                 except:
                                     response = "I'm having difficulty accessing weather data at the moment."
                         elif "time" in data['text'].lower():

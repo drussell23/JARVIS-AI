@@ -70,7 +70,7 @@ class UnifiedVisionWeather:
             try:
                 app_ready = await asyncio.wait_for(
                     self._ensure_weather_app_ready(),
-                    timeout=5.0  # 5 second timeout for app preparation
+                    timeout=10.0  # 10 second timeout for app preparation
                 )
                 if not app_ready:
                     logger.error("[UNIFIED WEATHER] Weather app not ready")
@@ -109,7 +109,7 @@ class UnifiedVisionWeather:
                 # Open Weather app
                 logger.info("Opening Weather app...")
                 await self._open_weather_app()
-                await asyncio.sleep(2)  # Wait for load
+                await asyncio.sleep(3)  # Wait for app to fully load
             
             # Bring to front
             await self._bring_app_to_front()
@@ -190,55 +190,75 @@ class UnifiedVisionWeather:
         if not self.vision_handler:
             return {}
         
-        # Comprehensive weather extraction prompt
-        vision_prompt = """Analyze the Weather app and extract ALL visible information:
-
-CURRENT CONDITIONS:
-- Location name (exactly as shown)
-- Current temperature (the large number)
-- Weather condition (Clear, Cloudy, etc.)
-- "Feels like" temperature if shown
-- Today's high and low temperatures
-
-DETAILED CONDITIONS (if visible):
-- Wind speed and direction
-- Humidity percentage
-- UV index number
-- Air quality index
-- Visibility distance
-- Pressure
-- Dew point
-- Sunrise and sunset times
-
-HOURLY FORECAST:
-- List each hour shown with temperature and conditions
-- Note any precipitation chances
-
-10-DAY FORECAST:
-- Each day's high/low temperatures
-- Weather conditions for each day
-- Any precipitation percentages
-
-ADDITIONAL:
-- Any weather alerts or warnings
-- Location coordinates if shown
-- Last updated time
-
-Return all found information in a structured format."""
-        
-        # Add timeout for vision analysis to prevent hanging
         try:
+            # Use the built-in analyze_weather_directly method if available
+            if hasattr(self.vision_handler, 'analyze_weather_directly'):
+                logger.info("Using analyze_weather_directly method")
+                weather_description = await asyncio.wait_for(
+                    self.vision_handler.analyze_weather_directly(),
+                    timeout=10.0  # 10 second timeout
+                )
+                
+                if weather_description:
+                    logger.info("Successfully got weather description from direct analysis")
+                    return self._parse_comprehensive_weather(weather_description)
+                else:
+                    logger.warning("No weather description returned")
+            
+            # Fallback to manual screenshot analysis
+            logger.info("Falling back to manual weather analysis")
+            
+            # Capture screen
+            screenshot = await self.vision_handler.capture_screen()
+            if screenshot is None:
+                logger.error("Failed to capture screenshot")
+                return {}
+            
+            # Convert PIL to numpy if needed
+            import numpy as np
+            from PIL import Image
+            if isinstance(screenshot, Image.Image):
+                screenshot = np.array(screenshot)
+            
+            # Use smart_analyze for weather
+            focused_prompt = """Look at the Weather app currently on screen. Extract:
+1. The location name showing
+2. The current temperature (large number) 
+3. Current weather condition (Clear, Cloudy, etc.)
+4. Today's high and low temperatures
+Be specific with exact numbers and text you see."""
+            
             result = await asyncio.wait_for(
-                self.vision_handler.describe_screen({'query': vision_prompt}),
-                timeout=10.0  # 10 second timeout for vision analysis
+                self.vision_handler.smart_analyze(
+                    screenshot,
+                    focused_prompt
+                ),
+                timeout=10.0
             )
+            
+            # Parse result based on type
+            if isinstance(result, dict):
+                description = result.get('description', result.get('summary', ''))
+            elif isinstance(result, str):
+                description = result
+            else:
+                description = ""
+                
+            if description:
+                logger.info("Successfully analyzed weather from screenshot")
+                return self._parse_comprehensive_weather(description)
+            else:
+                logger.warning("No weather data extracted from analysis")
+                return {}
+                    
         except asyncio.TimeoutError:
-            logger.error("Vision analysis timed out after 10 seconds")
+            logger.error("Weather vision analysis timed out")
             return {}
-        
-        if result.success:
-            # Parse the comprehensive response
-            return self._parse_comprehensive_weather(result.description)
+        except Exception as e:
+            logger.error(f"Weather vision analysis error: {e}")
+            import traceback
+            traceback.print_exc()
+            return {}
         
         return {}
     
@@ -509,8 +529,11 @@ Return all found information in a structured format."""
             end tell
             '''
             result = await self._run_applescript(script)
-            return result.strip().lower() == 'true'
-        except:
+            is_running = result.strip().lower() == 'true'
+            logger.info(f"Weather app running check: {is_running}")
+            return is_running
+        except Exception as e:
+            logger.warning(f"Error checking if app is running: {e}")
             return False
     
     async def _open_weather_app(self):

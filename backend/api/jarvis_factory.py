@@ -15,6 +15,10 @@ def set_app_state(app_state: Any):
     _app_state = app_state
     logger.info("App state set for JARVIS factory")
 
+def get_app_state():
+    """Get the app state for accessing shared resources"""
+    return _app_state
+
 def get_vision_analyzer():
     """Get vision analyzer from app state if available"""
     logger.info(f"[JARVIS FACTORY] Getting vision analyzer - app_state exists: {_app_state is not None}")
