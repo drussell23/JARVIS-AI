@@ -901,6 +901,83 @@ class ClaudeVisionChatbot:
         
         # Fallback response if enhanced analyzer not available
         return "I'll need the enhanced vision system to enable continuous monitoring. Currently, I can only take screenshots on demand. Please ensure the vision system is properly initialized."
+    
+    def _is_screen_query(self, user_input: str) -> bool:
+        """Check if user is asking about what's currently on screen"""
+        screen_query_patterns = [
+            r'can you see',
+            r'do you see',
+            r'what do you see',
+            r'what.*on.*screen',
+            r'what.*looking at',
+            r'describe.*screen',
+            r'tell me what',
+            r'what is on',
+            r'what\'s on',
+            r'what are you seeing',
+            r'what can you see'
+        ]
+        
+        input_lower = user_input.lower()
+        for pattern in screen_query_patterns:
+            if re.search(pattern, input_lower):
+                return True
+        return False
+    
+    async def _analyze_current_screen(self, query: str) -> str:
+        """Analyze current screen content when monitoring is active"""
+        try:
+            logger.info(f"[MONITOR] Real-time screen analysis requested: {query}")
+            
+            # Capture current screen
+            screenshot = await self.capture_screenshot()
+            if not screenshot:
+                return "I'm having trouble capturing the screen right now. Please ensure screen recording permissions are enabled."
+            
+            # Create a conversational prompt for JARVIS-style response
+            analysis_prompt = f"""You are JARVIS, Tony Stark's AI assistant. The user has asked: '{query}'
+
+Analyze the screen and provide a natural, conversational response as if you're actively watching their screen. 
+Be specific about what you see - mention application names, window contents, text visible, etc.
+If they ask about a specific application (terminal, VSCode, etc.), focus on that.
+Respond naturally as JARVIS would, acknowledging that you can see their screen in real-time."""
+            
+            # Analyze the screenshot
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": analysis_prompt
+                        },
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": self._encode_image_optimized(screenshot)
+                            }
+                        }
+                    ]
+                }
+            ]
+            
+            # Make API call with vision
+            response = await asyncio.to_thread(
+                self.client.messages.create,
+                model=self.model,
+                max_tokens=300,
+                temperature=0.7,
+                messages=messages,
+                system="You are JARVIS, an AI assistant with real-time screen monitoring capabilities. Provide natural, conversational responses about what you observe on the user's screen."
+            )
+            
+            return response.content[0].text
+            
+        except Exception as e:
+            logger.error(f"[MONITOR] Error analyzing current screen: {e}", exc_info=True)
+            return "I'm having trouble analyzing the screen right now. Let me try taking a fresh screenshot."
         
     async def generate_response(self, user_input: str) -> str:
         """
@@ -916,6 +993,12 @@ class ClaudeVisionChatbot:
         if is_monitoring:
             logger.info(f"[VISION DEBUG] Routing to _handle_monitoring_command")
             return await self._handle_monitoring_command(user_input)
+            
+        # Check if monitoring is active and user is asking about what's on screen
+        if self._monitoring_active and self._is_screen_query(user_input):
+            logger.info(f"[VISION DEBUG] Monitoring active and screen query detected: {user_input}")
+            # Use real-time screen analysis when monitoring is active
+            return await self._analyze_current_screen(user_input)
             
         # Check if this is a vision command
         if self.is_vision_command(user_input):

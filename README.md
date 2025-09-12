@@ -1,7 +1,7 @@
-# 🤖 JARVIS AI System v12.9.7 - Enhanced Weather Intelligence & Vision System 🧠
+# 🤖 JARVIS AI System v12.9.9 - Real-Time Vision & Enhanced Weather Intelligence 🧠
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-12.9.7%20Weather%20AI-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Version-12.9.9%20Vision%20AI-brightgreen" alt="Version">
   <img src="https://img.shields.io/badge/Wake%20Word-10ms%20⚡-ff69b4" alt="Ultra Fast Wake Word">
   <img src="https://img.shields.io/badge/Memory-350MB%20Voice-success" alt="Low Memory Voice">
   <img src="https://img.shields.io/badge/CPU-1--2%25%20Usage-blue" alt="Low CPU">
@@ -18,6 +18,24 @@
 <p align="center">
   <em>"Perfection is achieved not when there is nothing more to add, but when there is nothing left to take away." - Antoine de Saint-Exupéry</em>
 </p>
+
+## 🆕 What's New in v12.9.9 - Real-Time Vision When Monitoring Active
+
+### 👁️ Real-Time Screen Vision (FIXED!)
+**JARVIS NOW ACTUALLY SEES YOUR SCREEN WHEN MONITORING!** Major fix:
+- ✅ **Real-time analysis** - When monitoring is active, JARVIS analyzes screen in real-time
+- ✅ **Natural responses** - "Yes, I can see VS Code with your test_vision_logic.py file open"
+- ✅ **No generic replies** - No more hardcoded "Yes sir, I can see your screen"
+- ✅ **Intelligent detection** - Recognizes "can you see" queries during active monitoring
+- ✅ **Application awareness** - Identifies specific apps like terminal, VS Code, browser
+
+### 🔍 Enhanced Screen Query Detection (NEW!)
+**SMARTER QUERY UNDERSTANDING!** Improvements:
+- ✅ **Query patterns** - Detects "can you see", "what do you see", "describe my screen"
+- ✅ **Context aware** - Only uses real-time analysis when monitoring is active
+- ✅ **JARVIS personality** - Responds naturally as Tony Stark's AI assistant
+- ✅ **Fast analysis** - Real-time responses without additional screen captures
+- ✅ **Continuous monitoring** - Maintains awareness throughout monitoring session
 
 ## 🆕 What's New in v12.9.8 - Hybrid Weather Intelligence
 
