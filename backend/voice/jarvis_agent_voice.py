@@ -1557,123 +1557,58 @@ System Control Commands:
             return f"I'm having difficulty reading the weather information, {self.user_name if self.user_name else 'Sir'}."
     
     async def _handle_weather_command(self, text: str) -> str:
-        """Handle weather-related commands using VISION to read Weather app"""
+        """Handle weather-related commands using weather bridge (API primary, vision fallback)"""
         logger.info(f"[WEATHER HANDLER] Starting weather command processing: {text}")
-        logger.info(f"[WEATHER HANDLER] Has vision_handler: {hasattr(self, 'vision_handler')}")
-        logger.info(f"[WEATHER HANDLER] Vision handler is: {self.vision_handler}")
-        
-        # Create a timeout wrapper to prevent hanging
-        async def get_weather_with_timeout():
-            try:
-                # Check if we have vision handler available
-                if hasattr(self, 'vision_handler') and self.vision_handler:
-                    logger.info("[WEATHER HANDLER] Vision handler available, using vision-based weather extraction")
-                    logger.info(f"[WEATHER HANDLER] Controller exists: {hasattr(self, 'controller')}")
-                    
-                    # Import unified weather vision workflow
-                    try:
-                        from workflows.weather_app_vision_unified import execute_weather_app_workflow
-                        from system_control.macos_controller import MacOSController
-                        
-                        # Get controller
-                        controller = self.controller if hasattr(self, 'controller') else MacOSController()
-                        
-                        # Execute unified vision-based weather workflow
-                        # This will open Weather app, read it with Claude Vision, and return detailed info
-                        logger.info("[WEATHER HANDLER] About to call execute_weather_app_workflow...")
-                        logger.info(f"[WEATHER HANDLER] Controller: {controller}, Vision: {self.vision_handler}")
-                        vision_response = await asyncio.wait_for(
-                            execute_weather_app_workflow(controller, self.vision_handler, text),
-                            timeout=15.0  # 15 second hard limit
-                        )
-                        logger.info(f"[WEATHER HANDLER] Workflow returned: {vision_response[:100] if vision_response else 'None'}...")
-                        
-                        # Add personalization if we got a good response
-                        if vision_response and "weather" in vision_response.lower():
-                            if self.user_name and self.user_name != "User":
-                                vision_response += f", {self.user_name}"
-                            return vision_response
-                    
-                    except asyncio.TimeoutError:
-                        logger.error(f"Weather vision workflow timed out")
-                        return None
-                    except Exception as ve:
-                        logger.error(f"Vision weather workflow failed: {ve}")
-                        return None
-                
-                return None
-            except Exception as e:
-                logger.error(f"Weather handler error: {e}")
-                return None
         
         try:
-            # Try vision workflow with overall timeout - increased for Toronto selection
-            logger.info("[WEATHER HANDLER] Starting main weather processing with 30s timeout")
-            result = await asyncio.wait_for(get_weather_with_timeout(), timeout=30.0)
-            logger.info(f"[WEATHER HANDLER] Main weather processing result: {result[:100] if result else 'None'}...")
-            if result:
-                return result
-            
-            # Quick fallback: Try to open Weather app and do basic read
-            logger.info("[WEATHER HANDLER] Main weather flow failed/timed out, attempting quick weather read")
-            try:
-                # Open Weather app first
-                import subprocess
-                subprocess.run(['open', '-a', 'Weather'], check=False)
-                await asyncio.sleep(2)  # Brief wait for app
+            # PRIORITY 1: Use weather bridge which handles API -> Vision fallback automatically
+            if hasattr(self, 'weather_bridge') and self.weather_bridge:
+                logger.info("[WEATHER HANDLER] Using weather bridge for API-first approach")
                 
-                # Try direct vision read with timeout
-                quick_result = await asyncio.wait_for(
-                    self._force_vision_weather_read(),
-                    timeout=10.0  # Increased timeout for quick read
+                # Process the weather query through the bridge
+                # The bridge will automatically:
+                # 1. Try OpenWeatherMap API first (if configured)
+                # 2. Fall back to vision extraction if API fails
+                # 3. Try other sources (Core Location, Swift tool, etc.)
+                response = await asyncio.wait_for(
+                    self.weather_bridge.process_weather_query(text),
+                    timeout=10.0  # 10 second timeout (API should be fast)
                 )
-                if quick_result:
-                    # Don't say we're having difficulty if we got the weather!
-                    # Format the response properly
-                    if "Location:" in quick_result and "Temp:" in quick_result:
-                        # Raw format from analyze_weather_fast, format it nicely
-                        parts = quick_result.split('\n')
-                        location = ""
-                        temp = ""
-                        condition = ""
-                        high_low = ""
-                        
-                        for part in parts:
-                            if "Location:" in part:
-                                location = part.split("Location:")[1].strip()
-                            elif "Temp:" in part:
-                                temp = part.split("Temp:")[1].strip()
-                            elif "Condition:" in part:
-                                condition = part.split("Condition:")[1].strip()
-                            elif "High/Low:" in part:
-                                high_low = part.split("High/Low:")[1].strip()
-                        
-                        # Build formatted response
-                        response = f"Looking at the weather in {location}"
-                        if temp:
-                            response += f", it's currently {temp}"
-                        if condition:
-                            response += f" and {condition.lower()}"
-                        if high_low:
-                            response += f". Today's high and low are {high_low}"
-                        
-                        return response + f", {self.user_name if self.user_name else 'Sir'}."
-                    else:
-                        # Already formatted response
-                        return quick_result
-                    
-            except Exception as e:
-                logger.error(f"Quick weather read failed: {e}")
+                
+                logger.info(f"[WEATHER HANDLER] Weather bridge returned: {response[:100] if response else 'None'}...")
+                
+                # Add user name if we have a good response
+                if response and self.user_name and self.user_name != "User":
+                    if not response.endswith(self.user_name) and not self.user_name in response:
+                        response = f"{response}, {self.user_name}"
+                
+                return response
             
-            # If everything fails, return a helpful response
-            return f"I'm having difficulty reading the Weather app at the moment. The Weather app should now be open for you to check directly, {self.user_name if self.user_name else 'Sir'}."
-            
-        except Exception as e:
-            logger.error(f"[WEATHER HANDLER] Critical error in weather handler: {e}", exc_info=True)
-            # Emergency fallback
+            # PRIORITY 2: Direct fallback - just open the Weather app
+            logger.warning("[WEATHER HANDLER] Weather bridge not available, opening Weather app")
             try:
                 import subprocess
                 subprocess.run(['open', '-a', 'Weather'], check=False)
                 return f"I've opened the Weather app for you to check the forecast, {self.user_name if self.user_name else 'Sir'}."
             except:
                 return f"I'm unable to check the weather at the moment, {self.user_name if self.user_name else 'Sir'}."
+                
+        except asyncio.TimeoutError:
+            logger.error("[WEATHER HANDLER] Weather request timed out")
+            # Try to at least open the Weather app
+            try:
+                import subprocess
+                subprocess.run(['open', '-a', 'Weather'], check=False)
+                return f"The weather service is taking longer than expected. I've opened the Weather app for you, {self.user_name if self.user_name else 'Sir'}."
+            except:
+                return f"I'm having trouble accessing weather information right now, {self.user_name if self.user_name else 'Sir'}."
+        
+        except Exception as e:
+            logger.error(f"[WEATHER HANDLER] Error processing weather command: {e}", exc_info=True)
+            # Emergency fallback - try to open Weather app
+            try:
+                import subprocess
+                subprocess.run(['open', '-a', 'Weather'], check=False)
+                return f"I encountered an error checking the weather. I've opened the Weather app for you, {self.user_name if self.user_name else 'Sir'}."
+            except:
+                return f"I'm unable to access weather information at the moment, {self.user_name if self.user_name else 'Sir'}."

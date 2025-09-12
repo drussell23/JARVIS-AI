@@ -178,12 +178,14 @@ class WeatherBridge:
         
         # Patterns to extract specific location
         location_patterns = [
-            # "weather in Tokyo", "weather at Paris", "weather for London"
-            r'weather\s+(?:in|at|for)\s+([A-Za-z]+(?:\s+[A-Za-z]+)*?)(?:\s|$)',
+            # "what's the weather in Tokyo?", "weather in Tokyo", etc.
+            r'weather\s+(?:in|at|for)\s+([A-Za-z]+(?:\s+[A-Za-z]+)*?)(?:\s*\?|$)',
             # "what's the weather like in New York"
-            r'weather\s+(?:like\s+)?(?:in|at)\s+([A-Za-z]+(?:\s+[A-Za-z]+)*?)(?:\s|$)',
-            # "Tokyo weather"
+            r'weather\s+(?:like\s+)?(?:in|at)\s+([A-Za-z]+(?:\s+[A-Za-z]+)*?)(?:\s*\?|$)',
+            # "Tokyo weather" at start of query
             r'^([A-Za-z]+(?:\s+[A-Za-z]+)*?)\s+weather',
+            # "weather Tokyo" pattern
+            r'weather\s+([A-Za-z]+(?:\s+[A-Za-z]+)*?)(?:\s*\?|$)',
         ]
         
         for pattern in location_patterns:
