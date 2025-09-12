@@ -266,8 +266,10 @@ class WeatherService:
                     if cache_age < self._cache_duration:
                         logger.info("Using pre-loaded weather data")
                         weather_data = cached['data'].copy()
-                        weather_data["location"] = city  # Use city name instead of coordinates
                         weather_data["detected_location"] = city
+                        # Only override location if not set by OpenWeatherMap
+                        if not weather_data.get("location") or weather_data.get("location") == "Unknown":
+                            weather_data["location"] = city
                         return weather_data
         
         # Fall back to normal flow but run in parallel
@@ -286,8 +288,11 @@ class WeatherService:
             lat, lon, city = await location_task
             weather_data = await self.get_weather_by_location(lat, lon)
         
-        weather_data["location"] = city  # Use city name instead of coordinates
+        # Only set detected_location, let OpenWeatherMap's location name be used
         weather_data["detected_location"] = city
+        # If OpenWeatherMap didn't provide a location name, use the detected city
+        if not weather_data.get("location") or weather_data.get("location") == "Unknown":
+            weather_data["location"] = city
         return weather_data
 
     def _format_weather_data(self, raw_data: Dict) -> Dict:
@@ -299,8 +304,22 @@ class WeatherService:
         Returns:
             Formatted weather data
         """
+        # Get location name and normalize Toronto districts
+        location_name = raw_data.get("name", "Unknown")
+        
+        # Map Toronto districts/neighborhoods to "Toronto"
+        toronto_districts = [
+            "North York", "Scarborough", "Etobicoke", "East York", 
+            "York", "Downtown Toronto", "Willowdale", "Don Mills",
+            "Agincourt", "Malvern", "Rouge", "West Hill"
+        ]
+        
+        # Check if this is a Toronto district
+        if location_name in toronto_districts:
+            location_name = "Toronto"
+        
         return {
-            "location": raw_data.get("name", "Unknown"),
+            "location": location_name,
             "country": raw_data.get("sys", {}).get("country", ""),
             "temperature": round(raw_data.get("main", {}).get("temp", 0)),
             "feels_like": round(raw_data.get("main", {}).get("feels_like", 0)),
