@@ -169,6 +169,7 @@ class ClaudeVisionChatbot:
         # Try capture methods in platform-specific order
         screenshot = None
         used_method = None
+        errors = []
         
         for method_info in self._capture_methods:
             method_name = method_info['name']
@@ -179,16 +180,28 @@ class ClaudeVisionChatbot:
                 screenshot = await method_func()
                 
                 if screenshot:
-                    used_method = method_name
-                    logger.info(f"Successfully captured screenshot using {method_name}")
-                    break
-                    
+                    # Validate the screenshot
+                    if isinstance(screenshot, Image.Image):
+                        width, height = screenshot.size
+                        if width > 0 and height > 0:
+                            used_method = method_name
+                            logger.info(f"Successfully captured screenshot using {method_name}: {width}x{height}")
+                            break
+                        else:
+                            logger.warning(f"{method_name} returned invalid image size: {width}x{height}")
+                            errors.append(f"{method_name}: Invalid image size")
+                    else:
+                        logger.warning(f"{method_name} returned non-Image object: {type(screenshot)}")
+                        errors.append(f"{method_name}: Invalid type")
+                        
             except Exception as e:
-                logger.warning(f"{method_name} capture failed: {e}")
+                error_msg = f"{method_name} capture failed: {type(e).__name__}: {str(e)}"
+                logger.warning(error_msg)
+                errors.append(error_msg)
                 continue
                 
         if not screenshot:
-            logger.error("All screenshot capture methods failed")
+            logger.error(f"All screenshot capture methods failed. Errors: {errors}")
             return None
             
         # Post-process screenshot based on intent
@@ -930,9 +943,14 @@ class ClaudeVisionChatbot:
             logger.info(f"[MONITOR] Real-time screen analysis requested: {query}")
             
             # Capture current screen
-            screenshot = await self.capture_screenshot()
+            try:
+                screenshot = await self.capture_screenshot()
+            except Exception as e:
+                logger.error(f"[MONITOR] Screenshot capture failed: {e}")
+                return f"I encountered an error capturing your screen: {str(e)}. Please ensure screen recording permissions are enabled."
+                
             if not screenshot:
-                return "I'm having trouble capturing the screen right now. Please ensure screen recording permissions are enabled."
+                return "I'm having trouble capturing the screen right now. Please ensure screen recording permissions are enabled in System Preferences."
             
             # Create a conversational prompt for JARVIS-style response
             analysis_prompt = f"""You are JARVIS, Tony Stark's AI assistant. The user has asked: '{query}'
@@ -964,16 +982,30 @@ Respond naturally as JARVIS would, acknowledging that you can see their screen i
             ]
             
             # Make API call with vision
-            response = await asyncio.to_thread(
-                self.client.messages.create,
-                model=self.model,
-                max_tokens=300,
-                temperature=0.7,
-                messages=messages,
-                system="You are JARVIS, an AI assistant with real-time screen monitoring capabilities. Provide natural, conversational responses about what you observe on the user's screen."
-            )
-            
-            return response.content[0].text
+            try:
+                response = await asyncio.to_thread(
+                    self.client.messages.create,
+                    model=self.model,
+                    max_tokens=300,
+                    temperature=0.7,
+                    messages=messages,
+                    system="You are JARVIS, an AI assistant with real-time screen monitoring capabilities. Provide natural, conversational responses about what you observe on the user's screen."
+                )
+                
+                if response and hasattr(response, 'content') and len(response.content) > 0:
+                    return response.content[0].text
+                else:
+                    logger.error("[MONITOR] Empty response from Claude API")
+                    return "I'm having trouble analyzing the screen right now. The vision API returned an empty response."
+                    
+            except Exception as api_error:
+                logger.error(f"[MONITOR] Claude API error: {api_error}")
+                if "api_key" in str(api_error).lower():
+                    return "I need my vision API key to analyze your screen. Please ensure ANTHROPIC_API_KEY is set."
+                elif "rate_limit" in str(api_error).lower():
+                    return "I'm being rate limited by the vision API. Please try again in a moment."
+                else:
+                    return f"I encountered an error with the vision API: {str(api_error)}. Please try again."
             
         except Exception as e:
             logger.error(f"[MONITOR] Error analyzing current screen: {e}", exc_info=True)

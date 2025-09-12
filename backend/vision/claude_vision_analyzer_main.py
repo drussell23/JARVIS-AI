@@ -21,6 +21,7 @@ import os
 import sys
 import re
 import subprocess
+import platform
 from typing import Dict, List, Optional, Any, Tuple, Union, Set, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -33,6 +34,8 @@ import json
 import logging
 import psutil
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Import Vision Intelligence System
 try:
@@ -51,8 +54,6 @@ except ImportError as e:
     VisionIntelligenceBridge = None
     get_vsms = None
     logger.warning(f"Vision Intelligence System not fully available - install with ./intelligence/build.sh: {e}")
-
-logger = logging.getLogger(__name__)
 
 @dataclass
 class VisionConfig:
@@ -548,12 +549,14 @@ class ClaudeVisionAnalyzer:
         
         # Initialize API client
         if not api_key:
-            raise ValueError("ANTHROPIC_API_KEY is required for Claude Vision Analyzer. Please set it in your environment.")
-        
-        try:
-            self.client = Anthropic(api_key=api_key)
-        except Exception as e:
-            raise ValueError(f"Failed to initialize Anthropic client: {str(e)}")
+            logger.warning("ANTHROPIC_API_KEY not provided - vision analysis will not work")
+            self.client = None
+        else:
+            try:
+                self.client = Anthropic(api_key=api_key)
+            except Exception as e:
+                logger.error(f"Failed to initialize Anthropic client: {str(e)}")
+                self.client = None
         
         # Initialize memory safety monitor
         self.memory_monitor = MemorySafetyMonitor(self.config)
@@ -2472,8 +2475,11 @@ class ClaudeVisionAnalyzer:
             logger.error(f"Config model: {self.config.model_name if hasattr(self, 'config') else 'No config'}")
             logger.error(f"API key present in env: {bool(os.getenv('ANTHROPIC_API_KEY'))}")
             
-            # Provide more specific error messages
+            # Provide more specific error messages and ensure consistent response
             error_message = str(e)
+            error_type = type(e).__name__
+            
+            # Determine user-friendly error description
             if "ANTHROPIC_API_KEY" in error_message or "api_key" in error_message.lower():
                 description = "I need the Claude Vision API key to analyze your screen. Please set ANTHROPIC_API_KEY in your environment."
             elif "rate_limit" in error_message.lower():
@@ -2482,10 +2488,21 @@ class ClaudeVisionAnalyzer:
                 description = "The analysis timed out. Please try again."
             elif "network" in error_message.lower() or "connection" in error_message.lower():
                 description = "I'm having trouble connecting to the vision API. Please check your internet connection."
+            elif isinstance(e, MemoryError):
+                description = "Not enough memory available to analyze the image. Please close some applications and try again."
+            elif "permission" in error_message.lower():
+                description = "I don't have permission to capture your screen. Please grant screen recording permissions in System Preferences."
             else:
-                description = f"Analysis failed: {type(e).__name__}: {error_message}"
+                description = f"I encountered an error analyzing your screen: {error_type}. Please try again."
             
-            return {"error": str(e), "error_type": type(e).__name__, "description": description}, metrics
+            # Always return a consistent structure
+            return {
+                "error": error_message,
+                "error_type": error_type,
+                "description": description,
+                "success": False,
+                "timestamp": datetime.now().isoformat()
+            }, metrics
         finally:
             # Clear analyzing flag
             self.is_analyzing = False
@@ -2577,7 +2594,7 @@ class ClaudeVisionAnalyzer:
             
             # Ensure we have a client
             if not hasattr(self, 'client') or self.client is None:
-                raise Exception("Anthropic client not initialized")
+                raise Exception("ANTHROPIC_API_KEY not configured. Please set the API key to use vision analysis.")
             
             # Create a future for the API call
             api_future = asyncio.get_event_loop().run_in_executor(
@@ -3743,54 +3760,127 @@ Focus on what's visible in this specific region. Be concise but thorough."""
         logger.info("All enhanced components cleaned up")
     
     async def capture_screen(self) -> Any:
-        """Capture screen using the best available method"""
+        """Capture screen using the best available method with robust error handling"""
         logger.info("[CAPTURE SCREEN] Starting screen capture")
-        try:
-            # If video streaming is enabled and running, get frame from there
-            if self.config.prefer_video_over_screenshots and hasattr(self, 'video_streaming') and self.video_streaming and self.video_streaming.is_capturing:
-                logger.info("[CAPTURE SCREEN] Attempting to get frame from video stream")
-                frame_data = self.video_streaming.frame_buffer.get_latest_frame() if hasattr(self.video_streaming, 'frame_buffer') else None
-                if frame_data:
-                    # Convert numpy array to PIL Image
-                    frame = frame_data['data']
-                    logger.info(f"[CAPTURE SCREEN] Got frame from video stream: {frame.shape}")
-                    return Image.fromarray(frame)
-            
-            # Otherwise use traditional screenshot method
-            logger.info("[CAPTURE SCREEN] Using traditional screenshot method")
-            import subprocess
-            from PIL import ImageGrab
-            import platform
-            
-            if platform.system() == 'Darwin':
-                # Use macOS screencapture command for better performance
-                logger.info("[CAPTURE SCREEN] Using macOS screencapture")
-                import tempfile
-                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-                    tmp_path = tmp.name
-                
-                # Capture screen with reduced quality for memory efficiency
-                result = subprocess.run(
-                    ['screencapture', '-C', '-x', '-t', 'png', tmp_path],
-                    capture_output=True
-                )
-                
-                if result.returncode == 0:
-                    # Load and return the image
-                    image = Image.open(tmp_path)
-                    logger.info(f"[CAPTURE SCREEN] Successfully captured screen: {image.size}")
-                    # Clean up temp file
-                    os.unlink(tmp_path)
-                    return image
-                else:
-                    logger.error(f"[CAPTURE SCREEN] screencapture failed with code {result.returncode}: {result.stderr}")
-            else:
-                # Fallback to PIL ImageGrab
-                return ImageGrab.grab()
-                
-        except Exception as e:
-            logger.error(f"[CAPTURE SCREEN] Screen capture failed: {type(e).__name__}: {e}", exc_info=True)
+        capture_methods = []
+        
+        # Method 1: Video streaming (if available)
+        if self.config.prefer_video_over_screenshots and hasattr(self, 'video_streaming'):
+            capture_methods.append(("video_streaming", self._capture_from_video_stream))
+        
+        # Method 2: macOS screencapture command
+        if platform.system() == 'Darwin':
+            capture_methods.append(("macos_screencapture", self._capture_macos_screencapture))
+        
+        # Method 3: PIL ImageGrab
+        capture_methods.append(("pil_imagegrab", self._capture_pil_imagegrab))
+        
+        # Try each method in order
+        for method_name, method_func in capture_methods:
+            try:
+                logger.info(f"[CAPTURE SCREEN] Trying method: {method_name}")
+                result = await method_func()
+                if result is not None:
+                    logger.info(f"[CAPTURE SCREEN] Success with {method_name}")
+                    # Validate the captured image
+                    if self._validate_captured_image(result):
+                        return result
+                    else:
+                        logger.warning(f"[CAPTURE SCREEN] {method_name} returned invalid image")
+            except Exception as e:
+                logger.warning(f"[CAPTURE SCREEN] {method_name} failed: {type(e).__name__}: {e}")
+                continue
+        
+        # All methods failed
+        logger.error("[CAPTURE SCREEN] All capture methods failed")
+        return None
+    
+    async def _capture_from_video_stream(self) -> Optional[Image.Image]:
+        """Capture from video stream if available"""
+        if not (self.video_streaming and hasattr(self.video_streaming, 'is_capturing') and self.video_streaming.is_capturing):
             return None
+            
+        if not hasattr(self.video_streaming, 'frame_buffer'):
+            return None
+            
+        frame_data = self.video_streaming.frame_buffer.get_latest_frame()
+        if frame_data and 'data' in frame_data:
+            frame = frame_data['data']
+            if isinstance(frame, np.ndarray) and frame.size > 0:
+                return Image.fromarray(frame)
+        return None
+    
+    async def _capture_macos_screencapture(self) -> Optional[Image.Image]:
+        """Capture using macOS screencapture command"""
+        import tempfile
+        import subprocess
+        
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                tmp_path = tmp.name
+            
+            # Run screencapture with timeout
+            result = await asyncio.wait_for(
+                asyncio.create_subprocess_exec(
+                    'screencapture', '-C', '-x', '-t', 'png', tmp_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                ),
+                timeout=5.0
+            )
+            
+            stdout, stderr = await result.communicate()
+            
+            if result.returncode == 0 and os.path.exists(tmp_path) and os.path.getsize(tmp_path) > 0:
+                image = Image.open(tmp_path)
+                return image
+            else:
+                if stderr:
+                    logger.error(f"screencapture stderr: {stderr.decode()}")
+                return None
+                
+        except asyncio.TimeoutError:
+            logger.error("screencapture timed out after 5 seconds")
+            return None
+        finally:
+            # Clean up temp file
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except:
+                    pass
+    
+    async def _capture_pil_imagegrab(self) -> Optional[Image.Image]:
+        """Capture using PIL ImageGrab"""
+        try:
+            from PIL import ImageGrab
+            # Run in thread to avoid blocking
+            return await asyncio.to_thread(ImageGrab.grab)
+        except Exception as e:
+            logger.error(f"PIL ImageGrab failed: {e}")
+            return None
+    
+    def _validate_captured_image(self, image: Any) -> bool:
+        """Validate that captured image is valid"""
+        if image is None:
+            return False
+            
+        if isinstance(image, Image.Image):
+            # Check if image has valid size
+            width, height = image.size
+            if width <= 0 or height <= 0:
+                return False
+            # Check if image has content (not all black/white)
+            try:
+                extrema = image.convert('L').getextrema()
+                if extrema[0] == extrema[1]:  # All pixels same value
+                    return False
+            except:
+                pass
+            return True
+            
+        return False
     
     async def describe_screen(self, params: Dict[str, Any]) -> Any:
         """Describe screen for continuous analyzer compatibility"""

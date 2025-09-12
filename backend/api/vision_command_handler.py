@@ -245,15 +245,38 @@ class VisionCommandHandler:
         try:
             # First capture the screen
             await ws_logger.log("Step 3: Capturing screen...")
-            screenshot = await self.vision_manager.vision_analyzer.capture_screen()
+            
+            # Check if vision analyzer exists
+            if not hasattr(self.vision_manager, 'vision_analyzer') or not self.vision_manager.vision_analyzer:
+                await ws_logger.log("Vision analyzer not available", "error")
+                return {
+                    "handled": True,
+                    "response": "I'm having trouble with my vision system. Please ensure the backend is properly configured.",
+                    "error": True,
+                    "error_type": "vision_unavailable"
+                }
+            
+            try:
+                screenshot = await self.vision_manager.vision_analyzer.capture_screen()
+            except Exception as capture_error:
+                await ws_logger.log(f"Screenshot capture exception: {capture_error}", "error")
+                return {
+                    "handled": True,
+                    "response": "I encountered an error capturing your screen. Please check screen recording permissions in System Preferences.",
+                    "error": True,
+                    "error_type": "capture_failed",
+                    "error_details": str(capture_error)
+                }
+            
             await ws_logger.log(f"Step 3 complete: Screenshot captured = {screenshot is not None}")
             
             if screenshot is None:
                 await ws_logger.log("Screenshot capture returned None", "error")
                 return {
                     "handled": True,
-                    "response": "I couldn't capture your screen. Please make sure screen recording permissions are granted.",
-                    "error": True
+                    "response": "I couldn't capture your screen. Please make sure screen recording permissions are granted in System Preferences > Security & Privacy > Privacy > Screen Recording.",
+                    "error": True,
+                    "error_type": "capture_none"
                 }
             
             await ws_logger.log(f"Screenshot captured, type: {type(screenshot)}")
@@ -291,17 +314,35 @@ class VisionCommandHandler:
                     await ws_logger.log("Calling analyze_screenshot_async...")
                     
                     try:
-                        result = await asyncio.wait_for(
-                            self.vision_manager.vision_analyzer.analyze_screenshot_async(
-                                screenshot_array, 
-                                conversational_query,
-                                use_sliding_window=False  # Force full screen analysis
-                            ),
-                            timeout=30.0  # Increased to 30 second timeout to match API timeout
-                        )
+                        # Check if the analyze method exists
+                        if not hasattr(self.vision_manager.vision_analyzer, 'analyze_screenshot_async'):
+                            await ws_logger.log("analyze_screenshot_async method not found", "error")
+                            # Try alternative method
+                            if hasattr(self.vision_manager.vision_analyzer, 'analyze_image_with_prompt'):
+                                result = await asyncio.wait_for(
+                                    self.vision_manager.vision_analyzer.analyze_image_with_prompt(
+                                        screenshot_array,
+                                        conversational_query
+                                    ),
+                                    timeout=30.0
+                                )
+                            else:
+                                raise AttributeError("No suitable analysis method found")
+                        else:
+                            result = await asyncio.wait_for(
+                                self.vision_manager.vision_analyzer.analyze_screenshot_async(
+                                    screenshot_array, 
+                                    conversational_query,
+                                    use_sliding_window=False  # Force full screen analysis
+                                ),
+                                timeout=30.0  # Increased to 30 second timeout to match API timeout
+                            )
                         await ws_logger.log("Step 6 complete: Analysis returned")
                     except asyncio.TimeoutError:
                         await ws_logger.log("Analysis timed out after 30 seconds", "error")
+                        raise
+                    except AttributeError as e:
+                        await ws_logger.log(f"Method not found: {e}", "error")
                         raise
                     except Exception as e:
                         await ws_logger.log(f"Analysis error: {str(e)}", "error")
