@@ -61,7 +61,7 @@ class VideoStreamConfig:
     
     # Memory management
     max_frame_buffer_size: int = field(default_factory=lambda: int(os.getenv('VIDEO_STREAM_BUFFER_SIZE', '10')))
-    memory_limit_mb: int = field(default_factory=lambda: int(os.getenv('VIDEO_STREAM_MEMORY_LIMIT_MB', '800')))  # 800MB for video
+    memory_limit_mb: int = field(default_factory=lambda: VideoStreamConfig._get_dynamic_memory_limit())
     frame_memory_threshold_mb: int = field(default_factory=lambda: int(os.getenv('VIDEO_STREAM_FRAME_THRESHOLD_MB', '50')))
     
     # Processing settings
@@ -79,6 +79,28 @@ class VideoStreamConfig:
     enable_adaptive_quality: bool = field(default_factory=lambda: os.getenv('VIDEO_STREAM_ADAPTIVE', 'true').lower() == 'true')
     min_fps: int = field(default_factory=lambda: int(os.getenv('VIDEO_STREAM_MIN_FPS', '10')))
     min_resolution: str = field(default_factory=lambda: os.getenv('VIDEO_STREAM_MIN_RES', '960x540'))
+    
+    @staticmethod
+    def _get_dynamic_memory_limit() -> int:
+        """Calculate dynamic memory limit based on available system RAM"""
+        try:
+            import psutil
+            vm = psutil.virtual_memory()
+            available_mb = vm.available / (1024 * 1024)
+            
+            # Use 20% of available RAM for video streaming
+            dynamic_limit = int(available_mb * 0.2)
+            
+            # Apply reasonable bounds
+            min_limit = 200  # At least 200MB
+            max_limit = 1500  # Cap at 1.5GB
+            
+            final_limit = max(min_limit, min(dynamic_limit, max_limit))
+            logging.getLogger(__name__).info(f"Video streaming dynamic memory: {final_limit}MB (20% of {available_mb:.0f}MB available)")
+            return final_limit
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Failed to calculate dynamic memory, using default: {e}")
+            return 500  # Default fallback
 
 @dataclass
 class FrameMetrics:

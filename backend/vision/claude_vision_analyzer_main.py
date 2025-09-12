@@ -80,10 +80,10 @@ class VisionConfig:
     cpu_threshold_percent: float = field(default_factory=lambda: float(os.getenv('VISION_CPU_THRESHOLD', '70')))
     thread_pool_size: int = field(default_factory=lambda: int(os.getenv('VISION_THREAD_POOL', '2')))
     
-    # Memory safety settings
-    process_memory_limit_mb: int = field(default_factory=lambda: int(os.getenv('VISION_PROCESS_LIMIT_MB', '2048')))  # 2GB
-    memory_warning_threshold_mb: int = field(default_factory=lambda: int(os.getenv('VISION_MEMORY_WARNING_MB', '1536')))  # 1.5GB
-    min_system_available_gb: float = field(default_factory=lambda: float(os.getenv('VISION_MIN_SYSTEM_RAM_GB', '2.0')))  # 2GB
+    # Memory safety settings - dynamic based on system
+    process_memory_limit_mb: int = field(default_factory=lambda: VisionConfig._calculate_process_memory_limit())
+    memory_warning_threshold_mb: int = field(default_factory=lambda: VisionConfig._calculate_memory_warning_threshold())
+    min_system_available_gb: float = field(default_factory=lambda: VisionConfig._calculate_min_system_available())
     enable_memory_safety: bool = field(default_factory=lambda: os.getenv('VISION_MEMORY_SAFETY', 'true').lower() == 'true')
     reject_on_memory_pressure: bool = field(default_factory=lambda: os.getenv('VISION_REJECT_ON_MEMORY', 'true').lower() == 'true')
     
@@ -99,6 +99,50 @@ class VisionConfig:
     # Vision Intelligence enhancement
     vision_intelligence_enabled: bool = field(default_factory=lambda: os.getenv('VISION_INTELLIGENCE_ENABLED', 'false').lower() == 'true')
     vision_intelligence_confidence_threshold: float = field(default_factory=lambda: float(os.getenv('VISION_INTELLIGENCE_CONFIDENCE', '0.7')))
+    
+    @staticmethod
+    def _calculate_process_memory_limit() -> int:
+        """Calculate dynamic process memory limit based on system RAM"""
+        try:
+            import psutil
+            vm = psutil.virtual_memory()
+            total_gb = vm.total / (1024 * 1024 * 1024)
+            available_mb = vm.available / (1024 * 1024)
+            
+            # Use 25% of total system RAM as process limit
+            dynamic_limit = int(total_gb * 1024 * 0.25)
+            
+            # But don't exceed 50% of currently available
+            available_limit = int(available_mb * 0.5)
+            
+            # Apply reasonable bounds
+            final_limit = min(dynamic_limit, available_limit, 4096)  # Cap at 4GB
+            final_limit = max(final_limit, 512)  # At least 512MB
+            
+            logger.info(f"Vision process memory limit: {final_limit}MB (25% of {total_gb:.1f}GB total)")
+            return final_limit
+        except:
+            return 2048  # Default 2GB
+    
+    @staticmethod
+    def _calculate_memory_warning_threshold() -> int:
+        """Calculate memory warning threshold"""
+        limit = VisionConfig._calculate_process_memory_limit()
+        # Warning at 75% of limit
+        return int(limit * 0.75)
+    
+    @staticmethod
+    def _calculate_min_system_available() -> float:
+        """Calculate minimum system available RAM in GB"""
+        try:
+            import psutil
+            total_gb = psutil.virtual_memory().total / (1024 * 1024 * 1024)
+            # Keep at least 15% of total RAM available
+            min_available = total_gb * 0.15
+            # But at least 1GB and no more than 4GB
+            return max(1.0, min(min_available, 4.0))
+        except:
+            return 2.0  # Default 2GB
     
     # VSMS Core configuration
     vsms_core_enabled: bool = field(default_factory=lambda: os.getenv('VSMS_CORE_ENABLED', 'false').lower() == 'true')

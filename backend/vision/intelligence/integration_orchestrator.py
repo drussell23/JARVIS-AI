@@ -120,12 +120,27 @@ class IntegrationOrchestrator:
     
     def _build_config(self, custom_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Build configuration from environment and custom settings"""
+        # Get actual available system memory
+        vm = psutil.virtual_memory()
+        total_system_mb = vm.total / (1024 * 1024)  # Total RAM in MB
+        available_mb = vm.available / (1024 * 1024)  # Available RAM in MB
+        
+        # Calculate dynamic memory budget based on available RAM
+        # Use 30% of available RAM for vision system (conservative)
+        dynamic_budget = int(available_mb * 0.3)
+        
+        # But respect maximum limits to prevent over-allocation
+        max_budget = min(dynamic_budget, 3000)  # Cap at 3GB max
+        
+        logger.info(f"System RAM: {total_system_mb:.0f}MB total, {available_mb:.0f}MB available")
+        logger.info(f"Dynamic vision budget: {max_budget}MB (30% of available)")
+        
         config = {
-            # Memory settings
-            'total_memory_mb': int(os.getenv('ORCHESTRATOR_MEMORY_MB', '1200')),
-            'intelligence_memory_mb': int(os.getenv('INTELLIGENCE_MEMORY_MB', '600')),
-            'optimization_memory_mb': int(os.getenv('OPTIMIZATION_MEMORY_MB', '460')),
-            'buffer_memory_mb': int(os.getenv('BUFFER_MEMORY_MB', '140')),
+            # Memory settings - dynamically calculated
+            'total_memory_mb': max_budget,
+            'intelligence_memory_mb': int(max_budget * 0.5),  # 50% for intelligence
+            'optimization_memory_mb': int(max_budget * 0.38), # 38% for optimization
+            'buffer_memory_mb': int(max_budget * 0.12),      # 12% for buffer
             
             # Operating thresholds
             'pressure_threshold': float(os.getenv('MEMORY_PRESSURE_THRESHOLD', '0.6')),
@@ -150,23 +165,28 @@ class IntegrationOrchestrator:
         return config
     
     def _initialize_memory_allocations(self) -> Dict[str, MemoryAllocation]:
-        """Initialize memory allocations for all components"""
+        """Initialize memory allocations dynamically based on available budget"""
+        # Get our dynamic budgets
+        intelligence_budget = self.config['intelligence_memory_mb']
+        optimization_budget = self.config['optimization_memory_mb']
+        
+        # Calculate proportional allocations
         allocations = {
-            # Intelligence Systems (600MB total)
-            'vsms': MemoryAllocation('vsms', 150.0, priority=9, min_mb=50.0),
-            'scene_graph': MemoryAllocation('scene_graph', 100.0, priority=8, min_mb=30.0),
-            'temporal_context': MemoryAllocation('temporal_context', 200.0, priority=7, min_mb=50.0),
-            'activity_recognition': MemoryAllocation('activity_recognition', 100.0, priority=7, min_mb=20.0),
-            'goal_inference': MemoryAllocation('goal_inference', 80.0, priority=6, min_mb=20.0),
-            'workflow_patterns': MemoryAllocation('workflow_patterns', 120.0, priority=6, min_mb=30.0),
-            'anomaly_detection': MemoryAllocation('anomaly_detection', 70.0, priority=5, min_mb=20.0),
-            'intervention_engine': MemoryAllocation('intervention_engine', 80.0, priority=5, min_mb=20.0),
-            'solution_bank': MemoryAllocation('solution_bank', 100.0, priority=4, min_mb=20.0),
+            # Intelligence Systems (proportional to budget)
+            'vsms': MemoryAllocation('vsms', intelligence_budget * 0.15, priority=9, min_mb=20.0),
+            'scene_graph': MemoryAllocation('scene_graph', intelligence_budget * 0.10, priority=8, min_mb=15.0),
+            'temporal_context': MemoryAllocation('temporal_context', intelligence_budget * 0.20, priority=7, min_mb=25.0),
+            'activity_recognition': MemoryAllocation('activity_recognition', intelligence_budget * 0.10, priority=7, min_mb=10.0),
+            'goal_inference': MemoryAllocation('goal_inference', intelligence_budget * 0.08, priority=6, min_mb=10.0),
+            'workflow_patterns': MemoryAllocation('workflow_patterns', intelligence_budget * 0.12, priority=6, min_mb=15.0),
+            'anomaly_detection': MemoryAllocation('anomaly_detection', intelligence_budget * 0.07, priority=5, min_mb=10.0),
+            'intervention_engine': MemoryAllocation('intervention_engine', intelligence_budget * 0.08, priority=5, min_mb=10.0),
+            'solution_bank': MemoryAllocation('solution_bank', intelligence_budget * 0.10, priority=4, min_mb=10.0),
             
-            # Optimization Systems (460MB total)
-            'quadtree': MemoryAllocation('quadtree', 50.0, priority=8, min_mb=20.0),
-            'semantic_cache': MemoryAllocation('semantic_cache', 250.0, priority=9, min_mb=50.0),
-            'predictive_engine': MemoryAllocation('predictive_engine', 150.0, priority=7, min_mb=30.0),
+            # Optimization Systems (proportional to budget)
+            'quadtree': MemoryAllocation('quadtree', optimization_budget * 0.11, priority=8, min_mb=10.0),
+            'semantic_cache': MemoryAllocation('semantic_cache', optimization_budget * 0.54, priority=9, min_mb=25.0),
+            'predictive_engine': MemoryAllocation('predictive_engine', optimization_budget * 0.33, priority=7, min_mb=15.0),
             'bloom_filter': MemoryAllocation('bloom_filter', 10.0, priority=6, min_mb=5.0, can_reduce=False),
             
             # Operating Buffer (140MB total)
@@ -273,24 +293,30 @@ class IntegrationOrchestrator:
         return self._build_result(proactive_result, metrics)
     
     async def _update_system_mode(self):
-        """Update system mode based on memory pressure"""
+        """Update system mode based on actual available system memory"""
         current_time = time.time()
         if current_time - self.last_memory_check < self.memory_check_interval:
             return
         
         self.last_memory_check = current_time
         
-        # Get memory stats
-        process = psutil.Process()
-        memory_info = process.memory_info()
-        memory_percent = process.memory_percent()
+        # Get actual system memory stats
+        vm = psutil.virtual_memory()
+        available_gb = vm.available / (1024 * 1024 * 1024)  # Available RAM in GB
+        percent_used = vm.percent / 100.0  # System memory usage as fraction
         
-        # Determine mode
-        if memory_percent >= self.config['emergency_threshold'] * 100:
+        # Also check our process memory
+        process = psutil.Process()
+        process_mb = process.memory_info().rss / (1024 * 1024)
+        
+        logger.debug(f"Memory check: {available_gb:.1f}GB available, {percent_used:.1%} system used, process using {process_mb:.0f}MB")
+        
+        # Determine mode based on available system memory
+        if available_gb < 1.0:  # Less than 1GB available
             new_mode = SystemMode.EMERGENCY
-        elif memory_percent >= self.config['critical_threshold'] * 100:
+        elif available_gb < 2.0:  # Less than 2GB available
             new_mode = SystemMode.CRITICAL
-        elif memory_percent >= self.config['pressure_threshold'] * 100:
+        elif available_gb < 3.0:  # Less than 3GB available
             new_mode = SystemMode.PRESSURE
         else:
             new_mode = SystemMode.NORMAL

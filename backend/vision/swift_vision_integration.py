@@ -110,11 +110,33 @@ class MemoryAwareSwiftVisionIntegration:
         
         logger.info(f"Memory-Aware Swift Vision Integration initialized with config: {self.config}")
     
+    def _calculate_swift_memory_limit(self) -> int:
+        """Calculate dynamic memory limit for Swift/Metal processing"""
+        try:
+            import psutil
+            vm = psutil.virtual_memory()
+            available_mb = vm.available / (1024 * 1024)
+            
+            # Use 15% of available RAM for Swift/Metal processing
+            dynamic_limit = int(available_mb * 0.15)
+            
+            # Apply reasonable bounds
+            min_limit = 150  # At least 150MB
+            max_limit = 1000  # Cap at 1GB for GPU operations
+            
+            final_limit = max(min_limit, min(dynamic_limit, max_limit))
+            logger.info(f"Swift vision dynamic memory: {final_limit}MB (15% of {available_mb:.0f}MB available)")
+            return final_limit
+        except Exception as e:
+            logger.warning(f"Failed to calculate Swift dynamic memory: {e}")
+            # Fallback: use conservative 10% of 4GB minimum system
+            return 400  # 10% of 4GB minimum expected system
+    
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration from environment variables"""
         return {
-            # Memory limits
-            'max_memory_mb': int(os.getenv('SWIFT_VISION_MAX_MEMORY_MB', '300')),  # 300MB for Swift/Metal
+            # Memory limits - dynamic allocation
+            'max_memory_mb': self._calculate_swift_memory_limit(),
             'max_cached_results': int(os.getenv('SWIFT_VISION_MAX_CACHED', '20')),
             'cache_ttl_seconds': int(os.getenv('SWIFT_VISION_CACHE_TTL', '300')),  # 5 minutes
             
