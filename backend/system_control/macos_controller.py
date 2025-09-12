@@ -390,6 +390,38 @@ class MacOSController:
         except Exception as e:
             return False, f"Click error: {str(e)}"
     
+    async def click_and_hold(self, x: int, y: int, hold_duration: float = 0.2) -> Tuple[bool, str]:
+        """Click and hold at specific coordinates (simulates human press-and-hold)"""
+        try:
+            # Try cliclick first for more reliable click-and-hold
+            try:
+                # Mouse down
+                subprocess.run(["cliclick", f"dd:{x},{y}"], check=True, capture_output=True)
+                # Hold
+                await asyncio.sleep(hold_duration)
+                # Mouse up
+                subprocess.run(["cliclick", f"du:{x},{y}"], check=True, capture_output=True)
+                return True, f"Click and hold at ({x}, {y}) for {hold_duration}s"
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                # Fallback to AppleScript
+                script = f'''
+                tell application "System Events"
+                    -- First click
+                    click at {{{x}, {y}}}
+                    delay {hold_duration}
+                    -- Click again to ensure selection
+                    click at {{{x}, {y}}}
+                end tell
+                '''
+                success, result = self.execute_applescript(script)
+                if success:
+                    return True, f"Click and hold at ({x}, {y})"
+                else:
+                    return False, f"Failed to click and hold: {result}"
+        except Exception as e:
+            logger.error(f"Click and hold at {x},{y} failed: {e}")
+            return False, str(e)
+    
     async def key_press(self, key: str) -> Tuple[bool, str]:
         """Press a keyboard key"""
         try:

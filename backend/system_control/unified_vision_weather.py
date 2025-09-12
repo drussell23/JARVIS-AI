@@ -51,12 +51,16 @@ class UnifiedVisionWeather:
             ]
         }
     
-    async def get_weather(self, query: str = "") -> Dict[str, Any]:
+    async def get_weather(self, query: str = "", fast_mode: bool = False) -> Dict[str, Any]:
         """
         Main entry point - handles ALL weather queries intelligently
+        
+        Args:
+            query: Weather query
+            fast_mode: Skip navigation attempts and just read current weather
         """
         try:
-            logger.info(f"[UNIFIED WEATHER] Weather query received: {query}")
+            logger.info(f"[UNIFIED WEATHER] Weather query received: {query}, fast_mode: {fast_mode}")
             logger.info(f"[UNIFIED WEATHER] Has vision_handler: {self.vision_handler is not None}")
             logger.info(f"[UNIFIED WEATHER] Has controller: {self.controller is not None}")
             
@@ -81,12 +85,19 @@ class UnifiedVisionWeather:
             
             # Extract weather based on query type with timeout
             try:
-                weather_data = await asyncio.wait_for(
-                    self._extract_weather_intelligently(query),
-                    timeout=25.0  # 25 second timeout for full extraction
-                )
+                if fast_mode:
+                    # Skip navigation, just read what's shown
+                    weather_data = await asyncio.wait_for(
+                        self._extract_weather_fast(),
+                        timeout=10.0  # 10 second timeout for fast extraction
+                    )
+                else:
+                    weather_data = await asyncio.wait_for(
+                        self._extract_weather_intelligently(query),
+                        timeout=25.0  # 25 second timeout for full extraction
+                    )
             except asyncio.TimeoutError:
-                logger.error("[UNIFIED WEATHER] Weather extraction timed out after 25s")
+                logger.error(f"[UNIFIED WEATHER] Weather extraction timed out")
                 return self._fallback_response("Weather analysis took too long")
             
             # Cache and return
@@ -120,6 +131,54 @@ class UnifiedVisionWeather:
         except Exception as e:
             logger.error(f"Failed to prepare Weather app: {e}")
             return False
+    
+    async def _extract_weather_fast(self) -> Dict[str, Any]:
+        """
+        Fast weather extraction - skip navigation, just read what's shown
+        """
+        logger.info("Using fast weather extraction (no navigation)")
+        
+        # Just extract weather data without navigation
+        weather_data = await self._extract_comprehensive_weather()
+        
+        if not weather_data:
+            return {
+                'success': False,
+                'error': 'Could not read weather data'
+            }
+        
+        # Format basic response
+        location = weather_data.get('location', 'the current location')
+        current = weather_data.get('current', {})
+        today = weather_data.get('today', {})
+        
+        response_parts = []
+        
+        # Note if not user's location
+        if location and location.lower() in ['new york', 'nyc']:
+            response_parts.append(f"The Weather app is showing {location}")
+        else:
+            response_parts.append(f"Looking at the weather in {location}")
+        
+        # Current conditions
+        if current.get('temperature'):
+            temp = current['temperature']
+            condition = current.get('condition', 'current conditions')
+            response_parts.append(f"it's {temp}°F and {condition.lower()}")
+        
+        # High/low
+        if today.get('high') and today.get('low'):
+            response_parts.append(f"Today's high will be {today['high']}°F with a low of {today['low']}°F")
+        
+        formatted = ". ".join(response_parts) + "."
+        
+        return {
+            'success': True,
+            'data': weather_data,
+            'formatted_response': formatted,
+            'source': 'vision_fast',
+            'timestamp': datetime.now().isoformat()
+        }
     
     async def _extract_weather_intelligently(self, query: str) -> Dict[str, Any]:
         """
@@ -165,33 +224,39 @@ class UnifiedVisionWeather:
             from .weather_navigation_helper import WeatherNavigationHelper
             nav_helper = WeatherNavigationHelper(self.controller)
             
+            # Pass vision handler if available
+            if self.vision_handler:
+                nav_helper.vision_handler = self.vision_handler
+            
             # Ensure Weather is focused
             await nav_helper.ensure_weather_focused()
             
-            # Try to select My Location multiple times if needed
-            max_attempts = 3
+            # Try to select My Location - reduced attempts for speed
+            max_attempts = 2
             for attempt in range(max_attempts):
                 logger.info(f"Selection attempt {attempt + 1}/{max_attempts}")
                 
                 success = await nav_helper.select_my_location_robust()
                 
                 if success:
-                    # Wait and verify
-                    await asyncio.sleep(2)
+                    # Shorter wait for speed
+                    await asyncio.sleep(1)
                     
-                    # Quick check if Toronto is showing
+                    # Skip verification on first attempt to save time
+                    if attempt == 0:
+                        logger.info("First selection attempt completed, proceeding")
+                        break
+                    
+                    # Only verify on second attempt if needed
                     if self.vision_handler and hasattr(self.vision_handler, 'analyze_weather_fast'):
                         quick_check = await self.vision_handler.analyze_weather_fast()
                         if quick_check.get('success'):
                             analysis = quick_check.get('analysis', '')
-                            if 'toronto' in analysis.lower() or '74' in analysis:
+                            if 'toronto' in analysis.lower():
                                 logger.info("Successfully showing Toronto/My Location")
                                 break
                             elif 'new york' in analysis.lower():
-                                logger.warning(f"Still showing New York, attempt {attempt + 1} failed")
-                                if attempt < max_attempts - 1:
-                                    await asyncio.sleep(1)
-                                    continue
+                                logger.warning(f"Still showing New York after {attempt + 1} attempts")
                     
                 logger.info("Navigation completed")
                 break

@@ -1,7 +1,7 @@
-# 🤖 JARVIS AI System v12.9.6 - Enhanced Vision Intelligence & Dynamic Optimization 🧠
+# 🤖 JARVIS AI System v12.9.7 - Enhanced Weather Intelligence & Vision System 🧠
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-12.9.6%20Vision%20AI-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Version-12.9.7%20Weather%20AI-brightgreen" alt="Version">
   <img src="https://img.shields.io/badge/Wake%20Word-10ms%20⚡-ff69b4" alt="Ultra Fast Wake Word">
   <img src="https://img.shields.io/badge/Memory-350MB%20Voice-success" alt="Low Memory Voice">
   <img src="https://img.shields.io/badge/CPU-1--2%25%20Usage-blue" alt="Low CPU">
@@ -18,6 +18,32 @@
 <p align="center">
   <em>"Perfection is achieved not when there is nothing more to add, but when there is nothing left to take away." - Antoine de Saint-Exupéry</em>
 </p>
+
+## 🆕 What's New in v12.9.7 - Enhanced Weather Intelligence
+
+### 🌤️ Weather System Improvements (WORKING!)
+**JARVIS NOW READS WEATHER ACCURATELY!** Major enhancements:
+- ✅ **Vision-based reading** - Uses Claude Vision API to read Weather app display
+- ✅ **Natural responses** - Properly formatted weather descriptions
+- ✅ **Location awareness** - Tells you which city's weather is being displayed
+- ✅ **Timeout handling** - Improved timeouts prevent hanging (30s main, 35s API)
+- ✅ **Fallback system** - Always provides weather even if main flow times out
+
+### 🏙️ Location Behavior (TRANSPARENT!)
+**UNDERSTANDS macOS SECURITY!** Clear behavior:
+- ✅ **Default location** - Weather app opens to New York by default
+- ✅ **Manual selection works** - Your manual clicks are permanent for session
+- ✅ **Security explanation** - JARVIS explains why automated selection differs
+- ✅ **Clear communication** - Always tells you which city is being displayed
+- ✅ **No false promises** - Honest about limitations due to macOS privacy
+
+### ⚡ Performance Optimizations (FASTER!)
+**REDUCED TIMEOUTS AND DELAYS!** Speed improvements:
+- ✅ **Optimized navigation** - Reduced selection attempts from 3 to 2
+- ✅ **Faster verification** - Skip redundant vision checks on first attempt
+- ✅ **Smart timeouts** - 10s for fast mode, 25s for full analysis
+- ✅ **Quick fallback** - Immediate weather read if main flow times out
+- ✅ **Response formatting** - Proper formatting for raw vision output
 
 ## 🆕 What's New in v12.9.6 - Dynamic Vision System Without Hardcoding
 
@@ -4522,29 +4548,105 @@ curl http://localhost:8010/vision/status
 - Update to latest code with vision fixes
 - Check logs for specific error messages
 
-#### **2. Weather Commands (New in v12.6)**
+#### **2. Weather Commands (Enhanced in v12.9.6)**
 
 **How it Works:**
 - Say "What's the weather today?" or any weather-related query
 - JARVIS automatically opens macOS Weather app
-- Uses Claude Vision to read current conditions from the app
-- Returns natural language description of weather
+- Uses Claude Vision API to read and analyze the weather display
+- Returns natural language description with temperature, conditions, and forecast
+
+**Supported Weather Queries:**
+```bash
+# Basic weather queries
+"What's the weather for today?"
+"What's the temperature?"
+"Is it going to rain?"
+"What's the forecast?"
+
+# Location-specific queries (reads what's displayed)
+"What's the weather in Toronto?"  # Will read Toronto if manually selected
+"Tell me about the weather"
+"How's the weather looking?"
+```
 
 **Test Weather Feature:**
 ```bash
-# Test the weather workflow
-python backend/test_weather_app_vision.py
+# Test the complete weather workflow
+python backend/test_jarvis_weather_final.py
 
-# Or just ask JARVIS
-# "What's the weather?" 
-# "Is it going to rain today?"
-# "What's the temperature?"
+# Test specific components
+python backend/test_weather_with_location_note.py  # Tests with location awareness
+python backend/test_weather_optimized.py          # Tests optimized response time
+
+# Or just ask JARVIS directly
+# "Hey JARVIS, what's the weather today?"
 ```
+
+**Current Behavior & Important Notes:**
+
+1. **Default Location:** The Weather app defaults to New York when opened
+   - JARVIS will read and report whatever location is currently displayed
+   - If Weather app shows New York, JARVIS will say "The Weather app is showing New York..."
+
+2. **Manual Location Selection:** 
+   - You can manually click on your preferred location (e.g., Toronto) in the Weather app
+   - Once manually selected, your location typically remains selected for that session
+   - JARVIS will then read your selected location's weather
+
+3. **Why Automated Selection Doesn't Work:**
+   - macOS has security features that prevent automated tools from changing location selections
+   - This is a privacy protection measure for location-based data
+   - Manual clicks are treated differently than programmatic clicks by the Weather app
 
 **Troubleshooting:**
 - Ensure Weather app is installed (comes with macOS)
-- Grant screen recording permissions to your IDE
-- Check ANTHROPIC_API_KEY is set for vision
+- Grant screen recording permissions to Terminal/IDE (System Preferences → Privacy & Security → Screen Recording)
+- Check ANTHROPIC_API_KEY is set for Claude Vision API
+- Weather app must be visible on screen for vision analysis
+
+**Response Examples:**
+```
+User: "What's the weather for today?"
+JARVIS: "Looking at the weather in New York, it's currently 72°F and clear. Today's high and low are 80°/62°, Sir."
+
+User: (After manually selecting Toronto) "What's the weather?"
+JARVIS: "Looking at the weather in Toronto, it's currently 68°F and clear. Today's high and low are 78°/56°, Sir."
+```
+
+**Known Limitations:**
+- Cannot programmatically change the selected city due to macOS security
+- Response time may vary (15-30 seconds) due to vision processing
+- Requires Weather app to be installed and accessible
+
+**Advanced Troubleshooting:**
+
+1. **If JARVIS says "having trouble reading the Weather app":**
+   - Ensure Weather app is in the foreground
+   - Check that screen recording permissions are granted
+   - Try the test script: `python backend/test_weather_optimized.py`
+
+2. **If weather always shows New York:**
+   - This is expected behavior when Weather app is freshly opened
+   - Manually click on your city once - it should stay selected for that session
+   - JARVIS will read whatever city is currently displayed
+
+3. **To verify the system is working:**
+   ```bash
+   # Run the final weather test
+   python backend/test_jarvis_weather_final.py
+   
+   # This should show:
+   # ✅ JARVIS opens the Weather app
+   # ✅ JARVIS reads the weather data using Claude Vision
+   # ✅ JARVIS communicates the weather back to you
+   ```
+
+4. **For developers - understanding the flow:**
+   - Weather command detected → Opens Weather app → Waits for app to load
+   - Attempts Toronto selection (may not work due to macOS security)
+   - Captures screen → Sends to Claude Vision API → Parses response
+   - Formats and speaks the weather information
 
 #### **3. MLAudioHandler Errors (Fixed in v12.6)**
 

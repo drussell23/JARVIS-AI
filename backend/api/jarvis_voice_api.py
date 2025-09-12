@@ -549,11 +549,11 @@ class JARVISVoiceAPI:
             try:
                 response = await asyncio.wait_for(
                     self.jarvis.process_voice_input(command.text),
-                    timeout=25.0  # 25 second timeout for API calls
+                    timeout=35.0  # 35 second timeout for API calls (to accommodate weather)
                 )
                 logger.info(f"[JARVIS API] Response: '{response[:100]}...' (truncated)")
             except asyncio.TimeoutError:
-                logger.error(f"[JARVIS API] Command processing timed out after 25s: '{command.text}'")
+                logger.error(f"[JARVIS API] Command processing timed out after 35s: '{command.text}'")
                 # For weather commands, open the Weather app as fallback
                 if any(word in command.text.lower() for word in ['weather', 'temperature', 'forecast', 'rain']):
                     try:

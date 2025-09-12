@@ -1607,9 +1607,9 @@ System Control Commands:
                 return None
         
         try:
-            # Try vision workflow with overall timeout
-            logger.info("[WEATHER HANDLER] Starting main weather processing with 20s timeout")
-            result = await asyncio.wait_for(get_weather_with_timeout(), timeout=20.0)
+            # Try vision workflow with overall timeout - increased for Toronto selection
+            logger.info("[WEATHER HANDLER] Starting main weather processing with 30s timeout")
+            result = await asyncio.wait_for(get_weather_with_timeout(), timeout=30.0)
             logger.info(f"[WEATHER HANDLER] Main weather processing result: {result[:100] if result else 'None'}...")
             if result:
                 return result
@@ -1625,10 +1625,42 @@ System Control Commands:
                 # Try direct vision read with timeout
                 quick_result = await asyncio.wait_for(
                     self._force_vision_weather_read(),
-                    timeout=5.0  # 5 second timeout for quick read
+                    timeout=10.0  # Increased timeout for quick read
                 )
                 if quick_result:
-                    return quick_result
+                    # Don't say we're having difficulty if we got the weather!
+                    # Format the response properly
+                    if "Location:" in quick_result and "Temp:" in quick_result:
+                        # Raw format from analyze_weather_fast, format it nicely
+                        parts = quick_result.split('\n')
+                        location = ""
+                        temp = ""
+                        condition = ""
+                        high_low = ""
+                        
+                        for part in parts:
+                            if "Location:" in part:
+                                location = part.split("Location:")[1].strip()
+                            elif "Temp:" in part:
+                                temp = part.split("Temp:")[1].strip()
+                            elif "Condition:" in part:
+                                condition = part.split("Condition:")[1].strip()
+                            elif "High/Low:" in part:
+                                high_low = part.split("High/Low:")[1].strip()
+                        
+                        # Build formatted response
+                        response = f"Looking at the weather in {location}"
+                        if temp:
+                            response += f", it's currently {temp}"
+                        if condition:
+                            response += f" and {condition.lower()}"
+                        if high_low:
+                            response += f". Today's high and low are {high_low}"
+                        
+                        return response + f", {self.user_name if self.user_name else 'Sir'}."
+                    else:
+                        # Already formatted response
+                        return quick_result
                     
             except Exception as e:
                 logger.error(f"Quick weather read failed: {e}")
