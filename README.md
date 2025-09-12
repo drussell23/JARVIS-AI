@@ -19,31 +19,41 @@
   <em>"Perfection is achieved not when there is nothing more to add, but when there is nothing left to take away." - Antoine de Saint-Exupéry</em>
 </p>
 
+## 🆕 What's New in v12.9.8 - Hybrid Weather Intelligence
+
+### 🌦️ Hybrid Weather System (NEW!)
+**JARVIS NOW HAS MULTIPLE WEATHER SOURCES!** Major upgrade:
+- ✅ **OpenWeatherMap API** - Primary source for instant, accurate weather
+- ✅ **Automatic location detection** - Uses IP geolocation for current location
+- ✅ **Global city support** - Get weather for any city worldwide
+- ✅ **Vision fallback** - Still works without API key using Claude Vision
+- ✅ **Multiple backup sources** - Core Location, Swift tool, widgets
+
+### 🚀 API Integration (RECOMMENDED!)
+**INSTANT WEATHER WITH OPENWEATHERMAP!** Benefits:
+- ✅ **Sub-second responses** - No need to open Weather app
+- ✅ **Accurate location** - Detects your actual location automatically
+- ✅ **Any city queries** - "What's the weather in Tokyo?" works perfectly
+- ✅ **Free tier available** - 1000 calls/day free at openweathermap.org
+- ✅ **Easy setup** - Just add API key to .env file
+
+### 🏙️ Enhanced Fallback System (ROBUST!)
+**NEVER FAILS TO PROVIDE WEATHER!** Fallback priority:
+- ✅ **API first** - Uses OpenWeatherMap when configured
+- ✅ **Vision second** - Opens Weather app and reads with Claude
+- ✅ **Core Location third** - Precise macOS location services
+- ✅ **Swift tool fourth** - Native weather integration
+- ✅ **Always responds** - Clear error messages if all sources fail
+
 ## 🆕 What's New in v12.9.7 - Enhanced Weather Intelligence
 
-### 🌤️ Weather System Improvements (WORKING!)
-**JARVIS NOW READS WEATHER ACCURATELY!** Major enhancements:
-- ✅ **Vision-based reading** - Uses Claude Vision API to read Weather app display
+### 🌤️ Vision Weather Improvements (STILL WORKING!)
+**VISION FALLBACK ENHANCED!** When API unavailable:
+- ✅ **Vision-based reading** - Uses Claude Vision API to read Weather app
 - ✅ **Natural responses** - Properly formatted weather descriptions
-- ✅ **Location awareness** - Tells you which city's weather is being displayed
-- ✅ **Timeout handling** - Improved timeouts prevent hanging (30s main, 35s API)
-- ✅ **Fallback system** - Always provides weather even if main flow times out
-
-### 🏙️ Location Behavior (TRANSPARENT!)
-**UNDERSTANDS macOS SECURITY!** Clear behavior:
-- ✅ **Default location** - Weather app opens to New York by default
-- ✅ **Manual selection works** - Your manual clicks are permanent for session
-- ✅ **Security explanation** - JARVIS explains why automated selection differs
-- ✅ **Clear communication** - Always tells you which city is being displayed
-- ✅ **No false promises** - Honest about limitations due to macOS privacy
-
-### ⚡ Performance Optimizations (FASTER!)
-**REDUCED TIMEOUTS AND DELAYS!** Speed improvements:
-- ✅ **Optimized navigation** - Reduced selection attempts from 3 to 2
-- ✅ **Faster verification** - Skip redundant vision checks on first attempt
-- ✅ **Smart timeouts** - 10s for fast mode, 25s for full analysis
+- ✅ **Location awareness** - Tells you which city's weather is displayed
+- ✅ **Timeout handling** - Improved timeouts prevent hanging
 - ✅ **Quick fallback** - Immediate weather read if main flow times out
-- ✅ **Response formatting** - Proper formatting for raw vision output
 
 ## 🆕 What's New in v12.9.6 - Dynamic Vision System Without Hardcoding
 
@@ -4548,36 +4558,67 @@ curl http://localhost:8010/vision/status
 - Update to latest code with vision fixes
 - Check logs for specific error messages
 
-#### **2. Weather Commands (Enhanced in v12.9.6)**
+#### **2. Weather Commands (Enhanced in v12.9.8 - Hybrid System)**
 
-**How it Works:**
-- Say "What's the weather today?" or any weather-related query
-- JARVIS automatically opens macOS Weather app
-- Uses Claude Vision API to read and analyze the weather display
-- Returns natural language description with temperature, conditions, and forecast
+**NEW: Hybrid Weather Provider with OpenWeatherMap API**
+- Primary: Uses OpenWeatherMap API for instant, accurate weather data
+- Fallback: Vision-based extraction when API unavailable
+- Automatic location detection using IP geolocation
+- Support for any city worldwide with natural queries
+
+**How to Enable OpenWeatherMap (Recommended):**
+```bash
+# 1. Get free API key from https://openweathermap.org/api
+# 2. Add to backend/.env file:
+OPENWEATHER_API_KEY=your_api_key_here
+
+# 3. Restart JARVIS - it will automatically use the API
+python start_system.py
+```
 
 **Supported Weather Queries:**
 ```bash
-# Basic weather queries
+# Basic weather queries (uses your current location)
 "What's the weather for today?"
 "What's the temperature?"
 "Is it going to rain?"
 "What's the forecast?"
 
-# Location-specific queries (reads what's displayed)
-"What's the weather in Toronto?"  # Will read Toronto if manually selected
-"Tell me about the weather"
-"How's the weather looking?"
+# City-specific queries (works with API)
+"What's the weather in New York?"
+"Tell me the weather in Toronto"
+"How's the weather in London?"
+"What's the temperature in Tokyo?"
+
+# Natural variations
+"Is it cold outside?"
+"Do I need an umbrella?"
+"What's it like out there?"
 ```
+
+**Weather Data Sources (Priority Order):**
+1. **OpenWeatherMap API** - Instant, accurate, any location
+2. **Vision Extraction** - Reads macOS Weather app with Claude
+3. **Core Location** - Uses precise macOS location services
+4. **Swift Weather Tool** - Native macOS weather integration
+5. **Weather Widget** - Extracts from macOS widgets
+
+**Vision Fallback Behavior:**
+- If no API key configured, opens macOS Weather app
+- Uses Claude Vision to read displayed weather
+- Note: Weather app defaults to New York when opened
+- Manual location changes persist for the session
 
 **Test Weather Feature:**
 ```bash
-# Test the complete weather workflow
-python backend/test_jarvis_weather_final.py
+# Test hybrid weather system
+python backend/test_hybrid_weather.py
 
-# Test specific components
-python backend/test_weather_with_location_note.py  # Tests with location awareness
-python backend/test_weather_optimized.py          # Tests optimized response time
+# Test with JARVIS integration
+python backend/test_jarvis_hybrid_weather.py
+
+# Test vision-based fallback
+python backend/test_jarvis_weather_final.py
 
 # Or just ask JARVIS directly
 # "Hey JARVIS, what's the weather today?"

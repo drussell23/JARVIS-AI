@@ -22,14 +22,30 @@ class WeatherBridge:
         # Pattern recognition for weather queries
         self._weather_patterns = self._compile_weather_patterns()
         
-        # HIGHEST PRIORITY: Vision-based weather extraction
+        # Initialize fallback API service first (needed for hybrid)
+        self.api_weather_service = None
+        self._init_fallback_service()
+        
+        # Initialize vision extractor (needed for hybrid)
+        self.vision_extractor = None
         try:
             from .vision_weather_extractor import VisionWeatherExtractor
             self.vision_extractor = VisionWeatherExtractor()
             logger.info("Vision weather extractor initialized - bypasses location permissions!")
         except Exception as e:
             logger.warning(f"Could not initialize vision weather extractor: {e}")
-            self.vision_extractor = None
+        
+        # HIGHEST PRIORITY: Hybrid weather provider (API + Vision fallback)
+        try:
+            from .hybrid_weather_provider import HybridWeatherProvider
+            self.hybrid_provider = HybridWeatherProvider(
+                api_weather_service=self.api_weather_service,
+                vision_extractor=self.vision_extractor
+            )
+            logger.info("Hybrid weather provider initialized - API primary with vision fallback!")
+        except Exception as e:
+            logger.warning(f"Could not initialize hybrid weather provider: {e}")
+            self.hybrid_provider = None
         
         # SECOND PRIORITY: Precise location weather with Core Location
         try:
@@ -73,9 +89,7 @@ class WeatherBridge:
             logger.warning(f"Could not initialize macOS weather provider: {e}")
             self.macos_provider = None
         
-        # Fallback weather service
-        self.api_weather_service = None
-        self._init_fallback_service()
+        # Vision extractor is now initialized earlier for hybrid provider
     
     def _compile_weather_patterns(self) -> List[re.Pattern]:
         """Compile regex patterns for weather query detection"""
@@ -197,18 +211,18 @@ class WeatherBridge:
         """Get weather for current location - ALWAYS REAL-TIME"""
         # NO CACHING - always get fresh data
         
-        # FIRST PRIORITY: Try Vision extraction (bypasses all permission issues!)
-        if self.vision_extractor:
+        # FIRST PRIORITY: Try Hybrid provider (OpenWeatherMap with vision fallback)
+        if self.hybrid_provider:
             try:
-                vision_data = await self.vision_extractor.get_weather_with_cache()
-                if vision_data and self._is_valid_weather_data(vision_data):
-                    logger.info(f"Got weather from VISION: {vision_data.get('location')} - "
-                               f"{vision_data.get('temperature')}°C, {vision_data.get('condition')}")
+                hybrid_data = await self.hybrid_provider.get_current_weather()
+                if hybrid_data and self._is_valid_weather_data(hybrid_data):
+                    logger.info(f"Got weather from HYBRID provider: {hybrid_data.get('location')} - "
+                               f"{hybrid_data.get('temperature')}°C, {hybrid_data.get('condition')}")
                     # Enhance with additional fields
-                    vision_data = self._enhance_weather_data(vision_data)
-                    return vision_data
+                    hybrid_data = self._enhance_weather_data(hybrid_data)
+                    return hybrid_data
             except Exception as e:
-                logger.error(f"Vision weather extraction failed: {e}")
+                logger.error(f"Hybrid weather provider failed: {e}")
         
         # SECOND PRIORITY: Try Precise weather provider with Core Location
         if self.precise_provider:
@@ -286,7 +300,20 @@ class WeatherBridge:
         # NO CACHING - always get fresh data
         city_normalized = city.strip().title()
         
-        # FIRST: Try Precise weather provider
+        # FIRST: Try Hybrid provider (OpenWeatherMap with vision fallback)
+        if self.hybrid_provider:
+            try:
+                hybrid_data = await self.hybrid_provider.get_weather_by_city(city)
+                if hybrid_data and self._is_valid_weather_data(hybrid_data):
+                    logger.info(f"Got city weather from HYBRID provider: {city} - "
+                               f"{hybrid_data.get('temperature')}°C")
+                    # Enhance with additional fields
+                    hybrid_data = self._enhance_weather_data(hybrid_data)
+                    return hybrid_data
+            except Exception as e:
+                logger.error(f"Hybrid provider city weather failed: {e}")
+        
+        # SECOND: Try Precise weather provider
         if self.precise_provider:
             try:
                 precise_data = await self.precise_provider.get_weather_data(city)
