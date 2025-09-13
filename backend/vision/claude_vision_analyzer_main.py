@@ -230,6 +230,14 @@ class AnalysisMetrics:
     vsms_core_time: float = 0.0  # Time for VSMS Core analysis
     quadtree_time: float = 0.0  # Time for Quadtree spatial analysis
     predictive_hit: bool = False  # Whether result came from predictive engine
+    # Region-based optimization metrics
+    regions_extracted: int = 0  # Number of regions extracted from image
+    coverage_ratio: float = 0.0  # Percentage of screen covered by regions
+    processing_strategy: str = ""  # Strategy used: 'full_standard', 'full_compressed', 'region_composite'
+    orchestrator_time: float = 0.0  # Time for orchestrator processing
+    system_mode: str = "normal"  # System mode during processing
+    orchestrator_cache_hits: int = 0  # Cache hits from orchestrator
+    orchestrator_api_saved: int = 0  # API calls saved by orchestrator
 
 class DynamicEntityExtractor:
     """Dynamic entity extraction without hardcoded patterns"""
@@ -1926,31 +1934,100 @@ class ClaudeVisionAnalyzer:
                 logger.info("Using pre-computed predictive result")
                 return predictive_result, metrics
             
-            # Compress image if enabled
+            # Intelligent region-based processing with Quadtree optimization
+            if quadtree_regions and len(quadtree_regions) > 0:
+                # Determine strategy based on regions and system mode
+                num_regions = len(quadtree_regions)
+                system_mode = metrics.system_mode if hasattr(metrics, 'system_mode') else 'normal'
+                
+                # Dynamic thresholds based on system mode
+                region_limits = {
+                    'normal': 5,      # Process up to 5 regions in normal mode
+                    'pressure': 3,    # Reduce to 3 in pressure mode
+                    'critical': 2,    # Only 2 most important in critical mode
+                    'emergency': 1    # Single most important region in emergency
+                }
+                max_regions = region_limits.get(system_mode, 5)
+                
+                # Calculate total coverage of important regions
+                total_area = pil_image.width * pil_image.height
+                important_area = sum(r['width'] * r['height'] for r in quadtree_regions[:max_regions])
+                coverage_ratio = important_area / total_area
+                
+                # Decide strategy based on coverage and importance
+                if coverage_ratio > 0.7 or num_regions == 1:
+                    # High coverage or single region - use full image but compressed more
+                    logger.info(f"Using full image strategy (coverage: {coverage_ratio:.1%})")
+                    compression_quality = self.config.jpeg_quality - 10  # More compression
+                    image_to_send = pil_image
+                    strategy = "full_compressed"
+                else:
+                    # Low coverage - create composite of important regions
+                    logger.info(f"Using region composite strategy ({num_regions} regions, "
+                              f"coverage: {coverage_ratio:.1%})")
+                    
+                    # Sort regions by importance and take top N
+                    sorted_regions = sorted(quadtree_regions, 
+                                         key=lambda r: r['importance'] * r['width'] * r['height'], 
+                                         reverse=True)[:max_regions]
+                    
+                    # Create composite image with regions
+                    composite_image = await self._create_region_composite(
+                        pil_image, sorted_regions, system_mode
+                    )
+                    image_to_send = composite_image
+                    compression_quality = self.config.jpeg_quality
+                    strategy = "region_composite"
+                    
+                    # Update metrics with region extraction info
+                    metrics.regions_extracted = len(sorted_regions)
+                    metrics.coverage_ratio = coverage_ratio
+            else:
+                # No quadtree regions - use standard full image
+                logger.debug("No quadtree regions available, using full image")
+                image_to_send = pil_image
+                compression_quality = self.config.jpeg_quality
+                strategy = "full_standard"
+            
+            # Compress the selected image/composite
             if self.config.compression_enabled:
                 compression_start = time.time()
-                image_base64, compressed_size = await self._compress_and_encode(pil_image)
+                # Use dynamic quality based on strategy
+                original_quality = self.config.jpeg_quality
+                self.config.jpeg_quality = compression_quality
+                try:
+                    image_base64, compressed_size = await self._compress_and_encode(image_to_send)
+                finally:
+                    self.config.jpeg_quality = original_quality  # Restore
+                
                 metrics.image_size_compressed = compressed_size
                 metrics.compression_ratio = 1 - (compressed_size / metrics.image_size_original)
-                logger.debug(f"Compressed image from {metrics.image_size_original} to "
+                metrics.processing_strategy = strategy
+                logger.debug(f"Compressed {strategy} image from {metrics.image_size_original} to "
                            f"{compressed_size} bytes ({metrics.compression_ratio:.1%} reduction)")
             else:
-                image_base64 = self._encode_image(pil_image)
+                image_base64 = self._encode_image(image_to_send)
                 metrics.image_size_compressed = len(base64.b64decode(image_base64))
             
             # Make API call with rate limiting
             api_start = time.time()
             async with self.api_semaphore:
-                # Enhance prompt with quadtree information if available
+                # Create enhanced prompt based on strategy
                 enhanced_prompt = prompt
-                if quadtree_regions and len(quadtree_regions) > 1:
-                    region_info = f"\n\n[Spatial Analysis: Found {len(quadtree_regions)} important regions. "
-                    region_info += "Focus on these key areas: "
-                    for i, region in enumerate(quadtree_regions[:5]):  # Top 5 regions
-                        region_info += f"Region {i+1} at ({region['x']},{region['y']}) "
-                        region_info += f"{region['width']}x{region['height']}px "
-                        region_info += f"(importance: {region['importance']:.2f}), "
-                    region_info = region_info.rstrip(", ") + "]"
+                if quadtree_regions:
+                    if strategy == "region_composite":
+                        region_info = f"\n\n[Spatial Optimization: Showing {metrics.regions_extracted} most important regions "
+                        region_info += f"covering {coverage_ratio:.1%} of screen. "
+                        region_info += "Each region is labeled with its location and importance. "
+                        region_info += "Please focus analysis on these specific areas.]"
+                    elif strategy == "full_compressed":
+                        region_info = f"\n\n[Note: {len(quadtree_regions)} important regions detected. "
+                        region_info += "Key areas: "
+                        for i, region in enumerate(quadtree_regions[:3]):  # Top 3 for context
+                            region_info += f"({region['x']},{region['y']}) "
+                        region_info += "Please prioritize these areas in your analysis.]"
+                    else:
+                        region_info = ""
                     enhanced_prompt = prompt + region_info
                 
                 if priority == "high":
@@ -2628,6 +2705,155 @@ class ClaudeVisionAnalyzer:
         buffer = io.BytesIO()
         image.save(buffer, format="PNG")
         return base64.b64encode(buffer.getvalue()).decode()
+    
+    async def _create_region_composite(self, original_image: Image.Image, 
+                                     regions: List[Dict[str, Any]], 
+                                     system_mode: str) -> Image.Image:
+        """Create a composite image from important regions
+        
+        Args:
+            original_image: The full screenshot
+            regions: List of region dictionaries with x, y, width, height, importance
+            system_mode: Current system mode (affects layout)
+            
+        Returns:
+            Composite image containing the important regions
+        """
+        # Sort regions by importance
+        regions = sorted(regions, key=lambda r: r['importance'], reverse=True)
+        
+        # Extract regions from original image
+        cropped_regions = []
+        for region in regions:
+            try:
+                # Get region bounds
+                x, y = region['x'], region['y']
+                width, height = region['width'], region['height']
+                
+                # Add small padding (2% of dimensions) for context
+                padding_x = int(width * 0.02)
+                padding_y = int(height * 0.02)
+                
+                # Calculate padded bounds (ensure within image bounds)
+                x1 = max(0, x - padding_x)
+                y1 = max(0, y - padding_y)
+                x2 = min(original_image.width, x + width + padding_x)
+                y2 = min(original_image.height, y + height + padding_y)
+                
+                # Crop region
+                cropped = original_image.crop((x1, y1, x2, y2))
+                
+                # Add metadata for labeling
+                cropped_regions.append({
+                    'image': cropped,
+                    'original_x': x,
+                    'original_y': y,
+                    'importance': region['importance'],
+                    'width': x2 - x1,
+                    'height': y2 - y1
+                })
+            except Exception as e:
+                logger.warning(f"Failed to crop region: {e}")
+                continue
+        
+        if not cropped_regions:
+            logger.warning("No regions could be cropped, returning original image")
+            return original_image
+        
+        # Calculate composite layout based on system mode
+        if system_mode in ['critical', 'emergency']:
+            # Stack vertically in critical/emergency modes (simpler layout)
+            layout = 'vertical'
+            gap = 5  # Minimal gap between regions
+        else:
+            # Try optimal grid layout in normal/pressure modes
+            layout = 'grid'
+            gap = 10  # Larger gap for clarity
+        
+        # Create composite image
+        if layout == 'vertical':
+            # Stack regions vertically
+            composite_width = max(r['width'] for r in cropped_regions)
+            composite_height = sum(r['height'] for r in cropped_regions) + gap * (len(cropped_regions) - 1)
+            
+            composite = Image.new('RGB', (composite_width, composite_height), color=(30, 30, 30))
+            
+            # Place regions
+            y_offset = 0
+            for i, region_data in enumerate(cropped_regions):
+                cropped = region_data['image']
+                composite.paste(cropped, (0, y_offset))
+                
+                # Add label
+                self._add_region_label(composite, 0, y_offset, region_data, i + 1)
+                
+                y_offset += region_data['height'] + gap
+        
+        else:  # grid layout
+            # Calculate grid dimensions (aim for roughly square layout)
+            num_regions = len(cropped_regions)
+            cols = max(1, int(np.sqrt(num_regions)))
+            rows = (num_regions + cols - 1) // cols
+            
+            # Calculate cell dimensions based on largest regions
+            cell_width = max(r['width'] for r in cropped_regions) + gap
+            cell_height = max(r['height'] for r in cropped_regions) + gap
+            
+            composite_width = cols * cell_width
+            composite_height = rows * cell_height
+            
+            composite = Image.new('RGB', (composite_width, composite_height), color=(30, 30, 30))
+            
+            # Place regions in grid
+            for i, region_data in enumerate(cropped_regions):
+                row = i // cols
+                col = i % cols
+                x_offset = col * cell_width
+                y_offset = row * cell_height
+                
+                cropped = region_data['image']
+                composite.paste(cropped, (x_offset, y_offset))
+                
+                # Add label
+                self._add_region_label(composite, x_offset, y_offset, region_data, i + 1)
+        
+        logger.info(f"Created composite image: {composite.width}x{composite.height}, "
+                   f"{len(cropped_regions)} regions, layout: {layout}")
+        
+        return composite
+    
+    def _add_region_label(self, image: Image.Image, x: int, y: int, 
+                         region_data: Dict[str, Any], region_num: int):
+        """Add a small label to a region in the composite
+        
+        Note: This is a simple labeling method. In production, you might want
+        to use PIL.ImageDraw for better text rendering.
+        """
+        try:
+            from PIL import ImageDraw, ImageFont
+            
+            draw = ImageDraw.Draw(image)
+            
+            # Create label text
+            label = f"R{region_num}: ({region_data['original_x']},{region_data['original_y']}) "
+            label += f"imp={region_data['importance']:.2f}"
+            
+            # Try to use a small font (fallback to default if not available)
+            try:
+                font = ImageFont.truetype("Arial", 10)
+            except:
+                font = ImageFont.load_default()
+            
+            # Add semi-transparent background for label
+            bbox = draw.textbbox((x, y), label, font=font)
+            draw.rectangle(bbox, fill=(0, 0, 0, 180))
+            
+            # Draw text
+            draw.text((x + 2, y + 2), label, fill=(255, 255, 0), font=font)
+            
+        except Exception as e:
+            # Labeling is optional - don't fail the whole process
+            logger.debug(f"Could not add label to region: {e}")
     
     async def _call_claude_api(self, image_base64: str, prompt: str) -> str:
         """Make API call to Claude with timeout"""
