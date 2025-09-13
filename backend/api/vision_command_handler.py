@@ -135,7 +135,7 @@ class VisionCommandHandler:
             }
     
     async def start_monitoring(self) -> Dict[str, Any]:
-        """Start screen monitoring"""
+        """Start screen monitoring with real-time interaction"""
         await self.initialize_vision_manager()
         
         if not self.vision_manager:
@@ -146,12 +146,68 @@ class VisionCommandHandler:
             }
         
         try:
-            # Start monitoring
+            # Start basic monitoring
             await self.vision_manager.start_monitoring()
+            
+            # Initialize real-time interaction if available
+            try:
+                # Get continuous analyzer from vision manager
+                continuous_analyzer = None
+                if hasattr(self.vision_manager, 'vision_analyzer'):
+                    vision_analyzer = self.vision_manager.vision_analyzer
+                    if hasattr(vision_analyzer, 'continuous_analyzer'):
+                        continuous_analyzer = vision_analyzer.continuous_analyzer
+                    elif hasattr(vision_analyzer, 'get_continuous_analyzer'):
+                        continuous_analyzer = await vision_analyzer.get_continuous_analyzer()
+                
+                if continuous_analyzer:
+                    # Import and setup real-time interaction
+                    from vision.real_time_interaction_handler import RealTimeInteractionHandler
+                    
+                    # Create notification callback that sends through WebSocket
+                    async def send_notification(notification):
+                        await ws_logger.log(notification['message'], notification.get('priority', 'info'))
+                        # Also send as a notification event if WebSocket available
+                        if ws_logger.websocket_callback:
+                            await ws_logger.websocket_callback(notification)
+                    
+                    # Initialize interaction handler with vision analyzer
+                    if not hasattr(self, 'interaction_handler'):
+                        self.interaction_handler = RealTimeInteractionHandler(
+                            continuous_analyzer=continuous_analyzer,
+                            notification_callback=send_notification,
+                            vision_analyzer=vision_analyzer  # Pass the vision analyzer
+                        )
+                    
+                    # Start interactive monitoring
+                    await self.interaction_handler.start_interactive_monitoring()
+                    logger.info("Started real-time interactive monitoring")
+                else:
+                    logger.info("Continuous analyzer not available - basic monitoring only")
+                    
+            except Exception as e:
+                logger.warning(f"Could not initialize real-time interaction: {e}")
+                # Continue with basic monitoring
+            
+            # Check if real-time interaction is active
+            interaction_active = hasattr(self, 'interaction_handler') and self.interaction_handler._is_active
+            
+            if interaction_active:
+                response = (
+                    "Screen monitoring activated with real-time interaction, sir. "
+                    "I'll keep an eye on your screen and provide proactive assistance. "
+                    "You'll see notifications as I detect opportunities to help. "
+                    "The purple recording indicator should appear in your menu bar."
+                )
+            else:
+                response = (
+                    "Screen monitoring activated. I can now see your screen in real-time. "
+                    "The purple recording indicator should appear in your menu bar."
+                )
             
             return {
                 "handled": True,
-                "response": "Screen monitoring activated. I can now see your screen in real-time. The purple recording indicator should appear in your menu bar.",
+                "response": response,
                 "monitoring_active": True
             }
         except Exception as e:
@@ -174,6 +230,10 @@ class VisionCommandHandler:
             }
         
         try:
+            # Stop real-time interaction if active
+            if hasattr(self, 'interaction_handler') and self.interaction_handler._is_active:
+                await self.interaction_handler.stop_interactive_monitoring()
+                
             await self.vision_manager.stop_monitoring()
             
             return {
