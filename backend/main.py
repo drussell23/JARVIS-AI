@@ -348,6 +348,25 @@ async def lifespan(app: FastAPI):
             except ImportError:
                 logger.warning("⚠️ JARVIS factory not available for dependency injection")
             
+            # Initialize proactive monitoring components
+            try:
+                # Set JARVIS API in vision command handler for voice integration
+                from api.vision_command_handler import vision_command_handler
+                voice = components.get('voice', {})
+                if voice.get('jarvis_api'):
+                    vision_command_handler.jarvis_api = voice['jarvis_api']
+                    logger.info("✅ JARVIS voice API connected to vision command handler")
+                    
+                # Log proactive monitoring configuration
+                proactive_config = app.state.vision_analyzer.get_proactive_config()
+                if proactive_config['proactive_enabled']:
+                    logger.info("✅ Proactive monitoring enabled with:")
+                    logger.info(f"   - Confidence threshold: {proactive_config['confidence_threshold']}")
+                    logger.info(f"   - Voice announcements: {'enabled' if proactive_config['voice_enabled'] else 'disabled'}")
+                    logger.info("   - Say 'Start monitoring my screen' to activate intelligent assistance")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not initialize proactive monitoring components: {e}")
+            
             # Initialize weather system with vision
             try:
                 from system_control.weather_system_config import initialize_weather_system

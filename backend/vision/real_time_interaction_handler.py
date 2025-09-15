@@ -72,7 +72,11 @@ class RealTimeInteractionHandler:
             'assistance_effectiveness': {},  # Which assistance was helpful
             'user_preferences': {},  # Learned user preferences
             'context_triggers': {},  # What triggers context switches
-            'productivity_indicators': {}  # What indicates productive work
+            'productivity_indicators': {},  # What indicates productive work
+            'code_patterns': {},  # Track code patterns for duplication
+            'variable_mismatches': {},  # Track variable name issues
+            'tab_research_patterns': {},  # Track research behavior
+            'sensitive_content_patterns': []  # Patterns to auto-pause
         }
         
         # Enhanced Claude Vision settings for proactive analysis
@@ -146,27 +150,48 @@ class RealTimeInteractionHandler:
             self.analyzer.register_callback(event, self._on_dynamic_event)
         
     def _initialize_workflow_detectors(self) -> Dict[str, Any]:
-        """Initialize dynamic workflow detection patterns"""
+        """Initialize comprehensive workflow detection patterns"""
         return {
             'coding': {
-                'indicators': ['ide', 'code editor', 'terminal', 'debugging'],
-                'confidence_boost': ['syntax error', 'compilation', 'git'],
-                'assistance_triggers': ['error', 'stuck', 'repeated attempts']
+                'indicators': ['ide', 'code editor', 'terminal', 'debugging', 'vscode', 'cursor', 'sublime'],
+                'confidence_boost': ['syntax error', 'compilation', 'git', 'function', 'class', 'import'],
+                'assistance_triggers': ['error', 'stuck', 'repeated attempts', 'undefined', 'typeerror', 'exception'],
+                'error_patterns': {
+                    'syntax': ['syntaxerror', 'unexpected token', 'missing', 'invalid syntax'],
+                    'runtime': ['typeerror', 'referenceerror', 'undefined', 'null', 'cannot read'],
+                    'compilation': ['failed to compile', 'build failed', 'compilation error'],
+                    'variable_mismatch': ['is not defined', 'undefined variable', 'cannot find']
+                }
             },
             'research': {
-                'indicators': ['browser', 'multiple tabs', 'documentation', 'search'],
-                'confidence_boost': ['reading', 'scrolling', 'note-taking'],
-                'assistance_triggers': ['many tabs', 'back and forth', 'searching']
+                'indicators': ['browser', 'multiple tabs', 'documentation', 'search', 'google', 'stackoverflow'],
+                'confidence_boost': ['reading', 'scrolling', 'note-taking', 'bookmarking'],
+                'assistance_triggers': ['many tabs', 'back and forth', 'searching', 'comparing'],
+                'patterns': {
+                    'excessive_tabs': lambda tab_count: tab_count > 5,
+                    'rapid_switching': lambda switch_rate: switch_rate > 3,  # switches per minute
+                    'search_repetition': lambda searches: len(set(searches)) < len(searches) * 0.7
+                }
             },
             'communication': {
-                'indicators': ['email', 'slack', 'messages', 'chat'],
-                'confidence_boost': ['typing', 'composing', 'replying'],
-                'assistance_triggers': ['long pause', 'deleting text', 'rewriting']
+                'indicators': ['email', 'slack', 'messages', 'chat', 'teams', 'discord'],
+                'confidence_boost': ['typing', 'composing', 'replying', '@mention'],
+                'assistance_triggers': ['long pause', 'deleting text', 'rewriting', 'hesitation']
             },
             'problem_solving': {
-                'indicators': ['whiteboard', 'diagram', 'calculator', 'notes'],
-                'confidence_boost': ['drawing', 'calculating', 'planning'],
-                'assistance_triggers': ['erasing', 'stuck', 'confusion']
+                'indicators': ['whiteboard', 'diagram', 'calculator', 'notes', 'miro', 'figma'],
+                'confidence_boost': ['drawing', 'calculating', 'planning', 'brainstorming'],
+                'assistance_triggers': ['erasing', 'stuck', 'confusion', 'redrawing']
+            },
+            'debugging': {
+                'indicators': ['console', 'debugger', 'breakpoint', 'stack trace', 'logs'],
+                'confidence_boost': ['stepping through', 'watch variables', 'inspect'],
+                'assistance_triggers': ['same error', 'repeated runs', 'changing values'],
+                'debug_patterns': {
+                    'repetitive_testing': lambda actions: actions.count('run') > 3,
+                    'variable_inspection': lambda actions: 'inspect' in actions or 'watch' in actions,
+                    'stuck_on_error': lambda duration: duration > 300  # 5 minutes on same error
+                }
             }
         }
         
@@ -551,8 +576,130 @@ class RealTimeInteractionHandler:
         else:
             return f"{minutes} minutes"
             
+    async def _detect_debugging_assistance(self, screenshot: Any, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """UC1: Debugging Assistant - Detect specific debugging help opportunities"""
+        if not self.vision_analyzer:
+            return None
+            
+        # Specialized prompt for debugging assistance
+        prompt = (
+            "You are JARVIS, helping with debugging. Analyze the screen for:\n"
+            "1) Error messages with specific line numbers and error types\n"
+            "2) Variable name mismatches (camelCase vs snake_case, typos)\n"
+            "3) Undefined variables or functions being used\n"
+            "4) Syntax errors with specific locations\n"
+            "5) Stack traces or exception details\n\n"
+            "If you find any debugging opportunity, return JSON with:\n"
+            "- type: 'debugging_assistance'\n"
+            "- error_type: 'syntax'/'runtime'/'compilation'/'variable_mismatch'\n"
+            "- description: what you found\n"
+            "- line_number: if visible\n"
+            "- suggestion: specific fix suggestion\n"
+            "- confidence: 0.0-1.0\n"
+            "- natural_message: conversational help message"
+        )
+        
+        result = await self._analyze_with_claude(screenshot, prompt, context)
+        
+        if result.get('data') and result['data'].get('analysis'):
+            analysis = result['data']['analysis']
+            if analysis.get('error_type') and analysis.get('confidence', 0) > 0.8:
+                return {
+                    'type': 'debugging_assistance',
+                    'subtype': analysis['error_type'],
+                    'description': analysis.get('description'),
+                    'line_number': analysis.get('line_number'),
+                    'suggestion': analysis.get('suggestion'),
+                    'confidence': analysis['confidence'],
+                    'urgency': 'high',
+                    'natural_message': analysis.get('natural_message', 
+                        f"I noticed {analysis.get('description', 'an error')}. {analysis.get('suggestion', '')}")
+                }
+        return None
+        
+    async def _detect_research_assistance(self, screenshot: Any, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """UC2: Research Helper - Detect research pattern assistance opportunities"""
+        if not self.vision_analyzer:
+            return None
+            
+        # Count tabs if in research workflow
+        tab_count = context.get('browser_tab_count', 0)
+        
+        prompt = (
+            "You are JARVIS, helping with research. Analyze the screen for:\n"
+            "1) Multiple browser tabs open on similar topics\n"
+            "2) Rapid switching between documentation pages\n"
+            "3) Search queries being repeated or refined\n"
+            "4) User comparing information across sources\n"
+            f"Context: User has {tab_count} tabs open.\n\n"
+            "If research assistance would help, return JSON with:\n"
+            "- type: 'research_assistance'\n"
+            "- pattern: 'excessive_tabs'/'topic_research'/'comparison'/'search_refinement'\n"
+            "- topic: main topic being researched\n"
+            "- tab_count: number of related tabs\n"
+            "- suggestion: how you could help\n"
+            "- confidence: 0.0-1.0\n"
+            "- natural_message: conversational offer to help"
+        )
+        
+        result = await self._analyze_with_claude(screenshot, prompt, context)
+        
+        if result.get('data') and result['data'].get('analysis'):
+            analysis = result['data']['analysis']
+            if analysis.get('pattern') and analysis.get('confidence', 0) > 0.75:
+                return {
+                    'type': 'research_assistance',
+                    'subtype': analysis['pattern'],
+                    'topic': analysis.get('topic'),
+                    'tab_count': analysis.get('tab_count', tab_count),
+                    'suggestion': analysis.get('suggestion'),
+                    'confidence': analysis['confidence'],
+                    'urgency': 'medium',
+                    'natural_message': analysis.get('natural_message',
+                        f"You seem to be researching {analysis.get('topic', 'something')}. Would you like me to summarize the key points?")
+                }
+        return None
+        
+    async def _detect_workflow_optimization(self, screenshot: Any, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """UC3: Workflow Optimization - Detect repetitive patterns and optimization opportunities"""
+        if not self.vision_analyzer:
+            return None
+            
+        prompt = (
+            "You are JARVIS, looking for workflow optimization opportunities. Analyze for:\n"
+            "1) Copy-paste of similar code blocks\n"
+            "2) Repetitive manual actions that could be automated\n"
+            "3) Code duplication patterns\n"
+            "4) Inefficient navigation or tool usage\n"
+            "5) Opportunities for shortcuts or snippets\n\n"
+            "If you spot optimization potential, return JSON with:\n"
+            "- type: 'workflow_optimization'\n"
+            "- pattern: 'code_duplication'/'repetitive_action'/'inefficient_process'\n"
+            "- description: what pattern you observed\n"
+            "- optimization: suggested improvement\n"
+            "- confidence: 0.0-1.0\n"
+            "- natural_message: friendly suggestion"
+        )
+        
+        result = await self._analyze_with_claude(screenshot, prompt, context)
+        
+        if result.get('data') and result['data'].get('analysis'):
+            analysis = result['data']['analysis']
+            if analysis.get('pattern') and analysis.get('confidence', 0) > 0.8:
+                return {
+                    'type': 'workflow_optimization',
+                    'subtype': analysis['pattern'],
+                    'description': analysis.get('description'),
+                    'optimization': analysis.get('optimization'),
+                    'confidence': analysis['confidence'],
+                    'urgency': 'low',
+                    'natural_message': analysis.get('natural_message',
+                        "I've noticed you're repeating a pattern. Would you like me to help you create a more efficient approach?")
+                }
+        return None
+        
     async def _detect_assistance_opportunities(self) -> List[Dict[str, Any]]:
-        """Detect opportunities for proactive assistance"""
+        """Detect opportunities for proactive assistance using specialized detectors"""
         opportunities = []
         
         if not self.vision_analyzer:
@@ -566,33 +713,53 @@ class RealTimeInteractionHandler:
         # Build comprehensive context
         context = self._build_proactive_context()
         
-        # Analyze for opportunities
-        prompt = (
-            "You are JARVIS, proactively monitoring the user's work. "
+        # Check for sensitive content first (FR-1.5)
+        if await self._check_sensitive_content(screenshot):
+            return []  # Auto-pause, no assistance during sensitive content
+        
+        # Use specialized detectors based on current workflow
+        active_workflows = context.get('active_workflows', [])
+        
+        # UC1: Debugging Assistant
+        if 'coding' in active_workflows or 'debugging' in active_workflows:
+            debug_opportunity = await self._detect_debugging_assistance(screenshot, context)
+            if debug_opportunity:
+                opportunities.append(debug_opportunity)
+                
+        # UC2: Research Helper
+        if 'research' in active_workflows or context.get('browser_tab_count', 0) > 3:
+            research_opportunity = await self._detect_research_assistance(screenshot, context)
+            if research_opportunity:
+                opportunities.append(research_opportunity)
+                
+        # UC3: Workflow Optimization
+        if context.get('productivity_score', 1.0) < 0.7 or len(self.learning_state['code_patterns']) > 5:
+            optimization_opportunity = await self._detect_workflow_optimization(screenshot, context)
+            if optimization_opportunity:
+                opportunities.append(optimization_opportunity)
+                
+        # General assistance detection as fallback
+        general_prompt = (
+            "You are JARVIS, proactively monitoring. "
             f"Context: {json.dumps(context, default=str)}\n"
-            "Analyze the current screen for opportunities to help. Look for:\n"
-            "1) User struggling or stuck (repeated actions, errors, confusion)\n"
-            "2) Workflow inefficiencies you could improve\n"
-            "3) Relevant information you could provide\n"
-            "4) Tasks you could assist with\n"
-            "5) Potential issues before they become problems\n\n"
-            "Return a JSON array of opportunities, each with:\n"
-            "- type: 'error_help', 'workflow_tip', 'information', 'task_assist', 'preventive'\n"
-            "- description: what you observed\n"
-            "- assistance: how you could help\n"
-            "- confidence: 0.0-1.0\n"
-            "- urgency: 'high', 'medium', 'low'\n"
-            "- natural_message: conversational message to user"
+            "Look for any other assistance opportunities not covered by specific detectors:\n"
+            "- Potential issues before they become problems\n"
+            "- General workflow improvements\n"
+            "- Helpful information based on current task\n\n"
+            "Return JSON with opportunities array."
         )
         
-        result = await self._analyze_with_claude(screenshot, prompt, context)
+        general_result = await self._analyze_with_claude(screenshot, general_prompt, context)
         
-        # Parse opportunities
-        if result.get('data') and isinstance(result['data'].get('analysis'), dict):
-            raw_opportunities = result['data']['analysis'].get('opportunities', [])
+        # Parse general opportunities
+        if general_result.get('data') and isinstance(general_result['data'].get('analysis'), dict):
+            raw_opportunities = general_result['data']['analysis'].get('opportunities', [])
             for opp in raw_opportunities:
                 if opp.get('confidence', 0) >= self.proactive_settings['assistance_confidence_threshold']:
                     opportunities.append(opp)
+                    
+        # Apply decision engine (FR-5)
+        opportunities = self._apply_decision_engine(opportunities)
                     
         return opportunities
         
@@ -762,6 +929,149 @@ class RealTimeInteractionHandler:
         
         result = await self._analyze_with_claude(screenshot, prompt)
         return result.get('message', "")
+        
+    async def _check_sensitive_content(self, screenshot: Any) -> bool:
+        """FR-1.5: Check for sensitive content that should trigger auto-pause"""
+        if not self.vision_analyzer:
+            return False
+            
+        # Quick check for sensitive patterns
+        prompt = (
+            "You are JARVIS, checking for sensitive content. "
+            "Look for: passwords being typed, banking/financial sites, private messages, "
+            "personal health information, or any content that seems private. "
+            "Return JSON with: {is_sensitive: true/false, reason: why if true}"
+        )
+        
+        result = await self._analyze_with_claude(screenshot, prompt)
+        
+        if result.get('data') and result['data'].get('analysis'):
+            analysis = result['data']['analysis']
+            if analysis.get('is_sensitive'):
+                logger.info(f"Auto-pausing due to sensitive content: {analysis.get('reason')}")
+                # Track this pattern for future
+                self.learning_state['sensitive_content_patterns'].append({
+                    'reason': analysis.get('reason'),
+                    'timestamp': time.time()
+                })
+                return True
+        return False
+        
+    def _apply_decision_engine(self, opportunities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """FR-5: Apply decision engine for importance classification and timing"""
+        if not opportunities:
+            return []
+            
+        # Score and rank opportunities
+        scored_opportunities = []
+        
+        for opp in opportunities:
+            # Calculate importance score (FR-5.2)
+            importance_score = self._calculate_importance_score(opp)
+            
+            # Check timing optimization (FR-5.3)
+            timing_score = self._calculate_timing_score(opp)
+            
+            # Apply user preference learning (FR-5.4)
+            preference_score = self._calculate_preference_score(opp)
+            
+            # Combined score
+            opp['final_score'] = (
+                importance_score * 0.4 +
+                timing_score * 0.3 +
+                preference_score * 0.3
+            )
+            
+            # Set importance classification
+            if opp['urgency'] == 'high' or opp['final_score'] > 0.8:
+                opp['importance'] = 'critical'
+            elif opp['final_score'] > 0.6:
+                opp['importance'] = 'high'
+            elif opp['final_score'] > 0.4:
+                opp['importance'] = 'medium'
+            else:
+                opp['importance'] = 'low'
+                
+            scored_opportunities.append(opp)
+            
+        # Sort by final score
+        scored_opportunities.sort(key=lambda x: x['final_score'], reverse=True)
+        
+        # Apply cooldown filtering (FR-5.5)
+        filtered = []
+        for opp in scored_opportunities:
+            if opp['importance'] == 'critical' or not self._is_in_cooldown():
+                filtered.append(opp)
+                
+        return filtered[:3]  # Max 3 opportunities at once
+        
+    def _calculate_importance_score(self, opportunity: Dict[str, Any]) -> float:
+        """Calculate importance score based on type and context"""
+        base_scores = {
+            'debugging_assistance': 0.9,  # Errors are high priority
+            'research_assistance': 0.6,   # Medium priority
+            'workflow_optimization': 0.4,  # Lower priority
+            'error_help': 0.9,
+            'workflow_tip': 0.5,
+            'information': 0.3,
+            'task_assist': 0.7,
+            'preventive': 0.6
+        }
+        
+        score = base_scores.get(opportunity.get('type'), 0.5)
+        
+        # Boost score based on confidence
+        score *= opportunity.get('confidence', 0.5)
+        
+        # Boost for specific subtypes
+        if opportunity.get('subtype') in ['syntax', 'runtime', 'compilation']:
+            score *= 1.2
+            
+        return min(1.0, score)
+        
+    def _calculate_timing_score(self, opportunity: Dict[str, Any]) -> float:
+        """Calculate if this is a good time to interrupt"""
+        # Check focus duration
+        focus_duration = self._calculate_focus_duration()
+        
+        # Don't interrupt deep focus unless critical
+        if focus_duration > 600:  # 10+ minutes focus
+            if opportunity.get('urgency') != 'high':
+                return 0.3
+                
+        # Check recent interactions
+        if self.interaction_state['last_notification_time']:
+            time_since_last = time.time() - self.interaction_state['last_notification_time']
+            if time_since_last < 60:  # Less than 1 minute
+                return 0.2
+                
+        # Good timing if user seems stuck
+        if opportunity.get('type') == 'debugging_assistance':
+            return 0.9
+            
+        return 0.7
+        
+    def _calculate_preference_score(self, opportunity: Dict[str, Any]) -> float:
+        """Calculate score based on learned user preferences"""
+        # Check if user has responded well to similar assistance
+        opp_type = opportunity.get('type')
+        
+        effectiveness = self.learning_state['assistance_effectiveness']
+        similar_assists = [
+            assist for assist in effectiveness.values()
+            if assist['opportunity'].get('type') == opp_type
+        ]
+        
+        if similar_assists:
+            # Calculate average effectiveness
+            positive_responses = sum(
+                1 for assist in similar_assists
+                if assist.get('user_response') == 'positive'
+            )
+            return positive_responses / len(similar_assists)
+            
+        # Default score for new types
+        return 0.7
         
     def _build_proactive_context(self) -> Dict[str, Any]:
         """Build comprehensive context for proactive analysis"""
@@ -935,10 +1245,13 @@ class RealTimeInteractionHandler:
         
     async def _send_notification(self, message: str, priority: str = "normal", 
                                data: Optional[Dict[str, Any]] = None):
-        """Send notification to user"""
+        """Send notification to user with appropriate communication style (FR-6)"""
         if self._is_in_cooldown() and priority != "high":
             return
             
+        # Apply communication style (FR-6.3)
+        styled_message = self._apply_communication_style(message, data)
+        
         # Record notification
         current_time = time.time()
         self.interaction_state['last_notification_time'] = current_time
@@ -947,17 +1260,20 @@ class RealTimeInteractionHandler:
         # Add to conversation context
         self.interaction_state['conversation_context'].append({
             'type': 'jarvis',
-            'message': message,
-            'timestamp': current_time
+            'message': styled_message,
+            'timestamp': current_time,
+            'style': data.get('opportunity', {}).get('type') if data else 'informative'
         })
         
         # Prepare notification
         notification = {
             'type': 'jarvis_notification',
-            'message': message,
+            'message': styled_message,
             'priority': priority,
             'timestamp': datetime.now().isoformat(),
-            'data': data or {}
+            'data': data or {},
+            'modality': 'voice',  # FR-7.1: Voice as primary
+            'sound_cue': self._get_sound_cue(priority, data)  # FR-7.3
         }
         
         # Send via callback if available
@@ -970,7 +1286,62 @@ class RealTimeInteractionHandler:
             except Exception as e:
                 logger.error(f"Error sending notification: {e}")
         else:
-            logger.info(f"JARVIS: {message}")
+            logger.info(f"JARVIS: {styled_message}")
+            
+    def _apply_communication_style(self, message: str, data: Optional[Dict[str, Any]]) -> str:
+        """Apply appropriate communication style based on context (FR-6.3)"""
+        if not data or 'opportunity' not in data:
+            return message
+            
+        opportunity = data['opportunity']
+        opp_type = opportunity.get('type')
+        
+        # Communication styles based on type
+        if opp_type == 'debugging_assistance':
+            # Warning style for errors
+            if not message.startswith(('Careful', 'Warning', 'I notice')):
+                return f"I notice {message}"
+                
+        elif opp_type == 'research_assistance':
+            # Question style for research
+            if '?' not in message and not message.startswith('Would you like'):
+                return f"{message} Would you like help with this?"
+                
+        elif opp_type == 'workflow_optimization':
+            # Suggestive style for optimization
+            if not message.startswith(('You might', 'Consider', 'I suggest')):
+                return f"You might want to {message.lower()}"
+                
+        elif opportunity.get('urgency') == 'high':
+            # Warning style for urgent items
+            if not message.startswith(('Careful', 'Important')):
+                return f"Important: {message}"
+                
+        return message
+        
+    def _get_sound_cue(self, priority: str, data: Optional[Dict[str, Any]]) -> str:
+        """Get appropriate sound cue for notification type (FR-7.3)"""
+        if data and 'opportunity' in data:
+            opp_type = data['opportunity'].get('type')
+            
+            sound_map = {
+                'debugging_assistance': 'error_chime',
+                'research_assistance': 'info_ding',
+                'workflow_optimization': 'suggestion_pop',
+                'error_help': 'error_chime',
+                'task_assist': 'assist_beep'
+            }
+            
+            return sound_map.get(opp_type, 'default_notification')
+            
+        # Priority-based sounds
+        priority_sounds = {
+            'high': 'urgent_alert',
+            'normal': 'default_notification',
+            'low': 'subtle_ping'
+        }
+        
+        return priority_sounds.get(priority, 'default_notification')
             
     def _track_interaction(self, result: Dict[str, Any]):
         """Track interaction for learning"""

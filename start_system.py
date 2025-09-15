@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """
 Unified startup script for JARVIS AI System v12.9.2
-Integration Architecture Edition with Dynamic Resource Management
+Integration Architecture Edition with Proactive Real-Time Monitoring
 
 The JARVIS backend loads 6 critical components:
 
 1. CHATBOTS - Claude Vision AI for conversation and screen understanding
-2. VISION - Real-time screen capture with Integration Architecture
+2. VISION - Real-time screen capture with Proactive Monitoring
    • 9-stage processing pipeline with intelligent orchestration
    • Dynamic memory allocation (1.2GB budget)
    • Cross-language optimization (Python, Rust, Swift)
    • Bloom Filter, Predictive Engine, Semantic Cache, VSMS integrated
+   • NEW: Proactive assistance with debugging, research, and workflow optimization
 3. MEMORY - M1-optimized memory management with orchestrator integration
-4. VOICE - Voice activation ("Hey JARVIS") and speech synthesis
+4. VOICE - Voice activation ("Hey JARVIS") with proactive announcements
 5. ML_MODELS - NLP and sentiment analysis (lazy-loaded)
 6. MONITORING - System health tracking and component metrics
 
@@ -22,6 +23,15 @@ Key Features:
 - Parallel component loading (~7-9s startup)
 - Integration Architecture coordinates all vision components
 - Vision system with 30 FPS screen monitoring
+- NEW: Proactive real-time assistance - say "Start monitoring my screen"
+
+Proactive Monitoring Features:
+- UC1: Debugging Assistant - Detects errors and suggests fixes
+- UC2: Research Helper - Summarizes multi-tab research
+- UC3: Workflow Optimization - Identifies repetitive patterns
+- Voice announcements with context-aware communication styles
+- Auto-pause for sensitive content (passwords, banking)
+- Decision engine with importance classification
 
 All 6 components must load for full functionality.
 """

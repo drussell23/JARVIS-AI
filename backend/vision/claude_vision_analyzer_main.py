@@ -644,7 +644,10 @@ class ClaudeVisionAnalyzer:
         self.continuous_analyzer = None
         self._continuous_analyzer_config = {
             'enabled': os.getenv('VISION_CONTINUOUS_ENABLED', 'true').lower() == 'true',
-            'update_interval': float(os.getenv('VISION_MONITOR_INTERVAL', '3.0'))
+            'update_interval': float(os.getenv('VISION_MONITOR_INTERVAL', '3.0')),
+            'enable_proactive': os.getenv('VISION_PROACTIVE_ENABLED', 'true').lower() == 'true',
+            'proactive_confidence': float(os.getenv('VISION_PROACTIVE_CONFIDENCE', '0.75')),
+            'enable_voice': os.getenv('VISION_PROACTIVE_VOICE', 'true').lower() == 'true'
         }
         
         # Initialize window analyzer (lazy loading)
@@ -911,10 +914,19 @@ class ClaudeVisionAnalyzer:
                     vision_handler=self,
                     update_interval=self._continuous_analyzer_config['update_interval']
                 )
-                logger.info("Initialized continuous screen analyzer")
+                logger.info("Initialized continuous screen analyzer for proactive monitoring")
             except ImportError as e:
                 logger.warning(f"Could not import continuous screen analyzer: {e}")
         return self.continuous_analyzer
+    
+    def get_proactive_config(self) -> Dict[str, Any]:
+        """Get proactive monitoring configuration"""
+        return {
+            'proactive_enabled': self._continuous_analyzer_config.get('enable_proactive', True),
+            'confidence_threshold': self._continuous_analyzer_config.get('proactive_confidence', 0.75),
+            'voice_enabled': self._continuous_analyzer_config.get('enable_voice', True),
+            'continuous_enabled': self._continuous_analyzer_config.get('enabled', True)
+        }
     
     async def get_window_analyzer(self):
         """Get window analyzer with lazy loading"""

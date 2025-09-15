@@ -164,12 +164,27 @@ class VisionCommandHandler:
                     # Import and setup real-time interaction
                     from vision.real_time_interaction_handler import RealTimeInteractionHandler
                     
-                    # Create notification callback that sends through WebSocket
+                    # Create notification callback that sends through WebSocket and voice
+                    voice_handler = None
+                    try:
+                        from vision.voice_integration_handler import VoiceIntegrationHandler
+                        # Get JARVIS API if available
+                        jarvis_api = None
+                        if hasattr(self, 'jarvis_api'):
+                            jarvis_api = self.jarvis_api
+                        voice_handler = VoiceIntegrationHandler(jarvis_api)
+                        await voice_handler.start()
+                    except ImportError:
+                        logger.info("Voice integration not available")
+                        
                     async def send_notification(notification):
                         await ws_logger.log(notification['message'], notification.get('priority', 'info'))
-                        # Also send as a notification event if WebSocket available
+                        # Send through WebSocket
                         if ws_logger.websocket_callback:
                             await ws_logger.websocket_callback(notification)
+                        # Send through voice if available
+                        if voice_handler:
+                            await voice_handler.handle_notification(notification)
                     
                     # Initialize interaction handler with vision analyzer
                     if not hasattr(self, 'interaction_handler'):
