@@ -860,7 +860,7 @@ impl RustVisionContext {
 /// Process image batch function with configuration
 #[cfg(feature = "python-bindings")]
 #[pyfunction]
-#[args(config = "None", operation = "\"auto_process\"", params = "None")]
+#[pyo3(signature = (images, config=None, operation="auto_process", params=None))]
 pub fn process_image_batch(py: Python, images: Vec<PyReadonlyArray3<u8>>, 
                           config: Option<&PyDict>,
                           operation: &str,
@@ -1291,6 +1291,14 @@ pub fn register_python_module(m: &PyModule) -> PyResult<()> {
     m.add_class::<RustImageCompressor>()?;
     m.add_class::<RustVisionContext>()?;
     m.add_class::<SharedMemoryInfo>()?;
+    
+    // Register new vision components
+    crate::vision::bloom_filter::register_module(m)?;
+    crate::vision::sliding_window_bindings::register_module(m)?;
+    crate::vision::metal_accelerator::register_module(m)?;
+    
+    // Register memory components
+    crate::memory::zero_copy::register_module(m)?;
     
     // Register macOS-specific classes
     #[cfg(target_os = "macos")]

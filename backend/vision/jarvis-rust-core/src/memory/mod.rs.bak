@@ -95,98 +95,98 @@ impl MemoryManager {
     }
 }
 
-// // ZeroCopyBuffer is now exported from zero_copy module
-// /*
-// /// Zero-copy buffer for Python interop
-// #[derive(Debug)]
-// pub struct ZeroCopyBuffer {
-//     data: *mut u8,
-//     size: usize,
-//     alignment: usize,
-//     owner: BufferOwner,
-// }
-// 
-// #[derive(Debug)]
-// enum BufferOwner {
-//     Rust(PooledBuffer),
-//     Python(*mut pyo3::ffi::PyObject),
-// }
-// 
-// unsafe impl Send for ZeroCopyBuffer {}
-// unsafe impl Sync for ZeroCopyBuffer {}
-// 
-// impl ZeroCopyBuffer {
-//     /// Create from Rust-owned buffer
-//     pub fn from_rust(mut buffer: PooledBuffer) -> Self {*/
-//         let data = buffer.as_mut_ptr();
-//         let size = buffer.len();
-//         
-//         Self {
-//             data,
-//             size,
-//             alignment: 64,  // Default alignment
-//             owner: BufferOwner::Rust(buffer),
-//         }
-//     }
-//     
-//     /// Create from Python-owned buffer (for zero-copy from NumPy)
-//     #[cfg(feature = "python-bindings")]
-//     pub unsafe fn from_python(obj: *mut pyo3::ffi::PyObject, data: *mut u8, size: usize) -> Self {
-//         use pyo3::ffi;
-//         
-//         // Increment reference count to keep Python object alive
-//         ffi::Py_INCREF(obj);
-//         
-//         Self {
-//             data,
-//             size,
-//             alignment: 1,  // Unknown alignment from Python
-//             owner: BufferOwner::Python(obj),
-//         }
-//     }
-//     
-//     /// Get data pointer
-//     pub fn as_ptr(&self) -> *const u8 {
-//         self.data
-//     }
-//     
-//     /// Get mutable data pointer
-//     pub fn as_mut_ptr(&self) -> *mut u8 {
-//         self.data
-//     }
-//     
-//     /// Get buffer size
-//     pub fn len(&self) -> usize {
-//         self.size
-//     }
-//     
-//     /// Get as slice
-//     pub unsafe fn as_slice(&self) -> &[u8] {
-//         std::slice::from_raw_parts(self.data, self.size)
-//     }
-//     
-//     /// Get as mutable slice
-//     pub unsafe fn as_mut_slice(&mut self) -> &mut [u8] {
-//         std::slice::from_raw_parts_mut(self.data, self.size)
-//     }
-// }
-// 
-// impl Drop for ZeroCopyBuffer {
-//     fn drop(&mut self) {
-//         match &self.owner {
-//             BufferOwner::Rust(_) => {
-//                 // Rust buffer will be returned to pool automatically
-//             }
-//             BufferOwner::Python(obj) => {
-//                 // Decrement Python reference count
-//                 #[cfg(feature = "python-bindings")]
-//                 unsafe {
-//                     pyo3::ffi::Py_DECREF(*obj);
-//                 }
-//             }
-//         }
-//     }
-// }
+// ZeroCopyBuffer is now exported from zero_copy module
+/*
+/// Zero-copy buffer for Python interop
+#[derive(Debug)]
+pub struct ZeroCopyBuffer {
+    data: *mut u8,
+    size: usize,
+    alignment: usize,
+    owner: BufferOwner,
+}
+
+#[derive(Debug)]
+enum BufferOwner {
+    Rust(PooledBuffer),
+    Python(*mut pyo3::ffi::PyObject),
+}
+
+unsafe impl Send for ZeroCopyBuffer {}
+unsafe impl Sync for ZeroCopyBuffer {}
+
+impl ZeroCopyBuffer {
+    /// Create from Rust-owned buffer
+    pub fn from_rust(mut buffer: PooledBuffer) -> Self {*/
+        let data = buffer.as_mut_ptr();
+        let size = buffer.len();
+        
+        Self {
+            data,
+            size,
+            alignment: 64,  // Default alignment
+            owner: BufferOwner::Rust(buffer),
+        }
+    }
+    
+    /// Create from Python-owned buffer (for zero-copy from NumPy)
+    #[cfg(feature = "python-bindings")]
+    pub unsafe fn from_python(obj: *mut pyo3::ffi::PyObject, data: *mut u8, size: usize) -> Self {
+        use pyo3::ffi;
+        
+        // Increment reference count to keep Python object alive
+        ffi::Py_INCREF(obj);
+        
+        Self {
+            data,
+            size,
+            alignment: 1,  // Unknown alignment from Python
+            owner: BufferOwner::Python(obj),
+        }
+    }
+    
+    /// Get data pointer
+    pub fn as_ptr(&self) -> *const u8 {
+        self.data
+    }
+    
+    /// Get mutable data pointer
+    pub fn as_mut_ptr(&self) -> *mut u8 {
+        self.data
+    }
+    
+    /// Get buffer size
+    pub fn len(&self) -> usize {
+        self.size
+    }
+    
+    /// Get as slice
+    pub unsafe fn as_slice(&self) -> &[u8] {
+        std::slice::from_raw_parts(self.data, self.size)
+    }
+    
+    /// Get as mutable slice
+    pub unsafe fn as_mut_slice(&mut self) -> &mut [u8] {
+        std::slice::from_raw_parts_mut(self.data, self.size)
+    }
+}
+
+impl Drop for ZeroCopyBuffer {
+    fn drop(&mut self) {
+        match &self.owner {
+            BufferOwner::Rust(_) => {
+                // Rust buffer will be returned to pool automatically
+            }
+            BufferOwner::Python(obj) => {
+                // Decrement Python reference count
+                #[cfg(feature = "python-bindings")]
+                unsafe {
+                    pyo3::ffi::Py_DECREF(*obj);
+                }
+            }
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

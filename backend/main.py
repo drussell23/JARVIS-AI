@@ -323,6 +323,35 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.debug(f"Service discovery skipped: {e}")
     
+    # Initialize Rust acceleration for vision system
+    try:
+        from vision.rust_startup_integration import initialize_rust_acceleration, get_rust_status
+        rust_config = await initialize_rust_acceleration()
+        
+        if rust_config.get('available'):
+            app.state.rust_acceleration = rust_config
+            logger.info("🦀 Rust acceleration initialized:")
+            
+            # Log performance boosts
+            boosts = rust_config.get('performance_boost', {})
+            if boosts:
+                for component, boost in boosts.items():
+                    if boost > 1.0:
+                        logger.info(f"   • {component}: {boost:.1f}x faster")
+                        
+            # Log memory savings
+            mem_savings = rust_config.get('memory_savings', {})
+            if mem_savings.get('enabled'):
+                logger.info(f"   • Memory pool: {mem_savings['rust_pool_mb']}MB")
+                logger.info(f"   • Estimated savings: {mem_savings['estimated_savings_percent']}%")
+        else:
+            logger.info("🦀 Rust acceleration not available (Python fallback active)")
+            logger.debug(f"   Reason: {rust_config.get('fallback_reason', 'Unknown')}")
+            
+    except Exception as e:
+        logger.warning(f"⚠️ Could not initialize Rust acceleration: {e}")
+        app.state.rust_acceleration = {'available': False}
+    
     # Initialize vision analyzer if available
     vision = components.get('vision', {})
     if vision.get('available'):
@@ -550,6 +579,20 @@ async def health_check():
             'quality_insights': ml_state.get_quality_insights()
         }
     
+    # Check Rust acceleration status
+    rust_details = {}
+    if hasattr(app.state, 'rust_acceleration'):
+        rust_config = app.state.rust_acceleration
+        if rust_config.get('available'):
+            rust_details = {
+                'enabled': True,
+                'components': rust_config.get('components', {}),
+                'performance_boost': rust_config.get('performance_boost', {}),
+                'memory_savings': rust_config.get('memory_savings', {})
+            }
+        else:
+            rust_details = {'enabled': False}
+    
     return {
         "status": "healthy",
         "mode": "optimized" if OPTIMIZE_STARTUP else "legacy",
@@ -559,7 +602,8 @@ async def health_check():
             name: bool(comp) for name, comp in components.items() if comp is not None
         },
         "vision_enhanced": vision_details,
-        "ml_audio_system": ml_audio_details
+        "ml_audio_system": ml_audio_details,
+        "rust_acceleration": rust_details
     }
 
 # Mount routers based on available components
@@ -596,6 +640,15 @@ def mount_routers():
     if monitoring and monitoring.get('router'):
         app.include_router(monitoring['router'], prefix="/monitoring", tags=["monitoring"])
         logger.info("✅ Monitoring API mounted")
+    
+    # Rust API (if Rust components are available)
+    if hasattr(app.state, 'rust_acceleration') and app.state.rust_acceleration.get('available'):
+        try:
+            from api.rust_api import router as rust_router
+            app.include_router(rust_router, prefix="/rust", tags=["rust"])
+            logger.info("✅ Rust acceleration API mounted")
+        except ImportError:
+            logger.debug("Rust API not available")
     
     # Unified WebSocket API - replaces individual WebSocket endpoints
     try:

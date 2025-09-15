@@ -234,7 +234,7 @@ pub struct ScreenCapture {
 #[cfg(target_os = "macos")]
 use cocoa::base::{nil, YES, NO};
 #[cfg(target_os = "macos")]
-use cocoa::foundation::{NSString, NSArray, NSDictionary, NSNumber};
+use cocoa::foundation::{NSString, NSArray, NSDictionary};
 #[cfg(target_os = "macos")]
 use objc::runtime::{Object, Sel};
 #[cfg(target_os = "macos")]

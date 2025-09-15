@@ -707,8 +707,7 @@ impl ImageProcessor {
             }
         }
     }
-}
-
+    
     /// Auto-enhance image based on analysis
     fn auto_enhance(&self, image: &ImageData) -> Result<ImageData> {
         // Analyze image characteristics

@@ -5,6 +5,7 @@ pub mod capture;
 pub mod compression;
 pub mod processing;
 pub mod sliding_window;
+pub mod sliding_window_bindings;
 pub mod goal_patterns;
 pub mod pattern_mining;
 pub mod anomaly_detection;
@@ -15,6 +16,8 @@ pub mod semantic_cache_lsh;
 pub mod predictive_engine;
 pub mod bloom_filter_network;
 pub mod integration_pipeline;
+pub mod bloom_filter;
+pub mod metal_accelerator;
 
 #[cfg(target_os = "macos")]
 pub mod macos_optimization;

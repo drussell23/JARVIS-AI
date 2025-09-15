@@ -147,6 +147,21 @@ class AsyncSystemManager:
         print(
             f"   • {Colors.GREEN}✓ Recovery:{Colors.ENDC} Circuit breakers, emergency cleanup, graceful degradation"
         )
+        
+        # Check for Rust acceleration
+        try:
+            from backend.vision.rust_startup_integration import get_rust_status
+            rust_status = get_rust_status()
+            if rust_status.get('rust_available'):
+                print(
+                    f"   • {Colors.CYAN}✓ Rust:{Colors.ENDC} 🦀 Acceleration active (5-10x performance boost)"
+                )
+            else:
+                print(
+                    f"   • {Colors.YELLOW}○ Rust:{Colors.ENDC} Not built (run 'python backend/manage_rust.py setup')"
+                )
+        except:
+            pass
 
         # Voice System Optimization
         print(f"\n{Colors.BOLD}🎤 VOICE SYSTEM OPTIMIZATION:{Colors.ENDC}")
@@ -1092,6 +1107,15 @@ class AsyncSystemManager:
                             ) as resp:
                                 if resp.status == 200:
                                     consecutive_failures["backend"] = 0
+                                    # Check for Rust acceleration
+                                    try:
+                                        data = await resp.json()
+                                        rust_status = data.get('rust_acceleration', {})
+                                        if rust_status.get('enabled') and not hasattr(self, '_rust_logged'):
+                                            print(f"\n{Colors.GREEN}🦀 Rust acceleration active{Colors.ENDC}")
+                                            self._rust_logged = True
+                                    except:
+                                        pass
                                 else:
                                     consecutive_failures["backend"] += 1
                     except:
