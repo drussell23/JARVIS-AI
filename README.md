@@ -22,6 +22,14 @@
 
 ## 🆕 What's New in v13.0.0 - Proactive Real-Time Intelligent Assistant
 
+### 🔧 Self-Healing Rust System (AUTOMATIC!)
+**RUST COMPONENTS NOW FIX THEMSELVES!** Zero maintenance:
+- ✅ **Automatic Diagnosis** - Detects why Rust isn't working
+- ✅ **Smart Recovery** - Builds, rebuilds, installs dependencies
+- ✅ **Background Monitoring** - Continuously ensures Rust availability
+- ✅ **Dynamic Switching** - Seamlessly switches Rust↔Python
+- ✅ **Zero Downtime** - Python fallbacks while Rust repairs
+
 ### 🧠 Proactive Monitoring Mode (REVOLUTIONARY!)
 **JARVIS NOW WATCHES AND HELPS PROACTIVELY!** Major upgrade:
 - ✅ **Real-time assistance** - Offers help without being asked
@@ -2059,7 +2067,11 @@ echo "ANTHROPIC_API_KEY=your-api-key-here" > backend/.env
 ```
 
 ### 3. Build Rust Core (Highly Recommended for 5x-100x Performance)
+
+**🔧 NEW: Automatic Self-Healing!** If Rust components fail or aren't built, JARVIS will automatically attempt to fix them.
+
 ```bash
+# Option A: Manual Build (Optional - Self-healing will do this automatically)
 # Install Rust if not already installed
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source $HOME/.cargo/env
@@ -2078,6 +2090,17 @@ python -c "import jarvis_rust_core; print(f'Rust core v{jarvis_rust_core.__versi
 cd ../../..
 ```
 
+```bash
+# Option B: Let Self-Healing Handle It (Recommended)
+# Just start JARVIS - the self-healing system will:
+# ✅ Detect if Rust isn't built
+# ✅ Automatically install dependencies
+# ✅ Build Rust components
+# ✅ Retry with exponential backoff if needed
+# ✅ Switch to Rust when ready
+python start_system.py
+```
+
 #### Rust Core Features:
 - **Zero-Copy Operations**: Direct memory sharing between Python and Rust
 - **SIMD Acceleration**: Hardware-optimized operations (ARM NEON on M1/M2)
@@ -2085,6 +2108,15 @@ cd ../../..
 - **Work-Stealing Scheduler**: Efficient CPU utilization
 - **Quantized ML Inference**: INT4/INT8/FP16 support
 - **119x Speedup**: For image processing operations
+
+#### 🆕 Self-Healing System Features:
+- **Automatic Diagnosis**: Detects why Rust components aren't working
+- **Smart Recovery**: Applies appropriate fixes (build, rebuild, install deps)
+- **Dependency Resolution**: Automatically installs missing crates
+- **Build Retry**: Exponential backoff for transient failures
+- **Dynamic Switching**: Seamlessly switches between Rust/Python
+- **Background Monitoring**: Continuously ensures Rust stays available
+- **API Endpoints**: Manual control via `/self-healing/*` endpoints
 
 ### 4. Start the System
 ```bash
@@ -2257,6 +2289,14 @@ python start_system.py
 - **Benchmarks**: `GET /rust/benchmarks` - Run performance tests
 - **Memory**: `GET /rust/memory` - Memory usage statistics
 - **Optimize**: `POST /rust/optimize` - Optimize for current system
+
+**🔧 Self-Healing API (NEW!):**
+- **Status**: `GET /self-healing/status` - Self-healing system status & success rate
+- **Diagnose**: `POST /self-healing/diagnose` - Manual diagnosis of Rust issues
+- **Fix**: `POST /self-healing/fix` - Attempt to fix Rust components
+- **Force Check**: `POST /self-healing/force-check` - Force component availability check
+- **Component Status**: `GET /self-healing/component-status` - View all components
+- **Clean Build**: `POST /self-healing/clean-build` - Clean and rebuild Rust
 
 **🔊 ML Audio API - All 8 Endpoints Working:**
 - **Config**: `GET/POST /audio/ml/config` - Audio configuration management
@@ -5150,6 +5190,61 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
+
+## 🔧 Troubleshooting Self-Healing System
+
+### **Rust Components Not Building?**
+
+The self-healing system should handle this automatically, but if you need manual control:
+
+**Check Self-Healing Status:**
+```bash
+curl http://localhost:8010/self-healing/status
+```
+
+**Force a Manual Fix:**
+```bash
+curl -X POST http://localhost:8010/self-healing/fix
+```
+
+**Common Self-Healing Scenarios:**
+
+1. **Rust Not Installed**
+   - Self-healer will attempt to install Rust automatically
+   - Manual: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+
+2. **Missing Dependencies**
+   - Self-healer installs missing crates automatically
+   - Maintains known-good versions for compatibility
+
+3. **Build Failures**
+   - Self-healer retries with exponential backoff
+   - Cleans build artifacts if needed
+   - Manual: `cd backend/vision/jarvis-rust-core && cargo clean && cargo build --release`
+
+4. **Permission Errors**
+   - Self-healer attempts to fix file permissions
+   - Manual: `chmod -R 755 backend/vision/jarvis-rust-core`
+
+5. **Out of Memory**
+   - Self-healer frees memory and retries
+   - Close other applications to free RAM
+
+**Disable Self-Healing (Not Recommended):**
+```bash
+# Set environment variable before starting
+export RUST_CHECK_INTERVAL=0
+python start_system.py
+```
+
+**View Self-Healing Logs:**
+```bash
+# Check recent fix attempts
+curl http://localhost:8010/self-healing/status | jq '.recent_fixes'
+
+# Check build logs
+cat backend/vision/jarvis-rust-core/build.log
 ```
 
 ## 🙏 Acknowledgments

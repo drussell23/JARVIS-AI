@@ -323,9 +323,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.debug(f"Service discovery skipped: {e}")
     
-    # Initialize Rust acceleration for vision system
+    # Initialize Rust acceleration for vision system with self-healing
     try:
         from vision.rust_startup_integration import initialize_rust_acceleration, get_rust_status
+        from vision.rust_self_healer import get_self_healer
+        from vision.dynamic_component_loader import get_component_loader
+        
+        # Start self-healing and dynamic component loader
+        logger.info("🔧 Initializing self-healing system...")
+        loader = get_component_loader()
+        await loader.start()  # This also starts the self-healer
+        
+        # Initialize Rust acceleration
         rust_config = await initialize_rust_acceleration()
         
         if rust_config.get('available'):
@@ -458,6 +467,17 @@ async def lifespan(app: FastAPI):
     yield
     
     # Cleanup
+    logger.info("🛑 Shutting down JARVIS backend...")
+    
+    # Stop dynamic component loader and self-healer
+    try:
+        from vision.dynamic_component_loader import get_component_loader
+        loader = get_component_loader()
+        await loader.stop()
+        logger.info("✅ Self-healing system stopped")
+    except Exception as e:
+        logger.error(f"Error stopping self-healing: {e}")
+    
     if hasattr(app.state, 'memory_manager'):
         await app.state.memory_manager.stop_monitoring()
 
@@ -593,6 +613,21 @@ async def health_check():
         else:
             rust_details = {'enabled': False}
     
+    # Check self-healing status
+    self_healing_details = {}
+    try:
+        from vision.rust_self_healer import get_self_healer
+        healer = get_self_healer()
+        health_report = healer.get_health_report()
+        self_healing_details = {
+            'enabled': health_report.get('running', False),
+            'fix_attempts': health_report.get('total_fix_attempts', 0),
+            'success_rate': health_report.get('success_rate', 0.0),
+            'last_successful_build': health_report.get('last_successful_build')
+        }
+    except:
+        self_healing_details = {'enabled': False}
+    
     return {
         "status": "healthy",
         "mode": "optimized" if OPTIMIZE_STARTUP else "legacy",
@@ -603,7 +638,8 @@ async def health_check():
         },
         "vision_enhanced": vision_details,
         "ml_audio_system": ml_audio_details,
-        "rust_acceleration": rust_details
+        "rust_acceleration": rust_details,
+        "self_healing": self_healing_details
     }
 
 # Mount routers based on available components
@@ -649,6 +685,14 @@ def mount_routers():
             logger.info("✅ Rust acceleration API mounted")
         except ImportError:
             logger.debug("Rust API not available")
+    
+    # Self-healing API
+    try:
+        from api.self_healing_api import router as self_healing_router
+        app.include_router(self_healing_router, prefix="/self-healing", tags=["self-healing"])
+        logger.info("✅ Self-healing API mounted")
+    except ImportError:
+        logger.debug("Self-healing API not available")
     
     # Unified WebSocket API - replaces individual WebSocket endpoints
     try:

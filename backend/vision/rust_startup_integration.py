@@ -253,8 +253,22 @@ async def initialize_rust_acceleration() -> Dict[str, Any]:
     
     if _rust_startup_manager is None:
         _rust_startup_manager = RustStartupManager()
+    
+    # Initialize basic Rust components
+    result = await _rust_startup_manager.initialize_rust_components()
+    
+    # Initialize dynamic component loader for runtime switching
+    try:
+        from .dynamic_component_loader import initialize_dynamic_components
+        dynamic_loader = await initialize_dynamic_components()
+        result['dynamic_loader'] = True
+        result['dynamic_status'] = dynamic_loader.get_status()
+        logger.info("✅ Dynamic component loader initialized - will check for Rust availability periodically")
+    except Exception as e:
+        logger.warning(f"Could not initialize dynamic component loader: {e}")
+        result['dynamic_loader'] = False
         
-    return await _rust_startup_manager.initialize_rust_components()
+    return result
 
 def get_rust_status() -> Dict[str, Any]:
     """Get current Rust status."""

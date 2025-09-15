@@ -83,7 +83,7 @@ class RustBuilder:
             
             config_content = """
 [target.aarch64-apple-darwin]
-rustflags = ["-C", "target-cpu=native", "-C", "link-arg=-framework", "Metal"]
+rustflags = ["-C", "target-cpu=native"]
 
 [build]
 target = "aarch64-apple-darwin"

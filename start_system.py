@@ -156,9 +156,15 @@ class AsyncSystemManager:
                 print(
                     f"   • {Colors.CYAN}✓ Rust:{Colors.ENDC} 🦀 Acceleration active (5-10x performance boost)"
                 )
+                print(
+                    f"   • {Colors.GREEN}✓ Self-Healing:{Colors.ENDC} Automatic Rust recovery enabled"
+                )
             else:
                 print(
-                    f"   • {Colors.YELLOW}○ Rust:{Colors.ENDC} Not built (run 'python backend/manage_rust.py setup')"
+                    f"   • {Colors.YELLOW}○ Rust:{Colors.ENDC} Not built (self-healing will attempt to fix)"
+                )
+                print(
+                    f"   • {Colors.GREEN}✓ Self-Healing:{Colors.ENDC} Monitoring and will auto-build when possible"
                 )
         except:
             pass
@@ -1107,13 +1113,21 @@ class AsyncSystemManager:
                             ) as resp:
                                 if resp.status == 200:
                                     consecutive_failures["backend"] = 0
-                                    # Check for Rust acceleration
+                                    # Check for Rust acceleration and self-healing
                                     try:
                                         data = await resp.json()
                                         rust_status = data.get('rust_acceleration', {})
+                                        self_healing_status = data.get('self_healing', {})
+                                        
                                         if rust_status.get('enabled') and not hasattr(self, '_rust_logged'):
                                             print(f"\n{Colors.GREEN}🦀 Rust acceleration active{Colors.ENDC}")
                                             self._rust_logged = True
+                                            
+                                        if self_healing_status.get('enabled') and not hasattr(self, '_healing_logged'):
+                                            success_rate = self_healing_status.get('success_rate', 0.0)
+                                            if success_rate > 0:
+                                                print(f"{Colors.GREEN}🔧 Self-healing: {success_rate:.0%} success rate{Colors.ENDC}")
+                                            self._healing_logged = True
                                     except:
                                         pass
                                 else:
