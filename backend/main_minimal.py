@@ -10,18 +10,56 @@ from pathlib import Path
 backend_path = Path(__file__).parent
 sys.path.insert(0, str(backend_path))
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import logging
 import json
+import asyncio
+from contextlib import asynccontextmanager
+from typing import Optional
+import signal
+import time
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Global reference to upgrader
+_upgrader = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifecycle."""
+    global _upgrader
+    
+    logger.info("Starting JARVIS Minimal Backend with self-healing upgrader...")
+    
+    # Start the minimal to full upgrader
+    try:
+        from minimal_to_full_upgrader import get_upgrader
+        _upgrader = get_upgrader()
+        await _upgrader.start()
+        logger.info("🔄 Minimal to Full Mode upgrader started - monitoring for upgrade opportunities")
+    except Exception as e:
+        logger.warning(f"Could not start upgrader: {e}")
+        _upgrader = None
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down minimal backend...")
+    if _upgrader:
+        await _upgrader.stop()
+
+
 # Create FastAPI app
-app = FastAPI(title="JARVIS Minimal Backend", version="1.0.0")
+app = FastAPI(
+    title="JARVIS Minimal Backend", 
+    version="1.0.0",
+    lifespan=lifespan
+)
 
 # Configure CORS
 app.add_middleware(
@@ -40,7 +78,28 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "service": "jarvis-minimal"}
+    response = {
+        "status": "healthy", 
+        "service": "jarvis-minimal",
+        "mode": "minimal",
+        "components": {
+            "vision": False,
+            "memory": False,
+            "voice": False,
+            "tools": False,
+            "rust": False
+        }
+    }
+    
+    # Add upgrader status if available
+    if _upgrader:
+        response["upgrader"] = {
+            "monitoring": _upgrader._running,
+            "attempts": _upgrader._upgrade_attempts,
+            "max_attempts": _upgrader._max_attempts
+        }
+        
+    return response
 
 
 @app.get("/voice/jarvis/status")
@@ -83,6 +142,23 @@ async def audio_ml_stream(websocket: WebSocket):
             )
     except WebSocketDisconnect:
         pass
+
+
+@app.post("/shutdown")
+async def shutdown(background_tasks: BackgroundTasks):
+    """Gracefully shutdown the minimal backend."""
+    
+    def shutdown_server():
+        """Shutdown server after response is sent."""
+        time.sleep(1)  # Give time for response
+        os.kill(os.getpid(), signal.SIGTERM)
+    
+    background_tasks.add_task(shutdown_server)
+    
+    return {
+        "success": True,
+        "message": "Minimal backend shutting down gracefully"
+    }
 
 
 if __name__ == "__main__":

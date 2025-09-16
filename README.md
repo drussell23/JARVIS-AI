@@ -29,6 +29,7 @@
 - ✅ **Background Monitoring** - Continuously ensures Rust availability
 - ✅ **Dynamic Switching** - Seamlessly switches Rust↔Python
 - ✅ **Zero Downtime** - Python fallbacks while Rust repairs
+- ✅ **Minimal→Full Mode** - Automatically upgrades from minimal to full mode when ready
 
 ### 🧠 Proactive Monitoring Mode (REVOLUTIONARY!)
 **JARVIS NOW WATCHES AND HELPS PROACTIVELY!** Major upgrade:
@@ -101,6 +102,41 @@
 3. **JARVIS responds**: "I see you're working in VS Code. I'll watch and help as you work."
 4. **Work naturally** - JARVIS will offer help when it spots opportunities
 5. **Stop**: "Stop monitoring"
+
+## 🛠️ Self-Healing System - Automatic Recovery
+
+### How It Works
+**JARVIS AUTOMATICALLY REPAIRS ITSELF!** The self-healing system:
+
+1. **Detects Issues** - Monitors Rust components continuously
+2. **Diagnoses Problems** - Identifies root causes (build failures, missing deps, etc.)
+3. **Applies Fixes** - Builds, installs dependencies, fixes permissions
+4. **Switches Components** - Uses Python fallbacks while repairing Rust
+5. **Upgrades Modes** - Automatically switches minimal→full when ready
+
+### Minimal to Full Mode Upgrade
+**NEVER STUCK IN MINIMAL MODE!** When the backend falls back to minimal mode:
+- ✅ **Automatic detection** - Recognizes minimal mode operation
+- ✅ **Component monitoring** - Checks every 30s for readiness
+- ✅ **Graceful upgrade** - Stops minimal, starts full backend
+- ✅ **Zero downtime** - Seamless transition between modes
+- ✅ **Smart retries** - Up to 10 attempts with backoff
+
+### What You'll See
+```
+🚀 Starting JARVIS with enhanced proactive mode...
+🔧 Initializing self-healing system...
+📦 Rust components not available. Self-healer will fix this automatically.
+🔄 Self-healing system started (check every 300s)
+🐍 Using Python bloom filter (fallback)
+⚡ Backend is running in minimal mode with some features limited
+
+[After Rust is fixed automatically]
+✅ All components ready for upgrade to full mode
+Stopping minimal backend...
+Starting full backend...
+✅ Full backend started successfully
+🎉 Successfully upgraded to full mode!
 
 ## 🆕 What's New in v12.9.9 - Real-Time Vision When Monitoring Active
 
