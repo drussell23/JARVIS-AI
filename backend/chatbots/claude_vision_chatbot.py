@@ -801,44 +801,80 @@ class ClaudeVisionChatbot:
         return messages
     
     def _enhance_vision_prompt(self, user_input: str) -> str:
-        """Enhance prompt for specific UI element detection"""
+        """Enhance prompt for specific UI element detection using Claude's pure vision intelligence"""
         user_lower = user_input.lower()
+        
+        # Core vision intelligence framework
+        vision_intelligence = (
+            "Use your advanced vision intelligence to understand the full context of what you see:\n"
+            "- DISTINGUISH between system UI and application content (screenshots, mockups, videos)\n"
+            "- UNDERSTAND window layering and what's in foreground vs background\n"
+            "- EXPRESS CONFIDENCE: 'I'm certain', 'I believe', or 'I'm unsure' when appropriate\n"
+            "- ACKNOWLEDGE LIMITATIONS: If something is hidden, obscured, or ambiguous\n\n"
+        )
         
         # Check for battery queries
         if any(word in user_lower for word in ['battery', 'power', 'charge', 'charging']):
-            return (f"{user_input}\n\n"
-                   "Look specifically at the status bar (top-right on macOS, bottom-right on Windows). "
-                   "Find the battery icon and report the EXACT percentage number shown. "
-                   "Don't say 'I can see the battery indicator' - give me the specific percentage like '67%' or 'Battery: 82%'. "
-                   "If you see a charging icon or lightning bolt, mention if it's charging.")
+            return (f"{user_input}\n\n{vision_intelligence}"
+                   "SPECIFIC TASK: Report the SYSTEM battery level.\n"
+                   "- Look in the system status area (top-right macOS, bottom-right Windows)\n"
+                   "- If you see multiple battery indicators, identify which is the actual system battery\n"
+                   "- Report format: 'Your battery is at X%' or 'I see multiple battery indicators...'\n"
+                   "- If battery is hidden or obscured, say so explicitly")
         
         # Check for time queries  
         elif any(word in user_lower for word in ['time', 'clock', 'hour']):
-            return (f"{user_input}\n\n"
-                   "Look at the clock in the status bar/menu bar. "
-                   "Report the EXACT time displayed, including AM/PM if shown. "
-                   "For example: '2:34 PM' or '14:34'. Don't describe where it is, just tell me the exact time.")
+            return (f"{user_input}\n\n{vision_intelligence}"
+                   "SPECIFIC TASK: Report the current SYSTEM time.\n"
+                   "- Find the system clock (not times in videos, code, or screenshots)\n"
+                   "- If multiple times are visible, use visual cues to identify the system time\n"
+                   "- Report format: 'The time is X:XX PM'\n"
+                   "- Express confidence if there's ambiguity")
         
         # Check for status bar queries
         elif 'status bar' in user_lower or 'menu bar' in user_lower:
-            return (f"{user_input}\n\n"
-                   "Examine the entire status bar/menu bar carefully. "
-                   "List EVERY element you see with specific details: "
-                   "Time (exact), Battery (percentage), WiFi status, Bluetooth status, "
-                   "Volume level, any app icons or indicators. Give me actual values, not descriptions.")
+            return (f"{user_input}\n\n{vision_intelligence}"
+                   "SPECIFIC TASK: Analyze the system status/menu bar.\n"
+                   "- Focus on the actual system bar, not app toolbars\n"
+                   "- Report all visible elements with exact values\n"
+                   "- Note which parts might be hidden by other windows\n"
+                   "- List from left to right or by importance")
+        
+        # Check for app-specific queries
+        app_keywords = ['slack', 'discord', 'chrome', 'safari', 'vscode', 'terminal', 'finder', 'mail']
+        mentioned_app = None
+        for app in app_keywords:
+            if app in user_lower:
+                mentioned_app = app
+                break
+        
+        if mentioned_app:
+            return (f"{user_input}\n\n{vision_intelligence}"
+                   f"SPECIFIC TASK: User is asking about {mentioned_app.title()}.\n"
+                   f"- Determine if {mentioned_app.title()} is visible, partially visible, or not visible\n"
+                   f"- If not visible, explain why (minimized, different desktop, not running)\n"
+                   f"- Don't assume or hallucinate its presence")
         
         # Check for general screen queries
         elif any(phrase in user_lower for phrase in ['what do you see', "what's on", 'can you see', 'describe']):
-            return (f"{user_input}\n\n"
-                   "Analyze the screen and provide SPECIFIC details: "
-                   "1) If you see a status bar, report exact time and battery percentage "
-                   "2) Name specific applications and window titles "
-                   "3) Describe actual content visible (text, buttons, etc.) "
-                   "4) Mention any notifications or badges with counts "
-                   "Be precise - avoid saying 'I can see' without giving specific details.")
+            return (f"{user_input}\n\n{vision_intelligence}"
+                   "COMPREHENSIVE SCREEN ANALYSIS:\n"
+                   "1) Identify all visible windows and their layering order\n"
+                   "2) Note which window appears to be active/in focus\n"
+                   "3) Report system UI elements with exact values\n"
+                   "4) Describe spatial relationships and partial occlusions\n"
+                   "5) Mention any dynamic content or loading states\n"
+                   "6) If asked about something specific that's not visible, say so")
         
-        # Default - return original with enhancement
-        return user_input
+        # Multi-monitor awareness
+        if any(phrase in user_lower for phrase in ['other monitor', 'second screen', 'external monitor']):
+            return (f"{user_input}\n\n{vision_intelligence}"
+                   "NOTE: User may be asking about a different monitor.\n"
+                   "- You can only see what's in this screenshot\n"
+                   "- If they need another monitor analyzed, suggest they specify which screen")
+        
+        # Default - return with general intelligence enhancement
+        return f"{user_input}\n\n{vision_intelligence}Provide specific, intelligent analysis based on what you actually see."
         
     async def _is_monitoring_command(self, user_input: str) -> bool:
         """Check if this is a continuous monitoring command"""
@@ -1006,41 +1042,78 @@ class ClaudeVisionChatbot:
             if not screenshot:
                 return "I'm having trouble capturing the screen right now. Please ensure screen recording permissions are enabled in System Preferences."
             
-            # Create an enhanced prompt based on what the user is asking
+            # Create an enhanced prompt with pure vision intelligence
             query_lower = query.lower()
             
+            # Base intelligence framework for real-time monitoring
+            monitoring_intelligence = (
+                "You are JARVIS, Tony Stark's AI assistant, actively monitoring the screen in real-time.\n"
+                "Use your advanced vision intelligence to:\n"
+                "- UNDERSTAND the complete visual context including window relationships\n"
+                "- DISTINGUISH between system UI and application content\n"
+                "- RECOGNIZE when elements are obscured, minimized, or on different screens\n"
+                "- EXPRESS CONFIDENCE levels when there's ambiguity\n"
+                "- PROVIDE INTELLIGENT INSIGHTS about what's happening\n\n"
+            )
+            
             if 'battery' in query_lower or 'power' in query_lower or 'charge' in query_lower:
-                analysis_prompt = f"""You are JARVIS, Tony Stark's AI assistant. The user asked: '{query}'
-Look at the status bar (top-right on macOS) and find the battery indicator.
-Report the EXACT battery percentage you see (e.g., "67%" or "Battery is at 82%").
-Also mention if it's charging or on battery power.
-Be specific - don't say generic things like "I can see the battery status" without the actual percentage."""
+                analysis_prompt = (f"{monitoring_intelligence}"
+                    f"The user asked: '{query}'\n\n"
+                    "REAL-TIME BATTERY ANALYSIS:\n"
+                    "- Locate the SYSTEM battery indicator (not battery icons in apps/screenshots)\n"
+                    "- Report the exact percentage visible\n"
+                    "- Note charging state\n"
+                    "- If multiple batteries visible, identify the system one\n"
+                    "- If obscured or not visible, explain why")
             
             elif 'time' in query_lower or 'clock' in query_lower:
-                analysis_prompt = f"""You are JARVIS, Tony Stark's AI assistant. The user asked: '{query}'
-Look at the status bar and find the clock.
-Report the EXACT time displayed (e.g., "2:34 PM" or "14:34").
-Be precise - read the actual time shown on screen."""
+                analysis_prompt = (f"{monitoring_intelligence}"
+                    f"The user asked: '{query}'\n\n"
+                    "REAL-TIME TIME CHECK:\n"
+                    "- Find the SYSTEM clock (not times in apps/videos)\n"
+                    "- Report the exact time displayed\n"
+                    "- If multiple times visible, explain which is the system time\n"
+                    "- Express confidence if ambiguous")
             
             elif 'status bar' in query_lower or 'menu bar' in query_lower:
-                analysis_prompt = f"""You are JARVIS, Tony Stark's AI assistant. The user asked: '{query}'
-Examine the entire status bar/menu bar carefully.
-List EVERY element you see with specific details:
-- Time (exact)
-- Battery (exact percentage)
-- WiFi status
-- Any other icons or indicators
-Give actual values, not descriptions."""
+                analysis_prompt = (f"{monitoring_intelligence}"
+                    f"The user asked: '{query}'\n\n"
+                    "REAL-TIME STATUS BAR ANALYSIS:\n"
+                    "- Examine the entire system status/menu bar\n"
+                    "- Report all elements with exact values\n"
+                    "- Note any parts hidden by windows\n"
+                    "- Distinguish from app toolbars")
+            
+            elif any(app in query_lower for app in ['slack', 'discord', 'chrome', 'safari', 'vscode', 'terminal']):
+                # Extract the app name
+                app_name = next((app for app in ['slack', 'discord', 'chrome', 'safari', 'vscode', 'terminal'] if app in query_lower), None)
+                analysis_prompt = (f"{monitoring_intelligence}"
+                    f"The user asked: '{query}'\n\n"
+                    f"REAL-TIME {app_name.upper()} CHECK:\n"
+                    f"- Is {app_name.title()} visible on screen?\n"
+                    f"- If yes: Is it in foreground or background? What's visible?\n"
+                    f"- If no: Explain (minimized, different desktop, not running)\n"
+                    f"- Don't assume - only report what you actually see")
             
             else:
-                # General screen analysis with emphasis on specifics
-                analysis_prompt = f"""You are JARVIS, Tony Stark's AI assistant. The user asked: '{query}'
-Analyze the screen and provide specific details:
-1) If you see a status bar, report exact time and battery percentage
-2) Name specific applications and window titles
-3) Describe actual content visible
-4) Be precise about UI elements and their states
-Avoid generic descriptions - be as specific as JARVIS would be when helping Tony Stark."""
+                # Comprehensive screen analysis
+                analysis_prompt = (f"{monitoring_intelligence}"
+                    f"The user asked: '{query}'\n\n"
+                    "REAL-TIME COMPREHENSIVE ANALYSIS:\n"
+                    "- Identify ALL visible windows and their z-order\n"
+                    "- Note which window is active/focused\n"
+                    "- Report exact system UI values\n"
+                    "- Describe window relationships and occlusions\n"
+                    "- Mention any dynamic content or transitions\n"
+                    "- If they ask about something not visible, explain why\n"
+                    "- Provide intelligent insights about the user's workflow")
+            
+            # Add temporal awareness for monitoring
+            analysis_prompt += (
+                "\n\nREAL-TIME CONTEXT: Since you're monitoring in real-time, "
+                "note if anything appears to be changing or if the user might need "
+                "to know about something that just happened or is about to happen."
+            )
             
             # Analyze the screenshot
             messages = [

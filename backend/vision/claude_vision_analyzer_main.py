@@ -2868,78 +2868,179 @@ class ClaudeVisionAnalyzer:
             logger.debug(f"Could not add label to region: {e}")
     
     def _enhance_prompt_for_ui_elements(self, prompt: str) -> str:
-        """Enhance prompt to get specific UI element details from Claude"""
+        """Enhance prompt to get specific UI element details from Claude using pure vision intelligence"""
         prompt_lower = prompt.lower()
         
-        # Define UI element patterns and their specific prompts
+        # Core intelligence instructions for Claude to understand context and ambiguity
+        intelligence_framework = (
+            "Use your advanced vision capabilities to understand the screen intelligently:\n"
+            "1) CONTEXT AWARENESS: Understand window layering, focus states, and spatial relationships\n"
+            "2) DISAMBIGUATION: When multiple similar elements exist, use visual cues to identify the system one:\n"
+            "   - System UI is typically in consistent locations (menu bars, status bars)\n"
+            "   - System UI has consistent styling different from application content\n"
+            "   - Screenshots/mockups often have different visual quality or borders\n"
+            "3) CONFIDENCE EXPRESSION: Rate your confidence as 'certain', 'likely', or 'uncertain'\n"
+            "4) LIMITATIONS ACKNOWLEDGMENT: If something is hidden, minimized, or on another screen, say so\n"
+            "5) DYNAMIC CONTENT: Note if elements appear to be loading, transitioning, or temporarily visible\n"
+        )
+        
+        # Enhanced UI element patterns with pure intelligence approach
         ui_prompts = {
             'battery': (
-                "Look at the status bar/menu bar (usually top-right on macOS, bottom-right on Windows). "
-                "Find and report the EXACT battery percentage number. Don't say 'the battery icon shows...' - "
-                "give me the specific percentage like '67%' or 'Battery: 82%'. If you see a charging icon, mention that too."
+                f"{intelligence_framework}\n\n"
+                "TASK: Find and report the system battery level.\n"
+                "APPROACH: Use your vision intelligence to:\n"
+                "- Locate the system status area (typically top-right on macOS, bottom-right on Windows)\n"
+                "- Distinguish between system battery indicator vs battery icons in apps/screenshots\n"
+                "- Read the exact percentage if visible\n"
+                "- Note charging state if indicated\n"
+                "- If multiple batteries appear (laptop, phone, mockup), identify which is the system battery\n"
+                "- If battery is obscured or not visible, explicitly state this\n"
+                "RESPONSE FORMAT: 'Your battery is at X%' or 'Battery: X% (charging)' with confidence level"
             ),
             'time': (
-                "Look at the clock in the status bar/menu bar. Report the EXACT time displayed, "
-                "including AM/PM if shown. For example: '2:34 PM' or '14:34'. Don't describe where the clock is, "
-                "just tell me the exact time you see."
+                f"{intelligence_framework}\n\n"
+                "TASK: Report the current system time.\n"
+                "APPROACH: Use your vision intelligence to:\n"
+                "- Find the system clock (not times in videos, code, or screenshots)\n"
+                "- Understand which time display is the actual system time\n"
+                "- Consider visual hierarchy and positioning\n"
+                "- Read the exact time including format\n"
+                "- If multiple times visible, explain your reasoning for which is system time\n"
+                "RESPONSE FORMAT: 'The time is X:XX PM' with confidence if ambiguous"
             ),
             'notifications': (
-                "Check for notification badges, counts, or alerts. Look for: "
-                "1) Red circles with numbers on dock/taskbar icons "
-                "2) Notification banners or pop-ups "
-                "3) Any unread counts visible "
-                "Report the specific numbers and which apps have them."
+                f"{intelligence_framework}\n\n"
+                "TASK: Identify all system notifications and badges.\n"
+                "APPROACH: Use your vision intelligence to:\n"
+                "- Scan dock/taskbar for notification badges\n"
+                "- Check for system notification banners\n"
+                "- Distinguish real notifications from those in screenshots\n"
+                "- Count badge numbers accurately\n"
+                "- Identify which app each notification belongs to\n"
+                "- Note partially visible notifications"
             ),
             'wifi': (
-                "Find the WiFi/network icon in the status bar. Report: "
-                "1) Connection status (connected/disconnected) "
-                "2) Signal strength if visible (full bars, half bars, etc.) "
-                "3) Network name if displayed"
+                f"{intelligence_framework}\n\n"
+                "TASK: Report network/WiFi status.\n"
+                "APPROACH: Use your vision intelligence to:\n"
+                "- Find the system network indicator\n"
+                "- Distinguish from WiFi icons in apps or web pages\n"
+                "- Assess signal strength visually\n"
+                "- Read network name if displayed\n"
+                "- Note if obscured by other windows"
             ),
             'status_bar': (
-                "Examine the entire status bar/menu bar carefully. List EVERY element you see with specific details: "
-                "Time (exact), Battery (percentage), WiFi status, Bluetooth status, Volume level, "
-                "Any app icons or indicators. Give me actual values, not descriptions."
+                f"{intelligence_framework}\n\n"
+                "TASK: Analyze the entire system status/menu bar.\n"
+                "APPROACH: Use your vision intelligence to:\n"
+                "- Identify all system status indicators\n"
+                "- Read exact values for each element\n"
+                "- Note which parts are obscured\n"
+                "- Distinguish system bar from app toolbars\n"
+                "- Report in spatial order (left to right or by importance)"
             ),
             'screen': (
-                "Analyze what's currently on screen. Be specific about: "
-                "1) Active application names and window titles "
-                "2) Any specific UI elements visible (buttons, text fields, etc.) "
-                "3) Content being displayed "
-                "4) Status bar details (time, battery %, etc.) "
-                "Provide concrete details, not vague descriptions."
+                f"{intelligence_framework}\n\n"
+                "TASK: Provide comprehensive screen analysis.\n"
+                "APPROACH: Use your vision intelligence to:\n"
+                "- Understand window layering and z-order\n"
+                "- Identify which window appears to be active/focused\n"
+                "- Note partially visible or background windows\n"
+                "- Describe spatial relationships between elements\n"
+                "- Identify primary content area vs chrome/UI\n"
+                "- Mention if specific requested apps are not visible\n"
+                "- Note any dynamic elements (videos, animations, loading states)"
             )
         }
         
-        # Check which UI element is being asked about
+        # Multi-monitor and app-specific intelligence
+        monitor_context = ""
+        if any(phrase in prompt_lower for phrase in ['other monitor', 'second screen', 'external display', 'monitor 2', 'other display']):
+            monitor_context = (
+                "\n\nMONITOR CONTEXT: User may be asking about a different monitor. "
+                "If you can only see one screen, acknowledge this limitation. "
+                "Suggest: 'I can only see your primary display. To analyze another monitor, "
+                "you may need to move the window there or specify which screen to capture.'"
+            )
+        
+        # App-specific intelligence
+        app_context = ""
+        app_keywords = {
+            'slack': 'communication app with channels and messages',
+            'discord': 'chat application with servers and channels',
+            'chrome': 'web browser',
+            'safari': 'web browser',
+            'firefox': 'web browser',
+            'vscode': 'code editor',
+            'terminal': 'command line interface',
+            'finder': 'file manager (macOS)',
+            'explorer': 'file manager (Windows)',
+            'mail': 'email application',
+            'messages': 'messaging application',
+            'teams': 'Microsoft Teams collaboration app'
+        }
+        
+        for app, description in app_keywords.items():
+            if app in prompt_lower:
+                app_context = (
+                    f"\n\nAPP-SPECIFIC CONTEXT: User is asking about {app.title()} ({description}). "
+                    f"Use your vision intelligence to determine if {app.title()} is: "
+                    f"1) Visible in foreground "
+                    f"2) Partially visible behind other windows "
+                    f"3) Minimized (not visible) "
+                    f"4) On another desktop/space "
+                    f"5) Not running "
+                    f"Be explicit about which state you observe."
+                )
+                break
+        
+        # Build the enhanced prompt
         enhanced_prompt = prompt
         prompt_matched = False
         
         for element, enhancement in ui_prompts.items():
             if element in prompt_lower or (
-                element == 'battery' and any(word in prompt_lower for word in ['power', 'charge']) or
-                element == 'time' and any(word in prompt_lower for word in ['clock', 'hour']) or
-                element == 'notifications' and any(word in prompt_lower for word in ['alert', 'badge', 'unread']) or
-                element == 'wifi' and any(word in prompt_lower for word in ['network', 'internet', 'connection']) or
-                element == 'screen' and any(phrase in prompt_lower for phrase in ['what do you see', "what's on", 'describe'])
+                element == 'battery' and any(word in prompt_lower for word in ['power', 'charge', 'percent']) or
+                element == 'time' and any(word in prompt_lower for word in ['clock', 'hour', 'what time']) or
+                element == 'notifications' and any(word in prompt_lower for word in ['alert', 'badge', 'unread', 'notify']) or
+                element == 'wifi' and any(word in prompt_lower for word in ['network', 'internet', 'connection', 'wi-fi']) or
+                element == 'status_bar' and any(word in prompt_lower for word in ['status', 'menu bar', 'system tray']) or
+                element == 'screen' and any(phrase in prompt_lower for phrase in ['what do you see', "what's on", 'describe', 'can you see'])
             ):
-                enhanced_prompt = f"You are JARVIS, Tony Stark's AI assistant. {enhancement}\n\nUser asked: {prompt}"
+                enhanced_prompt = (
+                    f"You are JARVIS, Tony Stark's AI assistant with advanced vision capabilities.\n\n"
+                    f"{enhancement}"
+                    f"{monitor_context}"
+                    f"{app_context}"
+                    f"\n\nUser asked: {prompt}"
+                )
                 prompt_matched = True
                 break
         
         # If no specific pattern matched but user is asking about seeing/screen
-        if not prompt_matched and any(word in prompt_lower for word in ['see', 'screen', 'display', 'showing']):
+        if not prompt_matched and any(word in prompt_lower for word in ['see', 'screen', 'display', 'showing', 'open', 'running']):
             enhanced_prompt = (
-                "You are JARVIS, Tony Stark's AI assistant. The user is asking about what's on their screen. "
-                "Provide specific, detailed information about what you observe. Include: "
-                "1) Exact values for time, battery percentage, etc. from the status bar "
-                "2) Application names and window titles "
-                "3) Any specific content or UI elements visible "
-                "Don't give generic responses - be as specific as JARVIS would be.\n\n"
-                f"User asked: {prompt}"
+                f"You are JARVIS, Tony Stark's AI assistant with advanced vision capabilities.\n\n"
+                f"{intelligence_framework}\n\n"
+                "TASK: Analyze the screen comprehensively.\n"
+                "APPROACH: Use your vision intelligence to provide a complete understanding of what's visible, "
+                "including window relationships, active applications, and system state.\n"
+                "Remember to note any ambiguities or limitations in what you can see."
+                f"{monitor_context}"
+                f"{app_context}"
+                f"\n\nUser asked: {prompt}"
             )
         
-        logger.debug(f"Enhanced prompt: {enhanced_prompt[:200]}...")
+        # Add temporal context for dynamic content
+        if any(word in prompt_lower for word in ['loading', 'changing', 'updating', 'refreshing']):
+            enhanced_prompt += (
+                "\n\nDYNAMIC CONTENT NOTE: The user mentioned dynamic content. "
+                "Note if any elements appear to be in transition, loading, or temporarily displayed. "
+                "Mention if a follow-up analysis might show different results."
+            )
+        
+        logger.debug(f"Enhanced prompt with pure vision intelligence: {enhanced_prompt[:300]}...")
         return enhanced_prompt
 
     async def _call_claude_api(self, image_base64: str, prompt: str) -> str:
