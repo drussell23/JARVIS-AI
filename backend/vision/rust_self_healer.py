@@ -10,6 +10,7 @@ import subprocess
 import logging
 import json
 import shutil
+import multiprocessing
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, timedelta
@@ -370,11 +371,32 @@ class RustSelfHealer:
         return result.returncode == 0
         
     async def _build_rust_components(self, retry_count: int = 0, max_retries: int = 3) -> bool:
-        """Build Rust components with exponential backoff retry."""
-        logger.info("Building Rust components...")
+        """Build Rust components with parallel compilation and exponential backoff retry."""
+        logger.info("Building Rust components with parallel compilation...")
         
         # Use the build script if available
         build_script = self.vision_dir / "build_rust_components.py"
+        
+        # Dynamic config for build
+        build_config = {
+            'build': {
+                'parallel': True,
+                'max_workers': min(multiprocessing.cpu_count(), 8),
+                'timeout': 900,  # 15 minutes for parallel builds
+                'retry_count': max_retries,
+                'clean_build': retry_count > 0  # Clean build on retries
+            },
+            'optimization': {
+                'level': 3,
+                'lto': True,
+                'native_cpu': True
+            }
+        }
+        
+        # Save config temporarily
+        config_file = self.vision_dir / ".rust_build_config.json"
+        with open(config_file, 'w') as f:
+            json.dump(build_config, f)
         
         for attempt in range(max_retries):
             if attempt > 0:
@@ -385,17 +407,29 @@ class RustSelfHealer:
             
             try:
                 if build_script.exists():
+                    logger.info(f"Running parallel build (attempt {attempt + 1}/{max_retries})...")
+                    logger.info(f"Using {build_config['build']['max_workers']} parallel workers")
+                    
                     result = await self._run_command(
-                        [sys.executable, str(build_script)],
+                        [sys.executable, str(build_script), str(config_file)],
                         cwd=str(self.vision_dir),
-                        capture_output=True
+                        capture_output=True,
+                        timeout=build_config['build']['timeout']
                     )
+                    
+                    # Clean up config
+                    config_file.unlink(missing_ok=True)
                 else:
-                    # Direct cargo build
+                    # Direct cargo build with parallel jobs
+                    logger.info("Using direct cargo build with parallelism...")
+                    env = os.environ.copy()
+                    env['CARGO_BUILD_JOBS'] = str(max(1, multiprocessing.cpu_count() - 2))
+                    
                     result = await self._run_command(
-                        ["cargo", "build", "--release", "--features", "python-bindings"],
+                        ["cargo", "build", "--release", "--features", "python-bindings,simd"],
                         cwd=str(self.rust_core_dir),
-                        capture_output=True
+                        capture_output=True,
+                        env=env
                     )
                 
                 # Save build log
@@ -410,12 +444,14 @@ class RustSelfHealer:
                             cwd=str(self.rust_core_dir)
                         )
                         if maturin_result.returncode == 0:
-                            logger.info("✅ Build successful!")
+                            logger.info("✅ Build successful with parallel compilation!")
+                            self._last_successful_build = datetime.now()
                             return True
                         else:
                             logger.warning(f"Maturin failed: {maturin_result.stderr}")
                     else:
-                        logger.info("✅ Build successful!")
+                        logger.info("✅ Build successful with parallel compilation!")
+                        self._last_successful_build = datetime.now()
                         return True
                 else:
                     # Analyze failure
@@ -436,6 +472,10 @@ class RustSelfHealer:
                         
             except Exception as e:
                 logger.error(f"Build attempt {attempt + 1} failed: {e}")
+                
+            finally:
+                # Clean up config file
+                config_file.unlink(missing_ok=True)
         
         logger.error(f"Build failed after {max_retries} attempts")
         return False

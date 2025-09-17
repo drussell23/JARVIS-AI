@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Build and verify Rust components for JARVIS vision system.
-This script handles the complete Rust integration setup.
+This script handles the complete Rust integration setup with parallel compilation.
 """
 
 import os
@@ -12,17 +12,155 @@ import json
 from pathlib import Path
 import platform
 import shutil
+import asyncio
+import multiprocessing
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from typing import Dict, List, Optional, Tuple, Any
+import time
+import psutil
+import toml
+from datetime import datetime
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class RustBuilder:
-    def __init__(self):
+    def __init__(self, config_path: Optional[Path] = None):
         self.vision_dir = Path(__file__).parent
         self.rust_core_dir = self.vision_dir / "jarvis-rust-core"
         self.python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
         self.is_macos = platform.system() == "Darwin"
         self.is_m1 = self.is_macos and platform.machine() == "arm64"
+        
+        # Dynamic configuration
+        self.config = self._load_config(config_path)
+        
+        # System resources
+        self.cpu_count = multiprocessing.cpu_count()
+        self.memory_gb = psutil.virtual_memory().total / (1024**3)
+        
+        # Parallel execution settings
+        self.max_workers = self.config.get('build', {}).get('max_workers', min(self.cpu_count, 8))
+        self.parallel_enabled = self.config.get('build', {}).get('parallel', True)
+        
+        # Build optimizations
+        self.optimization_level = self.config.get('optimization', {}).get('level', 3)
+        self.lto_enabled = self.config.get('optimization', {}).get('lto', True)
+        self.native_cpu = self.config.get('optimization', {}).get('native_cpu', True)
+        
+        # Component list - dynamically loaded
+        self.components = self._discover_components()
+        
+    def _load_config(self, config_path: Optional[Path] = None) -> Dict[str, Any]:
+        """Load dynamic configuration from file or defaults."""
+        default_config = {
+            'build': {
+                'parallel': True,
+                'max_workers': None,  # Auto-detect
+                'timeout': 600,  # 10 minutes
+                'retry_count': 3,
+                'cache_enabled': True
+            },
+            'optimization': {
+                'level': 3,
+                'lto': True,
+                'native_cpu': True,
+                'strip': True,
+                'codegen_units': 1
+            },
+            'features': {
+                'python-bindings': True,
+                'simd': True,
+                'metal': self.is_macos,
+                'parallel-processing': True
+            },
+            'memory': {
+                'limit_gb': max(2, self.memory_gb * 0.5),  # Use up to 50% of RAM
+                'cargo_build_jobs': None  # Auto-detect
+            }
+        }
+        
+        if config_path and config_path.exists():
+            try:
+                if config_path.suffix == '.json':
+                    with open(config_path) as f:
+                        user_config = json.load(f)
+                elif config_path.suffix == '.toml':
+                    with open(config_path) as f:
+                        user_config = toml.load(f)
+                else:
+                    logger.warning(f"Unknown config format: {config_path}")
+                    return default_config
+                    
+                # Deep merge configs
+                return self._merge_configs(default_config, user_config)
+            except Exception as e:
+                logger.warning(f"Failed to load config: {e}")
+                
+        return default_config
+        
+    def _merge_configs(self, default: Dict, user: Dict) -> Dict:
+        """Deep merge user config into default config."""
+        result = default.copy()
+        for key, value in user.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = self._merge_configs(result[key], value)
+            else:
+                result[key] = value
+        return result
+        
+    def _discover_components(self) -> List[Dict[str, Any]]:
+        """Dynamically discover Rust components to build."""
+        components = []
+        
+        # Check Cargo.toml for workspace members
+        cargo_toml = self.rust_core_dir / "Cargo.toml"
+        if cargo_toml.exists():
+            try:
+                with open(cargo_toml) as f:
+                    cargo_data = toml.load(f)
+                    
+                # Check for workspace
+                if 'workspace' in cargo_data and 'members' in cargo_data['workspace']:
+                    for member in cargo_data['workspace']['members']:
+                        components.append({
+                            'name': member,
+                            'path': self.rust_core_dir / member,
+                            'type': 'workspace_member'
+                        })
+                        
+                # Add main crate
+                if 'package' in cargo_data:
+                    components.append({
+                        'name': cargo_data['package']['name'],
+                        'path': self.rust_core_dir,
+                        'type': 'main',
+                        'features': self._get_enabled_features()
+                    })
+            except Exception as e:
+                logger.warning(f"Failed to parse Cargo.toml: {e}")
+                
+        # Fallback to directory scanning
+        if not components:
+            components = [{
+                'name': 'jarvis-rust-core',
+                'path': self.rust_core_dir,
+                'type': 'main',
+                'features': self._get_enabled_features()
+            }]
+            
+        return components
+        
+    def _get_enabled_features(self) -> List[str]:
+        """Get list of enabled features from config."""
+        features = []
+        feature_config = self.config.get('features', {})
+        
+        for feature, enabled in feature_config.items():
+            if enabled:
+                features.append(feature)
+                
+        return features
         
     def check_prerequisites(self) -> bool:
         """Check if all prerequisites are installed."""
@@ -99,54 +237,228 @@ strip = true
             config_file.write_text(config_content)
             logger.info("✓ Created optimized cargo config for M1")
             
-    def build_rust_library(self) -> bool:
-        """Build the Rust library with all optimizations."""
-        logger.info("Building Rust library...")
+    async def build_rust_library(self) -> bool:
+        """Build the Rust library with parallel compilation and optimizations."""
+        logger.info(f"Building Rust library with {self.max_workers} parallel workers...")
         
         if not self.rust_core_dir.exists():
             logger.error(f"Rust core directory not found: {self.rust_core_dir}")
             return False
             
-        os.chdir(self.rust_core_dir)
-        
-        # Clean previous builds
-        if (self.rust_core_dir / "target").exists():
-            logger.info("Cleaning previous build...")
-            shutil.rmtree(self.rust_core_dir / "target")
+        # Clean previous builds if needed
+        if self.config.get('build', {}).get('clean_build', False):
+            await self._clean_build_async()
             
-        # Build with cargo first
-        logger.info("Running cargo build...")
+        # Build all components in parallel
+        if self.parallel_enabled and len(self.components) > 1:
+            results = await self._build_components_parallel()
+        else:
+            results = await self._build_components_sequential()
+            
+        # Check results
+        success = all(results.values())
+        if success:
+            logger.info("✅ All components built successfully")
+        else:
+            failed = [name for name, result in results.items() if not result]
+            logger.error(f"❌ Failed to build: {', '.join(failed)}")
+            
+        return success
+        
+    async def _clean_build_async(self):
+        """Clean build artifacts asynchronously."""
+        logger.info("Cleaning previous builds...")
+        
+        async def clean_target(path: Path):
+            target_dir = path / "target"
+            if target_dir.exists():
+                await asyncio.to_thread(shutil.rmtree, target_dir)
+                logger.info(f"✓ Cleaned {target_dir}")
+                
+        # Clean all component targets in parallel
+        tasks = [clean_target(comp['path']) for comp in self.components]
+        await asyncio.gather(*tasks, return_exceptions=True)
+        
+    async def _build_components_parallel(self) -> Dict[str, bool]:
+        """Build components in parallel."""
+        logger.info(f"Building {len(self.components)} components in parallel...")
+        
+        # Create semaphore to limit concurrent builds
+        semaphore = asyncio.Semaphore(self.max_workers)
+        
+        async def build_with_semaphore(component):
+            async with semaphore:
+                return await self._build_single_component(component)
+                
+        # Build all components
+        tasks = []
+        for component in self.components:
+            task = asyncio.create_task(build_with_semaphore(component))
+            tasks.append((component['name'], task))
+            
+        # Wait for all builds
+        results = {}
+        for name, task in tasks:
+            try:
+                results[name] = await task
+            except Exception as e:
+                logger.error(f"Build failed for {name}: {e}")
+                results[name] = False
+                
+        return results
+        
+    async def _build_components_sequential(self) -> Dict[str, bool]:
+        """Build components sequentially."""
+        results = {}
+        for component in self.components:
+            try:
+                results[component['name']] = await self._build_single_component(component)
+            except Exception as e:
+                logger.error(f"Build failed for {component['name']}: {e}")
+                results[component['name']] = False
+        return results
+        
+    async def _build_single_component(self, component: Dict[str, Any]) -> bool:
+        """Build a single Rust component."""
+        name = component['name']
+        path = component['path']
+        
+        logger.info(f"Building {name}...")
+        
+        # Prepare environment
+        env = await self._prepare_build_env(component)
+        
+        # Build steps
+        steps = []
+        
+        # Step 1: Cargo build
+        if component.get('type') != 'python_only':
+            steps.append(self._cargo_build_step(component, env))
+            
+        # Step 2: Maturin build (if it's the main package)
+        if component.get('type') == 'main':
+            steps.append(self._maturin_build_step(component, env))
+            
+        # Execute steps
+        for step_name, step_func in steps:
+            success = await step_func()
+            if not success:
+                logger.error(f"❌ {name}: {step_name} failed")
+                return False
+            logger.info(f"✅ {name}: {step_name} completed")
+            
+        return True
+        
+    async def _prepare_build_env(self, component: Dict[str, Any]) -> Dict[str, str]:
+        """Prepare build environment with optimizations."""
         env = os.environ.copy()
+        
+        # Set target for M1
         if self.is_m1:
             env["CARGO_BUILD_TARGET"] = "aarch64-apple-darwin"
             
-        result = subprocess.run(
-            ["cargo", "build", "--release", "--features", "python-bindings,simd"],
-            env=env,
-            capture_output=True,
-            text=True
-        )
-        
-        if result.returncode != 0:
-            logger.error(f"Cargo build failed: {result.stderr}")
-            return False
+        # Set build parallelism
+        if self.config['memory']['cargo_build_jobs']:
+            env["CARGO_BUILD_JOBS"] = str(self.config['memory']['cargo_build_jobs'])
+        else:
+            # Use available CPU cores but leave some for system
+            env["CARGO_BUILD_JOBS"] = str(max(1, self.cpu_count - 2))
             
-        logger.info("✓ Cargo build successful")
-        
-        # Build Python bindings with maturin
-        logger.info("Building Python bindings with maturin...")
-        result = subprocess.run(
-            ["maturin", "develop", "--release", "--features", "python-bindings,simd"],
-            capture_output=True,
-            text=True
-        )
-        
-        if result.returncode != 0:
-            logger.error(f"Maturin build failed: {result.stderr}")
-            return False
+        # Set Rust flags for optimization
+        rust_flags = []
+        if self.native_cpu:
+            rust_flags.append("-C target-cpu=native")
+        if self.optimization_level:
+            rust_flags.append(f"-C opt-level={self.optimization_level}")
+        if rust_flags:
+            env["RUSTFLAGS"] = " ".join(rust_flags)
             
-        logger.info("✓ Maturin build successful")
-        return True
+        # Memory limits
+        if self.config['memory']['limit_gb']:
+            # This is platform-specific, simplified example
+            env["CARGO_BUILD_PIPELINING"] = "true"  # Reduce memory usage
+            
+        return env
+        
+    def _cargo_build_step(self, component: Dict[str, Any], env: Dict[str, str]) -> Tuple[str, Any]:
+        """Create cargo build step."""
+        async def build():
+            cmd = ["cargo", "build", "--release"]
+            
+            # Add features
+            if 'features' in component:
+                cmd.extend(["--features", ",".join(component['features'])])
+                
+            # Add workspace flag if needed
+            if component.get('type') == 'workspace_member':
+                cmd.extend(["-p", component['name']])
+                
+            # Run build
+            return await self._run_command_async(cmd, component['path'], env)
+            
+        return ("Cargo build", build)
+        
+    def _maturin_build_step(self, component: Dict[str, Any], env: Dict[str, str]) -> Tuple[str, Any]:
+        """Create maturin build step."""
+        async def build():
+            cmd = ["maturin", "develop", "--release"]
+            
+            # Add features
+            if 'features' in component:
+                cmd.extend(["--features", ",".join(component['features'])])
+                
+            # Run build
+            return await self._run_command_async(cmd, component['path'], env)
+            
+        return ("Maturin build", build)
+        
+    async def _run_command_async(self, cmd: List[str], cwd: Path, env: Dict[str, str]) -> bool:
+        """Run a command asynchronously with timeout and retry."""
+        timeout = self.config['build']['timeout']
+        retry_count = self.config['build']['retry_count']
+        
+        for attempt in range(retry_count):
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    cwd=str(cwd),
+                    env=env,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                
+                # Wait with timeout
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(),
+                    timeout=timeout
+                )
+                
+                if process.returncode == 0:
+                    return True
+                    
+                # Log error
+                logger.error(f"Command failed (attempt {attempt + 1}/{retry_count}): {' '.join(cmd)}")
+                if stderr:
+                    logger.error(f"Error: {stderr.decode('utf-8', errors='replace')}")
+                    
+                # Exponential backoff
+                if attempt < retry_count - 1:
+                    wait_time = 2 ** attempt
+                    logger.info(f"Retrying in {wait_time} seconds...")
+                    await asyncio.sleep(wait_time)
+                    
+            except asyncio.TimeoutError:
+                logger.error(f"Command timed out after {timeout}s: {' '.join(cmd)}")
+                if attempt < retry_count - 1:
+                    logger.info("Retrying...")
+                else:
+                    return False
+                    
+            except Exception as e:
+                logger.error(f"Unexpected error: {e}")
+                return False
+                
+        return False
         
     def verify_installation(self) -> bool:
         """Verify the Rust library is properly installed."""
@@ -305,50 +617,180 @@ print("\n✓ All tests passed!")
         test_file.chmod(0o755)
         logger.info(f"✓ Created test script: {test_file}")
         
-    def main(self):
-        """Main build process."""
-        logger.info("Starting Rust components build process...")
+    async def main(self):
+        """Main build process with parallel execution."""
+        start_time = time.time()
+        
+        # Print system info
+        logger.info("=" * 70)
+        logger.info("🦀 JARVIS Rust Component Builder - Parallel Edition")
+        logger.info("=" * 70)
         logger.info(f"Platform: {platform.system()} {platform.machine()}")
         logger.info(f"Python: {sys.version}")
+        logger.info(f"CPU Cores: {self.cpu_count}")
+        logger.info(f"Memory: {self.memory_gb:.1f} GB")
+        logger.info(f"Parallel Workers: {self.max_workers}")
+        logger.info("=" * 70)
+        
+        # Show configuration
+        logger.info("\n📋 Build Configuration:")
+        logger.info(f"  • Parallel Build: {self.parallel_enabled}")
+        logger.info(f"  • Optimization Level: {self.optimization_level}")
+        logger.info(f"  • LTO: {self.lto_enabled}")
+        logger.info(f"  • Native CPU: {self.native_cpu}")
+        logger.info(f"  • Features: {', '.join(self._get_enabled_features())}")
+        logger.info(f"  • Components: {len(self.components)}")
         
         # Step 1: Check prerequisites
         if not self.check_prerequisites():
             logger.error("Prerequisites check failed")
             return False
             
-        # Step 2: Setup toolchain
-        self.setup_rust_toolchain()
+        # Step 2: Setup toolchain (can be done in parallel with other tasks)
+        setup_task = asyncio.create_task(self._setup_toolchain_async())
         
-        # Step 3: Build library
-        if not self.build_rust_library():
+        # Step 3: Pre-build tasks in parallel
+        pre_build_tasks = [
+            self._check_disk_space(),
+            self._validate_components(),
+            self._setup_cache_dir()
+        ]
+        
+        pre_results = await asyncio.gather(*pre_build_tasks, return_exceptions=True)
+        await setup_task
+        
+        # Step 4: Build library with parallel compilation
+        build_success = await self.build_rust_library()
+        if not build_success:
             logger.error("Build failed")
             return False
             
-        # Step 4: Verify installation
-        if not self.verify_installation():
+        # Step 5: Post-build tasks in parallel
+        post_build_tasks = [
+            self._verify_installation_async(),
+            self._update_python_modules_async(),
+            self._create_test_script_async(),
+            self._generate_build_report()
+        ]
+        
+        post_results = await asyncio.gather(*post_build_tasks, return_exceptions=True)
+        
+        # Check if verification passed
+        if not post_results[0]:  # verify_installation result
             logger.error("Verification failed")
             return False
             
-        # Step 5: Update Python modules
-        self.update_python_modules()
+        # Step 6: Run performance test
+        await self._run_performance_test_async()
         
-        # Step 6: Create test script
-        self.create_test_script()
+        # Calculate build time
+        build_time = time.time() - start_time
         
-        # Step 7: Run performance test
-        self.run_performance_test()
+        # Success message
+        logger.info("\n" + "=" * 70)
+        logger.info("✅ Rust components build completed successfully!")
+        logger.info(f"⏱️  Total build time: {build_time:.1f} seconds")
+        logger.info("=" * 70)
+        logger.info("\n📝 Next steps:")
+        logger.info("  1. Run: python test_rust_components.py")
+        logger.info("  2. Rust acceleration is now enabled automatically")
+        logger.info("  3. Monitor performance in JARVIS dashboard")
         
-        logger.info("\n" + "=" * 50)
-        logger.info("✓ Rust components build completed successfully!")
-        logger.info("=" * 50)
-        logger.info("\nNext steps:")
-        logger.info("1. Run: python test_rust_components.py")
-        logger.info("2. Update your JARVIS configuration to enable Rust acceleration")
-        logger.info("3. Monitor performance improvements in real-time monitoring")
+        # Save build info
+        await self._save_build_info(build_time)
         
         return True
+        
+    async def _setup_toolchain_async(self):
+        """Setup Rust toolchain asynchronously."""
+        await asyncio.to_thread(self.setup_rust_toolchain)
+        
+    async def _check_disk_space(self):
+        """Check available disk space."""
+        disk_usage = psutil.disk_usage(str(self.rust_core_dir))
+        free_gb = disk_usage.free / (1024**3)
+        
+        if free_gb < 2:
+            logger.warning(f"Low disk space: {free_gb:.1f} GB available")
+        else:
+            logger.info(f"✓ Disk space: {free_gb:.1f} GB available")
+            
+    async def _validate_components(self):
+        """Validate all components before building."""
+        logger.info("Validating components...")
+        
+        for component in self.components:
+            cargo_toml = component['path'] / "Cargo.toml"
+            if not cargo_toml.exists():
+                logger.warning(f"Missing Cargo.toml for {component['name']}")
+                
+    async def _setup_cache_dir(self):
+        """Setup build cache directory."""
+        if self.config['build']['cache_enabled']:
+            cache_dir = self.rust_core_dir / ".build_cache"
+            cache_dir.mkdir(exist_ok=True)
+            logger.info("✓ Build cache enabled")
+            
+    async def _verify_installation_async(self) -> bool:
+        """Verify installation asynchronously."""
+        return await asyncio.to_thread(self.verify_installation)
+        
+    async def _update_python_modules_async(self):
+        """Update Python modules asynchronously."""
+        await asyncio.to_thread(self.update_python_modules)
+        
+    async def _create_test_script_async(self):
+        """Create test script asynchronously."""
+        await asyncio.to_thread(self.create_test_script)
+        
+    async def _generate_build_report(self):
+        """Generate a build report with statistics."""
+        report = {
+            'timestamp': datetime.now().isoformat(),
+            'platform': platform.system(),
+            'architecture': platform.machine(),
+            'python_version': self.python_version,
+            'components_built': len(self.components),
+            'parallel_workers': self.max_workers,
+            'optimization_level': self.optimization_level,
+            'features': self._get_enabled_features()
+        }
+        
+        report_file = self.vision_dir / "rust_build_report.json"
+        with open(report_file, 'w') as f:
+            json.dump(report, f, indent=2)
+            
+        logger.info(f"✓ Build report saved to {report_file}")
+        
+    async def _run_performance_test_async(self):
+        """Run performance test asynchronously."""
+        await asyncio.to_thread(self.run_performance_test)
+        
+    async def _save_build_info(self, build_time: float):
+        """Save build information for future reference."""
+        build_info = {
+            'last_build': datetime.now().isoformat(),
+            'build_time_seconds': build_time,
+            'components': [c['name'] for c in self.components],
+            'success': True
+        }
+        
+        info_file = self.vision_dir / ".rust_build_info.json"
+        with open(info_file, 'w') as f:
+            json.dump(build_info, f, indent=2)
+
+async def async_main():
+    """Async entry point."""
+    # Support custom config file
+    config_path = None
+    if len(sys.argv) > 1:
+        config_path = Path(sys.argv[1])
+        
+    builder = RustBuilder(config_path)
+    success = await builder.main()
+    return success
 
 if __name__ == "__main__":
-    builder = RustBuilder()
-    success = builder.main()
+    # Run async main
+    success = asyncio.run(async_main())
     sys.exit(0 if success else 1)
