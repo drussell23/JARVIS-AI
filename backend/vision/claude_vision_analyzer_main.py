@@ -2871,17 +2871,51 @@ class ClaudeVisionAnalyzer:
         """Enhance prompt to get specific UI element details from Claude using pure vision intelligence"""
         prompt_lower = prompt.lower()
         
-        # Core intelligence instructions for Claude to understand context and ambiguity
+        # Advanced intelligence framework for Claude's pure vision understanding
         intelligence_framework = (
-            "Use your advanced vision capabilities to understand the screen intelligently:\n"
-            "1) CONTEXT AWARENESS: Understand window layering, focus states, and spatial relationships\n"
-            "2) DISAMBIGUATION: When multiple similar elements exist, use visual cues to identify the system one:\n"
-            "   - System UI is typically in consistent locations (menu bars, status bars)\n"
-            "   - System UI has consistent styling different from application content\n"
-            "   - Screenshots/mockups often have different visual quality or borders\n"
-            "3) CONFIDENCE EXPRESSION: Rate your confidence as 'certain', 'likely', or 'uncertain'\n"
-            "4) LIMITATIONS ACKNOWLEDGMENT: If something is hidden, minimized, or on another screen, say so\n"
-            "5) DYNAMIC CONTENT: Note if elements appear to be loading, transitioning, or temporarily visible\n"
+            "Use your advanced vision intelligence to understand ANY interface or visual content:\n\n"
+            
+            "🧠 METACOGNITIVE AWARENESS:\n"
+            "- Distinguish what you KNOW vs what you INFER vs what you CANNOT determine\n"
+            "- Express uncertainty levels: 'I'm certain', 'This appears to be', 'I believe', 'I cannot determine'\n"
+            "- When ambiguous, provide multiple interpretations with reasoning\n\n"
+            
+            "👁️ UNIVERSAL INTERFACE UNDERSTANDING:\n"
+            "- Recognize ALL interface types: standard GUI, ASCII/terminal, games, CAD, music software, etc.\n"
+            "- Understand non-text elements: knobs, sliders, gauges, graphs, 3D visualizations\n"
+            "- Interpret symbolic systems: icons, emojis, cultural symbols, specialized notations\n"
+            "- Read analog-style displays: dials, meters, waveforms, oscilloscopes\n\n"
+            
+            "🔍 CONTEXT & MEANING:\n"
+            "- Consider what elements mean IN CONTEXT, not just what they look like\n"
+            "- A red circle could be: recording indicator, notification, button, data point, etc.\n"
+            "- Use surrounding elements and application context to disambiguate\n"
+            "- Understand temporal context: loading states, transitions, animation frames\n\n"
+            
+            "🛡️ PRIVACY & SENSITIVITY AWARENESS:\n"
+            "- Recognize password fields, sensitive data, private information\n"
+            "- Never attempt to read obscured passwords or intentionally hidden content\n"
+            "- Acknowledge when content is redacted, blurred, or private\n\n"
+            
+            "🌐 CULTURAL & LANGUAGE INTELLIGENCE:\n"
+            "- Handle multiple languages and writing systems\n"
+            "- Understand RTL (right-to-left) interfaces\n"
+            "- Recognize cultural UI patterns and conventions\n\n"
+            
+            "📊 DATA VISUALIZATION COMPREHENSION:\n"
+            "- Interpret charts, graphs, diagrams beyond just describing them\n"
+            "- Understand trends, patterns, relationships in visualized data\n"
+            "- Recognize different visualization types and their purposes\n\n"
+            
+            "🔄 STATE & TRANSITION UNDERSTANDING:\n"
+            "- Determine if interfaces are loading, transitioning, or stable\n"
+            "- Understand modal states, edit vs view modes, active vs inactive\n"
+            "- Recognize partial states: half-loaded, mid-animation, partially visible\n\n"
+            
+            "❓ INTELLIGENT UNCERTAINTY HANDLING:\n"
+            "- When unsure, explain what additional context would help\n"
+            "- Suggest clarifying questions for ambiguous queries\n"
+            "- Provide helpful alternatives when unable to determine something\n"
         )
         
         # Enhanced UI element patterns with pure intelligence approach
@@ -3033,14 +3067,79 @@ class ClaudeVisionAnalyzer:
             )
         
         # Add temporal context for dynamic content
-        if any(word in prompt_lower for word in ['loading', 'changing', 'updating', 'refreshing']):
+        if any(word in prompt_lower for word in ['loading', 'changing', 'updating', 'refreshing', 'animating']):
             enhanced_prompt += (
-                "\n\nDYNAMIC CONTENT NOTE: The user mentioned dynamic content. "
-                "Note if any elements appear to be in transition, loading, or temporarily displayed. "
-                "Mention if a follow-up analysis might show different results."
+                "\n\nDYNAMIC CONTENT AWARENESS: "
+                "Recognize and describe any transitions, animations, or loading states. "
+                "Note if you've captured a mid-transition state. "
+                "Suggest if waiting might provide clearer information."
             )
         
-        logger.debug(f"Enhanced prompt with pure vision intelligence: {enhanced_prompt[:300]}...")
+        # Privacy and sensitive content awareness
+        if any(word in prompt_lower for word in ['password', 'private', 'sensitive', 'secret', 'credential']):
+            enhanced_prompt += (
+                "\n\nPRIVACY NOTICE: User is asking about potentially sensitive content. "
+                "Acknowledge if you see password fields (shown as dots/asterisks), "
+                "but never attempt to reveal hidden passwords. "
+                "Respect privacy and security boundaries."
+            )
+        
+        # Data visualization queries
+        if any(word in prompt_lower for word in ['graph', 'chart', 'data', 'trend', 'visualization', 'analytics']):
+            enhanced_prompt += (
+                "\n\nDATA VISUALIZATION ANALYSIS: "
+                "Don't just describe the chart - interpret what it shows. "
+                "Identify trends, patterns, outliers, and relationships. "
+                "Explain what the visualization is communicating."
+            )
+        
+        # Non-standard interface awareness
+        if any(word in prompt_lower for word in ['game', 'terminal', 'ascii', 'console', 'command']):
+            enhanced_prompt += (
+                "\n\nNON-STANDARD INTERFACE: "
+                "This may involve non-traditional UI elements. "
+                "Use your understanding to interpret ASCII art, game UIs, "
+                "terminal interfaces, or other unconventional displays."
+            )
+        
+        # Ambiguous element queries
+        if any(word in prompt_lower for word in ['thing', 'that', 'this', 'element', 'what is', 'what\'s']):
+            enhanced_prompt += (
+                "\n\nAMBIGUOUS QUERY HANDLING: "
+                "The user's query is vague. If multiple elements could match: "
+                "1) List the possible interpretations "
+                "2) Ask clarifying questions "
+                "3) Provide context for each possibility"
+            )
+        
+        # Cultural and language awareness
+        if any(word in prompt_lower for word in ['language', 'translate', 'foreign', 'chinese', 'arabic', 'japanese']):
+            enhanced_prompt += (
+                "\n\nMULTI-LANGUAGE CONTEXT: "
+                "Recognize and work with multiple languages and writing systems. "
+                "Note if interfaces use RTL layouts or non-Latin scripts. "
+                "Provide translations or transliterations when helpful."
+            )
+        
+        # Accessibility awareness
+        if any(word in prompt_lower for word in ['accessibility', 'screen reader', 'magnifier', 'contrast']):
+            enhanced_prompt += (
+                "\n\nACCESSIBILITY AWARENESS: "
+                "Recognize accessibility features like screen readers, magnifiers, "
+                "high contrast modes, or other assistive technologies. "
+                "Note how these might affect the visual presentation."
+            )
+        
+        # Intent understanding
+        if any(phrase in prompt_lower for phrase in ['is it working', 'did it work', 'is this correct', 'is this right']):
+            enhanced_prompt += (
+                "\n\nINTENT VS LITERAL INTERPRETATION: "
+                "The user is asking about functionality, not just appearance. "
+                "Distinguish between 'looks correct' and 'is functioning correctly'. "
+                "Provide both visual observation and functional interpretation."
+            )
+        
+        logger.debug(f"Enhanced prompt with advanced intelligence: {enhanced_prompt[:300]}...")
         return enhanced_prompt
 
     async def _call_claude_api(self, image_base64: str, prompt: str) -> str:

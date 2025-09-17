@@ -804,13 +804,36 @@ class ClaudeVisionChatbot:
         """Enhance prompt for specific UI element detection using Claude's pure vision intelligence"""
         user_lower = user_input.lower()
         
-        # Core vision intelligence framework
+        # Advanced vision intelligence framework with metacognitive awareness
         vision_intelligence = (
-            "Use your advanced vision intelligence to understand the full context of what you see:\n"
-            "- DISTINGUISH between system UI and application content (screenshots, mockups, videos)\n"
-            "- UNDERSTAND window layering and what's in foreground vs background\n"
-            "- EXPRESS CONFIDENCE: 'I'm certain', 'I believe', or 'I'm unsure' when appropriate\n"
-            "- ACKNOWLEDGE LIMITATIONS: If something is hidden, obscured, or ambiguous\n\n"
+            "🧠 METACOGNITIVE VISION INTELLIGENCE:\n\n"
+            
+            "AWARENESS LEVELS:\n"
+            "- What I KNOW (directly observable): 'I can clearly see...'\n"
+            "- What I INFER (context-based): 'Based on context, this appears to be...'\n"
+            "- What I CANNOT DETERMINE: 'I cannot determine... because...'\n\n"
+            
+            "CONFIDENCE EXPRESSION:\n"
+            "- CERTAIN (95-100%): 'I can clearly see...'\n"
+            "- PROBABLE (70-95%): 'This appears to be...'\n"
+            "- POSSIBLE (40-70%): 'This might be...'\n" 
+            "- UNCERTAIN (<40%): 'I'm uncertain, but...'\n\n"
+            
+            "INTERFACE UNIVERSALITY:\n"
+            "- Standard GUIs, games, terminals, CAD, music software, scientific tools\n"
+            "- ASCII art, console UIs, embedded systems, custom applications\n"
+            "- Analog displays: gauges, knobs, sliders, waveforms\n"
+            "- Abstract visualizations: graphs, diagrams, 3D renders\n\n"
+            
+            "CONTEXTUAL INTERPRETATION:\n"
+            "- Same visual element = different meanings in different contexts\n"
+            "- Use application type, surrounding elements, and user intent\n"
+            "- Consider cultural and domain-specific conventions\n\n"
+            
+            "PRIVACY & ETHICS:\n"
+            "- Never attempt to read password fields or intentionally hidden content\n"
+            "- Acknowledge sensitive content without revealing it\n"
+            "- Respect redaction, blurring, and privacy measures\n\n"
         )
         
         # Check for battery queries
@@ -873,8 +896,68 @@ class ClaudeVisionChatbot:
                    "- You can only see what's in this screenshot\n"
                    "- If they need another monitor analyzed, suggest they specify which screen")
         
+        # Check for ambiguous/vague queries
+        elif any(word in user_lower for word in ['that', 'this', 'thing', 'stuff', 'it']):
+            return (f"{user_input}\n\n{vision_intelligence}"
+                   "AMBIGUOUS REFERENCE HANDLING:\n"
+                   "- The user's query is vague. List all possible interpretations\n"
+                   "- For each possibility, explain what it is and where it's located\n"
+                   "- Ask clarifying questions: 'Are you referring to...?'\n"
+                   "- Provide helpful context for disambiguation")
+        
+        # Data visualization queries
+        elif any(word in user_lower for word in ['graph', 'chart', 'trend', 'data', 'visualization', 'plot']):
+            return (f"{user_input}\n\n{vision_intelligence}"
+                   "DATA VISUALIZATION INTERPRETATION:\n"
+                   "- Don't just describe the visual - interpret the data\n"
+                   "- Identify: type of viz, axes, trends, patterns, outliers\n"
+                   "- Explain what story the data is telling\n"
+                   "- Note any unclear or ambiguous aspects")
+        
+        # Non-standard interfaces
+        elif any(word in user_lower for word in ['game', 'terminal', 'console', 'ascii', 'music', 'daw', 'synth']):
+            return (f"{user_input}\n\n{vision_intelligence}"
+                   "NON-STANDARD INTERFACE ANALYSIS:\n"
+                   "- Recognize this may not be a traditional GUI\n"
+                   "- For games: understand HUD elements, game state, resources\n"
+                   "- For terminals: parse ASCII art, command outputs, TUIs\n"
+                   "- For music software: read knobs, faders, waveforms\n"
+                   "- Apply domain-specific knowledge appropriately")
+        
+        # Privacy-sensitive queries
+        elif any(word in user_lower for word in ['password', 'login', 'credential', 'secret', 'private']):
+            return (f"{user_input}\n\n{vision_intelligence}"
+                   "PRIVACY-SENSITIVE CONTENT:\n"
+                   "- Acknowledge password fields without attempting to read them\n"
+                   "- Note if content is intentionally obscured or redacted\n"
+                   "- Provide helpful information while respecting privacy\n"
+                   "- Suggest secure alternatives if user needs help")
+        
+        # Functional/intent queries
+        elif any(phrase in user_lower for phrase in ['is it working', 'did it work', 'is this right', 'correct']):
+            return (f"{user_input}\n\n{vision_intelligence}"
+                   "FUNCTIONAL ASSESSMENT:\n"
+                   "- Distinguish visual state from functional state\n"
+                   "- Look for success/error indicators\n"
+                   "- Consider what 'working correctly' means in context\n"
+                   "- Provide both observation and interpretation")
+        
+        # Cultural/language queries
+        elif any(word in user_lower for word in ['language', 'translate', 'foreign', 'character', 'text']):
+            return (f"{user_input}\n\n{vision_intelligence}"
+                   "MULTI-LANGUAGE HANDLING:\n"
+                   "- Identify languages and writing systems\n"
+                   "- Note RTL layouts or special formatting\n"
+                   "- Provide translations/transliterations when possible\n"
+                   "- Acknowledge limitations in language recognition")
+        
         # Default - return with general intelligence enhancement
-        return f"{user_input}\n\n{vision_intelligence}Provide specific, intelligent analysis based on what you actually see."
+        return (f"{user_input}\n\n{vision_intelligence}"
+               "COMPREHENSIVE ANALYSIS:\n"
+               "- Provide intelligent, context-aware interpretation\n"
+               "- Express confidence levels appropriately\n"
+               "- Handle any interface type or visual content\n"
+               "- Ask for clarification when query is ambiguous")
         
     async def _is_monitoring_command(self, user_input: str) -> bool:
         """Check if this is a continuous monitoring command"""
