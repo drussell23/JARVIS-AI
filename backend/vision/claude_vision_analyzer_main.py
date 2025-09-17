@@ -2867,10 +2867,88 @@ class ClaudeVisionAnalyzer:
             # Labeling is optional - don't fail the whole process
             logger.debug(f"Could not add label to region: {e}")
     
+    def _enhance_prompt_for_ui_elements(self, prompt: str) -> str:
+        """Enhance prompt to get specific UI element details from Claude"""
+        prompt_lower = prompt.lower()
+        
+        # Define UI element patterns and their specific prompts
+        ui_prompts = {
+            'battery': (
+                "Look at the status bar/menu bar (usually top-right on macOS, bottom-right on Windows). "
+                "Find and report the EXACT battery percentage number. Don't say 'the battery icon shows...' - "
+                "give me the specific percentage like '67%' or 'Battery: 82%'. If you see a charging icon, mention that too."
+            ),
+            'time': (
+                "Look at the clock in the status bar/menu bar. Report the EXACT time displayed, "
+                "including AM/PM if shown. For example: '2:34 PM' or '14:34'. Don't describe where the clock is, "
+                "just tell me the exact time you see."
+            ),
+            'notifications': (
+                "Check for notification badges, counts, or alerts. Look for: "
+                "1) Red circles with numbers on dock/taskbar icons "
+                "2) Notification banners or pop-ups "
+                "3) Any unread counts visible "
+                "Report the specific numbers and which apps have them."
+            ),
+            'wifi': (
+                "Find the WiFi/network icon in the status bar. Report: "
+                "1) Connection status (connected/disconnected) "
+                "2) Signal strength if visible (full bars, half bars, etc.) "
+                "3) Network name if displayed"
+            ),
+            'status_bar': (
+                "Examine the entire status bar/menu bar carefully. List EVERY element you see with specific details: "
+                "Time (exact), Battery (percentage), WiFi status, Bluetooth status, Volume level, "
+                "Any app icons or indicators. Give me actual values, not descriptions."
+            ),
+            'screen': (
+                "Analyze what's currently on screen. Be specific about: "
+                "1) Active application names and window titles "
+                "2) Any specific UI elements visible (buttons, text fields, etc.) "
+                "3) Content being displayed "
+                "4) Status bar details (time, battery %, etc.) "
+                "Provide concrete details, not vague descriptions."
+            )
+        }
+        
+        # Check which UI element is being asked about
+        enhanced_prompt = prompt
+        prompt_matched = False
+        
+        for element, enhancement in ui_prompts.items():
+            if element in prompt_lower or (
+                element == 'battery' and any(word in prompt_lower for word in ['power', 'charge']) or
+                element == 'time' and any(word in prompt_lower for word in ['clock', 'hour']) or
+                element == 'notifications' and any(word in prompt_lower for word in ['alert', 'badge', 'unread']) or
+                element == 'wifi' and any(word in prompt_lower for word in ['network', 'internet', 'connection']) or
+                element == 'screen' and any(phrase in prompt_lower for phrase in ['what do you see', "what's on", 'describe'])
+            ):
+                enhanced_prompt = f"You are JARVIS, Tony Stark's AI assistant. {enhancement}\n\nUser asked: {prompt}"
+                prompt_matched = True
+                break
+        
+        # If no specific pattern matched but user is asking about seeing/screen
+        if not prompt_matched and any(word in prompt_lower for word in ['see', 'screen', 'display', 'showing']):
+            enhanced_prompt = (
+                "You are JARVIS, Tony Stark's AI assistant. The user is asking about what's on their screen. "
+                "Provide specific, detailed information about what you observe. Include: "
+                "1) Exact values for time, battery percentage, etc. from the status bar "
+                "2) Application names and window titles "
+                "3) Any specific content or UI elements visible "
+                "Don't give generic responses - be as specific as JARVIS would be.\n\n"
+                f"User asked: {prompt}"
+            )
+        
+        logger.debug(f"Enhanced prompt: {enhanced_prompt[:200]}...")
+        return enhanced_prompt
+
     async def _call_claude_api(self, image_base64: str, prompt: str) -> str:
         """Make API call to Claude with timeout"""
         try:
-            logger.info(f"[CLAUDE API] Making API call to Claude with prompt: {prompt[:100]}...")
+            # Enhance the prompt for better UI element detection
+            enhanced_prompt = self._enhance_prompt_for_ui_elements(prompt)
+            
+            logger.info(f"[CLAUDE API] Making API call to Claude with prompt: {enhanced_prompt[:100]}...")
             logger.info(f"[CLAUDE API] Image size: {len(image_base64)} chars")
             logger.info(f"[CLAUDE API] Model: {self.config.model_name}, Max tokens: {self.config.max_tokens}")
             
@@ -2897,7 +2975,7 @@ class ClaudeVisionAnalyzer:
                             },
                             {
                                 "type": "text",
-                                "text": prompt
+                                "text": enhanced_prompt
                             }
                         ]
                     }]

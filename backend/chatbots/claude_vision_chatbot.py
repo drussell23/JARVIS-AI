@@ -682,32 +682,43 @@ class ClaudeVisionChatbot:
     def _generate_vision_system_prompt(self, user_input: str) -> str:
         """Generate dynamic system prompt for vision queries"""
         current_datetime = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
-        intent = getattr(self, '_last_vision_intent', {})
+        user_lower = user_input.lower()
         
-        # Base prompt components
-        base = "You are JARVIS, analyzing the user's screen."
+        # Base JARVIS prompt
+        base = (
+            "You are JARVIS, Tony Stark's AI assistant with advanced vision capabilities. "
+            f"Current date and time: {current_datetime}. "
+            "When analyzing screens, be specific and precise - read actual values, not generic descriptions. "
+        )
         
-        # Add specific instructions based on intent
-        instructions = []
-        
-        if intent.get('query_type') == 'confirmation':
-            instructions.append("Provide a brief confirmation of what you can see.")
-        elif intent.get('detail_level') == 'high':
-            instructions.append("Provide comprehensive analysis with full details.")
-        elif intent.get('urgency') == 'high':
-            instructions.append("Be concise and focus on key information.")
-        
-        if intent.get('focus_areas'):
-            focus = ", ".join(intent['focus_areas'])
-            instructions.append(f"Pay special attention to: {focus}")
+        # Add specific instructions based on query type
+        if any(word in user_lower for word in ['battery', 'power', 'charge']):
+            specific = (
+                "The user is asking about battery status. "
+                "Always report the EXACT percentage number visible on screen. "
+                "Never give vague responses like 'the battery appears to be...' - give specific values."
+            )
+        elif any(word in user_lower for word in ['time', 'clock']):
+            specific = (
+                "The user is asking about the time. "
+                "Report the EXACT time shown on the screen's clock. "
+                "Be precise with the format (e.g., '2:34 PM' or '14:34')."
+            )
+        elif 'status bar' in user_lower or 'menu bar' in user_lower:
+            specific = (
+                "The user wants to know about the status/menu bar. "
+                "List every visible element with its specific value or state. "
+                "Include time, battery percentage, network status, and all visible icons."
+            )
+        else:
+            specific = (
+                "Provide specific, actionable information about what you see. "
+                "Include exact values for UI elements like time, battery, notifications. "
+                "Name specific applications and describe actual content, not generic observations."
+            )
         
         # Combine components
-        prompt_parts = [base]
-        if instructions:
-            prompt_parts.extend(instructions)
-        prompt_parts.append(f"Current date/time: {current_datetime}")
-        
-        return " ".join(prompt_parts)
+        return base + specific
     
     def _get_vision_api_config(self, user_input: str) -> Dict[str, Any]:
         """Get dynamic API configuration for vision requests"""
@@ -765,6 +776,9 @@ class ClaudeVisionChatbot:
             messages.append({"role": "user", "content": entry["user"]})
             messages.append({"role": "assistant", "content": entry["assistant"]})
             
+        # Enhance the prompt based on what the user is asking
+        enhanced_prompt = self._enhance_vision_prompt(user_input)
+        
         # Add current user input with image
         messages.append({
             "role": "user",
@@ -779,12 +793,52 @@ class ClaudeVisionChatbot:
                 },
                 {
                     "type": "text",
-                    "text": user_input
+                    "text": enhanced_prompt
                 }
             ]
         })
         
         return messages
+    
+    def _enhance_vision_prompt(self, user_input: str) -> str:
+        """Enhance prompt for specific UI element detection"""
+        user_lower = user_input.lower()
+        
+        # Check for battery queries
+        if any(word in user_lower for word in ['battery', 'power', 'charge', 'charging']):
+            return (f"{user_input}\n\n"
+                   "Look specifically at the status bar (top-right on macOS, bottom-right on Windows). "
+                   "Find the battery icon and report the EXACT percentage number shown. "
+                   "Don't say 'I can see the battery indicator' - give me the specific percentage like '67%' or 'Battery: 82%'. "
+                   "If you see a charging icon or lightning bolt, mention if it's charging.")
+        
+        # Check for time queries  
+        elif any(word in user_lower for word in ['time', 'clock', 'hour']):
+            return (f"{user_input}\n\n"
+                   "Look at the clock in the status bar/menu bar. "
+                   "Report the EXACT time displayed, including AM/PM if shown. "
+                   "For example: '2:34 PM' or '14:34'. Don't describe where it is, just tell me the exact time.")
+        
+        # Check for status bar queries
+        elif 'status bar' in user_lower or 'menu bar' in user_lower:
+            return (f"{user_input}\n\n"
+                   "Examine the entire status bar/menu bar carefully. "
+                   "List EVERY element you see with specific details: "
+                   "Time (exact), Battery (percentage), WiFi status, Bluetooth status, "
+                   "Volume level, any app icons or indicators. Give me actual values, not descriptions.")
+        
+        # Check for general screen queries
+        elif any(phrase in user_lower for phrase in ['what do you see', "what's on", 'can you see', 'describe']):
+            return (f"{user_input}\n\n"
+                   "Analyze the screen and provide SPECIFIC details: "
+                   "1) If you see a status bar, report exact time and battery percentage "
+                   "2) Name specific applications and window titles "
+                   "3) Describe actual content visible (text, buttons, etc.) "
+                   "4) Mention any notifications or badges with counts "
+                   "Be precise - avoid saying 'I can see' without giving specific details.")
+        
+        # Default - return original with enhancement
+        return user_input
         
     async def _is_monitoring_command(self, user_input: str) -> bool:
         """Check if this is a continuous monitoring command"""
@@ -952,13 +1006,41 @@ class ClaudeVisionChatbot:
             if not screenshot:
                 return "I'm having trouble capturing the screen right now. Please ensure screen recording permissions are enabled in System Preferences."
             
-            # Create a conversational prompt for JARVIS-style response
-            analysis_prompt = f"""You are JARVIS, Tony Stark's AI assistant. The user has asked: '{query}'
-
-Analyze the screen and provide a natural, conversational response as if you're actively watching their screen. 
-Be specific about what you see - mention application names, window contents, text visible, etc.
-If they ask about a specific application (terminal, VSCode, etc.), focus on that.
-Respond naturally as JARVIS would, acknowledging that you can see their screen in real-time."""
+            # Create an enhanced prompt based on what the user is asking
+            query_lower = query.lower()
+            
+            if 'battery' in query_lower or 'power' in query_lower or 'charge' in query_lower:
+                analysis_prompt = f"""You are JARVIS, Tony Stark's AI assistant. The user asked: '{query}'
+Look at the status bar (top-right on macOS) and find the battery indicator.
+Report the EXACT battery percentage you see (e.g., "67%" or "Battery is at 82%").
+Also mention if it's charging or on battery power.
+Be specific - don't say generic things like "I can see the battery status" without the actual percentage."""
+            
+            elif 'time' in query_lower or 'clock' in query_lower:
+                analysis_prompt = f"""You are JARVIS, Tony Stark's AI assistant. The user asked: '{query}'
+Look at the status bar and find the clock.
+Report the EXACT time displayed (e.g., "2:34 PM" or "14:34").
+Be precise - read the actual time shown on screen."""
+            
+            elif 'status bar' in query_lower or 'menu bar' in query_lower:
+                analysis_prompt = f"""You are JARVIS, Tony Stark's AI assistant. The user asked: '{query}'
+Examine the entire status bar/menu bar carefully.
+List EVERY element you see with specific details:
+- Time (exact)
+- Battery (exact percentage)
+- WiFi status
+- Any other icons or indicators
+Give actual values, not descriptions."""
+            
+            else:
+                # General screen analysis with emphasis on specifics
+                analysis_prompt = f"""You are JARVIS, Tony Stark's AI assistant. The user asked: '{query}'
+Analyze the screen and provide specific details:
+1) If you see a status bar, report exact time and battery percentage
+2) Name specific applications and window titles
+3) Describe actual content visible
+4) Be precise about UI elements and their states
+Avoid generic descriptions - be as specific as JARVIS would be when helping Tony Stark."""
             
             # Analyze the screenshot
             messages = [
