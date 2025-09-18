@@ -773,10 +773,10 @@ const JarvisVoice = () => {
       // Increase timeouts to be more patient
       // Note: These are non-standard but work in some browsers
       if ('speechTimeout' in recognitionRef.current) {
-        recognitionRef.current.speechTimeout = 60000; // 60 seconds
+        recognitionRef.current.speechTimeout = 999999999; // Effectively infinite
       }
       if ('noSpeechTimeout' in recognitionRef.current) {
-        recognitionRef.current.noSpeechTimeout = 15000; // 15 seconds
+        recognitionRef.current.noSpeechTimeout = 999999999; // Effectively infinite
       }
 
       recognitionRef.current.onresult = (event) => {
@@ -860,17 +860,30 @@ const JarvisVoice = () => {
               break;
 
             case 'no-speech':
-              // Silently restart for no-speech
-              console.log('No speech detected, checking continuous listening state...');
-              if (continuousListening && isListening) {
-                console.log('Restarting speech recognition for continuous listening...');
-                setTimeout(() => {
-                  try {
-                    recognitionRef.current.start();
-                  } catch (e) {
-                    console.log('Restarting recognition after no-speech error');
-                  }
-                }, 100);
+              // Enhanced indefinite listening - ALWAYS restart
+              console.log('No speech detected, enforcing indefinite listening...');
+              if (continuousListening) {
+                // Don't show error to user for expected silence
+                setError('');
+                
+                // Immediately restart without delay
+                try {
+                  recognitionRef.current.stop();
+                  // Restart immediately
+                  setTimeout(() => {
+                    try {
+                      recognitionRef.current.start();
+                      console.log('✅ Microphone restarted successfully after silence');
+                    } catch (e) {
+                      // If already started, that's fine
+                      if (e.message && !e.message.includes('already started')) {
+                        console.log('Restart attempt:', e.message);
+                      }
+                    }
+                  }, 50); // Minimal delay
+                } catch (e) {
+                  console.log('Stopping for restart:', e);
+                }
               }
               break;
 
@@ -957,31 +970,54 @@ const JarvisVoice = () => {
       };
 
       recognitionRef.current.onend = () => {
-        console.log('Speech recognition ended');
-        // Restart if continuous listening is enabled
-        if (continuousListening && isListening) {
-          console.log('Restarting continuous listening...');
-          setTimeout(() => {
+        console.log('Speech recognition ended - enforcing indefinite listening');
+        
+        // ALWAYS restart if continuous listening is enabled
+        if (continuousListening) {
+          console.log('♾️ Indefinite listening active - restarting microphone...');
+          
+          // Track restart attempts
+          let restartAttempt = 0;
+          const maxAttempts = 10;
+          
+          const attemptRestart = () => {
+            restartAttempt++;
+            
             try {
               recognitionRef.current.start();
-              console.log('Successfully restarted speech recognition');
+              console.log(`✅ Microphone restarted successfully (attempt ${restartAttempt})`);
+              setError(''); // Clear any errors
+              setMicStatus('ready');
+              
+              // Reset speech timestamp
+              lastSpeechTimeRef.current = Date.now();
             } catch (e) {
-              console.log('Recognition restart failed:', e);
-              // Try again after a short delay
-              if (continuousListening && isListening) {
-                setTimeout(() => {
-                  try {
-                    recognitionRef.current.start();
-                  } catch (e2) {
-                    console.log('Second restart attempt failed:', e2);
-                  }
-                }, 1000);
+              if (e.message && e.message.includes('already started')) {
+                console.log('Microphone already active');
+                return;
+              }
+              
+              console.log(`Restart attempt ${restartAttempt}/${maxAttempts} failed:`, e.message);
+              
+              // Keep trying with exponential backoff
+              if (restartAttempt < maxAttempts && continuousListening) {
+                const delay = Math.min(50 * Math.pow(2, restartAttempt), 2000);
+                console.log(`Retrying in ${delay}ms...`);
+                setTimeout(attemptRestart, delay);
+              } else {
+                console.error('Failed to restart microphone after max attempts');
+                setError('Microphone restart failed - click to retry');
+                setMicStatus('error');
               }
             }
-          }, 100);
+          };
+          
+          // Start restart attempts immediately
+          setTimeout(attemptRestart, 50);
         } else {
           setIsListening(false);
           setIsWaitingForCommand(false);
+          console.log('Continuous listening disabled - microphone stopped');
         }
       };
     } else {
@@ -1138,23 +1174,83 @@ const JarvisVoice = () => {
       setContinuousListening(true);
       setIsListening(true);
       
-      // Configure for continuous listening
+      // Configure for INDEFINITE continuous listening
       recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = true;
       
+      // Override any browser timeouts
+      if ('speechTimeout' in recognitionRef.current) {
+        recognitionRef.current.speechTimeout = 999999999;
+      }
+      if ('noSpeechTimeout' in recognitionRef.current) {
+        recognitionRef.current.noSpeechTimeout = 999999999;
+      }
+      
       try {
         recognitionRef.current.start();
-        console.log('Continuous listening enabled - microphone will stay on');
+        console.log('♾️ INDEFINITE listening enabled - microphone will NEVER turn off automatically');
         
-        // Inform user that mic is active
+        // Set up keep-alive mechanism
+        const keepAliveInterval = setInterval(() => {
+          if (!continuousListening) {
+            clearInterval(keepAliveInterval);
+            return;
+          }
+          
+          // Check if recognition is still active
+          console.log('🔄 Keep-alive check - ensuring microphone stays active');
+          
+          // If no speech for a while, send a dummy event to keep it alive
+          const timeSinceLastSpeech = Date.now() - lastSpeechTimeRef.current;
+          if (timeSinceLastSpeech > 30000) { // 30 seconds
+            console.log('⚡ Triggering keep-alive pulse');
+            lastSpeechTimeRef.current = Date.now();
+            
+            // Force a restart if needed
+            if (!isListening) {
+              console.log('🔄 Keep-alive: Restarting stopped recognition');
+              try {
+                recognitionRef.current.stop();
+                setTimeout(() => {
+                  recognitionRef.current.start();
+                  setIsListening(true);
+                }, 100);
+              } catch (e) {
+                console.log('Keep-alive restart:', e.message);
+              }
+            }
+          }
+        }, 5000); // Check every 5 seconds
+        
+        // Store interval reference for cleanup
+        recognitionRef.current._keepAliveInterval = keepAliveInterval;
+        
+        // Enhanced notification
         if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification('JARVIS is listening', {
-            body: 'Microphone is active. Click the button to stop.',
-            icon: '/favicon.ico'
+          new Notification('JARVIS Microphone Active ♾️', {
+            body: 'Microphone will stay on indefinitely. Say "Hey JARVIS" anytime.',
+            icon: '/favicon.ico',
+            requireInteraction: true // Keep notification visible
           });
         }
+        
+        // Visual indicator in console
+        console.log('%c🎤 MICROPHONE STATUS: INDEFINITE MODE ACTIVE', 
+          'color: #00ff00; font-size: 16px; font-weight: bold; background: #000; padding: 10px;');
+          
+        // Set initial timestamp
+        lastSpeechTimeRef.current = Date.now();
+        
       } catch (e) {
-        console.log('Recognition already started');
+        if (e.message && e.message.includes('already started')) {
+          console.log('Recognition already active - good!');
+        } else {
+          console.error('Failed to start indefinite listening:', e);
+          setError('Failed to start microphone - retrying...');
+          
+          // Retry after a moment
+          setTimeout(() => enableContinuousListening(), 1000);
+        }
       }
     }
   };
@@ -1163,9 +1259,27 @@ const JarvisVoice = () => {
     setContinuousListening(false);
     setIsListening(false);
     setIsWaitingForCommand(false);
+    
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
+      // Clear keep-alive interval
+      if (recognitionRef.current._keepAliveInterval) {
+        clearInterval(recognitionRef.current._keepAliveInterval);
+        recognitionRef.current._keepAliveInterval = null;
+        console.log('🛑 Keep-alive mechanism stopped');
+      }
+      
+      // Stop recognition
+      try {
+        recognitionRef.current.stop();
+        console.log('🔴 Microphone stopped - indefinite listening disabled');
+      } catch (e) {
+        console.log('Stop recognition:', e.message);
+      }
     }
+    
+    // Visual indicator in console
+    console.log('%c🎤 MICROPHONE STATUS: STOPPED', 
+      'color: #ff0000; font-size: 16px; font-weight: bold; background: #000; padding: 10px;');
   };
 
   const startListening = async () => {
@@ -1392,8 +1506,11 @@ const JarvisVoice = () => {
           </span>
         )}
         {micStatus === 'ready' && continuousListening && !isWaitingForCommand && (
-          <span className="listening-mode">
-            <span className="pulse-dot"></span> LISTENING FOR "HEY JARVIS"
+          <span className="listening-mode indefinite">
+            <span className="pulse-dot"></span> 
+            <span className="mic-icon">🎤</span> 
+            INDEFINITE LISTENING - SAY "HEY JARVIS" ANYTIME
+            <span className="infinity-symbol">♾️</span>
           </span>
         )}
         {isWaitingForCommand && (
@@ -1467,9 +1584,9 @@ const JarvisVoice = () => {
             <button
               onClick={continuousListening ? disableContinuousListening : enableContinuousListening}
               className={`jarvis-button ${continuousListening ? 'continuous-active' : 'start'}`}
-              title={continuousListening ? 'Click to turn off microphone' : 'Click to turn on microphone (stays on)'}
+              title={continuousListening ? 'Microphone is on indefinitely - Click to turn OFF' : 'Click to turn on microphone INDEFINITELY (never auto-stops)'}
             >
-              {continuousListening ? '🔴 Turn Off Microphone' : '🎤 Turn On Microphone'}
+              {continuousListening ? '🔴 Stop Indefinite Listening' : '🎤♾️ Start Indefinite Listening'}
             </button>
 
             <button

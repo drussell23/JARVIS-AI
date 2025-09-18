@@ -140,6 +140,49 @@
   gap: 0.5rem;
 }
 
+/* Enhanced indefinite listening mode */
+.listening-mode.indefinite {
+  color: #00ff00;
+  font-weight: bold;
+  animation: indefinite-glow 2s ease-in-out infinite;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(0, 255, 0, 0.1) 50%, 
+    transparent 100%);
+  padding: 0.3rem 0.8rem;
+  border-radius: 20px;
+  border: 1px solid rgba(0, 255, 0, 0.3);
+}
+
+.listening-mode.indefinite .mic-icon {
+  animation: mic-pulse 1s ease-in-out infinite;
+}
+
+.listening-mode.indefinite .infinity-symbol {
+  font-size: 1.2rem;
+  color: #00ff00;
+  margin-left: 0.5rem;
+  animation: rotate 4s linear infinite;
+}
+
+@keyframes indefinite-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(0, 255, 0, 0.8);
+  }
+}
+
+@keyframes mic-pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+}
+
 .waiting-mode {
   color: #ffd700;
   font-size: 0.8rem;
