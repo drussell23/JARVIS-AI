@@ -67,7 +67,7 @@ class VisionConfig:
     max_tokens: int = field(default_factory=lambda: int(os.getenv('VISION_MAX_TOKENS', '1500')))
     model_name: str = field(default_factory=lambda: os.getenv('VISION_MODEL', 'claude-3-5-sonnet-20241022'))
     max_concurrent_requests: int = field(default_factory=lambda: int(os.getenv('VISION_MAX_CONCURRENT', '10')))  # Safe default
-    api_timeout: int = field(default_factory=lambda: int(os.getenv('VISION_API_TIMEOUT', '30')))
+    api_timeout: int = field(default_factory=lambda: int(os.getenv('VISION_API_TIMEOUT', '60')))
     
     # Cache settings
     cache_enabled: bool = field(default_factory=lambda: os.getenv('VISION_CACHE_ENABLED', 'true').lower() == 'true')
@@ -605,7 +605,11 @@ class ClaudeVisionAnalyzer:
             self.client = None
         else:
             try:
-                self.client = Anthropic(api_key=api_key)
+                # Initialize with timeout from config
+                self.client = Anthropic(
+                    api_key=api_key,
+                    timeout=float(self.config.api_timeout)
+                )
             except Exception as e:
                 logger.error(f"Failed to initialize Anthropic client: {str(e)}")
                 self.client = None
@@ -1228,7 +1232,7 @@ class ClaudeVisionAnalyzer:
                     'enable_compression': os.getenv('SIMPLIFIED_VISION_COMPRESS', 'true').lower() == 'true',
                     'enable_metrics': os.getenv('SIMPLIFIED_VISION_METRICS', 'true').lower() == 'true',
                     'max_retries': int(os.getenv('SIMPLIFIED_VISION_RETRIES', '3')),
-                    'timeout_seconds': int(os.getenv('SIMPLIFIED_VISION_TIMEOUT', '30')),
+                    'timeout_seconds': int(os.getenv('SIMPLIFIED_VISION_TIMEOUT', '60')),
                     
                     # Quality settings
                     'default_quality': os.getenv('SIMPLIFIED_VISION_QUALITY', 'balanced'),

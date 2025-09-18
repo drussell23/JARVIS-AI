@@ -381,7 +381,7 @@ class VisionCommandHandler:
                     conversational_query = "You are JARVIS, Tony Stark's AI assistant. Describe what you see on this screen in a natural, conversational way as if you were looking over the user's shoulder. Focus on the main content, applications, or activities visible. Be helpful and observant like JARVIS would be. Don't break it down by regions or technical details - just tell them what's happening on their screen."
                     
                     # Force full-screen analysis (no sliding window) for conversational queries
-                    await ws_logger.log("Step 6: Starting conversational analysis with 30s timeout...")
+                    await ws_logger.log("Step 6: Starting conversational analysis with 60s timeout...")
                     await ws_logger.log(f"Vision analyzer type: {type(self.vision_manager.vision_analyzer)}")
                     await ws_logger.log(f"Has client: {hasattr(self.vision_manager.vision_analyzer, 'client')}")
                     if hasattr(self.vision_manager.vision_analyzer, 'client'):
@@ -399,7 +399,7 @@ class VisionCommandHandler:
                                         screenshot_array,
                                         conversational_query
                                     ),
-                                    timeout=30.0
+                                    timeout=60.0
                                 )
                             else:
                                 raise AttributeError("No suitable analysis method found")
@@ -410,7 +410,7 @@ class VisionCommandHandler:
                                     conversational_query,
                                     use_sliding_window=False  # Force full screen analysis
                                 ),
-                                timeout=30.0  # Increased to 30 second timeout to match API timeout
+                                timeout=60.0  # Increased to 60 second timeout to match API timeout
                             )
                         await ws_logger.log("Step 6 complete: Analysis returned")
                     except asyncio.TimeoutError:
@@ -444,13 +444,13 @@ class VisionCommandHandler:
                     # For other queries, use the original query
                     result = await asyncio.wait_for(
                         self.vision_manager.vision_analyzer.analyze_screenshot_async(screenshot_array, query),
-                        timeout=30.0  # 30 second timeout
+                        timeout=60.0  # 60 second timeout
                     )
                     response_text = result.get('description', result.get('analysis', 'I captured the screen but couldn\'t analyze it properly.'))
                 
                 await ws_logger.log(f"Analysis complete, result keys: {list(result.keys()) if result else 'None'}")
             except asyncio.TimeoutError:
-                await ws_logger.log("Screenshot analysis timed out after 15 seconds", "error")
+                await ws_logger.log("Screenshot analysis timed out after 60 seconds", "error")
                 return {
                     "handled": True,
                     "response": "I'm having trouble analyzing the screen right now. The analysis is taking too long. Please try again.",

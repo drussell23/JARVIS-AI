@@ -710,13 +710,13 @@ def mount_routers():
         except ImportError as e:
             logger.warning(f"Could not import vision WebSocket router: {e}")
         
-        # ML Audio API
+        # ML Audio API (with built-in fallback)
         try:
             from api.ml_audio_api import router as ml_audio_router
             app.include_router(ml_audio_router, tags=["ML Audio"])
-            logger.info("✅ ML Audio API mounted (fallback)")
+            logger.info("✅ ML Audio API mounted")
         except ImportError as e:
-            logger.warning(f"Could not import ML Audio router: {e}")
+            logger.error(f"Could not import ML Audio router: {e}")
     
     # Network Recovery API (kept separate as it's not WebSocket)
     try:
@@ -726,19 +726,7 @@ def mount_routers():
     except ImportError as e:
         logger.warning(f"Could not import Network Recovery router: {e}")
     
-    # ML Audio Compatibility API (for frontend backward compatibility)
-    try:
-        from api.ml_audio_compatibility import router as ml_audio_compat_router, system_state
-        app.include_router(ml_audio_compat_router, tags=["ML Audio Compatibility"])
-        
-        # Store ML audio system state in app for access
-        app.state.ml_audio_state = system_state
-        
-        logger.info("✅ ML Audio Compatibility API mounted with enhanced features")
-        logger.info(f"   - System capabilities: {system_state.system_capabilities}")
-        logger.info(f"   - Models available: {'PyTorch' if system_state.system_capabilities.get('pytorch_available') else 'NumPy'}-based")
-    except ImportError as e:
-        logger.warning(f"Could not import ML Audio Compatibility router: {e}")
+    # ML Audio functionality is now included in the unified ml_audio_api.py
     
     # Auto Configuration API (for dynamic client configuration)
     try:
