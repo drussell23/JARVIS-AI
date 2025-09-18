@@ -709,14 +709,14 @@ def mount_routers():
             logger.info("✅ Vision WebSocket API mounted (fallback)")
         except ImportError as e:
             logger.warning(f"Could not import vision WebSocket router: {e}")
-        
-        # ML Audio API (with built-in fallback)
-        try:
-            from api.ml_audio_api import router as ml_audio_router
-            app.include_router(ml_audio_router, tags=["ML Audio"])
-            logger.info("✅ ML Audio API mounted")
-        except ImportError as e:
-            logger.error(f"Could not import ML Audio router: {e}")
+    
+    # ML Audio API (with built-in fallback) - Always mount regardless of WebSocket status
+    try:
+        from api.ml_audio_api import router as ml_audio_router
+        app.include_router(ml_audio_router, tags=["ML Audio"])
+        logger.info("✅ ML Audio API mounted")
+    except ImportError as e:
+        logger.error(f"Could not import ML Audio router: {e}")
     
     # Network Recovery API (kept separate as it's not WebSocket)
     try:

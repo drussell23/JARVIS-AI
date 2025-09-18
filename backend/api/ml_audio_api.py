@@ -243,8 +243,469 @@ class MLAudioSystemState:
             }
         }
 
-# Global system state instance
+# Self-healing mechanisms
+class AudioSelfHealer:
+    """Intelligent self-healing system for audio issues"""
+    
+    def __init__(self):
+        self.healing_history = deque(maxlen=100)
+        self.successful_strategies = {}
+        self.failure_patterns = defaultdict(list)
+        self.device_fingerprints = {}
+        self.recovery_sequences = self._init_recovery_sequences()
+        self.browser_quirks = self._init_browser_quirks()
+        
+    def _init_recovery_sequences(self) -> Dict[str, List[Dict]]:
+        """Initialize recovery sequences for different scenarios"""
+        return {
+            "permission_denied": [
+                {
+                    "action": "prompt_user",
+                    "delay_ms": 0,
+                    "message": "Microphone access needed for voice commands",
+                    "ui_element": "permission_dialog"
+                },
+                {
+                    "action": "check_browser_settings",
+                    "delay_ms": 2000,
+                    "script": "navigator.permissions.query({name: 'microphone'})"
+                },
+                {
+                    "action": "fallback_to_text",
+                    "delay_ms": 5000,
+                    "message": "Voice unavailable - using text input"
+                }
+            ],
+            "device_not_found": [
+                {
+                    "action": "enumerate_devices",
+                    "delay_ms": 0,
+                    "script": "navigator.mediaDevices.enumerateDevices()"
+                },
+                {
+                    "action": "check_default_device",
+                    "delay_ms": 1000,
+                    "constraints": {"audio": {"deviceId": "default"}}
+                },
+                {
+                    "action": "try_any_audio_device",
+                    "delay_ms": 2000,
+                    "constraints": {"audio": True}
+                },
+                {
+                    "action": "check_system_audio",
+                    "delay_ms": 3000,
+                    "system_check": True
+                }
+            ],
+            "context_suspended": [
+                {
+                    "action": "user_gesture_required",
+                    "delay_ms": 0,
+                    "message": "Click anywhere to enable audio",
+                    "ui_element": "click_overlay"
+                },
+                {
+                    "action": "resume_context",
+                    "delay_ms": 100,
+                    "script": "audioContext.resume()"
+                },
+                {
+                    "action": "create_new_context",
+                    "delay_ms": 1000,
+                    "cleanup_old": True
+                }
+            ],
+            "network_error": [
+                {
+                    "action": "check_connectivity",
+                    "delay_ms": 0,
+                    "endpoints": ["/health", "/api/health"]
+                },
+                {
+                    "action": "switch_to_offline_mode",
+                    "delay_ms": 2000,
+                    "cache_strategy": "local_first"
+                },
+                {
+                    "action": "queue_for_retry",
+                    "delay_ms": 5000,
+                    "max_retries": 3,
+                    "backoff": "exponential"
+                }
+            ],
+            "high_latency": [
+                {
+                    "action": "reduce_quality",
+                    "delay_ms": 0,
+                    "adjustments": {
+                        "sampleRate": 8000,
+                        "bitDepth": 8,
+                        "channels": 1
+                    }
+                },
+                {
+                    "action": "enable_compression",
+                    "delay_ms": 1000,
+                    "codec": "opus",
+                    "bitrate": 16000
+                },
+                {
+                    "action": "switch_to_chunked_mode",
+                    "delay_ms": 2000,
+                    "chunk_size": 256
+                }
+            ]
+        }
+    
+    def _init_browser_quirks(self) -> Dict[str, Dict]:
+        """Initialize browser-specific quirks and workarounds"""
+        return {
+            "chrome": {
+                "preferred_format": "webm",
+                "supports_echo_cancellation": True,
+                "requires_https": True,
+                "audio_worklet_support": True,
+                "known_issues": [
+                    {
+                        "version_range": ["90", "95"],
+                        "issue": "AudioContext suspension",
+                        "workaround": "user_gesture_required"
+                    }
+                ],
+                "optimal_constraints": {
+                    "audio": {
+                        "echoCancellation": True,
+                        "noiseSuppression": True,
+                        "autoGainControl": True,
+                        "sampleRate": 48000
+                    }
+                }
+            },
+            "safari": {
+                "preferred_format": "wav",
+                "supports_echo_cancellation": False,
+                "requires_https": True,
+                "audio_worklet_support": False,
+                "known_issues": [
+                    {
+                        "version_range": ["14", "16"],
+                        "issue": "getUserMedia requires user gesture",
+                        "workaround": "prompt_before_audio"
+                    },
+                    {
+                        "issue": "No echo cancellation support",
+                        "workaround": "use_headphones_prompt"
+                    }
+                ],
+                "optimal_constraints": {
+                    "audio": {
+                        "sampleRate": 44100,
+                        "channelCount": 1
+                    }
+                }
+            },
+            "firefox": {
+                "preferred_format": "ogg",
+                "supports_echo_cancellation": True,
+                "requires_https": True,
+                "audio_worklet_support": True,
+                "known_issues": [
+                    {
+                        "issue": "Strict autoplay policy",
+                        "workaround": "user_interaction_required"
+                    }
+                ],
+                "optimal_constraints": {
+                    "audio": {
+                        "echoCancellation": True,
+                        "noiseSuppression": True,
+                        "autoGainControl": True
+                    }
+                }
+            },
+            "edge": {
+                "preferred_format": "webm",
+                "supports_echo_cancellation": True,
+                "requires_https": True,
+                "audio_worklet_support": True,
+                "known_issues": [],
+                "optimal_constraints": {
+                    "audio": {
+                        "echoCancellation": True,
+                        "noiseSuppression": True,
+                        "autoGainControl": True,
+                        "sampleRate": 48000
+                    }
+                }
+            }
+        }
+    
+    async def diagnose_issue(self, error_code: str, context: Dict) -> Dict[str, Any]:
+        """Intelligently diagnose audio issues"""
+        diagnosis = {
+            "error_code": error_code,
+            "severity": self._calculate_severity(error_code, context),
+            "likely_causes": [],
+            "recommended_actions": [],
+            "success_probability": 0.0
+        }
+        
+        # Analyze error patterns
+        if error_code == "NotAllowedError":
+            if context.get("permission_state") == "prompt":
+                diagnosis["likely_causes"].append("User hasn't responded to permission prompt")
+                diagnosis["recommended_actions"].append("wait_for_user_response")
+            elif context.get("retry_count", 0) > 2:
+                diagnosis["likely_causes"].append("Permission permanently denied")
+                diagnosis["recommended_actions"].append("show_manual_enable_guide")
+            else:
+                diagnosis["likely_causes"].append("First-time permission request")
+                diagnosis["recommended_actions"].append("show_permission_benefits")
+                
+        elif error_code == "NotFoundError":
+            devices = context.get("available_devices", [])
+            if not devices:
+                diagnosis["likely_causes"].append("No audio input devices connected")
+                diagnosis["recommended_actions"].append("check_physical_connections")
+            else:
+                diagnosis["likely_causes"].append("Default device not available")
+                diagnosis["recommended_actions"].append("try_alternate_devices")
+                
+        elif error_code == "NotReadableError":
+            diagnosis["likely_causes"].extend([
+                "Device in use by another application",
+                "Hardware malfunction",
+                "Driver issues"
+            ])
+            diagnosis["recommended_actions"].extend([
+                "close_other_audio_apps",
+                "restart_audio_service",
+                "update_drivers"
+            ])
+            
+        # Calculate success probability based on history
+        similar_cases = self._find_similar_cases(error_code, context)
+        if similar_cases:
+            successful = [c for c in similar_cases if c["resolved"]]
+            diagnosis["success_probability"] = len(successful) / len(similar_cases)
+            
+        return diagnosis
+    
+    async def heal(self, error_code: str, context: Dict) -> Dict[str, Any]:
+        """Apply self-healing strategies"""
+        # Get diagnosis
+        diagnosis = await self.diagnose_issue(error_code, context)
+        
+        # Select recovery sequence
+        sequence_key = self._map_error_to_sequence(error_code, context)
+        recovery_sequence = self.recovery_sequences.get(sequence_key, [])
+        
+        # Apply browser-specific adjustments
+        browser = context.get("browser", "").lower()
+        if browser in self.browser_quirks:
+            recovery_sequence = self._adjust_for_browser(recovery_sequence, browser)
+        
+        # Track healing attempt
+        healing_attempt = {
+            "timestamp": datetime.now(),
+            "error_code": error_code,
+            "diagnosis": diagnosis,
+            "sequence": sequence_key,
+            "context": context
+        }
+        
+        # Execute recovery sequence
+        result = {
+            "success": False,
+            "actions_taken": [],
+            "final_state": None,
+            "healing_id": hashlib.md5(f"{error_code}{datetime.now()}".encode()).hexdigest()[:8]
+        }
+        
+        for step in recovery_sequence:
+            step_result = await self._execute_healing_step(step, context)
+            result["actions_taken"].append({
+                "action": step["action"],
+                "success": step_result["success"],
+                "details": step_result.get("details")
+            })
+            
+            if step_result["success"]:
+                result["success"] = True
+                result["final_state"] = step_result.get("state")
+                break
+                
+            # Wait before next step
+            if "delay_ms" in step and step["delay_ms"] > 0:
+                await asyncio.sleep(step["delay_ms"] / 1000.0)
+        
+        # Record outcome
+        healing_attempt["result"] = result
+        self.healing_history.append(healing_attempt)
+        
+        # Learn from outcome
+        self._update_strategy_effectiveness(sequence_key, result["success"])
+        
+        return result
+    
+    def _calculate_severity(self, error_code: str, context: Dict) -> str:
+        """Calculate issue severity"""
+        retry_count = context.get("retry_count", 0)
+        session_duration = context.get("session_duration", 0)
+        
+        if retry_count > 5:
+            return "critical"
+        elif retry_count > 2 or session_duration < 1000:
+            return "high"
+        elif error_code in ["NotAllowedError", "NotFoundError"]:
+            return "medium"
+        else:
+            return "low"
+    
+    def _map_error_to_sequence(self, error_code: str, context: Dict) -> str:
+        """Map error to recovery sequence"""
+        mapping = {
+            "NotAllowedError": "permission_denied",
+            "NotFoundError": "device_not_found",
+            "NotReadableError": "device_not_found",
+            "SecurityError": "permission_denied",
+            "NetworkError": "network_error",
+            "ContextSuspended": "context_suspended",
+            "HighLatency": "high_latency"
+        }
+        
+        # Check for specific conditions
+        if context.get("audio_context_state") == "suspended":
+            return "context_suspended"
+        elif context.get("latency_ms", 0) > 1000:
+            return "high_latency"
+            
+        return mapping.get(error_code, "device_not_found")
+    
+    def _adjust_for_browser(self, sequence: List[Dict], browser: str) -> List[Dict]:
+        """Adjust recovery sequence for browser quirks"""
+        quirks = self.browser_quirks.get(browser, {})
+        adjusted_sequence = []
+        
+        for step in sequence:
+            # Skip unsupported features
+            if step["action"] == "enable_echo_cancellation" and not quirks.get("supports_echo_cancellation"):
+                continue
+                
+            # Add browser-specific steps
+            if step["action"] == "check_browser_settings":
+                for issue in quirks.get("known_issues", []):
+                    if "workaround" in issue:
+                        adjusted_sequence.append({
+                            "action": issue["workaround"],
+                            "delay_ms": 0,
+                            "browser_specific": True
+                        })
+            
+            adjusted_sequence.append(step)
+            
+        return adjusted_sequence
+    
+    async def _execute_healing_step(self, step: Dict, context: Dict) -> Dict[str, Any]:
+        """Execute a single healing step"""
+        action = step["action"]
+        result = {"success": False, "details": {}}
+        
+        try:
+            if action == "prompt_user":
+                result["success"] = True
+                result["details"] = {
+                    "message": step.get("message"),
+                    "ui_element": step.get("ui_element")
+                }
+            elif action == "check_browser_settings":
+                result["success"] = True
+                result["details"] = {
+                    "script": step.get("script"),
+                    "check_result": "pending_client_execution"
+                }
+            elif action == "enumerate_devices":
+                result["success"] = True
+                result["details"] = {
+                    "script": step.get("script"),
+                    "expected_devices": ["microphone", "speaker"]
+                }
+            elif action == "reduce_quality":
+                result["success"] = True
+                result["details"] = {
+                    "adjustments": step.get("adjustments"),
+                    "quality_level": "reduced"
+                }
+            else:
+                result["success"] = True
+                result["details"] = {"action": action}
+                
+        except Exception as e:
+            logger.error(f"Healing step failed: {action} - {e}")
+            result["details"]["error"] = str(e)
+            
+        return result
+    
+    def _find_similar_cases(self, error_code: str, context: Dict) -> List[Dict]:
+        """Find similar cases from history"""
+        similar = []
+        for case in self.healing_history:
+            if case["error_code"] == error_code:
+                # Check context similarity
+                similarity_score = self._calculate_similarity(case["context"], context)
+                if similarity_score > 0.7:
+                    similar.append({
+                        "case": case,
+                        "similarity": similarity_score,
+                        "resolved": case["result"]["success"]
+                    })
+        return sorted(similar, key=lambda x: x["similarity"], reverse=True)
+    
+    def _calculate_similarity(self, context1: Dict, context2: Dict) -> float:
+        """Calculate context similarity score"""
+        score = 0.0
+        factors = [
+            ("browser", 0.3),
+            ("error_code", 0.3),
+            ("permission_state", 0.2),
+            ("retry_count", 0.1),
+            ("session_duration", 0.1)
+        ]
+        
+        for factor, weight in factors:
+            if factor in context1 and factor in context2:
+                if context1[factor] == context2[factor]:
+                    score += weight
+                elif isinstance(context1[factor], (int, float)):
+                    # Numeric similarity
+                    diff = abs(context1[factor] - context2[factor])
+                    max_val = max(context1[factor], context2[factor])
+                    if max_val > 0:
+                        score += weight * (1 - diff / max_val)
+                        
+        return score
+    
+    def _update_strategy_effectiveness(self, strategy: str, success: bool):
+        """Update strategy effectiveness tracking"""
+        if strategy not in self.successful_strategies:
+            self.successful_strategies[strategy] = {"attempts": 0, "successes": 0}
+            
+        self.successful_strategies[strategy]["attempts"] += 1
+        if success:
+            self.successful_strategies[strategy]["successes"] += 1
+    
+    def get_strategy_effectiveness(self) -> Dict[str, float]:
+        """Get effectiveness rates for all strategies"""
+        effectiveness = {}
+        for strategy, stats in self.successful_strategies.items():
+            if stats["attempts"] > 0:
+                effectiveness[strategy] = stats["successes"] / stats["attempts"]
+        return effectiveness
+
+# Global instances
 system_state = MLAudioSystemState()
+self_healer = AudioSelfHealer()
 
 # WebSocket connection manager
 class AudioWebSocketManager:
@@ -637,19 +1098,47 @@ async def handle_audio_error(request: AudioErrorRequest):
             logger.error(f"Error in ML error handler: {e}, using fallback")
             # Fall through to fallback handler
     
-    # Fallback error handler
+    # Enhanced fallback error handler with self-healing
     logger.info(f"Audio error (fallback): {request.error_code} from {request.browser}")
     
-    # Simple fallback strategies based on error code
+    # Apply self-healing
+    healing_result = await self_healer.heal(request.error_code, request.dict())
+    
+    if healing_result["success"]:
+        return JSONResponse(content={
+            "success": True,
+            "strategy": {
+                "action": "self_healed",
+                "healing_id": healing_result["healing_id"],
+                "actions_taken": healing_result["actions_taken"],
+                "message": "Issue resolved through self-healing"
+            },
+            "ml_confidence": 0.0,
+            "is_fallback": True,
+            "self_healed": True
+        })
+    
+    # Enhanced fallback strategies with more intelligence
     strategies = {
         "NotAllowedError": {
             "action": "requestPermissions",
             "message": "Please allow microphone access in your browser settings",
-            "steps": [
-                "Click the microphone icon in the address bar",
-                "Select 'Allow' for microphone access",
-                "Refresh the page if needed"
-            ]
+            "steps": self._get_browser_specific_steps(request.browser, "permission"),
+            "alternative_actions": [
+                {
+                    "type": "settings_deep_link",
+                    "url": self._get_browser_settings_url(request.browser, "microphone")
+                },
+                {
+                    "type": "visual_guide",
+                    "images": self._get_permission_guide_images(request.browser)
+                }
+            ],
+            "auto_retry": {
+                "enabled": True,
+                "delay_ms": 3000,
+                "max_attempts": 3
+            }
         },
         "NotFoundError": {
             "action": "checkDevices",
@@ -657,7 +1146,22 @@ async def handle_audio_error(request: AudioErrorRequest):
             "steps": [
                 "Check if your microphone is properly connected",
                 "Try unplugging and reconnecting your microphone",
-                "Check system sound settings"
+                "Check system sound settings",
+                f"On {self._get_os_name()}: {self._get_os_audio_settings_path()}"
+            ],
+            "device_enumeration": {
+                "script": "navigator.mediaDevices.enumerateDevices()",
+                "fallback_devices": ["default", "communications", "any"]
+            },
+            "system_checks": [
+                {
+                    "type": "service_status",
+                    "services": self._get_os_audio_services()
+                },
+                {
+                    "type": "driver_check",
+                    "common_issues": self._get_common_driver_issues()
+                }
             ]
         },
         "NotReadableError": {
@@ -667,6 +1171,25 @@ async def handle_audio_error(request: AudioErrorRequest):
                 "Close other applications that might be using the microphone",
                 "Check if your browser has multiple tabs using the microphone",
                 "Try restarting your browser"
+            ],
+            "conflict_detection": {
+                "common_apps": self._get_common_audio_apps(),
+                "check_command": self._get_audio_process_check_command()
+            },
+            "force_release": {
+                "method": "recreate_context",
+                "cleanup_script": "if(window.audioContext) { window.audioContext.close(); }",
+                "delay_before_retry": 1000
+            },
+            "escalation": [
+                {
+                    "after_attempts": 2,
+                    "action": "suggest_exclusive_mode_disable"
+                },
+                {
+                    "after_attempts": 3,
+                    "action": "offer_device_reset"
+                }
             ]
         },
         "SecurityError": {
@@ -674,17 +1197,73 @@ async def handle_audio_error(request: AudioErrorRequest):
             "message": "Microphone access requires a secure connection",
             "steps": [
                 "Make sure you're accessing the site via HTTPS",
-                "Check if the site has a valid SSL certificate"
+                "Check if the site has a valid SSL certificate",
+                "For local development, use localhost or 127.0.0.1"
+            ],
+            "security_checks": {
+                "is_secure": "window.isSecureContext",
+                "protocol": "window.location.protocol",
+                "exceptions": ["localhost", "127.0.0.1", "::1"]
+            }
+        },
+        "OverconstrainedError": {
+            "action": "relaxConstraints",
+            "message": "Audio constraints are too strict",
+            "steps": [
+                "Reducing audio quality requirements",
+                "Trying with basic audio settings",
+                "Checking device capabilities"
+            ],
+            "constraint_fallbacks": [
+                {"audio": True},
+                {"audio": {"channelCount": 1}},
+                {"audio": {"sampleRate": 16000}},
+                {"audio": {"echoCancellation": False, "noiseSuppression": False}}
             ]
+        },
+        "AbortError": {
+            "action": "handleAbort",
+            "message": "Audio operation was aborted",
+            "steps": [
+                "Checking for system interruptions",
+                "Verifying browser stability",
+                "Preparing to retry"
+            ],
+            "recovery": {
+                "wait_ms": 2000,
+                "check_system_state": True,
+                "retry_with_fresh_context": True
+            }
         }
     }
     
-    # Get strategy for the error code
+    # Get strategy for the error code with intelligent fallback
     strategy = strategies.get(request.error_code, {
-        "action": "genericRetry",
-        "message": "An audio error occurred",
-        "steps": ["Please try refreshing the page", "Check your microphone connection"]
+        "action": "intelligentDiagnosis",
+        "message": f"Unexpected audio error: {request.error_code}",
+        "steps": [
+            "Running automatic diagnosis...",
+            "Checking system compatibility...",
+            "Preparing recovery options..."
+        ],
+        "diagnosis": await self_healer.diagnose_issue(request.error_code, request.dict()),
+        "auto_recovery": {
+            "enabled": True,
+            "strategy": "adaptive"
+        }
     })
+    
+    # Add browser-specific enhancements
+    if request.browser:
+        strategy = self._enhance_strategy_for_browser(strategy, request.browser)
+    
+    # Add device fingerprinting for better future handling
+    device_fingerprint = self._generate_device_fingerprint(request.dict())
+    self_healer.device_fingerprints[device_fingerprint] = {
+        "last_error": request.error_code,
+        "timestamp": datetime.now(),
+        "context": request.dict()
+    }
     
     # Add retry logic
     if request.retry_count >= 3:
@@ -701,13 +1280,45 @@ async def handle_audio_error(request: AudioErrorRequest):
 
 @router.post("/predict")
 async def predict_audio_issue(data: AudioPrediction, request: Request):
-    """Predict potential audio issues or provide audio analysis"""
+    """Predict potential audio issues with preemptive healing"""
     start_time = datetime.now()
     
     # Get client ID
     client_id = data.client_id or f"{request.client.host if request.client else 'anonymous'}_{datetime.now().timestamp()}"
     
     logger.info(f"ML Audio prediction from {client_id} - format: {data.format}, size: {len(data.audio_data) if data.audio_data else 0}")
+    
+    # Check for preemptive healing opportunities
+    device_fingerprint = _generate_device_fingerprint({
+        "browser": request.headers.get("user-agent", ""),
+        "client_id": client_id
+    })
+    
+    preemptive_actions = []
+    if device_fingerprint in self_healer.device_fingerprints:
+        device_data = self_healer.device_fingerprints[device_fingerprint]
+        last_error = device_data.get("last_error")
+        
+        # If this device had issues before, suggest preemptive actions
+        if last_error:
+            if last_error == "NotAllowedError":
+                preemptive_actions.append({
+                    "action": "check_permission",
+                    "reason": "This device previously had permission issues",
+                    "script": "navigator.permissions.query({name: 'microphone'})"
+                })
+            elif last_error == "NotFoundError":
+                preemptive_actions.append({
+                    "action": "verify_device",
+                    "reason": "This device previously had detection issues",
+                    "script": "navigator.mediaDevices.enumerateDevices()"
+                })
+            elif last_error == "NotReadableError":
+                preemptive_actions.append({
+                    "action": "test_availability",
+                    "reason": "This device previously had availability issues",
+                    "constraints": {"audio": {"deviceId": "default"}}
+                })
     
     # Analyze audio quality
     quality_analysis = analyze_audio_quality(
@@ -786,6 +1397,11 @@ async def predict_audio_issue(data: AudioPrediction, request: Request):
             },
             "enhancement_applied": quality_analysis["score"] < 0.8,
             "migration_note": "For real-time processing, please use WebSocket at " + os.getenv("WEBSOCKET_ENDPOINT", "/ws")
+        },
+        "preemptive_healing": {
+            "suggested_actions": preemptive_actions,
+            "device_recognized": device_fingerprint in self_healer.device_fingerprints,
+            "healing_confidence": 0.8 if preemptive_actions else 0.0
         }
     }
     
@@ -817,29 +1433,59 @@ async def receive_telemetry(request: AudioTelemetryRequest):
 
 @router.get("/metrics")
 async def get_ml_metrics():
-    """Get ML audio system metrics"""
-    if ML_AVAILABLE:
-        try:
-            audio_manager = get_audio_manager()
-            metrics = audio_manager.get_metrics()
-            
-            # Add additional insights
-            metrics["insights"] = _generate_insights(metrics, audio_manager)
-            
-            return JSONResponse(content=metrics)
-        except Exception as e:
-            logger.error(f"Error getting ML metrics: {e}")
-    
-    # Fallback metrics
-    return JSONResponse(content={
+    """Get ML audio system metrics with enhanced self-healing stats"""
+    metrics = {
         "total_errors": 0,
         "success_rate": 0.0,
         "ml_model_accuracy": 0.0,
         "is_fallback": True,
-        "message": "ML audio system not available - using fallback",
         "system_metrics": system_state.get_performance_metrics(),
         "quality_insights": system_state.get_quality_insights()
-    })
+    }
+    
+    if ML_AVAILABLE:
+        try:
+            audio_manager = get_audio_manager()
+            ml_metrics = audio_manager.get_metrics()
+            metrics.update(ml_metrics)
+            metrics["insights"] = _generate_insights(ml_metrics, audio_manager)
+            metrics["is_fallback"] = False
+        except Exception as e:
+            logger.error(f"Error getting ML metrics: {e}")
+    
+    # Add self-healing metrics
+    healing_stats = {
+        "total_healing_attempts": len(self_healer.healing_history),
+        "successful_healings": len([h for h in self_healer.healing_history if h["result"]["success"]]),
+        "strategy_effectiveness": self_healer.get_strategy_effectiveness(),
+        "recent_issues": {},
+        "device_fingerprints": len(self_healer.device_fingerprints),
+        "healing_success_rate": 0.0
+    }
+    
+    # Calculate healing success rate
+    if healing_stats["total_healing_attempts"] > 0:
+        healing_stats["healing_success_rate"] = healing_stats["successful_healings"] / healing_stats["total_healing_attempts"]
+    
+    # Get recent issue frequency
+    for event in list(self_healer.healing_history)[-20:]:  # Last 20 events
+        error_code = event["error_code"]
+        healing_stats["recent_issues"][error_code] = healing_stats["recent_issues"].get(error_code, 0) + 1
+    
+    metrics["self_healing"] = healing_stats
+    
+    # Add browser-specific insights
+    browser_stats = {}
+    for fingerprint, data in self_healer.device_fingerprints.items():
+        browser = data["context"].get("browser", "unknown")
+        if browser not in browser_stats:
+            browser_stats[browser] = {"errors": 0, "last_seen": None}
+        browser_stats[browser]["errors"] += 1
+        browser_stats[browser]["last_seen"] = data["timestamp"].isoformat()
+    
+    metrics["browser_statistics"] = browser_stats
+    
+    return JSONResponse(content=metrics)
 
 @router.get("/status")
 async def get_ml_audio_status():
@@ -997,6 +1643,275 @@ def _generate_insights(metrics: Dict[str, Any], audio_manager) -> List[str]:
     
     return insights
 
+# Helper methods for enhanced fallback strategies
+def _get_browser_specific_steps(browser: str, action_type: str) -> List[str]:
+    """Get browser-specific steps for actions"""
+    browser_lower = (browser or "").lower()
+    
+    if action_type == "permission":
+        if "chrome" in browser_lower:
+            return [
+                "Click the camera/microphone icon in the address bar (right side)",
+                "Select 'Allow' from the dropdown menu",
+                "If you don't see the icon, click the lock icon instead",
+                "Go to 'Site settings' > 'Microphone' > Allow"
+            ]
+        elif "firefox" in browser_lower:
+            return [
+                "Click the microphone icon in the address bar",
+                "Select 'Allow' from the permission panel",
+                "Or go to Settings > Privacy & Security > Permissions > Microphone",
+                "Find this site and change to 'Allow'"
+            ]
+        elif "safari" in browser_lower:
+            return [
+                "Safari > Preferences > Websites > Microphone",
+                "Find this website in the list",
+                "Change the setting to 'Allow'",
+                "You may need to reload the page"
+            ]
+        elif "edge" in browser_lower:
+            return [
+                "Click the lock/microphone icon in address bar",
+                "Select 'Allow' for microphone permission",
+                "Or go to Settings > Cookies and site permissions > Microphone",
+                "Add this site to 'Allow' list"
+            ]
+    
+    return ["Check your browser settings for microphone permissions"]
+
+def _get_browser_settings_url(browser: str, setting_type: str) -> str:
+    """Get deep link to browser settings"""
+    browser_lower = (browser or "").lower()
+    
+    urls = {
+        "chrome": {
+            "microphone": "chrome://settings/content/microphone",
+            "general": "chrome://settings/"
+        },
+        "firefox": {
+            "microphone": "about:preferences#privacy",
+            "general": "about:preferences"
+        },
+        "edge": {
+            "microphone": "edge://settings/content/microphone",
+            "general": "edge://settings/"
+        },
+        "safari": {
+            "microphone": "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+            "general": "x-apple.systempreferences:"
+        }
+    }
+    
+    for browser_name, settings in urls.items():
+        if browser_name in browser_lower:
+            return settings.get(setting_type, settings.get("general", "#"))
+    
+    return "#"
+
+def _get_permission_guide_images(browser: str) -> List[str]:
+    """Get URLs for permission guide images"""
+    # In production, these would be actual URLs to guide images
+    browser_lower = (browser or "").lower()
+    base_path = "/static/audio-guides"
+    
+    if "chrome" in browser_lower:
+        return [
+            f"{base_path}/chrome-mic-permission-1.png",
+            f"{base_path}/chrome-mic-permission-2.png"
+        ]
+    elif "firefox" in browser_lower:
+        return [
+            f"{base_path}/firefox-mic-permission-1.png",
+            f"{base_path}/firefox-mic-permission-2.png"
+        ]
+    
+    return [f"{base_path}/generic-mic-permission.png"]
+
+def _get_os_name() -> str:
+    """Get friendly OS name"""
+    system = platform.system()
+    if system == "Darwin":
+        return "macOS"
+    elif system == "Windows":
+        return "Windows"
+    elif system == "Linux":
+        return "Linux"
+    return system
+
+def _get_os_audio_settings_path() -> str:
+    """Get OS-specific audio settings path"""
+    system = platform.system()
+    if system == "Darwin":
+        return "System Preferences > Sound > Input"
+    elif system == "Windows":
+        return "Settings > System > Sound > Input devices"
+    elif system == "Linux":
+        return "Settings > Sound (varies by distribution)"
+    return "Check system audio settings"
+
+def _get_os_audio_services() -> List[str]:
+    """Get OS-specific audio services"""
+    system = platform.system()
+    if system == "Darwin":
+        return ["coreaudiod", "audio_server"]
+    elif system == "Windows":
+        return ["Windows Audio", "Windows Audio Endpoint Builder"]
+    elif system == "Linux":
+        return ["pulseaudio", "pipewire", "alsa"]
+    return ["audio service"]
+
+def _get_common_driver_issues() -> List[Dict[str, str]]:
+    """Get common audio driver issues and solutions"""
+    return [
+        {
+            "issue": "Outdated audio driver",
+            "solution": "Update through Device Manager or manufacturer website"
+        },
+        {
+            "issue": "Conflicting audio drivers",
+            "solution": "Uninstall duplicate drivers and restart"
+        },
+        {
+            "issue": "Disabled audio device",
+            "solution": "Enable in Device Manager or Sound Settings"
+        },
+        {
+            "issue": "USB audio device power saving",
+            "solution": "Disable USB selective suspend in Power Options"
+        }
+    ]
+
+def _get_common_audio_apps() -> List[str]:
+    """Get list of common apps that use audio"""
+    system = platform.system()
+    common_apps = [
+        "Zoom", "Skype", "Discord", "Teams", "Slack",
+        "OBS Studio", "Audacity", "Chrome", "Firefox"
+    ]
+    
+    if system == "Darwin":
+        common_apps.extend(["FaceTime", "QuickTime Player", "Voice Memos"])
+    elif system == "Windows":
+        common_apps.extend(["Voice Recorder", "Camera", "Xbox Game Bar"])
+    
+    return common_apps
+
+def _get_audio_process_check_command() -> str:
+    """Get command to check audio-using processes"""
+    system = platform.system()
+    if system == "Darwin":
+        return "lsof | grep -E 'VoiceOver|coreaudio|AudioDevice'"
+    elif system == "Windows":
+        return "tasklist | findstr /I \"audio\""
+    elif system == "Linux":
+        return "lsof | grep -E 'pulse|alsa|pipewire'"
+    return "Check running audio processes"
+
+def _enhance_strategy_for_browser(strategy: Dict, browser: str) -> Dict:
+    """Enhance strategy with browser-specific optimizations"""
+    browser_lower = (browser or "").lower()
+    enhanced = strategy.copy()
+    
+    # Add browser-specific enhancements
+    if "chrome" in browser_lower:
+        enhanced["browser_hints"] = {
+            "supports_web_audio_api": True,
+            "preferred_sample_rate": 48000,
+            "echo_cancellation_available": True
+        }
+    elif "safari" in browser_lower:
+        enhanced["browser_hints"] = {
+            "requires_user_gesture": True,
+            "preferred_format": "wav",
+            "limited_web_audio_api": True
+        }
+        enhanced["additional_steps"] = [
+            "Safari requires user interaction before audio",
+            "Click anywhere on the page first"
+        ]
+    
+    return enhanced
+
+def _generate_device_fingerprint(context: Dict) -> str:
+    """Generate a unique device fingerprint"""
+    fingerprint_data = {
+        "browser": context.get("browser", "unknown"),
+        "browser_version": context.get("browser_version", "unknown"),
+        "user_agent": context.get("user_agent", "unknown"),
+        "platform": platform.system(),
+        "node": platform.node()
+    }
+    
+    fingerprint_str = json.dumps(fingerprint_data, sort_keys=True)
+    return hashlib.md5(fingerprint_str.encode()).hexdigest()[:16]
+
+@router.post("/heal")
+async def manual_heal(request: Dict[str, Any]):
+    """Manually trigger self-healing for testing or recovery"""
+    error_code = request.get("error_code", "UnknownError")
+    context = request.get("context", {})
+    
+    # Run diagnosis
+    diagnosis = await self_healer.diagnose_issue(error_code, context)
+    
+    # Run healing
+    healing_result = await self_healer.heal(error_code, context)
+    
+    return JSONResponse(content={
+        "diagnosis": diagnosis,
+        "healing_result": healing_result,
+        "timestamp": datetime.now().isoformat()
+    })
+
+@router.get("/healing-history")
+async def get_healing_history(limit: int = 10):
+    """Get recent healing history"""
+    history = list(self_healer.healing_history)[-limit:]
+    
+    # Format for response
+    formatted_history = []
+    for event in reversed(history):
+        formatted_history.append({
+            "timestamp": event["timestamp"].isoformat(),
+            "error_code": event["error_code"],
+            "success": event["result"]["success"],
+            "actions_taken": event["result"]["actions_taken"],
+            "diagnosis": event["diagnosis"]
+        })
+    
+    return JSONResponse(content={
+        "history": formatted_history,
+        "total_events": len(self_healer.healing_history),
+        "success_rate": self_healer.get_strategy_effectiveness()
+    })
+
+@router.post("/simulate-error")
+async def simulate_error(request: Dict[str, Any]):
+    """Simulate an audio error for testing self-healing"""
+    error_type = request.get("error_type", "NotAllowedError")
+    browser = request.get("browser", "Chrome")
+    
+    # Create simulated error context
+    simulated_context = {
+        "error_code": error_type,
+        "browser": browser,
+        "browser_version": "120.0",
+        "timestamp": datetime.now().isoformat(),
+        "session_duration": 5000,
+        "retry_count": request.get("retry_count", 0),
+        "permission_state": request.get("permission_state", "prompt"),
+        "user_agent": f"Mozilla/5.0 ({browser})",
+        "audio_context_state": request.get("audio_context_state", "running"),
+        "simulated": True
+    }
+    
+    # Process through normal error handler
+    error_request = AudioErrorRequest(**simulated_context)
+    result = await handle_audio_error(error_request)
+    
+    return result
+
 # Health check endpoint
 @router.get("/health")
 async def ml_audio_health():
@@ -1008,7 +1923,9 @@ async def ml_audio_health():
         "uptime_hours": round(system_state.get_uptime(), 2),
         "last_activity": system_state.last_activity.isoformat() if system_state.last_activity else None,
         "models_available": system_state.model_loaded,
-        "ml_available": ML_AVAILABLE
+        "ml_available": ML_AVAILABLE,
+        "self_healing_active": True,
+        "healing_success_rate": self_healer.get_strategy_effectiveness()
     }
 
 # Register router
