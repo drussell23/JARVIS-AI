@@ -951,12 +951,48 @@ class ClaudeVisionChatbot:
                    "- Provide translations/transliterations when possible\n"
                    "- Acknowledge limitations in language recognition")
         
+        # Window counting and management queries
+        elif any(phrase in user_lower for phrase in ['how many window', 'count window', 'window open', 'desktop space', 'mission control']):
+            return (f"{user_input}\n\n{vision_intelligence}"
+                   "WINDOW COUNTING & MANAGEMENT:\n"
+                   "- Count ALL visible windows (including Mission Control/Exposé)\n"
+                   "- Distinguish windows from other UI elements\n"
+                   "- Group by application and desktop space\n"
+                   "- Note window states (active, minimized, background)\n"
+                   "- Identify spatial relationships between windows\n"
+                   "PROVIDE:\n"
+                   "1. Total window count\n"
+                   "2. Breakdown by app\n"
+                   "3. Desktop space organization\n"
+                   "4. Current focus/active window")
+        
+        # Window arrangement and workflow queries
+        elif any(word in user_lower for word in ['arrange', 'layout', 'organize', 'workflow', 'setup']):
+            return (f"{user_input}\n\n{vision_intelligence}"
+                   "WINDOW ARRANGEMENT & WORKFLOW ANALYSIS:\n"
+                   "- Identify window arrangement patterns\n"
+                   "- Recognize common workflows (dev setup, research mode, etc.)\n"
+                   "- Note spatial relationships (side-by-side, overlapping)\n"
+                   "- Understand functional groupings\n"
+                   "- Suggest organization improvements if relevant")
+        
+        # Application state queries
+        elif any(phrase in user_lower for phrase in ['what apps', 'applications running', 'programs open']):
+            return (f"{user_input}\n\n{vision_intelligence}"
+                   "APPLICATION STATE INVENTORY:\n"
+                   "- List all running applications\n"
+                   "- Count windows per application\n"
+                   "- Note which has focus\n"
+                   "- Identify background vs foreground apps\n"
+                   "- Check dock/taskbar for minimized apps")
+        
         # Default - return with general intelligence enhancement
         return (f"{user_input}\n\n{vision_intelligence}"
                "COMPREHENSIVE ANALYSIS:\n"
                "- Provide intelligent, context-aware interpretation\n"
                "- Express confidence levels appropriately\n"
                "- Handle any interface type or visual content\n"
+               "- If windows/apps mentioned, provide detailed window analysis\n"
                "- Ask for clarification when query is ambiguous")
         
     async def _is_monitoring_command(self, user_input: str) -> bool:
@@ -1197,6 +1233,17 @@ class ClaudeVisionChatbot:
                 "note if anything appears to be changing or if the user might need "
                 "to know about something that just happened or is about to happen."
             )
+            
+            # Window tracking for monitoring mode
+            if any(word in query_lower for word in ['window', 'app', 'program', 'desktop', 'space']):
+                analysis_prompt += (
+                    "\n\nWINDOW TRACKING: Monitor and report:"
+                    "- New windows opening"
+                    "- Windows closing or minimizing"
+                    "- Focus changes between windows"
+                    "- Desktop space switches"
+                    "- Application launches or quits"
+                )
             
             # Analyze the screenshot
             messages = [

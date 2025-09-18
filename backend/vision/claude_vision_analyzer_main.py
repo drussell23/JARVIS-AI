@@ -2918,8 +2918,50 @@ class ClaudeVisionAnalyzer:
             "- Provide helpful alternatives when unable to determine something\n"
         )
         
-        # Enhanced UI element patterns with pure intelligence approach
+        # Enhanced UI element patterns with window understanding
         ui_prompts = {
+            'windows': (
+                f"{intelligence_framework}\n\n"
+                "🪟 COMPREHENSIVE WINDOW ANALYSIS:\n"
+                "Use your visual intelligence to understand the complete window environment:\n\n"
+                
+                "WINDOW DETECTION & COUNTING:\n"
+                "- Count ALL visible windows (including those in Mission Control/Exposé views)\n"
+                "- Distinguish actual windows from other UI elements (dialogs, panels, overlays)\n"
+                "- Identify desktop spaces/virtual desktops if visible\n"
+                "- Recognize minimized windows from dock/taskbar indicators\n\n"
+                
+                "WINDOW HIERARCHY & RELATIONSHIPS:\n"
+                "- Determine window stacking order (what's on top)\n"
+                "- Identify active/focused window (visual cues: highlight, shadow, titlebar)\n"
+                "- Group windows by application\n"
+                "- Understand parent-child relationships (app + its dialogs)\n\n"
+                
+                "VISUAL CUES TO USE:\n"
+                "- Title bars, borders, shadows for window boundaries\n"
+                "- Dock/taskbar indicators for running apps\n"
+                "- Mission Control/Exposé for complete overview\n"
+                "- Tab bars for multiple documents within apps\n"
+                "- Window decorations and consistent styling\n\n"
+                
+                "SPATIAL UNDERSTANDING:\n"
+                "- Window arrangements: tiled, overlapping, fullscreen\n"
+                "- Partial visibility and occlusion\n"
+                "- Multi-monitor layouts if applicable\n\n"
+                
+                "TEMPORAL CONTEXT:\n"
+                "- Note any windows in transition (opening, closing, minimizing)\n"
+                "- Identify window switching indicators\n"
+                "- Recognize workspace switching animations\n\n"
+                
+                "RESPONSE FORMAT:\n"
+                "Provide hierarchical understanding:\n"
+                "1. Total windows across all spaces\n"
+                "2. Windows per desktop space\n"
+                "3. Windows per application\n"
+                "4. Active window and state\n"
+                "5. Window arrangement pattern"
+            ),
             'battery': (
                 f"{intelligence_framework}\n\n"
                 "TASK: Find and report the system battery level.\n"
@@ -3035,6 +3077,7 @@ class ClaudeVisionAnalyzer:
         
         for element, enhancement in ui_prompts.items():
             if element in prompt_lower or (
+                element == 'windows' and any(word in prompt_lower for word in ['window', 'windows', 'desktop', 'space', 'workspace', 'mission control', 'exposé', 'open', 'running', 'count', 'how many']) or
                 element == 'battery' and any(word in prompt_lower for word in ['power', 'charge', 'percent']) or
                 element == 'time' and any(word in prompt_lower for word in ['clock', 'hour', 'what time']) or
                 element == 'notifications' and any(word in prompt_lower for word in ['alert', 'badge', 'unread', 'notify']) or
@@ -3137,6 +3180,52 @@ class ClaudeVisionAnalyzer:
                 "The user is asking about functionality, not just appearance. "
                 "Distinguish between 'looks correct' and 'is functioning correctly'. "
                 "Provide both visual observation and functional interpretation."
+            )
+        
+        # Window management queries
+        if any(word in prompt_lower for word in ['arrange', 'organize', 'layout', 'position', 'tile', 'stack']):
+            enhanced_prompt += (
+                "\n\nWINDOW ARRANGEMENT ANALYSIS: "
+                "Analyze the window layout pattern: "
+                "- Tiled (side-by-side, grid) "
+                "- Cascaded (overlapping with offset) "
+                "- Maximized/fullscreen "
+                "- Floating/scattered "
+                "Identify workflow patterns from arrangement."
+            )
+        
+        # Application state queries
+        if any(phrase in prompt_lower for phrase in ['what apps', 'which programs', 'what\'s running', 'applications open']):
+            enhanced_prompt += (
+                "\n\nAPPLICATION INVENTORY: "
+                "List all running applications based on: "
+                "- Visible windows "
+                "- Dock/taskbar indicators "
+                "- System tray icons "
+                "Group by application and note window count per app."
+            )
+        
+        # Workspace/desktop queries
+        if any(word in prompt_lower for word in ['workspace', 'desktop', 'space', 'virtual']):
+            enhanced_prompt += (
+                "\n\nWORKSPACE ANALYSIS: "
+                "Identify virtual desktops/spaces: "
+                "- Count total spaces "
+                "- Note which space is active "
+                "- List windows per space "
+                "- Identify space organization patterns."
+            )
+        
+        # Window state queries
+        if any(word in prompt_lower for word in ['minimized', 'hidden', 'behind', 'covered', 'focus', 'active']):
+            enhanced_prompt += (
+                "\n\nWINDOW STATE DETECTION: "
+                "Determine window states: "
+                "- Active/focused (visual highlights) "
+                "- Inactive but visible "
+                "- Partially obscured "
+                "- Minimized (dock/taskbar only) "
+                "- Hidden in other spaces."
             )
         
         logger.debug(f"Enhanced prompt with advanced intelligence: {enhanced_prompt[:300]}...")
