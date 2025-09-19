@@ -205,7 +205,13 @@ class UnifiedCommandProcessor:
         try:
             # Different handlers have different interfaces, normalize them
             if command_type == CommandType.VISION:
-                result = await handler.handle_command(command_text)
+                # For vision commands, check if it's a monitoring command or analysis
+                if any(word in command_text.lower() for word in ['start', 'stop', 'monitor']):
+                    result = await handler.handle_command(command_text)
+                else:
+                    # It's a vision query - analyze the screen with the specific query
+                    result = await handler.analyze_screen(command_text)
+                    
                 return {
                     'success': result.get('handled', False),
                     'response': result.get('response', ''),

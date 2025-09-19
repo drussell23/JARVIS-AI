@@ -370,22 +370,40 @@ class VisionCommandHandler:
             # Analyze the screenshot with timeout
             await ws_logger.log("Step 5: Starting screenshot analysis with Claude...")
             try:
-                # For conversational queries about screen visibility, provide a natural response
-                if any(phrase in query.lower() for phrase in [
+                # Determine the type of vision query
+                query_lower = query.lower()
+                
+                # Battery percentage query
+                if 'battery' in query_lower:
+                    specific_prompt = "Look at this screen and find the battery percentage. Report only the battery level you see, nothing else. Be specific - look for battery indicators usually in the top menu bar or system tray."
+                    
+                # Terminal query
+                elif 'terminal' in query_lower:
+                    specific_prompt = "Look at this screen and describe what you see in the terminal window. Focus on the terminal content, commands visible, and any output shown. Be specific about what's in the terminal."
+                    
+                # Windows/applications query
+                elif 'window' in query_lower or 'open' in query_lower:
+                    specific_prompt = "Look at this screen and list all the windows or applications that are open. Be specific about each window you can see, including their titles if visible."
+                    
+                # Generic conversational queries
+                elif any(phrase in query_lower for phrase in [
                     'can you see', 'do you see', 'what do you see', 
                     'what\'s on my screen', 'what is on my screen',
                     'what am i looking at', 'what\'s happening',
                     'describe my screen', 'tell me what you see'
                 ]):
-                    # Use a more conversational prompt and force full-screen analysis
-                    conversational_query = "You are JARVIS, Tony Stark's AI assistant. Describe what you see on this screen in a natural, conversational way as if you were looking over the user's shoulder. Focus on the main content, applications, or activities visible. Be helpful and observant like JARVIS would be. Don't break it down by regions or technical details - just tell them what's happening on their screen."
-                    
-                    # Force full-screen analysis (no sliding window) for conversational queries
-                    await ws_logger.log("Step 6: Starting conversational analysis with 60s timeout...")
-                    await ws_logger.log(f"Vision analyzer type: {type(self.vision_manager.vision_analyzer)}")
-                    await ws_logger.log(f"Has client: {hasattr(self.vision_manager.vision_analyzer, 'client')}")
-                    if hasattr(self.vision_manager.vision_analyzer, 'client'):
-                        await ws_logger.log(f"Client type: {type(self.vision_manager.vision_analyzer.client) if self.vision_manager.vision_analyzer.client else 'None'}")
+                    specific_prompt = f"You are JARVIS. Answer this: '{query}'. Be natural and conversational."
+                else:
+                    # For any other query, use the query directly but with JARVIS personality
+                    specific_prompt = f"You are JARVIS, Tony Stark's AI assistant. The user asked: '{query}'. Answer their specific question about what you see on screen. Be direct and precise."
+                
+                # Use the determined prompt
+                await ws_logger.log(f"Using prompt: {specific_prompt[:100]}...")
+                await ws_logger.log("Step 6: Starting analysis with 60s timeout...")
+                await ws_logger.log(f"Vision analyzer type: {type(self.vision_manager.vision_analyzer)}")
+                await ws_logger.log(f"Has client: {hasattr(self.vision_manager.vision_analyzer, 'client')}")
+                if hasattr(self.vision_manager.vision_analyzer, 'client'):
+                    await ws_logger.log(f"Client type: {type(self.vision_manager.vision_analyzer.client) if self.vision_manager.vision_analyzer.client else 'None'}")
                     await ws_logger.log("Calling analyze_screenshot_async...")
                     
                     try:
@@ -397,7 +415,7 @@ class VisionCommandHandler:
                                 result = await asyncio.wait_for(
                                     self.vision_manager.vision_analyzer.analyze_image_with_prompt(
                                         screenshot_array,
-                                        conversational_query
+                                        specific_prompt
                                     ),
                                     timeout=60.0
                                 )
@@ -407,7 +425,7 @@ class VisionCommandHandler:
                             result = await asyncio.wait_for(
                                 self.vision_manager.vision_analyzer.analyze_screenshot_async(
                                     screenshot_array, 
-                                    conversational_query,
+                                    specific_prompt,
                                     use_sliding_window=False  # Force full screen analysis
                                 ),
                                 timeout=60.0  # Increased to 60 second timeout to match API timeout
@@ -426,27 +444,21 @@ class VisionCommandHandler:
                     # Extract the natural response
                     response_text = result.get('description', result.get('analysis', ''))
                     
-                    # If it still contains "Region" formatting, extract just the content
+                    # Clean up any region formatting if present
                     if "Region" in response_text:
-                        # Try to extract meaningful content from the regions
                         import re
                         region_matches = re.findall(r'Region.*?:\s*(.+?)(?=Region|\Z)', response_text, re.DOTALL)
                         if region_matches:
-                            # Combine the meaningful parts
-                            combined = ' '.join([match.strip() for match in region_matches if match.strip()])
-                            response_text = f"Yes, I can see your screen. {combined}"
+                            response_text = ' '.join([match.strip() for match in region_matches if match.strip()])
                     
-                    # Add a natural prefix if not already conversational
-                    if not response_text.lower().startswith(('yes', 'i can see', 'i see')):
-                        response_text = f"Yes, I can see your screen. {response_text}"
+                    # For battery queries, extract just the percentage
+                    if 'battery' in query_lower and '%' in response_text:
+                        import re
+                        battery_match = re.search(r'(\d+)%', response_text)
+                        if battery_match:
+                            response_text = f"Your battery is at {battery_match.group(0)}, Sir."
                     
-                else:
-                    # For other queries, use the original query
-                    result = await asyncio.wait_for(
-                        self.vision_manager.vision_analyzer.analyze_screenshot_async(screenshot_array, query),
-                        timeout=60.0  # 60 second timeout
-                    )
-                    response_text = result.get('description', result.get('analysis', 'I captured the screen but couldn\'t analyze it properly.'))
+                # No else needed - we already handled all cases above
                 
                 await ws_logger.log(f"Analysis complete, result keys: {list(result.keys()) if result else 'None'}")
             except asyncio.TimeoutError:
