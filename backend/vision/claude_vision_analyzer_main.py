@@ -34,6 +34,9 @@ import json
 import logging
 import psutil
 from pathlib import Path
+from collections import deque, defaultdict
+from enum import Enum
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +177,20 @@ class VisionConfig:
     vsms_personalization: bool = field(default_factory=lambda: os.getenv('VSMS_PERSONALIZATION', 'true').lower() == 'true')
     vsms_stuck_threshold_minutes: int = field(default_factory=lambda: int(os.getenv('VSMS_STUCK_THRESHOLD', '5')))
     
+    # Proactive Vision Intelligence settings
+    enable_proactive_intelligence: bool = field(default_factory=lambda: os.getenv('VISION_PROACTIVE_INTELLIGENCE', 'true').lower() == 'true')
+    proactive_analysis_interval: float = field(default_factory=lambda: float(os.getenv('PROACTIVE_ANALYSIS_INTERVAL', '3.0')))
+    proactive_importance_threshold: float = field(default_factory=lambda: float(os.getenv('PROACTIVE_IMPORTANCE_THRESHOLD', '0.6')))
+    proactive_confidence_threshold: float = field(default_factory=lambda: float(os.getenv('PROACTIVE_CONFIDENCE_THRESHOLD', '0.7')))
+    proactive_max_notifications_per_minute: int = field(default_factory=lambda: int(os.getenv('PROACTIVE_MAX_NOTIFICATIONS_PER_MIN', '3')))
+    proactive_cooldown_seconds: int = field(default_factory=lambda: int(os.getenv('PROACTIVE_COOLDOWN_SECONDS', '30')))
+    proactive_notification_style: str = field(default_factory=lambda: os.getenv('PROACTIVE_NOTIFICATION_STYLE', 'balanced'))
+    proactive_enable_learning: bool = field(default_factory=lambda: os.getenv('PROACTIVE_ENABLE_LEARNING', 'true').lower() == 'true')
+    proactive_voice_enabled: bool = field(default_factory=lambda: os.getenv('PROACTIVE_VOICE_ENABLED', 'true').lower() == 'true')
+    proactive_progressive_disclosure: bool = field(default_factory=lambda: os.getenv('PROACTIVE_PROGRESSIVE_DISCLOSURE', 'true').lower() == 'true')
+    proactive_context_awareness: bool = field(default_factory=lambda: os.getenv('PROACTIVE_CONTEXT_AWARENESS', 'true').lower() == 'true')
+    proactive_workflow_detection: bool = field(default_factory=lambda: os.getenv('PROACTIVE_WORKFLOW_DETECTION', 'true').lower() == 'true')
+    
     @classmethod
     def from_file(cls, config_path: str) -> 'VisionConfig':
         """Load configuration from JSON file"""
@@ -214,6 +231,64 @@ class CacheEntry:
     image_hash: str
     access_count: int = 0
     size_bytes: int = 0
+
+
+# Proactive Vision Intelligence Enums and Classes
+class Priority(Enum):
+    """Notification priority levels"""
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+class ChangeCategory(Enum):
+    """Categories of screen changes"""
+    UPDATE = "update"
+    ERROR = "error"
+    NOTIFICATION = "notification"
+    STATUS = "status"
+    DIALOG = "dialog"
+    COMPLETION = "completion"
+    WARNING = "warning"
+    OTHER = "other"
+
+
+@dataclass
+class ScreenChange:
+    """Represents a detected screen change"""
+    description: str
+    importance: Priority
+    confidence: float
+    category: ChangeCategory
+    suggested_message: str
+    location: str
+    timestamp: datetime
+    screenshot_hash: str
+    
+    def should_notify(self, threshold: float = 0.6) -> bool:
+        """Determine if this change warrants notification"""
+        importance_scores = {Priority.HIGH: 0.9, Priority.MEDIUM: 0.7, Priority.LOW: 0.5}
+        score = importance_scores[self.importance] * self.confidence
+        return score >= threshold
+
+
+@dataclass
+class NotificationContext:
+    """Context for making notification decisions"""
+    user_activity: str
+    focus_level: float  # 0-1, higher means more focused
+    recent_notifications: List[Dict]
+    time_of_day: str
+    workflow_phase: str
+    interaction_history: List[Dict]
+
+
+class CommunicationStyle(Enum):
+    """Communication style preferences"""
+    MINIMAL = "minimal"       # Just the facts
+    BALANCED = "balanced"     # Natural but concise
+    DETAILED = "detailed"     # Comprehensive information
+    CONVERSATIONAL = "conversational"  # More personality
 
 @dataclass
 class AnalysisMetrics:
@@ -856,6 +931,52 @@ class ClaudeVisionAnalyzer:
         # Initialize orchestrator (lazy loading)
         self.orchestrator = None
         self._last_intelligence_context = None  # Store last intelligence insights
+        
+        # Initialize Proactive Vision Intelligence System
+        self._proactive_config = {
+            'enabled': self.config.enable_proactive_intelligence,
+            'analysis_interval': self.config.proactive_analysis_interval,
+            'importance_threshold': self.config.proactive_importance_threshold,
+            'confidence_threshold': self.config.proactive_confidence_threshold,
+            'max_notifications_per_minute': self.config.proactive_max_notifications_per_minute,
+            'cooldown_seconds': self.config.proactive_cooldown_seconds,
+            'notification_style': self.config.proactive_notification_style,
+            'enable_learning': self.config.proactive_enable_learning,
+            'voice_enabled': self.config.proactive_voice_enabled,
+            'progressive_disclosure': self.config.proactive_progressive_disclosure,
+            'context_awareness': self.config.proactive_context_awareness,
+            'workflow_detection': self.config.proactive_workflow_detection
+        }
+        
+        # Proactive system components (lazy loading)
+        self._proactive_monitoring_active = False
+        self._proactive_monitoring_task = None
+        self._proactive_monitoring_state = {
+            'last_screenshot': None,
+            'last_screenshot_hash': None,
+            'recent_changes': deque(maxlen=50),
+            'notification_history': deque(maxlen=100),
+            'notification_timestamps': deque(maxlen=self._proactive_config['max_notifications_per_minute']),
+            'similar_notifications': {},
+            'current_context': None
+        }
+        
+        # Notification filter state
+        self._notification_filter_state = {
+            'category_cooldowns': defaultdict(lambda: datetime.min),
+            'importance_adjustments': defaultdict(float),
+            'ignored_patterns': set(),
+            'valued_patterns': set(),
+            'user_responses': defaultdict(list)
+        }
+        
+        # Communication state
+        self._communication_state = {
+            'active_conversations': {},
+            'conversation_history': deque(maxlen=50),
+            'last_message_time': None,
+            'message_templates': self._initialize_message_templates()
+        }
         
         if self._vsms_core_config['enabled']:
             logger.info("VSMS Core available and enabled")
@@ -5365,6 +5486,659 @@ Focus on what's visible in this specific region. Be concise but thorough."""
         """Remove a real-time vision callback"""
         if callback in self._realtime_callbacks:
             self._realtime_callbacks.remove(callback)
+    
+    # ============== PROACTIVE VISION INTELLIGENCE METHODS ==============
+    
+    def _initialize_message_templates(self) -> Dict[str, List[str]]:
+        """Initialize natural message templates with variations"""
+        return {
+            # Update notifications
+            'update_available': [
+                "I notice {app} has a new update available.",
+                "There's a new update for {app} ready to install.",
+                "{app} just released an update.",
+                "I see {app} has an update waiting for you."
+            ],
+            # Error notifications
+            'error_detected': [
+                "I see an error in your {location}: {error}",
+                "There's an error that popped up in {location}: {error}",
+                "I noticed an error message in {location}: {error}",
+                "An error just appeared in {location}: {error}"
+            ],
+            # Completion notifications
+            'process_complete': [
+                "Your {process} just finished successfully.",
+                "Good news - {process} is complete.",
+                "{process} has finished running.",
+                "All done with {process}."
+            ],
+            # Contextual interjections
+            'while_coding': [
+                "While you're coding, ",
+                "I see you're working on code - ",
+                "Quick interruption from your coding - ",
+                "Pardon the interruption - "
+            ],
+            # Follow-up prompts
+            'offer_help': [
+                "Would you like me to help with that?",
+                "I can assist if you'd like.",
+                "Need any help with this?",
+                "Should I take care of that for you?"
+            ]
+        }
+    
+    async def start_proactive_monitoring(self, voice_callback: Optional[Callable] = None) -> Dict[str, bool]:
+        """Start proactive vision intelligence monitoring"""
+        if not self._proactive_config['enabled']:
+            logger.info("Proactive monitoring disabled in configuration")
+            return {'started': False, 'reason': 'disabled'}
+            
+        if self._proactive_monitoring_active:
+            logger.warning("Proactive monitoring already active")
+            return {'started': False, 'reason': 'already_active'}
+            
+        logger.info("Starting proactive vision intelligence monitoring")
+        self._proactive_monitoring_active = True
+        self._proactive_monitoring_state['start_time'] = datetime.now()
+        
+        # Set voice callback if provided
+        self._proactive_voice_callback = voice_callback
+        
+        # Send initial greeting
+        await self._send_proactive_message(
+            "I've started proactively monitoring your screen. I'll intelligently notify you of important updates, errors, and changes while respecting your focus.",
+            Priority.LOW
+        )
+        
+        # Start monitoring loop
+        self._proactive_monitoring_task = asyncio.create_task(self._proactive_monitoring_loop())
+        
+        return {'started': True, 'message': 'Proactive monitoring active'}
+    
+    async def stop_proactive_monitoring(self) -> Dict[str, bool]:
+        """Stop proactive vision intelligence monitoring"""
+        if not self._proactive_monitoring_active:
+            return {'stopped': False, 'reason': 'not_active'}
+            
+        logger.info("Stopping proactive vision monitoring")
+        self._proactive_monitoring_active = False
+        
+        # Cancel monitoring task
+        if self._proactive_monitoring_task:
+            self._proactive_monitoring_task.cancel()
+            try:
+                await self._proactive_monitoring_task
+            except asyncio.CancelledError:
+                pass
+                
+        # Send farewell with summary
+        await self._send_proactive_summary()
+        
+        return {'stopped': True}
+    
+    async def _proactive_monitoring_loop(self):
+        """Main proactive monitoring loop - continuously analyze screen for changes"""
+        while self._proactive_monitoring_active:
+            try:
+                # Capture current screen
+                screenshot = await self.capture_screen()
+                if not screenshot:
+                    await asyncio.sleep(self._proactive_config['analysis_interval'])
+                    continue
+                    
+                # Analyze for changes
+                changes = await self._analyze_proactive_changes(screenshot)
+                
+                # Process detected changes
+                for change in changes:
+                    await self._process_proactive_change(change)
+                    
+                # Update state
+                self._update_proactive_state(screenshot)
+                
+                # Adaptive interval based on activity
+                interval = self._calculate_adaptive_interval()
+                await asyncio.sleep(interval)
+                
+            except Exception as e:
+                logger.error(f"Error in proactive monitoring loop: {e}")
+                await asyncio.sleep(self._proactive_config['analysis_interval'])
+    
+    async def _analyze_proactive_changes(self, current_screenshot: Image.Image) -> List[ScreenChange]:
+        """Analyze screen for changes using Claude Vision - pure intelligence, no hardcoding"""
+        changes = []
+        previous_screenshot = self._proactive_monitoring_state['last_screenshot']
+        
+        # Build the analysis prompt
+        prompt = self._build_proactive_analysis_prompt(bool(previous_screenshot))
+            
+        try:
+            # Convert to numpy array if needed
+            if isinstance(current_screenshot, Image.Image):
+                current_array = np.array(current_screenshot)
+            else:
+                current_array = current_screenshot
+                
+            # Analyze with Claude
+            result_tuple = await self.analyze_screenshot(current_array, prompt)
+            
+            # Extract result from tuple
+            if isinstance(result_tuple, tuple):
+                result = result_tuple[0]
+            else:
+                result = result_tuple
+                
+            # Parse changes from Claude's response
+            if 'analysis' in result:
+                changes = self._parse_proactive_changes(result['analysis'], current_screenshot)
+            elif 'description' in result:
+                # Try to extract structured data from description
+                changes = self._extract_changes_from_description(result['description'], current_screenshot)
+                
+        except Exception as e:
+            logger.error(f"Error analyzing proactive changes: {e}")
+            
+        return changes
+    
+    def _build_proactive_analysis_prompt(self, has_previous: bool) -> str:
+        """Build prompt for proactive change detection"""
+        if has_previous:
+            return '''You are JARVIS, monitoring the user's screen for important changes.
+Compare what you see now to what was there before.
+
+Look for:
+1. New notifications, badges, or alerts
+2. Update notifications (like "New update available")
+3. Error messages or warnings
+4. Status changes in applications
+5. Dialog boxes or popups
+6. Completion of processes
+7. Time-sensitive information
+
+Respond with specific observations about what changed.
+Be precise and only mention genuinely important changes.
+For each change, assess its importance (high/medium/low) and suggest what to tell the user.'''
+        else:
+            return '''You are JARVIS, starting to monitor the user's screen.
+Analyze what you see to establish a baseline.
+
+Identify:
+1. Open applications and their state
+2. Any existing notifications or alerts
+3. The user's current activity
+4. Any dialogs or popups present
+5. Overall workspace context
+
+Provide a clear summary of the current state.'''
+    
+    def _parse_proactive_changes(self, analysis: str, screenshot: Image.Image) -> List[ScreenChange]:
+        """Parse Claude's analysis into ScreenChange objects"""
+        changes = []
+        
+        # Keywords that indicate different types of changes
+        change_indicators = {
+            'update': ['update available', 'new version', 'upgrade', 'new update'],
+            'error': ['error', 'failed', 'exception', 'problem', 'issue'],
+            'notification': ['notification', 'message', 'alert', 'badge'],
+            'completion': ['completed', 'finished', 'done', 'successful'],
+            'dialog': ['dialog', 'popup', 'prompt', 'asking']
+        }
+        
+        analysis_lower = analysis.lower()
+        
+        # Detect category based on content
+        for category, keywords in change_indicators.items():
+            if any(keyword in analysis_lower for keyword in keywords):
+                # Create a change based on the detection
+                importance = self._determine_importance(category, analysis)
+                
+                change = ScreenChange(
+                    description=analysis,
+                    importance=importance,
+                    confidence=0.8,  # Can be refined based on Claude's certainty
+                    category=ChangeCategory[category.upper()] if category.upper() in ChangeCategory.__members__ else ChangeCategory.OTHER,
+                    suggested_message=self._generate_suggested_message(category, analysis),
+                    location='screen',  # Can be extracted from analysis
+                    timestamp=datetime.now(),
+                    screenshot_hash=self._hash_screenshot(screenshot)
+                )
+                
+                if change.should_notify(self._proactive_config['importance_threshold']):
+                    changes.append(change)
+                    
+        return changes
+    
+    def _extract_changes_from_description(self, description: str, screenshot: Image.Image) -> List[ScreenChange]:
+        """Fallback method to extract changes from unstructured description"""
+        # Similar to _parse_proactive_changes but works with description field
+        return self._parse_proactive_changes(description, screenshot)
+    
+    def _determine_importance(self, category: str, analysis: str) -> Priority:
+        """Determine importance level based on category and content"""
+        analysis_lower = analysis.lower()
+        
+        # High priority indicators
+        if any(word in analysis_lower for word in ['urgent', 'critical', 'immediately', 'error', 'failed']):
+            return Priority.HIGH
+        
+        # Low priority indicators
+        if any(word in analysis_lower for word in ['minor', 'optional', 'later', 'info']):
+            return Priority.LOW
+            
+        # Category-based defaults
+        category_priorities = {
+            'error': Priority.HIGH,
+            'update': Priority.MEDIUM,
+            'notification': Priority.MEDIUM,
+            'completion': Priority.LOW,
+            'dialog': Priority.MEDIUM
+        }
+        
+        return category_priorities.get(category, Priority.MEDIUM)
+    
+    def _generate_suggested_message(self, category: str, analysis: str) -> str:
+        """Generate a natural message based on the change"""
+        # Extract key information from analysis
+        if category == 'update':
+            # Try to extract app name
+            import re
+            app_match = re.search(r'(\w+)\s+(?:has|update)', analysis, re.IGNORECASE)
+            if app_match:
+                app_name = app_match.group(1)
+                templates = self._communication_state['message_templates']['update_available']
+                return random.choice(templates).format(app=app_name)
+                
+        # Default to the analysis itself with some cleanup
+        return analysis.strip()
+    
+    def _hash_screenshot(self, screenshot: Image.Image) -> str:
+        """Create hash of screenshot for deduplication"""
+        if isinstance(screenshot, Image.Image):
+            return hashlib.md5(screenshot.tobytes()).hexdigest()
+        return hashlib.md5(str(screenshot).encode()).hexdigest()
+    
+    async def _process_proactive_change(self, change: ScreenChange):
+        """Process a detected change and decide whether to notify"""
+        # Apply notification filtering
+        if not self._should_notify_proactive(change):
+            return
+            
+        # Apply communication style
+        message = self._apply_communication_style(change.suggested_message, change)
+        
+        # Send notification
+        await self._send_proactive_message(message, change.importance)
+        
+        # Record notification
+        self._record_proactive_notification(change)
+    
+    def _should_notify_proactive(self, change: ScreenChange) -> bool:
+        """Determine if a change should trigger a notification"""
+        # Check importance threshold
+        if not change.should_notify(self._proactive_config['importance_threshold']):
+            return False
+            
+        # Check confidence threshold
+        if change.confidence < self._proactive_config['confidence_threshold']:
+            return False
+            
+        # Check cooldowns
+        category = change.category.value
+        last_notified = self._notification_filter_state['category_cooldowns'][category]
+        cooldown_seconds = self._proactive_config['cooldown_seconds']
+        
+        if datetime.now() - last_notified < timedelta(seconds=cooldown_seconds):
+            logger.debug(f"Category {category} in cooldown")
+            return False
+            
+        # Check rate limiting
+        now = datetime.now()
+        recent_timestamps = self._proactive_monitoring_state['notification_timestamps']
+        
+        # Remove old timestamps
+        while recent_timestamps and now - recent_timestamps[0] > timedelta(minutes=1):
+            recent_timestamps.popleft()
+            
+        if len(recent_timestamps) >= self._proactive_config['max_notifications_per_minute']:
+            logger.debug("Rate limit exceeded")
+            return False
+            
+        # Check for duplicates
+        if change.screenshot_hash in self._proactive_monitoring_state['similar_notifications']:
+            last_time = self._proactive_monitoring_state['similar_notifications'][change.screenshot_hash]
+            if now - last_time < timedelta(minutes=5):
+                logger.debug("Similar notification sent recently")
+                return False
+                
+        return True
+    
+    def _apply_communication_style(self, message: str, change: ScreenChange) -> str:
+        """Apply user's preferred communication style"""
+        style = self._proactive_config['notification_style']
+        
+        if style == 'minimal':
+            # Strip to essentials
+            import re
+            message = re.sub(r"I (notice|see|observed) ", "", message)
+            message = re.sub(r"\.$", "", message)
+            
+        elif style == 'detailed':
+            # Add more context
+            if change.confidence < 0.9:
+                message += f" (confidence: {change.confidence:.0%})"
+                
+        elif style == 'conversational':
+            # Add personality
+            if change.category == ChangeCategory.UPDATE:
+                import random
+                additions = [
+                    " Looks like it might have some nice improvements.",
+                    " The changelog might be worth checking out."
+                ]
+                message += random.choice(additions)
+                
+        return message
+    
+    async def _send_proactive_message(self, message: str, importance: Priority):
+        """Send proactive notification through appropriate channel"""
+        # Log the message
+        logger.info(f"Proactive notification ({importance.value}): {message}")
+        
+        # Send through voice if available and enabled
+        if self._proactive_voice_callback and self._proactive_config['voice_enabled']:
+            try:
+                await self._proactive_voice_callback({
+                    'text': message,
+                    'priority': importance.value,
+                    'type': 'proactive_notification'
+                })
+            except Exception as e:
+                logger.error(f"Error in voice callback: {e}")
+                
+        # Update last message time
+        self._communication_state['last_message_time'] = datetime.now()
+    
+    def _record_proactive_notification(self, change: ScreenChange):
+        """Record notification for learning and deduplication"""
+        now = datetime.now()
+        
+        # Update timestamps
+        self._proactive_monitoring_state['notification_timestamps'].append(now)
+        self._proactive_monitoring_state['similar_notifications'][change.screenshot_hash] = now
+        
+        # Update category cooldowns
+        self._notification_filter_state['category_cooldowns'][change.category.value] = now
+        
+        # Add to history
+        self._proactive_monitoring_state['notification_history'].append({
+            'change': change,
+            'timestamp': now,
+            'delivered': True
+        })
+        
+        # Track in recent changes
+        self._proactive_monitoring_state['recent_changes'].append(change)
+    
+    def _update_proactive_state(self, screenshot: Image.Image):
+        """Update monitoring state after analysis"""
+        self._proactive_monitoring_state['last_screenshot'] = screenshot
+        self._proactive_monitoring_state['last_screenshot_hash'] = self._hash_screenshot(screenshot)
+        self._proactive_monitoring_state['last_analysis_time'] = datetime.now()
+    
+    def _calculate_adaptive_interval(self) -> float:
+        """Calculate adaptive monitoring interval based on activity"""
+        base_interval = self._proactive_config['analysis_interval']
+        
+        # If many recent changes, monitor more frequently
+        recent_changes = self._proactive_monitoring_state['recent_changes']
+        recent_count = sum(1 for c in recent_changes 
+                          if datetime.now() - c.timestamp < timedelta(minutes=5))
+        
+        if recent_count > 5:
+            return base_interval * 0.5  # More frequent
+        elif recent_count == 0:
+            return base_interval * 2.0  # Less frequent
+        else:
+            return base_interval
+    
+    async def _send_proactive_summary(self):
+        """Send summary when monitoring stops"""
+        if not hasattr(self._proactive_monitoring_state, 'start_time'):
+            return
+            
+        duration = datetime.now() - self._proactive_monitoring_state['start_time']
+        notification_count = len(self._proactive_monitoring_state['notification_history'])
+        
+        summary = f"Monitoring session ended. Duration: {duration.total_seconds()//60:.0f} minutes. Notifications sent: {notification_count}."
+        
+        await self._send_proactive_message(summary, Priority.LOW)
+    
+    async def handle_proactive_user_response(self, response: str) -> str:
+        """Handle user response to proactive notifications"""
+        response_lower = response.lower()
+        
+        # Find most recent notification
+        recent_notification = None
+        for notif in reversed(self._proactive_monitoring_state['notification_history']):
+            if (datetime.now() - notif['timestamp']).seconds < 60:
+                recent_notification = notif
+                break
+                
+        if not recent_notification:
+            return "I'm not sure what you're referring to. Could you clarify?"
+            
+        # Generate contextual response
+        if any(word in response_lower for word in ['yes', 'sure', 'okay', 'do it']):
+            return "I'll help you with that. Let me know when you're ready to proceed."
+        elif any(word in response_lower for word in ['no', 'not now', 'later']):
+            return "No problem. I'll keep monitoring and let you know if anything else comes up."
+        elif any(word in response_lower for word in ['what', 'why', 'how', 'tell me']):
+            # Provide more details about the notification
+            change = recent_notification['change']
+            return f"I noticed {change.description}. This appeared to be {change.category.value} with {change.importance.value} importance."
+        else:
+            return "I understand. Let me know if you need anything else regarding this."
+    
+    def update_proactive_config(self, config: Dict[str, Any]):
+        """Update proactive monitoring configuration"""
+        self._proactive_config.update(config)
+        logger.info(f"Updated proactive config: {config}")
+    
+    def get_proactive_stats(self) -> Dict[str, Any]:
+        """Get proactive monitoring statistics"""
+        return {
+            'active': self._proactive_monitoring_active,
+            'duration': (datetime.now() - self._proactive_monitoring_state.get('start_time', datetime.now())).total_seconds() if self._proactive_monitoring_active else 0,
+            'notifications_sent': len(self._proactive_monitoring_state['notification_history']),
+            'recent_changes': len(self._proactive_monitoring_state['recent_changes']),
+            'configuration': self._proactive_config
+        }
+    
+    # Additional NotificationFilter integration methods
+    def _calculate_importance_score(self, change: ScreenChange, context: Optional[NotificationContext] = None) -> float:
+        """Calculate comprehensive importance score for a change"""
+        if not context:
+            context = self._build_notification_context()
+            
+        # Base score from change priority
+        base_scores = {
+            Priority.HIGH: 1.0,
+            Priority.MEDIUM: 0.6,
+            Priority.LOW: 0.3
+        }
+        base_score = base_scores.get(change.importance, 0.5)
+        
+        # Context relevance factor
+        context_relevance = self._calculate_context_relevance(change, context)
+        
+        # Temporal factor (more important if recent activity)
+        temporal_factor = self._calculate_temporal_factor(change, context)
+        
+        # User preference factor (learned from past interactions)
+        preference_factor = self._get_user_preference_factor(change.category)
+        
+        # Combined score
+        score = base_score * change.confidence * context_relevance * temporal_factor * preference_factor
+        
+        return min(1.0, score)
+    
+    def _calculate_context_relevance(self, change: ScreenChange, context: NotificationContext) -> float:
+        """Calculate how relevant a change is to current context"""
+        relevance = 1.0
+        
+        # Reduce relevance if user is highly focused
+        if context.focus_level > 0.8:
+            relevance *= 0.6
+            
+        # Increase relevance for errors during active work
+        if change.category == ChangeCategory.ERROR and context.user_activity != 'idle':
+            relevance *= 1.5
+            
+        # Adjust based on workflow phase
+        workflow_adjustments = {
+            'deep_work': 0.5,
+            'communication': 1.2,
+            'browsing': 0.8,
+            'normal': 1.0
+        }
+        relevance *= workflow_adjustments.get(context.workflow_phase, 1.0)
+        
+        return min(1.5, relevance)
+    
+    def _calculate_temporal_factor(self, change: ScreenChange, context: NotificationContext) -> float:
+        """Calculate temporal factor based on time patterns"""
+        hour = int(context.time_of_day.split(':')[0])
+        
+        # Reduce importance during typical focus hours
+        if 9 <= hour <= 11 or 14 <= hour <= 16:
+            return 0.8
+        elif 22 <= hour or hour <= 6:
+            return 0.5  # Late night/early morning
+        else:
+            return 1.0
+    
+    def _get_user_preference_factor(self, category: ChangeCategory) -> float:
+        """Get user preference factor for notification category"""
+        # In real implementation, this would learn from user behavior
+        default_preferences = {
+            ChangeCategory.UPDATE: 0.9,
+            ChangeCategory.ERROR: 1.0,
+            ChangeCategory.WARNING: 0.8,
+            ChangeCategory.NOTIFICATION: 0.7,
+            ChangeCategory.STATUS: 0.6,
+            ChangeCategory.DIALOG: 0.9,
+            ChangeCategory.COMPLETION: 0.5,
+            ChangeCategory.OTHER: 0.4
+        }
+        return default_preferences.get(category, 0.5)
+    
+    def _build_notification_context(self) -> NotificationContext:
+        """Build current notification context"""
+        now = datetime.now()
+        
+        # Get recent notifications
+        recent_notifications = [
+            notif['change'] for notif in self._proactive_monitoring_state['notification_history']
+            if now - notif['timestamp'] < timedelta(minutes=30)
+        ]
+        
+        # Estimate user activity (simplified)
+        user_activity = 'unknown'
+        if hasattr(self, '_context') and 'app_id' in self._context:
+            app_id = self._context['app_id']
+            if 'cursor' in app_id.lower() or 'code' in app_id.lower():
+                user_activity = 'coding'
+            elif 'chrome' in app_id.lower() or 'safari' in app_id.lower():
+                user_activity = 'browsing'
+                
+        return NotificationContext(
+            user_activity=user_activity,
+            focus_level=0.5,  # Could be enhanced with actual focus detection
+            recent_notifications=recent_notifications,
+            time_of_day=now.strftime("%H:%M"),
+            workflow_phase='normal',
+            interaction_history=[]
+        )
+    
+    # Additional ProactiveCommunicator integration methods
+    async def _send_progressive_disclosure(self, change: ScreenChange, initial_message: str):
+        """Send message with progressive disclosure support"""
+        # Send initial message
+        await self._send_proactive_message(initial_message, change.importance)
+        
+        # Store for potential follow-up
+        self._proactive_monitoring_state['last_progressive_disclosure'] = {
+            'change': change,
+            'initial_message': initial_message,
+            'timestamp': datetime.now(),
+            'details_requested': False
+        }
+    
+    def _generate_contextual_prefix(self, change: ScreenChange) -> str:
+        """Generate contextual prefix for notifications"""
+        context = self._build_notification_context()
+        
+        if context.user_activity == 'coding' and change.category != ChangeCategory.ERROR:
+            return "While you're coding, "
+        elif context.focus_level > 0.7:
+            return "Just a quick note - "
+        elif change.category == ChangeCategory.ERROR:
+            return "I need to alert you - "
+        elif change.importance == Priority.LOW:
+            return "FYI - "
+        else:
+            return ""
+    
+    def _adapt_message_tone(self, message: str, style: str) -> str:
+        """Adapt message tone based on communication style"""
+        if style == 'conversational':
+            # Add natural conversational elements
+            if not message.startswith(('I ', 'It ', 'There')):
+                message = f"I noticed {message}"
+            if not message.endswith(('.', '?', '!')):
+                message += "."
+        elif style == 'minimal':
+            # Remove conversational elements
+            import re
+            message = re.sub(r'^(I |It |There )', '', message)
+            message = re.sub(r' that ', ' ', message)
+            
+        return message
+    
+    async def handle_proactive_follow_up(self, user_query: str) -> str:
+        """Handle follow-up questions to proactive notifications"""
+        # Check if there's a recent progressive disclosure
+        if 'last_progressive_disclosure' in self._proactive_monitoring_state:
+            disclosure = self._proactive_monitoring_state['last_progressive_disclosure']
+            if (datetime.now() - disclosure['timestamp']).seconds < 300:  # Within 5 minutes
+                change = disclosure['change']
+                
+                # Provide more details based on query
+                if any(word in user_query.lower() for word in ['more', 'details', 'what', 'why']):
+                    return await self._generate_detailed_explanation(change)
+                elif any(word in user_query.lower() for word in ['ignore', 'dismiss', 'quiet']):
+                    self._adjust_user_preferences(change.category, -0.1)
+                    return "I'll be less eager to notify about this in the future."
+                    
+        return await self.handle_proactive_user_response(user_query)
+    
+    async def _generate_detailed_explanation(self, change: ScreenChange) -> str:
+        """Generate detailed explanation for a change"""
+        explanation = f"Here's more detail about what I noticed:\n\n"
+        explanation += f"Type: {change.category.value}\n"
+        explanation += f"Importance: {change.importance.value}\n"
+        explanation += f"Location: {change.location}\n"
+        explanation += f"Confidence: {change.confidence:.0%}\n\n"
+        explanation += f"Full description: {change.description}"
+        
+        return explanation
+    
+    def _adjust_user_preferences(self, category: ChangeCategory, adjustment: float):
+        """Adjust user preferences based on feedback"""
+        # In a real implementation, this would persist preferences
+        logger.info(f"Adjusting preference for {category.value} by {adjustment}")
     
     def __del__(self):
         """Cleanup on deletion"""

@@ -45,11 +45,17 @@ This backend loads 6 critical components that power the JARVIS AI system:
 All 6 components must load successfully for full JARVIS functionality.
 The system uses parallel imports to reduce startup time from ~20s to ~7-9s.
 
-Enhanced Vision Features (v12.9.2):
+Enhanced Vision Features (v13.0.0):
 - Integration Orchestrator with 1.2GB memory budget
 - 4 operating modes: Normal, Pressure, Critical, Emergency
 - Cross-language optimization: Python, Rust, Swift
 - Intelligent component coordination based on system resources
+- Proactive Vision Intelligence System with real-time monitoring
+- Debugging Assistant: Auto-detects code errors and syntax issues
+- Research Helper: Monitors multi-tab research workflows
+- Workflow Optimizer: Identifies repetitive patterns and suggests optimizations
+- Privacy Protection: Auto-pauses during sensitive content (passwords, banking)
+- Natural Voice Communication: Speaks suggestions and warnings naturally
 """
 
 import os
@@ -398,10 +404,16 @@ async def lifespan(app: FastAPI):
                 # Log proactive monitoring configuration
                 proactive_config = app.state.vision_analyzer.get_proactive_config()
                 if proactive_config['proactive_enabled']:
-                    logger.info("✅ Proactive monitoring enabled with:")
+                    logger.info("✅ Proactive Vision Intelligence System initialized with:")
                     logger.info(f"   - Confidence threshold: {proactive_config['confidence_threshold']}")
                     logger.info(f"   - Voice announcements: {'enabled' if proactive_config['voice_enabled'] else 'disabled'}")
+                    logger.info("   - Debugging Assistant: Auto-detects code errors")
+                    logger.info("   - Research Helper: Monitors multi-tab workflows")
+                    logger.info("   - Workflow Optimizer: Identifies repetitive patterns")
+                    logger.info("   - Privacy Protection: Auto-pauses for sensitive content")
                     logger.info("   - Say 'Start monitoring my screen' to activate intelligent assistance")
+                else:
+                    logger.info("⚠️ Proactive monitoring disabled in configuration")
             except Exception as e:
                 logger.warning(f"⚠️ Could not initialize proactive monitoring components: {e}")
             
@@ -492,7 +504,7 @@ except Exception as e:
 logger.info("Creating optimized FastAPI app...")
 app = FastAPI(
     title="JARVIS Backend (Optimized)",
-    version="12.9.2-integration",
+    version="13.0.0-proactive-vision",
     lifespan=lifespan
 )
 
@@ -755,7 +767,8 @@ async def root():
     """Root endpoint"""
     return {
         "message": "JARVIS Backend (Optimized) is running",
-        "version": "12.9.2-integration",
+        "version": "13.0.0-proactive-vision",
+        "proactive_vision_enabled": hasattr(app.state, 'vision_analyzer'),
         "components": {
             name: bool(comp) for name, comp in components.items() if comp is not None
         }

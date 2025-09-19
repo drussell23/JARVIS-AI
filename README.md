@@ -97,11 +97,18 @@
 
 ## 🚀 Quick Start - Proactive Monitoring
 
-1. **Start JARVIS normally**
-2. **Say**: "Start monitoring my screen"
-3. **JARVIS responds**: "I see you're working in VS Code. I'll watch and help as you work."
-4. **Work naturally** - JARVIS will offer help when it spots opportunities
-5. **Stop**: "Stop monitoring"
+1. **Start JARVIS backend** (see Backend Architecture section below)
+2. **Say**: "Hey JARVIS, start monitoring my screen"
+3. **JARVIS responds**: "I'll start monitoring and help as you work. I can assist with debugging, research, and workflow optimization."
+4. **Work naturally** - JARVIS will proactively offer help when it detects:
+   - 🐛 Code errors and syntax issues
+   - 🔍 Multi-tab research sessions
+   - 🚀 Repetitive workflow patterns
+   - 🔒 Sensitive content (auto-pauses)
+5. **Stop anytime**: "Hey JARVIS, stop monitoring"
+
+### Backend Setup Required
+The proactive vision system requires the JARVIS backend with all 6 components loaded (see Backend Architecture section).
 
 ## 🛠️ Self-Healing System - Automatic Recovery
 
@@ -494,10 +501,11 @@ Starting full backend...
 - **Memory:** ~500MB when active
 
 ### 2️⃣ **VISION** (Screen Capture & Analysis) 
-- **Purpose:** Real-time screen monitoring and visual understanding
+- **Purpose:** Real-time screen monitoring and proactive visual intelligence
 - **Features:** 30 FPS Swift-based capture, purple recording indicator, sliding window analysis
-- **Why Critical:** Enables "start monitoring my screen" and visual context awareness
-- **Memory:** ~800MB during video streaming
+- **Proactive Intelligence:** Debugging assistant, research helper, workflow optimizer, privacy protection
+- **Why Critical:** Enables "start monitoring my screen" and intelligent proactive assistance
+- **Memory:** ~800MB during video streaming + ~200MB for proactive intelligence
 
 ### 3️⃣ **MEMORY** (M1 Mac Optimized Manager)
 - **Purpose:** Prevents crashes and manages resources efficiently
@@ -541,6 +549,154 @@ grep "Components loaded" backend/logs/*.log
 # - ANTHROPIC_API_KEY missing: Chatbot won't load
 # - PyAutoGUI issues: Use PyObjC 10.1 on miniforge
 # - Memory pressure: Increase RAM or reduce component usage
+```
+
+## 🧠 Proactive Vision System Configuration (v13.0.0)
+
+**The Proactive Vision Intelligence System brings JARVIS to life with real-time assistance!**
+
+### ⚙️ Backend Configuration
+
+The backend automatically initializes the proactive vision system with these components:
+
+#### 📋 Key Configuration Properties
+```python
+proactive_config = {
+    'proactive_enabled': True,           # Enable/disable proactive monitoring
+    'confidence_threshold': 0.75,        # Minimum confidence for notifications (0.0-1.0)
+    'voice_enabled': True,               # Enable voice announcements
+    'continuous_enabled': True           # Enable continuous monitoring
+}
+```
+
+#### 🎯 Intelligent Features Automatically Enabled
+- **🐛 Debugging Assistant:** Auto-detects code errors and syntax issues
+- **🔍 Research Helper:** Monitors multi-tab research workflows  
+- **🚀 Workflow Optimizer:** Identifies repetitive patterns and suggests optimizations
+- **🔒 Privacy Protection:** Auto-pauses during sensitive content (passwords, banking)
+- **🗣️ Natural Voice Communication:** Speaks suggestions and warnings naturally
+
+### 🚀 Quick Start Commands
+
+#### Start Proactive Monitoring
+```bash
+# Say this voice command to JARVIS:
+"Hey JARVIS, start monitoring my screen"
+
+# Or use the API:
+curl -X POST http://localhost:8000/voice/jarvis/speak \
+  -H "Content-Type: application/json" \
+  -d '{"text": "start monitoring my screen"}'
+```
+
+#### Check Proactive System Status
+```bash
+# Check if proactive vision is enabled
+curl http://localhost:8000/health
+
+# View proactive configuration in logs
+grep "Proactive Vision Intelligence" backend/logs/*.log
+```
+
+### 🖥️ Backend Startup Commands
+
+#### Standard Startup (Recommended)
+```bash
+cd backend
+python main.py
+```
+
+#### Alternative Startup Methods
+```bash
+# Using the startup script
+python start_backend.py
+
+# Specific port
+python main.py --port 8010
+
+# With environment variables
+ANTHROPIC_API_KEY=your_key python main.py
+```
+
+#### Verify Proactive Vision is Running
+```bash
+# Check all components loaded
+curl http://localhost:8000/health
+
+# Verify proactive vision specifically
+curl http://localhost:8000/ | jq .proactive_vision_enabled
+```
+
+### 🎛️ Environment Variables (Optional)
+
+```bash
+# Proactive system configuration
+export PROACTIVE_CONFIDENCE_THRESHOLD=0.75    # Higher = fewer notifications
+export PROACTIVE_VOICE_ENABLED=true           # Enable voice announcements
+export PROACTIVE_ANALYSIS_INTERVAL=2.0        # Seconds between analyses
+export PROACTIVE_MAX_NOTIFICATIONS=5          # Max notifications per minute
+
+# Privacy settings
+export PROACTIVE_PRIVACY_ENABLED=true         # Auto-pause for sensitive content
+export PROACTIVE_BANKING_DETECTION=true       # Pause for financial sites
+```
+
+### 📊 System Requirements
+- **Memory Usage:** ~200MB additional for proactive intelligence
+- **CPU Impact:** ~1-2% during monitoring
+- **Dependencies:** Claude Vision Analyzer (automatically loaded)
+- **Permissions:** Screen recording permission required (automatically requested)
+
+### 🔧 Troubleshooting Proactive Vision
+
+```bash
+# Check if vision analyzer is loaded
+curl http://localhost:8000/ | grep proactive_vision_enabled
+
+# View proactive system logs
+tail -f backend/logs/jarvis_optimized_*.log | grep -i proactive
+
+# Test proactive monitoring manually
+python -c "
+import asyncio
+from chatbots.claude_vision_chatbot import ClaudeVisionChatbot
+async def test():
+    chatbot = ClaudeVisionChatbot(api_key='your-key')
+    config = chatbot.get_proactive_config()
+    print(f'Proactive enabled: {config[\"proactive_enabled\"]}')
+asyncio.run(test())
+"
+```
+
+### 💡 Example Use Cases
+
+#### 🐛 Debugging Assistant in Action
+```
+You're coding in VS Code...
+JARVIS detects: Syntax error on line 42 (missing closing bracket)
+JARVIS announces: "I notice you have a syntax error on line 42 - looks like you're missing a closing bracket"
+```
+
+#### 🔍 Research Helper Example
+```
+You have 8 tabs open researching "Python async patterns"...
+JARVIS detects: Rapid tab switching and research pattern
+JARVIS announces: "I see you're researching async patterns. Would you like me to summarize the key approaches from these articles?"
+```
+
+#### 🚀 Workflow Optimizer Example
+```
+You copy the same code block 4 times with small changes...
+JARVIS detects: Repetitive copy-paste pattern
+JARVIS announces: "I notice you're copying similar code. Would you like me to help you create a reusable function?"
+```
+
+#### 🔒 Privacy Protection Example
+```
+You open your banking website...
+JARVIS detects: Financial/sensitive content
+JARVIS action: Automatically pauses monitoring (no announcement for privacy)
+JARVIS resumes: When you navigate away from sensitive content
 ```
 
 ## 🎯 What's New in v12.8 - Voice Revolution 🎤
