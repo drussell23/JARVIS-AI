@@ -20,6 +20,10 @@ const buttonVisibilityStyle = `
   }
 `;
 
+// Get API URL from environment or use default - moved here for global access
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const WS_URL = API_URL.replace('http://', 'ws://').replace('https://', 'wss://');
+
 // VisionConnection class for real-time workspace monitoring
 class VisionConnection {
   constructor(onUpdate, onAction) {
@@ -45,7 +49,7 @@ class VisionConnection {
       console.log('🔌 Connecting to Vision WebSocket...');
 
       // Use main backend port for vision WebSocket
-      const wsUrl = `ws://localhost:8010/vision/ws`;
+      const wsUrl = `${WS_URL}/vision/ws`;  // Use consistent WebSocket URL
       this.socket = new WebSocket(wsUrl);
 
       this.socket.onopen = () => {
@@ -319,9 +323,9 @@ const JarvisVoice = () => {
   const visionConnectionRef = useRef(null);
   const lastSpeechTimeRef = useRef(0);
 
-  // Get API URL from environment or use default
-  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-  const WS_URL = API_URL.replace('http://', 'ws://').replace('https://', 'wss://');
+  // API URLs are defined globally at the top of the file
+  // Ensure consistent WebSocket URL (fix port mismatch)
+  const JARVIS_WS_URL = WS_URL;  // Use same base URL as API
 
   useEffect(() => {
     // Check JARVIS status on mount

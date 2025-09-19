@@ -890,20 +890,41 @@ class JARVISVoiceAPI:
                             })
                             continue
                     
-                    # Check for vision commands first
-                    # Immediate check for common vision phrases
+                    # Use unified command processor
+                    try:
+                        from .unified_command_processor import get_unified_processor
+                        processor = get_unified_processor(self.api_key)
+                        
+                        await websocket.send_json({
+                            "type": "debug_log",
+                            "message": f"Processing command through unified processor: '{command_text}'",
+                            "timestamp": datetime.now().isoformat()
+                        })
+                        
+                        # Process through unified system
+                        result = await processor.process_command(command_text, websocket)
+                        
+                        # Send unified response
+                        await websocket.send_json({
+                            "type": "response",
+                            "text": result.get('response', 'I processed your command.'),
+                            "command_type": result.get('command_type', 'unknown'),
+                            "success": result.get('success', True),
+                            "timestamp": datetime.now().isoformat(),
+                            "speak": True,
+                            **{k: v for k, v in result.items() if k not in ['response', 'command_type', 'success']}
+                        })
+                        continue
+                        
+                    except Exception as e:
+                        logger.error(f"Unified processor error: {e}", exc_info=True)
+                        # Fall back to original logic if unified processor fails
+                        
+                    # LEGACY ROUTING (kept as fallback)
                     vision_keywords = ['see', 'screen', 'monitor', 'vision', 'looking', 'watching', 'view']
                     is_vision_command = any(word in command_text.lower() for word in vision_keywords)
                     
-                    logger.info(f"[JARVIS WS] Command: '{command_text}', Is vision: {is_vision_command}")
-                    
-                    await websocket.send_json({
-                        "type": "debug_log",
-                        "message": f"Command received: '{command_text}' | Is vision command: {is_vision_command}",
-                        "timestamp": datetime.now().isoformat()
-                    })
-                    
-                    if is_vision_command:
+                    if is_vision_command and False:  # Disabled - using unified processor
                         try:
                             # Send debug log to frontend
                             await websocket.send_json({
