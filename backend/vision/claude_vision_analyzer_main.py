@@ -3738,6 +3738,49 @@ class ClaudeVisionAnalyzer:
                 'area': area
             }
     
+    async def analyze_image_with_prompt(self, image: Any, prompt: str, **kwargs) -> Dict[str, Any]:
+        """
+        Pure intelligence interface for JARVIS - analyze image with custom prompt.
+        Returns only the response content for natural language generation.
+        
+        Args:
+            image: Screenshot to analyze
+            prompt: Natural language prompt for Claude
+            **kwargs: Additional options
+            
+        Returns:
+            Dict with 'content' key containing Claude's natural response
+        """
+        try:
+            # Call the main analyze_screenshot method
+            result, metrics = await self.analyze_screenshot(image, prompt, **kwargs)
+            
+            # Extract the natural language description
+            response = result.get('description', '')
+            
+            # If we have a more detailed response in entities or other fields, 
+            # combine them for a richer response
+            if not response and result.get('entities'):
+                # Build response from entities
+                entities = result.get('entities', [])
+                if entities:
+                    response = f"I can see {', '.join(str(e) for e in entities)}."
+                    
+            # Return in the format expected by pure intelligence
+            return {
+                'content': response,
+                'raw_result': result,  # Include full result for debugging
+                'success': True
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in analyze_image_with_prompt: {e}")
+            return {
+                'content': f"I encountered an issue analyzing the screen: {str(e)}",
+                'success': False,
+                'error': str(e)
+            }
+    
     async def analyze_workspace_comprehensive(self, screenshot: Optional[np.ndarray] = None) -> Dict[str, Any]:
         """Comprehensive workspace analysis using all enhanced components"""
         results = {

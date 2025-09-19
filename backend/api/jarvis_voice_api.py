@@ -890,10 +890,10 @@ class JARVISVoiceAPI:
                             })
                             continue
                     
-                    # Use unified command processor
+                    # Use pure unified command processor
                     try:
-                        from .unified_command_processor import get_unified_processor
-                        processor = get_unified_processor(self.api_key)
+                        from .unified_command_processor_pure import get_pure_unified_processor
+                        processor = get_pure_unified_processor(self.api_key)
                         
                         await websocket.send_json({
                             "type": "debug_log",
@@ -944,7 +944,7 @@ class JARVISVoiceAPI:
                                 from .vision_command_handler import vision_command_handler, ws_logger
                                 await websocket.send_json({
                                     "type": "debug_log",
-                                    "message": "Successfully imported vision_command_handler",
+                                    "message": "Successfully imported pure vision_command_handler",
                                     "timestamp": datetime.now().isoformat()
                                 })
                             except ImportError as ie:
@@ -1049,7 +1049,15 @@ class JARVISVoiceAPI:
                     )
                     
                     # Process command and get context
-                    response = "I'm currently operating with limited functionality. How may I assist you?"
+                    # Even in limited mode, vary the responses
+                    import random
+                    limited_responses = [
+                        "I'm operating with reduced capabilities at the moment. How can I help you?",
+                        "My full intelligence systems are initializing. What can I do for you?",
+                        "I'm in limited mode right now. How may I assist?",
+                        "Some of my systems are still coming online. What do you need?"
+                    ]
+                    response = random.choice(limited_responses)
                     context = {}
                     
                     if self.jarvis and hasattr(self.jarvis, 'personality'):
@@ -1095,7 +1103,7 @@ class JARVISVoiceAPI:
                                 if weather_system and vision_available:
                                     # Full mode with vision
                                     logger.info("[JARVIS WS] FULL MODE: Using weather system with vision analysis")
-                                    response = "I'm checking the weather for you using vision analysis. One moment..."
+                                    response = "Let me analyze the weather information for you..."
                                     
                                     # Send immediate response
                                     await websocket.send_json({
@@ -1160,7 +1168,14 @@ class JARVISVoiceAPI:
                         elif "time" in data['text'].lower():
                             response = f"The current time is {datetime.now().strftime('%I:%M %p')}."
                         else:
-                            response = f"I heard: '{data['text']}'. I'm operating with limited functionality."
+                            # Natural varied fallback for unknown commands
+                            fallback_responses = [
+                                f"I understand you said '{data['text']}', but I'm still initializing my full capabilities.",
+                                f"I heard '{data['text']}'. Let me get my systems fully online to help you better.",
+                                f"Got it - '{data['text']}'. My intelligence systems are warming up.",
+                                f"I registered '{data['text']}'. Give me a moment to bring all systems online."
+                            ]
+                            response = random.choice(fallback_responses)
                     logger.info(f"[JARVIS WS] Response: {response[:100]}...")
                     
                     # Send response immediately

@@ -399,7 +399,12 @@ async def lifespan(app: FastAPI):
                 voice = components.get('voice', {})
                 if voice.get('jarvis_api'):
                     vision_command_handler.jarvis_api = voice['jarvis_api']
-                    logger.info("✅ JARVIS voice API connected to vision command handler")
+                    logger.info("✅ JARVIS voice API connected to pure vision command handler")
+                    
+                # Initialize pure intelligence with API key
+                if api_key:
+                    await vision_command_handler.initialize_intelligence(api_key)
+                    logger.info("✅ Pure vision intelligence initialized")
                     
                 # Log proactive monitoring configuration
                 proactive_config = app.state.vision_analyzer.get_proactive_config()
