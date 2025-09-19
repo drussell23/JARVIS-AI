@@ -218,6 +218,52 @@ class ClaudeVisionChatbot:
         try:
             total_start = datetime.now()
             
+            # Use vision analyzer if available for multi-space support
+            if self.vision_analyzer and hasattr(self.vision_analyzer, 'smart_analyze'):
+                try:
+                    # Capture screenshot
+                    capture_start = datetime.now()
+                    screenshot = await self.capture_screenshot()
+                    capture_time = (datetime.now() - capture_start).total_seconds()
+                    logger.info(f"Screenshot capture took {capture_time:.2f}s")
+                    
+                    if not screenshot:
+                        return "I apologize, sir, but I'm unable to capture your screen at the moment. Please ensure screen recording permissions are enabled in System Preferences > Security & Privacy > Privacy > Screen Recording."
+                    
+                    # Convert PIL Image to numpy array for vision analyzer
+                    import numpy as np
+                    screenshot_np = np.array(screenshot)
+                    
+                    # Use smart_analyze for multi-space aware analysis
+                    analysis_start = datetime.now()
+                    result = await self.vision_analyzer.smart_analyze(
+                        screenshot_np,
+                        user_input
+                    )
+                    analysis_time = (datetime.now() - analysis_start).total_seconds()
+                    logger.info(f"Vision analyzer smart_analyze took {analysis_time:.2f}s")
+                    
+                    # Extract the response
+                    if isinstance(result, dict) and 'content' in result:
+                        ai_response = result['content']
+                    elif isinstance(result, str):
+                        ai_response = result
+                    else:
+                        ai_response = str(result)
+                    
+                    # Update conversation history
+                    self._update_history(user_input, ai_response)
+                    
+                    total_time = (datetime.now() - total_start).total_seconds()
+                    logger.info(f"Total vision processing took {total_time:.2f}s")
+                    
+                    return ai_response
+                    
+                except Exception as analyzer_error:
+                    logger.error(f"Vision analyzer error: {analyzer_error}, falling back to direct API")
+                    # Fall through to original implementation
+            
+            # Original implementation (fallback)
             # Capture screenshot
             capture_start = datetime.now()
             screenshot = await self.capture_screenshot()

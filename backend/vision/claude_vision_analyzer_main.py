@@ -98,6 +98,7 @@ class VisionConfig:
     enable_continuous_monitoring: bool = field(default_factory=lambda: os.getenv('VISION_CONTINUOUS_ENABLED', 'true').lower() == 'true')
     enable_video_streaming: bool = field(default_factory=lambda: True)  # Always enable video streaming
     prefer_video_over_screenshots: bool = field(default_factory=lambda: os.getenv('VISION_PREFER_VIDEO', 'true').lower() == 'true')
+    enable_multi_space: bool = field(default_factory=lambda: os.getenv('VISION_MULTI_SPACE', 'true').lower() == 'true')
     
     # Vision Intelligence enhancement
     vision_intelligence_enabled: bool = field(default_factory=lambda: os.getenv('VISION_INTELLIGENCE_ENABLED', 'false').lower() == 'true')
@@ -993,6 +994,27 @@ class ClaudeVisionAnalyzer:
         
         # Flag to track if analyzer is busy (for screen sharing priority)
         self.is_analyzing = False
+        
+        # Initialize multi-space detector if enabled
+        self.multi_space_detector = None
+        self.multi_space_extension = None
+        self.screenshot_cache = None
+        self.space_switcher = None
+        if self.config.enable_multi_space:
+            try:
+                from .multi_space_window_detector import MultiSpaceWindowDetector
+                from .multi_space_intelligence import MultiSpaceIntelligenceExtension
+                from .space_screenshot_cache import SpaceScreenshotCache
+                from .minimal_space_switcher import MinimalSpaceSwitcher
+                
+                self.multi_space_detector = MultiSpaceWindowDetector()
+                self.multi_space_extension = MultiSpaceIntelligenceExtension()
+                self.screenshot_cache = SpaceScreenshotCache()
+                self.space_switcher = MinimalSpaceSwitcher()
+                logger.info("Multi-space desktop awareness components initialized")
+            except ImportError as e:
+                logger.warning(f"Multi-space components not available: {e}")
+                self.config.enable_multi_space = False
         
         logger.info("Enhanced components configured for lazy initialization")
     
@@ -4380,16 +4402,53 @@ Focus on what's visible in this specific region. Be concise but thorough."""
     async def smart_analyze(self, screenshot: np.ndarray, query: str, 
                           force_method: Optional[str] = None) -> Dict[str, Any]:
         """
-        Smart analysis that automatically chooses between full or sliding window
+        Smart analysis that automatically chooses between full, sliding window, or multi-space analysis
         
         Args:
             screenshot: Screenshot to analyze
             query: Analysis query
-            force_method: Force specific method ('full' or 'sliding_window')
+            force_method: Force specific method ('full', 'sliding_window', or 'multi_space')
             
         Returns:
             Analysis results with metadata about method used
         """
+        # Check if query needs multi-space awareness
+        if (self.config.enable_multi_space and 
+            self.multi_space_extension and 
+            self.multi_space_extension.should_use_multi_space(query) and
+            force_method != 'sliding_window'):
+            
+            logger.info("Smart analyze: Using multi-space aware analysis")
+            
+            # Gather multi-space data
+            window_data = {}
+            if self.multi_space_detector:
+                window_data = self.multi_space_detector.get_all_windows_across_spaces()
+            
+            # Process with multi-space intelligence
+            query_analysis = self.multi_space_extension.process_multi_space_query(query, window_data)
+            
+            # Build enhanced prompt with multi-space context
+            enhanced_prompt = self._build_multi_space_prompt(query, query_analysis, window_data, screenshot)
+            
+            # Analyze with multi-space context
+            result, metrics = await self.analyze_screenshot(screenshot, enhanced_prompt)
+            
+            # Add multi-space metadata
+            result['metadata'] = {
+                'analysis_method': 'multi_space',
+                'multi_space_context': {
+                    'total_spaces': len(window_data.get('spaces', [])),
+                    'total_windows': len(window_data.get('windows', [])),
+                    'current_space': window_data.get('current_space', {}).get('id', 1),
+                    'query_intent': query_analysis['intent'].query_type.value if query_analysis.get('intent') else None
+                },
+                'metrics': metrics.__dict__
+            }
+            
+            return result
+        
+        # Original smart_analyze logic for non-multi-space queries
         height, width = screenshot.shape[:2]
         total_pixels = height * width
         available_mb = psutil.virtual_memory().available / 1024 / 1024
@@ -4427,6 +4486,63 @@ Focus on what's visible in this specific region. Be concise but thorough."""
             }
         
         return result
+    
+    def _build_multi_space_prompt(self, query: str, query_analysis: Dict[str, Any], 
+                                  window_data: Dict[str, Any], screenshot: np.ndarray) -> str:
+        """Build enhanced prompt with multi-space context"""
+        intent = query_analysis.get('intent')
+        
+        # Build window summary
+        window_summary = []
+        for space in window_data.get('spaces', []):
+            space_id = space.space_id if hasattr(space, 'space_id') else space.get('space_id', 1)
+            window_count = space.window_count if hasattr(space, 'window_count') else space.get('window_count', 0)
+            is_current = space.is_current if hasattr(space, 'is_current') else space.get('is_current', False)
+            
+            space_windows = [
+                w for w in window_data.get('windows', [])
+                if hasattr(w, 'space_id') and w.space_id == space_id
+            ]
+            app_names = list(set(w.app_name for w in space_windows if hasattr(w, 'app_name')))[:3]
+            
+            status = "(current)" if is_current else ""
+            apps = f" - {', '.join(app_names)}" if app_names else ""
+            window_summary.append(f"Desktop {space_id} {status}: {window_count} windows{apps}")
+        
+        # Build the enhanced prompt
+        prompt = f"""You are JARVIS, analyzing a multi-space desktop environment.
+
+USER QUERY: "{query}"
+
+MULTI-SPACE CONTEXT:
+You have visibility across {len(window_data.get('spaces', []))} desktop spaces.
+{chr(10).join(window_summary)}
+
+Total windows across all spaces: {len(window_data.get('windows', []))}
+Currently viewing: Desktop {window_data.get('current_space', {}).get('id', 1)}
+
+IMPORTANT: When answering queries about application locations:
+1. Check ALL desktop spaces, not just the current one
+2. Specify which desktop/space contains what
+3. Use natural language: "Desktop 2", "your second space", etc.
+4. If an app is not visible on the current desktop, check other spaces
+5. Be specific about where things are located
+
+For this query, provide a helpful response that leverages the multi-space information."""
+
+        # Add specific app context if query is about an app
+        if intent and hasattr(intent, 'target_app') and intent.target_app:
+            app_windows = [
+                w for w in window_data.get('windows', [])
+                if hasattr(w, 'app_name') and intent.target_app.lower() in w.app_name.lower()
+            ]
+            if app_windows:
+                app_window = app_windows[0]
+                prompt += f"\n\nNOTE: {intent.target_app} is on Desktop {app_window.space_id}"
+                if hasattr(app_window, 'window_title'):
+                    prompt += f' with window title: "{app_window.window_title}"'
+        
+        return prompt
     
     async def analyze_screenshot_async(self, screenshot: np.ndarray, query: str,
                                      quick_mode: bool = False,
@@ -4698,6 +4814,36 @@ Focus on what's visible in this specific region. Be concise but thorough."""
             return True
             
         return False
+    
+    async def _cache_current_space_screenshot(self, screenshot: Image.Image):
+        """Cache screenshot for current space"""
+        if not self.multi_space_detector:
+            return
+            
+        try:
+            # Get current space info
+            workspace_data = self.multi_space_detector.get_all_windows_across_spaces()
+            current_space_id = workspace_data['current_space']['id']
+            
+            # Get windows on current space
+            current_windows = [
+                w for w in workspace_data['windows']
+                if hasattr(w, 'space_id') and w.space_id == current_space_id
+            ]
+            
+            # Cache the screenshot
+            self.screenshot_cache.add_screenshot(
+                space_id=current_space_id,
+                screenshot=screenshot,
+                window_count=len(current_windows),
+                active_apps=list(set(w.app_name for w in current_windows)),
+                triggered_by='capture_screen'
+            )
+            
+            logger.debug(f"Cached screenshot for space {current_space_id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to cache screenshot: {e}")
     
     async def describe_screen(self, params: Dict[str, Any]) -> Any:
         """Describe screen for continuous analyzer compatibility"""
