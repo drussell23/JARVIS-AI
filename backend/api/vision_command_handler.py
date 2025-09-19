@@ -106,6 +106,10 @@ class VisionCommandHandler:
                             
                             # Extract the response text
                             if isinstance(result, dict):
+                                # First check for 'content' key (from analyze_image_with_prompt)
+                                if 'content' in result:
+                                    return {'content': result['content']}
+                                # Then check for description or response
                                 return {'content': result.get('description', result.get('response', str(result)))}
                             else:
                                 return {'content': str(result)}

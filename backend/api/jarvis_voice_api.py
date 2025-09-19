@@ -16,6 +16,8 @@ from datetime import datetime
 import sys
 import traceback
 from functools import wraps
+# Import response cleaner
+from .clean_vision_response import clean_vision_response
 # Ensure the backend directory is in the path
 backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if backend_dir not in sys.path:
@@ -191,6 +193,7 @@ class JARVISVoiceAPI:
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
         # For now, enable basic JARVIS functionality even without full imports
         self.jarvis_available = bool(self.api_key)
+        logger.info(f"[JARVIS API] API key loaded: {bool(self.api_key)}, jarvis_available: {self.jarvis_available}")
         
         # We'll initialize on first use
         if not self.jarvis_available:
@@ -804,9 +807,12 @@ class JARVISVoiceAPI:
     @dynamic_error_handler
     async def jarvis_stream(self, websocket: WebSocket):
         """WebSocket endpoint for real-time JARVIS interaction"""
+        logger.info("[WEBSOCKET] Accepting WebSocket connection...")
         await websocket.accept()
+        logger.info("[WEBSOCKET] WebSocket connection accepted")
         
         if not self.jarvis_available:
+            logger.warning("[WEBSOCKET] JARVIS not available - API key required")
             await websocket.send_json({
                 "type": "error",
                 "message": "JARVIS not available - API key required"
@@ -984,9 +990,12 @@ class JARVISVoiceAPI:
                                     "timestamp": datetime.now().isoformat()
                                 })
                                 
+                                # Clean the vision response before sending
+                                cleaned_text = clean_vision_response(vision_result['response'])
+                                
                                 await websocket.send_json({
                                     "type": "response",
-                                    "text": vision_result['response'],
+                                    "text": cleaned_text,
                                     "command_type": "vision",
                                     "monitoring_active": vision_result.get('monitoring_active'),
                                     "timestamp": datetime.now().isoformat(),
@@ -1179,9 +1188,12 @@ class JARVISVoiceAPI:
                     logger.info(f"[JARVIS WS] Response: {response[:100]}...")
                     
                     # Send response immediately
+                    # Clean the response before sending
+                    cleaned_response = clean_vision_response(response)
+                    
                     await websocket.send_json({
                         "type": "response",
-                        "text": response,
+                        "text": cleaned_response,
                         "command": command_text,
                         "context": context,
                         "timestamp": datetime.now().isoformat(),
