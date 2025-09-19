@@ -568,6 +568,14 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
                     logger.info(f"Identified as action command of type: {action_type}")
                     break
 
+        # NEW: Check if this is a vision query about screen content
+        # These should NEVER go to command interpreter
+        from api.vision_query_bypass import VisionQueryBypass
+        if VisionQueryBypass.should_bypass_interpretation(text):
+            logger.info(f"Vision query detected, bypassing command interpretation: {text}")
+            # Route directly to vision handler
+            return await self._handle_vision_command(text)
+        
         # If it's an action command, skip vision and execute directly
         if is_action_command:
             logger.info(f"Processing action command directly: {text}")
