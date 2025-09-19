@@ -263,8 +263,14 @@ class MultiSpaceResponseBuilder:
                                confidence: str = "certain") -> str:
         """Build response for app location query"""
         
-        space_id = window_info.get('space_id', 1)
-        is_current = window_info.get('is_current_space', False)
+        # Handle both object and dict formats
+        if hasattr(window_info, 'space_id'):
+            space_id = window_info.space_id
+            is_current = getattr(window_info, 'is_current_space', False)
+        else:
+            # It's a dict
+            space_id = window_info.get('space_id', 1)
+            is_current = window_info.get('is_current_space', False)
         
         # Build base response
         if is_current:
@@ -275,16 +281,28 @@ class MultiSpaceResponseBuilder:
         response_parts = [f"{app_name} is {location}"]
         
         # Add context if available
-        if window_info.get('window_title'):
-            response_parts.append(f'with "{window_info["window_title"]}"')
+        # Handle window attributes
+        if hasattr(window_info, 'window_title'):
+            window_title = window_info.window_title
+            is_fullscreen = getattr(window_info, 'is_fullscreen', False)
+            is_minimized = getattr(window_info, 'is_minimized', False)
+            companion_apps = getattr(window_info, 'companion_apps', [])
+        else:
+            # It's a dict
+            window_title = window_info.get('window_title', '')
+            is_fullscreen = window_info.get('is_fullscreen', False)
+            is_minimized = window_info.get('is_minimized', False)
+            companion_apps = window_info.get('companion_apps', [])
+        
+        if window_title:
+            response_parts.append(f'with "{window_title}"')
             
-        if window_info.get('is_fullscreen'):
+        if is_fullscreen:
             response_parts.append("in fullscreen mode")
-        elif window_info.get('is_minimized'):
+        elif is_minimized:
             response_parts.append("(minimized)")
             
         # Add companion apps if known
-        companion_apps = window_info.get('companion_apps', [])
         if companion_apps:
             response_parts.append(
                 f"alongside {self._format_app_list(companion_apps)}"
@@ -487,7 +505,9 @@ class MultiSpaceIntelligenceExtension:
             windows = window_data.get('windows', [])
             target_windows = [
                 w for w in windows 
-                if intent.target_app and intent.target_app.lower() in w.get('app_name', '').lower()
+                if intent.target_app and intent.target_app.lower() in (
+                    w.app_name.lower() if hasattr(w, 'app_name') else w.get('app_name', '').lower()
+                )
             ]
             
             if target_windows:
@@ -535,11 +555,15 @@ class MultiSpaceIntelligenceExtension:
         
         apps = {}
         for window_id in space_windows:
-            window = next((w for w in windows if w.get('window_id') == window_id), None)
+            window = next((w for w in windows if (
+                (hasattr(w, 'window_id') and w.window_id == window_id) or
+                (isinstance(w, dict) and w.get('window_id') == window_id)
+            )), None)
             if window:
-                app_name = window.get('app_name', 'Unknown')
+                app_name = window.app_name if hasattr(window, 'app_name') else window.get('app_name', 'Unknown')
                 if app_name not in apps:
                     apps[app_name] = []
-                apps[app_name].append(window.get('window_title', ''))
+                window_title = window.window_title if hasattr(window, 'window_title') else window.get('window_title', '')
+                apps[app_name].append(window_title)
                 
         return apps

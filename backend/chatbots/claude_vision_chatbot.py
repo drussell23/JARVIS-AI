@@ -1341,6 +1341,87 @@ class ClaudeVisionChatbot:
         except Exception as e:
             logger.error(f"[MONITOR] Error analyzing current screen: {e}", exc_info=True)
             return "I'm having trouble analyzing the screen right now. Let me try taking a fresh screenshot."
+    
+    async def analyze_multiple_images_with_prompt(self, images: list, prompt: str, max_tokens: int = 1000) -> dict:
+        """
+        Analyze multiple images (e.g., from different desktop spaces) with a single prompt
+        Used by multi-space vision system
+        """
+        if not self.is_available():
+            return {
+                'text': "Multi-space vision analysis unavailable without API key",
+                'detailed_description': "API key required"
+            }
+        
+        try:
+            # Build messages with multiple images
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt}
+                    ]
+                }
+            ]
+            
+            # Add each image to the content
+            for img_data in images:
+                if isinstance(img_data, dict) and 'image' in img_data:
+                    # Convert numpy array or PIL image to base64
+                    if hasattr(img_data['image'], 'shape'):  # numpy array
+                        from PIL import Image
+                        import numpy as np
+                        pil_image = Image.fromarray(np.uint8(img_data['image']))
+                    else:
+                        pil_image = img_data['image']
+                    
+                    # Convert to base64
+                    import io
+                    import base64
+                    buffered = io.BytesIO()
+                    pil_image.save(buffered, format="PNG")
+                    image_base64 = base64.b64encode(buffered.getvalue()).decode()
+                    
+                    # Add image with label
+                    label = img_data.get('label', 'Image')
+                    messages[0]["content"].append({
+                        "type": "text",
+                        "text": f"\n{label}:"
+                    })
+                    messages[0]["content"].append({
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/png",
+                            "data": image_base64
+                        }
+                    })
+            
+            # Create the API request
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                temperature=self.temperature,
+                system=self.system_prompt,
+                messages=messages
+            )
+            
+            # Extract response text
+            response_text = ""
+            if hasattr(response, 'content') and len(response.content) > 0:
+                response_text = response.content[0].text
+            
+            return {
+                'text': response_text,
+                'detailed_description': response_text
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing multiple images: {e}")
+            return {
+                'text': f"Error analyzing multiple desktop spaces: {str(e)}",
+                'detailed_description': str(e)
+            }
         
     async def generate_response(self, user_input: str) -> str:
         """

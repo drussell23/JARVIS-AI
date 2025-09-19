@@ -208,6 +208,14 @@ Respond with just "START" or "STOP".
             self.monitoring_active = True
             self.proactive.monitoring_active = True
             
+            # Start multi-space monitoring with purple indicator
+            if hasattr(self.intelligence, 'start_multi_space_monitoring'):
+                monitoring_started = await self.intelligence.start_multi_space_monitoring()
+                if monitoring_started:
+                    logger.info("Multi-space monitoring started with purple indicator")
+                else:
+                    logger.warning("Failed to start multi-space monitoring")
+            
             # Get natural response for starting monitoring
             start_prompt = f"""The user asked: "{command}"
 
@@ -223,6 +231,11 @@ Keep it natural and conversational - no generic phrases.
         else:  # STOP
             self.monitoring_active = False
             self.proactive.monitoring_active = False
+            
+            # Stop multi-space monitoring and remove purple indicator
+            if hasattr(self.intelligence, 'stop_multi_space_monitoring'):
+                await self.intelligence.stop_multi_space_monitoring()
+                logger.info("Multi-space monitoring stopped, purple indicator removed")
             
             # Get natural response for stopping monitoring
             stop_prompt = f"""The user asked: "{command}"
