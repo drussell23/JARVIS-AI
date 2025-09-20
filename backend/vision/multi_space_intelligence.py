@@ -6,10 +6,12 @@ Adds space-aware query detection and response generation
 
 import re
 import logging
-from typing import Dict, List, Optional, Any, Tuple
-from dataclasses import dataclass
+from typing import Dict, List, Optional, Any, Tuple, Set
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
+from collections import defaultdict
+import difflib
 
 logger = logging.getLogger(__name__)
 
@@ -31,176 +33,500 @@ class SpaceQueryIntent:
     requires_screenshot: bool = False
     confidence: float = 1.0
     metadata_sufficient: bool = True
+    context_hints: List[str] = field(default_factory=list)
+    space_references: List[str] = field(default_factory=list)
+    detected_patterns: List[str] = field(default_factory=list)
 
 class MultiSpaceQueryDetector:
-    """Detects and classifies multi-space query intents"""
+    """Detects and classifies multi-space query intents with dynamic pattern matching"""
     
     def __init__(self):
-        # Query patterns
-        self.patterns = {
-            'simple_presence': [
-                r'\b(is|are)\s+(\w+)\s+(open|running|active)\b',
-                r'\bdo i have\s+(\w+)\s+open\b',
-                r'\b(\w+)\s+running\?',
-            ],
-            'location_query': [
-                r'\bwhere\s+is\s+(\w+)',
-                r'\bwhich\s+(desktop|space|screen)\s+.*\s+(\w+)',
-                r'\bfind\s+(\w+)',
-                r'\blocation\s+of\s+(\w+)',
-                r'\bcan\s+you\s+see\s+(?:the\s+)?(\w+).*\s+in\s+(?:the\s+)?other\s+(?:desktop\s+)?space',
-                r'\b(\w+)\s+(?:in|on)\s+(?:the\s+)?other\s+(?:desktop|space|screen|workspace)',
-                r'\b(\w+)\s+(?:in|on)\s+another\s+(?:desktop|space|screen|workspace)',
-            ],
-            'space_content': [
-                r'\bwhat\'?s?\s+on\s+(desktop|space|screen)\s+(\d+)',
-                r'\b(desktop|space|screen)\s+(\d+)\s+content',
-                r'\bshow\s+me\s+(desktop|space|screen)\s+(\d+)',
-                r'\bwhat\'?s?\s+(?:in|on)\s+(?:the\s+)?other\s+(?:desktop|space|screen|workspace)',
-                r'\bshow\s+me\s+(?:the\s+)?other\s+(?:desktop|space|screen|workspace)',
-            ],
-            'all_spaces': [
-                r'\ball\s+(my\s+)?(desktops?|spaces|screens|workspaces?)',
-                r'\beverything\s+(open|running)',
-                r'\bworkspace\s+overview',
-                r'\bwhat\'?s?\s+on\s+all',
-            ],
-            'specific_detail': [
-                r'\bread\s+(the\s+)?(\w+)\s+in\s+(\w+)',
-                r'\berror\s+(message|in|on)\s+(\w+)',
-                r'\bwhat\s+does\s+(\w+)\s+say',
-                r'\bcontent\s+of\s+(\w+)',
-            ],
-            'workspace_overview': [
-                r'\bwhat\s+am\s+i\s+working\s+on',
-                r'\bmy\s+current\s+(work|tasks?|projects?)',
-                r'\bworkspace\s+status',
-                r'\bactive\s+projects?',
-            ]
+        # Dynamic pattern components
+        self._space_terms = {'desktop', 'space', 'screen', 'workspace', 'monitor', 'display', 'area', 'environment'}
+        self._location_verbs = {'where', 'which', 'find', 'locate', 'search', 'look', 'check'}
+        self._presence_verbs = {'is', 'are', 'have', 'has', 'got', 'running', 'open', 'active', 'visible', 'showing'}
+        self._other_terms = {'other', 'another', 'different', 'alternate', 'secondary', 'next', 'previous', 'adjacent'}
+        self._all_terms = {'all', 'every', 'each', 'entire', 'whole', 'complete', 'full'}
+        
+        # Build dynamic patterns
+        self._build_dynamic_patterns()
+        
+        # Application detection patterns
+        self._app_indicators = {
+            'suffix': ['app', 'application', 'program', 'software', 'tool', 'ide', 'editor', 'browser', 'client'],
+            'context': ['window', 'instance', 'session', 'process']
         }
         
-        # Application name normalization
-        self.app_aliases = {
-            'code': 'Visual Studio Code',
-            'vscode': 'Visual Studio Code',
-            'vs code': 'Visual Studio Code',
-            'chrome': 'Google Chrome',
-            'firefox': 'Firefox',
-            'safari': 'Safari',
-            'slack': 'Slack',
-            'terminal': 'Terminal',
-            'iterm': 'iTerm2',
-            'iterm2': 'iTerm2',
-            'messages': 'Messages',
-            'mail': 'Mail',
-            'spotify': 'Spotify',
-            'cursor': 'Cursor',
-            'cursor ide': 'Cursor',
-            'xcode': 'Xcode',
-            'finder': 'Finder',
+        # Initialize app name cache
+        self._app_name_cache = {}
+        self._common_app_words = self._build_common_app_words()
+        
+    def _build_dynamic_patterns(self):
+        """Build patterns dynamically from components"""
+        space_alt = '|'.join(self._space_terms)
+        loc_alt = '|'.join(self._location_verbs)
+        pres_alt = '|'.join(self._presence_verbs)
+        other_alt = '|'.join(self._other_terms)
+        all_alt = '|'.join(self._all_terms)
+        
+        self.patterns = {
+            'simple_presence': self._generate_presence_patterns(pres_alt),
+            'location_query': self._generate_location_patterns(loc_alt, space_alt, other_alt),
+            'space_content': self._generate_space_content_patterns(space_alt, other_alt),
+            'all_spaces': self._generate_all_spaces_patterns(all_alt, space_alt),
+            'specific_detail': self._generate_detail_patterns(),
+            'workspace_overview': self._generate_overview_patterns()
         }
+        
+    def _generate_presence_patterns(self, pres_alt):
+        """Generate presence detection patterns"""
+        return [
+            rf'\b({pres_alt})\s+(\S+(?:\s+\S+)?)\s+(open|running|active|visible)\b',
+            rf'\b(do|does)\s+\S+\s+have\s+(\S+(?:\s+\S+)?)\s+open\b',
+            rf'\b(\S+(?:\s+\S+)?)\s+({pres_alt})\s*\?',
+            rf'\bcan\s+(?:you\s+)?(?:see|find)\s+(\S+(?:\s+\S+)?)\b',
+        ]
+        
+    def _generate_location_patterns(self, loc_alt, space_alt, other_alt):
+        """Generate location query patterns"""
+        return [
+            rf'\b({loc_alt})\s+(?:is|are)\s+(\S+(?:\s+\S+)?)',
+            rf'\b({loc_alt})\s+(?:can\s+)?(?:I|you)\s+find\s+(\S+(?:\s+\S+)?)',
+            rf'\b(?:on\s+)?which\s+({space_alt})\s+(?:is|are)\s+(\S+(?:\s+\S+)?)',
+            rf'\b(\S+(?:\s+\S+)?)\s+(?:in|on)\s+(?:the\s+)?({other_alt})\s+({space_alt})',
+            rf'\bcan\s+you\s+see\s+(?:if\s+)?(\S+(?:\s+\S+)?)\s+.*\s+({other_alt})\s+({space_alt})',
+            rf'\b(?:show|tell)\s+me\s+where\s+(\S+(?:\s+\S+)?)\s+is',
+        ]
+        
+    def _generate_space_content_patterns(self, space_alt, other_alt):
+        """Generate space content patterns"""
+        return [
+            rf'\bwhat(?:\'s|s| is)\s+(?:on|in)\s+({space_alt})\s+(\d+)',
+            rf'\b({space_alt})\s+(\d+)\s+(?:content|contents|has|shows)',
+            rf'\bshow\s+(?:me\s+)?({space_alt})\s+(\d+)',
+            rf'\bwhat(?:\'s|s| is)\s+(?:on|in)\s+(?:the\s+)?({other_alt})\s+({space_alt})',
+            rf'\b(?:display|show|list)\s+(?:the\s+)?({other_alt})\s+({space_alt})',
+            rf'\bwhat\s+do\s+(?:I|you)\s+(?:have|see)\s+(?:on|in)\s+(?:the\s+)?({other_alt})',
+        ]
+        
+    def _generate_all_spaces_patterns(self, all_alt, space_alt):
+        """Generate all spaces patterns"""
+        return [
+            rf'\b({all_alt})\s+(?:my\s+)?({space_alt})s?\b',
+            rf'\b(?:show|list|display)\s+(?:me\s+)?everything\s+(?:that(?:\'s|s)?\s+)?(?:open|running)',
+            rf'\b({space_alt})\s+(?:overview|summary|status)',
+            rf'\bwhat(?:\'s|s| is)\s+(?:on|in)\s+({all_alt})',
+            rf'\b(?:across|throughout)\s+(?:all\s+)?(?:my\s+)?({space_alt})s?',
+        ]
+        
+    def _generate_detail_patterns(self):
+        """Generate specific detail patterns"""
+        return [
+            r'\b(?:read|show|display)\s+(?:the\s+)?(\S+)\s+(?:in|on|from)\s+(\S+)',
+            r'\b(?:error|warning|message|alert)\s+(?:in|on|from)\s+(\S+)',
+            r'\bwhat\s+(?:does|says)\s+(\S+)\s+(?:say|show|display)',
+            r'\b(?:content|contents|text)\s+(?:of|in|from)\s+(\S+)',
+            r'\b(?:check|examine|inspect)\s+(\S+)\s+in\s+(\S+)',
+        ]
+        
+    def _generate_overview_patterns(self):
+        """Generate workspace overview patterns"""
+        return [
+            r'\bwhat\s+am\s+I\s+(?:working|doing|focused)\s+on',
+            r'\b(?:my|current)\s+(?:work|tasks?|projects?|activities)',
+            r'\b(?:workspace|desktop|screen)\s+(?:status|state|overview)',
+            r'\b(?:active|current|ongoing)\s+(?:work|projects?|tasks?)',
+            r'\b(?:show|display|list)\s+(?:my\s+)?(?:current\s+)?(?:work|activity)',
+        ]
+        
+    def _build_common_app_words(self):
+        """Build set of common application-related words"""
+        words = set()
+        
+        # Common app name patterns
+        tech_terms = {'visual', 'studio', 'code', 'android', 'web', 'dev', 'tools'}
+        generic_terms = {'pro', 'plus', 'lite', 'express', 'community', 'professional'}
+        
+        words.update(tech_terms)
+        words.update(generic_terms)
+        
+        return words
         
     def detect_intent(self, query: str) -> SpaceQueryIntent:
-        """Detect the intent of a space-related query"""
+        """Detect the intent of a space-related query with confidence scoring"""
         query_lower = query.lower()
         
-        # Check each pattern type
+        # Track all matches with confidence scores
+        matches = []
+        
         for query_type, patterns in self.patterns.items():
-            for pattern in patterns:
+            for pattern_idx, pattern in enumerate(patterns):
                 match = re.search(pattern, query_lower)
                 if match:
-                    return self._build_intent(
-                        query_type, 
-                        match, 
-                        query_lower
+                    # Calculate confidence based on match quality
+                    confidence = self._calculate_match_confidence(
+                        match, pattern, query_lower, query_type
                     )
+                    matches.append({
+                        'type': query_type,
+                        'match': match,
+                        'pattern': pattern,
+                        'confidence': confidence,
+                        'priority': pattern_idx
+                    })
+        
+        # Select best match based on confidence and priority
+        if matches:
+            best_match = max(matches, key=lambda x: (x['confidence'], -x['priority']))
+            return self._build_intent(
+                best_match['type'], 
+                best_match['match'], 
+                query,
+                confidence=best_match['confidence']
+            )
                     
-        # Default: treat as general query
-        return SpaceQueryIntent(
-            query_type=SpaceQueryType.SIMPLE_PRESENCE,
-            metadata_sufficient=True
-        )
+        # Default with context analysis
+        return self._analyze_unmatched_query(query)
         
-    def _build_intent(self, query_type: str, match: re.Match, query: str) -> SpaceQueryIntent:
-        """Build intent from regex match"""
+    def _build_intent(self, query_type: str, match: re.Match, query: str, confidence: float = 1.0) -> SpaceQueryIntent:
+        """Build intent from regex match with enhanced context"""
         intent = SpaceQueryIntent(
-            query_type=SpaceQueryType[query_type.upper()]
+            query_type=SpaceQueryType[query_type.upper()],
+            confidence=confidence
         )
         
-        # Extract app name if present
-        app_name = self.extract_app_name(query)
-        if app_name:
-            intent.target_app = app_name
+        # Extract app name with context
+        app_info = self._extract_app_with_context(query)
+        if app_info:
+            intent.target_app = app_info['name']
+            intent.context_hints.extend(app_info.get('hints', []))
         
-        # Extract space number if present
-        groups = match.groups()
-        for group in groups:
-            if group and group.isdigit():
-                intent.target_space = int(group)
+        # Extract space references
+        space_refs = self._extract_space_references(query, match)
+        intent.space_references = space_refs['references']
+        if space_refs.get('number'):
+            intent.target_space = space_refs['number']
                 
-        # Determine if screenshot is required
-        if query_type == 'specific_detail':
-            intent.requires_screenshot = True
-            intent.metadata_sufficient = False
-        elif query_type == 'space_content' and 'show' in query:
-            intent.requires_screenshot = True
-            intent.metadata_sufficient = False
-        elif query_type in ['simple_presence', 'location_query']:
-            intent.requires_screenshot = False
-            intent.metadata_sufficient = True
+        # Determine requirements based on query analysis
+        requirements = self._analyze_requirements(query_type, query, intent)
+        intent.requires_screenshot = requirements['screenshot']
+        intent.metadata_sufficient = requirements['metadata']
+        
+        # Add detected patterns for transparency
+        intent.detected_patterns.append(match.re.pattern)
             
         return intent
         
     def extract_app_name(self, query: str) -> Optional[str]:
-        """Extract and normalize application name from query"""
+        """Legacy method - delegates to new context-aware extraction"""
+        app_info = self._extract_app_with_context(query)
+        return app_info['name'] if app_info else None
+        
+    def _extract_app_with_context(self, query: str) -> Optional[Dict[str, Any]]:
+        """Extract application name with contextual hints"""
         query_lower = query.lower()
         
-        # Skip extraction for general queries about "other desktop/space"
-        general_other_patterns = [
-            r"what'?s?\s+(?:on|in)\s+(?:the\s+)?other\s+(?:desktop|space)",
-            r"show\s+me\s+what'?s?\s+(?:on|in)\s+(?:the\s+)?other",
-            r"what\s+do\s+you\s+see\s+(?:on|in)\s+(?:the\s+)?other",
+        # Check if this is about general space content
+        if self._is_general_space_query(query_lower):
+            return None
+            
+        # Try multiple extraction strategies
+        strategies = [
+            self._extract_by_known_apps,
+            self._extract_by_patterns,
+            self._extract_by_context_clues,
+            self._extract_by_fuzzy_match
         ]
         
-        for pattern in general_other_patterns:
-            if re.search(pattern, query_lower):
-                return None  # This is a general query, not about a specific app
-        
-        # Check for known aliases (including multi-word aliases)
-        for alias, full_name in self.app_aliases.items():
-            if alias in query_lower:
-                return full_name
-                
-        # Extract potential app name using patterns
-        app_patterns = [
-            # Multi-word app names
-            r'\b(?:the\s+)?(\w+(?:\s+\w+)?)\s+(?:IDE|app|application|window)\b',
-            r'(?:can\s+you\s+see\s+)?(?:the\s+)?(\w+(?:\s+\w+)?)\s+(?:in|on)\s+(?:the\s+)?other\s+(?:desktop|space)',
-            # Single word patterns
-            r'\b(\w+)\s+(?:app|application|window)\b',
-            r'(?:open|launch|start|find)\s+(\w+)',
-            r'(?:is|are)\s+(\w+)\s+(?:open|running)',
-        ]
-        
-        for pattern in app_patterns:
-            match = re.search(pattern, query_lower)
-            if match:
-                potential_app = match.group(1).strip()
-                # Skip common words that aren't apps
-                skip_words = ['what', 'the', 'on', 'in', 'is', 'are', 'show', 'me']
-                if potential_app.lower() in skip_words:
-                    continue
-                # Check if it's in our aliases
-                if potential_app in self.app_aliases:
-                    return self.app_aliases[potential_app]
-                # Check if it's a known IDE or application
-                if 'ide' in query_lower and potential_app:
-                    return potential_app.title()
-                # Only return if it looks like an app name (capitalized or known pattern)
-                if potential_app and potential_app[0].isupper():
-                    return potential_app.title()
+        for strategy in strategies:
+            result = strategy(query, query_lower)
+            if result:
+                return result
                 
         return None
+        
+    def _is_general_space_query(self, query_lower: str) -> bool:
+        """Check if query is about general space content"""
+        general_patterns = [
+            r"what'?s?\s+(?:on|in)\s+(?:the\s+)?(?:other|another|different)\s+",
+            r"show\s+me\s+(?:the\s+)?(?:other|another|different)\s+",
+            r"(?:list|display)\s+(?:everything|all)\s+(?:on|in)\s+",
+        ]
+        
+        return any(re.search(p, query_lower) for p in general_patterns)
+        
+    def _extract_by_known_apps(self, query: str, query_lower: str) -> Optional[Dict[str, Any]]:
+        """Extract using known application database"""
+        # Dynamic app discovery from query
+        words = query_lower.split()
+        
+        # Build potential app names from word combinations
+        candidates = []
+        for i in range(len(words)):
+            # Single word
+            candidates.append(words[i])
+            # Two words
+            if i < len(words) - 1:
+                candidates.append(f"{words[i]} {words[i+1]}")
+            # Three words
+            if i < len(words) - 2:
+                candidates.append(f"{words[i]} {words[i+1]} {words[i+2]}")
+        
+        # Check against known patterns
+        for candidate in candidates:
+            # Direct match in aliases
+            if candidate in self._app_name_cache:
+                return self._app_name_cache[candidate]
+                
+            # Check common patterns
+            if self._looks_like_app_name(candidate):
+                app_info = {
+                    'name': self._normalize_app_name(candidate),
+                    'hints': ['detected_by_pattern'],
+                    'confidence': 0.8
+                }
+                self._app_name_cache[candidate] = app_info
+                return app_info
+                
+        return None
+        
+    def _extract_by_patterns(self, query: str, query_lower: str) -> Optional[Dict[str, Any]]:
+        """Extract using regex patterns"""
+        pattern_configs = [
+            {
+                'pattern': r'\b(?:the\s+)?([A-Z]\w+(?:\s+[A-Z]\w+)*)\s+(?:' + '|'.join(self._app_indicators['suffix']) + r')\b',
+                'hint': 'app_suffix',
+                'confidence': 0.9
+            },
+            {
+                'pattern': r'(?:can\s+you\s+see\s+)?(?:the\s+)?([A-Z]\w+(?:\s+\w+)?)\s+(?:in|on)\s+',
+                'hint': 'location_context',
+                'confidence': 0.7
+            },
+            {
+                'pattern': r'(?:' + '|'.join(self._presence_verbs) + r')\s+([A-Z]\w+(?:\s+\w+)?)\s+(?:open|running)',
+                'hint': 'presence_check',
+                'confidence': 0.8
+            }
+        ]
+        
+        for config in pattern_configs:
+            match = re.search(config['pattern'], query)
+            if match:
+                app_name = match.group(1).strip()
+                if self._validate_app_name(app_name):
+                    return {
+                        'name': app_name,
+                        'hints': [config['hint']],
+                        'confidence': config['confidence']
+                    }
+                    
+        return None
+        
+    def _extract_by_context_clues(self, query: str, query_lower: str) -> Optional[Dict[str, Any]]:
+        """Extract using contextual clues"""
+        # Look for capitalized words near app indicators
+        tokens = query.split()
+        
+        for i, token in enumerate(tokens):
+            if token[0].isupper() and len(token) > 1:
+                # Check surrounding context
+                context_score = 0
+                hints = []
+                
+                # Check previous word
+                if i > 0:
+                    prev = tokens[i-1].lower()
+                    if prev in ['the', 'open', 'launch', 'start', 'find']:
+                        context_score += 0.3
+                        hints.append(f'preceded_by_{prev}')
+                        
+                # Check next word
+                if i < len(tokens) - 1:
+                    next_word = tokens[i+1].lower()
+                    if next_word in self._app_indicators['suffix'] + self._app_indicators['context']:
+                        context_score += 0.5
+                        hints.append(f'followed_by_{next_word}')
+                        
+                # Multi-word app name check
+                if i < len(tokens) - 1 and tokens[i+1][0].isupper():
+                    potential_app = f"{token} {tokens[i+1]}"
+                    if self._validate_app_name(potential_app):
+                        return {
+                            'name': potential_app,
+                            'hints': hints + ['multi_word_caps'],
+                            'confidence': min(0.9, 0.5 + context_score)
+                        }
+                        
+                # Single word check
+                if context_score > 0.2 and self._validate_app_name(token):
+                    return {
+                        'name': token,
+                        'hints': hints,
+                        'confidence': min(0.8, 0.4 + context_score)
+                    }
+                    
+        return None
+        
+    def _extract_by_fuzzy_match(self, query: str, query_lower: str) -> Optional[Dict[str, Any]]:
+        """Extract using fuzzy matching against known apps"""
+        # Get all capitalized sequences
+        cap_sequences = re.findall(r'\b[A-Z]\w+(?:\s+[A-Z]\w+)*\b', query)
+        
+        for sequence in cap_sequences:
+            # Check similarity to known apps
+            for known_app in self._common_app_words:
+                similarity = difflib.SequenceMatcher(None, sequence.lower(), known_app.lower()).ratio()
+                if similarity > 0.8:
+                    return {
+                        'name': sequence,
+                        'hints': ['fuzzy_match', f'similar_to_{known_app}'],
+                        'confidence': similarity * 0.7
+                    }
+                    
+        return None
+        
+    def _calculate_match_confidence(self, match: re.Match, pattern: str, query_lower: str, query_type: str) -> float:
+        """Calculate confidence score for a pattern match"""
+        base_confidence = 0.7
+        
+        # Boost for exact phrase matches
+        if match.group(0) == query_lower.strip():
+            base_confidence += 0.2
+            
+        # Boost for specific query types
+        type_boosts = {
+            'location_query': 0.1,
+            'all_spaces': 0.15,
+            'space_content': 0.1
+        }
+        base_confidence += type_boosts.get(query_type, 0)
+        
+        # Boost for multiple space indicators
+        space_indicators = sum(1 for term in self._space_terms if term in query_lower)
+        if space_indicators > 1:
+            base_confidence += 0.05 * (space_indicators - 1)
+            
+        return min(1.0, base_confidence)
+        
+    def _analyze_unmatched_query(self, query: str) -> SpaceQueryIntent:
+        """Analyze queries that don't match patterns"""
+        query_lower = query.lower()
+        
+        # Check for space-related keywords
+        has_space_term = any(term in query_lower for term in self._space_terms)
+        has_other_term = any(term in query_lower for term in self._other_terms)
+        
+        if has_space_term and has_other_term:
+            return SpaceQueryIntent(
+                query_type=SpaceQueryType.LOCATION_QUERY,
+                confidence=0.5,
+                metadata_sufficient=True,
+                context_hints=['unmatched_but_spatial']
+            )
+            
+        return SpaceQueryIntent(
+            query_type=SpaceQueryType.SIMPLE_PRESENCE,
+            confidence=0.3,
+            metadata_sufficient=True,
+            context_hints=['fallback']
+        )
+        
+    def _extract_space_references(self, query: str, match: re.Match) -> Dict[str, Any]:
+        """Extract space references from query"""
+        query_lower = query.lower()
+        refs = []
+        
+        # Check for numbered spaces
+        space_nums = re.findall(r'\b(?:desktop|space|screen|workspace)\s+(\d+)\b', query_lower)
+        if space_nums:
+            return {
+                'references': [f'space_{num}' for num in space_nums],
+                'number': int(space_nums[0])
+            }
+            
+        # Check for relative references
+        for term in self._other_terms:
+            if term in query_lower:
+                refs.append(f'relative_{term}')
+                
+        # Check for all spaces
+        for term in self._all_terms:
+            if term in query_lower:
+                refs.append(f'scope_{term}')
+                
+        return {'references': refs, 'number': None}
+        
+    def _analyze_requirements(self, query_type: str, query: str, intent: SpaceQueryIntent) -> Dict[str, bool]:
+        """Analyze what data is required for the query"""
+        query_lower = query.lower()
+        
+        # Visual indicators that need screenshots
+        visual_keywords = {'show', 'display', 'see', 'look', 'view', 'check', 'examine', 'read', 'content'}
+        needs_visual = any(kw in query_lower for kw in visual_keywords)
+        
+        # Detail requirements
+        if query_type == 'specific_detail' or needs_visual:
+            return {'screenshot': True, 'metadata': False}
+        elif query_type in ['simple_presence', 'location_query']:
+            return {'screenshot': False, 'metadata': True}
+        elif query_type == 'space_content':
+            # If asking to "show", need screenshot
+            return {'screenshot': needs_visual, 'metadata': not needs_visual}
+        else:
+            return {'screenshot': False, 'metadata': True}
+            
+    def _looks_like_app_name(self, text: str) -> bool:
+        """Check if text looks like an app name"""
+        if not text or len(text) < 2:
+            return False
+            
+        # Check capitalization patterns
+        words = text.split()
+        if all(w[0].isupper() for w in words if w):
+            return True
+            
+        # Check for known patterns
+        app_patterns = [
+            r'.*(?:app|application|ide|editor|browser)$',
+            r'^(?:microsoft|adobe|jetbrains|google)\s+',
+        ]
+        
+        return any(re.match(p, text.lower()) for p in app_patterns)
+        
+    def _normalize_app_name(self, name: str) -> str:
+        """Normalize app name to standard format"""
+        # Handle common variations
+        normalizations = {
+            'vscode': 'Visual Studio Code',
+            'vs code': 'Visual Studio Code',
+            'chrome': 'Google Chrome',
+            'iterm': 'iTerm2',
+        }
+        
+        lower_name = name.lower()
+        if lower_name in normalizations:
+            return normalizations[lower_name]
+            
+        # Ensure proper capitalization
+        return ' '.join(w.capitalize() for w in name.split())
+        
+    def _validate_app_name(self, name: str) -> bool:
+        """Validate if extracted text is likely an app name"""
+        if not name or len(name) < 2:
+            return False
+            
+        # Skip common non-app words
+        skip_words = {
+            'what', 'the', 'on', 'in', 'is', 'are', 'show', 'me', 'can', 'you',
+            'see', 'find', 'where', 'which', 'other', 'desktop', 'space'
+        }
+        
+        if name.lower() in skip_words:
+            return False
+            
+        # Must start with capital or be a known app
+        return name[0].isupper() or self._looks_like_app_name(name)
 
 class SpaceAwarePromptEnhancer:
     """Enhances prompts with multi-space context"""
@@ -287,15 +613,64 @@ Response Confidence:
         return self.confidence_levels.get(data_source, "")
 
 class MultiSpaceResponseBuilder:
-    """Builds natural multi-space aware responses"""
+    """Builds natural multi-space aware responses with dynamic generation"""
     
     def __init__(self):
+        self._init_response_templates()
+        self._init_contextual_phrases()
+        
+    def _init_response_templates(self):
+        """Initialize dynamic response templates"""
         self.space_descriptors = [
             "Desktop {}", 
             "Space {}", 
             "your {} workspace",
-            "the {} desktop"
+            "the {} desktop",
+            "workspace {}",
+            "screen {}"
         ]
+        
+        self.location_templates = {
+            'current': [
+                "on your current desktop",
+                "here on this screen",
+                "in your active workspace",
+                "on the desktop you're viewing"
+            ],
+            'other': [
+                "on Desktop {}",
+                "in Space {}",
+                "over on workspace {}",
+                "on your {} screen"
+            ],
+            'multiple': [
+                "across {} desktops",
+                "on multiple screens",
+                "in several workspaces",
+                "distributed across spaces"
+            ]
+        }
+        
+    def _init_contextual_phrases(self):
+        """Initialize contextual phrase builders"""
+        self.context_phrases = {
+            'with_activity': {
+                'single': "{app} is {location} with \"{title}\"",
+                'multiple': "{app} has {count} windows {location}",
+                'active': "{app} is actively {location}",
+            },
+            'state_modifiers': {
+                'fullscreen': "in fullscreen mode",
+                'minimized': "(minimized)",
+                'hidden': "(hidden)",
+                'focused': "with focus",
+            },
+            'companion_phrases': {
+                'single': "alongside {apps}",
+                'multiple': "along with {apps}",
+                'working_with': "working with {apps}",
+            }
+        }
         
     def build_location_response(self, 
                                app_name: str,
@@ -443,42 +818,114 @@ class MultiSpaceIntelligenceExtension:
         self.response_builder = MultiSpaceResponseBuilder()
         
     def should_use_multi_space(self, query: str) -> bool:
-        """Determine if query needs multi-space handling"""
+        """Determine if query needs multi-space handling with dynamic analysis"""
         intent = self.query_detector.detect_intent(query)
         query_lower = query.lower()
         
-        # Keywords that indicate multi-space needs
-        multi_space_keywords = [
-            'where', 'all', 'desktop', 'space', 'workspace', 'everywhere',
-            'other', 'another', 'different', 'which', 'find', 'locate',
-            'across', 'multiple'
+        # Decision factors with weights
+        factors = []
+        
+        # Factor 1: Intent type suggests multi-space
+        multi_space_intents = {
+            SpaceQueryType.LOCATION_QUERY: 0.8,
+            SpaceQueryType.ALL_SPACES: 1.0,
+            SpaceQueryType.SPACE_CONTENT: 0.7,
+            SpaceQueryType.WORKSPACE_OVERVIEW: 0.9
+        }
+        if intent.query_type in multi_space_intents:
+            factors.append(('intent_type', multi_space_intents[intent.query_type]))
+            
+        # Factor 2: Has app target (looking for specific app)
+        if intent.target_app:
+            factors.append(('has_app_target', 0.7))
+            
+        # Factor 3: Has space target or references
+        if intent.target_space or intent.space_references:
+            factors.append(('has_space_ref', 0.9))
+            
+        # Factor 4: Dynamic keyword analysis
+        keyword_score = self._calculate_keyword_score(query_lower)
+        if keyword_score > 0:
+            factors.append(('keywords', keyword_score))
+            
+        # Factor 5: Pattern complexity
+        pattern_score = self._analyze_pattern_complexity(query_lower)
+        if pattern_score > 0:
+            factors.append(('patterns', pattern_score))
+            
+        # Factor 6: Context hints suggest multi-space
+        if any('spatial' in hint for hint in intent.context_hints):
+            factors.append(('context_hints', 0.6))
+            
+        # Calculate weighted decision
+        if not factors:
+            # Check for simple presence queries that might still need multi-space
+            return self._check_simple_presence_override(query_lower, intent)
+            
+        # Use highest factor or combination threshold
+        max_score = max(score for _, score in factors) if factors else 0
+        total_score = sum(score for _, score in factors)
+        
+        return max_score >= 0.7 or total_score >= 1.2
+        
+    def _calculate_keyword_score(self, query_lower: str) -> float:
+        """Calculate keyword-based score for multi-space detection"""
+        score = 0.0
+        
+        # Dynamic keyword categories with weights
+        keyword_categories = {
+            'location': (self.query_detector._location_verbs, 0.3),
+            'spatial': (self.query_detector._space_terms, 0.2),
+            'other': (self.query_detector._other_terms, 0.4),
+            'all': (self.query_detector._all_terms, 0.5),
+        }
+        
+        for category, (terms, weight) in keyword_categories.items():
+            matches = sum(1 for term in terms if term in query_lower)
+            if matches:
+                score += weight * min(matches, 2)  # Cap contribution
+                
+        return min(score, 1.0)
+        
+    def _analyze_pattern_complexity(self, query_lower: str) -> float:
+        """Analyze query pattern complexity"""
+        score = 0.0
+        
+        # Complex patterns that suggest multi-space
+        complex_patterns = [
+            # Cross-space references
+            (r'\b(?:across|between|among)\s+(?:\w+\s+)?(?:spaces?|desktops?)', 0.8),
+            # Comparative queries  
+            (r'\b(?:compare|difference|both|either)\s+', 0.6),
+            # Navigation queries
+            (r'\b(?:switch|move|go|jump)\s+(?:to|between)\s+', 0.7),
+            # Listing queries
+            (r'\b(?:list|show|display)\s+(?:all|every)\s+', 0.7),
         ]
         
-        # Patterns that indicate queries about other spaces
-        other_space_patterns = [
-            r'\bother\s+(?:desktop|space|screen|workspace)',
-            r'\banother\s+(?:desktop|space|screen|workspace)',
-            r'\bdifferent\s+(?:desktop|space|screen|workspace)',
-            r'\bin\s+(?:the\s+)?other\s+(?:desktop|space|screen|workspace)',
-            r'\bon\s+(?:the\s+)?other\s+(?:desktop|space|screen|workspace)',
-            r'(?:desktop|space|screen|workspace)\s+\d+',  # "desktop 2", "space 3"
-            r'\bacross\s+(?:all\s+)?(?:desktops?|spaces?|workspaces?)',
-        ]
+        for pattern, weight in complex_patterns:
+            if re.search(pattern, query_lower):
+                score += weight
+                
+        return min(score, 1.0)
         
-        # Check if any other space patterns match
-        has_other_space_pattern = any(
-            re.search(pattern, query_lower) 
-            for pattern in other_space_patterns
-        )
+    def _check_simple_presence_override(self, query_lower: str, intent: SpaceQueryIntent) -> bool:
+        """Check if simple presence query should use multi-space"""
+        # Even simple "Is X open?" might need multi-space if:
         
-        # Any query about apps, windows, or spaces needs multi-space
-        return (
-            intent.query_type != SpaceQueryType.SIMPLE_PRESENCE or
-            intent.target_app is not None or
-            intent.target_space is not None or
-            has_other_space_pattern or
-            any(keyword in query_lower for keyword in multi_space_keywords)
-        )
+        # 1. Query implies checking everywhere
+        if any(term in query_lower for term in ['anywhere', 'somewhere', 'everywhere']):
+            return True
+            
+        # 2. Query has uncertainty markers
+        if any(term in query_lower for term in ['might', 'could', 'possibly', 'maybe']):
+            return True
+            
+        # 3. Has app target (user asking about specific app)
+        if intent.target_app:
+            return True
+            
+        return False
         
     def process_multi_space_query(self, 
                                 query: str, 
