@@ -3803,6 +3803,90 @@ class ClaudeVisionAnalyzer:
                 'error': str(e)
             }
     
+    async def analyze_multiple_images_with_prompt(self, images: List[Dict[str, Any]], prompt: str, max_tokens: int = 1000) -> Dict[str, Any]:
+        """
+        Analyze multiple images (from different desktop spaces) with a single prompt.
+        Implements multi-space vision analysis for PRD requirements.
+        
+        Args:
+            images: List of dicts with 'image' and 'label' keys
+            prompt: Natural language prompt for Claude
+            max_tokens: Maximum tokens for response
+            
+        Returns:
+            Dict with 'content' key containing Claude's response about all spaces
+        """
+        try:
+            if not self.client:
+                return {
+                    'content': "I need to initialize my vision capabilities first.",
+                    'success': False
+                }
+                
+            # Build comprehensive prompt with space context
+            space_context = "\n".join([f"{img['label']}: [Image of {img['label']}]" for img in images])
+            enhanced_prompt = f"{prompt}\n\nI can see {len(images)} desktop spaces:\n{space_context}"
+            
+            # Prepare message with multiple images
+            message_content = []
+            
+            # Add each image
+            for img_data in images:
+                image = img_data['image']
+                label = img_data['label']
+                
+                # Process image
+                processed_image = await self._preprocess_image(image)
+                base64_image = await self._encode_image_async(processed_image)
+                
+                # Add to message
+                message_content.append({
+                    "type": "text",
+                    "text": f"\n{label}:"
+                })
+                message_content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": base64_image
+                    }
+                })
+            
+            # Add the main prompt
+            message_content.append({
+                "type": "text",
+                "text": f"\n\n{enhanced_prompt}"
+            })
+            
+            # Call Claude API
+            message = await self.client.messages.create(
+                model=self.config.model_name,
+                max_tokens=max_tokens,
+                messages=[{
+                    "role": "user",
+                    "content": message_content
+                }],
+                temperature=0
+            )
+            
+            # Extract response
+            response_text = message.content[0].text if message.content else ""
+            
+            return {
+                'content': response_text,
+                'success': True,
+                'spaces_analyzed': len(images)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in analyze_multiple_images_with_prompt: {e}")
+            return {
+                'content': f"I encountered an error analyzing multiple spaces: {str(e)}",
+                'success': False,
+                'error': str(e)
+            }
+    
     async def analyze_workspace_comprehensive(self, screenshot: Optional[np.ndarray] = None) -> Dict[str, Any]:
         """Comprehensive workspace analysis using all enhanced components"""
         results = {

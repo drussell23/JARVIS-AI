@@ -225,8 +225,17 @@ class PureVisionIntelligence:
         Core method: Claude sees, understands, and responds naturally.
         No templates. No hardcoding. Pure intelligence.
         Now with optional multi-space awareness for workspace-wide queries.
+        
+        Args:
+            screenshot: Can be a single image OR Dict[int, image] for multi-space
+            user_query: The user's question
         """
-        # Check if query needs multi-space handling
+        # Check if we already have multi-space screenshots
+        if isinstance(screenshot, dict) and len(screenshot) > 1:
+            # We already have multi-space screenshots from vision_command_handler
+            return await self._analyze_multi_space_screenshots(screenshot, user_query)
+        
+        # Check if query needs multi-space handling (but we don't have screenshots yet)
         if self.multi_space_enabled and self._should_use_multi_space(user_query):
             return await self._multi_space_understand_and_respond(screenshot, user_query)
         
@@ -475,6 +484,43 @@ Be specific and natural. Never say "I previously saw" - instead say things like 
             
         return self.multi_space_extension.should_use_multi_space(query)
     
+    async def _analyze_multi_space_screenshots(self, screenshots: Dict[int, Any], user_query: str) -> str:
+        """
+        Analyze already-captured multi-space screenshots
+        This is called when vision_command_handler has already captured multiple spaces
+        """
+        logger.info(f"Analyzing {len(screenshots)} pre-captured space screenshots")
+        
+        # Get window data for context
+        window_data = await self._gather_multi_space_data()
+        
+        # Analyze query intent
+        query_analysis = self.multi_space_extension.process_multi_space_query(
+            user_query, window_data
+        )
+        
+        # Build comprehensive prompt with all screenshots
+        enhanced_prompt = self._build_comprehensive_multi_space_prompt(
+            user_query,
+            query_analysis['intent'],
+            window_data,
+            screenshots
+        )
+        
+        # Analyze with Claude
+        claude_response = await self._get_multi_space_claude_response(
+            screenshots, enhanced_prompt
+        )
+        
+        # Extract and process response
+        understanding = self._extract_understanding(claude_response)
+        natural_response = claude_response.get('response', '')
+        
+        # Update context
+        self.context.add_interaction(user_query, natural_response, understanding)
+        
+        return natural_response
+        
     async def _multi_space_understand_and_respond(self, screenshot: Any, user_query: str) -> str:
         """
         Handle multi-space aware queries with intelligent data gathering.
