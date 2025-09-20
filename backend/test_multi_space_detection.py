@@ -26,7 +26,10 @@ async def test_detection():
         "What's on Desktop 2?",
         "Find Chrome across all spaces",
         "Is VSCode open?",
-        "Look for VSCode in other spaces"
+        "Look for VSCode in other spaces",
+        "can you see the Cursor IDE in the other desktop space?",
+        "is Chrome open in another space?",
+        "what's on the other desktop?",
     ]
     
     print("\n📋 Query Detection Results:")

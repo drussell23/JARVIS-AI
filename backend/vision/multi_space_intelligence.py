@@ -48,11 +48,16 @@ class MultiSpaceQueryDetector:
                 r'\bwhich\s+(desktop|space|screen)\s+.*\s+(\w+)',
                 r'\bfind\s+(\w+)',
                 r'\blocation\s+of\s+(\w+)',
+                r'\bcan\s+you\s+see\s+(?:the\s+)?(\w+).*\s+in\s+(?:the\s+)?other\s+(?:desktop\s+)?space',
+                r'\b(\w+)\s+(?:in|on)\s+(?:the\s+)?other\s+(?:desktop|space|screen|workspace)',
+                r'\b(\w+)\s+(?:in|on)\s+another\s+(?:desktop|space|screen|workspace)',
             ],
             'space_content': [
                 r'\bwhat\'?s?\s+on\s+(desktop|space|screen)\s+(\d+)',
                 r'\b(desktop|space|screen)\s+(\d+)\s+content',
                 r'\bshow\s+me\s+(desktop|space|screen)\s+(\d+)',
+                r'\bwhat\'?s?\s+(?:in|on)\s+(?:the\s+)?other\s+(?:desktop|space|screen|workspace)',
+                r'\bshow\s+me\s+(?:the\s+)?other\s+(?:desktop|space|screen|workspace)',
             ],
             'all_spaces': [
                 r'\ball\s+(my\s+)?(desktops?|spaces|screens|workspaces?)',
@@ -78,15 +83,21 @@ class MultiSpaceQueryDetector:
         self.app_aliases = {
             'code': 'Visual Studio Code',
             'vscode': 'Visual Studio Code',
+            'vs code': 'Visual Studio Code',
             'chrome': 'Google Chrome',
             'firefox': 'Firefox',
             'safari': 'Safari',
             'slack': 'Slack',
             'terminal': 'Terminal',
             'iterm': 'iTerm2',
+            'iterm2': 'iTerm2',
             'messages': 'Messages',
             'mail': 'Mail',
             'spotify': 'Spotify',
+            'cursor': 'Cursor',
+            'cursor ide': 'Cursor',
+            'xcode': 'Xcode',
+            'finder': 'Finder',
         }
         
     def detect_intent(self, query: str) -> SpaceQueryIntent:
@@ -117,11 +128,14 @@ class MultiSpaceQueryDetector:
         )
         
         # Extract app name if present
+        app_name = self.extract_app_name(query)
+        if app_name:
+            intent.target_app = app_name
+        
+        # Extract space number if present
         groups = match.groups()
         for group in groups:
-            if group and group in self.app_aliases:
-                intent.target_app = self.app_aliases[group]
-            elif group and group.isdigit():
+            if group and group.isdigit():
                 intent.target_space = int(group)
                 
         # Determine if screenshot is required
@@ -141,13 +155,28 @@ class MultiSpaceQueryDetector:
         """Extract and normalize application name from query"""
         query_lower = query.lower()
         
-        # Check for known aliases
+        # Skip extraction for general queries about "other desktop/space"
+        general_other_patterns = [
+            r"what'?s?\s+(?:on|in)\s+(?:the\s+)?other\s+(?:desktop|space)",
+            r"show\s+me\s+what'?s?\s+(?:on|in)\s+(?:the\s+)?other",
+            r"what\s+do\s+you\s+see\s+(?:on|in)\s+(?:the\s+)?other",
+        ]
+        
+        for pattern in general_other_patterns:
+            if re.search(pattern, query_lower):
+                return None  # This is a general query, not about a specific app
+        
+        # Check for known aliases (including multi-word aliases)
         for alias, full_name in self.app_aliases.items():
             if alias in query_lower:
                 return full_name
                 
         # Extract potential app name using patterns
         app_patterns = [
+            # Multi-word app names
+            r'\b(?:the\s+)?(\w+(?:\s+\w+)?)\s+(?:IDE|app|application|window)\b',
+            r'(?:can\s+you\s+see\s+)?(?:the\s+)?(\w+(?:\s+\w+)?)\s+(?:in|on)\s+(?:the\s+)?other\s+(?:desktop|space)',
+            # Single word patterns
             r'\b(\w+)\s+(?:app|application|window)\b',
             r'(?:open|launch|start|find)\s+(\w+)',
             r'(?:is|are)\s+(\w+)\s+(?:open|running)',
@@ -156,11 +185,20 @@ class MultiSpaceQueryDetector:
         for pattern in app_patterns:
             match = re.search(pattern, query_lower)
             if match:
-                potential_app = match.group(1)
+                potential_app = match.group(1).strip()
+                # Skip common words that aren't apps
+                skip_words = ['what', 'the', 'on', 'in', 'is', 'are', 'show', 'me']
+                if potential_app.lower() in skip_words:
+                    continue
+                # Check if it's in our aliases
                 if potential_app in self.app_aliases:
                     return self.app_aliases[potential_app]
-                # Return capitalized version if not in aliases
-                return potential_app.title()
+                # Check if it's a known IDE or application
+                if 'ide' in query_lower and potential_app:
+                    return potential_app.title()
+                # Only return if it looks like an app name (capitalized or known pattern)
+                if potential_app and potential_app[0].isupper():
+                    return potential_app.title()
                 
         return None
 
@@ -196,11 +234,13 @@ Query Type: {query_intent.query_type.value}
 
 Instructions for Multi-Space Response:
 1. If asked about app presence, check ALL spaces, not just current
-2. Specify which desktop/space contains what
-3. Use natural space references: "Desktop 2", "your other space", etc.
-4. If using cached or metadata info, subtly indicate freshness
-5. For location queries, be specific about space number and what else is there
-6. Never say you "can't see" other spaces - use available metadata
+2. When asked about "the other desktop space" or "another space", analyze ALL spaces except the current one
+3. Specify which desktop/space contains what
+4. Use natural space references: "Desktop 2", "your other space", etc.
+5. If using cached or metadata info, subtly indicate freshness
+6. For location queries, be specific about space number and what else is there
+7. Never say you "can't see" other spaces - use available metadata
+8. When user asks about apps in "other" spaces, provide specific space numbers and locations
 
 Response Confidence:
 - With screenshot: "I can see..."
@@ -405,14 +445,39 @@ class MultiSpaceIntelligenceExtension:
     def should_use_multi_space(self, query: str) -> bool:
         """Determine if query needs multi-space handling"""
         intent = self.query_detector.detect_intent(query)
+        query_lower = query.lower()
+        
+        # Keywords that indicate multi-space needs
+        multi_space_keywords = [
+            'where', 'all', 'desktop', 'space', 'workspace', 'everywhere',
+            'other', 'another', 'different', 'which', 'find', 'locate',
+            'across', 'multiple'
+        ]
+        
+        # Patterns that indicate queries about other spaces
+        other_space_patterns = [
+            r'\bother\s+(?:desktop|space|screen|workspace)',
+            r'\banother\s+(?:desktop|space|screen|workspace)',
+            r'\bdifferent\s+(?:desktop|space|screen|workspace)',
+            r'\bin\s+(?:the\s+)?other\s+(?:desktop|space|screen|workspace)',
+            r'\bon\s+(?:the\s+)?other\s+(?:desktop|space|screen|workspace)',
+            r'(?:desktop|space|screen|workspace)\s+\d+',  # "desktop 2", "space 3"
+            r'\bacross\s+(?:all\s+)?(?:desktops?|spaces?|workspaces?)',
+        ]
+        
+        # Check if any other space patterns match
+        has_other_space_pattern = any(
+            re.search(pattern, query_lower) 
+            for pattern in other_space_patterns
+        )
         
         # Any query about apps, windows, or spaces needs multi-space
         return (
             intent.query_type != SpaceQueryType.SIMPLE_PRESENCE or
             intent.target_app is not None or
             intent.target_space is not None or
-            any(keyword in query.lower() for keyword in 
-                ['where', 'all', 'desktop', 'space', 'workspace', 'everywhere'])
+            has_other_space_pattern or
+            any(keyword in query_lower for keyword in multi_space_keywords)
         )
         
     def process_multi_space_query(self, 
@@ -503,21 +568,49 @@ class MultiSpaceIntelligenceExtension:
         if intent.query_type == SpaceQueryType.LOCATION_QUERY:
             # Find the app
             windows = window_data.get('windows', [])
-            target_windows = [
-                w for w in windows 
-                if intent.target_app and intent.target_app.lower() in (
-                    w.app_name.lower() if hasattr(w, 'app_name') else w.get('app_name', '').lower()
-                )
-            ]
-            
-            if target_windows:
-                return self.response_builder.build_location_response(
-                    intent.target_app,
-                    target_windows[0],
-                    requirements['confidence_level']
-                )
+            if intent.target_app:
+                target_windows = [
+                    w for w in windows 
+                    if intent.target_app.lower() in (
+                        w.app_name.lower() if hasattr(w, 'app_name') else w.get('app_name', '').lower()
+                    )
+                ]
+                
+                if target_windows:
+                    return self.response_builder.build_location_response(
+                        intent.target_app,
+                        target_windows[0],
+                        requirements['confidence_level']
+                    )
+                else:
+                    return f"I don't see {intent.target_app} open on any desktop."
             else:
-                return f"I don't see {intent.target_app} open on any desktop."
+                # Query about "other desktop" without specific app
+                current_space_id = window_data.get('current_space', {}).get('id', 1)
+                other_spaces = [
+                    space for space in window_data.get('spaces', [])
+                    if (hasattr(space, 'space_id') and space.space_id != current_space_id) or
+                       (isinstance(space, dict) and space.get('space_id') != current_space_id)
+                ]
+                
+                if other_spaces:
+                    # Build response about other spaces
+                    response_parts = []
+                    for space in other_spaces:
+                        space_id = space.space_id if hasattr(space, 'space_id') else space.get('space_id')
+                        apps = self._get_space_applications(space_id, window_data)
+                        if apps:
+                            app_list = list(apps.keys())
+                            response_parts.append(
+                                f"Desktop {space_id} has {self.response_builder._format_app_list(app_list)}"
+                            )
+                    
+                    if response_parts:
+                        return ". ".join(response_parts) + "."
+                    else:
+                        return "The other desktops appear to be empty."
+                else:
+                    return "You only have one desktop active."
                 
         elif intent.query_type == SpaceQueryType.ALL_SPACES:
             spaces_summary = []
