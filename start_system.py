@@ -1,31 +1,35 @@
 #!/usr/bin/env python3
 """
-Unified startup script for JARVIS AI System v12.9.2
-Integration Architecture Edition with Proactive Real-Time Monitoring
+Unified startup script for JARVIS AI System v13.3.1
+Multi-Space Vision Intelligence with Proactive Real-Time Monitoring
 
 The JARVIS backend loads 6 critical components:
 
 1. CHATBOTS - Claude Vision AI for conversation and screen understanding
-2. VISION - Real-time screen capture with Proactive Monitoring
+2. VISION - Real-time screen capture with Multi-Space Desktop Monitoring
+   • Multi-Space Vision: Monitors all macOS desktop spaces simultaneously
+   • Smart Space Detection: "Where is Cursor IDE?", "What's on Desktop 2?"
    • 9-stage processing pipeline with intelligent orchestration
    • Dynamic memory allocation (1.2GB budget)
    • Cross-language optimization (Python, Rust, Swift)
    • Bloom Filter, Predictive Engine, Semantic Cache, VSMS integrated
-   • NEW: Proactive assistance with debugging, research, and workflow optimization
+   • Proactive assistance with debugging, research, and workflow optimization
 3. MEMORY - M1-optimized memory management with orchestrator integration
 4. VOICE - Voice activation ("Hey JARVIS") with proactive announcements
 5. ML_MODELS - NLP and sentiment analysis (lazy-loaded)
 6. MONITORING - System health tracking and component metrics
 
 Key Features:
+- Multi-Space Vision Intelligence - See across all desktop spaces
 - Fixed CPU usage issues (87% → <25%)
 - Memory quantization with 4 operating modes
 - Parallel component loading (~7-9s startup)
 - Integration Architecture coordinates all vision components
 - Vision system with 30 FPS screen monitoring
-- NEW: Proactive real-time assistance - say "Start monitoring my screen"
+- Proactive real-time assistance - say "Start monitoring my screen"
 
 Proactive Monitoring Features:
+- Multi-Space Queries: Ask about apps on any desktop space
 - UC1: Debugging Assistant - Detects errors and suggests fixes
 - UC2: Research Helper - Summarizes multi-tab research
 - UC3: Workflow Optimization - Identifies repetitive patterns
@@ -1536,7 +1540,7 @@ async def main():
     global _manager
 
     parser = argparse.ArgumentParser(
-        description="J.A.R.V.I.S. Advanced AI System v12.9.2 - Integration Architecture Edition"
+        description="J.A.R.V.I.S. Advanced AI System v13.3.1 - Multi-Space Vision Intelligence Edition"
     )
     parser.add_argument("--no-browser", action="store_true", help="Don't open browser")
     parser.add_argument(

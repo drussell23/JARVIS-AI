@@ -9,9 +9,10 @@ This backend loads 6 critical components that power the JARVIS AI system:
    - Enables screen analysis and vision capabilities
    - Handles all natural language understanding and generation
    
-2. VISION (Screen Capture & Analysis)
+2. VISION (Screen Capture & Multi-Space Analysis)
    - Real-time screen monitoring with Swift-based capture
    - Video streaming at 30 FPS with purple recording indicator
+   - Multi-Space Desktop Vision: Monitors all macOS desktop spaces
    - Computer vision analysis for understanding screen content
    - Integration Architecture: 9-stage processing pipeline with dynamic memory management
    - Bloom Filter Network: Hierarchical duplicate detection system
@@ -45,12 +46,14 @@ This backend loads 6 critical components that power the JARVIS AI system:
 All 6 components must load successfully for full JARVIS functionality.
 The system uses parallel imports to reduce startup time from ~20s to ~7-9s.
 
-Enhanced Vision Features (v13.0.0):
+Enhanced Vision Features (v13.3.1):
 - Integration Orchestrator with 1.2GB memory budget
 - 4 operating modes: Normal, Pressure, Critical, Emergency
 - Cross-language optimization: Python, Rust, Swift
 - Intelligent component coordination based on system resources
 - Proactive Vision Intelligence System with real-time monitoring
+- Multi-Space Desktop Vision: Sees across all macOS desktop spaces
+- Smart Space Queries: "Where is Cursor IDE?", "What's on Desktop 2?"
 - Debugging Assistant: Auto-detects code errors and syntax issues
 - Research Helper: Monitors multi-tab research workflows
 - Workflow Optimizer: Identifies repetitive patterns and suggests optimizations
@@ -525,7 +528,7 @@ except Exception as e:
 logger.info("Creating optimized FastAPI app...")
 app = FastAPI(
     title="JARVIS Backend (Optimized)",
-    version="13.0.0-proactive-vision",
+    version="13.3.1-multi-space-enhanced",
     lifespan=lifespan
 )
 
@@ -794,7 +797,7 @@ async def root():
     """Root endpoint"""
     return {
         "message": "JARVIS Backend (Optimized) is running",
-        "version": "13.0.0-proactive-vision",
+        "version": "13.3.1-multi-space-enhanced",
         "proactive_vision_enabled": hasattr(app.state, 'vision_analyzer'),
         "components": {
             name: bool(comp) for name, comp in components.items() if comp is not None

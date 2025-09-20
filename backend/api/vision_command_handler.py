@@ -8,7 +8,7 @@ Every response is generated fresh by Claude based on what it sees.
 import asyncio
 import logging
 import os
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any, Optional, Callable, List
 from datetime import datetime
 
 from .pure_vision_intelligence import (
@@ -100,6 +100,9 @@ class VisionCommandHandler:
                 except Exception as e:
                     logger.error(f"Failed to create vision analyzer: {e}")
                 
+            # Store the vision analyzer reference for later use
+            self.vision_analyzer = vision_analyzer
+            
             # If no existing analyzer, create a wrapper for the API
             if vision_analyzer:
                 # Create a Claude client wrapper that uses the existing vision analyzer
@@ -675,19 +678,27 @@ BE CONCISE. No technical details.
                 logger.info(f"[VISION INIT] Vision manager imported: {vision_manager}")
                 
                 # Check if vision_analyzer needs initialization
-                if hasattr(vision_manager, 'vision_analyzer') and vision_manager.vision_analyzer is None:
-                    logger.info("[VISION INIT] Vision analyzer is None, checking app state...")
-                    # Try to get from app state
-                    try:
-                        import sys
-                        import os
-                        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                        from main import app
-                        if hasattr(app.state, 'vision_analyzer'):
-                            vision_manager.vision_analyzer = app.state.vision_analyzer
-                            logger.info("[VISION INIT] Set vision analyzer from app state")
-                    except Exception as e:
-                        logger.error(f"[VISION INIT] Failed to get vision analyzer from app state: {e}")
+                if hasattr(vision_manager, 'vision_analyzer'):
+                    if vision_manager.vision_analyzer is None:
+                        logger.info("[VISION INIT] Vision analyzer is None, checking app state...")
+                        # Try to get from app state
+                        try:
+                            import sys
+                            import os
+                            sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                            from main import app
+                            if hasattr(app.state, 'vision_analyzer'):
+                                vision_manager.vision_analyzer = app.state.vision_analyzer
+                                logger.info("[VISION INIT] Set vision analyzer from app state")
+                        except Exception as e:
+                            logger.error(f"[VISION INIT] Failed to get vision analyzer from app state: {e}")
+                        
+                        # If still None and we have our own vision analyzer, use that
+                        if vision_manager.vision_analyzer is None and hasattr(self, 'vision_analyzer') and self.vision_analyzer:
+                            vision_manager.vision_analyzer = self.vision_analyzer
+                            logger.info("[VISION INIT] Set vision analyzer from handler")
+                    else:
+                        logger.info("[VISION INIT] Vision analyzer already set")
                         
             except Exception as e:
                 logger.error(f"Failed to initialize vision manager: {e}")

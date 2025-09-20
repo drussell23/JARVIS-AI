@@ -2862,7 +2862,15 @@ class ClaudeVisionAnalyzer:
     def _encode_image(self, image: Image.Image) -> str:
         """Simple image encoding without compression"""
         buffer = io.BytesIO()
-        image.save(buffer, format="PNG")
+        # Convert RGBA to RGB if needed for JPEG
+        if image.mode in ('RGBA', 'LA', 'P'):
+            # Create RGB image with white background
+            rgb_image = Image.new('RGB', image.size, (255, 255, 255))
+            if image.mode == 'P':
+                image = image.convert('RGBA')
+            rgb_image.paste(image, mask=image.split()[-1] if image.mode in ('RGBA', 'LA') else None)
+            image = rgb_image
+        image.save(buffer, format="JPEG", quality=self.config.jpeg_quality)
         return base64.b64encode(buffer.getvalue()).decode()
     
     async def _create_region_composite(self, original_image: Image.Image, 
@@ -3836,8 +3844,8 @@ class ClaudeVisionAnalyzer:
                 label = img_data['label']
                 
                 # Process image
-                processed_image = await self._preprocess_image(image)
-                base64_image = await self._encode_image_async(processed_image)
+                processed_image, image_hash = await self._preprocess_image(image)
+                base64_image = self._encode_image(processed_image)
                 
                 # Add to message
                 message_content.append({
@@ -3860,14 +3868,17 @@ class ClaudeVisionAnalyzer:
             })
             
             # Call Claude API
-            message = await self.client.messages.create(
-                model=self.config.model_name,
-                max_tokens=max_tokens,
-                messages=[{
-                    "role": "user",
-                    "content": message_content
-                }],
-                temperature=0
+            message = await asyncio.get_event_loop().run_in_executor(
+                self.executor,
+                lambda: self.client.messages.create(
+                    model=self.config.model_name,
+                    max_tokens=max_tokens,
+                    messages=[{
+                        "role": "user",
+                        "content": message_content
+                    }],
+                    temperature=0
+                )
             )
             
             # Extract response
