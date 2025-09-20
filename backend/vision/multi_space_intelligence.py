@@ -461,7 +461,7 @@ class MultiSpaceIntelligenceExtension:
         has_current_screenshot = available_data.get('has_current_screenshot', False)
         has_cached_screenshots = any(
             (hasattr(space, 'cached_screenshot') and space.cached_screenshot is not None) if hasattr(space, 'cached_screenshot')
-            else (isinstance(space, dict) and space.get('cached_screenshot') is not None)
+            else (isinstance(space, dict) and (hasattr(space, 'cached_screenshot') and space.cached_screenshot) if hasattr(space, 'cached_screenshot') else (isinstance(space, dict) and space.get('cached_screenshot')) is not None)
             for space in available_data.get('spaces', [])
         )
         

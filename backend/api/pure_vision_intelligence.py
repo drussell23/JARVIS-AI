@@ -169,6 +169,7 @@ class PureVisionIntelligence:
         self._last_multi_space_context = None  # For debugging
         self.multi_space_monitor = None
         self.proactive_assistant = None
+        self.capture_engine = None  # For multi-space capture
         
         if self.multi_space_enabled:
             try:
@@ -197,6 +198,18 @@ class PureVisionIntelligence:
                     )
                 except ImportError:
                     logger.warning("Multi-space optimizer not available")
+                
+                # Initialize capture engine
+                try:
+                    from vision.multi_space_capture_engine import MultiSpaceCaptureEngine
+                    self.capture_engine = MultiSpaceCaptureEngine()
+                    # Connect optimizer to capture engine if both available
+                    if self.multi_space_optimizer and self.capture_engine:
+                        self.capture_engine.optimizer = self.multi_space_optimizer
+                        self.multi_space_optimizer.capture_engine = self.capture_engine
+                    logger.info("Multi-space capture engine initialized")
+                except ImportError:
+                    logger.warning("Multi-space capture engine not available")
                 
                 # Start background services (deferred to avoid event loop issues)
                 # asyncio.create_task(self.screenshot_cache.start_predictive_caching())
