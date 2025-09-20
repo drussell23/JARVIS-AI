@@ -20,6 +20,16 @@ from .pure_vision_intelligence import (
 from .proactive_monitoring_handler import get_monitoring_handler
 from .activity_reporting_commands import is_activity_reporting_command
 
+# Import new monitoring system components
+try:
+    from vision.monitoring_command_classifier import classify_monitoring_command, CommandType, MonitoringAction
+    from vision.monitoring_state_manager import get_state_manager, MonitoringState, MonitoringCapability
+    from vision.macos_indicator_controller import get_indicator_controller
+    monitoring_system_available = True
+except ImportError as e:
+    logger.warning(f"Monitoring system components not available: {e}")
+    monitoring_system_available = False
+
 logger = logging.getLogger(__name__)
 
 class WebSocketLogger:
@@ -156,8 +166,48 @@ class VisionCommandHandler:
             # Even error messages come from Claude
             return await self._get_error_response("screenshot_failed", command_text)
             
-        # Let Claude understand the command and respond naturally
-        try:
+        # Use new classification system if available
+        if monitoring_system_available:
+            # Get current monitoring state
+            state_manager = get_state_manager()
+            current_state = state_manager.is_monitoring_active()
+            
+            # Classify the command
+            command_context = classify_monitoring_command(command_text, current_state)
+            logger.info(f"[VISION] Command classified as: {command_context['type'].value} with confidence {command_context['confidence']:.2f}")
+            
+            # Route based on command type
+            if command_context['type'] == CommandType.MONITORING_CONTROL:
+                return await self._handle_monitoring_control(command_text, command_context, screenshot)
+            elif command_context['type'] == CommandType.MONITORING_STATUS:
+                return await self._handle_monitoring_status(command_text, command_context, screenshot)
+            elif command_context['type'] == CommandType.VISION_QUERY:
+                # Pure vision query - let Claude see and respond
+                response = await self.intelligence.understand_and_respond(screenshot, command_text)
+                return {
+                    "handled": True,
+                    "response": response,
+                    "pure_intelligence": True,
+                    "monitoring_active": self.monitoring_active,
+                    "context": self.intelligence.context.get_temporal_context()
+                }
+            else:
+                # Ambiguous command - use Claude to determine intent
+                is_monitoring_command = await self._is_monitoring_command(command_text, screenshot)
+                if is_monitoring_command:
+                    return await self._handle_monitoring_command(command_text, screenshot)
+                else:
+                    # Pure vision query
+                    response = await self.intelligence.understand_and_respond(screenshot, command_text)
+                    return {
+                        "handled": True,
+                        "response": response,
+                        "pure_intelligence": True,
+                        "monitoring_active": self.monitoring_active,
+                        "context": self.intelligence.context.get_temporal_context()
+                    }
+        else:
+            # Fallback to old logic
             # First check if it's an activity reporting command (faster than Claude)
             if is_activity_reporting_command(command_text):
                 is_monitoring_command = True
@@ -187,9 +237,6 @@ class VisionCommandHandler:
                     "context": self.intelligence.context.get_temporal_context()
                 }
                 
-        except Exception as e:
-            logger.error(f"Intelligence error: {e}", exc_info=True)
-            return await self._get_error_response("intelligence_error", command_text, str(e))
             
     async def _is_monitoring_command(self, command: str, screenshot: Any) -> bool:
         """Let Claude determine if this is a monitoring command"""
@@ -248,6 +295,16 @@ Respond with just "START" or "STOP".
                     logger.warning("Failed to start multi-space monitoring")
                     monitoring_success = False
             
+            # Update vision status if monitoring started successfully
+            if monitoring_success:
+                try:
+                    from vision.vision_status_manager import get_vision_status_manager
+                    vision_status_manager = get_vision_status_manager()
+                    await vision_status_manager.update_vision_status(True)
+                    logger.info("✅ Vision status updated to connected (old flow)")
+                except Exception as e:
+                    logger.error(f"Failed to update vision status: {e}")
+            
             # Get natural response for starting monitoring
             if monitoring_success:
                 start_prompt = f"""The user asked: "{command}"
@@ -290,6 +347,15 @@ BE CONCISE.
                 await self.intelligence.stop_multi_space_monitoring()
                 logger.info("Multi-space monitoring stopped, purple indicator removed")
             
+            # Update vision status to disconnected
+            try:
+                from vision.vision_status_manager import get_vision_status_manager
+                vision_status_manager = get_vision_status_manager()
+                await vision_status_manager.update_vision_status(False)
+                logger.info("✅ Vision status updated to disconnected (old flow)")
+            except Exception as e:
+                logger.error(f"Failed to update vision status: {e}")
+            
             # Get natural response for stopping monitoring
             stop_prompt = f"""The user asked: "{command}"
 
@@ -308,6 +374,169 @@ BE CONCISE. No technical details.
             "response": response.get('response'),
             "monitoring_active": self.monitoring_active,
             "pure_intelligence": True
+        }
+    
+    async def _handle_monitoring_control(self, command: str, context: Dict[str, Any], screenshot: Any) -> Dict[str, Any]:
+        """Handle monitoring control commands with new system"""
+        state_manager = get_state_manager()
+        indicator_controller = get_indicator_controller()
+        
+        action = context['action']
+        
+        if action == MonitoringAction.START:
+            # Check if we can start monitoring
+            can_start, reason = state_manager.can_start_monitoring()
+            if not can_start:
+                return {
+                    "handled": True,
+                    "response": f"I cannot start monitoring right now, Sir. {reason}",
+                    "monitoring_active": state_manager.is_monitoring_active(),
+                    "pure_intelligence": True
+                }
+            
+            # Transition to activating state
+            await state_manager.transition_to(MonitoringState.ACTIVATING)
+            
+            # Activate macOS indicator
+            indicator_result = await indicator_controller.activate_indicator()
+            
+            if indicator_result['success']:
+                # Update state manager
+                state_manager.update_component_status('macos_indicator', True)
+                state_manager.add_capability(MonitoringCapability.MACOS_INDICATOR)
+                
+                # Start multi-space monitoring
+                monitoring_started = False
+                if hasattr(self.intelligence, 'start_multi_space_monitoring'):
+                    monitoring_started = await self.intelligence.start_multi_space_monitoring()
+                    if monitoring_started:
+                        state_manager.update_component_status('multi_space', True)
+                        state_manager.add_capability(MonitoringCapability.MULTI_SPACE)
+                
+                # Update monitoring active flag
+                self.monitoring_active = True
+                self.proactive.monitoring_active = True
+                state_manager.update_component_status('vision_intelligence', True)
+                
+                # Transition to active state
+                await state_manager.transition_to(MonitoringState.ACTIVE)
+                
+                # Update vision status to connected
+                try:
+                    from vision.vision_status_manager import get_vision_status_manager
+                    vision_status_manager = get_vision_status_manager()
+                    await vision_status_manager.update_vision_status(True)
+                    logger.info("✅ Vision status updated to connected")
+                except Exception as e:
+                    logger.error(f"Failed to update vision status: {e}")
+                
+                # Start proactive monitoring
+                asyncio.create_task(self._proactive_monitoring_loop())
+                
+                return {
+                    "handled": True,
+                    "response": "Screen monitoring is now active, Sir. The purple indicator is visible in your menu bar, and I can see your entire workspace.",
+                    "monitoring_active": True,
+                    "pure_intelligence": True,
+                    "indicator_active": True
+                }
+            else:
+                # Indicator activation failed
+                await state_manager.transition_to(MonitoringState.ERROR, {
+                    'error': 'Failed to activate macOS indicator',
+                    'details': indicator_result
+                })
+                
+                return {
+                    "handled": True,
+                    "response": "I couldn't activate screen monitoring, Sir. Please ensure screen recording permission is granted in System Preferences.",
+                    "monitoring_active": False,
+                    "pure_intelligence": True,
+                    "error": indicator_result.get('error')
+                }
+                
+        elif action == MonitoringAction.STOP:
+            # Check if we can stop monitoring
+            can_stop, reason = state_manager.can_stop_monitoring()
+            if not can_stop:
+                return {
+                    "handled": True,
+                    "response": f"I cannot stop monitoring right now, Sir. {reason}",
+                    "monitoring_active": state_manager.is_monitoring_active(),
+                    "pure_intelligence": True
+                }
+            
+            # Transition to deactivating state
+            await state_manager.transition_to(MonitoringState.DEACTIVATING)
+            
+            # Stop monitoring components
+            self.monitoring_active = False
+            self.proactive.monitoring_active = False
+            
+            # Stop multi-space monitoring
+            if hasattr(self.intelligence, 'stop_multi_space_monitoring'):
+                await self.intelligence.stop_multi_space_monitoring()
+            
+            # Deactivate macOS indicator
+            indicator_result = await indicator_controller.deactivate_indicator()
+            
+            # Clear capabilities
+            state_manager.remove_capability(MonitoringCapability.MACOS_INDICATOR)
+            state_manager.remove_capability(MonitoringCapability.MULTI_SPACE)
+            
+            # Update component status
+            state_manager.update_component_status('macos_indicator', False)
+            state_manager.update_component_status('multi_space', False)
+            state_manager.update_component_status('vision_intelligence', False)
+            
+            # Transition to inactive state
+            await state_manager.transition_to(MonitoringState.INACTIVE)
+            
+            # Update vision status to disconnected
+            try:
+                from vision.vision_status_manager import get_vision_status_manager
+                vision_status_manager = get_vision_status_manager()
+                await vision_status_manager.update_vision_status(False)
+                logger.info("✅ Vision status updated to disconnected")
+            except Exception as e:
+                logger.error(f"Failed to update vision status: {e}")
+            
+            return {
+                "handled": True,
+                "response": "Screen monitoring has been disabled, Sir.",
+                "monitoring_active": False,
+                "pure_intelligence": True,
+                "indicator_active": False
+            }
+        
+        return {
+            "handled": True,
+            "response": "I'm not sure how to handle that monitoring command, Sir.",
+            "monitoring_active": self.monitoring_active,
+            "pure_intelligence": True
+        }
+    
+    async def _handle_monitoring_status(self, command: str, context: Dict[str, Any], screenshot: Any) -> Dict[str, Any]:
+        """Handle monitoring status queries"""
+        state_manager = get_state_manager()
+        state_info = state_manager.get_state_info()
+        
+        # Build status response
+        if state_info['is_active']:
+            capabilities = state_info['active_capabilities']
+            cap_text = f"with {', '.join(capabilities)}" if capabilities else ""
+            response = f"Yes Sir, monitoring is currently active {cap_text}. The purple indicator should be visible in your menu bar."
+        elif state_info['is_transitioning']:
+            response = f"Monitoring is currently {state_info['current_state'].replace('_', ' ')}, Sir."
+        else:
+            response = "No Sir, monitoring is not active. Would you like me to start monitoring your screen?"
+        
+        return {
+            "handled": True,
+            "response": response,
+            "monitoring_active": state_info['is_active'],
+            "pure_intelligence": True,
+            "state_info": state_info
         }
         
     async def _proactive_monitoring_loop(self):

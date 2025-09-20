@@ -22,6 +22,7 @@ class DirectSwiftCapture:
         self.capture_process = None
         self.is_capturing = False
         self.vision_status_callback = None
+        self.callback_loop = None
         
     async def start_capture(self) -> bool:
         """Start Swift capture - shows purple indicator"""
@@ -96,6 +97,29 @@ class DirectSwiftCapture:
         """Monitor Swift output in background"""
         if not self.capture_process:
             return
+        
+        # Store the main event loop reference
+        loop = None
+        try:
+            # Try to get the running loop from the main thread
+            import threading
+            main_thread = None
+            for thread in threading.enumerate():
+                if thread.name == 'MainThread':
+                    main_thread = thread
+                    break
+                    
+            if main_thread and hasattr(main_thread, '_target') and hasattr(main_thread._target, '__self__'):
+                # Try to find loop in various places
+                if hasattr(asyncio, '_running_loop'):
+                    loop = asyncio._running_loop
+            
+            # Fallback: create new event loop for callbacks
+            if not loop:
+                loop = asyncio.new_event_loop()
+                
+        except Exception as e:
+            logger.debug(f"[DIRECT] Could not get event loop: {e}")
             
         try:
             for line in iter(self.capture_process.stdout.readline, ''):
@@ -105,18 +129,24 @@ class DirectSwiftCapture:
                     # Check for vision status signals
                     if "[VISION_STATUS] connected" in line:
                         logger.info("🟢 Vision status: CONNECTED")
-                        if self.vision_status_callback:
-                            asyncio.run_coroutine_threadsafe(
-                                self.vision_status_callback(True),
-                                asyncio.get_event_loop()
-                            )
+                        if self.vision_status_callback and (self.callback_loop or loop):
+                            try:
+                                asyncio.run_coroutine_threadsafe(
+                                    self.vision_status_callback(True),
+                                    self.callback_loop or loop
+                                )
+                            except Exception as e:
+                                logger.debug(f"Could not run callback: {e}")
                     elif "[VISION_STATUS] disconnected" in line:
                         logger.info("🔴 Vision status: DISCONNECTED")
-                        if self.vision_status_callback:
-                            asyncio.run_coroutine_threadsafe(
-                                self.vision_status_callback(False),
-                                asyncio.get_event_loop()
-                            )
+                        if self.vision_status_callback and (self.callback_loop or loop):
+                            try:
+                                asyncio.run_coroutine_threadsafe(
+                                    self.vision_status_callback(False),
+                                    self.callback_loop or loop
+                                )
+                            except Exception as e:
+                                logger.debug(f"Could not run callback: {e}")
                     
                     # Check if capture stopped unexpectedly
                     if "Session stopped" in line or "Failed" in line:
@@ -156,6 +186,12 @@ class DirectSwiftCapture:
     def set_vision_status_callback(self, callback):
         """Set callback for vision status changes"""
         self.vision_status_callback = callback
+        # Store the current event loop for the callback
+        try:
+            self.callback_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self.callback_loop = None
+            logger.warning("[DIRECT] No running event loop when setting callback")
 
 # Global instance
 _direct_capture = None

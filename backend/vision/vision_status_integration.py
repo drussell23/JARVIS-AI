@@ -4,6 +4,7 @@ Vision Status Integration - Connects vision status manager with WebSocket
 
 import logging
 from typing import Optional
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
