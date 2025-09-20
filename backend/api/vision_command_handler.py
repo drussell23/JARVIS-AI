@@ -17,6 +17,8 @@ from .pure_vision_intelligence import (
     WorkflowIntelligence,
     ConversationContext
 )
+from .proactive_monitoring_handler import get_monitoring_handler
+from .activity_reporting_commands import is_activity_reporting_command
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +140,12 @@ class VisionCommandHandler:
         logger.info(f"[VISION] Handling command: {command_text}")
         await ws_logger.log(f"Processing vision command: {command_text}")
         
+        # Check if this is a proactive monitoring command
+        monitoring_handler = get_monitoring_handler(self)
+        monitoring_result = await monitoring_handler.handle_monitoring_request(command_text)
+        if monitoring_result.get('handled'):
+            return monitoring_result
+        
         # Ensure intelligence is initialized
         if not self.intelligence:
             await self.initialize_intelligence()
@@ -150,8 +158,20 @@ class VisionCommandHandler:
             
         # Let Claude understand the command and respond naturally
         try:
-            # Determine if this is a monitoring command through Claude
-            is_monitoring_command = await self._is_monitoring_command(command_text, screenshot)
+            # First check if it's an activity reporting command (faster than Claude)
+            if is_activity_reporting_command(command_text):
+                is_monitoring_command = True
+            # Quick check for common monitoring phrases
+            elif any(phrase in command_text.lower() for phrase in [
+                'start monitoring', 'enable monitoring', 'monitor my screen',
+                'enable screen monitoring', 'monitoring capabilities',
+                'turn on monitoring', 'activate monitoring', 'begin monitoring'
+            ]):
+                is_monitoring_command = True
+                logger.info(f"Quick match: '{command_text}' is a monitoring command")
+            else:
+                # Determine if this is a monitoring command through Claude
+                is_monitoring_command = await self._is_monitoring_command(command_text, screenshot)
             
             if is_monitoring_command:
                 return await self._handle_monitoring_command(command_text, screenshot)
@@ -182,6 +202,9 @@ Examples of monitoring commands:
 - "start monitoring my screen"
 - "stop watching"
 - "activate vision monitoring"
+- "enable screen monitoring"
+- "enable screen monitoring capabilities"
+- "turn on monitoring"
 
 Examples of non-monitoring commands:
 - "what do you see?"
@@ -194,6 +217,12 @@ Examples of non-monitoring commands:
         
     async def _handle_monitoring_command(self, command: str, screenshot: Any) -> Dict[str, Any]:
         """Handle monitoring commands with natural responses"""
+        
+        # Check if this is an activity reporting command
+        if is_activity_reporting_command(command):
+            monitoring_handler = get_monitoring_handler(self)
+            return await monitoring_handler.enable_change_reporting()
+        
         # Let Claude understand if this is start or stop
         intent_prompt = f"""The user said: "{command}"
 
@@ -209,19 +238,43 @@ Respond with just "START" or "STOP".
             self.proactive.monitoring_active = True
             
             # Start multi-space monitoring with purple indicator
+            monitoring_success = False
             if hasattr(self.intelligence, 'start_multi_space_monitoring'):
                 monitoring_started = await self.intelligence.start_multi_space_monitoring()
                 if monitoring_started:
                     logger.info("Multi-space monitoring started with purple indicator")
+                    monitoring_success = True
                 else:
                     logger.warning("Failed to start multi-space monitoring")
+                    monitoring_success = False
             
             # Get natural response for starting monitoring
-            start_prompt = f"""The user asked: "{command}"
+            if monitoring_success:
+                start_prompt = f"""The user asked: "{command}"
 
-You're JARVIS. Respond naturally to confirm that you've started monitoring their screen.
-Be specific about what you can see right now. Mention the purple indicator if appropriate.
-Keep it natural and conversational - no generic phrases.
+You're JARVIS. The screen monitoring is now ACTIVE with the macOS purple indicator visible.
+
+Give a BRIEF confirmation (1-2 sentences max) that includes:
+1. Monitoring is now active
+2. The purple indicator is visible in the menu bar
+3. You can see their screen
+
+Example: "Screen monitoring is now active, Sir. The purple indicator is visible in your menu bar, and I can see your desktop."
+
+BE CONCISE. Do not explain technical details or list options.
+"""
+            else:
+                start_prompt = f"""The user asked: "{command}"
+
+You're JARVIS. Screen monitoring FAILED to start due to permissions.
+
+Give a BRIEF response (1-2 sentences) explaining:
+1. Monitoring couldn't start
+2. They need to grant screen recording permission
+
+Example: "I couldn't start screen monitoring, Sir. Please grant screen recording permission in System Preferences."
+
+BE CONCISE.
 """
             response = await self.intelligence._get_claude_vision_response(screenshot, start_prompt)
             
@@ -240,8 +293,13 @@ Keep it natural and conversational - no generic phrases.
             # Get natural response for stopping monitoring
             stop_prompt = f"""The user asked: "{command}"
 
-You're JARVIS. Respond naturally to confirm that you've stopped monitoring their screen.
-Be conversational and natural - no generic phrases.
+You're JARVIS. Screen monitoring has been STOPPED and the purple indicator is gone.
+
+Give a BRIEF confirmation (1 sentence) that monitoring has stopped.
+
+Example: "Screen monitoring has been disabled, Sir."
+
+BE CONCISE. No technical details.
 """
             response = await self.intelligence._get_claude_vision_response(screenshot, stop_prompt)
             

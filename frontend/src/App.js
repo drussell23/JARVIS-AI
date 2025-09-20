@@ -50,12 +50,21 @@ function App() {
         // Callback for workspace updates
         (data) => {
           setVisionData(data);
-          setVisionStatus('connected');
           
-          // Add vision updates to chat
-          if (data.type === 'initial') {
+          // Handle different update types
+          if (data.type === 'status_update') {
+            // Update vision status based on backend status
+            setVisionStatus(data.status.connected ? 'connected' : 'disconnected');
+            if (data.status.connected) {
+              addVisionMessage('Vision system connected - monitoring active with purple indicator');
+            } else {
+              addVisionMessage('Vision system disconnected');
+            }
+          } else if (data.type === 'initial') {
+            setVisionStatus('connected');
             addVisionMessage(`Vision system connected. Monitoring ${data.workspace.window_count} windows.`);
           } else if (data.notifications && data.notifications.length > 0) {
+            setVisionStatus('connected');
             addVisionMessage(`Detected: ${data.notifications[0]}`);
           }
         },

@@ -82,6 +82,10 @@ class VisionConnection {
                 this.handleWorkspaceAnalysis(data);
                 break;
 
+            case 'vision_status_update':
+                this.handleVisionStatusUpdate(data);
+                break;
+
             case 'config_updated':
                 console.log('⚙️ Config updated:', data);
                 break;
@@ -148,6 +152,20 @@ class VisionConnection {
             type: 'analysis',
             analysis: data.analysis,
             timestamp: data.timestamp
+        });
+    }
+
+    handleVisionStatusUpdate(data) {
+        console.log('🔵 Vision Status Update:', data.status);
+        
+        // Update monitoring active state
+        this.monitoringActive = data.status.connected;
+        
+        // Notify UI of status change
+        this.onWorkspaceUpdate({
+            type: 'status_update',
+            status: data.status,
+            timestamp: data.timestamp || new Date().toISOString()
         });
     }
 

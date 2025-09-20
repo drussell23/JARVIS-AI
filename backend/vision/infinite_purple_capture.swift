@@ -7,10 +7,12 @@
 import Foundation
 import AVFoundation
 import CoreGraphics
+import AppKit
 
 // Global session that persists
 var globalSession: AVCaptureSession?
 var keepRunning = true
+var frameCount: Int64 = 0
 
 // Signal handlers
 signal(SIGTERM) { _ in
@@ -69,6 +71,10 @@ func startInfiniteCapture() -> Bool {
     let output = AVCaptureVideoDataOutput()
     output.alwaysDiscardsLateVideoFrames = true
     
+    // Set up delegate to count frames
+    let queue = DispatchQueue(label: "com.jarvis.capture.queue")
+    output.setSampleBufferDelegate(CaptureDelegate(), queue: queue)
+    
     if session.canAddOutput(output) {
         session.addOutput(output)
         print("[CAPTURE] Added video output")
@@ -89,9 +95,11 @@ func startInfiniteCapture() -> Bool {
         print("[CAPTURE] 🟣 PURPLE INDICATOR IS NOW VISIBLE")
         print("[CAPTURE] Session will run INDEFINITELY until process is killed")
         print("[CAPTURE] Current status: \(session.isRunning ? "RUNNING" : "STOPPED")")
+        print("[VISION_STATUS] connected")  // Signal for vision status
         return true
     } else {
         print("[CAPTURE] ❌ Failed to start session")
+        print("[VISION_STATUS] disconnected")  // Signal for vision status
         return false
     }
 }
@@ -118,11 +126,14 @@ if CommandLine.arguments.contains("--start") {
                     print("[CAPTURE] Health check #\(checkCount): Session running ✓")
                 } else {
                     print("[CAPTURE] ⚠️ Session stopped! Restarting...")
+                    print("[VISION_STATUS] disconnected")  // Signal for vision status
                     session.startRunning()
                     if session.isRunning {
                         print("[CAPTURE] ✅ Session restarted successfully")
+                        print("[VISION_STATUS] connected")  // Signal for vision status
                     } else {
                         print("[CAPTURE] ❌ Failed to restart session")
+                        print("[VISION_STATUS] disconnected")  // Signal for vision status
                         break
                     }
                 }
@@ -135,13 +146,27 @@ if CommandLine.arguments.contains("--start") {
         print("[CAPTURE] Loop ended, cleaning up...")
         if let session = globalSession {
             session.stopRunning()
+            print("[VISION_STATUS] disconnected")  // Signal for vision status
         }
     } else {
         print("[CAPTURE] Failed to start infinite capture")
+        print("[VISION_STATUS] disconnected")  // Signal for vision status
         exit(1)
     }
 } else {
     print("Usage: swift infinite_purple_capture.swift --start")
+}
+
+// Capture delegate to count frames and keep session active
+class CaptureDelegate: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        frameCount += 1
+        
+        // Every 300 frames (about 10 seconds at 30fps), report status
+        if frameCount % 300 == 0 {
+            print("[FRAMES] Captured \(frameCount) frames - Session active ✅")
+        }
+    }
 }
 
 // String extension

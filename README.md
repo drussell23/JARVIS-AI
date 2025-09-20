@@ -1,7 +1,7 @@
-# 🤖 JARVIS AI System v13.1.0 - Pure Vision Intelligence 🧠
+# 🤖 JARVIS AI System v13.2.0 - Multi-Space Vision & Status Integration 🧠
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-13.1.0%20Pure%20Intelligence-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Version-13.2.0%20Multi--Space%20Vision-brightgreen" alt="Version">
   <img src="https://img.shields.io/badge/Claude%20Vision-Pure%20Intelligence-ff1744" alt="Pure Intelligence">
   <img src="https://img.shields.io/badge/Proactive-Real%20Time%20Assistant-ff1744" alt="Proactive Assistant">
   <img src="https://img.shields.io/badge/Wake%20Word-10ms%20⚡-ff69b4" alt="Ultra Fast Wake Word">
@@ -20,6 +20,33 @@
 <p align="center">
   <em>"Perfection is achieved not when there is nothing more to add, but when there is nothing left to take away." - Antoine de Saint-Exupéry</em>
 </p>
+
+## 🆕 What's New in v13.2.0 - Multi-Space Vision & Status Integration
+
+### 🌐 Multi-Space Desktop Vision System
+**JARVIS CAN NOW SEE ACROSS ALL DESKTOP SPACES!** Features:
+- ✅ **Cross-Space Visibility** - Monitors apps across all macOS desktop spaces
+- ✅ **Smart Space Switching** - Intelligently captures screenshots from multiple spaces
+- ✅ **Advanced Caching** - LRU cache with confidence-based eviction
+- ✅ **Performance Optimization** - Predictive prefetching and adaptive quality
+- ✅ **Natural Language Queries** - "Where is Terminal?" works across all spaces
+
+### 🟣 Purple Indicator Fix & Vision Status
+**FIXED MONITORING INDICATOR & STATUS SYNC!** Improvements:
+- ✅ **Persistent Purple Indicator** - Stays visible indefinitely when monitoring
+- ✅ **Automatic Session Recovery** - Restarts if capture session stops
+- ✅ **Vision Status Sync** - UI shows "connected" when purple indicator is active
+- ✅ **Real-time Updates** - WebSocket broadcasts status changes instantly
+- ✅ **Better Command Detection** - "Enable screen monitoring" now works reliably
+- ✅ **Concise Responses** - Simple confirmations instead of technical explanations
+
+### 📊 Proactive Activity Reporting
+**JARVIS REPORTS WORKSPACE CHANGES!** New capabilities:
+- ✅ **Window Events** - "I notice you've opened VS Code on Desktop 2"
+- ✅ **Space Navigation** - "You've switched from Desktop 1 to Desktop 3"
+- ✅ **App Lifecycle** - Reports when apps open, close, or move
+- ✅ **Natural Announcements** - Voice reports changes conversationally
+- ✅ **Smart Filtering** - Only reports significant changes
 
 ## 🆕 What's New in v13.0.0 - Proactive Real-Time Intelligent Assistant
 

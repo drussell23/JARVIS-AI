@@ -17,10 +17,11 @@ class DirectSwiftCapture:
     """Execute Swift capture directly for purple indicator"""
     
     def __init__(self):
-        # Use persistent capture script for better reliability
-        self.swift_script = Path(__file__).parent / "persistent_capture.swift"
+        # Use infinite capture script for permanent purple indicator
+        self.swift_script = Path(__file__).parent / "infinite_purple_capture.swift"
         self.capture_process = None
         self.is_capturing = False
+        self.vision_status_callback = None
         
     async def start_capture(self) -> bool:
         """Start Swift capture - shows purple indicator"""
@@ -101,6 +102,22 @@ class DirectSwiftCapture:
                 if line:
                     logger.info(f"[SWIFT] {line.strip()}")
                     
+                    # Check for vision status signals
+                    if "[VISION_STATUS] connected" in line:
+                        logger.info("🟢 Vision status: CONNECTED")
+                        if self.vision_status_callback:
+                            asyncio.run_coroutine_threadsafe(
+                                self.vision_status_callback(True),
+                                asyncio.get_event_loop()
+                            )
+                    elif "[VISION_STATUS] disconnected" in line:
+                        logger.info("🔴 Vision status: DISCONNECTED")
+                        if self.vision_status_callback:
+                            asyncio.run_coroutine_threadsafe(
+                                self.vision_status_callback(False),
+                                asyncio.get_event_loop()
+                            )
+                    
                     # Check if capture stopped unexpectedly
                     if "Session stopped" in line or "Failed" in line:
                         logger.warning(f"[DIRECT] Swift capture issue detected: {line.strip()}")
@@ -128,6 +145,17 @@ class DirectSwiftCapture:
             self.capture_process = None
             self.is_capturing = False
             logger.info("[DIRECT] Swift capture stopped")
+            
+            # Notify vision status change
+            if self.vision_status_callback:
+                asyncio.run_coroutine_threadsafe(
+                    self.vision_status_callback(False),
+                    asyncio.get_event_loop()
+                )
+    
+    def set_vision_status_callback(self, callback):
+        """Set callback for vision status changes"""
+        self.vision_status_callback = callback
 
 # Global instance
 _direct_capture = None

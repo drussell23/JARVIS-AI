@@ -434,6 +434,22 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 logger.warning(f"⚠️ Could not initialize weather system: {e}")
                 
+            # Initialize vision status manager
+            try:
+                from vision.vision_status_integration import initialize_vision_status, setup_vision_status_callbacks
+                
+                # Initialize after WebSocket is mounted
+                async def setup_vision_status():
+                    await asyncio.sleep(0.5)  # Give WebSocket time to initialize
+                    success = await initialize_vision_status(app)
+                    if success:
+                        setup_vision_status_callbacks(app)
+                        logger.info("✅ Vision status manager initialized and connected")
+                    
+                asyncio.create_task(setup_vision_status())
+            except Exception as e:
+                logger.warning(f"⚠️ Could not initialize vision status manager: {e}")
+                
         elif analyzer_class:
             logger.warning("⚠️ Vision analyzer available but no ANTHROPIC_API_KEY set")
     
@@ -584,6 +600,11 @@ async def health_check():
     """Quick health check endpoint"""
     vision_details = {}
     ml_audio_details = {}
+    vision_status = {}
+    
+    # Check vision status manager
+    if hasattr(app.state, 'vision_status_manager'):
+        vision_status = app.state.vision_status_manager.get_status()
     
     # Check vision component status
     if hasattr(app.state, 'vision_analyzer'):
@@ -653,6 +674,7 @@ async def health_check():
         "components": {
             name: bool(comp) for name, comp in components.items() if comp is not None
         },
+        "vision_status": vision_status,
         "vision_enhanced": vision_details,
         "ml_audio_system": ml_audio_details,
         "rust_acceleration": rust_details,

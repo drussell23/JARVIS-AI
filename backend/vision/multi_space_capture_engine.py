@@ -34,6 +34,13 @@ except ImportError:
     get_direct_capture = None
     is_direct_capturing = lambda: False
 
+# Import vision status manager
+try:
+    from .vision_status_manager import get_vision_status_manager
+except ImportError:
+    logger.warning("Vision status manager not available")
+    get_vision_status_manager = None
+
 class CaptureMethod(Enum):
     """Available capture methods with fallback hierarchy"""
     SCREENCAPTURE_API = "screencapture_api"       # macOS screencapture with space
@@ -613,6 +620,14 @@ class MultiSpaceCaptureEngine:
             
         if self.direct_capture:
             logger.info("Starting monitoring session with purple indicator...")
+            
+            # Set up vision status callback
+            if get_vision_status_manager:
+                status_manager = get_vision_status_manager()
+                async def vision_status_callback(connected: bool):
+                    await status_manager.update_vision_status(connected)
+                self.direct_capture.set_vision_status_callback(vision_status_callback)
+            
             success = await self.direct_capture.start_capture()
             if success:
                 self.monitoring_active = True

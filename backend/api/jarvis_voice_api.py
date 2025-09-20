@@ -424,9 +424,43 @@ class JARVISVoiceAPI:
     async def process_command(self, command: JARVISCommand) -> Dict:
         """Process a JARVIS command"""
         # First check if this is a vision command
+        logger.info(f"[JARVIS API] Checking if '{command.text}' is a vision command...")
+        
+        # Quick check for monitoring commands
+        is_monitoring_cmd = any(phrase in command.text.lower() for phrase in [
+            'start monitoring', 'enable monitoring', 'monitor my screen',
+            'enable screen monitoring', 'monitoring capabilities',
+            'turn on monitoring', 'activate monitoring', 'begin monitoring',
+            'stop monitoring', 'disable monitoring'
+        ])
+        
+        if is_monitoring_cmd:
+            logger.info("[JARVIS API] Detected monitoring command - routing to vision handler")
+        
         try:
             from .vision_command_handler import vision_command_handler
+            
+            # Ensure vision handler is initialized
+            if not vision_command_handler.intelligence:
+                logger.info("[JARVIS API] Initializing vision command handler...")
+                # Try to get API key from environment or app state
+                api_key = None
+                try:
+                    from api.jarvis_factory import get_app_state
+                    app_state = get_app_state()
+                    if app_state and hasattr(app_state, 'vision_analyzer') and app_state.vision_analyzer:
+                        api_key = getattr(app_state.vision_analyzer, 'api_key', None)
+                except:
+                    pass
+                
+                if not api_key:
+                    api_key = os.getenv("ANTHROPIC_API_KEY")
+                
+                await vision_command_handler.initialize_intelligence(api_key)
+            
             vision_result = await vision_command_handler.handle_command(command.text)
+            logger.info(f"[JARVIS API] Vision handler result: handled={vision_result.get('handled')}")
+            
             if vision_result.get('handled'):
                 return {
                     "response": vision_result['response'],
@@ -436,7 +470,7 @@ class JARVISVoiceAPI:
                     "monitoring_active": vision_result.get('monitoring_active')
                 }
         except Exception as e:
-            logger.warning(f"Vision command handler error: {e}")
+            logger.error(f"Vision command handler error: {e}", exc_info=True)
         
         if not self.jarvis_available:
             # Check if this is a weather command - we can handle it even in limited mode
