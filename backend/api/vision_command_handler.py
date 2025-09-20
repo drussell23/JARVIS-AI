@@ -160,8 +160,21 @@ class VisionCommandHandler:
         if not self.intelligence:
             await self.initialize_intelligence()
             
-        # Capture current screen
-        screenshot = await self._capture_screen()
+        # Check if this is a multi-space query first
+        needs_multi_space = False
+        if self.intelligence and hasattr(self.intelligence, '_should_use_multi_space'):
+            needs_multi_space = self.intelligence._should_use_multi_space(command_text)
+            logger.info(f"[VISION] Multi-space query detected: {needs_multi_space}")
+        
+        # Capture screen(s) based on query type
+        if needs_multi_space:
+            # Capture multiple spaces for comprehensive analysis
+            screenshot = await self._capture_screen(multi_space=True)
+            logger.info(f"[VISION] Captured {len(screenshot) if isinstance(screenshot, dict) else 1} space(s)")
+        else:
+            # Single space capture
+            screenshot = await self._capture_screen()
+            
         if not screenshot:
             # Even error messages come from Claude
             return await self._get_error_response("screenshot_failed", command_text)
@@ -567,14 +580,27 @@ BE CONCISE. No technical details.
                 logger.error(f"Proactive monitoring error: {e}")
                 await asyncio.sleep(5)
                 
-    async def _capture_screen(self) -> Optional[Any]:
-        """Capture current screen"""
+    async def _capture_screen(self, multi_space=False, space_number=None) -> Optional[Any]:
+        """
+        Capture screen(s) with multi-space support
+        
+        Args:
+            multi_space: If True, capture all desktop spaces
+            space_number: If provided, capture specific space
+            
+        Returns:
+            Single screenshot or Dict[int, screenshot] for multi-space
+        """
         try:
             # Initialize vision manager if needed
             await self._ensure_vision_manager()
             
             if self.vision_manager and hasattr(self.vision_manager, 'vision_analyzer') and self.vision_manager.vision_analyzer:
-                screenshot = await self.vision_manager.vision_analyzer.capture_screen()
+                # Use enhanced capture with multi-space support
+                screenshot = await self.vision_manager.vision_analyzer.capture_screen(
+                    multi_space=multi_space,
+                    space_number=space_number
+                )
                 return screenshot
             else:
                 # Try to capture screen directly as fallback

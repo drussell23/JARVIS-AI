@@ -4692,9 +4692,25 @@ For this query, provide a helpful response that leverages the multi-space inform
         
         logger.info("All enhanced components cleaned up")
     
-    async def capture_screen(self) -> Any:
-        """Capture screen using the best available method with robust error handling"""
-        logger.info("[CAPTURE SCREEN] Starting screen capture")
+    async def capture_screen(self, multi_space=False, space_number=None) -> Any:
+        """
+        Capture screen using the best available method with robust error handling
+        Enhanced with multi-space support per PRD requirements
+        
+        Args:
+            multi_space: If True, capture all desktop spaces
+            space_number: If provided, capture specific space
+            
+        Returns:
+            Single screenshot or Dict[int, screenshot] for multi-space
+        """
+        logger.info(f"[CAPTURE SCREEN] Starting screen capture (multi_space={multi_space}, space={space_number})")
+        
+        # Multi-space capture using the capture engine
+        if multi_space or space_number is not None:
+            return await self._capture_multi_space(multi_space, space_number)
+        
+        # Single space capture (existing logic)
         capture_methods = []
         
         # Method 1: Video streaming (if available)
@@ -4793,6 +4809,139 @@ For this query, provide a helpful response that leverages the multi-space inform
         except Exception as e:
             logger.error(f"PIL ImageGrab failed: {e}")
             return None
+    
+    async def _capture_multi_space(self, capture_all: bool, space_number: Optional[int]) -> Union[Dict[int, Any], Any]:
+        """
+        Capture screenshots from multiple desktop spaces
+        Implements PRD FR-1: Multi-Space Data Capture System
+        
+        Args:
+            capture_all: If True, capture all spaces
+            space_number: If provided, capture specific space only
+            
+        Returns:
+            Dict[space_id, screenshot] for multi-space or single screenshot
+        """
+        try:
+            # Lazy import to avoid circular dependencies
+            from .multi_space_capture_engine import (
+                MultiSpaceCaptureEngine, 
+                SpaceCaptureRequest,
+                CaptureQuality
+            )
+            
+            # Initialize capture engine if not already done
+            if not hasattr(self, '_multi_space_engine'):
+                self._multi_space_engine = MultiSpaceCaptureEngine(
+                    cache_size_mb=self.config.cache_size_mb
+                )
+                # Set optimizer if available
+                if hasattr(self, 'optimizer'):
+                    self._multi_space_engine.optimizer = self.optimizer
+                    
+            engine = self._multi_space_engine
+            
+            # Enumerate spaces if capturing all
+            if capture_all:
+                space_ids = await engine.enumerate_spaces()
+                logger.info(f"[MULTI-SPACE] Found {len(space_ids)} desktop spaces: {space_ids}")
+            else:
+                space_ids = [space_number] if space_number else [await engine.get_current_space()]
+                
+            # Create capture request
+            quality = CaptureQuality.OPTIMIZED
+            if hasattr(self, 'config') and self.config.jpeg_quality < 70:
+                quality = CaptureQuality.FAST
+                
+            request = SpaceCaptureRequest(
+                space_ids=space_ids,
+                quality=quality,
+                use_cache=self.config.cache_enabled,
+                cache_ttl=self.config.cache_ttl_minutes * 60,
+                reason="vision_analysis",
+                parallel=len(space_ids) > 1
+            )
+            
+            # Capture spaces
+            result = await engine.capture_all_spaces(request)
+            
+            if not result.success:
+                logger.error(f"[MULTI-SPACE] Capture failed: {result.errors}")
+                # Fall back to single current space capture
+                return await self._capture_macos_screencapture()
+                
+            # Log performance metrics
+            logger.info(f"[MULTI-SPACE] Captured {result.new_captures} new, "
+                       f"{result.cache_hits} from cache in {result.total_duration:.2f}s")
+            
+            # Convert numpy arrays to PIL Images
+            screenshots = {}
+            for space_id, screenshot_array in result.screenshots.items():
+                if isinstance(screenshot_array, np.ndarray):
+                    screenshots[space_id] = Image.fromarray(screenshot_array)
+                else:
+                    screenshots[space_id] = screenshot_array
+                    
+            # Return appropriate format
+            if capture_all or len(screenshots) > 1:
+                return screenshots
+            else:
+                # Single space - return just the image
+                return screenshots.get(space_ids[0]) if screenshots else None
+                
+        except Exception as e:
+            logger.error(f"[MULTI-SPACE] Failed to capture: {e}")
+            # Fall back to single capture
+            return await self._capture_macos_screencapture()
+    
+    async def enumerate_desktop_spaces(self) -> List[int]:
+        """
+        Enumerate all available desktop spaces
+        Part of PRD FR-1.1
+        """
+        try:
+            if not hasattr(self, '_multi_space_engine'):
+                from .multi_space_capture_engine import MultiSpaceCaptureEngine
+                self._multi_space_engine = MultiSpaceCaptureEngine()
+                
+            return await self._multi_space_engine.enumerate_spaces()
+        except Exception as e:
+            logger.error(f"Failed to enumerate spaces: {e}")
+            return [1]  # Default to single space
+            
+    async def get_space_metadata(self, space_id: int) -> Dict[str, Any]:
+        """
+        Get metadata for a specific desktop space
+        Part of PRD FR-1.7
+        """
+        try:
+            # Use window detector to get space information
+            from .multi_space_window_detector import MultiSpaceWindowDetector
+            detector = MultiSpaceWindowDetector()
+            window_data = detector.get_all_windows_across_spaces()
+            
+            # Find the specific space
+            for space in window_data.get('spaces', []):
+                if hasattr(space, 'space_id') and space.space_id == space_id:
+                    return {
+                        'space_id': space_id,
+                        'window_count': getattr(space, 'window_count', 0),
+                        'is_current': getattr(space, 'is_current', False),
+                        'applications': list(getattr(space, 'applications', {}).keys())
+                    }
+                elif isinstance(space, dict) and space.get('space_id') == space_id:
+                    return {
+                        'space_id': space_id,
+                        'window_count': space.get('window_count', 0),
+                        'is_current': space.get('is_current', False),
+                        'applications': list(space.get('applications', {}).keys())
+                    }
+                    
+            return {'space_id': space_id, 'error': 'Space not found'}
+            
+        except Exception as e:
+            logger.error(f"Failed to get space metadata: {e}")
+            return {'space_id': space_id, 'error': str(e)}
     
     def _validate_captured_image(self, image: Any) -> bool:
         """Validate that captured image is valid"""
