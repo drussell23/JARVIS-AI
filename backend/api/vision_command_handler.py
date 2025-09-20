@@ -128,6 +128,29 @@ class VisionCommandHandler:
                         except Exception as e:
                             logger.error(f"Vision analyzer error: {e}")
                             raise
+                    
+                    async def analyze_multiple_images_with_prompt(self, images: List[Dict[str, Any]], prompt: str, max_tokens: int = 1000) -> Dict[str, Any]:
+                        """Wrapper for multi-space analysis"""
+                        try:
+                            # Use the analyzer's multi-image method
+                            if hasattr(self.analyzer, 'analyze_multiple_images_with_prompt'):
+                                result = await self.analyzer.analyze_multiple_images_with_prompt(
+                                    images=images,
+                                    prompt=prompt,
+                                    max_tokens=max_tokens
+                                )
+                                return result
+                            else:
+                                # Fallback: analyze first image only
+                                logger.warning("Analyzer doesn't support multi-image analysis, using first image only")
+                                if images:
+                                    first_image = images[0]['image']
+                                    return await self.analyze_image_with_prompt(first_image, prompt, max_tokens)
+                                else:
+                                    return {'content': "No images provided for analysis", 'success': False}
+                        except Exception as e:
+                            logger.error(f"Multi-image vision analyzer error: {e}")
+                            raise
                             
                 claude_client = ClaudeVisionWrapper(vision_analyzer)
             else:

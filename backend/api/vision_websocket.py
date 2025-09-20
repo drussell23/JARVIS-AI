@@ -42,12 +42,16 @@ class VisionManager:
         self._monitoring_active = False
         logger.info("Screen monitoring stopped")
     
-    async def capture_screen(self):
-        """Capture current screen"""
+    async def capture_screen(self, multi_space=False, space_number=None):
+        """Capture current screen with multi-space support"""
         if not self.vision_analyzer:
             raise Exception("Vision analyzer not available")
         
-        return await self.vision_analyzer.capture_screen_async()
+        # Use the correct method name and pass multi-space parameters
+        return await self.vision_analyzer.capture_screen(
+            multi_space=multi_space,
+            space_number=space_number
+        )
     
     async def analyze_screen(self, prompt: str):
         """Analyze screen with prompt"""
