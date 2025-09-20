@@ -158,8 +158,8 @@ class VisionCommandHandler:
                 logger.warning("[PURE VISION] No vision analyzer available, using mock responses")
                 claude_client = None
             
-            # Initialize intelligence systems
-            self.intelligence = PureVisionIntelligence(claude_client)
+            # Initialize intelligence systems with multi-space enabled
+            self.intelligence = PureVisionIntelligence(claude_client, enable_multi_space=True)
             self.proactive = ProactiveIntelligence(self.intelligence)
             self.workflow = WorkflowIntelligence(self.intelligence)
             
