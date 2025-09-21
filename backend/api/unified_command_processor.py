@@ -373,23 +373,25 @@ class UnifiedCommandProcessor:
                 
         # Create conversational response
         if len(responses) > 1:
-            # Make multi-step responses more natural
-            if len(responses) == 2:
-                # Keep the first response as-is, lowercase the second but preserve "Sir"
-                second_response = responses[1]
-                if second_response.endswith(", Sir"):
-                    second_response = second_response[:-5].lower() + ", Sir"
-                else:
-                    second_response = second_response.lower()
-                response = f"{responses[0]} and {second_response}"
+            # Clean up individual responses first
+            cleaned_responses = []
+            for i, resp in enumerate(responses):
+                # Remove trailing "Sir" from all but the last response
+                if resp.endswith(", Sir") and i < len(responses) - 1:
+                    resp = resp[:-5]
+                cleaned_responses.append(resp)
+            
+            # Combine into natural response
+            if len(cleaned_responses) == 2:
+                # For 2 steps: "Opening Safari and searching for dogs"
+                response = f"{cleaned_responses[0]} and {cleaned_responses[1]}"
             else:
                 # For 3+ steps: "Opening Safari, navigating to Google, and taking a screenshot"
-                last_response = responses[-1]
-                if last_response.endswith(", Sir"):
-                    last_response = last_response[:-5].lower() + ", Sir"
-                else:
-                    last_response = last_response.lower()
-                response = ", ".join(responses[:-1]) + f", and {last_response}"
+                response = ", ".join(cleaned_responses[:-1]) + f" and {cleaned_responses[-1]}"
+            
+            # Add "Sir" at the end if it's not already there
+            if not response.endswith(", Sir"):
+                response += ", Sir"
         else:
             response = responses[0] if responses else "I'll help you with that"
             

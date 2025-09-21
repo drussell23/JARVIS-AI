@@ -604,7 +604,7 @@ class MacOSController:
                         query_params = parse_qs(parsed.query)
                         search_query = query_params.get('q', [''])[0]
                         if search_query:
-                            return True, f"Searching for {search_query} in {browser.title()}, Sir"
+                            return True, f"searching for {search_query}"
                         else:
                             return True, f"Opening Google search in {browser.title()}"
                     elif 'google.com' in url.lower():
