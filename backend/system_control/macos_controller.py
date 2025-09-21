@@ -570,7 +570,17 @@ class MacOSController:
             success, message = self.execute_applescript(script)
             if success:
                 # Make URL response more conversational
-                if 'google.com' in url.lower():
+                if 'google.com/search?q=' in url.lower():
+                    # Extract search query for better response
+                    from urllib.parse import urlparse, parse_qs
+                    parsed = urlparse(url)
+                    query_params = parse_qs(parsed.query)
+                    search_query = query_params.get('q', [''])[0]
+                    if search_query:
+                        return True, f"searching Google for '{search_query}'"
+                    else:
+                        return True, f"navigating to Google search"
+                elif 'google.com' in url.lower():
                     return True, f"navigating to Google"
                 elif 'github.com' in url.lower():
                     return True, f"navigating to GitHub"
@@ -587,7 +597,17 @@ class MacOSController:
                 success, message = self.execute_shell(cmd)
                 if success:
                     # Consistent conversational format
-                    if 'google.com' in url.lower():
+                    if 'google.com/search?q=' in url.lower():
+                        # Extract search query for better response
+                        from urllib.parse import urlparse, parse_qs
+                        parsed = urlparse(url)
+                        query_params = parse_qs(parsed.query)
+                        search_query = query_params.get('q', [''])[0]
+                        if search_query:
+                            return True, f"searching Google for '{search_query}' in {browser}"
+                        else:
+                            return True, f"opening Google search in {browser}"
+                    elif 'google.com' in url.lower():
                         return True, f"opening Google in {browser}"
                     else:
                         from urllib.parse import urlparse

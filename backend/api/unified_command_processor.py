@@ -141,6 +141,9 @@ class UnifiedCommandProcessor:
         
         # Check compound commands FIRST (highest priority)
         if ' and ' in command_lower or ' then ' in command_lower or ', and ' in command_lower:
+            # Special case: "open X and search for Y" should be compound
+            if 'open' in command_lower and 'search' in command_lower:
+                return CommandType.COMPOUND, 0.95
             # Make sure it's not just part of a search query or typing command
             if not any(pattern in command_lower for pattern in ['search for', 'look up', 'type', 'and press enter', 'and enter']):
                 return CommandType.COMPOUND, 0.95
@@ -150,7 +153,7 @@ class UnifiedCommandProcessor:
             'open', 'close', 'launch', 'quit', 'start', 'restart', 'shutdown',
             'volume', 'brightness', 'settings', 'wifi', 'wi-fi', 'screenshot',
             'mute', 'unmute', 'sleep display', 'go to', 'navigate to', 'visit',
-            'browse to', 'search for', 'google', 'new tab', 'open tab', 'type',
+            'browse to', 'search for', 'search in', 'google', 'new tab', 'open tab', 'type',
             'enter', 'search bar', 'click', 'another tab', 'open another'
         ]
         
@@ -383,32 +386,51 @@ class UnifiedCommandProcessor:
         command_text = command_text.replace(', and ', ' and ')
         command_text = command_text.replace(', ', ' and ')
         
-        # Split by 'and' but be smart about URLs
+        # Smart split by 'and' - check context on both sides
         parts = []
-        current_part = []
-        words = command_text.split()
         
-        i = 0
-        while i < len(words):
-            word = words[i]
+        # Use regex to find 'and' with word boundaries
+        import re
+        and_positions = []
+        for match in re.finditer(r'\band\b', command_text, re.IGNORECASE):
+            and_positions.append(match.span())
+        
+        if not and_positions:
+            return [command_text]
+        
+        last_pos = 0
+        for start, end in and_positions:
+            # Get text before and after 'and'
+            before_and = command_text[last_pos:start].strip()
+            after_and = command_text[end:].strip()
             
-            # Check if 'and' is a connector or part of content
-            if word.lower() == 'and':
-                # Check if it's part of a URL or search query
-                if i > 0 and any(pattern in ' '.join(current_part).lower() for pattern in ['go to', 'search for', 'navigate to']):
-                    current_part.append(word)
-                else:
-                    # It's a connector
-                    if current_part:
-                        parts.append(' '.join(current_part))
-                        current_part = []
+            # Check if this 'and' is part of a phrase that shouldn't be split
+            keep_together = False
+            
+            # Don't split if 'and' is part of a URL or between words that form a phrase
+            if before_and and after_and:
+                # Check for patterns where 'and' should not split
+                if any(pattern in before_and.lower() for pattern in ['go to', 'navigate to']):
+                    if not any(word in after_and.lower().split()[:3] for word in ['open', 'close', 'search', 'type', 'click']):
+                        keep_together = True
+            
+            if keep_together:
+                # Don't split here
+                continue
             else:
-                current_part.append(word)
-            
-            i += 1
+                # This is a splitting point
+                if before_and:
+                    parts.append(before_and)
+                last_pos = end
         
-        if current_part:
-            parts.append(' '.join(current_part))
+        # Add the remaining part
+        remaining = command_text[last_pos:].strip()
+        if remaining:
+            parts.append(remaining)
+            
+        # If no valid splits were made, return the whole command
+        if not parts:
+            return [command_text]
             
         return parts
     
@@ -637,7 +659,7 @@ class UnifiedCommandProcessor:
                 else:
                     return {'success': False, 'response': "Please specify a URL or search term"}
                     
-            elif any(pattern in command_lower for pattern in ['search for', 'google', 'look up']):
+            elif any(pattern in command_lower for pattern in ['search for', 'google', 'look up', 'search in']):
                 # Handle web searches
                 query = None
                 browser = None
@@ -648,19 +670,28 @@ class UnifiedCommandProcessor:
                         browser = browser_name
                         break
                 
-                for pattern in ['search for', 'google', 'look up']:
-                    if pattern in command_lower:
-                        # Find the pattern position to do case-insensitive split
-                        pattern_index = command_lower.find(pattern)
-                        if pattern_index != -1:
-                            query = command_text[pattern_index + len(pattern):].strip()
-                            # Remove browser specification if present
-                            for browser_name in ['safari', 'chrome', 'firefox']:
-                                if f'in {browser_name}' in query.lower():
-                                    query = query[:query.lower().find(f'in {browser_name}')].strip()
-                                elif f'on {browser_name}' in query.lower():
-                                    query = query[:query.lower().find(f'on {browser_name}')].strip()
-                            break
+                # Handle "search in X for Y" pattern
+                if 'search in' in command_lower and ' for ' in command_lower:
+                    # Extract from "search in safari for dogs"
+                    search_start = command_lower.find('search in')
+                    for_index = command_lower.find(' for ', search_start)
+                    if for_index != -1:
+                        query = command_text[for_index + 5:].strip()
+                else:
+                    # Handle regular patterns
+                    for pattern in ['search for', 'google', 'look up']:
+                        if pattern in command_lower:
+                            # Find the pattern position to do case-insensitive split
+                            pattern_index = command_lower.find(pattern)
+                            if pattern_index != -1:
+                                query = command_text[pattern_index + len(pattern):].strip()
+                                # Remove browser specification if present
+                                for browser_name in ['safari', 'chrome', 'firefox']:
+                                    if f'in {browser_name}' in query.lower():
+                                        query = query[:query.lower().find(f'in {browser_name}')].strip()
+                                    elif f'on {browser_name}' in query.lower():
+                                        query = query[:query.lower().find(f'on {browser_name}')].strip()
+                                break
                 
                 if query:
                     success, message = macos_controller.web_search(query, browser=browser)
