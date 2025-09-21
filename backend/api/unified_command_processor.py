@@ -359,48 +359,83 @@ class UnifiedCommandProcessor:
         active_app = None
         previous_result = None
         
-        for i, part in enumerate(parts):
-            part = part.strip()
-            if not part:
-                continue
+        # Check if all parts are similar operations that can be parallelized
+        can_parallelize = self._can_parallelize_commands(parts)
+        
+        if can_parallelize:
+            # Process similar operations in parallel (e.g., closing multiple apps)
+            logger.info(f"[COMPOUND] Processing {len(parts)} similar commands in parallel")
+            
+            # Create tasks for parallel execution
+            tasks = []
+            for part in parts:
+                part = part.strip()
+                if not part:
+                    continue
+                    
+                # Process each part as an independent command
+                async def process_part(p):
+                    command_type, _ = await self._classify_command(p)
+                    if command_type == CommandType.COMPOUND:
+                        command_type = CommandType.SYSTEM
+                    return await self._execute_command(command_type, p)
                 
-            # Provide user feedback for multi-step commands
-            if len(parts) > 1:
-                logger.info(f"[COMPOUND] Step {i+1}/{len(parts)}: {part}")
+                tasks.append(process_part(part))
             
-            # Check if this is a dependent command that needs context
-            enhanced_command = self._enhance_with_context(part, active_app, previous_result)
+            # Execute all tasks in parallel
+            results = await asyncio.gather(*tasks)
             
-            # Process individual part (not as compound to avoid recursion)
-            command_type, _ = await self._classify_command(enhanced_command)
-            # Force non-compound to avoid recursion
-            if command_type == CommandType.COMPOUND:
-                command_type = CommandType.SYSTEM
-            
-            result = await self._execute_command(command_type, enhanced_command)
-            results.append(result)
-            
-            # Update context for next command
-            if result.get('success', False):
-                # Track opened apps for subsequent commands
-                if any(word in part.lower() for word in ['open', 'launch', 'start']):
-                    for app in ['safari', 'chrome', 'firefox']:
-                        if app in enhanced_command.lower():
-                            active_app = app
-                            break
-                            
-                responses.append(result.get('response', ''))
-            else:
-                all_success = False
-                responses.append(f"Failed: {result.get('response', 'Unknown error')}")
-                # Don't continue if a step fails
-                break
-            
-            previous_result = result
-            
-            # Add small delay between commands for reliability
-            if i < len(parts) - 1:
-                await asyncio.sleep(0.5)
+            # Collect responses
+            for result in results:
+                if result.get('success', False):
+                    responses.append(result.get('response', ''))
+                else:
+                    all_success = False
+                    responses.append(f"Failed: {result.get('response', 'Unknown error')}")
+        else:
+            # Sequential processing for dependent commands
+            for i, part in enumerate(parts):
+                part = part.strip()
+                if not part:
+                    continue
+                    
+                # Provide user feedback for multi-step commands
+                if len(parts) > 1:
+                    logger.info(f"[COMPOUND] Step {i+1}/{len(parts)}: {part}")
+                
+                # Check if this is a dependent command that needs context
+                enhanced_command = self._enhance_with_context(part, active_app, previous_result)
+                
+                # Process individual part (not as compound to avoid recursion)
+                command_type, _ = await self._classify_command(enhanced_command)
+                # Force non-compound to avoid recursion
+                if command_type == CommandType.COMPOUND:
+                    command_type = CommandType.SYSTEM
+                
+                result = await self._execute_command(command_type, enhanced_command)
+                results.append(result)
+                
+                # Update context for next command
+                if result.get('success', False):
+                    # Track opened apps for subsequent commands
+                    if any(word in part.lower() for word in ['open', 'launch', 'start']):
+                        for app in ['safari', 'chrome', 'firefox']:
+                            if app in enhanced_command.lower():
+                                active_app = app
+                                break
+                                
+                    responses.append(result.get('response', ''))
+                else:
+                    all_success = False
+                    responses.append(f"Failed: {result.get('response', 'Unknown error')}")
+                    # Don't continue if a step fails
+                    break
+                
+                previous_result = result
+                
+                # Add small delay between commands for reliability
+                if i < len(parts) - 1:
+                    await asyncio.sleep(0.5)
                 
         # Create conversational response
         if len(responses) > 1:
@@ -489,6 +524,25 @@ class UnifiedCommandProcessor:
             return [command_text]
             
         return parts
+    
+    def _can_parallelize_commands(self, parts: List[str]) -> bool:
+        """Check if commands can be run in parallel (e.g., multiple app operations)"""
+        if len(parts) < 2:
+            return False
+            
+        # Check if all parts are similar operations
+        operations = []
+        for part in parts:
+            part_lower = part.lower().strip()
+            if any(op in part_lower for op in ['close', 'quit', 'kill']):
+                operations.append('close')
+            elif any(op in part_lower for op in ['open', 'launch', 'start']):
+                operations.append('open')
+            else:
+                operations.append('other')
+        
+        # Can parallelize if all operations are the same type (all opens or all closes)
+        return len(set(operations)) == 1 and operations[0] in ['close', 'open']
     
     def _enhance_with_context(self, command: str, active_app: Optional[str], previous_result: Optional[Dict]) -> str:
         """Enhance command with context from previous commands"""
