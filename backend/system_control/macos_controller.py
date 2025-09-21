@@ -460,15 +460,32 @@ class MacOSController:
         """Open URL in browser"""
         if browser:
             browser = self.app_aliases.get(browser.lower(), browser)
-            cmd = f"open -a '{browser}' '{url}'"
+            # Use AppleScript for better browser control
+            script = f'''
+            tell application "{browser}"
+                activate
+                if (count of windows) = 0 then
+                    make new document
+                end if
+                set URL of current tab of front window to "{url}"
+            end tell
+            '''
+            success, message = self.execute_applescript(script)
+            if success:
+                return True, f"Navigated to {url} in {browser}"
+            else:
+                # Fallback to shell command
+                cmd = f"open -a '{browser}' '{url}'"
+                success, message = self.execute_shell(cmd)
+                if success:
+                    return True, f"Opened {url} in {browser}"
+                return False, f"Failed to open URL: {message}"
         else:
             cmd = f"open '{url}'"
-            
-        success, message = self.execute_shell(cmd)
-        
-        if success:
-            return True, f"Opened {url}"
-        return False, f"Failed to open URL: {message}"
+            success, message = self.execute_shell(cmd)
+            if success:
+                return True, f"Opened {url}"
+            return False, f"Failed to open URL: {message}"
         
     def web_search(self, query: str, engine: str = "google") -> Tuple[bool, str]:
         """Perform web search"""

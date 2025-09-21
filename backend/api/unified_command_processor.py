@@ -545,26 +545,54 @@ class UnifiedCommandProcessor:
                 # Extract URL
                 for pattern in ['go to', 'navigate to', 'browse to', 'visit']:
                     if pattern in command_lower:
-                        parts = command_text.split(pattern, 1)
-                        if len(parts) > 1:
-                            url_part = parts[1].strip()
-                            # Remove browser name if present at the end
-                            if browser and url_part.lower().startswith(f'in {browser}'):
-                                url_part = url_part[len(f'in {browser}'):].strip()
-                            elif browser and url_part.lower().endswith(f'in {browser}'):
-                                url_part = url_part[:-len(f'in {browser}')].strip()
+                        # Find the pattern position for case-insensitive split
+                        pattern_pos = command_lower.find(pattern)
+                        if pattern_pos != -1:
+                            # Extract everything after the pattern
+                            after_pattern = command_text[pattern_pos + len(pattern):].strip()
+                            
+                            # Remove browser specification if present
+                            if ' in ' in after_pattern.lower():
+                                in_pos = after_pattern.lower().find(' in ')
+                                url_part = after_pattern[:in_pos].strip()
+                            else:
+                                url_part = after_pattern
                             
                             url = url_part
                             break
                 
                 if url:
+                    # Handle common website shortcuts
+                    website_shortcuts = {
+                        'google': 'google.com',
+                        'facebook': 'facebook.com',
+                        'twitter': 'twitter.com',
+                        'x': 'x.com',
+                        'youtube': 'youtube.com',
+                        'github': 'github.com',
+                        'amazon': 'amazon.com',
+                        'reddit': 'reddit.com',
+                        'linkedin': 'linkedin.com',
+                        'gmail': 'gmail.com'
+                    }
+                    
+                    # Check if it's a known website shortcut
+                    url_lower = url.lower()
+                    if url_lower in website_shortcuts:
+                        url = website_shortcuts[url_lower]
+                    
                     # Add protocol if missing
                     if not url.startswith(('http://', 'https://')):
                         if '.' in url:  # Looks like a domain
                             url = f'https://{url}'
-                        else:  # Treat as search query
-                            success, message = macos_controller.web_search(url)
-                            return {'success': success, 'response': message}
+                        else:  # Only treat as search if it's clearly not a website
+                            # Check if user might mean a website
+                            if any(word in url_lower for word in ['search', 'find', 'look']):
+                                success, message = macos_controller.web_search(url)
+                                return {'success': success, 'response': message}
+                            else:
+                                # Assume they want the .com version
+                                url = f'https://{url}.com'
                     
                     success, message = macos_controller.open_url(url, browser)
                     return {'success': success, 'response': message}
