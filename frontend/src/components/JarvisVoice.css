@@ -145,10 +145,10 @@
   color: #00ff00;
   font-weight: bold;
   animation: indefinite-glow 2s ease-in-out infinite;
-  background: linear-gradient(90deg, 
-    transparent 0%, 
-    rgba(0, 255, 0, 0.1) 50%, 
-    transparent 100%);
+  background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(0, 255, 0, 0.1) 50%,
+      transparent 100%);
   padding: 0.3rem 0.8rem;
   border-radius: 20px;
   border: 1px solid rgba(0, 255, 0, 0.3);
@@ -166,18 +166,24 @@
 }
 
 @keyframes indefinite-glow {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
   }
+
   50% {
     box-shadow: 0 0 20px rgba(0, 255, 0, 0.8);
   }
 }
 
 @keyframes mic-pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(1);
   }
+
   50% {
     transform: scale(1.2);
   }
@@ -208,10 +214,13 @@
 }
 
 @keyframes pulse-dot {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: scale(1);
     opacity: 1;
   }
+
   50% {
     transform: scale(1.5);
     opacity: 0.5;
@@ -302,6 +311,7 @@
   from {
     box-shadow: 0 4px 20px rgba(255, 107, 0, 0.6);
   }
+
   to {
     box-shadow: 0 4px 30px rgba(255, 107, 0, 0.9), 0 0 40px rgba(255, 107, 0, 0.4);
   }
@@ -496,14 +506,44 @@
   margin: 0.5rem 0;
 }
 
+/* Wake Word Status */
+.wake-word-status {
+  display: inline-flex !important;
+  align-items: center;
+  padding: 10px 20px;
+  margin: 5px;
+  background: #2a9d8f;
+  color: white;
+  border-radius: 8px;
+  font-weight: bold;
+  font-size: 14px;
+  font-family: 'Orbitron', monospace;
+  letter-spacing: 0.05em;
+  box-shadow: 0 4px 15px rgba(42, 157, 143, 0.3);
+  transition: all 0.3s ease;
+}
+
+.wake-word-status .pulse-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background-color: #00ff00;
+  border-radius: 50%;
+  margin-right: 8px;
+  animation: pulse 1.5s infinite;
+  box-shadow: 0 0 10px #00ff00;
+}
+
 /* Animations */
 @keyframes pulse {
   0% {
     transform: translate(-50%, -50%) scale(1);
   }
+
   50% {
     transform: translate(-50%, -50%) scale(1.1);
   }
+
   100% {
     transform: translate(-50%, -50%) scale(1);
   }
@@ -513,24 +553,31 @@
   from {
     transform: translate(-50%, -50%) rotate(0deg);
   }
+
   to {
     transform: translate(-50%, -50%) rotate(360deg);
   }
 }
 
 @keyframes blink {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 1;
   }
+
   50% {
     opacity: 0.3;
   }
 }
 
 @keyframes fadeInOut {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 0.5;
   }
+
   50% {
     opacity: 1;
   }
@@ -542,27 +589,27 @@
     width: 120px;
     height: 120px;
   }
-  
+
   .arc-reactor .core {
     width: 30px;
     height: 30px;
   }
-  
+
   .ring-1 {
     width: 60px;
     height: 60px;
   }
-  
+
   .ring-2 {
     width: 85px;
     height: 85px;
   }
-  
+
   .ring-3 {
     width: 110px;
     height: 110px;
   }
-  
+
   .jarvis-button {
     padding: 10px 24px;
     font-size: 0.9rem;

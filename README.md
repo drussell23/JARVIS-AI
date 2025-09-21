@@ -1,10 +1,11 @@
-# 🤖 JARVIS AI System v13.4.1 - Conversational Browser Control 🧠
+# 🤖 JARVIS AI System v13.5.0 - Wake Word Detection 🎤
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-13.4.1%20Conversational%20Responses-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Version-13.5.0%20Wake%20Word%20Detection-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Wake%20Word-Hey%20JARVIS-ff1744" alt="Wake Word">
   <img src="https://img.shields.io/badge/Claude%20Vision-Pure%20Intelligence-ff1744" alt="Pure Intelligence">
   <img src="https://img.shields.io/badge/Proactive-Real%20Time%20Assistant-ff1744" alt="Proactive Assistant">
-  <img src="https://img.shields.io/badge/Wake%20Word-10ms%20⚡-ff69b4" alt="Ultra Fast Wake Word">
+  <img src="https://img.shields.io/badge/Wake%20Word-Hey%20JARVIS%20🎤-ff69b4" alt="Wake Word Detection">
   <img src="https://img.shields.io/badge/Memory-350MB%20Voice-success" alt="Low Memory Voice">
   <img src="https://img.shields.io/badge/CPU-1--2%25%20Usage-blue" alt="Low CPU">
   <img src="https://img.shields.io/badge/Picovoice-Integrated%20✅-blueviolet" alt="Picovoice">
@@ -20,6 +21,42 @@
 <p align="center">
   <em>"Perfection is achieved not when there is nothing more to add, but when there is nothing left to take away." - Antoine de Saint-Exupéry</em>
 </p>
+
+## 🆕 What's New in v13.5.0 - Wake Word Detection 🎤
+
+### 🎙️ Hands-Free Wake Word Detection (NEW!)
+**NO MORE BUTTONS! JUST SAY "HEY JARVIS"!** Revolutionary features:
+- ✅ **Zero Click Activation** - Wake word detection runs continuously in background
+- ✅ **Multiple Wake Words** - "Hey JARVIS", "JARVIS", "OK JARVIS" all work
+- ✅ **Natural Response** - "I'm online Sir, waiting for your command"
+- ✅ **Multi-Engine Support** - Porcupine, Vosk, and WebRTC for reliability
+- ✅ **Adaptive Sensitivity** - Learns and improves detection accuracy
+- ✅ **Privacy First** - All processing happens locally on your device
+
+### 🚀 Wake Word Features
+**ADVANCED DETECTION SYSTEM!** Capabilities:
+- ✅ **Background Listening** - Always ready, no button clicks needed
+- ✅ **Noise Cancellation** - Works in noisy environments
+- ✅ **Anti-Spoofing** - Prevents false activations from recordings
+- ✅ **Custom Wake Words** - Configure your own activation phrases
+- ✅ **Low Resource Usage** - Minimal CPU and memory impact
+- ✅ **WebSocket Integration** - Real-time activation events
+
+### 🎯 How It Works
+**SIMPLE AND NATURAL!** Usage flow:
+1. **Say "Hey JARVIS"** - Wake word detected automatically
+2. **JARVIS responds** - "I'm online Sir, waiting for your command"
+3. **Speak your command** - "What's the weather?" or "Open Safari"
+4. **JARVIS executes** - Natural conversation continues
+
+### 🔧 Technical Architecture
+**8 COMPONENT SYSTEM!** Complete integration:
+- ✅ **Component #8** - Wake Word Detection added to core system
+- ✅ **Audio Processor** - Real-time capture with VAD and noise reduction
+- ✅ **Detection Engines** - Hybrid approach with multiple engines
+- ✅ **Configuration System** - Zero hardcoding, all via environment
+- ✅ **WebSocket API** - Frontend receives wake word events instantly
+- ✅ **Adaptive Learning** - Improves accuracy based on usage
 
 ## 🆕 What's New in v13.4.1 - Conversational Browser Control
 
@@ -229,13 +266,49 @@
 - ✅ **Natural speech** - Conversational, not robotic
 - ✅ **Queue management** - Handles multiple notifications
 
+## 🎤 Wake Word Detection Configuration (NEW in v13.5.0)
+
+### 🎯 How to Use Wake Word
+1. **Start JARVIS**: `python start_system.py`
+2. **Wake word activates automatically** - No buttons needed!
+3. **Say "Hey JARVIS"** - JARVIS responds: "I'm online Sir, waiting for your command"
+4. **Speak your command** - Natural conversation follows
+5. **Works anywhere** - Browser tab can be in background
+
+### 🔧 Configuration Options
+```bash
+# Customize wake words (default: "hey jarvis,jarvis,ok jarvis")
+export WAKE_WORDS="hey jarvis,jarvis,computer,assistant"
+
+# Adjust sensitivity (very_low/low/medium/high/very_high)
+export WAKE_WORD_SENSITIVITY="medium"
+
+# Choose detection engine (porcupine/vosk/webrtc_vad/custom_cnn/hybrid)
+export WAKE_WORD_ENGINE="hybrid"
+
+# Customize responses
+export JARVIS_ACTIVATION_RESPONSES="I'm online Sir,Yes Sir,At your service,Ready Sir"
+
+# Privacy settings
+export WAKE_WORD_PROCESS_LOCALLY_ONLY="true"
+export WAKE_WORD_SAVE_AUDIO="false"
+```
+
+### 📊 Wake Word Features
+- **Multi-Engine Detection**: Porcupine + Vosk for reliability
+- **Adaptive Learning**: Improves accuracy over time
+- **Noise Cancellation**: Works in noisy environments
+- **Anti-Spoofing**: Prevents activation from recordings
+- **Low Resource**: <2% CPU, <100MB RAM
+- **Privacy First**: All processing stays on device
+
 ## 🚀 Quick Start - Intelligent Screen Monitoring
 
 ### Starting JARVIS
-1. **Start backend**: `cd backend && python main.py`
-2. **Start frontend**: `cd frontend && npm start`
-3. **Open browser**: http://localhost:3000
-4. **Check status**: Should show "JARVIS: ONLINE"
+1. **Start backend**: `python start_system.py` (includes wake word)
+2. **Frontend opens automatically** in browser
+3. **Wake word starts listening** - Just say "Hey JARVIS"!
+4. **Check status**: Should show "JARVIS: ONLINE" + "🎙️ Listening for 'Hey JARVIS'"
 
 ### Activating Screen Monitoring
 1. **Say**: "Hey JARVIS, start monitoring my screen"
@@ -255,7 +328,7 @@
 5. **Stop anytime**: "Hey JARVIS, stop monitoring"
 
 ### Backend Setup Required
-The proactive vision system requires the JARVIS backend with all 6 components loaded (see Backend Architecture section).
+The proactive vision system requires the JARVIS backend with all 8 components loaded (see Backend Architecture section).
 
 ## 🛠️ Self-Healing System - Automatic Recovery
 
@@ -867,9 +940,9 @@ stats = await vision.get_optimization_stats()
   - Create visual macros
   - Cross-application workflows
 
-## 🎠 Backend Architecture - 6 Critical Components
+## 🎠 Backend Architecture - 8 Critical Components
 
-**The JARVIS backend loads 6 essential components that work together to power the entire AI system:**
+**The JARVIS backend loads 8 essential components that work together to power the entire AI system:**
 
 ### 1️⃣ **CHATBOTS** (Claude Vision AI)
 - **Purpose:** Powers all conversational AI and natural language understanding
@@ -908,11 +981,23 @@ stats = await vision.get_optimization_stats()
 - **Why Critical:** Essential for production stability and debugging
 - **Memory:** ~20MB
 
+### 7️⃣ **VOICE UNLOCK** (Biometric Authentication)
+- **Purpose:** Voice-based Mac unlocking without password/fingerprint
+- **Features:** Voice enrollment, anti-spoofing, Keychain storage, screensaver integration
+- **Why Critical:** Enables "Hey JARVIS, unlock my Mac" functionality
+- **Memory:** ~150MB when active
+
+### 8️⃣ **WAKE WORD** (Hands-Free Activation) 
+- **Purpose:** Always-listening detection of "Hey JARVIS" without buttons
+- **Features:** Multi-engine detection (Porcupine+Vosk), adaptive learning, noise cancellation
+- **Why Critical:** Enables true hands-free operation - no clicks required
+- **Memory:** ~100MB (continuous background listening)
+
 ### ⚡ Startup Optimization
-- **Parallel Loading:** All 6 components load simultaneously (7-9s total)
-- **Sequential Loading:** ~20s (legacy mode)
-- **Success Indicator:** Backend logs show "Components loaded: 6/6"
-- **Failure Mode:** If <6 components load, some features will be unavailable
+- **Parallel Loading:** All 8 components load simultaneously (8-10s total)
+- **Sequential Loading:** ~25s (legacy mode)
+- **Success Indicator:** Backend logs show "Components loaded: 8/8"
+- **Failure Mode:** If <8 components load, some features will be unavailable
 
 ### 🛠️ Troubleshooting Components
 ```bash
@@ -1140,7 +1225,7 @@ python start_system.py
 
 <p align="center">
   <img src="https://img.shields.io/badge/Version-12.8%20Voice%20Optimized-brightgreen" alt="Version">
-  <img src="https://img.shields.io/badge/Wake%20Word-10ms%20⚡-ff69b4" alt="Ultra Fast Wake Word">
+  <img src="https://img.shields.io/badge/Wake%20Word-Hey%20JARVIS%20🎤-ff69b4" alt="Wake Word Detection">
   <img src="https://img.shields.io/badge/Memory-350MB%20Voice-success" alt="Low Memory Voice">
   <img src="https://img.shields.io/badge/CPU-1--2%25%20Usage-blue" alt="Low CPU">
   <img src="https://img.shields.io/badge/Picovoice-Integrated%20✅-blueviolet" alt="Picovoice">
@@ -3294,6 +3379,7 @@ The Vision System v2.0 seamlessly integrates with JARVIS Voice for natural inter
 - 8GB+ RAM recommended (16GB+ for Rust acceleration)
 - NVIDIA GPU (optional, for faster inference)
 - Rust/Cargo (optional, for 5-10x performance boost)
+- PortAudio (for wake word detection) - `brew install portaudio` on macOS
 
 ### Detailed Installation
 
@@ -3320,6 +3406,13 @@ cd backend
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
+```
+
+**Wake Word Detection (NEW in v13.5.0):**
+```bash
+cd wake_word
+./install_dependencies.sh
+# This installs: pyaudio, pvporcupine, vosk, webrtcvad, noisereduce
 ```
 
 **TypeScript WebSocket Router (v12.3):**

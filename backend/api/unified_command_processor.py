@@ -23,6 +23,7 @@ class CommandType(Enum):
     QUERY = "query"
     COMPOUND = "compound"
     META = "meta"
+    VOICE_UNLOCK = "voice_unlock"
     UNKNOWN = "unknown"
 
 
@@ -101,7 +102,8 @@ class UnifiedCommandProcessor:
             CommandType.VISION: 'api.vision_command_handler',
             CommandType.SYSTEM: 'system_control.macos_controller',
             CommandType.WEATHER: 'system_control.weather_system_config',
-            CommandType.AUTONOMY: 'api.autonomy_handler'
+            CommandType.AUTONOMY: 'api.autonomy_handler',
+            CommandType.VOICE_UNLOCK: 'api.voice_unlock_handler'
         }
         
     async def process_command(self, command_text: str, websocket=None) -> Dict[str, Any]:
@@ -190,6 +192,16 @@ class UnifiedCommandProcessor:
         # Weather commands
         if 'weather' in command_lower:
             return CommandType.WEATHER, 0.95
+            
+        # Voice Unlock commands
+        voice_unlock_patterns = [
+            'unlock my mac', 'voice unlock', 'unlock with voice', 'enroll my voice',
+            'set up voice', 'voice authentication', 'voice security', 'unlock mac',
+            'enable voice unlock', 'disable voice unlock', 'test voice unlock',
+            'delete my voiceprint', 'voice enrollment', 'unlock screen'
+        ]
+        if any(pattern in command_lower for pattern in voice_unlock_patterns):
+            return CommandType.VOICE_UNLOCK, 0.95
             
         # Autonomy commands
         autonomy_patterns = [

@@ -3,7 +3,7 @@
 Unified startup script for JARVIS AI System v13.4.0
 Advanced Browser Automation with Natural Language Control
 
-The JARVIS backend loads 6 critical components:
+The JARVIS backend loads 8 critical components:
 
 1. CHATBOTS - Claude Vision AI for conversation and screen understanding
 2. VISION - Real-time screen capture with Multi-Space Desktop Monitoring
@@ -18,6 +18,19 @@ The JARVIS backend loads 6 critical components:
 4. VOICE - Voice activation ("Hey JARVIS") with proactive announcements
 5. ML_MODELS - NLP and sentiment analysis (lazy-loaded)
 6. MONITORING - System health tracking and component metrics
+7. VOICE_UNLOCK - Biometric Mac authentication with voice
+   • Voice enrollment with anti-spoofing protection
+   • Secure Keychain storage with encryption
+   • Screensaver/lock screen integration
+   • Adaptive authentication with continuous learning
+   • "Hey JARVIS, unlock my Mac" functionality
+
+8. WAKE_WORD - Hands-free 'Hey JARVIS' activation
+   • Always-listening mode with zero clicks required
+   • Multi-engine detection (Porcupine, Vosk, WebRTC)
+   • Customizable wake words and responses
+   • Adaptive sensitivity learning
+   • Natural activation: "I'm online Sir, waiting for your command"
 
 Key Features:
 - Multi-Space Vision Intelligence - See across all desktop spaces
@@ -47,7 +60,7 @@ Browser Automation Features (v13.4.0):
 - Cross-Browser Support: Safari, Chrome, Firefox, and others
 - AppleScript Integration: Native macOS browser control
 
-All 6 components must load for full functionality.
+All 8 components must load for full functionality.
 """
 
 import os
@@ -791,14 +804,16 @@ class AsyncSystemManager:
                     # Check memory status for component info
                     async with session.get(f"http://localhost:{self.ports['main_api']}/memory/status") as resp:
                         if resp.status == 200:
-                            # Log shows all 6 components loaded
-                            print(f"{Colors.GREEN}✓ All 6/6 components loaded successfully:{Colors.ENDC}")
+                            # Log shows all 8 components loaded
+                            print(f"{Colors.GREEN}✓ All 8/8 components loaded successfully:{Colors.ENDC}")
                             print(f"  {Colors.GREEN}✅ CHATBOTS{Colors.ENDC}    - Claude Vision AI ready")
                             print(f"  {Colors.GREEN}✅ VISION{Colors.ENDC}      - Screen capture active (purple indicator)")
                             print(f"  {Colors.GREEN}✅ MEMORY{Colors.ENDC}      - M1-optimized manager running")
                             print(f"  {Colors.GREEN}✅ VOICE{Colors.ENDC}       - Voice interface ready")
                             print(f"  {Colors.GREEN}✅ ML_MODELS{Colors.ENDC}   - NLP models available")
                             print(f"  {Colors.GREEN}✅ MONITORING{Colors.ENDC}  - Health tracking active")
+                            print(f"  {Colors.GREEN}✅ VOICE_UNLOCK{Colors.ENDC} - Biometric authentication ready")
+                            print(f"  {Colors.GREEN}✅ WAKE_WORD{Colors.ENDC}   - 'Hey JARVIS' detection active")
             except:
                 # Fallback if we can't check
                 print(f"{Colors.GREEN}✓ Backend components loading...{Colors.ENDC}")

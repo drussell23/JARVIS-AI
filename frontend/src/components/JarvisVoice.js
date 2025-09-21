@@ -5,6 +5,7 @@ import MicrophonePermissionHelper from './MicrophonePermissionHelper';
 import MicrophoneIndicator from './MicrophoneIndicator';
 import mlAudioHandler from '../utils/MLAudioHandler'; // ML-enhanced audio handling
 import { getNetworkRecoveryManager } from '../utils/NetworkRecoveryManager'; // Advanced network recovery
+import WakeWordService from './WakeWordService'; // Wake word detection service
 
 // Inline styles to ensure button visibility
 const buttonVisibilityStyle = `
@@ -322,6 +323,7 @@ const JarvisVoice = () => {
   const recognitionRef = useRef(null);
   const visionConnectionRef = useRef(null);
   const lastSpeechTimeRef = useRef(0);
+  const wakeWordServiceRef = useRef(null);
 
   // API URLs are defined globally at the top of the file
   // Ensure consistent WebSocket URL (fix port mismatch)
@@ -333,6 +335,9 @@ const JarvisVoice = () => {
 
     // Check microphone permission first
     checkMicrophonePermission();
+
+    // Initialize wake word service
+    initializeWakeWordService();
 
     // Predict potential audio issues - disabled to prevent CORS errors
     // mlAudioHandler.predictAudioIssue();
@@ -349,11 +354,11 @@ const JarvisVoice = () => {
         console.log('Button checker: Container not found yet');
         return;
       }
-      
+
       // Look for control buttons
       const hasButtons = container.querySelector('.jarvis-button');
       // Only log when buttons are missing
-      
+
       if (!hasButtons) {
         console.warn('JARVIS buttons missing - injecting emergency button');
         // Find the voice-controls div
@@ -499,20 +504,24 @@ const JarvisVoice = () => {
       if (visionConnectionRef.current) {
         visionConnectionRef.current.disconnect();
       }
+      // Cleanup wake word service
+      if (wakeWordServiceRef.current) {
+        wakeWordServiceRef.current.disconnect();
+      }
       // Remove ML event listeners
       window.removeEventListener('audioIssuePredicted', handleAudioPrediction);
       window.removeEventListener('audioAnomaly', handleAudioAnomaly);
       window.removeEventListener('audioMetricsUpdate', handleAudioMetrics);
       window.removeEventListener('enableTextFallback', handleTextFallback);
-      
+
       // Remove emergency activate listener
       window.removeEventListener('jarvis-emergency-activate', handleEmergencyActivate);
-      
+
       // Clear button checker interval
       if (checkButtonsInterval) {
         clearInterval(checkButtonsInterval);
       }
-      
+
       // Remove injected style
       if (styleElement && styleElement.parentNode) {
         styleElement.parentNode.removeChild(styleElement);
@@ -525,7 +534,7 @@ const JarvisVoice = () => {
       const response = await fetch(`${API_URL}/voice/jarvis/status`);
       const data = await response.json();
       console.log('JARVIS status check result:', data);
-      
+
       // Map backend status to frontend status
       const status = data.status || 'offline';
       if (status === 'standby' || status === 'ready') {
@@ -643,7 +652,7 @@ const JarvisVoice = () => {
         console.log('WebSocket response received:', data);
         setResponse(data.text || data.message || 'Response received');
         setIsProcessing(false);
-        
+
         // Use audio endpoint directly
         if (data.text) {
           // Always speak the full response, regardless of length or type
@@ -697,11 +706,11 @@ const JarvisVoice = () => {
         break;
       case 'debug_log':
         // Display debug logs in console with styling
-        const logStyle = data.level === 'error' 
-          ? 'color: red; font-weight: bold;' 
+        const logStyle = data.level === 'error'
+          ? 'color: red; font-weight: bold;'
           : data.level === 'warning'
-          ? 'color: orange;'
-          : 'color: #4CAF50; font-weight: bold;';
+            ? 'color: orange;'
+            : 'color: #4CAF50; font-weight: bold;';
         console.log(`%c[JARVIS DEBUG ${new Date(data.timestamp).toLocaleTimeString()}] ${data.message}`, logStyle);
         if (data.level === 'error') {
           console.error('Full error details:', data);
@@ -761,6 +770,50 @@ const JarvisVoice = () => {
     // Moving it here for better organization
   };
 
+  const initializeWakeWordService = async () => {
+    if (!wakeWordServiceRef.current) {
+      wakeWordServiceRef.current = new WakeWordService();
+
+      // Set up callbacks
+      wakeWordServiceRef.current.setCallbacks({
+        onWakeWordDetected: (data) => {
+          console.log('Wake word detected from service:', data);
+
+          // Play the response
+          if (data.response) {
+            speakResponse(data.response);
+          }
+
+          // Set listening state
+          setIsWaitingForCommand(true);
+          setIsListening(true);
+
+          // Start timeout for command
+          setTimeout(() => {
+            if (isWaitingForCommand && !isJarvisSpeaking) {
+              setIsWaitingForCommand(false);
+              setIsListening(false);
+            }
+          }, 10000);
+        },
+        onStatusChange: (status) => {
+          console.log('Wake word status:', status);
+        },
+        onError: (error) => {
+          console.error('Wake word error:', error);
+        }
+      });
+
+      // Initialize with API URL
+      const initialized = await wakeWordServiceRef.current.initialize(API_URL);
+      if (initialized) {
+        console.log('✅ Wake word service initialized');
+      } else {
+        console.warn('⚠️ Wake word service not available on backend');
+      }
+    }
+  };
+
   const initializeSpeechRecognition = () => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -791,36 +844,15 @@ const JarvisVoice = () => {
         // Only process final results to avoid duplicate detections
         if (!isFinal) return;
 
-        // Check for wake word (but not while JARVIS is speaking)
-        if ((transcript.includes('hey jarvis') || transcript.includes('jarvis')) && !isWaitingForCommand && !isJarvisSpeaking) {
-          console.log('Wake word detected:', transcript);
-
-          // Extract command after wake word
-          let commandAfterWake = null;
-          if (transcript.includes('hey jarvis')) {
-            commandAfterWake = transcript.split('hey jarvis')[1].trim();
-          } else if (transcript.includes('jarvis')) {
-            commandAfterWake = transcript.split('jarvis')[1].trim();
-          }
-
-          if (commandAfterWake && commandAfterWake.length > 2) {
-            // Send command directly without wake word activation
-            console.log('Command with wake word:', commandAfterWake);
-            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-              wsRef.current.send(JSON.stringify({
-                type: 'command',
-                text: commandAfterWake
-              }));
-            }
-            setTranscript(commandAfterWake);
-            setResponse('Processing...');
-          } else {
-            // Just wake word, no command
-            handleWakeWordDetected();
-          }
-        } else if (isWaitingForCommand) {
+        // When waiting for command after wake word, process any speech
+        if (isWaitingForCommand) {
           // Process the command after wake word
           handleVoiceCommand(event.results[last][0].transcript);
+
+          // Notify wake word service that command was received
+          if (wakeWordServiceRef.current) {
+            wakeWordServiceRef.current.notifyCommandComplete();
+          }
         }
       };
 
@@ -869,7 +901,7 @@ const JarvisVoice = () => {
               if (continuousListening) {
                 // Don't show error to user for expected silence
                 setError('');
-                
+
                 // Immediately restart without delay
                 try {
                   recognitionRef.current.stop();
@@ -894,10 +926,10 @@ const JarvisVoice = () => {
             case 'network':
               console.log('🌐 Network error detected, initiating advanced recovery...');
               setError('🌐 Network error. Initiating advanced recovery...');
-              
+
               // Use advanced network recovery manager
               const networkRecoveryManager = getNetworkRecoveryManager();
-              
+
               (async () => {
                 try {
                   const recoveryResult = await networkRecoveryManager.recoverFromNetworkError(
@@ -911,12 +943,12 @@ const JarvisVoice = () => {
                       wsRef: wsRef.current
                     }
                   );
-                  
+
                   if (recoveryResult.success) {
                     console.log('✅ Network recovery successful:', recoveryResult);
                     setError('');
                     setNetworkRetries(0);
-                    
+
                     // Handle different recovery types
                     if (recoveryResult.newRecognition) {
                       // Service switched, update reference
@@ -943,7 +975,7 @@ const JarvisVoice = () => {
                     // All strategies failed
                     setError('🌐 Network recovery failed. Manual intervention required.');
                     console.error('All network recovery strategies exhausted');
-                    
+
                     // Show recovery tips
                     setTimeout(() => {
                       setError(
@@ -975,24 +1007,24 @@ const JarvisVoice = () => {
 
       recognitionRef.current.onend = () => {
         console.log('Speech recognition ended - enforcing indefinite listening');
-        
+
         // ALWAYS restart if continuous listening is enabled
         if (continuousListening) {
           console.log('♾️ Indefinite listening active - restarting microphone...');
-          
+
           // Track restart attempts
           let restartAttempt = 0;
           const maxAttempts = 10;
-          
+
           const attemptRestart = () => {
             restartAttempt++;
-            
+
             try {
               recognitionRef.current.start();
               console.log(`✅ Microphone restarted successfully (attempt ${restartAttempt})`);
               setError(''); // Clear any errors
               setMicStatus('ready');
-              
+
               // Reset speech timestamp
               lastSpeechTimeRef.current = Date.now();
             } catch (e) {
@@ -1000,9 +1032,9 @@ const JarvisVoice = () => {
                 console.log('Microphone already active');
                 return;
               }
-              
+
               console.log(`Restart attempt ${restartAttempt}/${maxAttempts} failed:`, e.message);
-              
+
               // Keep trying with exponential backoff
               if (restartAttempt < maxAttempts && continuousListening) {
                 const delay = Math.min(50 * Math.pow(2, restartAttempt), 2000);
@@ -1015,7 +1047,7 @@ const JarvisVoice = () => {
               }
             }
           };
-          
+
           // Start restart attempts immediately
           setTimeout(attemptRestart, 50);
         } else {
@@ -1113,7 +1145,13 @@ const JarvisVoice = () => {
         setJarvisStatus('online');
         // Backend JARVIS will speak the activation phrase
 
-        // Start continuous listening after activation
+        // Automatically start wake word detection after activation
+        if (wakeWordServiceRef.current) {
+          console.log('🎙️ Wake word detection activated - say "Hey JARVIS" anytime!');
+          // Wake word service is already running in the background
+        }
+
+        // Enable continuous listening for wake word detection
         enableContinuousListening();
       }, 2000);
     } catch (err) {
@@ -1177,11 +1215,11 @@ const JarvisVoice = () => {
     if (recognitionRef.current) {
       setContinuousListening(true);
       setIsListening(true);
-      
+
       // Configure for INDEFINITE continuous listening
       recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = true;
-      
+
       // Override any browser timeouts
       if ('speechTimeout' in recognitionRef.current) {
         recognitionRef.current.speechTimeout = 999999999;
@@ -1189,27 +1227,27 @@ const JarvisVoice = () => {
       if ('noSpeechTimeout' in recognitionRef.current) {
         recognitionRef.current.noSpeechTimeout = 999999999;
       }
-      
+
       try {
         recognitionRef.current.start();
         console.log('♾️ INDEFINITE listening enabled - microphone will NEVER turn off automatically');
-        
+
         // Set up keep-alive mechanism
         const keepAliveInterval = setInterval(() => {
           if (!continuousListening) {
             clearInterval(keepAliveInterval);
             return;
           }
-          
+
           // Check if recognition is still active
           console.log('🔄 Keep-alive check - ensuring microphone stays active');
-          
+
           // If no speech for a while, send a dummy event to keep it alive
           const timeSinceLastSpeech = Date.now() - lastSpeechTimeRef.current;
           if (timeSinceLastSpeech > 30000) { // 30 seconds
             console.log('⚡ Triggering keep-alive pulse');
             lastSpeechTimeRef.current = Date.now();
-            
+
             // Force a restart if needed
             if (!isListening) {
               console.log('🔄 Keep-alive: Restarting stopped recognition');
@@ -1225,10 +1263,10 @@ const JarvisVoice = () => {
             }
           }
         }, 5000); // Check every 5 seconds
-        
+
         // Store interval reference for cleanup
         recognitionRef.current._keepAliveInterval = keepAliveInterval;
-        
+
         // Enhanced notification
         if ('Notification' in window && Notification.permission === 'granted') {
           new Notification('JARVIS Microphone Active ♾️', {
@@ -1237,21 +1275,21 @@ const JarvisVoice = () => {
             requireInteraction: true // Keep notification visible
           });
         }
-        
+
         // Visual indicator in console
-        console.log('%c🎤 MICROPHONE STATUS: INDEFINITE MODE ACTIVE', 
+        console.log('%c🎤 MICROPHONE STATUS: INDEFINITE MODE ACTIVE',
           'color: #00ff00; font-size: 16px; font-weight: bold; background: #000; padding: 10px;');
-          
+
         // Set initial timestamp
         lastSpeechTimeRef.current = Date.now();
-        
+
       } catch (e) {
         if (e.message && e.message.includes('already started')) {
           console.log('Recognition already active - good!');
         } else {
           console.error('Failed to start indefinite listening:', e);
           setError('Failed to start microphone - retrying...');
-          
+
           // Retry after a moment
           setTimeout(() => enableContinuousListening(), 1000);
         }
@@ -1263,7 +1301,7 @@ const JarvisVoice = () => {
     setContinuousListening(false);
     setIsListening(false);
     setIsWaitingForCommand(false);
-    
+
     if (recognitionRef.current) {
       // Clear keep-alive interval
       if (recognitionRef.current._keepAliveInterval) {
@@ -1271,7 +1309,7 @@ const JarvisVoice = () => {
         recognitionRef.current._keepAliveInterval = null;
         console.log('🛑 Keep-alive mechanism stopped');
       }
-      
+
       // Stop recognition
       try {
         recognitionRef.current.stop();
@@ -1280,9 +1318,9 @@ const JarvisVoice = () => {
         console.log('Stop recognition:', e.message);
       }
     }
-    
+
     // Visual indicator in console
-    console.log('%c🎤 MICROPHONE STATUS: STOPPED', 
+    console.log('%c🎤 MICROPHONE STATUS: STOPPED',
       'color: #ff0000; font-size: 16px; font-weight: bold; background: #000; padding: 10px;');
   };
 
@@ -1369,32 +1407,32 @@ const JarvisVoice = () => {
 
   const playAudioResponse = async (text) => {
     console.log('Playing audio response:', text.substring(0, 100) + '...');
-    
+
     try {
       // For long text, always use POST method to avoid URL length limits
       // GET requests have a limit of ~2000 characters in the URL
       const usePost = text.length > 500 || text.includes('\n');
-      
+
       if (!usePost) {
         // Short text: Use GET method with URL (simpler and more reliable)
         const audioUrl = `${API_URL}/audio/speak/${encodeURIComponent(text)}`;
         const audio = new Audio(audioUrl);
         audio.volume = 1.0;
-        
+
         setIsJarvisSpeaking(true);
-        
+
         audio.onended = () => {
           console.log('Audio playback completed');
           setIsJarvisSpeaking(false);
         };
-        
+
         audio.onerror = async (e) => {
           console.warn('GET method failed, trying POST with blob...');
-          
+
           // Fallback to POST
           await playAudioUsingPost(text);
         };
-        
+
         await audio.play();
       } else {
         // Long text: Use POST method directly
@@ -1405,7 +1443,7 @@ const JarvisVoice = () => {
       setIsJarvisSpeaking(false);
     }
   };
-  
+
   const playAudioUsingPost = async (text) => {
     try {
       const response = await fetch(`${API_URL}/audio/speak`, {
@@ -1415,29 +1453,29 @@ const JarvisVoice = () => {
         },
         body: JSON.stringify({ text })
       });
-      
+
       if (response.ok) {
         // Get audio data as blob
         const blob = await response.blob();
         const audioUrl = URL.createObjectURL(blob);
-        
+
         const audio2 = new Audio(audioUrl);
         audio2.volume = 1.0;
-        
+
         setIsJarvisSpeaking(true);
-        
+
         audio2.onended = () => {
           console.log('Audio playback completed');
           setIsJarvisSpeaking(false);
           URL.revokeObjectURL(audioUrl); // Clean up
         };
-        
+
         audio2.onerror = () => {
           console.warn('Audio playback not available');
           setIsJarvisSpeaking(false);
           URL.revokeObjectURL(audioUrl); // Clean up
         };
-        
+
         await audio2.play();
       } else {
         throw new Error('Audio generation failed');
@@ -1451,7 +1489,7 @@ const JarvisVoice = () => {
   const speakResponse = async (text) => {
     // Try audio endpoint first
     await playAudioResponse(text);
-    
+
     // If browser supports speech synthesis, we could use it as ultimate fallback
     if (!isJarvisSpeaking && 'speechSynthesis' in window) {
       console.log('Using browser speech synthesis as fallback');
@@ -1459,22 +1497,22 @@ const JarvisVoice = () => {
       utterance.rate = 1.0;
       utterance.pitch = 0.9;
       utterance.volume = 1.0;
-      
+
       // Optional: Use a specific voice
       const voices = window.speechSynthesis.getVoices();
-      const englishVoice = voices.find(voice => 
+      const englishVoice = voices.find(voice =>
         voice.lang.startsWith('en') && voice.name.includes('Google') ||
         voice.lang.startsWith('en') && voice.name.includes('Microsoft') ||
         voice.lang.startsWith('en-US')
       );
-      
+
       if (englishVoice) {
         utterance.voice = englishVoice;
       }
-      
+
       utterance.onstart = () => setIsJarvisSpeaking(true);
       utterance.onend = () => setIsJarvisSpeaking(false);
-      
+
       window.speechSynthesis.speak(utterance);
     }
   };
@@ -1483,7 +1521,7 @@ const JarvisVoice = () => {
     <div className="jarvis-voice-container">
       {/* Orange microphone indicator when listening */}
       <MicrophoneIndicator isListening={isListening && continuousListening} />
-      
+
       {microphonePermission !== 'granted' && (
         <MicrophonePermissionHelper
           onPermissionGranted={() => {
@@ -1511,10 +1549,10 @@ const JarvisVoice = () => {
         )}
         {micStatus === 'ready' && continuousListening && !isWaitingForCommand && (
           <span className="listening-mode indefinite">
-            <span className="pulse-dot"></span> 
-            <span className="mic-icon">🎤</span> 
-            INDEFINITE LISTENING - SAY "HEY JARVIS" ANYTIME
-            <span className="infinity-symbol">♾️</span>
+            <span className="pulse-dot"></span>
+            <span className="mic-icon">🎤</span>
+            WAKE WORD ACTIVE - SAY "HEY JARVIS" ANYTIME
+            <span className="infinity-symbol">✨</span>
           </span>
         )}
         {isWaitingForCommand && (
@@ -1569,13 +1607,13 @@ const JarvisVoice = () => {
       )}
 
       <div className="voice-controls" style={{ minHeight: '60px', padding: '10px' }}>
-        {/* Always show appropriate buttons regardless of exact status string */}
-        {(!jarvisStatus || jarvisStatus === 'offline' || jarvisStatus === 'error' || jarvisStatus === 'active' || jarvisStatus === 'ready' || jarvisStatus === 'standby') ? (
-          <button 
-            onClick={activateJarvis} 
+        {/* Streamlined controls - removed indefinite listening button */}
+        {(!jarvisStatus || jarvisStatus === 'offline' || jarvisStatus === 'error') ? (
+          <button
+            onClick={activateJarvis}
             className="jarvis-button activate"
-            style={{ 
-              display: 'inline-block', 
+            style={{
+              display: 'inline-block',
               visibility: 'visible',
               opacity: 1,
               margin: '5px'
@@ -1583,15 +1621,36 @@ const JarvisVoice = () => {
           >
             🚀 Activate JARVIS
           </button>
-        ) : (
+        ) : (jarvisStatus === 'online' || jarvisStatus === 'active' || jarvisStatus === 'ready' || jarvisStatus === 'standby' || jarvisStatus === 'activating') ? (
           <>
-            <button
-              onClick={continuousListening ? disableContinuousListening : enableContinuousListening}
-              className={`jarvis-button ${continuousListening ? 'continuous-active' : 'start'}`}
-              title={continuousListening ? 'Microphone is on indefinitely - Click to turn OFF' : 'Click to turn on microphone INDEFINITELY (never auto-stops)'}
-            >
-              {continuousListening ? '🔴 Stop Indefinite Listening' : '🎤♾️ Start Indefinite Listening'}
-            </button>
+            {/* Wake word status indicator */}
+            <div className="wake-word-status" style={{
+              display: 'inline-block',
+              padding: '10px 20px',
+              margin: '5px',
+              backgroundColor: continuousListening ? '#2a9d8f' : '#264653',
+              color: 'white',
+              borderRadius: '8px',
+              fontWeight: 'bold',
+              fontSize: '14px'
+            }}>
+              {continuousListening ? (
+                <>
+                  <span className="pulse-dot" style={{
+                    display: 'inline-block',
+                    width: '8px',
+                    height: '8px',
+                    backgroundColor: '#00ff00',
+                    borderRadius: '50%',
+                    marginRight: '8px',
+                    animation: 'pulse 1.5s infinite'
+                  }}></span>
+                  🎙️ Listening for "Hey JARVIS"
+                </>
+              ) : (
+                <>⏸️ Wake word detection paused</>
+              )}
+            </div>
 
             <button
               onClick={toggleAutonomousMode}
@@ -1600,55 +1659,11 @@ const JarvisVoice = () => {
               {autonomousMode ? '🤖 Autonomous ON' : '👤 Manual Mode'}
             </button>
           </>
-        )}
-        
-        {/* Fallback button if status is unclear */}
-        {jarvisStatus && !['offline', 'error', 'active', 'ready', 'online', 'activating', 'standby'].includes(jarvisStatus) && (
-          <div style={{ marginTop: '10px' }}>
-            <button onClick={activateJarvis} className="jarvis-button activate">
-              🔧 Initialize JARVIS (Status: {jarvisStatus})
-            </button>
-          </div>
-        )}
-        
-        {/* Debug status display - remove this after troubleshooting */}
-        <div style={{ 
-          marginTop: '10px', 
-          fontSize: '11px', 
-          color: '#666',
-          backgroundColor: '#f0f0f0',
-          padding: '5px',
-          borderRadius: '4px'
-        }}>
-          Debug: Status="{jarvisStatus}" | Expected: offline/active/online/activating
-        </div>
-        
-        {/* Ultimate fallback - always show at least one button */}
-        {!document.querySelector('.jarvis-button') && (
-          <div style={{ marginTop: '10px', border: '2px solid red', padding: '10px' }}>
-            <button 
-              onClick={activateJarvis} 
-              className="jarvis-button activate emergency-fallback"
-              style={{ 
-                display: 'block !important', 
-                visibility: 'visible !important',
-                opacity: '1 !important',
-                margin: '5px auto',
-                padding: '10px 20px',
-                fontSize: '16px',
-                backgroundColor: '#ff4500',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer'
-              }}
-            >
-              🚨 EMERGENCY: Activate JARVIS
-            </button>
-            <p style={{ color: 'red', fontSize: '12px', textAlign: 'center' }}>
-              Normal buttons failed to render - using emergency activation
-            </p>
-          </div>
+        ) : (
+          /* Fallback for unknown status */
+          <button onClick={activateJarvis} className="jarvis-button activate">
+            🔧 Initialize JARVIS (Status: {jarvisStatus})
+          </button>
         )}
       </div>
 
@@ -1662,7 +1677,10 @@ const JarvisVoice = () => {
               e.target.value = '';
             }
           }}
-          disabled={jarvisStatus !== 'online'}
+          disabled={!jarvisStatus || jarvisStatus === 'offline' || jarvisStatus === 'error'}
+          style={{
+            opacity: (!jarvisStatus || jarvisStatus === 'offline' || jarvisStatus === 'error') ? 0.5 : 1
+          }}
         />
       </div>
 
@@ -1696,8 +1714,14 @@ const JarvisVoice = () => {
       )}
 
       <div className="voice-tips">
-        <p>Click "Start Listening" then say "Hey JARVIS" to activate</p>
-        <p>Available commands: weather, time, calculations, reminders</p>
+        <p style={{ fontSize: '14px', color: '#888' }}>
+          {jarvisStatus === 'online' || jarvisStatus === 'active' || jarvisStatus === 'ready' ? (
+            <>✨ Just say "Hey JARVIS" to activate voice commands</>
+          ) : (
+            <>Click "Activate JARVIS" to enable wake word detection</>
+          )}
+        </p>
+        <p style={{ fontSize: '13px', color: '#666' }}>Available commands: weather, time, calculations, reminders, browser control</p>
 
         {/* Debug audio button */}
         <div style={{ marginTop: '10px' }}>
