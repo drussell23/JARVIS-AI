@@ -1,7 +1,7 @@
-# 🤖 JARVIS AI System v13.3.1 - Multi-Space Vision Intelligence Enhanced 🧠
+# 🤖 JARVIS AI System v13.4.0 - Advanced Browser Automation 🧠
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-13.3.1%20Multi--Space%20Fixed-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Version-13.4.0%20Browser%20Automation-brightgreen" alt="Version">
   <img src="https://img.shields.io/badge/Claude%20Vision-Pure%20Intelligence-ff1744" alt="Pure Intelligence">
   <img src="https://img.shields.io/badge/Proactive-Real%20Time%20Assistant-ff1744" alt="Proactive Assistant">
   <img src="https://img.shields.io/badge/Wake%20Word-10ms%20⚡-ff69b4" alt="Ultra Fast Wake Word">
@@ -20,6 +20,32 @@
 <p align="center">
   <em>"Perfection is achieved not when there is nothing more to add, but when there is nothing left to take away." - Antoine de Saint-Exupéry</em>
 </p>
+
+## 🆕 What's New in v13.4.0 - Advanced Browser Automation
+
+### 🌐 Natural Language Browser Control (NEW!)
+**JARVIS CAN NOW CONTROL YOUR WEB BROWSERS NATURALLY!** Revolutionary features:
+- ✅ **Dynamic Browser Discovery** - Controls any browser without hardcoding
+- ✅ **Natural Commands** - "Open Safari and go to Google" just works
+- ✅ **Chained Actions** - "Open a new tab and search for weather"
+- ✅ **Smart Context** - Remembers which browser you're using
+- ✅ **Type & Search** - "Type python tutorials and press enter"
+
+### 🚀 Browser Automation Examples
+**SPEAK NATURALLY, JARVIS UNDERSTANDS!** Working commands:
+- ✅ **"Open Chrome and go to YouTube"** - Opens browser and navigates
+- ✅ **"Search for AI news"** - Performs web search in active browser
+- ✅ **"Open another tab"** - Creates new tab in current browser
+- ✅ **"Type machine learning and press enter"** - Types and searches
+- ✅ **"Open a new tab and go to GitHub"** - Compound actions work perfectly
+
+### 🔧 Technical Implementation
+**ZERO HARDCODING ARCHITECTURE!** How it works:
+- ✅ **Unified Command Processor** - Intelligently parses browser commands
+- ✅ **macOS Controller Enhanced** - Native AppleScript for browser control
+- ✅ **Dynamic App Discovery** - Finds any installed browser automatically
+- ✅ **Context Preservation** - Maintains state between commands
+- ✅ **Natural Response** - "Opening Safari and navigating to Google"
 
 ## 🆕 What's New in v13.3.1 - Multi-Space Vision Fixed & Enhanced
 
@@ -3192,6 +3218,13 @@ The Vision System v2.0 seamlessly integrates with JARVIS Voice for natural inter
 "Hey JARVIS, describe my workspace"
 "JARVIS, analyze the error messages"
 "Hey JARVIS, what applications are open?"
+
+# Browser automation commands (NEW!)
+"Hey JARVIS, open Safari and go to Google"
+"JARVIS, open a new tab and search for weather"
+"Hey JARVIS, type python tutorials and press enter"
+"JARVIS, search for AI news in Chrome"
+"Hey JARVIS, open another tab"
 
 # The system will:
 # 1. Detect wake word and process natural language

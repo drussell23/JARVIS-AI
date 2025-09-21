@@ -456,6 +456,103 @@ class MacOSController:
         
     # Web Integration
     
+    def open_new_tab(self, browser: Optional[str] = None, url: Optional[str] = None) -> Tuple[bool, str]:
+        """Open a new tab in browser"""
+        if not browser:
+            browser = "Safari"  # Default browser
+        browser = self.app_aliases.get(browser.lower(), browser)
+        
+        script = f'''
+        tell application "{browser}"
+            activate
+            tell window 1
+                set current tab to (make new tab)
+            end tell
+        '''
+        
+        if url:
+            script += f'''
+            set URL of current tab of window 1 to "{url}"
+        '''
+            
+        script += '''
+        end tell
+        '''
+        
+        success, message = self.execute_applescript(script)
+        if success:
+            if url:
+                from urllib.parse import urlparse
+                domain = urlparse(url).netloc.replace('www.', '') if '://' in url else url
+                return True, f"Opening new tab and navigating to {domain}"
+            else:
+                return True, f"Opening new tab in {browser}"
+        return False, f"Failed to open new tab: {message}"
+    
+    def type_in_browser(self, text: str, browser: Optional[str] = None, press_enter: bool = False) -> Tuple[bool, str]:
+        """Type text in the active browser element (like search bar)"""
+        if not browser:
+            browser = "Safari"
+        browser = self.app_aliases.get(browser.lower(), browser)
+        
+        # First ensure browser is active
+        activate_script = f'tell application "{browser}" to activate'
+        self.execute_applescript(activate_script)
+        
+        # Small delay to ensure browser is ready
+        import time
+        time.sleep(0.5)
+        
+        # Use System Events to type
+        script = f'''
+        tell application "System Events"
+            tell process "{browser}"
+                set frontmost to true
+                keystroke "{text}"
+        '''
+        
+        if press_enter:
+            script += '''
+                key code 36  -- Enter key
+        '''
+            
+        script += '''
+            end tell
+        end tell
+        '''
+        
+        success, message = self.execute_applescript(script)
+        if success:
+            if press_enter:
+                return True, f"Typing '{text}' and pressing Enter"
+            else:
+                return True, f"Typing '{text}'"
+        return False, f"Failed to type: {message}"
+    
+    def click_search_bar(self, browser: Optional[str] = None) -> Tuple[bool, str]:
+        """Click on the browser's search/address bar"""
+        if not browser:
+            browser = "Safari"
+        browser = self.app_aliases.get(browser.lower(), browser)
+        
+        # Use keyboard shortcut to focus address bar (Cmd+L works in most browsers)
+        script = f'''
+        tell application "{browser}"
+            activate
+        end tell
+        tell application "System Events"
+            tell process "{browser}"
+                set frontmost to true
+                keystroke "l" using command down
+            end tell
+        end tell
+        '''
+        
+        success, message = self.execute_applescript(script)
+        if success:
+            return True, f"Focusing on search bar"
+        return False, f"Failed to focus search bar: {message}"
+    
     def open_url(self, url: str, browser: Optional[str] = None) -> Tuple[bool, str]:
         """Open URL in browser"""
         if browser:
@@ -504,7 +601,7 @@ class MacOSController:
                 return True, f"Opened {url}"
             return False, f"Failed to open URL: {message}"
         
-    def web_search(self, query: str, engine: str = "google") -> Tuple[bool, str]:
+    def web_search(self, query: str, engine: str = "google", browser: Optional[str] = None) -> Tuple[bool, str]:
         """Perform web search"""
         engines = {
             "google": f"https://www.google.com/search?q={query}",
@@ -513,7 +610,7 @@ class MacOSController:
         }
         
         url = engines.get(engine.lower(), engines["google"])
-        return self.open_url(url)
+        return self.open_url(url, browser)
         
     # Complex Workflows
     

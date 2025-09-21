@@ -59,6 +59,16 @@ Enhanced Vision Features (v13.3.1):
 - Workflow Optimizer: Identifies repetitive patterns and suggests optimizations
 - Privacy Protection: Auto-pauses during sensitive content (passwords, banking)
 - Natural Voice Communication: Speaks suggestions and warnings naturally
+
+Browser Automation Features (v13.4.0):
+- Natural Language Browser Control: "Open Safari and go to Google"
+- Chained Commands: "Open a new tab and search for weather"
+- Dynamic Browser Discovery: Controls any browser without hardcoding
+- Smart Context: Remembers which browser you're using between commands
+- Type & Search: "Type python tutorials and press enter"
+- Tab Management: "Open another tab", "Open a new tab in Chrome"
+- Cross-Browser Support: Safari, Chrome, Firefox, and others
+- AppleScript Integration: Native macOS browser control
 """
 
 import os
@@ -528,7 +538,7 @@ except Exception as e:
 logger.info("Creating optimized FastAPI app...")
 app = FastAPI(
     title="JARVIS Backend (Optimized)",
-    version="13.3.1-multi-space-enhanced",
+    version="13.4.0-browser-automation",
     lifespan=lifespan
 )
 
@@ -797,7 +807,7 @@ async def root():
     """Root endpoint"""
     return {
         "message": "JARVIS Backend (Optimized) is running",
-        "version": "13.3.1-multi-space-enhanced",
+        "version": "13.4.0-browser-automation",
         "proactive_vision_enabled": hasattr(app.state, 'vision_analyzer'),
         "components": {
             name: bool(comp) for name, comp in components.items() if comp is not None

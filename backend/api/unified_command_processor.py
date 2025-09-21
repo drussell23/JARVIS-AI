@@ -141,8 +141,8 @@ class UnifiedCommandProcessor:
         
         # Check compound commands FIRST (highest priority)
         if ' and ' in command_lower or ' then ' in command_lower or ', and ' in command_lower:
-            # Make sure it's not just part of a search query
-            if not any(pattern in command_lower for pattern in ['search for', 'look up']):
+            # Make sure it's not just part of a search query or typing command
+            if not any(pattern in command_lower for pattern in ['search for', 'look up', 'type', 'and press enter', 'and enter']):
                 return CommandType.COMPOUND, 0.95
         
         # System commands - check after compound
@@ -150,7 +150,8 @@ class UnifiedCommandProcessor:
             'open', 'close', 'launch', 'quit', 'start', 'restart', 'shutdown',
             'volume', 'brightness', 'settings', 'wifi', 'wi-fi', 'screenshot',
             'mute', 'unmute', 'sleep display', 'go to', 'navigate to', 'visit',
-            'browse to', 'search for', 'google'
+            'browse to', 'search for', 'google', 'new tab', 'open tab', 'type',
+            'enter', 'search bar', 'click', 'another tab', 'open another'
         ]
         
         # App names that might be mentioned
@@ -445,8 +446,40 @@ class UnifiedCommandProcessor:
             
             command_lower = command_text.lower()
             
+            # Handle new tab commands first (before app control)
+            if any(pattern in command_lower for pattern in ['new tab', 'open tab', 'open a tab', 'open another tab', 'another tab', 'open another']):
+                browser = None
+                # Check if browser is specified
+                for browser_name in ['safari', 'chrome', 'firefox']:
+                    if browser_name in command_lower:
+                        browser = browser_name
+                        break
+                
+                # If no browser specified, use default Safari
+                if not browser:
+                    browser = 'safari'
+                
+                # Check if URL is specified
+                url = None
+                for pattern in ['and go to', 'and navigate to', 'and open']:
+                    if pattern in command_lower:
+                        parts = command_text.split(pattern, 1)
+                        if len(parts) > 1:
+                            url_part = parts[1].strip()
+                            # Handle common sites
+                            if url_part.lower() == 'google':
+                                url = 'https://google.com'
+                            elif '.' not in url_part:
+                                url = f'https://{url_part}.com'
+                            else:
+                                url = url_part if url_part.startswith('http') else f'https://{url_part}'
+                            break
+                
+                success, message = macos_controller.open_new_tab(browser, url)
+                return {'success': success, 'response': message}
+            
             # Parse app control commands
-            if 'open' in command_lower or 'launch' in command_lower or 'start' in command_lower:
+            elif 'open' in command_lower or 'launch' in command_lower or 'start' in command_lower:
                 # Extract app name after 'open', 'launch', or 'start'
                 app_name = None
                 for keyword in ['open', 'launch', 'start']:
@@ -607,25 +640,82 @@ class UnifiedCommandProcessor:
             elif any(pattern in command_lower for pattern in ['search for', 'google', 'look up']):
                 # Handle web searches
                 query = None
+                browser = None
+                
+                # Check if browser is specified
+                for browser_name in ['safari', 'chrome', 'firefox']:
+                    if browser_name in command_lower or f'in {browser_name}' in command_lower:
+                        browser = browser_name
+                        break
+                
                 for pattern in ['search for', 'google', 'look up']:
                     if pattern in command_lower:
-                        parts = command_text.split(pattern, 1)
-                        if len(parts) > 1:
-                            query = parts[1].strip()
+                        # Find the pattern position to do case-insensitive split
+                        pattern_index = command_lower.find(pattern)
+                        if pattern_index != -1:
+                            query = command_text[pattern_index + len(pattern):].strip()
                             # Remove browser specification if present
-                            for browser in ['safari', 'chrome', 'firefox']:
-                                if f'in {browser}' in query.lower():
-                                    query = query.replace(f'in {browser}', '').strip()
-                                elif f'on {browser}' in query.lower():
-                                    query = query.replace(f'on {browser}', '').strip()
+                            for browser_name in ['safari', 'chrome', 'firefox']:
+                                if f'in {browser_name}' in query.lower():
+                                    query = query[:query.lower().find(f'in {browser_name}')].strip()
+                                elif f'on {browser_name}' in query.lower():
+                                    query = query[:query.lower().find(f'on {browser_name}')].strip()
                             break
                 
                 if query:
-                    success, message = macos_controller.web_search(query)
+                    success, message = macos_controller.web_search(query, browser=browser)
                     return {'success': success, 'response': message}
                 else:
                     return {'success': False, 'response': "Please specify what to search for"}
                     
+            
+            # Handle typing/search commands
+            elif any(pattern in command_lower for pattern in ['type', 'search for', 'enter']):
+                browser = None
+                for browser_name in ['safari', 'chrome', 'firefox']:
+                    if browser_name in command_lower or f'in {browser_name}' in command_lower:
+                        browser = browser_name
+                        break
+                
+                # Extract what to type
+                text_to_type = None
+                press_enter = 'enter' in command_lower or 'search' in command_lower
+                
+                # Special handling for "type X and press enter" format
+                if 'type' in command_lower:
+                    # Find where "type" appears
+                    type_index = command_lower.find('type')
+                    if type_index != -1:
+                        # Get everything after "type"
+                        after_type = command_text[type_index + 4:].strip()
+                        # Remove "and press enter" or "and enter"
+                        after_type = after_type.replace(' and press enter', '').replace(' and enter', '').strip()
+                        # Remove "in browser" specifications
+                        for browser_name in ['in safari', 'in chrome', 'in firefox']:
+                            if after_type.lower().endswith(browser_name):
+                                after_type = after_type[:-len(browser_name)].strip()
+                        text_to_type = after_type
+                elif 'search for' in command_lower:
+                    search_index = command_lower.find('search for')
+                    if search_index != -1:
+                        after_search = command_text[search_index + 10:].strip()
+                        # Remove browser specification if at the end
+                        for browser_name in ['in safari', 'in chrome', 'in firefox']:
+                            if after_search.lower().endswith(browser_name):
+                                after_search = after_search[:-len(browser_name)].strip()
+                        text_to_type = after_search
+                
+                if text_to_type:
+                    # If it's a search command, focus on search bar first
+                    if 'search' in command_lower:
+                        macos_controller.click_search_bar(browser)
+                        await asyncio.sleep(0.5)
+                    
+                    success, message = macos_controller.type_in_browser(text_to_type, browser, press_enter)
+                    return {'success': success, 'response': message}
+                else:
+                    return {'success': False, 'response': "Please specify what to type"}
+            
             # Handle browser-specific commands
             elif any(f'tell {browser}' in command_lower or f'in {browser}' in command_lower 
                     for browser in ['safari', 'chrome', 'firefox']):

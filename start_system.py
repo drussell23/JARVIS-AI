@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Unified startup script for JARVIS AI System v13.3.1
-Multi-Space Vision Intelligence with Proactive Real-Time Monitoring
+Unified startup script for JARVIS AI System v13.4.0
+Advanced Browser Automation with Natural Language Control
 
 The JARVIS backend loads 6 critical components:
 
@@ -36,6 +36,16 @@ Proactive Monitoring Features:
 - Voice announcements with context-aware communication styles
 - Auto-pause for sensitive content (passwords, banking)
 - Decision engine with importance classification
+
+Browser Automation Features (v13.4.0):
+- Natural Language Browser Control: "Open Safari and go to Google"
+- Chained Commands: "Open a new tab and search for weather"
+- Dynamic Browser Discovery: Controls any browser without hardcoding
+- Smart Context: Remembers which browser you're using
+- Type & Search: "Type python tutorials and press enter"
+- Tab Management: "Open another tab", "Open a new tab in Chrome"
+- Cross-Browser Support: Safari, Chrome, Firefox, and others
+- AppleScript Integration: Native macOS browser control
 
 All 6 components must load for full functionality.
 """
@@ -121,7 +131,7 @@ class AsyncSystemManager:
         """Print system header with resource optimization info"""
         print(f"\n{Colors.HEADER}{'='*70}")
         print(
-            f"{Colors.BOLD}🤖 JARVIS AI Agent v12.9.2 - Integration Architecture Edition 🚀{Colors.ENDC}"
+            f"{Colors.BOLD}🤖 JARVIS AI Agent v13.4.0 - Advanced Browser Automation 🚀{Colors.ENDC}"
         )
         print(
             f"{Colors.GREEN}⚡ CPU<25% • 🧠 4GB Memory • 🎯 Swift Acceleration • 📊 Real-time Monitoring{Colors.ENDC}"
@@ -1060,6 +1070,11 @@ class AsyncSystemManager:
         print(f"  • Say '{Colors.GREEN}Hey JARVIS{Colors.ENDC}' to activate")
         print(f"  • '{Colors.GREEN}What can you do?{Colors.ENDC}' - List capabilities")
         print(f"  • '{Colors.GREEN}Can you see my screen?{Colors.ENDC}' - Vision test")
+        print(f"\n{Colors.CYAN}🌐 Browser Automation Commands (NEW!):{Colors.ENDC}")
+        print(f"  • '{Colors.GREEN}Open Safari and go to Google{Colors.ENDC}' - Browser control")
+        print(f"  • '{Colors.GREEN}Search for AI news{Colors.ENDC}' - Web search")
+        print(f"  • '{Colors.GREEN}Open a new tab{Colors.ENDC}' - Tab management")
+        print(f"  • '{Colors.GREEN}Type python tutorials and press enter{Colors.ENDC}' - Type & search")
         print(f"\n{Colors.CYAN}🎥 Screen Monitoring Commands:{Colors.ENDC}")
         print(f"  • '{Colors.GREEN}Start monitoring my screen{Colors.ENDC}' - Begin 30 FPS capture")
         print(f"  • '{Colors.GREEN}Stop monitoring{Colors.ENDC}' - End video streaming")
@@ -1540,7 +1555,7 @@ async def main():
     global _manager
 
     parser = argparse.ArgumentParser(
-        description="J.A.R.V.I.S. Advanced AI System v13.3.1 - Multi-Space Vision Intelligence Edition"
+        description="J.A.R.V.I.S. Advanced AI System v13.4.0 - Advanced Browser Automation Edition"
     )
     parser.add_argument("--no-browser", action="store_true", help="Don't open browser")
     parser.add_argument(
