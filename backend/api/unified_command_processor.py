@@ -707,9 +707,14 @@ class UnifiedCommandProcessor:
                         for word in words:
                             if self.pattern_learner.is_learned_app(word):
                                 active_app = word
+                                # Even if app is already open, we want to track it for context
+                                logger.info(f"[COMPOUND] Tracking active app: {active_app}")
                                 break
-                                
-                    responses.append(result.get('response', ''))
+                    
+                    # Skip "already open" messages in compound commands
+                    response = result.get('response', '')
+                    if 'already open' not in response.lower() or len(parts) == 1:
+                        responses.append(response)
                 else:
                     all_success = False
                     responses.append(f"Failed: {result.get('response', 'Unknown error')}")
@@ -1084,14 +1089,26 @@ class UnifiedCommandProcessor:
             if 'search' in words or 'google' in words:
                 params['action'] = 'search'
                 # Extract search query
-                search_patterns = ['search for', 'google', 'look up', 'find']
-                for pattern in search_patterns:
-                    if pattern in command_text.lower():
-                        idx = command_text.lower().find(pattern)
-                        query = command_text[idx + len(pattern):].strip()
+                # Handle "search in X for Y" pattern first
+                if 'search in' in command_text.lower() and ' for ' in command_text.lower():
+                    # Extract query after "for"
+                    for_idx = command_text.lower().find(' for ')
+                    if for_idx != -1:
+                        query = command_text[for_idx + 5:].strip()
                         if query:
                             params['query'] = query
-                            break
+                            logger.info(f"[PARSE] Extracted query from 'search in X for Y' pattern: '{query}'")
+                else:
+                    # Standard search patterns
+                    search_patterns = ['search for', 'google', 'look up', 'find']
+                    for pattern in search_patterns:
+                        if pattern in command_text.lower():
+                            idx = command_text.lower().find(pattern)
+                            query = command_text[idx + len(pattern):].strip()
+                            if query:
+                                params['query'] = query
+                                logger.info(f"[PARSE] Extracted query from '{pattern}' pattern: '{query}'")
+                                break
             else:
                 params['action'] = 'navigate'
                 # Extract URL
@@ -1192,7 +1209,8 @@ class UnifiedCommandProcessor:
             # Parse command dynamically
             command_type, target, params = self._parse_system_command(command_text)
             
-            logger.info(f"Parsed system command: type={command_type}, target={target}, params={params}")
+            logger.info(f"[SYSTEM] Parsing '{command_text}'")
+            logger.info(f"[SYSTEM] Parsed: type={command_type}, target={target}, params={params}")
             
             # Execute based on parsed command type
             if command_type == 'tab_control':
