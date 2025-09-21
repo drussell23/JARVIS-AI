@@ -88,7 +88,7 @@ class MacOSController:
                 ["osascript", "-e", script],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=10  # Increased for apps that take longer to respond
             )
             if result.returncode == 0:
                 return True, result.stdout.strip()

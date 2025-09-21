@@ -907,16 +907,27 @@ const JarvisVoice = () => {
               isListening
             });
 
-            // Clear the wake word from display
-            setTranscript('');
-
-            // Trigger wake word activation
-            console.log('🚀 Triggering wake word handler...', {
-              hasService: !!wakeWordServiceRef.current,
-              hasHandler: !!(wakeWordServiceRef.current && wakeWordServiceRef.current.onWakeWordDetected)
-            });
+            // Check if there's a command after the wake word in the same sentence
+            const fullTranscript = event.results[last][0].transcript;
+            let commandAfterWakeWord = fullTranscript.toLowerCase();
             
-            // Directly call handleWakeWordDetected instead of using the ref
+            // Remove the wake word to get just the command
+            const wakeWordIndex = commandAfterWakeWord.indexOf(detectedWakeWord);
+            if (wakeWordIndex !== -1) {
+              commandAfterWakeWord = commandAfterWakeWord.substring(wakeWordIndex + detectedWakeWord.length).trim();
+            }
+
+            // If there's a command after the wake word, process it directly
+            if (commandAfterWakeWord.length > 0) {
+              console.log('🎯 Command found after wake word:', commandAfterWakeWord);
+              // Process the command immediately
+              handleVoiceCommand(commandAfterWakeWord);
+              return;
+            }
+
+            // Otherwise, just activate wake word mode
+            setTranscript('');
+            console.log('🚀 Triggering wake word handler for listening mode...');
             handleWakeWordDetected();
             return;
           }
@@ -1218,19 +1229,9 @@ const JarvisVoice = () => {
       sendTextCommand(command);
     }
 
-    // Keep listening for follow-up commands (continuous conversation mode)
-    if (continuousListening) {
-      // Stay in command mode for 10 seconds after response
-      setTimeout(() => {
-        if (!isJarvisSpeaking) {
-          setIsWaitingForCommand(false);
-          setIsListening(false);
-        }
-      }, 10000);
-    } else {
-      setIsWaitingForCommand(false);
-      setIsListening(false);
-    }
+    // Don't immediately reset waiting state - let the response handler do it
+    // This ensures we don't miss the response
+    console.log('Command sent, waiting for response...');
   };
 
   const activateJarvis = async () => {
