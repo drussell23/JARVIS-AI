@@ -472,6 +472,31 @@ class UnifiedCommandProcessor:
     
     def _parse_compound_parts(self, command_text: str) -> List[str]:
         """Parse compound command into logical parts"""
+        # Special handling for complex browser commands
+        if 'search for' in command_text.lower() and ('separate tabs' in command_text.lower() or 'different tabs' in command_text.lower()):
+            # This is a single complex command, don't split it
+            return [command_text]
+            
+        # Special handling for "open X and Y" where both are apps
+        if command_text.lower().startswith('open '):
+            apps = ['safari', 'chrome', 'firefox', 'whatsapp', 'music', 'messages', 'mail', 'spotify', 'slack', 'zoom', 'terminal', 'finder']
+            # Count how many apps are mentioned
+            app_count = sum(1 for app in apps if app in command_text.lower())
+            if app_count >= 2 and 'search' not in command_text.lower() and 'go to' not in command_text.lower():
+                # Split simple app opens: "open safari and whatsapp"
+                parts = []
+                remaining = command_text
+                for app in apps:
+                    if app in remaining.lower():
+                        # Extract this app command
+                        if 'open ' + app in remaining.lower():
+                            parts.append('open ' + app)
+                            remaining = remaining.lower().replace('open ' + app, '', 1)
+                        elif app in remaining.lower():
+                            parts.append('open ' + app)
+                            remaining = remaining.lower().replace(app, '', 1)
+                return [p for p in parts if p.strip()]
+        
         # Handle various connectors
         command_text = command_text.replace(' then ', ' and ')
         command_text = command_text.replace(', and ', ' and ')
@@ -526,9 +551,33 @@ class UnifiedCommandProcessor:
         return parts
     
     def _can_parallelize_commands(self, parts: List[str]) -> bool:
-        """Check if commands can be run in parallel (e.g., multiple app operations)"""
+        """Check if commands can be run in parallel"""
         if len(parts) < 2:
             return False
+            
+        # Analyze each part to determine if they're independent
+        independent_commands = []
+        for part in parts:
+            part_lower = part.lower().strip()
+            
+            # Commands that are typically independent
+            is_independent = (
+                # App operations without dependencies
+                (any(op in part_lower for op in ['open', 'close', 'launch', 'quit']) and 
+                 not any(dep in part_lower for dep in ['and search', 'and go to', 'and type', 'then'])) or
+                # Simple app operations
+                (len(part_lower.split()) <= 3 and any(app in part_lower for app in 
+                 ['safari', 'chrome', 'firefox', 'whatsapp', 'music', 'messages', 'mail', 'spotify']))
+            )
+            
+            independent_commands.append(is_independent)
+        
+        # Can parallelize if all commands are independent
+        # Or if they're all similar operations (all opens or all closes)
+        all_independent = all(independent_commands)
+        
+        if all_independent:
+            return True
             
         # Check if all parts are similar operations
         operations = []
@@ -541,7 +590,7 @@ class UnifiedCommandProcessor:
             else:
                 operations.append('other')
         
-        # Can parallelize if all operations are the same type (all opens or all closes)
+        # Can parallelize if all operations are the same type
         return len(set(operations)) == 1 and operations[0] in ['close', 'open']
     
     def _enhance_with_context(self, command: str, active_app: Optional[str], previous_result: Optional[Dict]) -> str:
@@ -609,6 +658,57 @@ class UnifiedCommandProcessor:
                 
                 success, message = macos_controller.open_new_tab(browser, url)
                 return {'success': success, 'response': message}
+            
+            # Handle complex browser search operations
+            elif ('search' in command_lower or 'search for' in command_lower) and any(browser in command_lower for browser in ['safari', 'chrome', 'firefox']):
+                # Handle searches like "open safari and search for dogs and cats on two separate tabs"
+                browser = None
+                for browser_name in ['safari', 'chrome', 'firefox']:
+                    if browser_name in command_lower:
+                        browser = browser_name
+                        break
+                
+                # First open the browser if needed
+                if 'open' in command_lower:
+                    success, _ = dynamic_controller.open_app_intelligently(browser)
+                    if success:
+                        # Wait a moment for browser to open
+                        await asyncio.sleep(1.5)
+                
+                # Check if we need multiple tabs
+                if 'separate tabs' in command_lower or 'different tabs' in command_lower or 'multiple tabs' in command_lower:
+                    # Extract search terms
+                    search_pattern = r'search for (.+?)(?:\s+on\s+(?:two|multiple|different)\s+separate\s+tabs?)?$'
+                    import re
+                    match = re.search(search_pattern, command_text, re.IGNORECASE)
+                    if match:
+                        search_terms_str = match.group(1)
+                        # Split by 'and' to get individual search terms
+                        search_terms = [term.strip() for term in search_terms_str.split(' and ')]
+                        
+                        # Open a tab for each search term
+                        results = []
+                        for i, term in enumerate(search_terms):
+                            if i == 0:
+                                # First search in current tab
+                                success, msg = macos_controller.web_search(term, browser=browser)
+                            else:
+                                # Subsequent searches in new tabs
+                                await asyncio.sleep(0.5)  # Small delay between tabs
+                                success, msg = macos_controller.open_new_tab(browser, f"https://google.com/search?q={term.replace(' ', '+')}")
+                            results.append(success)
+                        
+                        if all(results):
+                            return {'success': True, 'response': f"Searching for {' and '.join(search_terms)} in separate tabs, Sir"}
+                        else:
+                            return {'success': False, 'response': "Had trouble opening some tabs"}
+                else:
+                    # Single search
+                    search_match = re.search(r'search(?:\s+for)?\s+(.+?)(?:\s+in\s+' + browser + r')?$', command_text, re.IGNORECASE)
+                    if search_match:
+                        query = search_match.group(1).strip()
+                        success, message = macos_controller.web_search(query, browser=browser)
+                        return {'success': success, 'response': message}
             
             # Parse app control commands
             elif 'open' in command_lower or 'launch' in command_lower or 'start' in command_lower:
