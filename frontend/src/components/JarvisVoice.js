@@ -330,14 +330,14 @@ const JarvisVoice = () => {
   const JARVIS_WS_URL = WS_URL;  // Use same base URL as API
 
   useEffect(() => {
-    // Check JARVIS status on mount
-    checkJarvisStatus();
+    // Auto-activate JARVIS on mount for seamless wake word experience
+    const autoActivate = async () => {
+      await checkJarvisStatus();
+      await checkMicrophonePermission();
+      await initializeWakeWordService();
+    };
 
-    // Check microphone permission first
-    checkMicrophonePermission();
-
-    // Initialize wake word service
-    initializeWakeWordService();
+    autoActivate();
 
     // Predict potential audio issues - disabled to prevent CORS errors
     // mlAudioHandler.predictAudioIssue();
@@ -347,60 +347,61 @@ const JarvisVoice = () => {
     styleElement.textContent = buttonVisibilityStyle;
     document.head.appendChild(styleElement);
 
-    // Button visibility checker
-    const checkButtonsInterval = setInterval(() => {
-      const container = document.querySelector('.jarvis-voice-container');
-      if (!container) {
-        console.log('Button checker: Container not found yet');
-        return;
-      }
+    // Button visibility checker - disabled since we now auto-activate
+    const checkButtonsInterval = null; // Commented out button injection
+    // const checkButtonsInterval = setInterval(() => {
+    //   const container = document.querySelector('.jarvis-voice-container');
+    //   if (!container) {
+    //     console.log('Button checker: Container not found yet');
+    //     return;
+    //   }
 
-      // Look for control buttons
-      const hasButtons = container.querySelector('.jarvis-button');
-      // Only log when buttons are missing
+    //   // Look for control buttons
+    //   const hasButtons = container.querySelector('.jarvis-button');
+    //   // Only log when buttons are missing
 
-      if (!hasButtons) {
-        console.warn('JARVIS buttons missing - injecting emergency button');
-        // Find the voice-controls div
-        const voiceControls = container.querySelector('.voice-controls');
-        if (voiceControls && !document.getElementById('jarvis-emergency-button')) {
-          // Inject a fallback activate button
-          const buttonDiv = document.createElement('div');
-          buttonDiv.id = 'jarvis-emergency-button';
-          buttonDiv.style.cssText = 'text-align: center; margin-top: 10px;';
-          buttonDiv.innerHTML = `
-            <button 
-              class="jarvis-button activate" 
-              style="
-                display: inline-block;
-                padding: 12px 24px;
-                font-size: 16px;
-                background: linear-gradient(135deg, #ff6b35 0%, #ff4500 100%);
-                color: white;
-                border: none;
-                border-radius: 8px;
-                cursor: pointer;
-                margin: 5px;
-                transition: all 0.3s;
-              "
-              onclick="
-                console.log('Emergency activate button clicked');
-                // Try to call the activate function
-                const event = new CustomEvent('jarvis-emergency-activate');
-                window.dispatchEvent(event);
-              "
-            >
-              🚀 Activate JARVIS (Emergency)
-            </button>
-            <div style="margin-top: 5px; font-size: 12px; color: #888;">
-              If buttons are missing, click here to activate JARVIS
-            </div>
-          `;
-          voiceControls.appendChild(buttonDiv);
-          console.log('Injected emergency JARVIS button');
-        }
-      }
-    }, 1000);
+    //   if (!hasButtons) {
+    //     console.warn('JARVIS buttons missing - injecting emergency button');
+    //     // Find the voice-controls div
+    //     const voiceControls = container.querySelector('.voice-controls');
+    //     if (voiceControls && !document.getElementById('jarvis-emergency-button')) {
+    //       // Inject a fallback activate button
+    //       const buttonDiv = document.createElement('div');
+    //       buttonDiv.id = 'jarvis-emergency-button';
+    //       buttonDiv.style.cssText = 'text-align: center; margin-top: 10px;';
+    //       buttonDiv.innerHTML = `
+    //         <button 
+    //           class="jarvis-button activate" 
+    //           style="
+    //             display: inline-block;
+    //             padding: 12px 24px;
+    //             font-size: 16px;
+    //             background: linear-gradient(135deg, #ff6b35 0%, #ff4500 100%);
+    //             color: white;
+    //             border: none;
+    //             border-radius: 8px;
+    //             cursor: pointer;
+    //             margin: 5px;
+    //             transition: all 0.3s;
+    //           "
+    //           onclick="
+    //             console.log('Emergency activate button clicked');
+    //             // Try to call the activate function
+    //             const event = new CustomEvent('jarvis-emergency-activate');
+    //             window.dispatchEvent(event);
+    //           "
+    //         >
+    //           🚀 Activate JARVIS (Emergency)
+    //         </button>
+    //         <div style="margin-top: 5px; font-size: 12px; color: #888;">
+    //           If buttons are missing, click here to activate JARVIS
+    //         </div>
+    //       `;
+    //       voiceControls.appendChild(buttonDiv);
+    //       console.log('Injected emergency JARVIS button');
+    //     }
+    //   }
+    // }, 1000);
 
     // Set up ML event listeners
     const handleAudioPrediction = (event) => {
@@ -518,9 +519,9 @@ const JarvisVoice = () => {
       window.removeEventListener('jarvis-emergency-activate', handleEmergencyActivate);
 
       // Clear button checker interval
-      if (checkButtonsInterval) {
-        clearInterval(checkButtonsInterval);
-      }
+      // if (checkButtonsInterval) {
+      //   clearInterval(checkButtonsInterval);
+      // }
 
       // Remove injected style
       if (styleElement && styleElement.parentNode) {
@@ -528,6 +529,30 @@ const JarvisVoice = () => {
       }
     };
   }, [autonomousMode]);
+
+  // Separate effect for auto-activation
+  useEffect(() => {
+    if (jarvisStatus === 'offline' || jarvisStatus === null) {
+      const timer = setTimeout(() => {
+        console.log('Auto-activating JARVIS for seamless experience');
+        activateJarvis();
+      }, 2000);
+      return () => clearTimeout(timer);
+    } else if (jarvisStatus === 'online' && !continuousListening) {
+      // Enable wake word detection when JARVIS comes online
+      console.log('JARVIS online, enabling wake word detection');
+      // Small delay to ensure speech recognition is initialized
+      setTimeout(() => {
+        if (recognitionRef.current) {
+          enableContinuousListening();
+        } else {
+          console.log('Speech recognition not initialized yet, retrying...');
+          initializeSpeechRecognition();
+          setTimeout(() => enableContinuousListening(), 1000);
+        }
+      }, 1000);
+    }
+  }, [jarvisStatus, continuousListening]);
 
   const checkJarvisStatus = async () => {
     try {
@@ -785,16 +810,16 @@ const JarvisVoice = () => {
           setIsListening(true);
 
           // Play the response
-          const responseText = data.response || "Yes sir, I'm listening";
+          const responseText = data.response || "Ready for your command, sir";
           speakResponse(responseText);
 
-          // Start timeout for command (15 seconds)
+          // Start timeout for command (30 seconds - more time to speak)
           setTimeout(() => {
             if (isWaitingForCommand && !isJarvisSpeaking) {
               setIsWaitingForCommand(false);
               console.log('⏱️ Command timeout - returning to wake word listening');
             }
-          }, 15000);
+          }, 30000);
         },
         isActive: false
       };
@@ -848,7 +873,7 @@ const JarvisVoice = () => {
         const isFinal = event.results[last].isFinal;
 
         // Debug logging
-        console.log(`🎙️ Speech detected: "${transcript}" (final: ${isFinal})`);
+        console.log(`🎙️ Speech detected: "${transcript}" (final: ${isFinal}) | Waiting: ${isWaitingForCommand} | Continuous: ${continuousListening}`);
 
         // Only process final results to avoid duplicate detections
         if (!isFinal) return;
@@ -859,7 +884,11 @@ const JarvisVoice = () => {
           const detectedWakeWord = wakeWords.find(word => transcript.includes(word));
 
           if (detectedWakeWord) {
-            console.log('🎯 Wake word detected:', detectedWakeWord);
+            console.log('🎯 Wake word detected:', detectedWakeWord, '| Current state:', {
+              isWaitingForCommand,
+              continuousListening,
+              isListening
+            });
 
             // Clear the wake word from display
             setTranscript('');
@@ -869,7 +898,7 @@ const JarvisVoice = () => {
               wakeWordServiceRef.current.onWakeWordDetected({
                 wakeWord: detectedWakeWord,
                 confidence: event.results[last][0].confidence || 1.0,
-                response: "Yes sir, I'm listening"
+                response: "Ready for your command, sir"
               });
             }
             return;
@@ -1193,8 +1222,8 @@ const JarvisVoice = () => {
           await initializeWakeWordService();
         }
 
-        // Speak activation confirmation
-        speakResponse("JARVIS is now online. Say 'Hey JARVIS' anytime to activate voice commands.");
+        // Speak activation confirmation  
+        speakResponse("JARVIS online. Say 'Hey JARVIS' to begin.");
 
         // Enable continuous listening for wake word detection
         console.log('🎙️ Enabling continuous listening for wake word...');
@@ -1622,36 +1651,18 @@ const JarvisVoice = () => {
         )}
       </div>
 
-      {/* Status Cards */}
-      <div className="status-cards">
+      {/* Simplified Status Indicator */}
+      <div className="status-indicator-bar">
         {continuousListening && !isWaitingForCommand && (
-          <div className="status-card wake-word-active">
-            <div className="status-card-icon">🎙️</div>
-            <div className="status-card-content">
-              <div className="status-card-title">Wake Word Active</div>
-              <div className="status-card-text">Say "Hey JARVIS" to activate</div>
-            </div>
-            <div className="status-pulse"></div>
+          <div className="status-item wake-active">
+            <span className="status-dot"></span>
+            <span className="status-text">Say "Hey JARVIS"</span>
           </div>
         )}
-
         {isWaitingForCommand && (
-          <div className="status-card listening-active">
-            <div className="status-card-icon">🎤</div>
-            <div className="status-card-content">
-              <div className="status-card-title">Listening</div>
-              <div className="status-card-text">Speak your command now</div>
-            </div>
-            <div className="status-pulse active"></div>
-          </div>
-        )}
-        {autonomousMode && (
-          <div className="status-card autonomous-active">
-            <div className="status-card-icon">🤖</div>
-            <div className="status-card-content">
-              <div className="status-card-title">Autonomous Mode</div>
-              <div className="status-card-text">AI fully active</div>
-            </div>
+          <div className="status-item listening">
+            <span className="status-dot active"></span>
+            <span className="status-text">Listening...</span>
           </div>
         )}
       </div>
@@ -1713,43 +1724,12 @@ const JarvisVoice = () => {
         </div>
       )}
 
-      <div className="jarvis-controls">
-        {(!jarvisStatus || jarvisStatus === 'offline' || jarvisStatus === 'error') ? (
-          <button
-            onClick={activateJarvis}
-            className="jarvis-button jarvis-button-primary"
-          >
-            <span className="button-icon">🚀</span>
-            <span className="button-text">ACTIVATE JARVIS</span>
-          </button>
-        ) : (jarvisStatus === 'online' || jarvisStatus === 'active' || jarvisStatus === 'ready' || jarvisStatus === 'standby' || jarvisStatus === 'activating') ? (
-          <div className="jarvis-button-group">
-            <button
-              onClick={toggleAutonomousMode}
-              className={`jarvis-button ${autonomousMode ? 'jarvis-button-active' : 'jarvis-button-secondary'}`}
-            >
-              <span className="button-icon">{autonomousMode ? '🤖' : '👤'}</span>
-              <span className="button-text">{autonomousMode ? 'AUTONOMOUS' : 'MANUAL MODE'}</span>
-            </button>
-
-            {!continuousListening && (
-              <button
-                onClick={enableContinuousListening}
-                className="jarvis-button jarvis-button-secondary"
-              >
-                <span className="button-icon">🎙️</span>
-                <span className="button-text">ENABLE WAKE WORD</span>
-              </button>
-            )}
-          </div>
-        ) : (
-          /* Fallback for unknown status */
-          <button onClick={activateJarvis} className="jarvis-button jarvis-button-warning">
-            <span className="button-icon">🔧</span>
-            <span className="button-text">INITIALIZE JARVIS</span>
-          </button>
-        )}
-      </div>
+      {/* Simplified Control - Only show when needed */}
+      {jarvisStatus === 'activating' && (
+        <div className="jarvis-controls">
+          <div className="initializing-message">Initializing JARVIS systems...</div>
+        </div>
+      )}
 
       {/* Command Input Section */}
       <div className="jarvis-input-section">
@@ -1757,7 +1737,7 @@ const JarvisVoice = () => {
           <input
             type="text"
             className="jarvis-input"
-            placeholder={jarvisStatus === 'online' ? "Type your command or say 'Hey JARVIS'..." : "System offline..."}
+            placeholder={jarvisStatus === 'online' ? "Say 'Hey JARVIS' or type a command..." : "Initializing..."}
             onKeyPress={(e) => {
               if (e.key === 'Enter') {
                 sendTextCommand(e.target.value);
@@ -1777,46 +1757,29 @@ const JarvisVoice = () => {
             }}
             disabled={!jarvisStatus || jarvisStatus === 'offline' || jarvisStatus === 'error'}
           >
-            ➤
+            <span className="send-icon">→</span>
           </button>
         </div>
       </div>
 
-
-
-      {/* Help Section */}
-      <div className="jarvis-help">
-        <div className="jarvis-help-title">Quick Guide</div>
-        <div className="jarvis-help-grid">
-          <div className="jarvis-help-item">
-            <span className="help-icon">🎙️</span>
-            <span className="help-text">Say "Hey JARVIS" to activate</span>
-          </div>
-          <div className="jarvis-help-item">
-            <span className="help-icon">⌨️</span>
-            <span className="help-text">Or type commands directly</span>
-          </div>
-          <div className="jarvis-help-item">
-            <span className="help-icon">🤖</span>
-            <span className="help-text">Enable autonomous mode for AI assistance</span>
-          </div>
-          <div className="jarvis-help-item">
-            <span className="help-icon">💡</span>
-            <span className="help-text">Try: weather, time, calculations, reminders</span>
-          </div>
+      {/* Conversation Transcript */}
+      {(transcript || response) && (
+        <div className="jarvis-transcript">
+          {transcript && (
+            <div className="user-message">
+              <span className="message-label">YOU</span>
+              <span className="message-text">{transcript}</span>
+            </div>
+          )}
+          {response && (
+            <div className="jarvis-message">
+              <span className="message-label">JARVIS</span>
+              <span className="message-text">{response}</span>
+            </div>
+          )}
         </div>
+      )}
 
-        {/* Test Audio Button */}
-        <button
-          onClick={async () => {
-            console.log('Testing audio...');
-            await playAudioResponse('JARVIS voice test. All systems operational.');
-          }}
-          className="jarvis-test-button"
-        >
-          🔊 Test Audio
-        </button>
-      </div>
     </div>
   );
 };
