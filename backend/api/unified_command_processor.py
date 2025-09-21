@@ -139,11 +139,18 @@ class UnifiedCommandProcessor:
         """Classify command using intelligent pattern matching"""
         command_lower = command_text.lower()
         
-        # System commands - check first to avoid confusion with vision
+        # Check compound commands FIRST (highest priority)
+        if ' and ' in command_lower or ' then ' in command_lower or ', and ' in command_lower:
+            # Make sure it's not just part of a search query
+            if not any(pattern in command_lower for pattern in ['search for', 'look up']):
+                return CommandType.COMPOUND, 0.95
+        
+        # System commands - check after compound
         system_patterns = [
             'open', 'close', 'launch', 'quit', 'start', 'restart', 'shutdown',
             'volume', 'brightness', 'settings', 'wifi', 'wi-fi', 'screenshot',
-            'mute', 'unmute', 'sleep display'
+            'mute', 'unmute', 'sleep display', 'go to', 'navigate to', 'visit',
+            'browse to', 'search for', 'google'
         ]
         
         # App names that might be mentioned
@@ -188,9 +195,6 @@ class UnifiedCommandProcessor:
         if any(pattern in command_lower for pattern in autonomy_patterns):
             return CommandType.AUTONOMY, 0.9
             
-        # Compound commands (multiple actions)
-        if ' and ' in command_lower or ' then ' in command_lower:
-            return CommandType.COMPOUND, 0.8
             
         # Meta commands (about previous commands)
         meta_patterns = ['cancel', 'stop that', 'undo', 'never mind', 'not that']
@@ -296,27 +300,134 @@ class UnifiedCommandProcessor:
             return None
             
     async def _handle_compound_command(self, command_text: str) -> Dict[str, Any]:
-        """Handle commands with multiple parts"""
-        # Split by 'and' or 'then'
-        parts = command_text.replace(' then ', ' and ').split(' and ')
+        """Handle commands with multiple parts and maintain context between them"""
+        # Parse compound commands more intelligently
+        parts = self._parse_compound_parts(command_text)
         
         results = []
         all_success = True
+        responses = []
         
-        for part in parts:
+        # Track context for dependent commands
+        active_app = None
+        previous_result = None
+        
+        for i, part in enumerate(parts):
             part = part.strip()
-            if part:
-                result = await self.process_command(part)
-                results.append(result)
-                if not result.get('success', False):
-                    all_success = False
-                    
+            if not part:
+                continue
+                
+            # Provide user feedback for multi-step commands
+            if len(parts) > 1:
+                logger.info(f"[COMPOUND] Step {i+1}/{len(parts)}: {part}")
+            
+            # Check if this is a dependent command that needs context
+            enhanced_command = self._enhance_with_context(part, active_app, previous_result)
+            
+            # Process individual part (not as compound to avoid recursion)
+            command_type, _ = await self._classify_command(enhanced_command)
+            # Force non-compound to avoid recursion
+            if command_type == CommandType.COMPOUND:
+                command_type = CommandType.SYSTEM
+            
+            result = await self._execute_command(command_type, enhanced_command)
+            results.append(result)
+            
+            # Update context for next command
+            if result.get('success', False):
+                # Track opened apps for subsequent commands
+                if any(word in part.lower() for word in ['open', 'launch', 'start']):
+                    for app in ['safari', 'chrome', 'firefox']:
+                        if app in enhanced_command.lower():
+                            active_app = app
+                            break
+                            
+                responses.append(result.get('response', ''))
+            else:
+                all_success = False
+                responses.append(f"Failed: {result.get('response', 'Unknown error')}")
+                # Don't continue if a step fails
+                break
+            
+            previous_result = result
+            
+            # Add small delay between commands for reliability
+            if i < len(parts) - 1:
+                await asyncio.sleep(0.5)
+                
+        # Create comprehensive response
+        if len(responses) > 1:
+            response = "Executed commands: " + " → ".join(responses)
+        else:
+            response = responses[0] if responses else "No commands executed"
+            
         return {
             'success': all_success,
-            'response': ' '.join(r.get('response', '') for r in results),
+            'response': response,
             'command_type': CommandType.COMPOUND.value,
-            'sub_results': results
+            'sub_results': results,
+            'steps_completed': len([r for r in results if r.get('success', False)]),
+            'total_steps': len(parts)
         }
+    
+    def _parse_compound_parts(self, command_text: str) -> List[str]:
+        """Parse compound command into logical parts"""
+        # Handle various connectors
+        command_text = command_text.replace(' then ', ' and ')
+        command_text = command_text.replace(', and ', ' and ')
+        command_text = command_text.replace(', ', ' and ')
+        
+        # Split by 'and' but be smart about URLs
+        parts = []
+        current_part = []
+        words = command_text.split()
+        
+        i = 0
+        while i < len(words):
+            word = words[i]
+            
+            # Check if 'and' is a connector or part of content
+            if word.lower() == 'and':
+                # Check if it's part of a URL or search query
+                if i > 0 and any(pattern in ' '.join(current_part).lower() for pattern in ['go to', 'search for', 'navigate to']):
+                    current_part.append(word)
+                else:
+                    # It's a connector
+                    if current_part:
+                        parts.append(' '.join(current_part))
+                        current_part = []
+            else:
+                current_part.append(word)
+            
+            i += 1
+        
+        if current_part:
+            parts.append(' '.join(current_part))
+            
+        return parts
+    
+    def _enhance_with_context(self, command: str, active_app: Optional[str], previous_result: Optional[Dict]) -> str:
+        """Enhance command with context from previous commands"""
+        command_lower = command.lower()
+        
+        # URL navigation patterns
+        url_patterns = ['go to', 'navigate to', 'open url', 'visit', 'browse to']
+        search_patterns = ['search for', 'google', 'look up', 'find']
+        
+        # Check if this is a navigation command without app context
+        if any(pattern in command_lower for pattern in url_patterns + search_patterns):
+            # If no browser is specified but we have an active browser
+            if active_app and active_app in ['safari', 'chrome', 'firefox']:
+                if not any(browser in command_lower for browser in ['safari', 'chrome', 'firefox']):
+                    # Enhance with browser context
+                    if 'go to' in command_lower:
+                        command = command.replace('go to', f'tell {active_app} to go to')
+                    elif 'search for' in command_lower:
+                        command = command.replace('search for', f'search in {active_app} for')
+                    elif not any(browser in command_lower for browser in ['safari', 'chrome', 'firefox']):
+                        command = f"in {active_app} {command}"
+        
+        return command
     
     async def _execute_system_command(self, command_text: str) -> Dict[str, Any]:
         """Execute system control commands"""
@@ -335,9 +446,17 @@ class UnifiedCommandProcessor:
                 app_name = None
                 for keyword in ['open', 'launch', 'start']:
                     if keyword in command_lower:
-                        parts = command_text.split(keyword, 1)
-                        if len(parts) > 1:
-                            app_name = parts[1].strip()
+                        # Use case-insensitive split
+                        pattern_index = command_lower.find(keyword)
+                        if pattern_index != -1:
+                            after_keyword = command_text[pattern_index + len(keyword):].strip()
+                            # Handle compound commands - stop at common connectors
+                            connectors = [' and ', ', and ', ' then ', ', then ', ', ']
+                            app_name = after_keyword
+                            for connector in connectors:
+                                if connector in after_keyword:
+                                    app_name = after_keyword.split(connector)[0].strip()
+                                    break
                             break
                 
                 if app_name:
@@ -352,9 +471,16 @@ class UnifiedCommandProcessor:
                 app_name = None
                 for keyword in ['close', 'quit']:
                     if keyword in command_lower:
-                        parts = command_text.split(keyword, 1)
-                        if len(parts) > 1:
-                            app_name = parts[1].strip()
+                        pattern_index = command_lower.find(keyword)
+                        if pattern_index != -1:
+                            after_keyword = command_text[pattern_index + len(keyword):].strip()
+                            # Handle compound commands - stop at common connectors
+                            connectors = [' and ', ', and ', ' then ', ', then ', ', ']
+                            app_name = after_keyword
+                            for connector in connectors:
+                                if connector in after_keyword:
+                                    app_name = after_keyword.split(connector)[0].strip()
+                                    break
                             break
                 
                 if app_name:
@@ -403,6 +529,93 @@ class UnifiedCommandProcessor:
                 else:
                     return {'success': False, 'response': "Please specify whether to turn WiFi on or off"}
                 return {'success': success, 'response': message}
+                
+            # Handle URL navigation and web searches
+            elif any(pattern in command_lower for pattern in ['go to', 'navigate to', 'browse to', 'visit', 'google.com', '.com', '.org', '.net']):
+                # Extract URL or search query
+                url = None
+                browser = None
+                
+                # Check if browser is specified
+                for browser_name in ['safari', 'chrome', 'firefox']:
+                    if browser_name in command_lower:
+                        browser = browser_name
+                        break
+                
+                # Extract URL
+                for pattern in ['go to', 'navigate to', 'browse to', 'visit']:
+                    if pattern in command_lower:
+                        parts = command_text.split(pattern, 1)
+                        if len(parts) > 1:
+                            url_part = parts[1].strip()
+                            # Remove browser name if present at the end
+                            if browser and url_part.lower().startswith(f'in {browser}'):
+                                url_part = url_part[len(f'in {browser}'):].strip()
+                            elif browser and url_part.lower().endswith(f'in {browser}'):
+                                url_part = url_part[:-len(f'in {browser}')].strip()
+                            
+                            url = url_part
+                            break
+                
+                if url:
+                    # Add protocol if missing
+                    if not url.startswith(('http://', 'https://')):
+                        if '.' in url:  # Looks like a domain
+                            url = f'https://{url}'
+                        else:  # Treat as search query
+                            success, message = macos_controller.web_search(url)
+                            return {'success': success, 'response': message}
+                    
+                    success, message = macos_controller.open_url(url, browser)
+                    return {'success': success, 'response': message}
+                else:
+                    return {'success': False, 'response': "Please specify a URL or search term"}
+                    
+            elif any(pattern in command_lower for pattern in ['search for', 'google', 'look up']):
+                # Handle web searches
+                query = None
+                for pattern in ['search for', 'google', 'look up']:
+                    if pattern in command_lower:
+                        parts = command_text.split(pattern, 1)
+                        if len(parts) > 1:
+                            query = parts[1].strip()
+                            # Remove browser specification if present
+                            for browser in ['safari', 'chrome', 'firefox']:
+                                if f'in {browser}' in query.lower():
+                                    query = query.replace(f'in {browser}', '').strip()
+                                elif f'on {browser}' in query.lower():
+                                    query = query.replace(f'on {browser}', '').strip()
+                            break
+                
+                if query:
+                    success, message = macos_controller.web_search(query)
+                    return {'success': success, 'response': message}
+                else:
+                    return {'success': False, 'response': "Please specify what to search for"}
+                    
+            # Handle browser-specific commands
+            elif any(f'tell {browser}' in command_lower or f'in {browser}' in command_lower 
+                    for browser in ['safari', 'chrome', 'firefox']):
+                # This handles enhanced context commands like "tell safari to go to google.com"
+                browser = None
+                action = None
+                target = None
+                
+                for browser_name in ['safari', 'chrome', 'firefox']:
+                    if browser_name in command_lower:
+                        browser = browser_name
+                        break
+                
+                if 'go to' in command_lower:
+                    parts = command_text.split('go to', 1)
+                    if len(parts) > 1:
+                        target = parts[1].strip()
+                        if not target.startswith(('http://', 'https://')) and '.' in target:
+                            target = f'https://{target}'
+                        success, message = macos_controller.open_url(target, browser)
+                        return {'success': success, 'response': message}
+                        
+                return {'success': False, 'response': f"Not sure what to do with {browser}"}
                 
             else:
                 # Try to handle as generic system command
