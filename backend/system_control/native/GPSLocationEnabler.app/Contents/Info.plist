@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>GPSLocationEnabler</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.jarvis.gps-location-enabler</string>
+    <key>CFBundleName</key>
+    <string>GPS Location Enabler</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>10.15</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>JARVIS needs GPS location to provide accurate weather and location-based services in your exact location, not just city-level data.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>JARVIS can provide better contextual assistance with GPS location access for weather, navigation, and location reminders.</string>
+</dict>
+</plist>

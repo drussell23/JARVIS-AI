@@ -25,7 +25,7 @@ class VisionConnection {
         try {
             console.log('🔌 Connecting to Vision WebSocket...');
 
-            const wsUrl = `ws://localhost:8001/ws/vision`;
+            const wsUrl = `ws://localhost:8000/vision/ws/vision`;
             this.visionSocket = new WebSocket(wsUrl);
 
             this.visionSocket.onopen = () => {
@@ -80,6 +80,10 @@ class VisionConnection {
 
             case 'workspace_analysis':
                 this.handleWorkspaceAnalysis(data);
+                break;
+
+            case 'vision_status_update':
+                this.handleVisionStatusUpdate(data);
                 break;
 
             case 'config_updated':
@@ -148,6 +152,20 @@ class VisionConnection {
             type: 'analysis',
             analysis: data.analysis,
             timestamp: data.timestamp
+        });
+    }
+
+    handleVisionStatusUpdate(data) {
+        console.log('🔵 Vision Status Update:', data.status);
+        
+        // Update monitoring active state
+        this.monitoringActive = data.status.connected;
+        
+        // Notify UI of status change
+        this.onWorkspaceUpdate({
+            type: 'status_update',
+            status: data.status,
+            timestamp: data.timestamp || new Date().toISOString()
         });
     }
 

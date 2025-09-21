@@ -19,7 +19,7 @@ from .macos_controller import MacOSController, CommandCategory, SafetyLevel
 from .dynamic_app_controller import get_dynamic_app_controller
 from .fast_app_launcher import get_fast_app_launcher
 from .vision_action_handler import get_vision_action_handler
-from workflows.weather_app_vision import execute_weather_app_workflow
+from workflows.weather_app_vision_unified import execute_weather_app_workflow
 
 logger = logging.getLogger(__name__)
 
@@ -541,12 +541,14 @@ class ClaudeCommandInterpreter:
         # Special handling for weather workflow
         if workflow_name == "check_weather_app" or "weather" in intent.raw_command.lower():
             try:
-                # Use the weather app vision workflow
-                message = await execute_weather_app_workflow(self.controller, self.vision_handler)
+                # Use the unified weather app vision workflow
+                query = intent.raw_command if intent.raw_command else "What's the weather today?"
+                message = await execute_weather_app_workflow(self.controller, self.vision_handler, query)
                 return CommandResult(success=True, message=message)
             except Exception as e:
                 logger.error(f"Weather workflow error: {e}")
-                # Fallback to regular workflow
+                # Return weather-specific error instead of fallback
+                return CommandResult(success=False, message="I need to access the Weather app to check the forecast.")
         
         # Regular workflow execution
         success, message = await self.controller.execute_workflow(workflow_name)

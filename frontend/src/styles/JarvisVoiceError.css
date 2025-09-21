@@ -33,6 +33,38 @@
   75% { transform: translateX(5px); }
 }
 
+/* Network Error Specific Styles */
+.jarvis-error.network-error {
+  background: rgba(255, 165, 0, 0.1);
+  border-color: #ffa500;
+  animation: networkPulse 1.5s ease-in-out infinite;
+}
+
+.jarvis-error.network-error .error-text {
+  color: #ffa500;
+}
+
+@keyframes networkPulse {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(255, 165, 0, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(255, 165, 0, 0.8);
+  }
+}
+
+.retry-status {
+  opacity: 0.8;
+  font-size: 0.9em;
+  font-style: italic;
+  animation: blink 1s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 0.4; }
+}
+
 .jarvis-error .error-text {
   color: #ff6666;
   font-family: 'Orbitron', monospace;

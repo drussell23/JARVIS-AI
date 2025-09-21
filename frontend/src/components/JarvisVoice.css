@@ -86,17 +86,24 @@
   animation-duration: 1s;
 }
 
-/* Continuous Listening State */
+/* Continuous Listening State - Orange Theme */
 .arc-reactor.continuous .core {
-  animation: pulse 3s ease-in-out infinite;
-  background: radial-gradient(circle, #9400d3 0%, #4b0082 50%, #310062 100%);
-  box-shadow: 0 0 20px #9400d3, inset 0 0 15px rgba(148, 0, 211, 0.5);
+  animation: pulse 2s ease-in-out infinite;
+  background: radial-gradient(circle, #ff6b00 0%, #ff4500 50%, #cc3300 100%);
+  box-shadow: 0 0 25px #ff6b00, inset 0 0 20px rgba(255, 107, 0, 0.6);
 }
 
 .arc-reactor.continuous .ring {
-  border-color: #9400d3;
-  animation-duration: 6s;
-  opacity: 0.4;
+  border-color: #ff6b00;
+  animation-duration: 4s;
+  opacity: 0.6;
+}
+
+/* When both continuous and listening */
+.arc-reactor.continuous.listening .core {
+  animation: pulse 0.8s ease-in-out infinite;
+  background: radial-gradient(circle, #ff8c00 0%, #ff6b00 50%, #e55100 100%);
+  box-shadow: 0 0 35px #ff6b00, inset 0 0 25px rgba(255, 107, 0, 0.8);
 }
 
 /* Waiting for Command State */
@@ -131,6 +138,49 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+/* Enhanced indefinite listening mode */
+.listening-mode.indefinite {
+  color: #00ff00;
+  font-weight: bold;
+  animation: indefinite-glow 2s ease-in-out infinite;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(0, 255, 0, 0.1) 50%, 
+    transparent 100%);
+  padding: 0.3rem 0.8rem;
+  border-radius: 20px;
+  border: 1px solid rgba(0, 255, 0, 0.3);
+}
+
+.listening-mode.indefinite .mic-icon {
+  animation: mic-pulse 1s ease-in-out infinite;
+}
+
+.listening-mode.indefinite .infinity-symbol {
+  font-size: 1.2rem;
+  color: #00ff00;
+  margin-left: 0.5rem;
+  animation: rotate 4s linear infinite;
+}
+
+@keyframes indefinite-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(0, 255, 0, 0.8);
+  }
+}
+
+@keyframes mic-pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
 }
 
 .waiting-mode {
@@ -242,9 +292,19 @@
 }
 
 .jarvis-button.continuous-active {
-  background: linear-gradient(135deg, #4b0082 0%, #310062 100%);
-  box-shadow: 0 4px 15px rgba(75, 0, 130, 0.5);
+  background: linear-gradient(135deg, #ff6b00 0%, #ff4500 100%);
+  box-shadow: 0 4px 20px rgba(255, 107, 0, 0.6);
   position: relative;
+  animation: glow-orange 2s ease-in-out infinite alternate;
+}
+
+@keyframes glow-orange {
+  from {
+    box-shadow: 0 4px 20px rgba(255, 107, 0, 0.6);
+  }
+  to {
+    box-shadow: 0 4px 30px rgba(255, 107, 0, 0.9), 0 0 40px rgba(255, 107, 0, 0.4);
+  }
 }
 
 .jarvis-button.continuous-active::after {
@@ -252,7 +312,8 @@
   position: absolute;
   top: 5px;
   right: 10px;
-  color: #00ff00;
+  color: #ff6b00;
+  filter: drop-shadow(0 0 3px #ff6b00);
   animation: blink 1s infinite;
 }
 

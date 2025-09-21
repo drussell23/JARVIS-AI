@@ -10,11 +10,13 @@ import logging
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 import json
+import re
 
 from voice.ml_enhanced_voice_system import MLEnhancedVoiceSystem
 from voice.jarvis_personality_adapter import PersonalityAdapter
 from system_control import ClaudeCommandInterpreter, CommandCategory, SafetyLevel
-from chatbots.claude_chatbot import ClaudeChatbot
+from chatbots.claude_vision_chatbot import ClaudeVisionChatbot
+from system_control.weather_bridge import WeatherBridge
 
 logger = logging.getLogger(__name__)
 
@@ -31,19 +33,28 @@ except ImportError:
 class JARVISAgentVoice(MLEnhancedVoiceSystem):
     """JARVIS AI Agent with system control capabilities"""
 
-    def __init__(self, user_name: str = "Sir"):
+    def __init__(self, user_name: str = "Sir", vision_analyzer=None):
         super().__init__(user_name)
         self.user_name = user_name
         self.wake_words = ["jarvis", "hey jarvis", "okay jarvis", "yo jarvis"]
         self.wake_word_variations = ["jar vis", "hey jar vis", "jarv", "j.a.r.v.i.s"]
         self.urgent_wake_words = ["jarvis emergency", "jarvis urgent"]
+        
+        # Store vision analyzer/handler
+        self.vision_analyzer = vision_analyzer
+        self.vision_handler = vision_analyzer  # Support both names
 
         # Initialize system control
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
         if self.api_key:
             self.command_interpreter = ClaudeCommandInterpreter(self.api_key)
-            self.claude_chatbot = ClaudeChatbot(self.api_key)
+            # Pass vision analyzer to chatbot if provided
+            self.claude_chatbot = ClaudeVisionChatbot(self.api_key, vision_analyzer=vision_analyzer)
             self.system_control_enabled = True
+            
+            # Set vision handler in command interpreter if available
+            if vision_analyzer and hasattr(self.command_interpreter, 'set_vision_handler'):
+                self.command_interpreter.set_vision_handler(vision_analyzer)
         else:
             self.system_control_enabled = False
             logger.warning("System control disabled - no API key")
@@ -51,22 +62,88 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         # Add personality adapter for compatibility
         self.personality = PersonalityAdapter(self)
         
+        # Initialize weather bridge and system
+        self.weather_bridge = WeatherBridge()
+        
+        # Initialize weather system with vision handler if available
+        if vision_analyzer:
+            from system_control.weather_system_config import initialize_weather_system
+            from system_control.macos_controller import MacOSController
+            self.controller = MacOSController()
+            initialize_weather_system(vision_analyzer, self.controller)
+            logger.info("Initialized unified weather system with vision")
+        else:
+            self.controller = None
+
         # Initialize command mode and confirmations
         self.command_mode = "conversation"  # conversation, system_control, workflow
         self.pending_confirmations = {}
-        
+
         # System control keywords
         self.system_keywords = {
-            "open", "close", "launch", "quit", "switch", "show",
-            "volume", "mute", "screenshot", "sleep", "wifi",
-            "search", "google", "browse", "website", "create",
-            "delete", "file", "folder", "routine", "workflow",
-            "setup", "screen", "update", "monitor", "vision",
-            "see", "check", "messages", "errors", "windows",
-            "workspace", "optimize", "meeting", "privacy",
-            "sensitive", "productivity", "notifications",
-            "notification", "whatsapp", "discord", "slack",
-            "telegram", "chrome", "safari", "spotify"
+            "open",
+            "close",
+            "launch",
+            "quit",
+            "switch",
+            "time",  # Add time as a system keyword
+            "date",  # Add date as a system keyword
+            "day",   # Add day as a system keyword
+            "today", # Add today as a system keyword
+            "late",  # Add late as system keyword for time queries
+            "early", # Add early as system keyword for time queries
+            "morning", # Time periods
+            "afternoon",
+            "evening",
+            "night",
+            "weather",  # Add weather as a system keyword
+            "temperature",  # Add temperature
+            "forecast",  # Add forecast
+            "rain",  # Weather conditions
+            "snow",
+            "sunny",
+            "cloudy",
+            "show",
+            "volume",
+            "mute",
+            "screenshot",
+            "sleep",
+            "wifi",
+            "search",
+            "google",
+            "browse",
+            "website",
+            "create",
+            "delete",
+            "file",
+            "folder",
+            "routine",
+            "workflow",
+            "setup",
+            "screen",
+            "update",
+            "monitor",
+            "vision",
+            "see",
+            "check",
+            "messages",
+            "errors",
+            "windows",
+            "workspace",
+            "optimize",
+            "meeting",
+            "privacy",
+            "sensitive",
+            "productivity",
+            "notifications",
+            "notification",
+            "whatsapp",
+            "discord",
+            "slack",
+            "telegram",
+            "chrome",
+            "safari",
+            "spotify",
         }
 
         # Add special commands compatibility
@@ -117,7 +194,7 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         self.vision_enabled = False
         self.intelligent_vision_enabled = False
         self._vision_initialized = False
-        
+
         # Add agent-specific responses
         self.agent_responses = {
             "app_opened": "I've opened {app} for you, {user}.",
@@ -126,10 +203,15 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             "screenshot_taken": "Screenshot captured and saved, {user}.",
             "workflow_started": "Initiating {workflow} routine, {user}.",
             "confirmation_needed": "This action requires your confirmation, {user}. Say 'confirm' to proceed or 'cancel' to abort.",
-            "action_completed": "Task completed successfully, {user}.",
+            "action_completed": "[GENERIC] Task completed successfully, {user}.",
             "action_failed": "I apologize, {user}, but I couldn't complete that action.",
             "system_control_mode": "Switching to system control mode. I can now help you control your Mac.",
             "conversation_mode": "Returning to conversation mode, {user}.",
+            # Time-related responses
+            "current_time": "It's {time}, {user}.",
+            "current_time_with_context": "It's {time}, {user}. {context}",
+            "current_date_time": "It's {time} on {date}, {user}.",
+            "time_with_appointment": "It's {time}, {user}. {appointment_info}",
         }
 
     def _ensure_vision_v2_initialized(self):
@@ -192,7 +274,7 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
 
     async def process_voice_input(self, text: str) -> str:
         """Process voice input with system control capabilities"""
-        logger.info(f"JARVISAgentVoice received: '{text}'")
+        logger.info(f"[JARVIS DEBUG] process_voice_input received: '{text}'")
 
         # Check if we need to detect wake word in text
         if not self.running:
@@ -216,6 +298,65 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         # Check for pending confirmations
         if self.pending_confirmations:
             return await self._handle_confirmation(text)
+
+        # Check for monitoring commands FIRST - they should go directly to Claude chatbot
+        text_lower = text.lower()
+        monitoring_keywords = [
+            "monitor",
+            "monitoring",
+            "watch",
+            "watching",
+            "track",
+            "tracking",
+            "continuous",
+            "continuously",
+            "real-time",
+            "realtime",
+            "actively",
+            "surveillance",
+            "observe",
+            "observing",
+            "stream",
+            "streaming",
+        ]
+        screen_keywords = ["screen", "display", "desktop", "workspace", "monitor"]
+
+        has_monitoring = any(keyword in text_lower for keyword in monitoring_keywords)
+        has_screen = any(keyword in text_lower for keyword in screen_keywords)
+
+        if has_monitoring and has_screen:
+            logger.info(
+                f"[JARVIS DEBUG] MONITORING COMMAND DETECTED! Routing to Claude chatbot"
+            )
+            # Route directly to Claude chatbot for monitoring
+            if self.claude_chatbot:
+                try:
+                    logger.info(
+                        f"[JARVIS DEBUG] Calling claude_chatbot.generate_response for monitoring command: '{text}'"
+                    )
+                    
+                    # IMPORTANT: For monitoring commands, we need to ensure they go through the monitoring handler
+                    # not the regular vision command handler
+                    response = await self.claude_chatbot.generate_response(text)
+                    
+                    # If we get a generic response, it means the command wasn't properly handled
+                    if "Task completed successfully" in response and "Yes sir, I can see your screen" in response:
+                        logger.error("[JARVIS DEBUG] Got generic response - monitoring command not properly handled!")
+                        # Try to force it through the monitoring handler
+                        if hasattr(self.claude_chatbot, '_handle_monitoring_command'):
+                            logger.info("[JARVIS DEBUG] Forcing through monitoring handler")
+                            response = await self.claude_chatbot._handle_monitoring_command(text)
+                    
+                    logger.info(
+                        f"[JARVIS DEBUG] Claude response for monitoring: {response[:200]}..."
+                    )
+                    return response
+                except Exception as e:
+                    logger.error(f"Error handling monitoring command: {e}")
+                    return f"I encountered an error setting up monitoring, {self.user_name}."
+            else:
+
+                return f"I need my vision capabilities to monitor your screen, {self.user_name}."
 
         # Detect if this is a system command
         if self._is_system_command(text):
@@ -266,13 +407,57 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         if self.command_mode == "system_control":
             return True
 
-        # FIRST: Check for direct app control commands (open/close/launch/quit)
+        # FIRST: Check for monitoring commands - these should NOT be treated as app control
+        monitoring_keywords = [
+            "monitor",
+            "monitoring",
+            "watch",
+            "watching",
+            "track",
+            "tracking",
+            "continuous",
+            "continuously",
+            "real-time",
+            "realtime",
+            "actively",
+            "surveillance",
+            "observe",
+            "observing",
+            "stream",
+            "streaming",
+        ]
+        screen_keywords = ["screen", "display", "desktop", "workspace", "monitor"]
+
+        has_monitoring = any(keyword in text_lower for keyword in monitoring_keywords)
+        has_screen = any(keyword in text_lower for keyword in screen_keywords)
+
+        if has_monitoring and has_screen:
+            # This is a monitoring command - NOT a system command
+            return False
+
+        # SECOND: Check for direct app control commands (open/close/launch/quit)
         # These should ALWAYS go to system control, not vision
-        app_control_keywords = ["open", "close", "launch", "quit", "exit", "start", "kill", "terminate"]
+        app_control_keywords = [
+            "open",
+            "close",
+            "launch",
+            "quit",
+            "exit",
+            "start",
+            "kill",
+            "terminate",
+        ]
         for keyword in app_control_keywords:
             if keyword in text_lower:
                 # Make sure it's not a question about these actions
-                question_words = ["what", "which", "how", "can you", "are you able", "is it possible"]
+                question_words = [
+                    "what",
+                    "which",
+                    "how",
+                    "can you",
+                    "are you able",
+                    "is it possible",
+                ]
                 if not any(q_word in text_lower for q_word in question_words):
                     # This is a direct command like "close whatsapp" or "open chrome"
                     return True
@@ -332,6 +517,15 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
 
         # Check for vision commands with expanded patterns
         text_lower = text.lower()
+        
+        # CHECK FOR WEATHER COMMANDS FIRST - weather takes priority over time
+        # because "weather for today" should be weather, not time
+        if self._is_weather_command(text_lower):
+            return await self._handle_weather_command(text_lower)
+        
+        # CHECK FOR TIME COMMANDS - handle immediately without vision
+        if self._is_time_command(text_lower):
+            return await self._handle_time_command(text_lower)
 
         # CHECK FOR ACTION COMMANDS FIRST - these should execute, not analyze
         action_commands = {
@@ -353,7 +547,9 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         is_action_command = False
         logger.debug(f"Checking if '{text_lower}' is an action command")
         for action_type, keywords in action_commands.items():
-            logger.debug(f"Checking action type '{action_type}' with keywords: {keywords}")
+            logger.debug(
+                f"Checking action type '{action_type}' with keywords: {keywords}"
+            )
             if any(keyword in text_lower for keyword in keywords):
                 logger.debug(f"Found keyword match for action type: {action_type}")
                 # This looks like an action command
@@ -372,6 +568,14 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
                     logger.info(f"Identified as action command of type: {action_type}")
                     break
 
+        # NEW: Check if this is a vision query about screen content
+        # These should NEVER go to command interpreter
+        from api.vision_query_bypass import VisionQueryBypass
+        if VisionQueryBypass.should_bypass_interpretation(text):
+            logger.info(f"Vision query detected, bypassing command interpretation: {text}")
+            # Route directly to vision handler
+            return await self._handle_vision_command(text)
+        
         # If it's an action command, skip vision and execute directly
         if is_action_command:
             logger.info(f"Processing action command directly: {text}")
@@ -403,20 +607,31 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             # If query contains screen-related words, let vision analyze it
             # But be smart about it - don't match partial words like "what" in "whatsapp"
             import re
-            word_boundary_keywords = ["what", "where", "have", "any", "in", "on", "from"]
-            other_keywords = [k for k in screen_content_keywords if k not in word_boundary_keywords]
-            
+
+            word_boundary_keywords = [
+                "what",
+                "where",
+                "have",
+                "any",
+                "in",
+                "on",
+                "from",
+            ]
+            other_keywords = [
+                k for k in screen_content_keywords if k not in word_boundary_keywords
+            ]
+
             # Check word boundaries for short words
             has_keyword = False
             for keyword in word_boundary_keywords:
-                if re.search(r'\b' + keyword + r'\b', text_lower):
+                if re.search(r"\b" + keyword + r"\b", text_lower):
                     has_keyword = True
                     break
-            
+
             # Check regular contains for longer words
             if not has_keyword:
                 has_keyword = any(keyword in text_lower for keyword in other_keywords)
-            
+
             if has_keyword:
                 return await self._handle_workspace_command(text)
 
@@ -444,6 +659,37 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
                 return await self._handle_vision_command(text)
 
         try:
+            # Check for monitoring commands BEFORE command interpreter
+            text_lower = text.lower()
+            monitoring_keywords = [
+                "monitor",
+                "monitoring",
+                "watch",
+                "watching",
+                "track",
+                "tracking",
+                "continuous",
+                "continuously",
+                "real-time",
+                "realtime",
+                "actively",
+                "surveillance",
+                "observe",
+                "observing",
+                "stream",
+                "streaming",
+            ]
+            screen_keywords = ["screen", "display", "desktop", "workspace", "monitor"]
+
+            has_monitoring = any(
+                keyword in text_lower for keyword in monitoring_keywords
+            )
+            has_screen = any(keyword in text_lower for keyword in screen_keywords)
+
+            if has_monitoring and has_screen:
+                # This is a monitoring command - handle it directly
+                return await self._handle_vision_command(text)
+
             # Get system context
             context = {
                 "mode": self.command_mode,
@@ -561,6 +807,43 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
 
     async def _handle_vision_command(self, text: str) -> str:
         """Handle vision-related commands"""
+        # Check for monitoring commands FIRST - these should go to the chatbot
+        text_lower = text.lower()
+        monitoring_keywords = [
+            "monitor",
+            "monitoring",
+            "watch",
+            "watching",
+            "track",
+            "tracking",
+            "continuous",
+            "continuously",
+            "real-time",
+            "realtime",
+            "actively",
+            "surveillance",
+            "observe",
+            "observing",
+            "stream",
+            "streaming",
+        ]
+        screen_keywords = ["screen", "display", "desktop", "workspace", "monitor"]
+
+        has_monitoring = any(keyword in text_lower for keyword in monitoring_keywords)
+        has_screen = any(keyword in text_lower for keyword in screen_keywords)
+
+        if has_monitoring and has_screen:
+            # This is a monitoring command - route to Claude Vision Chatbot
+            if self.claude_chatbot:
+                try:
+                    response = await self.claude_chatbot.generate_response(text)
+                    return response
+                except Exception as e:
+                    logger.error(f"Error handling monitoring command: {e}")
+                    return f"I encountered an error setting up monitoring, {self.user_name}."
+            else:
+                return f"I need my vision capabilities to monitor your screen, {self.user_name}."
+
         # Lazy initialize vision when needed
         self._ensure_vision_initialized()
 
@@ -756,3 +1039,584 @@ System Control Commands:
             """
 
         return help_text
+    
+    def _is_time_command(self, text: str) -> bool:
+        """Check if this is a time-related query using dynamic pattern matching"""
+        import re
+        
+        # Convert to lowercase for case-insensitive matching
+        text_lower = text.lower().strip()
+        
+        # EXCLUDE weather queries - they should not be treated as time queries
+        weather_indicators = ['weather', 'temperature', 'forecast', 'rain', 'snow', 'sunny', 'cloudy']
+        if any(indicator in text_lower for indicator in weather_indicators):
+            return False
+        
+        # Dynamic regex patterns for flexible matching
+        time_regex_patterns = [
+            # Time queries with various formats
+            r'\b(what|whats|what\'s|tell|give|show|check|get|display)\s*(me)?\s*(the)?\s*time\b',
+            r'\btime\s*(is\s*it|now|please)\b',
+            r'\b(current|present)\s*time\b',
+            
+            # Date queries with flexibility
+            r'\b(what|whats|what\'s|tell|give|show|check)\s*(me)?\s*(the)?\s*(today\'s|todays|current)?\s*date\b',
+            r'\b(what|which)\s*(day|date)\s*(is\s*)?(it|today)\b',
+            r'\btoday\'s\s*(date|day)\b',
+            
+            # Hour/clock references
+            r'\b(what|which)\s*hour\b',
+            r'\b(check|look\s*at)\s*(the)?\s*clock\b',
+            
+            # Combined time/date queries
+            r'\b(time|date)\s*and\s*(time|date)\b',
+            r'\b(date|day)\s*(and|&)\s*time\b',
+            
+            # Casual time queries
+            r'\b(got|have|know)\s*(the)?\s*time\b',
+            r'\bdo\s*you\s*(have|know)\s*(the)?\s*time\b',
+            
+            # Time period queries
+            r'\bis\s*it\s*(morning|afternoon|evening|night|late|early|noon|midnight)\b',
+            r'\bwhat\s*time\s*of\s*(day|night)\b',
+            r'\b(morning|evening|night)\s*yet\b',
+            
+            # Relative time queries
+            r'\bhow\s*(late|early)\s*(is\s*it)?\b',
+            r'\bam\s*i\s*(late|early)\b',
+            
+            # International variations
+            r'\b(hora|heure|zeit|tempo)\b',  # Spanish/French/German/Italian for "time"
+            r'\b(fecha|date|datum|data)\b',  # Date in multiple languages
+            
+            # Natural language variations
+            r'\bwhat\s*o\'?clock\b',
+            r'\b(when|what)\s*is\s*now\b'
+        ]
+        
+        # Check regex patterns
+        for pattern in time_regex_patterns:
+            if re.search(pattern, text_lower):
+                return True
+        
+        # Fuzzy keyword matching for typos and variations
+        time_keywords = {
+            'time', 'date', 'day', 'hour', 'clock', 'today', 'now',
+            'morning', 'afternoon', 'evening', 'night', 'late', 'early',
+            'oclock', "o'clock", 'midnight', 'noon', 'midday'
+        }
+        
+        # Check for keywords with edit distance tolerance
+        words = text_lower.split()
+        for word in words:
+            # Direct match
+            if word in time_keywords:
+                return True
+            
+            # Check for partial matches (e.g., "timing" contains "time")
+            for keyword in time_keywords:
+                if len(keyword) > 3 and keyword in word:
+                    return True
+        
+        return False
+    
+    async def _handle_time_command(self, text: str) -> str:
+        """Handle time-related commands with robust, context-aware responses"""
+        from datetime import datetime
+        import pytz
+        import re
+        import locale
+        import platform
+        
+        try:
+            # ALWAYS get real system time - NO manipulation
+            import subprocess
+            
+            # Get actual system time directly
+            try:
+                # Use date command for REAL system time
+                result = subprocess.run(
+                    ["date", "+%Y-%m-%d %H:%M:%S %Z %A %B"],
+                    capture_output=True,
+                    text=True,
+                    timeout=1
+                )
+                
+                if result.returncode == 0:
+                    # Parse real system time
+                    system_time = result.stdout.strip()
+                    parts = system_time.split()
+                    
+                    # Extract date and time
+                    date_parts = parts[0].split('-')
+                    time_parts = parts[1].split(':')
+                    timezone_name = parts[2] if len(parts) > 2 else "local"
+                    
+                    # Create datetime from REAL system values
+                    now = datetime(
+                        year=int(date_parts[0]),
+                        month=int(date_parts[1]),
+                        day=int(date_parts[2]),
+                        hour=int(time_parts[0]),
+                        minute=int(time_parts[1]),
+                        second=int(time_parts[2])
+                    )
+                    
+                    logger.info(f"Using REAL system time: {system_time}")
+                else:
+                    # Fallback but with warning
+                    now = datetime.now()
+                    timezone_name = "local"
+                    logger.warning("Failed to get real system time, using Python datetime")
+                    
+            except Exception as e:
+                logger.error(f"Error getting system time: {e}")
+                now = datetime.now()
+                timezone_name = "local"
+            
+            # Intelligent query analysis
+            query_analysis = self._analyze_time_query(text)
+            
+            # Dynamic format selection based on user preferences and locale
+            time_format = self._get_time_format(query_analysis)
+            date_format = self._get_date_format(query_analysis)
+            
+            # Format time and date dynamically
+            time_str = now.strftime(time_format)
+            date_str = now.strftime(date_format) if query_analysis['wants_date'] else None
+            
+            # Get dynamic context
+            context_info = await self._get_dynamic_time_context(now, query_analysis)
+            
+            # Build response dynamically
+            response_parts = []
+            
+            # Add time if requested or by default
+            if query_analysis['wants_time'] or not query_analysis['wants_date']:
+                response_parts.append(f"It's {time_str}")
+            
+            # Add date if requested
+            if query_analysis['wants_date']:
+                if response_parts:
+                    response_parts.append(f"on {date_str}")
+                else:
+                    response_parts.append(f"Today is {date_str}")
+            
+            # Add timezone if requested or if not local
+            if query_analysis['wants_timezone'] or timezone_name != "local":
+                response_parts.append(f"({timezone_name})")
+            
+            # Construct base response
+            base_response = " ".join(response_parts)
+            
+            # Add contextual information
+            if context_info:
+                if query_analysis['wants_context'] or query_analysis['context_type']:
+                    base_response += f". {context_info}"
+            
+            # Add personalization
+            if self.user_name and self.user_name != "User":
+                base_response += f", {self.user_name}"
+            
+            return base_response
+                    
+        except Exception as e:
+            logger.error(f"Error handling time command: {e}", exc_info=True)
+            # Robust fallback with multiple attempts
+            try:
+                fallback_time = datetime.now().strftime("%-I:%M %p")
+                return f"It's {fallback_time}, {self.user_name}."
+            except:
+                # Ultimate fallback
+                return f"I'm having trouble accessing the time right now, {self.user_name}."
+    
+    async def _get_dynamic_time_context(self, dt: datetime, query_analysis: dict) -> str:
+        """Get dynamic contextual information about the time"""
+        hour = dt.hour
+        minute = dt.minute
+        weekday = dt.strftime("%A")
+        month = dt.month
+        
+        # Dynamic time period calculation
+        time_periods = [
+            {"start": 0, "end": 4, "name": "late night", "greeting": "Still up"},
+            {"start": 4, "end": 6, "name": "very early morning", "greeting": "You're up early"},
+            {"start": 6, "end": 9, "name": "early morning", "greeting": "Good morning"},
+            {"start": 9, "end": 12, "name": "morning", "greeting": "Good morning"},
+            {"start": 12, "end": 13, "name": "midday", "greeting": "Good afternoon"},
+            {"start": 13, "end": 17, "name": "afternoon", "greeting": "Good afternoon"},
+            {"start": 17, "end": 19, "name": "early evening", "greeting": "Good evening"},
+            {"start": 19, "end": 22, "name": "evening", "greeting": "Good evening"},
+            {"start": 22, "end": 24, "name": "night", "greeting": "Good night"}
+        ]
+        
+        current_period = next((p for p in time_periods if p["start"] <= hour < p["end"]), time_periods[-1])
+        
+        # Dynamic activity suggestions based on multiple factors
+        context_parts = []
+        
+        # Add greeting if appropriate
+        if query_analysis.get('wants_greeting', True):
+            context_parts.append(current_period["greeting"])
+        
+        # Dynamic contextual observations
+        contextual_observations = []
+        
+        # Time-based observations
+        if hour < 5:
+            contextual_observations.append("It's quite late")
+        elif hour < 6:
+            contextual_observations.append("It's very early")
+        elif 22 <= hour:
+            contextual_observations.append("Getting late")
+        
+        # Meal time suggestions
+        meal_times = [
+            {"start": 6, "end": 10, "meal": "breakfast"},
+            {"start": 11.5, "end": 14, "meal": "lunch"},
+            {"start": 17.5, "end": 20, "meal": "dinner"}
+        ]
+        
+        current_time_decimal = hour + minute / 60.0
+        for meal in meal_times:
+            if meal["start"] <= current_time_decimal <= meal["end"]:
+                contextual_observations.append(f"Good time for {meal['meal']}")
+                break
+        
+        # Work/rest suggestions based on day and time
+        is_weekend = weekday in ["Saturday", "Sunday"]
+        is_work_hours = 9 <= hour < 17 and not is_weekend
+        
+        if is_work_hours:
+            if hour < 10:
+                contextual_observations.append("Hope you have a productive day")
+            elif 15 <= hour < 17:
+                contextual_observations.append("The workday is winding down")
+        elif is_weekend and 10 <= hour < 12:
+            contextual_observations.append("Enjoy your weekend")
+        
+        # Seasonal context
+        seasonal_contexts = {
+            12: "Winter solstice season",
+            1: "New Year season",
+            3: "Spring is approaching",
+            6: "Summer solstice season",
+            9: "Autumn is here",
+            10: "Fall season"
+        }
+        
+        if month in seasonal_contexts and query_analysis.get('wants_extended_context'):
+            contextual_observations.append(seasonal_contexts[month])
+        
+        # Activity-based suggestions from calendar
+        if query_analysis.get('wants_activities'):
+            calendar_context = await self._check_calendar_context(dt)
+            if calendar_context:
+                contextual_observations.append(calendar_context)
+        
+        # Combine observations intelligently
+        if contextual_observations:
+            context_parts.extend(contextual_observations[:2])  # Limit to avoid verbosity
+        
+        # Build final context
+        context = ". ".join(filter(None, context_parts))
+        
+        # Add punctuation if needed
+        if context and not context.endswith(('.', '!', '?')):
+            context += "."
+        
+        return context
+    
+    def _analyze_time_query(self, text: str) -> dict:
+        """Analyze the time query to understand user intent"""
+        import re
+        
+        text_lower = text.lower()
+        
+        analysis = {
+            'wants_time': any(word in text_lower for word in ['time', 'clock', 'hour']),
+            'wants_date': any(word in text_lower for word in ['date', 'day', 'today']),
+            'wants_timezone': any(word in text_lower for word in ['timezone', 'tz', 'zone']),
+            'wants_context': any(word in text_lower for word in ['context', 'details', 'more']),
+            'wants_greeting': not any(word in text_lower for word in ['just', 'only', 'simple']),
+            'wants_activities': any(word in text_lower for word in ['calendar', 'events', 'schedule']),
+            'wants_extended_context': any(word in text_lower for word in ['full', 'complete', 'everything']),
+            'context_type': None,
+            'format_preference': None
+        }
+        
+        # Detect specific context requests
+        if re.search(r'\b(morning|afternoon|evening|night)\b', text_lower):
+            analysis['context_type'] = 'time_period'
+        elif re.search(r'\b(late|early)\b', text_lower):
+            analysis['context_type'] = 'relative_time'
+        elif re.search(r'\b(meal|lunch|dinner|breakfast)\b', text_lower):
+            analysis['context_type'] = 'meal_time'
+        
+        # Detect format preferences
+        if re.search(r'\b(24|twenty.?four|military)\b', text_lower):
+            analysis['format_preference'] = '24h'
+        elif re.search(r'\b(12|twelve|am|pm)\b', text_lower):
+            analysis['format_preference'] = '12h'
+        
+        return analysis
+    
+    def _get_time_format(self, query_analysis: dict) -> str:
+        """Get appropriate time format based on analysis and locale"""
+        import locale
+        
+        # Check user preference from query
+        if query_analysis.get('format_preference') == '24h':
+            return "%H:%M"  # 24-hour format
+        elif query_analysis.get('format_preference') == '12h':
+            return "%-I:%M %p"  # 12-hour format with AM/PM
+        
+        # Try to detect system locale preference
+        try:
+            system_locale = locale.getlocale()[0]
+            # Countries that typically use 24-hour format
+            if system_locale and any(country in system_locale for country in ['de', 'fr', 'es', 'it', 'ru', 'zh', 'jp', 'ko']):
+                return "%H:%M"
+        except:
+            pass
+        
+        # Default to 12-hour format with AM/PM
+        return "%-I:%M %p"
+    
+    def _get_date_format(self, query_analysis: dict) -> str:
+        """Get appropriate date format based on analysis and locale"""
+        import locale
+        
+        # Check if user wants full or abbreviated format
+        if query_analysis.get('wants_extended_context'):
+            return "%A, %B %-d, %Y"  # Full format: Monday, September 9, 2024
+        
+        # Try to detect system locale preference
+        try:
+            system_locale = locale.getlocale()[0]
+            if system_locale:
+                if 'US' in system_locale:
+                    return "%A, %B %-d"  # Monday, September 9
+                elif 'GB' in system_locale:
+                    return "%A, %-d %B"  # Monday, 9 September
+                elif any(eu in system_locale for eu in ['de', 'fr', 'es', 'it']):
+                    return "%A %-d %B"  # Monday 9 September
+        except:
+            pass
+        
+        # Default format
+        return "%A, %B %-d"  # Monday, September 9
+    
+    def _get_macos_timezone(self) -> Optional[str]:
+        """Get timezone on macOS"""
+        import subprocess
+        try:
+            result = subprocess.run(['systemsetup', '-gettimezone'], 
+                                  capture_output=True, text=True, timeout=2)
+            if result.returncode == 0:
+                output = result.stdout.strip()
+                if "Time Zone:" in output:
+                    return output.split("Time Zone:")[1].strip()
+        except:
+            pass
+        return None
+    
+    def _get_unix_timezone(self) -> Optional[str]:
+        """Get timezone on Unix/Linux systems"""
+        try:
+            # Try reading /etc/timezone
+            if os.path.exists('/etc/timezone'):
+                with open('/etc/timezone', 'r') as f:
+                    return f.read().strip()
+            
+            # Try reading the symlink
+            if os.path.exists('/etc/localtime'):
+                import os
+                tz_path = os.path.realpath('/etc/localtime')
+                if '/zoneinfo/' in tz_path:
+                    return tz_path.split('/zoneinfo/')[-1]
+        except:
+            pass
+        return None
+    
+    def _get_python_timezone(self) -> Optional[str]:
+        """Get timezone using Python's time module"""
+        try:
+            import time
+            if hasattr(time, 'tzname'):
+                return time.tzname[time.daylight]
+        except:
+            pass
+        return None
+    
+    async def _check_calendar_context(self, current_time: datetime) -> Optional[str]:
+        """Check for relevant calendar events near the current time"""
+        try:
+            # Import calendar bridge
+            from system_control.calendar_bridge import get_calendar_bridge
+            
+            # Get calendar bridge instance
+            calendar_bridge = get_calendar_bridge()
+            
+            # Get smart calendar context
+            context = await calendar_bridge.get_smart_time_context(current_time)
+            
+            if context:
+                logger.debug(f"Calendar context: {context}")
+                return context
+            
+            # If no smart context, check for simple next event
+            current_event, next_event, upcoming_events = await calendar_bridge.get_contextual_info(current_time)
+            
+            # Priority 1: Current event
+            if current_event:
+                return calendar_bridge.format_event_context(current_event, current_time, "current")
+            
+            # Priority 2: Urgent next event (within 30 minutes)
+            if next_event:
+                minutes_until = next_event.time_until_minutes(current_time)
+                if minutes_until <= 30:
+                    return calendar_bridge.format_event_context(next_event, current_time, "next")
+                
+                # Priority 3: Important event types within 2 hours
+                from system_control.calendar_bridge import EventType
+                if (minutes_until <= 120 and 
+                    next_event.event_type in [EventType.MEETING, EventType.APPOINTMENT]):
+                    return calendar_bridge.format_event_context(next_event, current_time, "next")
+            
+            # Priority 4: Multiple events warning
+            if len(upcoming_events) >= 3:
+                events_soon = sum(1 for e in upcoming_events if e.time_until_minutes() <= 60)
+                if events_soon >= 2:
+                    return f"You have {events_soon} events in the next hour"
+            
+            # No relevant calendar context
+            return None
+            
+        except ImportError as e:
+            logger.debug(f"Calendar bridge not available: {e}")
+            return None
+        except Exception as e:
+            logger.debug(f"Calendar context check failed: {e}")
+            return None
+    
+    def _is_weather_command(self, text: str) -> bool:
+        """Check if this is a weather-related query using pattern matching"""
+        return self.weather_bridge.is_weather_query(text)
+    
+    async def _force_vision_weather_read(self) -> str:
+        """Force vision to read weather from Weather app as last resort"""
+        try:
+            # Open Weather app first
+            import subprocess
+            subprocess.run(['open', '-a', 'Weather'], check=False)
+            await asyncio.sleep(2)  # Wait for app to open
+            
+            # Use vision to read whatever is on screen
+            if hasattr(self, 'vision_handler') and self.vision_handler:
+                # Use fast weather analysis instead of describe_screen
+                if hasattr(self.vision_handler, 'analyze_weather_fast'):
+                    result_dict = await self.vision_handler.analyze_weather_fast()
+                    if result_dict.get('success') and result_dict.get('analysis'):
+                        return result_dict['analysis']
+                    
+                # Fallback to describe_screen if fast analysis not available
+                vision_params = {
+                    'query': 'Look at the Weather app on screen. Read the current temperature number, weather condition (sunny/cloudy/etc), and today\'s high/low temperatures. Be specific with the exact numbers you see.'
+                }
+                result = await self.vision_handler.describe_screen(vision_params)
+                
+                if result.success and result.description:
+                    # Extract basic weather info from description
+                    description = result.description
+                    
+                    # Look for temperature patterns
+                    import re
+                    temp_match = re.search(r'(\d+)\s*(?:°|degrees)', description)
+                    current_temp = temp_match.group(1) if temp_match else "unavailable"
+                    
+                    # Look for conditions
+                    conditions = ['sunny', 'cloudy', 'rainy', 'clear', 'overcast', 'partly cloudy', 'snow']
+                    found_condition = "current conditions"
+                    for condition in conditions:
+                        if condition in description.lower():
+                            found_condition = condition
+                            break
+                    
+                    response = f"Based on the Weather app, it's currently {current_temp}° and {found_condition}"
+                    
+                    # Add any additional details found
+                    high_match = re.search(r'high[:\s]*(\d+)', description.lower())
+                    low_match = re.search(r'low[:\s]*(\d+)', description.lower())
+                    
+                    if high_match and low_match:
+                        response += f" with a high of {high_match.group(1)}° and low of {low_match.group(1)}° today"
+                    
+                    if self.user_name and self.user_name != "User":
+                        response += f", {self.user_name}"
+                    
+                    return response
+            
+            # If all else fails, return a minimal response
+            return f"The Weather app is now open with your local forecast, {self.user_name if self.user_name else 'Sir'}."
+            
+        except Exception as e:
+            logger.error(f"Force vision weather read failed: {e}")
+            return f"I'm having difficulty reading the weather information, {self.user_name if self.user_name else 'Sir'}."
+    
+    async def _handle_weather_command(self, text: str) -> str:
+        """Handle weather-related commands using weather bridge (API primary, vision fallback)"""
+        logger.info(f"[WEATHER HANDLER] Starting weather command processing: {text}")
+        
+        try:
+            # PRIORITY 1: Use weather bridge which handles API -> Vision fallback automatically
+            if hasattr(self, 'weather_bridge') and self.weather_bridge:
+                logger.info("[WEATHER HANDLER] Using weather bridge for API-first approach")
+                
+                # Process the weather query through the bridge
+                # The bridge will automatically:
+                # 1. Try OpenWeatherMap API first (if configured)
+                # 2. Fall back to vision extraction if API fails
+                # 3. Try other sources (Core Location, Swift tool, etc.)
+                response = await asyncio.wait_for(
+                    self.weather_bridge.process_weather_query(text),
+                    timeout=10.0  # 10 second timeout (API should be fast)
+                )
+                
+                logger.info(f"[WEATHER HANDLER] Weather bridge returned: {response[:100] if response else 'None'}...")
+                
+                # Add user name if we have a good response
+                if response and self.user_name and self.user_name != "User":
+                    if not response.endswith(self.user_name) and not self.user_name in response:
+                        response = f"{response}, {self.user_name}"
+                
+                return response
+            
+            # PRIORITY 2: Direct fallback - just open the Weather app
+            logger.warning("[WEATHER HANDLER] Weather bridge not available, opening Weather app")
+            try:
+                import subprocess
+                subprocess.run(['open', '-a', 'Weather'], check=False)
+                return f"I've opened the Weather app for you to check the forecast, {self.user_name if self.user_name else 'Sir'}."
+            except:
+                return f"I'm unable to check the weather at the moment, {self.user_name if self.user_name else 'Sir'}."
+                
+        except asyncio.TimeoutError:
+            logger.error("[WEATHER HANDLER] Weather request timed out")
+            # Try to at least open the Weather app
+            try:
+                import subprocess
+                subprocess.run(['open', '-a', 'Weather'], check=False)
+                return f"The weather service is taking longer than expected. I've opened the Weather app for you, {self.user_name if self.user_name else 'Sir'}."
+            except:
+                return f"I'm having trouble accessing weather information right now, {self.user_name if self.user_name else 'Sir'}."
+        
+        except Exception as e:
+            logger.error(f"[WEATHER HANDLER] Error processing weather command: {e}", exc_info=True)
+            # Emergency fallback - try to open Weather app
+            try:
+                import subprocess
+                subprocess.run(['open', '-a', 'Weather'], check=False)
+                return f"I encountered an error checking the weather. I've opened the Weather app for you, {self.user_name if self.user_name else 'Sir'}."
+            except:
+                return f"I'm unable to access weather information at the moment, {self.user_name if self.user_name else 'Sir'}."

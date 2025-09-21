@@ -1,20 +1,1047 @@
-# 🤖 JARVIS AI System v12.8 - Voice Optimized 🎤
+# 🤖 JARVIS AI System v13.3.1 - Multi-Space Vision Intelligence Enhanced 🧠
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-12.8%20Voice%20Optimized-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Version-13.3.1%20Multi--Space%20Fixed-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Claude%20Vision-Pure%20Intelligence-ff1744" alt="Pure Intelligence">
+  <img src="https://img.shields.io/badge/Proactive-Real%20Time%20Assistant-ff1744" alt="Proactive Assistant">
   <img src="https://img.shields.io/badge/Wake%20Word-10ms%20⚡-ff69b4" alt="Ultra Fast Wake Word">
   <img src="https://img.shields.io/badge/Memory-350MB%20Voice-success" alt="Low Memory Voice">
   <img src="https://img.shields.io/badge/CPU-1--2%25%20Usage-blue" alt="Low CPU">
   <img src="https://img.shields.io/badge/Picovoice-Integrated%20✅-blueviolet" alt="Picovoice">
   <img src="https://img.shields.io/badge/Hardware-Core%20ML%20%26%20Metal-green" alt="Hardware Accel">
-  <img src="https://img.shields.io/badge/Config-Zero%20Hardcoding-yellow" alt="Configurable">
-  <img src="https://img.shields.io/badge/Works-First%20Time%20🎯-purple" alt="Reliable">
-  <img src="https://img.shields.io/badge/Toronto%20Weather-Fixed%20✅-brightgreen" alt="Weather Fixed">
+  <img src="https://img.shields.io/badge/Vision-Proactive%20Monitoring-orange" alt="Proactive Vision">
+  <img src="https://img.shields.io/badge/Memory-1.2GB%20Orchestrated-ff5733" alt="Dynamic Memory">
+  <img src="https://img.shields.io/badge/Languages-Python%2FRust%2FSwift-yellow" alt="Cross Language">
+  <img src="https://img.shields.io/badge/Debugging-Assistant%20✅-purple" alt="Debug Assistant">
+  <img src="https://img.shields.io/badge/Research-Helper%20✅-red" alt="Research Helper">
+  <img src="https://img.shields.io/badge/Workflow-Optimizer%20🎯-success" alt="Workflow Optimizer">
 </p>
 
 <p align="center">
   <em>"Perfection is achieved not when there is nothing more to add, but when there is nothing left to take away." - Antoine de Saint-Exupéry</em>
 </p>
+
+## 🆕 What's New in v13.3.1 - Multi-Space Vision Fixed & Enhanced
+
+### 🌐 Multi-Space Vision Improvements
+**MULTI-SPACE VISION NOW WORKS FLAWLESSLY!** Critical fixes:
+- ✅ **Fixed API Key Flow** - Multi-space queries now use correct authentication
+- ✅ **Fixed Image Encoding** - Proper JPEG encoding for Claude Vision API
+- ✅ **Fixed Vision Manager** - Proper initialization ensures multi-space capture
+- ✅ **Fixed Async Handling** - Correct async/await patterns for API calls
+- ✅ **Enhanced Error Handling** - Clear error messages for troubleshooting
+
+### 🚀 Multi-Space Query Examples
+**ASK ABOUT ANY DESKTOP SPACE!** Now working perfectly:
+- ✅ **"Can you see Cursor IDE in the other desktop space?"** - Accurate multi-space analysis
+- ✅ **"What apps are open on Desktop 2?"** - Specific space queries
+- ✅ **"Show me all my desktop spaces"** - Full workspace overview
+- ✅ **"Where is my Terminal window?"** - Cross-space app location
+- ✅ **"What's running on other desktops?"** - Multi-space activity summary
+
+### 🔧 Technical Improvements
+**ROBUST MULTI-SPACE ARCHITECTURE!** Backend enhancements:
+- ✅ **Unified Command Processor** - Properly initializes with multi-space enabled
+- ✅ **Vision Command Handler** - Stores and uses vision analyzer correctly
+- ✅ **Image Processing** - Handles RGBA→RGB conversion for JPEG
+- ✅ **WebSocket Integration** - Vision manager properly configured
+- ✅ **Error Recovery** - Graceful fallbacks for edge cases
+
+## 🆕 What's New in v13.3.0 - Intelligent Screen Monitoring System
+
+### 🎯 Smart Command Recognition & Monitoring Control
+**JARVIS NOW UNDERSTANDS YOUR INTENT PERFECTLY!** Features:
+- ✅ **Intelligent Command Classification** - Distinguishes monitoring control vs vision queries
+- ✅ **Natural Language Understanding** - "Start monitoring", "Enable screen monitoring", "Watch my screen" all work
+- ✅ **Concise Professional Responses** - "Screen monitoring is now active, Sir." (1-2 sentences max)
+- ✅ **State Machine Architecture** - Proper lifecycle: Inactive → Activating → Active → Deactivating
+- ✅ **Immediate Activation** - No more explanations, just action
+
+### 🟣 Enhanced Purple Indicator System
+**PERFECTED MACOS INTEGRATION!** Improvements:
+- ✅ **Persistent Indicator** - Purple dot stays visible throughout entire monitoring session
+- ✅ **Vision Status Synchronization** - UI shows "Vision: connected" when indicator is active
+- ✅ **WebSocket Broadcasting** - Real-time status updates to all connected clients
+- ✅ **Automatic Recovery** - Indicator restarts if capture session fails
+- ✅ **Permission Management** - Clear guidance when screen recording permission needed
+
+### 🚀 Monitoring Activation Flow
+**STREAMLINED USER EXPERIENCE!** How it works:
+1. **User says**: "Start monitoring my screen"
+2. **JARVIS immediately**:
+   - Activates macOS purple indicator
+   - Updates vision status to "connected"
+   - Responds: "Screen monitoring is now active, Sir. The purple indicator is visible in your menu bar."
+3. **During monitoring**:
+   - All vision queries work seamlessly
+   - Multi-space captures use active session
+   - No permission popups
+4. **User says**: "Stop monitoring"
+5. **JARVIS immediately**:
+   - Removes purple indicator
+   - Updates vision status to "disconnected"
+   - Responds: "Screen monitoring has been disabled, Sir."
+
+## 🆕 What's New in v13.2.0 - Multi-Space Vision & Status Integration
+
+### 🌐 Multi-Space Desktop Vision System
+**JARVIS CAN NOW SEE ACROSS ALL DESKTOP SPACES!** Features:
+- ✅ **Cross-Space Visibility** - Monitors apps across all macOS desktop spaces
+- ✅ **Smart Space Switching** - Intelligently captures screenshots from multiple spaces
+- ✅ **Advanced Caching** - LRU cache with confidence-based eviction
+- ✅ **Performance Optimization** - Predictive prefetching and adaptive quality
+- ✅ **Natural Language Queries** - "Where is Terminal?" works across all spaces
+
+### 🟣 Purple Indicator Fix & Vision Status
+**FIXED MONITORING INDICATOR & STATUS SYNC!** Improvements:
+- ✅ **Persistent Purple Indicator** - Stays visible indefinitely when monitoring
+- ✅ **Automatic Session Recovery** - Restarts if capture session stops
+- ✅ **Vision Status Sync** - UI shows "connected" when purple indicator is active
+- ✅ **Real-time Updates** - WebSocket broadcasts status changes instantly
+- ✅ **Better Command Detection** - "Enable screen monitoring" now works reliably
+- ✅ **Concise Responses** - Simple confirmations instead of technical explanations
+
+### 📊 Proactive Activity Reporting
+**JARVIS REPORTS WORKSPACE CHANGES!** New capabilities:
+- ✅ **Window Events** - "I notice you've opened VS Code on Desktop 2"
+- ✅ **Space Navigation** - "You've switched from Desktop 1 to Desktop 3"
+- ✅ **App Lifecycle** - Reports when apps open, close, or move
+- ✅ **Natural Announcements** - Voice reports changes conversationally
+- ✅ **Smart Filtering** - Only reports significant changes
+
+## 🆕 What's New in v13.0.0 - Proactive Real-Time Intelligent Assistant
+
+### 🔧 Self-Healing Rust System (AUTOMATIC!)
+**RUST COMPONENTS NOW FIX THEMSELVES!** Zero maintenance:
+- ✅ **Automatic Diagnosis** - Detects why Rust isn't working
+- ✅ **Smart Recovery** - Builds, rebuilds, installs dependencies
+- ✅ **Background Monitoring** - Continuously ensures Rust availability
+- ✅ **Dynamic Switching** - Seamlessly switches Rust↔Python
+- ✅ **Zero Downtime** - Python fallbacks while Rust repairs
+- ✅ **Minimal→Full Mode** - Automatically upgrades from minimal to full mode when ready
+
+### 🧠 Proactive Monitoring Mode (REVOLUTIONARY!)
+**JARVIS NOW WATCHES AND HELPS PROACTIVELY!** Major upgrade:
+- ✅ **Real-time assistance** - Offers help without being asked
+- ✅ **Natural conversations** - Engages like a helpful colleague
+- ✅ **Context awareness** - Understands what you're working on
+- ✅ **Workflow detection** - Identifies coding, research, debugging workflows
+- ✅ **Voice announcements** - Speaks suggestions naturally
+
+### 🐛 UC1: Debugging Assistant (INTELLIGENT!)
+**CATCHES ERRORS AS YOU CODE!** Features:
+- ✅ **Error detection** - Spots syntax, runtime, compilation errors
+- ✅ **Variable mismatches** - "You defined 'userData' but used 'user_data'"
+- ✅ **Line number tracking** - Points to exact error locations
+- ✅ **Fix suggestions** - Specific solutions, not generic advice
+- ✅ **Natural language** - "I notice you got a TypeError on line 45"
+
+### 🔍 UC2: Research Helper (SMART!)
+**ASSISTS WITH MULTI-TAB RESEARCH!** Capabilities:
+- ✅ **Tab monitoring** - Detects excessive tabs (5+)
+- ✅ **Topic detection** - Understands what you're researching
+- ✅ **Summary offers** - "Would you like me to summarize the key points?"
+- ✅ **Pattern recognition** - Notices rapid tab switching
+- ✅ **Context preservation** - Remembers your research journey
+
+### 🚀 UC3: Workflow Optimizer (EFFICIENT!)
+**SPOTS REPETITIVE PATTERNS!** Optimizations:
+- ✅ **Copy-paste detection** - Notices code duplication
+- ✅ **Pattern analysis** - Identifies repeated actions
+- ✅ **Refactoring suggestions** - "Create a reusable function?"
+- ✅ **Automation opportunities** - Suggests shortcuts and snippets
+- ✅ **Gentle guidance** - Non-intrusive suggestions
+
+### 🎯 Decision Engine (INTELLIGENT!)
+**KNOWS WHEN AND HOW TO HELP!** Features:
+- ✅ **Confidence scoring** - 0-1 scale for each opportunity
+- ✅ **Importance classification** - Critical/High/Medium/Low
+- ✅ **Timing optimization** - Won't interrupt deep focus
+- ✅ **User preference learning** - Adapts to your style
+- ✅ **Cooldown management** - Prevents notification spam
+
+### 🔒 Privacy Features (SECURE!)
+**RESPECTS YOUR PRIVACY!** Protection:
+- ✅ **Auto-pause** - Stops monitoring during sensitive content
+- ✅ **Password detection** - Pauses for password entry
+- ✅ **Banking protection** - Recognizes financial sites
+- ✅ **Private messages** - Respects chat privacy
+- ✅ **Pattern learning** - Remembers sensitive contexts
+
+### 🗣️ Communication Styles (NATURAL!)
+**SPEAKS YOUR LANGUAGE!** Styles:
+- ✅ **Informative** - "I notice you're working on the API"
+- ✅ **Suggestive** - "You might want to save before running"
+- ✅ **Warning** - "Careful - that command will delete files"
+- ✅ **Question** - "Would you like help with this error?"
+- ✅ **Context-aware** - Adapts tone to situation
+
+### 🔊 Voice Integration (SEAMLESS!)
+**FULL VOICE ANNOUNCEMENTS!** Features:
+- ✅ **Primary modality** - Voice as main communication
+- ✅ **Sound cues** - Different sounds for different events
+- ✅ **Priority-based** - Only announces important items
+- ✅ **Natural speech** - Conversational, not robotic
+- ✅ **Queue management** - Handles multiple notifications
+
+## 🚀 Quick Start - Intelligent Screen Monitoring
+
+### Starting JARVIS
+1. **Start backend**: `cd backend && python main.py`
+2. **Start frontend**: `cd frontend && npm start`
+3. **Open browser**: http://localhost:3000
+4. **Check status**: Should show "JARVIS: ONLINE"
+
+### Activating Screen Monitoring
+1. **Say**: "Hey JARVIS, start monitoring my screen"
+2. **JARVIS immediately**:
+   - Shows macOS purple indicator in menu bar
+   - Updates UI to "Vision: connected"
+   - Responds: "Screen monitoring is now active, Sir. The purple indicator is visible in your menu bar."
+3. **Work naturally** - JARVIS will proactively offer help when it detects:
+   - 🐛 Code errors and syntax issues
+   - 🔍 Multi-tab research sessions
+   - 🚀 Repetitive workflow patterns
+   - 🔒 Sensitive content (auto-pauses)
+4. **Multi-Space Vision** - Ask about other desktop spaces:
+   - "Can you see what's on my other desktop?"
+   - "Where is Cursor IDE?" (searches all spaces)
+   - "What apps are running on Desktop 2?"
+5. **Stop anytime**: "Hey JARVIS, stop monitoring"
+
+### Backend Setup Required
+The proactive vision system requires the JARVIS backend with all 6 components loaded (see Backend Architecture section).
+
+## 🛠️ Self-Healing System - Automatic Recovery
+
+### How It Works
+**JARVIS AUTOMATICALLY REPAIRS ITSELF!** The self-healing system:
+
+1. **Detects Issues** - Monitors Rust components continuously
+2. **Diagnoses Problems** - Identifies root causes (build failures, missing deps, etc.)
+3. **Applies Fixes** - Builds, installs dependencies, fixes permissions
+4. **Switches Components** - Uses Python fallbacks while repairing Rust
+5. **Upgrades Modes** - Automatically switches minimal→full when ready
+
+### Minimal to Full Mode Upgrade
+**NEVER STUCK IN MINIMAL MODE!** When the backend falls back to minimal mode:
+- ✅ **Automatic detection** - Recognizes minimal mode operation
+- ✅ **Component monitoring** - Checks every 30s for readiness
+- ✅ **Graceful upgrade** - Stops minimal, starts full backend
+- ✅ **Zero downtime** - Seamless transition between modes
+- ✅ **Smart retries** - Up to 10 attempts with backoff
+
+### What You'll See
+```
+🚀 Starting JARVIS with enhanced proactive mode...
+🔧 Initializing self-healing system...
+📦 Rust components not available. Self-healer will fix this automatically.
+🔄 Self-healing system started (check every 300s)
+🐍 Using Python bloom filter (fallback)
+⚡ Backend is running in minimal mode with some features limited
+
+[After Rust is fixed automatically]
+✅ All components ready for upgrade to full mode
+Stopping minimal backend...
+Starting full backend...
+✅ Full backend started successfully
+🎉 Successfully upgraded to full mode!
+```
+
+## 🆕 What's New in v13.1.0 - Pure Vision Intelligence System
+
+### 🧠 Pure Claude Vision Intelligence (REVOLUTIONARY!)
+**JARVIS NOW THINKS WITH CLAUDE'S EYES!** Complete transformation:
+- ✅ **Zero templates** - Every response generated fresh by Claude
+- ✅ **Pure intelligence** - Claude Vision is JARVIS's eyes AND voice
+- ✅ **Natural variation** - Never repeats the same response twice
+- ✅ **Context aware** - Remembers previous interactions and screen states
+- ✅ **Workflow understanding** - Knows if you're coding, debugging, researching
+
+### 🎯 Universal Vision Understanding (GAME-CHANGING!)
+**NO MORE "UNKNOWN VISION ACTION" ERRORS!** Now handles:
+- ✅ **Any vision query** - "How many Chrome windows?", "What's my battery?"
+- ✅ **Natural language** - No hardcoded patterns or keywords needed
+- ✅ **Complex questions** - Multi-part queries understood perfectly
+- ✅ **Temporal awareness** - Compares screens over time
+- ✅ **Proactive insights** - Offers help beyond just answering
+
+### 🔄 Unified Command Processing (SIMPLIFIED!)
+**ELIMINATED INTERPRETER CHAOS!** Architecture improvements:
+- ✅ **Single processor** - Replaced 5 interpreters with 1 unified system
+- ✅ **No routing ambiguity** - Clear command flow without conflicts
+- ✅ **Context preservation** - Maintains state across interactions
+- ✅ **150 lines vs 1200** - Massive simplification of jarvis_voice_api
+- ✅ **Direct intelligence** - Commands go straight to Claude Vision
+
+### 💬 Conversation Intelligence (NATURAL!)
+**JARVIS REMEMBERS AND ADAPTS!** Features:
+- ✅ **Conversation memory** - Tracks last 20 interactions
+- ✅ **Temporal context** - Knows if you just asked something
+- ✅ **Emotional intelligence** - Varies tone based on situation
+- ✅ **Workflow detection** - Understands your current task
+- ✅ **Natural follow-ups** - References previous context appropriately
+
+### 🚀 Response Variation (HUMAN-LIKE!)
+**EVERY RESPONSE IS UNIQUE!** Examples:
+- Battery queries: "Your battery is at 95% and charging", "I see 95% charge remaining", "You're at 95% battery, Sir"
+- Screen queries: Different observations each time, noticing new details
+- Error responses: Context-specific help, not generic messages
+- Proactive offers: Varied suggestions based on what you're doing
+
+### 🔧 Implementation Details (CLEAN!)
+**PURE INTELLIGENCE ARCHITECTURE:**
+1. **PureVisionIntelligence** - Core intelligence system with zero templates
+2. **TemporalIntelligence** - Compares screens over time
+3. **ProactiveIntelligence** - Notices without being asked
+4. **WorkflowIntelligence** - Understands user tasks
+5. **EmotionalIntelligence** - Natural tone variation
+
+### 🎮 How to Use It
+Simply ask JARVIS anything about your screen:
+- "How many windows do I have open?"
+- "What's my battery percentage?"
+- "Can you see any errors on my screen?"
+- "What am I working on?"
+- "Has anything changed since last time?"
+
+JARVIS will understand and respond naturally, with no hardcoded patterns!
+
+### 🔑 Configuration Required
+To use Pure Vision Intelligence, add your Claude API key to the `.env` file:
+```
+ANTHROPIC_API_KEY=your-api-key-here
+```
+
+Without the API key, JARVIS will use contextual mock responses until configured.
+
+## 🆕 What's New in v13.2.0 - Multi-Space Desktop Vision System
+
+### 🚀 Multi-Space Vision Intelligence (GROUNDBREAKING!)
+**JARVIS CAN NOW SEE ALL YOUR DESKTOP SPACES AT ONCE!** Revolutionary upgrade:
+- ✅ **Full workspace awareness** - Sees across all macOS desktop spaces
+- ✅ **Intelligent space detection** - Knows when to look at multiple spaces
+- ✅ **Cross-space app tracking** - "Where is Terminal?" finds it on any space
+- ✅ **Workflow understanding** - Detects distributed work patterns
+- ✅ **Zero hardcoding** - All responses generated naturally by Claude
+
+### 🎯 Multi-Space Query Understanding (INTELLIGENT!)
+**ASK ABOUT ANY DESKTOP SPACE!** Natural queries supported:
+- ✅ **"Show me all my workspaces"** - Comprehensive overview of all spaces
+- ✅ **"What's on Desktop 2?"** - Specific space analysis
+- ✅ **"Find Chrome across all spaces"** - Cross-space application search
+- ✅ **"Which space has VS Code?"** - Intelligent app location
+- ✅ **"What's running on other desktops?"** - Multi-space activity summary
+
+### 🔍 Proactive Multi-Space Monitoring (REVOLUTIONARY!)
+**JARVIS WATCHES ALL SPACES AND HELPS PROACTIVELY!** Features:
+- ✅ **Workspace change detection** - Notices new spaces, app movements
+- ✅ **Pattern recognition** - "You're rapidly switching spaces, looking for something?"
+- ✅ **Workflow insights** - "VS Code is spread across 3 spaces"
+- ✅ **Activity monitoring** - Tracks busy vs idle spaces
+- ✅ **Smart notifications** - Only alerts when truly helpful
+
+### ⚡ Performance Optimization (LIGHTNING FAST!)
+**INTELLIGENT CACHING AND PRE-FETCHING!** Optimizations:
+- ✅ **Access pattern learning** - Predicts which spaces you'll need
+- ✅ **Smart caching** - LRU cache with adaptive TTL
+- ✅ **Predictive pre-fetching** - Captures frequently used spaces in advance
+- ✅ **Quality optimization** - Adjusts capture quality based on usage
+- ✅ **50% cache hit rate** - Instant responses for repeated queries
+
+### 🏗️ Architecture Components (COMPREHENSIVE!)
+**FOUR-PHASE IMPLEMENTATION:**
+
+1. **Multi-Space Capture Engine** (`vision/multi_space_capture_engine.py`)
+   - Multiple capture methods with fallback
+   - Permission-based space switching
+   - Intelligent caching system
+   - Parallel capture support
+
+2. **Enhanced PureVisionIntelligence** (`api/pure_vision_intelligence.py`)
+   - Query intent analysis
+   - Dynamic space selection
+   - Natural response generation
+   - Cross-space context building
+
+3. **Proactive Monitoring** (`vision/multi_space_monitor.py`)
+   - Real-time event detection
+   - Workflow pattern analysis
+   - Activity level tracking
+   - Natural language insights
+
+4. **Performance Optimizer** (`vision/multi_space_optimizer.py`)
+   - Usage pattern learning
+   - Predictive pre-fetching
+   - Adaptive cache management
+   - Dynamic quality adjustment
+
+### 🎮 How to Use Multi-Space Vision
+
+#### Basic Queries:
+```bash
+"Hey JARVIS, show me all my workspaces"
+"What's on Desktop 3?"
+"Find all my Terminal windows"
+"Which space has Slack?"
+```
+
+#### Workflow Queries:
+```bash
+"Show me everything I'm working on"
+"What's my development setup across spaces?"
+"Are any spaces idle?"
+"Should I consolidate any workspaces?"
+```
+
+#### Enable Proactive Monitoring:
+```bash
+# Start monitoring with purple indicator
+"Hey JARVIS, start monitoring my screen"
+# Purple indicator appears - JARVIS can now see all spaces efficiently!
+
+# Multi-space queries work seamlessly during monitoring
+"Where is Terminal?"  # Searches all spaces using active session
+"Show me all my workspaces"  # No new permissions needed
+
+# Stop monitoring and remove purple indicator
+"Hey JARVIS, stop monitoring"
+```
+
+### 🟣 Purple Indicator Integration (NEW!)
+**SEAMLESS MONITORING WITH VISUAL FEEDBACK!** Features:
+- ✅ **Purple indicator** - macOS shows when screen recording is active
+- ✅ **Single permission** - Grant once, access all spaces during session
+- ✅ **Efficient captures** - Multi-space queries use existing monitoring session
+- ✅ **No permission popups** - Smooth experience when monitoring is active
+- ✅ **Visual confirmation** - Know when JARVIS is watching via purple dot
+
+### 🔧 Configuration
+Multi-space vision is enabled by default. Control it via:
+```python
+# In your code
+vision = PureVisionIntelligence(claude_client, enable_multi_space=True)
+
+# Start monitoring
+await vision.start_multi_space_monitoring()
+
+# Get optimization stats
+stats = await vision.get_optimization_stats()
+```
+
+### 📊 Performance Metrics
+- **Space Detection**: <100ms to identify all spaces
+- **Cross-Space Search**: 1-2 seconds for full workspace scan  
+- **Cache Performance**: 50%+ hit rate after warmup
+- **Memory Usage**: ~200MB for cache, scales with spaces
+- **Monitoring Overhead**: <5% CPU with optimization
+- **With Purple Indicator**: Zero permission delays during active session
+- **Multi-Space During Monitoring**: 3-5x faster (no permission requests)
+
+### 🚨 Important Notes
+- **Privacy First**: Permission required for space switching
+- **macOS Only**: Currently supports macOS desktop spaces
+- **Performance**: First query slower, subsequent queries cached
+- **Natural Responses**: Every response unique, generated by Claude
+
+### 🔧 Troubleshooting Multi-Space Vision
+
+#### "ValueError" when asking about other spaces?
+1. **Grant Screen Recording Permission:**
+   ```bash
+   System Preferences > Security & Privacy > Privacy > Screen Recording
+   # Add Terminal (or your app) to allowed list
+   # Restart JARVIS after granting permission
+   ```
+
+2. **Start monitoring first:**
+   ```bash
+   "Hey JARVIS, start monitoring my screen"
+   # Wait for purple indicator to appear
+   # Then ask: "Where is Terminal?"
+   ```
+
+#### Purple indicator not appearing?
+1. **Check Swift capture availability:**
+   ```bash
+   cd backend
+   python test_multi_space_purple_integration.py
+   ```
+
+2. **Verify permissions:**
+   - Screen Recording must be enabled for Terminal/app
+   - May need to restart after permission changes
+
+#### Multi-space queries not finding apps?
+1. **Ensure apps have windows open** - Minimized apps may not be detected
+2. **Check monitoring is active** - Purple indicator should be visible
+3. **Try specific queries** - "What's on Desktop 2?" vs "Find Terminal"
+
+## 🆕 What's New in v12.9.9 - Real-Time Vision When Monitoring Active
+
+### 👁️ Real-Time Screen Vision (FIXED!)
+**JARVIS NOW ACTUALLY SEES YOUR SCREEN WHEN MONITORING!** Major fix:
+- ✅ **Real-time analysis** - When monitoring is active, JARVIS analyzes screen in real-time
+- ✅ **Natural responses** - "Yes, I can see VS Code with your test_vision_logic.py file open"
+- ✅ **No generic replies** - No more hardcoded "Yes sir, I can see your screen"
+- ✅ **Intelligent detection** - Recognizes "can you see" queries during active monitoring
+- ✅ **Application awareness** - Identifies specific apps like terminal, VS Code, browser
+
+### 🔍 Enhanced Screen Query Detection (NEW!)
+**SMARTER QUERY UNDERSTANDING!** Improvements:
+- ✅ **Query patterns** - Detects "can you see", "what do you see", "describe my screen"
+- ✅ **Context aware** - Only uses real-time analysis when monitoring is active
+- ✅ **JARVIS personality** - Responds naturally as Tony Stark's AI assistant
+- ✅ **Fast analysis** - Real-time responses without additional screen captures
+- ✅ **Continuous monitoring** - Maintains awareness throughout monitoring session
+
+## 🆕 What's New in v12.9.8 - Hybrid Weather Intelligence
+
+### 🌦️ Hybrid Weather System (NEW!)
+**JARVIS NOW HAS MULTIPLE WEATHER SOURCES!** Major upgrade:
+- ✅ **OpenWeatherMap API** - Primary source for instant, accurate weather
+- ✅ **Automatic location detection** - Uses IP geolocation for current location
+- ✅ **Global city support** - Get weather for any city worldwide
+- ✅ **Vision fallback** - Still works without API key using Claude Vision
+- ✅ **Multiple backup sources** - Core Location, Swift tool, widgets
+
+### 🚀 API Integration (RECOMMENDED!)
+**INSTANT WEATHER WITH OPENWEATHERMAP!** Benefits:
+- ✅ **Sub-second responses** - No need to open Weather app
+- ✅ **Accurate location** - Detects your actual location automatically
+- ✅ **Any city queries** - "What's the weather in Tokyo?" works perfectly
+- ✅ **Free tier available** - 1000 calls/day free at openweathermap.org
+- ✅ **Easy setup** - Just add API key to .env file
+
+### 🏙️ Enhanced Fallback System (ROBUST!)
+**NEVER FAILS TO PROVIDE WEATHER!** Fallback priority:
+- ✅ **API first** - Uses OpenWeatherMap when configured
+- ✅ **Vision second** - Opens Weather app and reads with Claude
+- ✅ **Core Location third** - Precise macOS location services
+- ✅ **Swift tool fourth** - Native weather integration
+- ✅ **Always responds** - Clear error messages if all sources fail
+
+## 🆕 What's New in v12.9.7 - Enhanced Weather Intelligence
+
+### 🌤️ Vision Weather Improvements (STILL WORKING!)
+**VISION FALLBACK ENHANCED!** When API unavailable:
+- ✅ **Vision-based reading** - Uses Claude Vision API to read Weather app
+- ✅ **Natural responses** - Properly formatted weather descriptions
+- ✅ **Location awareness** - Tells you which city's weather is displayed
+- ✅ **Timeout handling** - Improved timeouts prevent hanging
+- ✅ **Quick fallback** - Immediate weather read if main flow times out
+
+## 🆕 What's New in v12.9.6 - Dynamic Vision System Without Hardcoding
+
+### 👁️ Intelligent Vision Detection (REVOLUTIONARY!)
+**JARVIS UNDERSTANDS VISION QUERIES LIKE NEVER BEFORE!** Complete overhaul:
+- ✅ **Regex pattern generation** - Dynamic patterns for "can you see", "analyze my screen", etc.
+- ✅ **Intent analysis** - Understands urgency, detail level, and focus areas
+- ✅ **Fuzzy matching** - Catches typos with similarity detection
+- ✅ **Multi-language support** - Ready for international keywords
+- ✅ **Zero hardcoding** - All patterns dynamically generated from word lists
+
+### 📸 Multi-Method Screenshot Capture (ROBUST!)
+**NEVER FAILS TO CAPTURE!** Platform-aware fallback system:
+- ✅ **PyAutoGUI** - Cross-platform primary method
+- ✅ **Native macOS** - Direct system integration
+- ✅ **screencapture command** - macOS fallback with cursor options
+- ✅ **Windows ImageGrab** - Native Windows capture
+- ✅ **Linux support** - gnome-screenshot, scrot, import
+- ✅ **Vision analyzer fallback** - Ultimate fallback method
+
+### 🚀 Dynamic Performance Optimization (SMART!)
+**ADAPTS TO YOUR NEEDS!** Intent-based optimization:
+- ✅ **Image sizing** - 1280px for quick checks, 2560px for detailed analysis
+- ✅ **Format selection** - PNG for quality, JPEG for speed
+- ✅ **Quality adjustment** - 70% for urgent, 95% for detailed
+- ✅ **API configuration** - Dynamic tokens and temperature
+- ✅ **Smart caching** - LRU cache with access frequency tracking
+- ✅ **Platform detection** - Optimizes for macOS/Windows/Linux
+
+### 🧠 Context-Aware Processing (INTELLIGENT!)
+**UNDERSTANDS WHAT YOU WANT!** Query analysis system:
+- ✅ **Query type detection** - Confirmation vs analysis vs general
+- ✅ **Urgency detection** - "quick", "asap", "immediately"
+- ✅ **Focus area extraction** - Errors, code, text, images
+- ✅ **Detail level** - Brief summary vs comprehensive analysis
+- ✅ **Dynamic prompts** - Tailored instructions based on intent
+
+## 🆕 What's New in v12.9.5 - Robust Time Intelligence Without Hardcoding
+
+### 🧠 Advanced Time Query Detection (MAJOR ENHANCEMENT!)
+**JARVIS NOW UNDERSTANDS TIME LIKE NEVER BEFORE!** Complete overhaul:
+- ✅ **Regex pattern matching** - Handles "what o'clock", "do you have the time", etc.
+- ✅ **Fuzzy matching** - Catches typos and variations automatically
+- ✅ **Multilingual support** - Recognizes "hora", "heure", "zeit", "tempo"
+- ✅ **Natural language** - "is it late?", "morning yet?", "how early is it?"
+- ✅ **Zero hardcoding** - All patterns dynamically generated
+
+### 🎯 Dynamic Context Intelligence (NEW!)
+**CONTEXT THAT ADAPTS TO YOU!** Revolutionary improvements:
+- ✅ **Dynamic time periods** - No hardcoded hour ranges
+- ✅ **Activity suggestions** - Meal times, work hours, rest periods
+- ✅ **Seasonal awareness** - "Autumn is here", "Summer solstice season"
+- ✅ **Weekend detection** - Different context for weekdays vs weekends
+- ✅ **Locale awareness** - 12/24 hour format based on system settings
+- ✅ **Query analysis** - Understands if you want simple time or full details
+
+### 🌍 Timezone Intelligence (ROBUST!)
+**MULTIPLE FALLBACK METHODS!** Never fails to get timezone:
+- ✅ **macOS systemsetup** - Primary method for Mac systems
+- ✅ **Unix /etc/timezone** - Linux compatibility
+- ✅ **Python timezone** - Cross-platform fallback
+- ✅ **Environment variables** - Respects TZ variable
+- ✅ **Graceful degradation** - Always returns time even if timezone detection fails
+
+## 🆕 What's New in v12.9.4 - Accurate Date/Time & Enhanced Context
+
+### 📅 Fixed Date Query Accuracy (CRITICAL FIX!)
+**JARVIS NOW KNOWS THE CORRECT DATE!** Major improvements:
+- ✅ **Fixed date routing** - Date queries now handled by time command system
+- ✅ **Real system date** - No more "January 29, 2024" responses
+- ✅ **Added date keywords** - "date", "day", "today" now trigger time handler
+- ✅ **Claude context injection** - Current date/time included in all Claude requests
+- ✅ **Fallback protection** - Even when Claude handles queries, it has correct date
+
+## 🆕 What's New in v12.9.3 - Full Voice Vision Response & Time Intelligence
+
+### 🗣️ JARVIS Now Speaks Everything He Sees!
+**THE VISION SYSTEM NOW TALKS!** When you ask "Can you see my screen?", JARVIS will:
+- ✅ **Read the ENTIRE analysis out loud** - no more "check the display for details"
+- ✅ **Speak every observation** - full descriptions of what he sees
+- ✅ **No truncation** - complete responses regardless of length
+- ✅ **Natural conversation** - explains what's on your screen conversationally
+
+### ⏰ Direct Time Intelligence
+**NO MORE VISION SYSTEM FOR TIME!** JARVIS now handles time queries instantly:
+- ✅ **Instant response** - Uses system time, no screenshot needed
+- ✅ **Context-aware** - "Good evening" at night, "Time for lunch" at noon
+- ✅ **Multiple formats** - Time only, date & time, or contextual responses
+- ✅ **Timezone aware** - Automatically uses your system timezone
+- ✅ **Natural queries** - "What time is it?", "Is it late?", "What's the date?"
+- ✅ **Date accuracy** - Always returns correct current date (v12.9.4 fix)
+
+### 🔧 Recent Improvements
+- **Added robust time command handler** with 20+ query patterns
+- **Context-aware responses** based on time of day
+- **Fixed async/await issues** in vision analysis pipeline
+- **Removed all response truncation** in both frontend and backend
+- **Enhanced anomaly detection** with dynamic, non-hardcoded implementation
+- **Added robust Observation class** for intelligent pattern detection
+- **Improved error handling** throughout the vision system
+
+## 🎯 What's New in v12.9.2 - Integration Architecture 🧠
+
+### 🎯 INTEGRATION ARCHITECTURE - Bringing Intelligence and Efficiency Together!
+
+**THE VISION SYSTEM NOW HAS A BRAIN!** The Integration Architecture orchestrates all vision components through a sophisticated 9-stage processing pipeline with dynamic memory management.
+
+### 🧠 Integration Orchestrator Features
+- **9-Stage Pipeline:** Visual Input → Spatial Analysis → State Understanding → Intelligence Processing → Cache Checking → Prediction Engine → API Decision → Response Integration → Proactive Intelligence
+- **Dynamic Memory Budget:** 1.2GB total, intelligently allocated across components
+- **4 Operating Modes:**
+  - **Normal (<60%):** All components active, full quality
+  - **Pressure (60-80%):** Caches reduced by 30%, non-critical throttled
+  - **Critical (80-95%):** Components at 50%, low-priority disabled
+  - **Emergency (>95%):** Minimal operation, only essentials
+- **Cross-Language Optimization:**
+  - **Python:** Core orchestration and coordination
+  - **Rust:** SIMD operations, zero-copy buffers, high-performance processing
+  - **Swift:** Native macOS memory monitoring, real-time resource tracking
+
+### 📦 Component Memory Allocation (1.2GB Total)
+
+**Intelligence Systems (600MB):**
+- **VSMS Core:** Visual State Management System (150MB, priority 9)
+- **Scene Graph:** Spatial understanding and relationships (100MB, priority 8)
+- **Temporal Context:** Time-based analysis (200MB, priority 7)
+- **Activity Recognition:** User action detection (100MB, priority 7)
+- **Goal Inference:** Intent prediction (80MB, priority 6)
+
+**Optimization Systems (460MB):**
+- **Bloom Filter Network:** 3-level hierarchical duplicate detection (10MB, priority 6)
+- **Semantic Cache LSH:** Intelligent result caching with similarity (250MB, priority 9)
+- **Predictive Engine:** Markov chain state predictions (150MB, priority 7)
+- **Quadtree Spatial:** Region-based processing optimization (50MB, priority 8)
+
+**Operating Buffer (140MB):**
+- **Frame Buffer:** Non-reducible working memory (60MB, priority 10)
+- **Processing Workspace:** Dynamic allocation space (50MB, priority 9)
+- **Emergency Reserve:** Always available buffer (30MB, priority 10)
+
+### 🎆 Bloom Filter Network (NEW!)
+- **3-Level Hierarchy:**
+  - **Global Level:** 32MB for duplicate images
+  - **Regional Level:** 8MB per screen region
+  - **Element Level:** 16MB for UI elements
+- **Intelligent Reset Strategies:**
+  - Time-based (24h, 1h, 5m intervals)
+  - Load-based (>80% saturation)
+  - Event-triggered (context switches)
+- **Cross-Language Performance:**
+  - Rust: XXHash3 for 12GB/s hashing
+  - Swift: UI element tracking
+  - Python: Coordination layer
+
+### ⚡ Enhanced Vision Components (Integrated with Orchestrator)
+- **Swift Vision:** Metal-accelerated processing with circuit breaker
+- **Window Analysis:** Memory-aware content analysis with LRU cache
+- **Relationship Detection:** Configurable window relationships
+- **Continuous Monitoring:** Dynamic intervals 1-10s based on memory
+- **Memory-Efficient:** 5 compression strategies for different use cases
+- **Simplified Vision:** Direct Claude API with 9+ query templates
+- **🎥 Video Streaming:** Real-time 30FPS capture with sliding window
+
+### 🎥 NEW: Real-time Screen Monitoring with Swift Integration
+- **Voice Commands:**
+  - "Start monitoring my screen" - Activates 30 FPS video capture
+  - "Stop monitoring" - Deactivates video streaming
+  - "Enable continuous screening monitoring" - Alternative activation
+- **Swift-Based macOS Integration (NEW!):**
+  - **Enhanced Permissions:** Swift handles screen recording permissions properly
+  - **Purple Indicator:** macOS recording confirmation in menu bar
+  - **Automatic Permission Request:** No manual System Preferences needed
+  - **Native Performance:** Direct AVFoundation integration
+- **Technical Features:**
+  - Uses Swift video bridge for better macOS integration
+  - Automatic compilation on first use
+  - Fallback to Python capture if Swift unavailable
+  - Hardware-accelerated capture with AVFoundation
+- **Intelligent Features:**
+  - Motion detection triggers analysis
+  - Sliding window for large screens (640x480 default)
+  - Adaptive quality based on available memory
+  - Memory budget: 800MB for video streaming
+
+### 🔧 Zero Hardcoding Achievement
+- **70+ Environment Variables:** Everything is configurable
+- **No Hardcoded Dimensions:** All image sizes configurable
+- **No Hardcoded Queries:** All query templates customizable
+- **Dynamic Memory Management:** Automatic adjustment based on pressure
+- **Total Memory Budget:** ~1GB across all components
+
+### 📊 Memory Optimization Features
+- **Lazy Loading:** Components load only when needed
+- **LRU Caching:** Automatic eviction of old data
+- **Circuit Breaker:** Failing components auto-disable
+- **Emergency Cleanup:** Automatic when memory < 1GB
+- **Compression Strategies:** Choose based on use case
+
+## 🚨 Recent Fixes & Current Status (v12.9.1)
+
+### ✅ What's Working
+1. **Audio Playback Fixed** 
+   - Issue: Frontend expected JSON but received audio data
+   - Solution: Updated frontend to handle audio blobs directly
+   - Backend now generates MP3 audio using macOS `say` command with British voice
+   - Both GET and POST endpoints work correctly
+   
+2. **Vision System Operational**
+   - Screen monitoring with "start/stop monitoring my screen" commands
+   - Swift video capture with purple recording indicator
+   - Real-time WebSocket streaming to frontend
+   - Motion detection and sliding window analysis
+
+3. **Voice Commands Active**
+   - "Hey JARVIS" wake word detection
+   - Natural conversation processing
+   - Context-aware responses
+   - System control commands
+
+### ⚠️ Known Limitations
+1. **Audio Generation**
+   - Currently uses macOS `say` command (requires macOS)
+   - Limited to system voices (using Daniel - British voice)
+   - No cross-platform TTS solution yet
+
+2. **Vision Processing**
+   - Single monitor support only
+   - Fixed sliding window size (640x480)
+   - No multi-window tracking yet
+   - Limited to 30 FPS capture rate
+
+## 🎯 Vision System Enhancement Roadmap
+
+### Phase 1: Core Improvements (v12.10)
+- [ ] **Multi-Monitor Support**
+  - Detect all connected displays
+  - Allow monitor selection via voice command
+  - Track windows across displays
+  
+- [ ] **Dynamic Window Sizing**
+  - Adaptive sliding window based on content
+  - Zoom in/out on areas of interest
+  - Follow mouse cursor option
+
+- [ ] **Enhanced Object Detection**
+  - UI element recognition (buttons, text fields)
+  - Application identification
+  - Text extraction from screen regions
+
+### Phase 2: Intelligence Layer (v12.11)
+- [ ] **Activity Recognition**
+  - Understand user workflows
+  - Detect repetitive tasks for automation
+  - Context-aware suggestions
+  
+- [ ] **Visual Memory System**
+  - Remember screen layouts
+  - Track changes over time
+  - Visual diff detection
+
+- [ ] **Smart Focus Management**
+  - Auto-focus on active applications
+  - Ignore static regions
+  - Priority-based monitoring
+
+### Phase 3: Advanced Features (v13.0)
+- [ ] **Cross-Platform TTS**
+  - Implement edge-tts integration
+  - Multiple voice options
+  - Emotion-based voice modulation
+  
+- [ ] **Vision-Language Integration**
+  - Natural language screen queries ("What's in my terminal?")
+  - Visual question answering
+  - Screen-based task automation
+
+- [ ] **Performance Optimizations**
+  - GPU-accelerated processing
+  - Reduce memory footprint to 500MB
+  - 60 FPS capture capability
+
+### Phase 4: Autonomous Capabilities (v13.1)
+- [ ] **Proactive Monitoring**
+  - Detect anomalies automatically
+  - Alert on important changes
+  - Learn user preferences
+
+- [ ] **Visual Automation**
+  - Record and replay UI interactions
+  - Create visual macros
+  - Cross-application workflows
+
+## 🎠 Backend Architecture - 6 Critical Components
+
+**The JARVIS backend loads 6 essential components that work together to power the entire AI system:**
+
+### 1️⃣ **CHATBOTS** (Claude Vision AI)
+- **Purpose:** Powers all conversational AI and natural language understanding
+- **Features:** Claude 3.5 Sonnet integration, vision capabilities, screen analysis
+- **Why Critical:** Without this, JARVIS cannot understand or respond to commands
+- **Memory:** ~500MB when active
+
+### 2️⃣ **VISION** (Screen Capture & Analysis) 
+- **Purpose:** Real-time screen monitoring and proactive visual intelligence
+- **Features:** 30 FPS Swift-based capture, purple recording indicator, sliding window analysis
+- **Proactive Intelligence:** Debugging assistant, research helper, workflow optimizer, privacy protection
+- **Why Critical:** Enables "start monitoring my screen" and intelligent proactive assistance
+- **Memory:** ~800MB during video streaming + ~200MB for proactive intelligence
+
+### 3️⃣ **MEMORY** (M1 Mac Optimized Manager)
+- **Purpose:** Prevents crashes and manages resources efficiently
+- **Features:** Automatic cleanup, memory pressure alerts, component prioritization
+- **Why Critical:** Without this, long sessions cause memory leaks and crashes
+- **Memory:** ~50MB overhead
+
+### 4️⃣ **VOICE** (JARVIS Voice Interface)
+- **Purpose:** Voice activation and speech synthesis
+- **Features:** "Hey JARVIS" wake word, multiple TTS voices, real-time processing
+- **Why Critical:** Enables hands-free interaction and voice responses
+- **Memory:** ~350MB (optimized from 1.6GB)
+
+### 5️⃣ **ML_MODELS** (Machine Learning)
+- **Purpose:** Advanced NLP and text analysis
+- **Features:** Sentiment analysis, intent classification, lazy-loaded models
+- **Why Critical:** Powers intelligent text understanding beyond basic commands
+- **Memory:** ~1GB when fully loaded (lazy-loaded on demand)
+
+### 6️⃣ **MONITORING** (System Health)
+- **Purpose:** Tracks performance and system health
+- **Features:** API metrics, resource usage, health checks, status endpoints
+- **Why Critical:** Essential for production stability and debugging
+- **Memory:** ~20MB
+
+### ⚡ Startup Optimization
+- **Parallel Loading:** All 6 components load simultaneously (7-9s total)
+- **Sequential Loading:** ~20s (legacy mode)
+- **Success Indicator:** Backend logs show "Components loaded: 6/6"
+- **Failure Mode:** If <6 components load, some features will be unavailable
+
+### 🛠️ Troubleshooting Components
+```bash
+# Check which components loaded
+curl http://localhost:8000/health
+
+# View component status in logs
+grep "Components loaded" backend/logs/*.log
+
+# Common issues:
+# - ANTHROPIC_API_KEY missing: Chatbot won't load
+# - PyAutoGUI issues: Use PyObjC 10.1 on miniforge
+# - Memory pressure: Increase RAM or reduce component usage
+```
+
+## 🧠 Proactive Vision System Configuration (v13.0.0)
+
+**The Proactive Vision Intelligence System brings JARVIS to life with real-time assistance!**
+
+### ⚙️ Backend Configuration
+
+The backend automatically initializes the proactive vision system with these components:
+
+#### 📋 Key Configuration Properties
+```python
+proactive_config = {
+    'proactive_enabled': True,           # Enable/disable proactive monitoring
+    'confidence_threshold': 0.75,        # Minimum confidence for notifications (0.0-1.0)
+    'voice_enabled': True,               # Enable voice announcements
+    'continuous_enabled': True           # Enable continuous monitoring
+}
+```
+
+#### 🎯 Intelligent Features Automatically Enabled
+- **🐛 Debugging Assistant:** Auto-detects code errors and syntax issues
+- **🔍 Research Helper:** Monitors multi-tab research workflows  
+- **🚀 Workflow Optimizer:** Identifies repetitive patterns and suggests optimizations
+- **🔒 Privacy Protection:** Auto-pauses during sensitive content (passwords, banking)
+- **🗣️ Natural Voice Communication:** Speaks suggestions and warnings naturally
+
+### 🚀 Quick Start Commands
+
+#### Screen Monitoring Commands
+```bash
+# Start monitoring with purple indicator
+"Hey JARVIS, start monitoring my screen"
+"Enable screen monitoring"
+"Start watching my desktop"
+"Turn on monitoring"
+
+# Stop monitoring and remove indicator
+"Hey JARVIS, stop monitoring"
+"Disable screen monitoring"
+"Stop watching"
+
+# Check monitoring status
+"Is monitoring active?"
+"Are you watching my screen?"
+
+# Or use the API:
+curl -X POST http://localhost:8000/voice/jarvis/speak \
+  -H "Content-Type: application/json" \
+  -d '{"text": "start monitoring my screen"}'
+```
+
+#### Check Proactive System Status
+```bash
+# Check if proactive vision is enabled
+curl http://localhost:8000/health
+
+# View proactive configuration in logs
+grep "Proactive Vision Intelligence" backend/logs/*.log
+```
+
+### 🖥️ Backend Startup Commands
+
+#### Standard Startup (Recommended)
+```bash
+cd backend
+python main.py
+```
+
+#### Alternative Startup Methods
+```bash
+# Using the startup script
+python start_backend.py
+
+# Specific port
+python main.py --port 8010
+
+# With environment variables
+ANTHROPIC_API_KEY=your_key python main.py
+```
+
+#### Verify Proactive Vision is Running
+```bash
+# Check all components loaded
+curl http://localhost:8000/health
+
+# Verify proactive vision specifically
+curl http://localhost:8000/ | jq .proactive_vision_enabled
+```
+
+### 🎛️ Environment Variables (Optional)
+
+```bash
+# Proactive system configuration
+export PROACTIVE_CONFIDENCE_THRESHOLD=0.75    # Higher = fewer notifications
+export PROACTIVE_VOICE_ENABLED=true           # Enable voice announcements
+export PROACTIVE_ANALYSIS_INTERVAL=2.0        # Seconds between analyses
+export PROACTIVE_MAX_NOTIFICATIONS=5          # Max notifications per minute
+
+# Privacy settings
+export PROACTIVE_PRIVACY_ENABLED=true         # Auto-pause for sensitive content
+export PROACTIVE_BANKING_DETECTION=true       # Pause for financial sites
+```
+
+### 📊 System Requirements
+- **Memory Usage:** ~200MB additional for proactive intelligence
+- **CPU Impact:** ~1-2% during monitoring
+- **Dependencies:** Claude Vision Analyzer (automatically loaded)
+- **Permissions:** Screen recording permission required (automatically requested)
+
+### 🔧 Troubleshooting Proactive Vision
+
+```bash
+# Check if vision analyzer is loaded
+curl http://localhost:8000/ | grep proactive_vision_enabled
+
+# View proactive system logs
+tail -f backend/logs/jarvis_optimized_*.log | grep -i proactive
+
+# Test proactive monitoring manually
+python -c "
+import asyncio
+from chatbots.claude_vision_chatbot import ClaudeVisionChatbot
+async def test():
+    chatbot = ClaudeVisionChatbot(api_key='your-key')
+    config = chatbot.get_proactive_config()
+    print(f'Proactive enabled: {config[\"proactive_enabled\"]}')
+asyncio.run(test())
+"
+```
+
+### 💡 Example Use Cases
+
+#### 🐛 Debugging Assistant in Action
+```
+You're coding in VS Code...
+JARVIS detects: Syntax error on line 42 (missing closing bracket)
+JARVIS announces: "I notice you have a syntax error on line 42 - looks like you're missing a closing bracket"
+```
+
+#### 🔍 Research Helper Example
+```
+You have 8 tabs open researching "Python async patterns"...
+JARVIS detects: Rapid tab switching and research pattern
+JARVIS announces: "I see you're researching async patterns. Would you like me to summarize the key approaches from these articles?"
+```
+
+#### 🚀 Workflow Optimizer Example
+```
+You copy the same code block 4 times with small changes...
+JARVIS detects: Repetitive copy-paste pattern
+JARVIS announces: "I notice you're copying similar code. Would you like me to help you create a reusable function?"
+```
+
+#### 🔒 Privacy Protection Example
+```
+You open your banking website...
+JARVIS detects: Financial/sensitive content
+JARVIS action: Automatically pauses monitoring (no announcement for privacy)
+JARVIS resumes: When you navigate away from sensitive content
+```
 
 ## 🎯 What's New in v12.8 - Voice Revolution 🎤
 
@@ -153,6 +1180,15 @@ export USE_PICOVOICE=true           # Ultra-fast detection
 export ENABLE_VAD=true              # Voice activity detection
 export ENABLE_STREAMING=true        # Chunk processing
 export JARVIS_USE_COREML=true       # macOS acceleration
+
+# Swift Video Capture Settings (NEW!)
+export VIDEO_CAPTURE_DISPLAY_ID=0   # Main display (default)
+export VIDEO_CAPTURE_FPS=30         # Frames per second
+export VIDEO_CAPTURE_RESOLUTION=1920x1080  # Full HD default
+export VIDEO_STREAM_MEMORY_LIMIT_MB=800    # Memory budget
+export VIDEO_STREAM_SLIDING_WINDOW=true    # Enable sliding window
+export VIDEO_STREAM_WINDOW_SIZE=640x480    # Window size for analysis
+export VIDEO_STREAM_MOTION_DETECTION=true  # Enable motion detection
 ```
 
 ## 🎯 Performance Comparison
@@ -201,11 +1237,30 @@ Audio Input → Chunk (1024 samples) → VAD Filter → Wake Word Check → ML P
 
 ## 🎤 Voice Commands That Now Work First Time
 
+### 🗣️ Vision Commands (NEW in v12.9.3 - Full Voice Response!)
 ```bash
-"Hey JARVIS"                    # Activates immediately
-"Hey JARVIS, what's the weather"  # No need to wait
-"JARVIS, close WhatsApp"        # Works even with background noise
-"Hey JARVIS, what's on my screen" # Captures your intent perfectly
+# Vision Analysis - JARVIS now reads the ENTIRE response out loud!
+"Hey JARVIS, can you see my screen?"     # Full spoken description of everything visible
+"JARVIS, what's on my screen?"           # Complete analysis read aloud
+"Hey JARVIS, describe what you see"      # Detailed voice explanation
+"JARVIS, what am I looking at?"          # Natural conversational response
+
+# Time Commands (NEW - Instant Response!)
+"Hey JARVIS, what time is it?"           # "It's 3:30 PM, sir."
+"JARVIS, what's the date?"               # "It's 3:30 PM on Monday, September 9, sir."
+"Hey JARVIS, is it late?"                # "It's 11:30 PM, sir. Perhaps it's time to rest soon."
+"JARVIS, what day is it?"                # Full date response
+"Hey JARVIS, do you have the time?"      # Casual time query
+
+# Screen Monitoring
+"Hey JARVIS, start monitoring my screen" # Activates 30 FPS video capture
+"JARVIS, stop monitoring"                # Deactivates video streaming
+"Hey JARVIS, watch my screen"            # Alternative activation command
+
+# General Commands
+"Hey JARVIS"                             # Activates immediately
+"Hey JARVIS, what's the weather"         # No need to wait
+"JARVIS, close WhatsApp"                 # Works even with background noise
 ```
 
 ## 📊 Resource Usage (16GB MacBook Pro)
@@ -228,6 +1283,73 @@ With Picovoice:
 ```
 
 ## 🔍 Troubleshooting
+
+### 🆕 Screen Monitoring Issues (v13.3.0)
+
+#### JARVIS Shows "OFFLINE"?
+1. **Check backend is running**:
+   ```bash
+   ps aux | grep "python.*main.py"
+   # If not running, start it:
+   cd backend && python main.py
+   ```
+
+2. **Check frontend connection**:
+   - Verify `.env` file in frontend directory has correct port
+   - Default: `REACT_APP_API_URL=http://localhost:8000`
+   - Restart frontend after changing: `npm start`
+
+#### Purple Indicator Not Appearing?
+1. **Grant screen recording permission**:
+   - System Preferences → Security & Privacy → Privacy → Screen Recording
+   - Enable Terminal (or your IDE)
+   - Restart Terminal/IDE after granting
+
+2. **Check monitoring status**:
+   ```bash
+   # Ask JARVIS
+   "Is monitoring active?"
+   ```
+
+#### Vision Status Shows "Disconnected"?
+1. **Monitoring not active** - Say "start monitoring my screen"
+2. **WebSocket issue** - Refresh the browser page
+3. **Permission denied** - Grant screen recording permission
+
+#### JARVIS Gives Long Explanations Instead of Starting?
+- **Fixed in v13.3.0** - Update to latest code
+- Responses now limited to 1-2 sentences
+- Example: "Screen monitoring is now active, Sir."
+
+### 🆕 Vision Response Not Speaking? (v12.9.3)
+
+If JARVIS shows "Check the text display for full details" instead of speaking the analysis:
+
+1. **Clear browser cache:**
+   ```bash
+   # Hard refresh in Chrome: Cmd+Shift+R (Mac) or Ctrl+Shift+R (PC)
+   # Or clear all site data: Chrome DevTools → Application → Storage → Clear site data
+   ```
+
+2. **Rebuild frontend:**
+   ```bash
+   cd frontend
+   npm run build
+   ```
+
+3. **Verify backend is updated:**
+   ```bash
+   # Check logs for version
+   grep "12.9.3" backend/logs/*.log
+   
+   # Restart backend
+   cd backend
+   python main.py --port 8010
+   ```
+
+4. **Check browser console:**
+   - Should show: `Playing audio response: Yes, I can see your screen. Sir, I can see...`
+   - NOT: `Playing audio response: Yes, I can see your screen. Check the text display...`
 
 ### Still having to repeat "Hey JARVIS"?
 
@@ -325,6 +1447,17 @@ python start_system.py
 - **Memory:** 2GB baseline (was 8GB+) - 75% reduction
 - **Startup:** <3 seconds consistently - No model conflicts
 
+### 👁️ Enhanced Vision System v12.9 - 6 Integrated Components!
+- **🚀 6 Components Integrated:** Complete vision overhaul for 16GB RAM macOS systems
+- **⚡ Swift Vision:** Metal-accelerated processing with circuit breaker protection
+- **🪟 Window Analysis:** Memory-aware window content analysis with LRU cache
+- **🔗 Relationship Detection:** Configurable window relationships and grouping
+- **📊 Continuous Monitoring:** Dynamic interval adjustment (1-10s based on memory)
+- **💾 Memory-Efficient:** 5 compression strategies (text/ui/activity/detailed/quick)
+- **🎯 Simplified Mode:** 9+ configurable query templates for common tasks
+- **🔧 70+ Environment Variables:** Everything configurable, NO hardcoded values!
+- **📈 Total Memory Budget:** ~1GB maximum across all components
+
 ### 🌤️ Enhanced Weather Vision (Toronto Fixed!)
 - **Dynamic Focus:** Better window management ensures Weather app visibility
 - **All Cities Supported:** Reads entire Weather app, not just main city
@@ -349,6 +1482,511 @@ python start_system.py
 # "What's the weather in Toronto?" → Accurate city-specific weather
 # "What's on my screen?" → Real contextual understanding
 # "Close all distracting apps" → Smart app management
+
+# NEW: Screen monitoring commands
+# "Start monitoring my screen" → Begins 30 FPS video capture (purple indicator)
+# "Stop monitoring" → Ends video streaming
+# "Enable continuous screening monitoring" → Alternative activation
+
+# Install macOS video frameworks (for purple indicator)
+pip install pyobjc-framework-AVFoundation pyobjc-framework-CoreMedia pyobjc-framework-Quartz
+```
+
+## 👁️ Enhanced Vision System v12.9 - Complete Documentation
+
+### Overview
+The Enhanced Vision System now includes **7 fully integrated components**, all optimized for 16GB RAM macOS systems with **zero hardcoded values**. Every aspect is configurable through 70+ environment variables.
+
+### 🚀 7 Integrated Vision Components
+
+#### 1. **Swift Vision Integration** (`swift_vision_integration.py`)
+- **Purpose**: Metal-accelerated vision processing for macOS
+- **Key Features**:
+  - 10x faster processing with Metal GPU acceleration
+  - Circuit breaker pattern (3 failures → temporary disable)
+  - Dynamic quality adjustment based on memory pressure
+  - Automatic fallback to Python when Metal unavailable
+- **Memory**: 300MB max
+- **Config Variables**:
+  ```bash
+  SWIFT_VISION_MAX_MEMORY_MB=300
+  SWIFT_VISION_METAL_LIMIT_MB=1000
+  SWIFT_VISION_CB_THRESHOLD=3
+  SWIFT_VISION_JPEG_QUALITY=80
+  ```
+
+#### 2. **Window Analysis** (`window_analysis.py`)
+- **Purpose**: Analyze window content and workspace layout
+- **Key Features**:
+  - Memory-aware processing with LRU cache
+  - App categorization (productivity/communication/development)
+  - Workspace layout detection
+  - Skip minimized windows option
+- **Memory**: 100MB max
+- **Config Variables**:
+  ```bash
+  WINDOW_ANALYZER_MAX_MEMORY_MB=100
+  WINDOW_MAX_CACHED=50
+  WINDOW_CACHE_TTL=300
+  WINDOW_SKIP_MINIMIZED=true
+  ```
+
+#### 3. **Window Relationship Detector** (`window_relationship_detector.py`)
+- **Purpose**: Detect relationships between windows
+- **Key Features**:
+  - Confidence-based window grouping
+  - Pattern learning and persistence
+  - Project/task window associations
+  - Title similarity analysis
+- **Memory**: 50MB max
+- **Config Variables**:
+  ```bash
+  WINDOW_REL_MAX_MEMORY_MB=50
+  WINDOW_REL_MIN_CONFIDENCE=0.5
+  WINDOW_REL_GROUP_MIN_CONF=0.6
+  WINDOW_REL_TITLE_SIM=0.6
+  ```
+
+#### 4. **Continuous Screen Analyzer** (`continuous_screen_analyzer.py`)
+- **Purpose**: Real-time screen monitoring with memory management
+- **Key Features**:
+  - Dynamic interval adjustment (1-10s based on memory)
+  - Circular buffer for captures
+  - Emergency cleanup when memory < 1GB
+  - Weak references for callbacks
+- **Memory**: 200MB max
+- **Config Variables**:
+  ```bash
+  VISION_MONITOR_INTERVAL=3.0
+  VISION_MAX_CAPTURES=10
+  VISION_MEMORY_LIMIT_MB=200
+  VISION_DYNAMIC_INTERVAL=true
+  VISION_MIN_INTERVAL=1.0
+  VISION_MAX_INTERVAL=10.0
+  ```
+
+#### 5. **Memory-Efficient Analyzer** (`memory_efficient_vision_analyzer.py`)
+- **Purpose**: Smart compression and caching strategies
+- **Key Features**:
+  - 5 compression strategies (text/ui/activity/detailed/quick)
+  - Persistent cache with TTL
+  - Batch region processing
+  - Change detection optimization
+- **Memory**: 200MB max
+- **Compression Strategies**:
+  - **text**: PNG, 95% quality, 2048px max (for reading text)
+  - **ui**: JPEG, 85% quality, 1920px max (for UI analysis)
+  - **activity**: JPEG, 80% quality, 1536px max (for monitoring)
+  - **detailed**: PNG, 100% quality, 4096px max (for precision)
+  - **quick**: JPEG, 60% quality, 800px max (for speed)
+
+#### 6. **Simplified Vision System** (`vision_system_claude_only.py`)
+- **Purpose**: Direct Claude API access with query templates
+- **Key Features**:
+  - 9+ configurable query templates
+  - No local ML models (faster startup)
+  - Custom template support
+  - Memory statistics tracking
+- **Memory**: Minimal usage
+- **Query Templates**:
+  ```bash
+  VISION_QUERY_GENERAL        # General analysis
+  VISION_QUERY_ELEMENT        # Find UI elements
+  VISION_QUERY_TEXT_AREA      # Read specific text
+  VISION_QUERY_NOTIFICATIONS  # Check notifications
+  VISION_QUERY_WEATHER        # Weather analysis
+  ```
+
+#### 7. **Video Streaming** (`video_stream_capture.py`)
+- **Purpose**: Real-time 30 FPS screen capture with native macOS integration
+- **Key Features**:
+  - Native AVFoundation capture (purple indicator)
+  - Motion detection triggers analysis
+  - Sliding window for large screens
+  - Adaptive quality based on memory
+  - Voice-activated monitoring
+- **Memory**: 800MB max
+- **Config Variables**:
+  ```bash
+  VIDEO_STREAM_FPS=30
+  VIDEO_STREAM_BUFFER_SIZE=10
+  VIDEO_STREAM_MEMORY_LIMIT_MB=800
+  VIDEO_STREAM_MOTION_DETECTION=true
+  VIDEO_STREAM_MOTION_THRESHOLD=0.1
+  ```
+
+### 📊 Memory Management
+
+**Total Memory Budget**: ~1.8GB maximum across all components (including video streaming)
+
+| Component | Memory Limit | Typical Usage |
+|-----------|--------------|---------------|
+| Video Streaming (NEW) | 800MB | 400-700MB |
+| Swift Vision | 300MB | 150-250MB |
+| Memory-Efficient | 200MB | 100-180MB |
+| Continuous Analyzer | 200MB | 50-150MB |
+| Window Analyzer | 100MB | 30-80MB |
+| Relationship Detector | 50MB | 10-40MB |
+| Simplified Vision | Minimal | <10MB |
+| Main Analyzer Cache | 100MB | 20-90MB |
+
+### 🎥 Video Streaming (NEW)
+
+**Real-time video capture with Claude Vision integration!** The video streaming component enables continuous 30 FPS screen capture with intelligent memory management for responsive AI understanding.
+
+#### Key Features:
+- **30 FPS real-time capture** with motion detection
+- **macOS screen recording indicator** (purple dot) for privacy awareness
+- **Sliding window processing** for large screens with limited memory
+- **Adaptive quality control** based on available system resources
+- **Motion-triggered analysis** for efficient processing
+
+## 🔄 Latest Vision System Updates (v12.9.2)
+
+### 🎯 Natural Conversational Responses
+JARVIS now responds naturally when asked about screen visibility:
+
+**Before:**
+```
+User: "Can you see my screen?"
+JARVIS: "Region (1120, 840): This appears to be code... Region (1400, 840): Dark background..."
+```
+
+**After:**
+```
+User: "Can you see my screen?"
+JARVIS: "Yes sir, I can see you're working in VS Code on the JARVIS AI system code. You appear to be improving the vision command handler..."
+```
+
+### 🛠️ Technical Improvements
+
+1. **Smart Query Detection**: Recognizes conversational queries like:
+   - "Can you see my screen?"
+   - "What's on my screen?"
+   - "What am I looking at?"
+   - "Describe what you see"
+   - "Tell me what's happening"
+
+2. **Full-Screen Analysis**: Forces single-view analysis for natural responses instead of region-based breakdowns
+
+3. **Audio Optimization**: 
+   - Long vision responses are summarized for audio playback
+   - Full details displayed in text while JARVIS speaks a brief summary
+   - Prevents hanging on very long responses
+
+4. **JARVIS Personality**: Vision responses now use JARVIS's characteristic style and personality
+
+5. **Claude Vision API Integration**: All screen analysis uses Anthropic's Claude 3.5 Sonnet vision model for accurate understanding
+
+### 🚀 Cool Vision Feature Ideas for the Future
+
+#### 1. **Proactive Screen Monitoring** 🔍
+- JARVIS could notice when you're stuck on a coding problem and offer help
+- Detect error messages and suggest solutions automatically
+- Alert you when important notifications appear while you're focused elsewhere
+
+#### 2. **Visual Memory System** 🧠
+- "JARVIS, what was I working on yesterday at 3pm?"
+- "Show me all the error messages I've encountered today"
+- Build a searchable visual history of your work
+
+#### 3. **Multi-Monitor Support** 🖥️
+- Track activities across multiple screens
+- "Move this window to my other monitor"
+- "What's on my second screen?"
+
+#### 4. **Smart Screen Actions** ⚡
+- "JARVIS, click on the submit button"
+- "Scroll down to the error section"
+- "Fill out this form with my standard info"
+- Integration with PyAutoGUI for screen automation
+
+#### 5. **Visual Context Understanding** 🎨
+- Recognize specific applications and provide context-aware help
+- "JARVIS, explain this error in Xcode"
+- "Help me understand this graph"
+- "What's wrong with this UI layout?"
+
+#### 6. **Privacy-Aware Features** 🔒
+- Automatic sensitive content detection and blurring
+- "JARVIS, blur any passwords on screen"
+- Configurable privacy zones
+- Guest mode that limits what JARVIS can see
+
+#### 7. **Visual Diff Detection** 📊
+- "What changed on this page since I last looked?"
+- Compare screenshots over time
+- Track UI changes in applications
+
+#### 8. **Screen Recording with AI Narration** 🎬
+- "JARVIS, record a tutorial of what I'm doing"
+- Automatic step-by-step documentation generation
+- AI-powered video summaries
+
+#### 9. **Visual Accessibility Features** ♿
+- Screen reading for visually impaired users
+- Color blindness adjustments
+- Magnification of specific areas on command
+
+#### 10. **Gaming/Entertainment Mode** 🎮
+- "JARVIS, what's my K/D ratio?"
+- Real-time game stats overlay
+- Strategy suggestions based on screen content
+
+### 🗺️ v12.9.2 Integration Architecture Roadmap
+
+#### ✅ Completed (v12.9.2)
+- **Integration Orchestrator**: 9-stage pipeline with dynamic memory management
+- **Bloom Filter Network**: 3-level hierarchical duplicate detection
+- **Cross-Language Integration**: Python orchestration + Rust performance + Swift monitoring
+- **Dynamic Operating Modes**: Automatic adaptation based on memory pressure
+- **Component Priority System**: 1-10 scale for intelligent resource allocation
+
+#### 🚧 In Progress
+- **GPU Acceleration**: CUDA/Metal integration for neural inference
+- **Distributed Processing**: Multi-machine coordination for large-scale deployments
+- **Advanced Predictions**: Deep learning models for better state predictions
+
+#### 📅 Future Enhancements
+- **Edge Computing Support**: Run lightweight models on edge devices
+- **Cloud Integration**: Hybrid local/cloud processing
+- **Behavioral Learning**: Learn user patterns for better predictions
+- **Multi-User Support**: Separate contexts for different users
+- **Plugin Architecture**: Third-party component integration
+
+#### Installation for Native macOS Capture:
+
+To enable native macOS screen recording with the purple indicator, install the required frameworks:
+
+```bash
+# Install macOS frameworks for native capture
+pip3 install pyobjc-framework-AVFoundation \
+             pyobjc-framework-CoreMedia \
+             pyobjc-framework-libdispatch \
+             pyobjc-framework-Cocoa
+
+# Or use the installation script
+cd backend/vision
+bash install_macos_video_frameworks.sh
+```
+
+#### Testing Video Streaming:
+
+```bash
+# Basic video streaming test
+cd backend/vision
+python test_video_streaming.py
+
+# Test purple indicator (30-second demo)
+python test_purple_indicator.py
+
+# Simple integration test
+python test_video_simple.py
+
+# Test with motion detection
+python test_video_streaming.py --motion
+```
+
+#### Native vs Fallback Modes:
+
+| Mode | Indicator | Requirements | Features |
+|------|-----------|--------------|----------|
+| **Native macOS** | 🟣 Purple dot | pyobjc frameworks | AVFoundation capture, hardware acceleration |
+| **OpenCV Fallback** | None | opencv-python | Cross-platform, CPU-based |
+| **Screenshot Loop** | None | PIL only | Universal fallback, lower FPS |
+
+#### Video Streaming Configuration:
+```bash
+# Enable video streaming
+export VISION_VIDEO_STREAMING=true
+export VISION_PREFER_VIDEO=true
+
+# Video quality settings
+export VIDEO_STREAM_FPS=30
+export VIDEO_STREAM_RESOLUTION=1920x1080
+
+# Memory management for video
+export VIDEO_STREAM_MEMORY_LIMIT_MB=800
+export VIDEO_STREAM_SLIDING_WINDOW=true
+export VIDEO_STREAM_ADAPTIVE=true
+```
+
+#### Usage Examples:
+```python
+# Start video streaming (shows macOS indicator)
+await analyzer.start_video_streaming()
+
+# Real-time analysis
+result = await analyzer.analyze_video_stream(
+    "What is the user doing?",
+    duration_seconds=10.0
+)
+
+# Stop streaming (indicator disappears)
+await analyzer.stop_video_streaming()
+```
+
+#### Troubleshooting Video Streaming:
+
+**🆕 Swift Video Capture Issues (v12.9):**
+
+**"Failed to start video streaming" error?**
+1. **Test Swift permissions:**
+   ```bash
+   python backend/test_swift_permissions.py
+   ```
+   This will check and request screen recording permissions properly.
+
+2. **Grant permissions in System Preferences:**
+   - Go to System Preferences → Security & Privacy → Privacy → Screen Recording
+   - Add Terminal (or your IDE) and check the box
+   - Restart your terminal after granting permission
+
+3. **Verify Swift is available:**
+   ```bash
+   swift --version  # Should show Swift version
+   ```
+
+4. **Check if Swift module compiled:**
+   ```bash
+   ls backend/vision/SwiftVideoCapture  # Should exist after first run
+   ```
+
+**Purple indicator not showing?**
+1. Look for "swift_native" or "macos_native" in response
+2. Grant screen recording permission as above
+3. Check logs for "Swift video capture started successfully"
+
+**ImportError for macOS frameworks?**
+```bash
+# Install all required frameworks
+pip3 install pyobjc  # Installs all pyobjc frameworks
+
+# Or install specific ones
+pip3 install pyobjc-framework-AVFoundation pyobjc-framework-CoreMedia
+```
+
+**Fallback mode being used?**
+- Check logs for "Swift capture failed, falling back"
+- Ensure screen recording permissions are granted
+- Try the test script: `python backend/test_swift_permissions.py`
+
+For comprehensive video streaming documentation, see: `backend/vision/VIDEO_STREAMING_GUIDE.md`
+
+### 🔧 Configuration Examples
+
+#### Low Memory System (8GB RAM)
+```bash
+export VISION_MEMORY_LIMIT_MB=100
+export SWIFT_VISION_MAX_MEMORY_MB=150
+export WINDOW_ANALYZER_MAX_MEMORY_MB=50
+export VISION_JPEG_QUALITY=70
+export VISION_MAX_IMAGE_DIM=1024
+```
+
+#### High Performance System (32GB RAM)
+```bash
+export VISION_MEMORY_LIMIT_MB=500
+export SWIFT_VISION_MAX_MEMORY_MB=500
+export VISION_JPEG_QUALITY=95
+export VISION_MAX_IMAGE_DIM=4096
+export VISION_MAX_CONCURRENT=5
+```
+
+#### Minimal Mode (API Only)
+```bash
+export VISION_SWIFT_ENABLED=false
+export VISION_CONTINUOUS_ENABLED=false
+export VISION_WINDOW_ANALYSIS_ENABLED=false
+export VISION_SIMPLIFIED_ENABLED=true
+```
+
+### 🚀 Usage Examples
+
+```python
+from backend.vision.claude_vision_analyzer_main import ClaudeVisionAnalyzer
+
+# Initialize with API key
+analyzer = ClaudeVisionAnalyzer(api_key)
+
+# Smart analysis (auto-selects best method)
+result = await analyzer.smart_analyze(screenshot, "Find the save button")
+
+# Use specific compression strategy
+result = await analyzer.analyze_with_compression_strategy(
+    screenshot, "Read all text", strategy="text"
+)
+
+# Batch analyze regions
+regions = [{"x": 0, "y": 0, "width": 200, "height": 150}]
+results = await analyzer.batch_analyze_regions(screenshot, regions)
+
+# Check for notifications
+notifications = await analyzer.check_for_notifications()
+
+# Get memory statistics
+stats = analyzer.get_all_memory_stats()
+print(f"Total memory: {stats['system']['process_mb']}MB")
+
+# Video streaming (NEW)
+# Start real-time video capture
+await analyzer.start_video_streaming()  # Shows macOS purple indicator
+
+# Analyze video stream
+result = await analyzer.analyze_video_stream(
+    "What is happening on screen?", 
+    duration_seconds=10.0
+)
+
+# Stop video streaming
+await analyzer.stop_video_streaming()  # Purple indicator disappears
+```
+
+### 🔄 Dynamic Memory Management
+
+The system automatically adjusts based on memory pressure:
+
+1. **Normal Operation** (>2GB free):
+   - All components active
+   - High quality compression
+   - Fast update intervals
+
+2. **Memory Pressure** (1-2GB free):
+   - Quality reduced to 80%
+   - Update intervals increased
+   - LRU cache eviction activated
+
+3. **Low Memory** (<1GB free):
+   - Quality reduced to 60%
+   - Maximum intervals (10s)
+   - Emergency cache cleanup
+   - Non-critical components disabled
+
+4. **Critical Memory** (<500MB free):
+   - All caches cleared
+   - Minimal quality settings
+   - Only essential components active
+
+### 🎯 Performance Optimizations
+
+- **Lazy Loading**: Components load only when first used
+- **Parallel Processing**: Multiple operations run concurrently
+- **Smart Caching**: Frequently used results cached with TTL
+- **Change Detection**: Only process when screen changes
+- **Batch Operations**: Group similar requests together
+- **Circuit Breaking**: Failing components temporarily disabled
+
+### 📈 Monitoring & Diagnostics
+
+```bash
+# Test all integrated components
+python backend/vision/test_all_integrated_components.py
+
+# View integration guide
+cat backend/vision/COMPLETE_INTEGRATION_GUIDE.md
+
+# Check component health
+curl http://localhost:8010/vision/status
 ```
 
 ## Table of Contents
@@ -1002,7 +2640,11 @@ echo "ANTHROPIC_API_KEY=your-api-key-here" > backend/.env
 ```
 
 ### 3. Build Rust Core (Highly Recommended for 5x-100x Performance)
+
+**🔧 NEW: Automatic Self-Healing!** If Rust components fail or aren't built, JARVIS will automatically attempt to fix them.
+
 ```bash
+# Option A: Manual Build (Optional - Self-healing will do this automatically)
 # Install Rust if not already installed
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source $HOME/.cargo/env
@@ -1021,6 +2663,17 @@ python -c "import jarvis_rust_core; print(f'Rust core v{jarvis_rust_core.__versi
 cd ../../..
 ```
 
+```bash
+# Option B: Let Self-Healing Handle It (Recommended)
+# Just start JARVIS - the self-healing system will:
+# ✅ Detect if Rust isn't built
+# ✅ Automatically install dependencies
+# ✅ Build Rust components
+# ✅ Retry with exponential backoff if needed
+# ✅ Switch to Rust when ready
+python start_system.py
+```
+
 #### Rust Core Features:
 - **Zero-Copy Operations**: Direct memory sharing between Python and Rust
 - **SIMD Acceleration**: Hardware-optimized operations (ARM NEON on M1/M2)
@@ -1028,6 +2681,15 @@ cd ../../..
 - **Work-Stealing Scheduler**: Efficient CPU utilization
 - **Quantized ML Inference**: INT4/INT8/FP16 support
 - **119x Speedup**: For image processing operations
+
+#### 🆕 Self-Healing System Features:
+- **Automatic Diagnosis**: Detects why Rust components aren't working
+- **Smart Recovery**: Applies appropriate fixes (build, rebuild, install deps)
+- **Dependency Resolution**: Automatically installs missing crates
+- **Build Retry**: Exponential backoff for transient failures
+- **Dynamic Switching**: Seamlessly switches between Rust/Python
+- **Background Monitoring**: Continuously ensures Rust stays available
+- **API Endpoints**: Manual control via `/self-healing/*` endpoints
 
 ### 4. Start the System
 ```bash
@@ -1194,6 +2856,21 @@ python start_system.py
 
 ### 🌟 v12.4 - New Working Endpoints
 
+**🦀 Rust Acceleration API (NEW!):**
+- **Status**: `GET /rust/status` - Check Rust components status
+- **Build**: `POST /rust/build` - Build/rebuild Rust components
+- **Benchmarks**: `GET /rust/benchmarks` - Run performance tests
+- **Memory**: `GET /rust/memory` - Memory usage statistics
+- **Optimize**: `POST /rust/optimize` - Optimize for current system
+
+**🔧 Self-Healing API (NEW!):**
+- **Status**: `GET /self-healing/status` - Self-healing system status & success rate
+- **Diagnose**: `POST /self-healing/diagnose` - Manual diagnosis of Rust issues
+- **Fix**: `POST /self-healing/fix` - Attempt to fix Rust components
+- **Force Check**: `POST /self-healing/force-check` - Force component availability check
+- **Component Status**: `GET /self-healing/component-status` - View all components
+- **Clean Build**: `POST /self-healing/clean-build` - Clean and rebuild Rust
+
 **🔊 ML Audio API - All 8 Endpoints Working:**
 - **Config**: `GET/POST /audio/ml/config` - Audio configuration management
 - **Predict**: `POST /audio/ml/predict` - Machine learning audio predictions  
@@ -1329,6 +3006,47 @@ await vision_system.provide_feedback(
 ```
 
 ## 🏗️ Architecture Overview
+
+### Screen Monitoring System Architecture (v13.3.0)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│              User: "Start monitoring my screen"          │
+└────────────────────┬────────────────────────────────────┘
+                     ▼
+         ┌──────────────────────────┐
+         │   Command Classifier      │
+         │  (monitoring_command_     │
+         │   classifier.py)          │
+         └───────────┬───────────────┘
+                     ▼
+         ┌──────────────────────────┐
+         │    State Manager          │
+         │  (monitoring_state_       │
+         │   manager.py)             │
+         │  States: INACTIVE →       │
+         │  ACTIVATING → ACTIVE      │
+         └───────────┬───────────────┘
+                     ▼
+    ┌────────────────┴────────────────┐
+    │                                  │
+    ▼                                  ▼
+┌──────────────────┐        ┌──────────────────┐
+│  macOS Indicator │        │ Vision Status    │
+│   Controller     │        │    Manager       │
+│ (Shows purple    │        │ (Updates UI to   │
+│  indicator)      │        │  "connected")    │
+└──────────────────┘        └──────────────────┘
+    │                                  │
+    └──────────────┬───────────────────┘
+                   ▼
+         ┌──────────────────────────┐
+         │   WebSocket Broadcast     │
+         │  (Real-time UI updates)   │
+         └──────────────────────────┘
+```
+
+### Original System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -1521,8 +3239,9 @@ The Vision System v2.0 seamlessly integrates with JARVIS Voice for natural inter
 - Python 3.8+
 - Node.js 16+ and npm (required for TypeScript WebSocket Router)
 - macOS (for full vision capabilities)
-- 8GB+ RAM recommended
+- 8GB+ RAM recommended (16GB+ for Rust acceleration)
 - NVIDIA GPU (optional, for faster inference)
+- Rust/Cargo (optional, for 5-10x performance boost)
 
 ### Detailed Installation
 
@@ -1561,23 +3280,41 @@ npm run build
 cd ../..
 ```
 
-#### 4. Build Rust Components (Recommended for 10-100x Performance)
+#### 4. Build Rust Components (Recommended for 5-10x Performance) 🦀
 ```bash
+# Option 1: Automatic setup (EASIEST - Recommended!)
+python backend/manage_rust.py setup
+# This automatically builds, updates Python modules, and tests everything
+
+# Option 2: Step-by-step control
+python backend/manage_rust.py build      # Build Rust library
+python backend/manage_rust.py update     # Update Python modules
+python backend/manage_rust.py test       # Verify integration
+python backend/manage_rust.py benchmark  # See performance gains
+
+# Option 3: Manual build (Advanced users)
 # Install Rust if not already installed
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source $HOME/.cargo/env
 
-# Install maturin for Python bindings
+# Install maturin and build
 pip install maturin
-
-# Build Rust core
-cd vision/jarvis-rust-core
+cd backend/vision/jarvis-rust-core
 maturin develop --release
+cd ../../..
 
-# Verify installation
-cd ../..
-python -c "import jarvis_rust_core; print(f'Rust core v{jarvis_rust_core.__version__} installed')"
+# Check status anytime
+python backend/manage_rust.py status
 ```
+
+**🚀 Rust Acceleration Benefits:**
+- ⚡ **Bloom Filters**: 10x faster duplicate detection (<0.5ms)
+- 🎬 **Frame Processing**: 5x faster analysis (<20ms per frame)
+- 🎨 **Metal GPU**: Hardware acceleration on macOS
+- 💾 **Zero-Copy**: 25% less memory usage
+- 🧠 **SIMD Optimized**: Native performance on Apple Silicon M1/M2
+
+**Note**: Rust components are optional but highly recommended for real-time monitoring!
 
 #### 5. Download ML Models (Automatic on First Run)
 ```bash
@@ -3594,29 +5331,136 @@ curl http://localhost:8010/vision/status
 - Update to latest code with vision fixes
 - Check logs for specific error messages
 
-#### **2. Weather Commands (New in v12.6)**
+#### **2. Weather Commands (Enhanced in v12.9.8 - Hybrid System)**
 
-**How it Works:**
-- Say "What's the weather today?" or any weather-related query
-- JARVIS automatically opens macOS Weather app
-- Uses Claude Vision to read current conditions from the app
-- Returns natural language description of weather
+**NEW: Hybrid Weather Provider with OpenWeatherMap API**
+- Primary: Uses OpenWeatherMap API for instant, accurate weather data
+- Fallback: Vision-based extraction when API unavailable
+- Automatic location detection using IP geolocation
+- Support for any city worldwide with natural queries
+
+**How to Enable OpenWeatherMap (Recommended):**
+```bash
+# 1. Get free API key from https://openweathermap.org/api
+# 2. Add to backend/.env file:
+OPENWEATHER_API_KEY=your_api_key_here
+
+# 3. Restart JARVIS - it will automatically use the API
+python start_system.py
+```
+
+**Supported Weather Queries:**
+```bash
+# Basic weather queries (uses your current location)
+"What's the weather for today?"
+"What's the temperature?"
+"Is it going to rain?"
+"What's the forecast?"
+
+# City-specific queries (works with API)
+"What's the weather in New York?"
+"Tell me the weather in Toronto"
+"How's the weather in London?"
+"What's the temperature in Tokyo?"
+
+# Natural variations
+"Is it cold outside?"
+"Do I need an umbrella?"
+"What's it like out there?"
+```
+
+**Weather Data Sources (Priority Order):**
+1. **OpenWeatherMap API** - Instant, accurate, any location
+2. **Vision Extraction** - Reads macOS Weather app with Claude
+3. **Core Location** - Uses precise macOS location services
+4. **Swift Weather Tool** - Native macOS weather integration
+5. **Weather Widget** - Extracts from macOS widgets
+
+**Vision Fallback Behavior:**
+- If no API key configured, opens macOS Weather app
+- Uses Claude Vision to read displayed weather
+- Note: Weather app defaults to New York when opened
+- Manual location changes persist for the session
 
 **Test Weather Feature:**
 ```bash
-# Test the weather workflow
-python backend/test_weather_app_vision.py
+# Test hybrid weather system
+python backend/test_hybrid_weather.py
 
-# Or just ask JARVIS
-# "What's the weather?" 
-# "Is it going to rain today?"
-# "What's the temperature?"
+# Test with JARVIS integration
+python backend/test_jarvis_hybrid_weather.py
+
+# Test vision-based fallback
+python backend/test_jarvis_weather_final.py
+
+# Or just ask JARVIS directly
+# "Hey JARVIS, what's the weather today?"
 ```
+
+**Current Behavior & Important Notes:**
+
+1. **Default Location:** The Weather app defaults to New York when opened
+   - JARVIS will read and report whatever location is currently displayed
+   - If Weather app shows New York, JARVIS will say "The Weather app is showing New York..."
+
+2. **Manual Location Selection:** 
+   - You can manually click on your preferred location (e.g., Toronto) in the Weather app
+   - Once manually selected, your location typically remains selected for that session
+   - JARVIS will then read your selected location's weather
+
+3. **Why Automated Selection Doesn't Work:**
+   - macOS has security features that prevent automated tools from changing location selections
+   - This is a privacy protection measure for location-based data
+   - Manual clicks are treated differently than programmatic clicks by the Weather app
 
 **Troubleshooting:**
 - Ensure Weather app is installed (comes with macOS)
-- Grant screen recording permissions to your IDE
-- Check ANTHROPIC_API_KEY is set for vision
+- Grant screen recording permissions to Terminal/IDE (System Preferences → Privacy & Security → Screen Recording)
+- Check ANTHROPIC_API_KEY is set for Claude Vision API
+- Weather app must be visible on screen for vision analysis
+
+**Response Examples:**
+```
+User: "What's the weather for today?"
+JARVIS: "Looking at the weather in New York, it's currently 72°F and clear. Today's high and low are 80°/62°, Sir."
+
+User: (After manually selecting Toronto) "What's the weather?"
+JARVIS: "Looking at the weather in Toronto, it's currently 68°F and clear. Today's high and low are 78°/56°, Sir."
+```
+
+**Known Limitations:**
+- Cannot programmatically change the selected city due to macOS security
+- Response time may vary (15-30 seconds) due to vision processing
+- Requires Weather app to be installed and accessible
+
+**Advanced Troubleshooting:**
+
+1. **If JARVIS says "having trouble reading the Weather app":**
+   - Ensure Weather app is in the foreground
+   - Check that screen recording permissions are granted
+   - Try the test script: `python backend/test_weather_optimized.py`
+
+2. **If weather always shows New York:**
+   - This is expected behavior when Weather app is freshly opened
+   - Manually click on your city once - it should stay selected for that session
+   - JARVIS will read whatever city is currently displayed
+
+3. **To verify the system is working:**
+   ```bash
+   # Run the final weather test
+   python backend/test_jarvis_weather_final.py
+   
+   # This should show:
+   # ✅ JARVIS opens the Weather app
+   # ✅ JARVIS reads the weather data using Claude Vision
+   # ✅ JARVIS communicates the weather back to you
+   ```
+
+4. **For developers - understanding the flow:**
+   - Weather command detected → Opens Weather app → Waits for app to load
+   - Attempts Toronto selection (may not work due to macOS security)
+   - Captures screen → Sends to Claude Vision API → Parses response
+   - Formats and speaks the weather information
 
 #### **3. MLAudioHandler Errors (Fixed in v12.6)**
 
@@ -3960,6 +5804,61 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
+
+## 🔧 Troubleshooting Self-Healing System
+
+### **Rust Components Not Building?**
+
+The self-healing system should handle this automatically, but if you need manual control:
+
+**Check Self-Healing Status:**
+```bash
+curl http://localhost:8010/self-healing/status
+```
+
+**Force a Manual Fix:**
+```bash
+curl -X POST http://localhost:8010/self-healing/fix
+```
+
+**Common Self-Healing Scenarios:**
+
+1. **Rust Not Installed**
+   - Self-healer will attempt to install Rust automatically
+   - Manual: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+
+2. **Missing Dependencies**
+   - Self-healer installs missing crates automatically
+   - Maintains known-good versions for compatibility
+
+3. **Build Failures**
+   - Self-healer retries with exponential backoff
+   - Cleans build artifacts if needed
+   - Manual: `cd backend/vision/jarvis-rust-core && cargo clean && cargo build --release`
+
+4. **Permission Errors**
+   - Self-healer attempts to fix file permissions
+   - Manual: `chmod -R 755 backend/vision/jarvis-rust-core`
+
+5. **Out of Memory**
+   - Self-healer frees memory and retries
+   - Close other applications to free RAM
+
+**Disable Self-Healing (Not Recommended):**
+```bash
+# Set environment variable before starting
+export RUST_CHECK_INTERVAL=0
+python start_system.py
+```
+
+**View Self-Healing Logs:**
+```bash
+# Check recent fix attempts
+curl http://localhost:8010/self-healing/status | jq '.recent_fixes'
+
+# Check build logs
+cat backend/vision/jarvis-rust-core/build.log
 ```
 
 ## 🙏 Acknowledgments

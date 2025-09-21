@@ -174,6 +174,65 @@ class MLAudioHandler {
             // No response from backend, fallback to local strategy
             return await this.executeLocalStrategy(error, recognition);
         }
+        
+        // Default return if nothing else worked
+        return { success: false, message: 'No recovery strategy available' };
+    }
+
+    async executeLocalStrategy(error, recognition) {
+        // Local fallback strategies when ML backend is unavailable
+        console.log('Executing local recovery strategy for:', error.error);
+        
+        switch (error.error) {
+            case 'no-speech':
+                // No-speech is normal, just return success
+                return { success: true, message: 'No speech detected (normal)' };
+                
+            case 'audio-capture':
+            case 'not-allowed':
+                // Try to request permission
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    stream.getTracks().forEach(track => track.stop());
+                    return { success: true, message: 'Permission granted', newContext: true };
+                } catch (e) {
+                    return { success: false, message: 'Permission denied' };
+                }
+                
+            case 'network':
+                // Network error - implement retry logic
+                console.log('Handling network error with retry strategy');
+                
+                // Stop current recognition
+                try {
+                    recognition.stop();
+                } catch (e) {
+                    console.log('Recognition already stopped');
+                }
+                
+                // Wait a bit then restart
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                try {
+                    recognition.start();
+                    return { 
+                        success: true, 
+                        message: 'Network error recovered - recognition restarted',
+                        strategy: 'network_retry'
+                    };
+                } catch (e) {
+                    console.error('Failed to restart after network error:', e);
+                    return { 
+                        success: false, 
+                        message: 'Network error - unable to restart recognition',
+                        needsManualRestart: true
+                    };
+                }
+                
+            default:
+                // Unknown error
+                return { success: false, message: `Unknown error: ${error.error}` };
+        }
     }
 
     async sendErrorToBackend(context) {
