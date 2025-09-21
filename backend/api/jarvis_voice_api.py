@@ -930,10 +930,10 @@ class JARVISVoiceAPI:
                             })
                             continue
                     
-                    # Use pure unified command processor
+                    # Use regular unified command processor for proper routing
                     try:
-                        from .unified_command_processor_pure import get_pure_unified_processor
-                        processor = get_pure_unified_processor(self.api_key)
+                        from .unified_command_processor import get_unified_processor
+                        processor = get_unified_processor(self.api_key)
                         
                         await websocket.send_json({
                             "type": "debug_log",
