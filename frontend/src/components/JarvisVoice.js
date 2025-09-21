@@ -772,6 +772,11 @@ const JarvisVoice = () => {
 
   const initializeWakeWordService = async () => {
     if (!wakeWordServiceRef.current) {
+      // Ensure speech recognition is initialized first
+      if (!recognitionRef.current) {
+        initializeSpeechRecognition();
+      }
+      
       wakeWordServiceRef.current = new WakeWordService();
 
       // Set up callbacks
@@ -810,9 +815,9 @@ const JarvisVoice = () => {
         console.log('✅ Wake word service initialized');
         
         // Start continuous listening for wake word detection
-        if (!isListening && recognitionRef.current) {
+        if (recognitionRef.current) {
           console.log('🎤 Starting continuous listening for wake word...');
-          startListening();
+          enableContinuousListening();
         }
       } else {
         console.warn('⚠️ Wake word service not available on backend');
@@ -846,6 +851,9 @@ const JarvisVoice = () => {
         const last = event.results.length - 1;
         const transcript = event.results[last][0].transcript.toLowerCase();
         const isFinal = event.results[last].isFinal;
+        
+        // Debug logging
+        console.log(`🎙️ Speech detected: "${transcript}" (final: ${isFinal})`);
 
         // Only process final results to avoid duplicate detections
         if (!isFinal) return;
@@ -1519,6 +1527,9 @@ const JarvisVoice = () => {
   };
 
   const speakResponse = async (text) => {
+    // Set the response in state for display
+    setResponse(text);
+    
     // Try audio endpoint first
     await playAudioResponse(text);
 
@@ -1530,16 +1541,24 @@ const JarvisVoice = () => {
       utterance.pitch = 0.9;
       utterance.volume = 1.0;
 
-      // Optional: Use a specific voice
+      // Use Daniel (British male) voice
       const voices = window.speechSynthesis.getVoices();
-      const englishVoice = voices.find(voice =>
-        voice.lang.startsWith('en') && voice.name.includes('Google') ||
-        voice.lang.startsWith('en') && voice.name.includes('Microsoft') ||
-        voice.lang.startsWith('en-US')
+      const danielVoice = voices.find(voice => 
+        voice.name.includes('Daniel') || 
+        (voice.lang === 'en-GB' && voice.name.includes('Male'))
+      );
+      
+      // Fallback to any British male voice if Daniel not found
+      const britishMaleVoice = danielVoice || voices.find(voice => 
+        voice.lang === 'en-GB' && 
+        (voice.name.toLowerCase().includes('male') || !voice.name.toLowerCase().includes('female'))
       );
 
-      if (englishVoice) {
-        utterance.voice = englishVoice;
+      if (britishMaleVoice) {
+        utterance.voice = britishMaleVoice;
+        console.log('Using voice:', britishMaleVoice.name);
+      } else {
+        console.log('Daniel voice not found, using default');
       }
 
       utterance.onstart = () => setIsJarvisSpeaking(true);
@@ -1616,6 +1635,24 @@ const JarvisVoice = () => {
             >
               🎤 Retry Microphone Access
             </button>
+          )}
+        </div>
+      )}
+
+      {/* Transcript Display */}
+      {(transcript || response) && (
+        <div className="jarvis-transcript">
+          {transcript && (
+            <div className="user-message">
+              <span className="message-label">You:</span>
+              <span className="message-text">{transcript}</span>
+            </div>
+          )}
+          {response && (
+            <div className="jarvis-message">
+              <span className="message-label">JARVIS:</span>
+              <span className="message-text">{response}</span>
+            </div>
           )}
         </div>
       )}
