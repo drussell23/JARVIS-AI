@@ -270,6 +270,29 @@ class UnifiedCommandProcessor:
         command_lower = command_text.lower()
         words = command_lower.split()
         
+        # Check for implicit compound commands (app + action without connector)
+        # Example: "open safari search for cats"
+        if len(words) >= 3:
+            # Look for patterns like "verb app verb"
+            potential_app_indices = []
+            for i, word in enumerate(words):
+                if self.pattern_learner.is_learned_app(word):
+                    potential_app_indices.append(i)
+            
+            # Check if there are verbs before and after an app name
+            for app_idx in potential_app_indices:
+                if app_idx > 0 and app_idx < len(words) - 1:
+                    # Check if word before app is a verb
+                    before_verb = words[app_idx - 1] in self.pattern_learner.app_verbs
+                    # Check if there's a verb or action after the app
+                    after_has_action = any(word in self.pattern_learner.app_verbs | {'search', 'navigate', 'go', 'type'} 
+                                         for word in words[app_idx + 1:])
+                    
+                    if before_verb and after_has_action:
+                        # This is an implicit compound command
+                        logger.info(f"[CLASSIFY] Detected implicit compound: verb-app-action pattern")
+                        return CommandType.COMPOUND, 0.9
+        
         # Dynamic compound detection - learn from connectors
         compound_indicators = {' and ', ' then ', ', and ', ', then ', ' && ', ' ; '}
         for indicator in compound_indicators:
@@ -664,6 +687,7 @@ class UnifiedCommandProcessor:
                 
                 # Check if this is a dependent command that needs context
                 enhanced_command = self._enhance_with_context(part, active_app, previous_result)
+                logger.info(f"[COMPOUND] Enhanced command: '{part}' -> '{enhanced_command}' (active_app: {active_app})")
                 
                 # Process individual part (not as compound to avoid recursion)
                 command_type, _ = await self._classify_command(enhanced_command)
@@ -678,9 +702,11 @@ class UnifiedCommandProcessor:
                 if result.get('success', False):
                     # Track opened apps for subsequent commands
                     if any(word in part.lower() for word in ['open', 'launch', 'start']):
-                        for app in ['safari', 'chrome', 'firefox']:
-                            if app in enhanced_command.lower():
-                                active_app = app
+                        # Find which app was opened dynamically
+                        words = enhanced_command.lower().split()
+                        for word in words:
+                            if self.pattern_learner.is_learned_app(word):
+                                active_app = word
                                 break
                                 
                     responses.append(result.get('response', ''))
@@ -736,6 +762,23 @@ class UnifiedCommandProcessor:
         if any(pattern in command_text.lower() for pattern in multi_op_patterns):
             # This is a single complex command with multiple targets
             return [command_text]
+        
+        # First check for implicit compound (no connector)
+        words = command_text.lower().split()
+        if len(words) >= 3:
+            # Look for app names to find split points
+            for i, word in enumerate(words):
+                if self.pattern_learner.is_learned_app(word) and i > 0 and i < len(words) - 1:
+                    # Check if there's a verb before and action after
+                    if words[i-1] in self.pattern_learner.app_verbs:
+                        # Check if there's an action after the app
+                        remaining_words = words[i+1:]
+                        if any(w in self.pattern_learner.app_verbs | {'search', 'navigate', 'go', 'type'} for w in remaining_words):
+                            # Split at the app name
+                            part1 = ' '.join(words[:i+1])
+                            part2 = ' '.join(words[i+1:])
+                            logger.info(f"[PARSE] Split implicit compound: '{part1}' | '{part2}'")
+                            return [part1, part2]
             
         # Dynamic connector detection
         connectors = [' and ', ' then ', ', and ', ', then ', ' && ', ' ; ', ' plus ', ' also ']
@@ -812,12 +855,21 @@ class UnifiedCommandProcessor:
         # Don't split if it's part of a single concept
         single_concepts = {
             connector + 'press enter', connector + 'enter', connector + 'return',
-            'search for', 'type', 'write', 'and then', 'go to', 'navigate to'
+            'type', 'write', 'and then'
         }
         
+        # Check if the connector is truly part of a single phrase
+        full_text = (before + connector + after).lower()
         for concept in single_concepts:
-            if concept in (before + connector + after).lower():
+            if concept in full_text:
                 return False
+        
+        # Special handling for search/navigation commands
+        # "search for X and Y" should not split, but "open X and search for Y" should
+        if connector == ' and ' and 'search for' in after.lower():
+            # If before has an app operation, this should split
+            if any(verb in before.lower() for verb in ['open', 'launch', 'start', 'close']):
+                return True
         
         # Don't split URLs or domains
         if self._contains_url_pattern(before + connector + after):
@@ -1053,11 +1105,22 @@ class UnifiedCommandProcessor:
                             break
             
             # Find browser if specified
-            for word in words:
-                if self.pattern_learner.is_learned_app(word):
-                    if any(hint in word for hint in ['safari', 'chrome', 'firefox', 'browser']):
-                        target = word
-                        break
+            # Check both original words and full command text (in case of "search in X for Y")
+            if 'in ' in command_text.lower():
+                # Extract browser from "in [browser]" pattern
+                in_match = re.search(r'\bin\s+(\w+)\s+', command_text.lower())
+                if in_match:
+                    potential_browser = in_match.group(1)
+                    if self.pattern_learner.is_learned_app(potential_browser):
+                        target = potential_browser
+            
+            # If not found, check individual words
+            if not target:
+                for word in words:
+                    if self.pattern_learner.is_learned_app(word):
+                        if any(hint in word for hint in ['safari', 'chrome', 'firefox', 'browser']):
+                            target = word
+                            break
         
         # Multi-tab searches
         if 'separate tabs' in command_text.lower() or 'different tabs' in command_text.lower():
@@ -1185,6 +1248,9 @@ class UnifiedCommandProcessor:
                 elif target == 'screenshot':
                     success, message = macos_controller.take_screenshot()
                     return {'success': success, 'response': message}
+                
+                else:
+                    return {'success': False, 'response': f"Unknown system setting: {target}"}
             
             elif command_type == 'web_action':
                 # Handle web navigation and searches
