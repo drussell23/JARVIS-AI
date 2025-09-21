@@ -894,13 +894,13 @@ const JarvisVoice = () => {
             setTranscript('');
 
             // Trigger wake word activation
-            if (wakeWordServiceRef.current && wakeWordServiceRef.current.onWakeWordDetected) {
-              wakeWordServiceRef.current.onWakeWordDetected({
-                wakeWord: detectedWakeWord,
-                confidence: event.results[last][0].confidence || 1.0,
-                response: "Ready for your command, sir"
-              });
-            }
+            console.log('🚀 Triggering wake word handler...', {
+              hasService: !!wakeWordServiceRef.current,
+              hasHandler: !!(wakeWordServiceRef.current && wakeWordServiceRef.current.onWakeWordDetected)
+            });
+            
+            // Directly call handleWakeWordDetected instead of using the ref
+            handleWakeWordDetected();
             return;
           }
         }
@@ -1135,10 +1135,14 @@ const JarvisVoice = () => {
   };
 
   const handleWakeWordDetected = () => {
+    console.log('🎯 handleWakeWordDetected called!');
     setIsWaitingForCommand(true);
     setIsListening(true);
+    
+    // Always speak response immediately
+    speakResponse("Yes, sir?");
 
-    // Send wake word to JARVIS
+    // Send wake word to JARVIS if connected
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'command',
@@ -1148,19 +1152,19 @@ const JarvisVoice = () => {
       // WebSocket not connected, try to establish connection
       console.log('WebSocket not connected, attempting to connect...');
       connectWebSocket();
-      // Use fallback to speak locally
-      setTimeout(() => {
-        speakResponse("Yes, sir?");
-      }, 100);
     }
 
-    // Timeout for command after 10 seconds (longer for conversation)
+    // Timeout for command after 30 seconds (longer for conversation)
     setTimeout(() => {
-      if (isWaitingForCommand && !isJarvisSpeaking) {
-        setIsWaitingForCommand(false);
-        setIsListening(false);
-      }
-    }, 10000);
+      setIsWaitingForCommand((currentWaiting) => {
+        if (currentWaiting) {
+          console.log('⏱️ Command timeout - stopping listening');
+          setIsListening(false);
+          return false;
+        }
+        return currentWaiting;
+      });
+    }, 30000);
   };
 
   const handleVoiceCommand = (command) => {
