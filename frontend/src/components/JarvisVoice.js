@@ -692,6 +692,16 @@ const JarvisVoice = () => {
         break;
       case 'response':
         console.log('WebSocket response received:', data);
+        
+        // Check if this is an error response we should ignore
+        const errorText = (data.text || '').toLowerCase();
+        if (errorText.includes("don't have a handler for query commands")) {
+          console.log('Ignoring query handler error, continuing to listen...');
+          setIsProcessing(false);
+          // Don't reset waiting state - keep listening
+          return;
+        }
+        
         setResponse(data.text || data.message || 'Response received');
         setIsProcessing(false);
 
@@ -699,6 +709,14 @@ const JarvisVoice = () => {
         if (data.text && data.speak !== false) {
           // Always speak the full response, regardless of length or type
           speakResponse(data.text);
+        }
+        
+        // Reset waiting state after successful command
+        if (isWaitingForCommandRef.current && !data.text.toLowerCase().includes('error')) {
+          setTimeout(() => {
+            setIsWaitingForCommand(false);
+            isWaitingForCommandRef.current = false;
+          }, 1000);
         }
 
         // Check for autonomy activation commands in response

@@ -103,7 +103,8 @@ class UnifiedCommandProcessor:
             CommandType.SYSTEM: 'system_control.macos_controller',
             CommandType.WEATHER: 'system_control.weather_system_config',
             CommandType.AUTONOMY: 'api.autonomy_handler',
-            CommandType.VOICE_UNLOCK: 'api.voice_unlock_handler'
+            CommandType.VOICE_UNLOCK: 'api.voice_unlock_handler',
+            CommandType.QUERY: 'api.query_handler'  # Add basic query handler
         }
         
     async def process_command(self, command_text: str, websocket=None) -> Dict[str, Any]:
@@ -217,6 +218,20 @@ class UnifiedCommandProcessor:
         if any(pattern in command_lower for pattern in meta_patterns):
             return CommandType.META, 0.85
             
+        # Wake word/activation commands - should be ignored or treated as META
+        wake_patterns = ['activate', 'wake', 'wake up', 'hello', 'hey', 'hi jarvis', 'hey jarvis']
+        if command_lower.strip() in wake_patterns:
+            return CommandType.META, 0.9  # Treat as meta command to avoid errors
+            
+        # Default to query only for actual questions
+        question_words = ['what', 'who', 'where', 'when', 'why', 'how', 'is', 'are', 'can', 'could', 'would', 'should']
+        if any(command_lower.startswith(word) for word in question_words):
+            return CommandType.QUERY, 0.7
+            
+        # For very short commands that don't match anything, treat as system
+        if len(command_lower.split()) <= 2:
+            return CommandType.SYSTEM, 0.6
+            
         # Default to query
         return CommandType.QUERY, 0.5
         
@@ -272,6 +287,22 @@ class UnifiedCommandProcessor:
                     'command_type': command_type.value,
                     **result
                 }
+            elif command_type == CommandType.META:
+                # Handle meta commands (wake words, cancellations)
+                if command_text.lower().strip() in ['activate', 'wake', 'wake up', 'hello', 'hey']:
+                    # Silent acknowledgment for wake words
+                    return {
+                        'success': True,
+                        'response': '',
+                        'command_type': 'meta',
+                        'silent': True
+                    }
+                else:
+                    return {
+                        'success': True,
+                        'response': 'Understood',
+                        'command_type': 'meta'
+                    }
             else:
                 # Generic handler interface
                 return {
