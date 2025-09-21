@@ -332,6 +332,21 @@ const JarvisVoice = () => {
   const JARVIS_WS_URL = WS_URL;  // Use same base URL as API
 
   useEffect(() => {
+    // Preload voices to ensure Daniel is available
+    if ('speechSynthesis' in window) {
+      // Force load voices
+      window.speechSynthesis.getVoices();
+      
+      // Listen for voices to be loaded
+      window.speechSynthesis.onvoiceschanged = () => {
+        const voices = window.speechSynthesis.getVoices();
+        const danielVoice = voices.find(v => v.name.includes('Daniel'));
+        if (danielVoice) {
+          console.log('✅ Daniel voice preloaded:', danielVoice.name);
+        }
+      };
+    }
+
     // Auto-activate JARVIS on mount for seamless wake word experience
     const autoActivate = async () => {
       await checkJarvisStatus();
@@ -680,10 +695,10 @@ const JarvisVoice = () => {
         setResponse(data.text || data.message || 'Response received');
         setIsProcessing(false);
 
-        // Use audio endpoint directly
-        if (data.text) {
+        // Use speech synthesis with Daniel voice
+        if (data.text && data.speak !== false) {
           // Always speak the full response, regardless of length or type
-          playAudioResponse(data.text);
+          speakResponse(data.text);
         }
 
         // Check for autonomy activation commands in response
@@ -1494,7 +1509,7 @@ const JarvisVoice = () => {
     }
   };
 
-  const playAudioResponse = async (text) => {
+  const playAudioResponse_UNUSED = async (text) => {
     console.log('Playing audio response:', text.substring(0, 100) + '...');
 
     try {
@@ -1579,35 +1594,62 @@ const JarvisVoice = () => {
     // Set the response in state for display
     setResponse(text);
 
-    // Try audio endpoint first
-    await playAudioResponse(text);
+    // Only use browser speech synthesis (skip audio endpoint to avoid duplicate voices)
+    if ('speechSynthesis' in window) {
+      // Cancel any ongoing speech first
+      window.speechSynthesis.cancel();
+      
+      // Function to get Daniel voice
+      const getDanielVoice = () => {
+        const voices = window.speechSynthesis.getVoices();
+        
+        // First try to find Daniel specifically
+        const danielVoice = voices.find(voice => 
+          voice.name.includes('Daniel') && voice.lang.includes('en-GB')
+        );
+        
+        if (danielVoice) return danielVoice;
+        
+        // Then try any British male voice
+        const britishMaleVoice = voices.find(voice =>
+          voice.lang === 'en-GB' &&
+          (voice.name.toLowerCase().includes('male') || 
+           (!voice.name.toLowerCase().includes('female') && 
+            !voice.name.toLowerCase().includes('fiona') &&
+            !voice.name.toLowerCase().includes('moira') &&
+            !voice.name.toLowerCase().includes('tessa')))
+        );
+        
+        return britishMaleVoice;
+      };
 
-    // If browser supports speech synthesis, we could use it as ultimate fallback
-    if (!isJarvisSpeaking && 'speechSynthesis' in window) {
-      console.log('Using browser speech synthesis as fallback');
+      // Wait for voices to load if needed
+      let selectedVoice = getDanielVoice();
+      
+      if (!selectedVoice && window.speechSynthesis.getVoices().length === 0) {
+        // Voices not loaded yet, wait for them
+        await new Promise(resolve => {
+          window.speechSynthesis.onvoiceschanged = () => {
+            selectedVoice = getDanielVoice();
+            resolve();
+          };
+          // Timeout after 500ms to prevent hanging
+          setTimeout(resolve, 500);
+        });
+      }
+
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 1.0;
       utterance.pitch = 0.9;
       utterance.volume = 1.0;
 
-      // Use Daniel (British male) voice
-      const voices = window.speechSynthesis.getVoices();
-      const danielVoice = voices.find(voice =>
-        voice.name.includes('Daniel') ||
-        (voice.lang === 'en-GB' && voice.name.includes('Male'))
-      );
-
-      // Fallback to any British male voice if Daniel not found
-      const britishMaleVoice = danielVoice || voices.find(voice =>
-        voice.lang === 'en-GB' &&
-        (voice.name.toLowerCase().includes('male') || !voice.name.toLowerCase().includes('female'))
-      );
-
-      if (britishMaleVoice) {
-        utterance.voice = britishMaleVoice;
-        console.log('Using voice:', britishMaleVoice.name);
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
+        console.log('Using voice:', selectedVoice.name);
       } else {
         console.log('Daniel voice not found, using default');
+        // Don't speak if we can't find the right voice to avoid female voice
+        return;
       }
 
       utterance.onstart = () => setIsJarvisSpeaking(true);
