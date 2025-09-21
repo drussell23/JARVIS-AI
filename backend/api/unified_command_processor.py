@@ -99,7 +99,7 @@ class UnifiedCommandProcessor:
         # We'll import handlers only when needed to avoid circular imports
         self.handler_modules = {
             CommandType.VISION: 'api.vision_command_handler',
-            CommandType.SYSTEM: 'system_control.system_controller',
+            CommandType.SYSTEM: 'system_control.macos_controller',
             CommandType.WEATHER: 'system_control.weather_system_config',
             CommandType.AUTONOMY: 'api.autonomy_handler'
         }
@@ -139,25 +139,42 @@ class UnifiedCommandProcessor:
         """Classify command using intelligent pattern matching"""
         command_lower = command_text.lower()
         
+        # System commands - check first to avoid confusion with vision
+        system_patterns = [
+            'open', 'close', 'launch', 'quit', 'start', 'restart', 'shutdown',
+            'volume', 'brightness', 'settings', 'wifi', 'wi-fi', 'screenshot',
+            'mute', 'unmute', 'sleep display'
+        ]
+        
+        # App names that might be mentioned
+        common_apps = [
+            'safari', 'chrome', 'firefox', 'spotify', 'music', 'photos', 
+            'mail', 'messages', 'calendar', 'notes', 'finder', 'slack',
+            'zoom', 'whatsapp', 'vscode', 'code', 'terminal'
+        ]
+        
+        # Check if it's a system command with an app name
+        if any(pattern in command_lower for pattern in system_patterns):
+            # Special case: "start monitoring" is vision, not system
+            if 'monitor' in command_lower and any(word in command_lower for word in ['start', 'begin', 'activate']):
+                return CommandType.VISION, 0.95
+            # Otherwise it's a system command
+            return CommandType.SYSTEM, 0.9
+            
+        # Also check if any app name is mentioned with action verbs
+        if any(app in command_lower for app in common_apps):
+            action_verbs = ['open', 'launch', 'start', 'close', 'quit', 'switch to']
+            if any(verb in command_lower for verb in action_verbs):
+                return CommandType.SYSTEM, 0.9
+        
         # Vision commands
         vision_patterns = [
             'see', 'look', 'monitor', 'screen', 'watching', 'vision',
-            'what\'s on', 'what is on', 'show me', 'analyze'
+            'what\'s on', 'what is on', 'show me', 'analyze', 'what do you see',
+            'describe the screen', 'read the screen'
         ]
         if any(pattern in command_lower for pattern in vision_patterns):
-            # Check if it's about starting/stopping monitoring
-            if any(word in command_lower for word in ['start', 'begin', 'activate']):
-                if 'monitor' in command_lower:
-                    return CommandType.VISION, 0.95
             return CommandType.VISION, 0.85
-            
-        # System commands  
-        system_patterns = [
-            'open', 'close', 'launch', 'quit', 'restart', 'shutdown',
-            'volume', 'brightness', 'settings'
-        ]
-        if any(pattern in command_lower for pattern in system_patterns):
-            return CommandType.SYSTEM, 0.85
             
         # Weather commands
         if 'weather' in command_lower:
@@ -194,7 +211,7 @@ class UnifiedCommandProcessor:
                 
         handler = self.handlers.get(command_type)
         
-        if not handler:
+        if not handler and command_type != CommandType.SYSTEM:
             return {
                 'success': False,
                 'response': f"I don't have a handler for {command_type.value} commands yet.",
@@ -226,6 +243,15 @@ class UnifiedCommandProcessor:
                     'command_type': command_type.value,
                     **result
                 }
+            elif command_type == CommandType.SYSTEM:
+                # Handle system commands (app control, system settings, etc.)
+                result = await self._execute_system_command(command_text)
+                return {
+                    'success': result.get('success', False),
+                    'response': result.get('response', ''),
+                    'command_type': command_type.value,
+                    **result
+                }
             else:
                 # Generic handler interface
                 return {
@@ -245,6 +271,10 @@ class UnifiedCommandProcessor:
             
     async def _get_handler(self, command_type: CommandType):
         """Dynamically import and get handler for command type"""
+        # System commands are handled directly in _execute_command
+        if command_type == CommandType.SYSTEM:
+            return True  # Return True to indicate system handler is available
+            
         module_name = self.handler_modules.get(command_type)
         if not module_name:
             return None
@@ -287,6 +317,106 @@ class UnifiedCommandProcessor:
             'command_type': CommandType.COMPOUND.value,
             'sub_results': results
         }
+    
+    async def _execute_system_command(self, command_text: str) -> Dict[str, Any]:
+        """Execute system control commands"""
+        try:
+            from system_control.macos_controller import MacOSController
+            from system_control.dynamic_app_controller import get_dynamic_app_controller
+            
+            macos_controller = MacOSController()
+            dynamic_controller = get_dynamic_app_controller()
+            
+            command_lower = command_text.lower()
+            
+            # Parse app control commands
+            if 'open' in command_lower or 'launch' in command_lower or 'start' in command_lower:
+                # Extract app name after 'open', 'launch', or 'start'
+                app_name = None
+                for keyword in ['open', 'launch', 'start']:
+                    if keyword in command_lower:
+                        parts = command_text.split(keyword, 1)
+                        if len(parts) > 1:
+                            app_name = parts[1].strip()
+                            break
+                
+                if app_name:
+                    # Use dynamic controller for intelligent app discovery
+                    success, message = await dynamic_controller.open_app_intelligently(app_name)
+                    return {'success': success, 'response': message}
+                else:
+                    return {'success': False, 'response': "Please specify which app to open"}
+                    
+            elif 'close' in command_lower or 'quit' in command_lower:
+                # Extract app name after 'close' or 'quit'
+                app_name = None
+                for keyword in ['close', 'quit']:
+                    if keyword in command_lower:
+                        parts = command_text.split(keyword, 1)
+                        if len(parts) > 1:
+                            app_name = parts[1].strip()
+                            break
+                
+                if app_name:
+                    success, message = await dynamic_controller.close_app_intelligently(app_name)
+                    return {'success': success, 'response': message}
+                else:
+                    return {'success': False, 'response': "Please specify which app to close"}
+                    
+            elif 'volume' in command_lower:
+                # Handle volume commands
+                if 'mute' in command_lower:
+                    success, message = macos_controller.mute_volume(True)
+                elif 'unmute' in command_lower:
+                    success, message = macos_controller.mute_volume(False)
+                else:
+                    # Try to extract volume level
+                    import re
+                    match = re.search(r'(\d+)', command_text)
+                    if match:
+                        level = int(match.group(1))
+                        success, message = macos_controller.set_volume(level)
+                    else:
+                        return {'success': False, 'response': "Please specify a volume level (0-100)"}
+                return {'success': success, 'response': message}
+                
+            elif 'brightness' in command_lower:
+                # Handle brightness commands
+                import re
+                match = re.search(r'(\d+)', command_text)
+                if match:
+                    level = int(match.group(1)) / 100.0  # Convert to 0.0-1.0
+                    success, message = macos_controller.adjust_brightness(level)
+                else:
+                    return {'success': False, 'response': "Please specify brightness level (0-100)"}
+                return {'success': success, 'response': message}
+                
+            elif 'screenshot' in command_lower:
+                success, message = macos_controller.take_screenshot()
+                return {'success': success, 'response': message}
+                
+            elif 'wifi' in command_lower or 'wi-fi' in command_lower:
+                if 'off' in command_lower or 'disable' in command_lower:
+                    success, message = macos_controller.toggle_wifi(False)
+                elif 'on' in command_lower or 'enable' in command_lower:
+                    success, message = macos_controller.toggle_wifi(True)
+                else:
+                    return {'success': False, 'response': "Please specify whether to turn WiFi on or off"}
+                return {'success': success, 'response': message}
+                
+            else:
+                # Try to handle as generic system command
+                return {
+                    'success': False,
+                    'response': "I'm not sure how to handle that system command. Try 'open [app name]', 'close [app name]', or other system controls."
+                }
+                
+        except Exception as e:
+            logger.error(f"Error executing system command: {e}", exc_info=True)
+            return {
+                'success': False,
+                'response': f"Failed to execute system command: {str(e)}"
+            }
         
 
 # Singleton instance
