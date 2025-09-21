@@ -653,26 +653,52 @@ class JARVISVoiceAPI:
                 audio_text
             ], check=True)
             
-            # Convert to MP3 for smaller file size
+            # Convert to MP3 for browser compatibility
             mp3_path = tmp_path.replace('.aiff', '.mp3')
-            subprocess.run([
-                'afconvert', '-f', 'mp4f', '-d', 'aac', 
-                tmp_path, mp3_path
-            ], check=True)
+            media_type = "audio/mpeg"
             
-            # Read the MP3 file
+            # Use ffmpeg if available, otherwise use the AIFF directly
+            try:
+                subprocess.run([
+                    'ffmpeg', '-i', tmp_path, '-acodec', 'mp3', '-ab', '128k', 
+                    mp3_path, '-y'
+                ], check=True, capture_output=True)
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                # If ffmpeg not available, use lame
+                try:
+                    subprocess.run([
+                        'lame', '-b', '128', tmp_path, mp3_path
+                    ], check=True, capture_output=True)
+                except (subprocess.CalledProcessError, FileNotFoundError):
+                    # If neither work, use WAV format which browsers universally support
+                    wav_path = tmp_path.replace('.aiff', '.wav')
+                    try:
+                        subprocess.run([
+                            'afconvert', '-f', 'WAVE', '-d', 'LEI16',
+                            tmp_path, wav_path
+                        ], check=True)
+                        mp3_path = wav_path
+                        media_type = "audio/wav"
+                    except:
+                        # Last resort: use AIFF
+                        mp3_path = tmp_path
+                        media_type = "audio/aiff"
+            
+            # Read the audio file
             with open(mp3_path, 'rb') as f:
                 audio_data = f.read()
             
             # Clean up
-            os.unlink(tmp_path)
-            os.unlink(mp3_path)
+            if os.path.exists(tmp_path) and tmp_path != mp3_path:
+                os.unlink(tmp_path)
+            if os.path.exists(mp3_path):
+                os.unlink(mp3_path)
             
             return Response(
                 content=audio_data,
-                media_type="audio/mpeg",
+                media_type=media_type,
                 headers={
-                    "Content-Disposition": f"inline; filename=jarvis_speech.mp3",
+                    "Content-Disposition": f"inline; filename=jarvis_speech.{mp3_path.split('.')[-1]}",
                     "Cache-Control": "no-cache"
                 }
             )
