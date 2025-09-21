@@ -1,9 +1,71 @@
-/* Arc Reactor Core Styles */
+/* Main Container */
+.jarvis-voice-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0a0e1a 0%, #1a1f2e 50%, #0a0e1a 100%);
+  padding: 20px;
+  position: relative;
+  overflow-x: hidden;
+}
+
+.jarvis-voice-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    radial-gradient(circle at 20% 50%, rgba(0, 255, 255, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 50%, rgba(0, 136, 255, 0.1) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+/* Header */
+.jarvis-header {
+  text-align: center;
+  margin-bottom: 40px;
+  animation: fadeInDown 0.8s ease-out;
+}
+
+.jarvis-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.jarvis-logo {
+  font-size: 3rem;
+  font-family: 'Orbitron', monospace;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  background: linear-gradient(45deg, #00ffff, #0080ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+  animation: glow-text 2s ease-in-out infinite alternate;
+}
+
+.jarvis-subtitle {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.6);
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.1em;
+}
+
+/* Arc Reactor Core */
 .arc-reactor {
   position: relative;
-  width: 150px;
-  height: 150px;
-  margin: 30px auto;
+  width: 180px;
+  height: 180px;
+  margin: 40px auto;
+  cursor: pointer;
+  transition: transform 0.3s ease;
+  animation: float 3s ease-in-out infinite;
+}
+
+.arc-reactor:hover {
+  transform: scale(1.05);
 }
 
 .arc-reactor .core {
@@ -11,45 +73,49 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 40px;
-  height: 40px;
+  width: 60px;
+  height: 60px;
   background: radial-gradient(circle, #00ffff 0%, #0080ff 50%, #004080 100%);
   border-radius: 50%;
-  box-shadow: 0 0 40px #00ffff,
-    inset 0 0 20px rgba(0, 255, 255, 0.5);
+  box-shadow:
+    0 0 60px #00ffff,
+    inset 0 0 30px rgba(0, 255, 255, 0.5),
+    0 0 100px rgba(0, 255, 255, 0.3);
   z-index: 3;
   transition: all 0.3s ease;
+  animation: pulse-core 2s ease-in-out infinite;
 }
 
-/* Arc Reactor Ring Animations */
+/* Arc Reactor Rings */
 .arc-reactor .ring {
   position: absolute;
   top: 50%;
   left: 50%;
   border: 2px solid;
   border-radius: 50%;
-  opacity: 0.6;
+  opacity: 0.8;
+  box-shadow: 0 0 20px currentColor;
 }
 
 .ring-1 {
-  width: 70px;
-  height: 70px;
+  width: 90px;
+  height: 90px;
   border-color: #00ffff;
   transform: translate(-50%, -50%);
   animation: rotate 4s linear infinite;
 }
 
 .ring-2 {
-  width: 100px;
-  height: 100px;
+  width: 130px;
+  height: 130px;
   border-color: #0080ff;
   transform: translate(-50%, -50%);
   animation: rotate 6s linear infinite reverse;
 }
 
 .ring-3 {
-  width: 130px;
-  height: 130px;
+  width: 170px;
+  height: 170px;
   border-color: #004080;
   transform: translate(-50%, -50%);
   animation: rotate 8s linear infinite;
@@ -58,409 +124,559 @@
 /* Active States */
 .arc-reactor.listening .core {
   background: radial-gradient(circle, #ff8c00 0%, #ff4500 50%, #8b0000 100%);
-  box-shadow: 0 0 60px #ff8c00,
-    inset 0 0 30px rgba(255, 140, 0, 0.5);
-  animation: pulse 1s ease-in-out infinite;
+  box-shadow:
+    0 0 80px #ff8c00,
+    inset 0 0 40px rgba(255, 140, 0, 0.5),
+    0 0 120px rgba(255, 140, 0, 0.3);
+  animation: pulse-core 1s ease-in-out infinite;
 }
 
 .arc-reactor.processing .core {
   background: radial-gradient(circle, #00ff00 0%, #008000 50%, #004000 100%);
-  box-shadow: 0 0 60px #00ff00,
-    inset 0 0 30px rgba(0, 255, 0, 0.5);
-  animation: pulse 0.5s ease-in-out infinite;
+  box-shadow:
+    0 0 80px #00ff00,
+    inset 0 0 40px rgba(0, 255, 0, 0.5),
+    0 0 120px rgba(0, 255, 0, 0.3);
+  animation: pulse-core 0.5s ease-in-out infinite;
 }
 
 .arc-reactor.waiting .core {
   background: radial-gradient(circle, #ffff00 0%, #ffa500 50%, #ff8c00 100%);
-  box-shadow: 0 0 60px #ffff00,
-    inset 0 0 30px rgba(255, 255, 0, 0.5);
-  animation: pulse 0.8s ease-in-out infinite;
+  box-shadow:
+    0 0 80px #ffff00,
+    inset 0 0 40px rgba(255, 255, 0, 0.5),
+    0 0 120px rgba(255, 255, 0, 0.3);
+  animation: pulse-core 0.8s ease-in-out infinite;
 }
 
 .arc-reactor.continuous .ring {
   border-width: 3px;
-  opacity: 0.9;
-}
-
-.arc-reactor.continuous .ring-1 {
-  border-color: #00ff00;
-  animation: rotate 2s linear infinite;
-}
-
-.arc-reactor.continuous .ring-2 {
-  border-color: #00ffff;
-  animation: rotate 3s linear infinite reverse;
-}
-
-.arc-reactor.continuous .ring-3 {
-  border-color: #0080ff;
-  animation: rotate 4s linear infinite;
+  opacity: 1;
+  filter: brightness(1.5);
 }
 
 /* Status Display */
 .jarvis-status {
   text-align: center;
-  margin: 20px 0;
+  margin: 30px 0;
   font-family: 'Orbitron', monospace;
   color: #00ffff;
   font-size: 1.2rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+  animation: fadeIn 1s ease-out;
 }
 
 .status-indicator {
   display: inline-block;
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   margin-right: 10px;
   border-radius: 50%;
   background-color: #808080;
-  box-shadow: 0 0 10px currentColor;
+  box-shadow: 0 0 20px currentColor;
+  animation: pulse-dot 2s ease-in-out infinite;
 }
 
+.status-indicator.online,
 .status-indicator.active {
   background-color: #00ff00;
+  box-shadow: 0 0 20px #00ff00;
 }
 
-.status-indicator.standby {
+.status-indicator.activating {
   background-color: #ffa500;
+  box-shadow: 0 0 20px #ffa500;
+  animation: pulse-dot 0.5s ease-in-out infinite;
 }
 
 .status-indicator.offline {
   background-color: #ff0000;
+  box-shadow: 0 0 20px #ff0000;
+}
+
+.status-text {
+  display: inline-block;
+  animation: fadeIn 0.5s ease-out;
+}
+
+/* Status Cards */
+.status-cards {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  margin: 30px 0;
+  flex-wrap: wrap;
+}
+
+.status-card {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 15px 25px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(0, 255, 255, 0.3);
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 8px 32px rgba(0, 255, 255, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  animation: slideIn 0.5s ease-out;
+  position: relative;
+  overflow: hidden;
+}
+
+.status-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(0, 255, 255, 0.3), transparent);
+  animation: scan 3s linear infinite;
+}
+
+.status-card-icon {
+  font-size: 24px;
+  filter: drop-shadow(0 0 10px rgba(0, 255, 255, 0.5));
+}
+
+.status-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.status-card-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 14px;
+  font-weight: bold;
+  color: #00ffff;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.status-card-text {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.status-pulse {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: #00ff00;
+  box-shadow: 0 0 15px #00ff00;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.status-pulse.active {
+  background-color: #ffa500;
+  box-shadow: 0 0 15px #ffa500;
+  animation: pulse-dot 0.8s ease-in-out infinite;
+}
+
+.status-card.wake-word-active {
+  border-color: rgba(0, 255, 0, 0.3);
+}
+
+.status-card.listening-active {
+  border-color: rgba(255, 165, 0, 0.5);
+  background: linear-gradient(135deg, rgba(255, 165, 0, 0.1), rgba(255, 140, 0, 0.05));
+}
+
+.status-card.autonomous-active {
+  border-color: rgba(0, 255, 0, 0.5);
+  background: linear-gradient(135deg, rgba(0, 255, 0, 0.1), rgba(0, 128, 0, 0.05));
 }
 
 /* Control Buttons */
 .jarvis-controls {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 20px;
   align-items: center;
-  margin: 30px 0;
+  margin: 40px 0;
+}
+
+.jarvis-button-group {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .jarvis-button {
-  background: linear-gradient(45deg, #0a0a0a 0%, #1a1a1a 100%);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(135deg, rgba(0, 255, 255, 0.1), rgba(0, 136, 255, 0.05));
   border: 2px solid #00ffff;
   color: #00ffff;
-  padding: 12px 32px;
-  font-size: 1rem;
+  padding: 14px 28px;
+  font-size: 0.95rem;
   font-family: 'Orbitron', monospace;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  border-radius: 25px;
+  border-radius: 30px;
   cursor: pointer;
   transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
-  box-shadow: 0 0 20px rgba(0, 255, 255, 0.3),
-    inset 0 0 20px rgba(0, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 4px 20px rgba(0, 255, 255, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.jarvis-button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(0, 255, 255, 0.3);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.jarvis-button:hover::before {
+  width: 300px;
+  height: 300px;
 }
 
 .jarvis-button:hover {
-  background: linear-gradient(45deg, #1a1a1a 0%, #2a2a2a 100%);
-  box-shadow: 0 0 30px rgba(0, 255, 255, 0.5),
-    inset 0 0 25px rgba(0, 255, 255, 0.2);
   transform: translateY(-2px);
+  box-shadow:
+    0 8px 30px rgba(0, 255, 255, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  border-color: #00ff00;
 }
 
 .jarvis-button:active {
   transform: translateY(0);
-  box-shadow: 0 0 15px rgba(0, 255, 255, 0.3),
-    inset 0 0 15px rgba(0, 255, 255, 0.1);
 }
 
-.jarvis-button.active {
-  background: linear-gradient(45deg, #004040 0%, #008080 100%);
+.jarvis-button-primary {
+  background: linear-gradient(135deg, rgba(0, 255, 0, 0.2), rgba(0, 255, 0, 0.1));
   border-color: #00ff00;
   color: #00ff00;
-  animation: glow 2s ease-in-out infinite;
+}
+
+.jarvis-button-primary:hover {
+  box-shadow:
+    0 8px 30px rgba(0, 255, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.jarvis-button-secondary {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+}
+
+.jarvis-button-active {
+  background: linear-gradient(135deg, rgba(0, 255, 0, 0.3), rgba(0, 255, 0, 0.15));
+  border-color: #00ff00;
+  color: #00ff00;
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.jarvis-button-warning {
+  background: linear-gradient(135deg, rgba(255, 165, 0, 0.2), rgba(255, 140, 0, 0.1));
+  border-color: #ffa500;
+  color: #ffa500;
 }
 
 .jarvis-button:disabled {
-  opacity: 0.5;
+  opacity: 0.3;
   cursor: not-allowed;
   box-shadow: none;
 }
 
-/* Text Input */
+.jarvis-button:disabled:hover {
+  transform: none;
+}
+
+.button-icon {
+  font-size: 1.2rem;
+  filter: drop-shadow(0 0 5px currentColor);
+}
+
+.button-text {
+  font-weight: 600;
+}
+
+/* Input Section */
+.jarvis-input-section {
+  max-width: 600px;
+  margin: 40px auto;
+  padding: 0 20px;
+}
+
 .jarvis-input-container {
   display: flex;
   gap: 10px;
   align-items: center;
-  max-width: 500px;
-  margin: 20px auto;
+  background: rgba(0, 0, 0, 0.5);
+  border: 2px solid rgba(0, 255, 255, 0.3);
+  border-radius: 30px;
+  padding: 5px;
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 8px 32px rgba(0, 255, 255, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: all 0.3s ease;
+}
+
+.jarvis-input-container:focus-within {
+  border-color: #00ffff;
+  box-shadow:
+    0 8px 32px rgba(0, 255, 255, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .jarvis-input {
   flex: 1;
-  background-color: rgba(0, 0, 0, 0.7);
-  border: 2px solid #00ffff;
+  background: transparent;
+  border: none;
   color: #ffffff;
   padding: 12px 20px;
   font-size: 1rem;
   font-family: 'Courier New', monospace;
-  border-radius: 25px;
   outline: none;
-  transition: all 0.3s ease;
-}
-
-.jarvis-input:focus {
-  border-color: #00ff00;
-  box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
 }
 
 .jarvis-input::placeholder {
-  color: rgba(0, 255, 255, 0.5);
+  color: rgba(0, 255, 255, 0.4);
 }
 
-/* Error Display */
-.jarvis-error {
-  background-color: rgba(139, 0, 0, 0.2);
-  border: 1px solid #dc143c;
-  color: #ff6b6b;
-  padding: 15px 20px;
-  margin: 20px auto;
-  max-width: 500px;
-  border-radius: 8px;
-  text-align: center;
-  font-family: 'Courier New', monospace;
-  animation: fadeInOut 0.5s ease;
-  box-shadow: 0 0 20px rgba(220, 20, 60, 0.3);
-}
-
-.jarvis-error.network-error {
-  background-color: rgba(255, 140, 0, 0.2);
-  border-color: #ff8c00;
-  color: #ffa500;
-  box-shadow: 0 0 20px rgba(255, 140, 0, 0.3);
-}
-
-.error-icon {
-  font-size: 24px;
-  margin-bottom: 8px;
-}
-
-.error-text {
-  font-size: 14px;
-  line-height: 1.4;
-}
-
-.retry-status {
-  display: block;
-  margin-top: 5px;
-  font-size: 12px;
-  opacity: 0.8;
-  animation: blink 1s ease-in-out infinite;
-}
-
-/* Mic Status */
-.mic-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-left: 15px;
-  font-size: 0.9rem;
-}
-
-.mic-status.error {
-  color: #ff6b6b;
-}
-
-.error-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  background-color: #ff0000;
+.jarvis-send-button {
+  width: 45px;
+  height: 45px;
   border-radius: 50%;
-  animation: blink 1s ease-in-out infinite;
-}
-
-/* Waiting Mode Indicator */
-.waiting-mode {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: 15px;
-  font-size: 0.9rem;
-  color: #ffa500;
-  background-color: rgba(255, 165, 0, 0.1);
-  padding: 5px 10px;
-  border-radius: 15px;
-  border: 1px solid rgba(255, 165, 0, 0.3);
-}
-
-.waiting-mode .pulse-dot {
-  width: 8px;
-  height: 8px;
-  background-color: #ffa500;
-  border-radius: 50%;
-  animation: pulse 1s ease-in-out infinite;
-}
-
-/* Vision Status */
-.vision-status-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 20px;
-  background-color: rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(0, 255, 255, 0.2);
-  border-radius: 8px;
-  margin: 15px auto;
-  max-width: 600px;
-  font-family: 'Courier New', monospace;
-  font-size: 14px;
-}
-
-.vision-connection {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.vision-connection.connected {
-  color: #00ff00;
-}
-
-.vision-connection.disconnected {
-  color: #ff6b6b;
-}
-
-.vision-icon {
-  font-size: 20px;
-}
-
-.workspace-summary {
-  display: flex;
-  gap: 15px;
-  align-items: center;
-  color: rgba(255, 255, 255, 0.8);
-}
-
-/* Autonomous Mode Indicator */
-.autonomous-mode {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: 15px;
-  font-size: 0.9rem;
-  color: #00ff00;
-  background-color: rgba(0, 255, 0, 0.1);
-  padding: 5px 10px;
-  border-radius: 15px;
-  border: 1px solid rgba(0, 255, 0, 0.3);
-  animation: glow 2s ease-in-out infinite;
-}
-
-.vision-indicator {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  background-color: #00ff00;
-  border-radius: 50%;
-  box-shadow: 0 0 10px #00ff00;
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-/* Wake Word Status */
-.wake-word-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: 15px;
-  background: linear-gradient(45deg, rgba(42, 157, 143, 0.2), rgba(0, 255, 255, 0.2));
+  background: linear-gradient(135deg, rgba(0, 255, 255, 0.2), rgba(0, 136, 255, 0.1));
+  border: 2px solid #00ffff;
   color: #00ffff;
-  padding: 8px 16px;
-  border: 1px solid rgba(0, 255, 255, 0.4);
-  border-radius: 8px;
-  font-weight: bold;
-  font-size: 14px;
-  font-family: 'Orbitron', monospace;
-  letter-spacing: 0.05em;
-  box-shadow: 0 4px 15px rgba(42, 157, 143, 0.3);
+  font-size: 1.5rem;
+  cursor: pointer;
   transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.wake-word-status .pulse-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  background-color: #00ff00;
-  border-radius: 50%;
-  margin-right: 8px;
-  animation: pulse 1.5s infinite;
-  box-shadow: 0 0 10px #00ff00;
+.jarvis-send-button:hover {
+  background: linear-gradient(135deg, rgba(0, 255, 255, 0.3), rgba(0, 136, 255, 0.2));
+  transform: scale(1.1);
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+}
+
+.jarvis-send-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 
 /* Transcript Display */
 .jarvis-transcript {
-  max-width: 600px;
-  margin: 20px auto;
-  padding: 20px;
-  background-color: rgba(0, 0, 0, 0.7);
-  border: 1px solid rgba(0, 255, 255, 0.3);
-  border-radius: 10px;
-  box-shadow: 0 0 20px rgba(0, 255, 255, 0.1),
-              inset 0 0 20px rgba(0, 255, 255, 0.05);
-  font-family: 'Courier New', monospace;
-  animation: fadeIn 0.5s ease-in-out;
+  max-width: 700px;
+  margin: 30px auto;
+  padding: 25px;
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.6));
+  border: 1px solid rgba(0, 255, 255, 0.2);
+  border-radius: 15px;
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 8px 32px rgba(0, 255, 255, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  animation: fadeIn 0.5s ease-out;
 }
 
-.jarvis-transcript .user-message,
-.jarvis-transcript .jarvis-message {
-  margin: 10px 0;
-  padding: 10px;
-  border-radius: 5px;
+.user-message,
+.jarvis-message {
+  margin: 15px 0;
+  padding: 12px 18px;
+  border-radius: 10px;
   animation: slideIn 0.3s ease-out;
 }
 
-.jarvis-transcript .user-message {
-  background-color: rgba(42, 157, 143, 0.1);
+.user-message {
+  background: linear-gradient(135deg, rgba(42, 157, 143, 0.15), rgba(42, 157, 143, 0.05));
   border-left: 3px solid #2a9d8f;
 }
 
-.jarvis-transcript .jarvis-message {
-  background-color: rgba(0, 255, 255, 0.1);
+.jarvis-message {
+  background: linear-gradient(135deg, rgba(0, 255, 255, 0.15), rgba(0, 255, 255, 0.05));
   border-left: 3px solid #00ffff;
 }
 
-.jarvis-transcript .message-label {
+.message-label {
   display: inline-block;
   font-weight: bold;
   margin-right: 10px;
   text-transform: uppercase;
-  font-size: 12px;
+  font-size: 11px;
   letter-spacing: 1px;
+  font-family: 'Orbitron', monospace;
 }
 
-.jarvis-transcript .user-message .message-label {
+.user-message .message-label {
   color: #2a9d8f;
 }
 
-.jarvis-transcript .jarvis-message .message-label {
+.jarvis-message .message-label {
   color: #00ffff;
 }
 
-.jarvis-transcript .message-text {
-  color: #ffffff;
+.message-text {
+  color: rgba(255, 255, 255, 0.9);
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.6;
+  font-family: 'Courier New', monospace;
+}
+
+/* Error Display */
+.jarvis-error {
+  background: linear-gradient(135deg, rgba(220, 20, 60, 0.2), rgba(139, 0, 0, 0.1));
+  border: 1px solid #dc143c;
+  color: #ff6b6b;
+  padding: 18px 25px;
+  margin: 20px auto;
+  max-width: 600px;
+  border-radius: 12px;
+  text-align: center;
+  font-family: 'Courier New', monospace;
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 8px 32px rgba(220, 20, 60, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  animation: fadeInOut 0.5s ease;
+}
+
+.jarvis-error.network-error {
+  background: linear-gradient(135deg, rgba(255, 140, 0, 0.2), rgba(255, 165, 0, 0.1));
+  border-color: #ff8c00;
+  color: #ffa500;
+  box-shadow:
+    0 8px 32px rgba(255, 140, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Help Section */
+.jarvis-help {
+  max-width: 700px;
+  margin: 40px auto;
+  padding: 30px;
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.4));
+  border: 1px solid rgba(0, 255, 255, 0.1);
+  border-radius: 15px;
+  backdrop-filter: blur(10px);
+}
+
+.jarvis-help-title {
+  font-family: 'Orbitron', monospace;
+  font-size: 1.2rem;
+  color: #00ffff;
+  text-align: center;
+  margin-bottom: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.jarvis-help-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.jarvis-help-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: rgba(0, 255, 255, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(0, 255, 255, 0.1);
+  transition: all 0.3s ease;
+}
+
+.jarvis-help-item:hover {
+  background: rgba(0, 255, 255, 0.1);
+  transform: translateX(5px);
+}
+
+.help-icon {
+  font-size: 20px;
+  filter: drop-shadow(0 0 5px rgba(0, 255, 255, 0.5));
+}
+
+.help-text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  font-family: 'Courier New', monospace;
+}
+
+.jarvis-test-button {
+  display: block;
+  margin: 0 auto;
+  padding: 10px 20px;
+  background: rgba(0, 255, 255, 0.1);
+  border: 1px solid rgba(0, 255, 255, 0.3);
+  color: #00ffff;
+  border-radius: 20px;
+  font-family: 'Courier New', monospace;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.jarvis-test-button:hover {
+  background: rgba(0, 255, 255, 0.2);
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+}
+
+/* Vision Status Bar */
+.vision-status-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 25px;
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.4));
+  border: 1px solid rgba(0, 255, 255, 0.2);
+  border-radius: 12px;
+  margin: 20px auto;
+  max-width: 700px;
+  backdrop-filter: blur(10px);
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
 }
 
 /* Animations */
-@keyframes pulse {
-  0% {
+@keyframes pulse-core {
+
+  0%,
+  100% {
     transform: translate(-50%, -50%) scale(1);
   }
 
   50% {
     transform: translate(-50%, -50%) scale(1.1);
   }
+}
 
+@keyframes pulse-dot {
+
+  0%,
   100% {
-    transform: translate(-50%, -50%) scale(1);
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scale(1.3);
+    opacity: 0.8;
   }
 }
 
@@ -471,6 +687,92 @@
 
   to {
     transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(-10px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes glow-text {
+  0% {
+    text-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+  }
+
+  50% {
+    text-shadow: 0 0 50px rgba(0, 255, 255, 0.8), 0 0 70px rgba(0, 255, 255, 0.4);
+  }
+
+  100% {
+    text-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+  }
+}
+
+@keyframes pulse-glow {
+
+  0%,
+  100% {
+    box-shadow:
+      0 4px 20px rgba(0, 255, 0, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+
+  50% {
+    box-shadow:
+      0 8px 30px rgba(0, 255, 0, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  }
+}
+
+@keyframes scan {
+  0% {
+    left: -100%;
+  }
+
+  100% {
+    left: 100%;
   }
 }
 
@@ -498,67 +800,63 @@
   }
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes slideIn {
-  from {
-    transform: translateX(-10px);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-@keyframes glow {
-  0% {
-    box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
-  }
-  50% {
-    box-shadow: 0 0 30px rgba(0, 255, 0, 0.6);
-  }
-  100% {
-    box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
-  }
-}
-
 /* Responsive Design */
 @media (max-width: 768px) {
+  .jarvis-logo {
+    font-size: 2rem;
+  }
+
   .arc-reactor {
-    width: 120px;
-    height: 120px;
+    width: 150px;
+    height: 150px;
   }
 
   .arc-reactor .core {
-    width: 30px;
-    height: 30px;
+    width: 45px;
+    height: 45px;
   }
 
   .ring-1 {
-    width: 60px;
-    height: 60px;
+    width: 75px;
+    height: 75px;
   }
 
   .ring-2 {
-    width: 85px;
-    height: 85px;
-  }
-
-  .ring-3 {
     width: 110px;
     height: 110px;
   }
 
+  .ring-3 {
+    width: 140px;
+    height: 140px;
+  }
+
   .jarvis-button {
-    padding: 10px 24px;
+    padding: 12px 24px;
     font-size: 0.9rem;
+  }
+
+  .status-cards {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .jarvis-help-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Dark mode compatibility */
+@media (prefers-color-scheme: dark) {
+  .jarvis-voice-container {
+    background: linear-gradient(135deg, #0a0e1a 0%, #1a1f2e 50%, #0a0e1a 100%);
+  }
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
   }
 }

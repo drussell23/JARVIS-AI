@@ -505,7 +505,7 @@ const JarvisVoice = () => {
         visionConnectionRef.current.disconnect();
       }
       // Cleanup wake word service
-      if (wakeWordServiceRef.current) {
+      if (wakeWordServiceRef.current && typeof wakeWordServiceRef.current.disconnect === 'function') {
         wakeWordServiceRef.current.disconnect();
       }
       // Remove ML event listeners
@@ -772,56 +772,51 @@ const JarvisVoice = () => {
 
   const initializeWakeWordService = async () => {
     if (!wakeWordServiceRef.current) {
-      // Ensure speech recognition is initialized first
-      if (!recognitionRef.current) {
-        initializeSpeechRecognition();
-      }
-      
-      wakeWordServiceRef.current = new WakeWordService();
-
-      // Set up callbacks
-      wakeWordServiceRef.current.setCallbacks({
+      // Create a simplified wake word handler object
+      wakeWordServiceRef.current = {
         onWakeWordDetected: (data) => {
-          console.log('Wake word detected from service:', data);
+          console.log('🎤 Wake word activated!', data);
 
-          // Play the response
-          if (data.response) {
-            speakResponse(data.response);
-          }
+          // Clear any previous transcript
+          setTranscript('');
 
           // Set listening state
           setIsWaitingForCommand(true);
           setIsListening(true);
 
-          // Start timeout for command
+          // Play the response
+          const responseText = data.response || "Yes sir, I'm listening";
+          speakResponse(responseText);
+
+          // Start timeout for command (15 seconds)
           setTimeout(() => {
             if (isWaitingForCommand && !isJarvisSpeaking) {
               setIsWaitingForCommand(false);
-              setIsListening(false);
+              console.log('⏱️ Command timeout - returning to wake word listening');
             }
-          }, 10000);
+          }, 15000);
         },
-        onStatusChange: (status) => {
-          console.log('Wake word status:', status);
-        },
-        onError: (error) => {
-          console.error('Wake word error:', error);
-        }
-      });
+        isActive: false
+      };
 
-      // Initialize with API URL
-      const initialized = await wakeWordServiceRef.current.initialize(API_URL);
-      if (initialized) {
-        console.log('✅ Wake word service initialized');
-        
-        // Start continuous listening for wake word detection
-        if (recognitionRef.current) {
-          console.log('🎤 Starting continuous listening for wake word...');
-          enableContinuousListening();
+      // Try to connect to backend wake word service if available
+      try {
+        const wakeService = new WakeWordService();
+        const initialized = await wakeService.initialize(API_URL);
+        if (initialized) {
+          console.log('✅ Backend wake word service connected');
+          // Use backend service callbacks if available
+          wakeService.setCallbacks({
+            onWakeWordDetected: wakeWordServiceRef.current.onWakeWordDetected,
+            onStatusChange: (status) => console.log('Wake word status:', status),
+            onError: (error) => console.error('Wake word error:', error)
+          });
         }
-      } else {
-        console.warn('⚠️ Wake word service not available on backend');
+      } catch (e) {
+        console.log('📢 Using frontend-only wake word detection');
       }
+
+      wakeWordServiceRef.current.isActive = true;
     }
   };
 
@@ -851,7 +846,7 @@ const JarvisVoice = () => {
         const last = event.results.length - 1;
         const transcript = event.results[last][0].transcript.toLowerCase();
         const isFinal = event.results[last].isFinal;
-        
+
         // Debug logging
         console.log(`🎙️ Speech detected: "${transcript}" (final: ${isFinal})`);
 
@@ -859,39 +854,48 @@ const JarvisVoice = () => {
         if (!isFinal) return;
 
         // Check for wake words when not waiting for command
-        if (!isWaitingForCommand) {
-          const wakeWords = ['hey jarvis', 'jarvis', 'ok jarvis'];
+        if (!isWaitingForCommand && continuousListening) {
+          const wakeWords = ['hey jarvis', 'jarvis', 'ok jarvis', 'hello jarvis'];
           const detectedWakeWord = wakeWords.find(word => transcript.includes(word));
-          
+
           if (detectedWakeWord) {
-            console.log('🎤 Wake word detected:', detectedWakeWord);
-            
+            console.log('🎯 Wake word detected:', detectedWakeWord);
+
+            // Clear the wake word from display
+            setTranscript('');
+
             // Trigger wake word activation
             if (wakeWordServiceRef.current && wakeWordServiceRef.current.onWakeWordDetected) {
               wakeWordServiceRef.current.onWakeWordDetected({
                 wakeWord: detectedWakeWord,
-                confidence: event.results[last][0].confidence,
-                response: "I'm online sir, waiting for your command"
+                confidence: event.results[last][0].confidence || 1.0,
+                response: "Yes sir, I'm listening"
               });
-            } else {
-              // Fallback: handle wake word activation directly
-              console.log('🎯 Handling wake word activation directly');
-              setIsWaitingForCommand(true);
-              setIsListening(true);
-              speakResponse("I'm online sir, waiting for your command");
             }
             return;
           }
         }
-        
-        // When waiting for command after wake word, process any speech
-        if (isWaitingForCommand) {
-          // Process the command after wake word
-          handleVoiceCommand(event.results[last][0].transcript);
 
-          // Notify wake word service that command was received
-          if (wakeWordServiceRef.current) {
-            wakeWordServiceRef.current.notifyCommandComplete();
+        // When waiting for command after wake word, process any speech
+        if (isWaitingForCommand && transcript.length > 0) {
+          // Filter out wake words from commands
+          const wakeWords = ['hey jarvis', 'jarvis', 'ok jarvis', 'hello jarvis'];
+          let commandText = event.results[last][0].transcript;
+
+          // Remove wake word if it's at the beginning of the command
+          wakeWords.forEach(word => {
+            if (commandText.toLowerCase().startsWith(word)) {
+              commandText = commandText.substring(word.length).trim();
+            }
+          });
+
+          // Only process if there's actual command content
+          if (commandText.length > 0) {
+            console.log('📢 Processing command:', commandText);
+            handleVoiceCommand(commandText);
+
+            // Reset waiting state
+            setIsWaitingForCommand(false);
           }
         }
       };
@@ -1181,17 +1185,19 @@ const JarvisVoice = () => {
       });
       const data = await response.json();
       setJarvisStatus('activating');
-      setTimeout(() => {
+      setTimeout(async () => {
         setJarvisStatus('online');
-        // Backend JARVIS will speak the activation phrase
 
-        // Automatically start wake word detection after activation
-        if (wakeWordServiceRef.current) {
-          console.log('🎙️ Wake word detection activated - say "Hey JARVIS" anytime!');
-          // Wake word service is already running in the background
+        // Initialize wake word service if not already done
+        if (!wakeWordServiceRef.current) {
+          await initializeWakeWordService();
         }
 
+        // Speak activation confirmation
+        speakResponse("JARVIS is now online. Say 'Hey JARVIS' anytime to activate voice commands.");
+
         // Enable continuous listening for wake word detection
+        console.log('🎙️ Enabling continuous listening for wake word...');
         enableContinuousListening();
       }, 2000);
     } catch (err) {
@@ -1529,7 +1535,7 @@ const JarvisVoice = () => {
   const speakResponse = async (text) => {
     // Set the response in state for display
     setResponse(text);
-    
+
     // Try audio endpoint first
     await playAudioResponse(text);
 
@@ -1543,14 +1549,14 @@ const JarvisVoice = () => {
 
       // Use Daniel (British male) voice
       const voices = window.speechSynthesis.getVoices();
-      const danielVoice = voices.find(voice => 
-        voice.name.includes('Daniel') || 
+      const danielVoice = voices.find(voice =>
+        voice.name.includes('Daniel') ||
         (voice.lang === 'en-GB' && voice.name.includes('Male'))
       );
-      
+
       // Fallback to any British male voice if Daniel not found
-      const britishMaleVoice = danielVoice || voices.find(voice => 
-        voice.lang === 'en-GB' && 
+      const britishMaleVoice = danielVoice || voices.find(voice =>
+        voice.lang === 'en-GB' &&
         (voice.name.toLowerCase().includes('male') || !voice.name.toLowerCase().includes('female'))
       );
 
@@ -1570,6 +1576,14 @@ const JarvisVoice = () => {
 
   return (
     <div className="jarvis-voice-container">
+      {/* JARVIS Header */}
+      <div className="jarvis-header">
+        <h1 className="jarvis-title">
+          <span className="jarvis-logo">J.A.R.V.I.S.</span>
+          <span className="jarvis-subtitle">Just A Rather Very Intelligent System</span>
+        </h1>
+      </div>
+
       {/* Orange microphone indicator when listening */}
       <MicrophoneIndicator isListening={isListening && continuousListening} />
 
@@ -1592,29 +1606,53 @@ const JarvisVoice = () => {
 
       <div className="jarvis-status">
         <div className={`status-indicator ${jarvisStatus || 'offline'}`}></div>
-        <span>JARVIS {jarvisStatus === 'active' ? 'READY' : (jarvisStatus || 'offline').toUpperCase()}</span>
+        <span className="status-text">
+          {jarvisStatus === 'online' || jarvisStatus === 'active' ? (
+            <>SYSTEM READY</>
+          ) : jarvisStatus === 'activating' ? (
+            <>INITIALIZING...</>
+          ) : (
+            <>SYSTEM {(jarvisStatus || 'offline').toUpperCase()}</>
+          )}
+        </span>
         {micStatus === 'error' && (
           <span className="mic-status error">
             <span className="error-dot"></span> MIC ERROR
           </span>
         )}
-        {micStatus === 'ready' && continuousListening && !isWaitingForCommand && (
-          <span className="listening-mode indefinite">
-            <span className="pulse-dot"></span>
-            <span className="mic-icon">🎤</span>
-            WAKE WORD ACTIVE - SAY "HEY JARVIS" ANYTIME
-            <span className="infinity-symbol">✨</span>
-          </span>
+      </div>
+
+      {/* Status Cards */}
+      <div className="status-cards">
+        {continuousListening && !isWaitingForCommand && (
+          <div className="status-card wake-word-active">
+            <div className="status-card-icon">🎙️</div>
+            <div className="status-card-content">
+              <div className="status-card-title">Wake Word Active</div>
+              <div className="status-card-text">Say "Hey JARVIS" to activate</div>
+            </div>
+            <div className="status-pulse"></div>
+          </div>
         )}
+
         {isWaitingForCommand && (
-          <span className="waiting-mode">
-            <span className="pulse-dot active"></span> AWAITING COMMAND
-          </span>
+          <div className="status-card listening-active">
+            <div className="status-card-icon">🎤</div>
+            <div className="status-card-content">
+              <div className="status-card-title">Listening</div>
+              <div className="status-card-text">Speak your command now</div>
+            </div>
+            <div className="status-pulse active"></div>
+          </div>
         )}
         {autonomousMode && (
-          <span className="autonomous-mode">
-            <span className="vision-indicator"></span> AUTONOMOUS MODE
-          </span>
+          <div className="status-card autonomous-active">
+            <div className="status-card-icon">🤖</div>
+            <div className="status-card-content">
+              <div className="status-card-title">Autonomous Mode</div>
+              <div className="status-card-text">AI fully active</div>
+            </div>
+          </div>
         )}
       </div>
 
@@ -1675,148 +1713,109 @@ const JarvisVoice = () => {
         </div>
       )}
 
-      <div className="voice-controls" style={{ minHeight: '60px', padding: '10px' }}>
-        {/* Streamlined controls - removed indefinite listening button */}
+      <div className="jarvis-controls">
         {(!jarvisStatus || jarvisStatus === 'offline' || jarvisStatus === 'error') ? (
           <button
             onClick={activateJarvis}
-            className="jarvis-button activate"
-            style={{
-              display: 'inline-block',
-              visibility: 'visible',
-              opacity: 1,
-              margin: '5px'
-            }}
+            className="jarvis-button jarvis-button-primary"
           >
-            🚀 Activate JARVIS
+            <span className="button-icon">🚀</span>
+            <span className="button-text">ACTIVATE JARVIS</span>
           </button>
         ) : (jarvisStatus === 'online' || jarvisStatus === 'active' || jarvisStatus === 'ready' || jarvisStatus === 'standby' || jarvisStatus === 'activating') ? (
-          <>
-            {/* Wake word status indicator */}
-            <div className="wake-word-status" style={{
-              display: 'inline-block',
-              padding: '10px 20px',
-              margin: '5px',
-              backgroundColor: continuousListening ? '#2a9d8f' : '#264653',
-              color: 'white',
-              borderRadius: '8px',
-              fontWeight: 'bold',
-              fontSize: '14px'
-            }}>
-              {continuousListening ? (
-                <>
-                  <span className="pulse-dot" style={{
-                    display: 'inline-block',
-                    width: '8px',
-                    height: '8px',
-                    backgroundColor: '#00ff00',
-                    borderRadius: '50%',
-                    marginRight: '8px',
-                    animation: 'pulse 1.5s infinite'
-                  }}></span>
-                  🎙️ Listening for "Hey JARVIS"
-                </>
-              ) : (
-                <>⏸️ Wake word detection paused</>
-              )}
-            </div>
-
+          <div className="jarvis-button-group">
             <button
               onClick={toggleAutonomousMode}
-              className={`jarvis-button ${autonomousMode ? 'autonomous-active' : 'autonomous'}`}
+              className={`jarvis-button ${autonomousMode ? 'jarvis-button-active' : 'jarvis-button-secondary'}`}
             >
-              {autonomousMode ? '🤖 Autonomous ON' : '👤 Manual Mode'}
+              <span className="button-icon">{autonomousMode ? '🤖' : '👤'}</span>
+              <span className="button-text">{autonomousMode ? 'AUTONOMOUS' : 'MANUAL MODE'}</span>
             </button>
-          </>
+
+            {!continuousListening && (
+              <button
+                onClick={enableContinuousListening}
+                className="jarvis-button jarvis-button-secondary"
+              >
+                <span className="button-icon">🎙️</span>
+                <span className="button-text">ENABLE WAKE WORD</span>
+              </button>
+            )}
+          </div>
         ) : (
           /* Fallback for unknown status */
-          <button onClick={activateJarvis} className="jarvis-button activate">
-            🔧 Initialize JARVIS (Status: {jarvisStatus})
+          <button onClick={activateJarvis} className="jarvis-button jarvis-button-warning">
+            <span className="button-icon">🔧</span>
+            <span className="button-text">INITIALIZE JARVIS</span>
           </button>
         )}
       </div>
 
-      <div className="voice-input">
-        <input
-          type="text"
-          placeholder="Or type your command..."
-          onKeyPress={(e) => {
-            if (e.key === 'Enter') {
-              sendTextCommand(e.target.value);
-              e.target.value = '';
-            }
-          }}
-          disabled={!jarvisStatus || jarvisStatus === 'offline' || jarvisStatus === 'error'}
-          style={{
-            opacity: (!jarvisStatus || jarvisStatus === 'offline' || jarvisStatus === 'error') ? 0.5 : 1
-          }}
-        />
-      </div>
-
-      {transcript && (
-        <div className="transcript">
-          <strong>You:</strong> {transcript}
-        </div>
-      )}
-
-      {response && (
-        <div className="jarvis-response">
-          <strong>JARVIS:</strong> {response}
-        </div>
-      )}
-
-      {error && (
-        <div className="error-message">
-          {error}
-          {error === 'Connection error' && (
-            <button
-              onClick={() => {
-                setError(null);
-                connectWebSocket();
-              }}
-              className="reconnect-button"
-            >
-              Reconnect
-            </button>
-          )}
-        </div>
-      )}
-
-      <div className="voice-tips">
-        <p style={{ fontSize: '14px', color: '#888' }}>
-          {jarvisStatus === 'online' || jarvisStatus === 'active' || jarvisStatus === 'ready' ? (
-            <>✨ Just say "Hey JARVIS" to activate voice commands</>
-          ) : (
-            <>Click "Activate JARVIS" to enable wake word detection</>
-          )}
-        </p>
-        <p style={{ fontSize: '13px', color: '#666' }}>Available commands: weather, time, calculations, reminders, browser control</p>
-
-        {/* Debug audio button */}
-        <div style={{ marginTop: '10px' }}>
-          <button
-            onClick={async () => {
-              console.log('Testing audio endpoint...');
-              try {
-                await playAudioResponse('Testing JARVIS voice. Can you hear me?');
-              } catch (error) {
-                console.error('Test failed:', error);
-                setError('Audio test failed: ' + error.message);
+      {/* Command Input Section */}
+      <div className="jarvis-input-section">
+        <div className="jarvis-input-container">
+          <input
+            type="text"
+            className="jarvis-input"
+            placeholder={jarvisStatus === 'online' ? "Type your command or say 'Hey JARVIS'..." : "System offline..."}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter') {
+                sendTextCommand(e.target.value);
+                e.target.value = '';
               }
             }}
-            style={{
-              padding: '5px 10px',
-              marginRight: '10px',
-              background: '#444',
-              border: '1px solid #666',
-              color: '#fff',
-              cursor: 'pointer',
-              borderRadius: '4px'
+            disabled={!jarvisStatus || jarvisStatus === 'offline' || jarvisStatus === 'error'}
+          />
+          <button
+            className="jarvis-send-button"
+            onClick={() => {
+              const input = document.querySelector('.jarvis-input');
+              if (input.value) {
+                sendTextCommand(input.value);
+                input.value = '';
+              }
             }}
+            disabled={!jarvisStatus || jarvisStatus === 'offline' || jarvisStatus === 'error'}
           >
-            Test Audio
+            ➤
           </button>
         </div>
+      </div>
+
+
+
+      {/* Help Section */}
+      <div className="jarvis-help">
+        <div className="jarvis-help-title">Quick Guide</div>
+        <div className="jarvis-help-grid">
+          <div className="jarvis-help-item">
+            <span className="help-icon">🎙️</span>
+            <span className="help-text">Say "Hey JARVIS" to activate</span>
+          </div>
+          <div className="jarvis-help-item">
+            <span className="help-icon">⌨️</span>
+            <span className="help-text">Or type commands directly</span>
+          </div>
+          <div className="jarvis-help-item">
+            <span className="help-icon">🤖</span>
+            <span className="help-text">Enable autonomous mode for AI assistance</span>
+          </div>
+          <div className="jarvis-help-item">
+            <span className="help-icon">💡</span>
+            <span className="help-text">Try: weather, time, calculations, reminders</span>
+          </div>
+        </div>
+
+        {/* Test Audio Button */}
+        <button
+          onClick={async () => {
+            console.log('Testing audio...');
+            await playAudioResponse('JARVIS voice test. All systems operational.');
+          }}
+          className="jarvis-test-button"
+        >
+          🔊 Test Audio
+        </button>
       </div>
     </div>
   );
