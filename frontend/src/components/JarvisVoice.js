@@ -808,6 +808,12 @@ const JarvisVoice = () => {
       const initialized = await wakeWordServiceRef.current.initialize(API_URL);
       if (initialized) {
         console.log('✅ Wake word service initialized');
+        
+        // Start continuous listening for wake word detection
+        if (!isListening && recognitionRef.current) {
+          console.log('🎤 Starting continuous listening for wake word...');
+          startListening();
+        }
       } else {
         console.warn('⚠️ Wake word service not available on backend');
       }
@@ -844,6 +850,32 @@ const JarvisVoice = () => {
         // Only process final results to avoid duplicate detections
         if (!isFinal) return;
 
+        // Check for wake words when not waiting for command
+        if (!isWaitingForCommand) {
+          const wakeWords = ['hey jarvis', 'jarvis', 'ok jarvis'];
+          const detectedWakeWord = wakeWords.find(word => transcript.includes(word));
+          
+          if (detectedWakeWord) {
+            console.log('🎤 Wake word detected:', detectedWakeWord);
+            
+            // Trigger wake word activation
+            if (wakeWordServiceRef.current && wakeWordServiceRef.current.onWakeWordDetected) {
+              wakeWordServiceRef.current.onWakeWordDetected({
+                wakeWord: detectedWakeWord,
+                confidence: event.results[last][0].confidence,
+                response: "I'm online sir, waiting for your command"
+              });
+            } else {
+              // Fallback: handle wake word activation directly
+              console.log('🎯 Handling wake word activation directly');
+              setIsWaitingForCommand(true);
+              setIsListening(true);
+              speakResponse("I'm online sir, waiting for your command");
+            }
+            return;
+          }
+        }
+        
         // When waiting for command after wake word, process any speech
         if (isWaitingForCommand) {
           // Process the command after wake word
