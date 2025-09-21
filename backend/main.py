@@ -857,6 +857,8 @@ def mount_routers():
         if wake_word.get('initialized'):
             app.state.wake_word = wake_word
             logger.info("✅ Wake Word detection ready")
+        else:
+            logger.warning("⚠️ Wake Word API mounted but not initialized")
     
     # Rust API (if Rust components are available)
     if hasattr(app.state, 'rust_acceleration') and app.state.rust_acceleration.get('available'):

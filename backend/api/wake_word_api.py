@@ -10,8 +10,8 @@ from typing import Dict, Any, Optional
 import logging
 import json
 
-from ..wake_word import WakeWordService, get_config
-from ..wake_word.services.wake_service import WakeWordAPI
+from wake_word import WakeWordService, get_config
+from wake_word.services.wake_service import WakeWordAPI
 
 logger = logging.getLogger(__name__)
 
