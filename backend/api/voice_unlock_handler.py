@@ -9,10 +9,14 @@ import logging
 from typing import Dict, Any, Optional
 import asyncio
 
-from ..voice_unlock import VoiceEnrollmentManager, VoiceAuthenticator
-from ..voice_unlock.services.mac_unlock_service import MacUnlockService
-from ..voice_unlock.services.keychain_service import KeychainService
-from ..voice_unlock.config import get_config
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from voice_unlock import VoiceEnrollmentManager, VoiceAuthenticator
+from voice_unlock.services.mac_unlock_service import MacUnlockService
+from voice_unlock.services.keychain_service import KeychainService
+from voice_unlock.config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +91,28 @@ async def handle_voice_unlock_command(command: str, websocket=None) -> Dict[str,
                 'command': command
             }
     
+    # Start actual enrollment process
+    elif any(phrase in command_lower for phrase in ['start voice enrollment now', 'begin voice enrollment', 'start enrollment now']):
+        user_id = "default_user"
+        session_id = enrollment_manager.start_enrollment(user_id)
+        
+        # Create progress callback
+        enrollment_progress = {'completed': False, 'progress': 0}
+        
+        def progress_callback(session, progress):
+            enrollment_progress['progress'] = progress
+            logger.info(f"Enrollment progress: {progress * 100:.0f}%")
+        
+        # Run enrollment
+        success, message = await enrollment_manager.auto_enroll(user_id, progress_callback)
+        
+        return {
+            'type': 'voice_unlock',
+            'action': 'enrollment_completed' if success else 'enrollment_failed',
+            'message': message,
+            'success': success
+        }
+    
     # Start enrollment
     elif any(phrase in command_lower for phrase in ['enroll my voice', 'set up voice', 'voice enrollment', 'register my voice']):
         # Extract user name if provided
@@ -104,24 +130,13 @@ async def handle_voice_unlock_command(command: str, websocket=None) -> Dict[str,
                 'instructions': 'Connect to the WebSocket URL to complete enrollment with real-time feedback.'
             }
         else:
-            # For non-WebSocket, start auto-enrollment
-            session_id = enrollment_manager.start_enrollment(user_id)
-            
-            # Create progress callback
-            enrollment_progress = {'completed': False, 'progress': 0}
-            
-            def progress_callback(session, progress):
-                enrollment_progress['progress'] = progress
-                logger.info(f"Enrollment progress: {progress * 100:.0f}%")
-            
-            # Run enrollment
-            success, message = await enrollment_manager.auto_enroll(user_id, progress_callback)
-            
+            # For voice command enrollment, provide instructions
             return {
                 'type': 'voice_unlock',
-                'action': 'enrollment_completed' if success else 'enrollment_failed',
-                'message': message,
-                'success': success
+                'action': 'enrollment_instructions',
+                'message': 'To enroll your voice, Sir, I need you to speak clearly for about 10 seconds. Say "Start voice enrollment now" when you are ready in a quiet environment.',
+                'success': True,
+                'next_command': 'start voice enrollment now'
             }
     
     # Test voice unlock
@@ -229,6 +244,27 @@ async def handle_voice_unlock_command(command: str, websocket=None) -> Dict[str,
         ]
     }
 
+
+# Handler class for unified command processor
+class VoiceUnlockHandler:
+    """Handler for voice unlock commands"""
+    
+    async def handle_command(self, command: str, websocket=None) -> Dict[str, Any]:
+        """Process voice unlock command"""
+        return await handle_voice_unlock_command(command, websocket)
+    
+    async def process_command(self, command: str, websocket=None) -> Dict[str, Any]:
+        """Process voice unlock command (backward compatibility)"""
+        return await self.handle_command(command, websocket)
+
+
+# Singleton instance
+voice_unlock_handler = VoiceUnlockHandler()
+
+# Function to get the handler instance
+def get_voice_unlock_handler():
+    """Get the voice unlock handler instance"""
+    return voice_unlock_handler
 
 # For backward compatibility with the unified command processor
 async def process_command(command: str, websocket=None) -> Dict[str, Any]:

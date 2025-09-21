@@ -585,6 +585,15 @@ class UnifiedCommandProcessor:
                         'response': 'Understood',
                         'command_type': 'meta'
                     }
+            elif command_type == CommandType.VOICE_UNLOCK:
+                # Handle voice unlock commands
+                result = await handler.handle_command(command_text, websocket)
+                return {
+                    'success': result.get('success', result.get('type') == 'voice_unlock'),
+                    'response': result.get('message', result.get('response', '')),
+                    'command_type': command_type.value,
+                    **result
+                }
             else:
                 # Generic handler interface
                 return {
@@ -622,6 +631,9 @@ class UnifiedCommandProcessor:
             elif command_type == CommandType.AUTONOMY:
                 from api.autonomy_handler import get_autonomy_handler
                 return get_autonomy_handler()
+            elif command_type == CommandType.VOICE_UNLOCK:
+                from api.voice_unlock_handler import get_voice_unlock_handler
+                return get_voice_unlock_handler()
             # Add other handlers as needed
             
         except ImportError as e:

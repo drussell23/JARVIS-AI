@@ -18,7 +18,7 @@ __author__ = "JARVIS Team"
 
 from .core.enrollment import VoiceEnrollmentManager
 from .core.authentication import VoiceAuthenticator
-from .services.unlock_service import MacUnlockService
+from .services.mac_unlock_service import MacUnlockService
 
 __all__ = [
     'VoiceEnrollmentManager',

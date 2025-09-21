@@ -716,6 +716,11 @@ const JarvisVoice = () => {
           setTimeout(() => {
             setIsWaitingForCommand(false);
             isWaitingForCommandRef.current = false;
+            // Ensure continuous listening remains active
+            if (!continuousListeningRef.current && jarvisStatus === 'online') {
+              console.log('Re-enabling continuous listening after command completion');
+              enableContinuousListening();
+            }
           }, 1000);
         }
 
@@ -1134,8 +1139,8 @@ const JarvisVoice = () => {
       recognitionRef.current.onend = () => {
         console.log('Speech recognition ended - enforcing indefinite listening');
 
-        // ALWAYS restart if continuous listening is enabled
-        if (continuousListening) {
+        // ALWAYS restart if continuous listening is enabled (check ref for most current state)
+        if (continuousListeningRef.current || continuousListening) {
           console.log('♾️ Indefinite listening active - restarting microphone...');
 
           // Track restart attempts

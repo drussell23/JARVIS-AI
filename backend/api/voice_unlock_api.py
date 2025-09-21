@@ -15,14 +15,18 @@ import numpy as np
 import base64
 from datetime import datetime
 
-from ..voice_unlock import (
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from voice_unlock import (
     VoiceEnrollmentManager, 
     VoiceAuthenticator, 
     MacUnlockService
 )
-from ..voice_unlock.config import get_config
-from ..voice_unlock.services.keychain_service import KeychainService
-from ..voice_unlock.services.screensaver_integration import ScreensaverManager
+from voice_unlock.config import get_config
+from voice_unlock.services.keychain_service import KeychainService
+from voice_unlock.services.screensaver_integration import ScreensaverManager
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +51,7 @@ def initialize_voice_unlock():
         keychain_service = KeychainService()
         
         # Initialize system integration
-        from ..voice_unlock.services.mac_unlock_service import MacUnlockService
+        from voice_unlock.services.mac_unlock_service import MacUnlockService
         unlock_service = MacUnlockService(authenticator)
         
         # Initialize screensaver integration
