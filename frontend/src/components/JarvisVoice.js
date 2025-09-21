@@ -324,6 +324,8 @@ const JarvisVoice = () => {
   const visionConnectionRef = useRef(null);
   const lastSpeechTimeRef = useRef(0);
   const wakeWordServiceRef = useRef(null);
+  const continuousListeningRef = useRef(false);
+  const isWaitingForCommandRef = useRef(false);
 
   // API URLs are defined globally at the top of the file
   // Ensure consistent WebSocket URL (fix port mismatch)
@@ -873,20 +875,20 @@ const JarvisVoice = () => {
         const isFinal = event.results[last].isFinal;
 
         // Debug logging
-        console.log(`🎙️ Speech detected: "${transcript}" (final: ${isFinal}) | Waiting: ${isWaitingForCommand} | Continuous: ${continuousListening}`);
+        console.log(`🎙️ Speech detected: "${transcript}" (final: ${isFinal}) | Waiting: ${isWaitingForCommandRef.current} | Continuous: ${continuousListeningRef.current}`);
 
         // Only process final results to avoid duplicate detections
         if (!isFinal) return;
 
         // Check for wake words when not waiting for command
-        if (!isWaitingForCommand && continuousListening) {
+        if (!isWaitingForCommandRef.current && continuousListeningRef.current) {
           const wakeWords = ['hey jarvis', 'jarvis', 'ok jarvis', 'hello jarvis'];
           const detectedWakeWord = wakeWords.find(word => transcript.includes(word));
 
           if (detectedWakeWord) {
             console.log('🎯 Wake word detected:', detectedWakeWord, '| Current state:', {
-              isWaitingForCommand,
-              continuousListening,
+              isWaitingForCommand: isWaitingForCommandRef.current,
+              continuousListening: continuousListeningRef.current,
               isListening
             });
 
@@ -906,7 +908,7 @@ const JarvisVoice = () => {
         }
 
         // When waiting for command after wake word, process any speech
-        if (isWaitingForCommand && transcript.length > 0) {
+        if (isWaitingForCommandRef.current && transcript.length > 0) {
           // Filter out wake words from commands
           const wakeWords = ['hey jarvis', 'jarvis', 'ok jarvis', 'hello jarvis'];
           let commandText = event.results[last][0].transcript;
@@ -925,6 +927,7 @@ const JarvisVoice = () => {
 
             // Reset waiting state
             setIsWaitingForCommand(false);
+            isWaitingForCommandRef.current = false;
           }
         }
       };
@@ -1137,19 +1140,15 @@ const JarvisVoice = () => {
   const handleWakeWordDetected = () => {
     console.log('🎯 handleWakeWordDetected called!');
     setIsWaitingForCommand(true);
+    isWaitingForCommandRef.current = true;
     setIsListening(true);
     
     // Always speak response immediately
     speakResponse("Yes, sir?");
 
-    // Send wake word to JARVIS if connected
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: 'command',
-        text: 'activate'
-      }));
-    } else {
-      // WebSocket not connected, try to establish connection
+    // Don't send anything to backend - we're handling the wake word response locally
+    // Just ensure WebSocket is connected for subsequent commands
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       console.log('WebSocket not connected, attempting to connect...');
       connectWebSocket();
     }
@@ -1160,6 +1159,7 @@ const JarvisVoice = () => {
         if (currentWaiting) {
           console.log('⏱️ Command timeout - stopping listening');
           setIsListening(false);
+          isWaitingForCommandRef.current = false;
           return false;
         }
         return currentWaiting;
@@ -1293,6 +1293,7 @@ const JarvisVoice = () => {
   const enableContinuousListening = () => {
     if (recognitionRef.current) {
       setContinuousListening(true);
+      continuousListeningRef.current = true;
       setIsListening(true);
 
       // Configure for INDEFINITE continuous listening
@@ -1378,8 +1379,10 @@ const JarvisVoice = () => {
 
   const disableContinuousListening = () => {
     setContinuousListening(false);
+    continuousListeningRef.current = false;
     setIsListening(false);
     setIsWaitingForCommand(false);
+    isWaitingForCommandRef.current = false;
 
     if (recognitionRef.current) {
       // Clear keep-alive interval
