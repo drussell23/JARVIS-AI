@@ -877,8 +877,8 @@ const JarvisVoice = () => {
         // Debug logging
         console.log(`🎙️ Speech detected: "${transcript}" (final: ${isFinal}) | Waiting: ${isWaitingForCommandRef.current} | Continuous: ${continuousListeningRef.current}`);
 
-        // Only process final results to avoid duplicate detections
-        if (!isFinal) return;
+        // Process both interim and final results when waiting for command
+        if (!isFinal && !isWaitingForCommandRef.current) return;
 
         // Check for wake words when not waiting for command
         if (!isWaitingForCommandRef.current && continuousListeningRef.current) {
@@ -909,6 +909,9 @@ const JarvisVoice = () => {
 
         // When waiting for command after wake word, process any speech
         if (isWaitingForCommandRef.current && transcript.length > 0) {
+          // Only process final results for commands
+          if (!isFinal) return;
+          
           // Filter out wake words from commands
           const wakeWords = ['hey jarvis', 'jarvis', 'ok jarvis', 'hello jarvis'];
           let commandText = event.results[last][0].transcript;
@@ -923,11 +926,14 @@ const JarvisVoice = () => {
           // Only process if there's actual command content
           if (commandText.length > 0) {
             console.log('📢 Processing command:', commandText);
+            console.log('🚀 Sending command to backend via WebSocket');
             handleVoiceCommand(commandText);
 
             // Reset waiting state
             setIsWaitingForCommand(false);
             isWaitingForCommandRef.current = false;
+          } else {
+            console.log('⚠️ No command text after removing wake word, continuing to listen...');
           }
         }
       };
@@ -1168,7 +1174,8 @@ const JarvisVoice = () => {
   };
 
   const handleVoiceCommand = (command) => {
-    console.log('Command received:', command);
+    console.log('🎯 handleVoiceCommand called with:', command);
+    console.log('📡 WebSocket state:', wsRef.current ? wsRef.current.readyState : 'No WebSocket');
     setTranscript(command);
 
     // Check for autonomy activation commands
@@ -1769,23 +1776,6 @@ const JarvisVoice = () => {
         </div>
       </div>
 
-      {/* Conversation Transcript */}
-      {(transcript || response) && (
-        <div className="jarvis-transcript">
-          {transcript && (
-            <div className="user-message">
-              <span className="message-label">YOU</span>
-              <span className="message-text">{transcript}</span>
-            </div>
-          )}
-          {response && (
-            <div className="jarvis-message">
-              <span className="message-label">JARVIS</span>
-              <span className="message-text">{response}</span>
-            </div>
-          )}
-        </div>
-      )}
 
     </div>
   );
