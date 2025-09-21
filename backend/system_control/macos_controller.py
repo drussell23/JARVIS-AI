@@ -138,13 +138,13 @@ class MacOSController:
         success, message = self.execute_applescript(script)
         
         if success:
-            return True, f"Opening {app_name}"
+            return True, f"Opening {app_name}, Sir"
         else:
             # Try alternative method
             success, message = self.execute_shell(f"open -a '{app_name}'")
             if success:
-                return True, f"Opening {app_name}"
-            return False, f"Failed to open {app_name}: {message}"
+                return True, f"Opening {app_name} for you"
+            return False, f"I'm unable to open {app_name}, Sir"
             
     def close_application(self, app_name: str) -> Tuple[bool, str]:
         """Close an application gracefully"""
@@ -577,20 +577,20 @@ class MacOSController:
                     query_params = parse_qs(parsed.query)
                     search_query = query_params.get('q', [''])[0]
                     if search_query:
-                        return True, f"searching Google for '{search_query}'"
+                        return True, f"Searching for {search_query}, Sir"
                     else:
-                        return True, f"navigating to Google search"
+                        return True, f"Opening Google search"
                 elif 'google.com' in url.lower():
-                    return True, f"navigating to Google"
+                    return True, f"Opening Google, Sir"
                 elif 'github.com' in url.lower():
-                    return True, f"navigating to GitHub"
+                    return True, f"Opening GitHub for you"
                 elif 'amazon.com' in url.lower():
-                    return True, f"navigating to Amazon"
+                    return True, f"Taking you to Amazon"
                 else:
                     # For other URLs, simplify the domain
                     from urllib.parse import urlparse
                     domain = urlparse(url).netloc.replace('www.', '')
-                    return True, f"navigating to {domain}"
+                    return True, f"Opening {domain} for you"
             else:
                 # Fallback to shell command
                 cmd = f"open -a '{browser}' '{url}'"
@@ -604,9 +604,9 @@ class MacOSController:
                         query_params = parse_qs(parsed.query)
                         search_query = query_params.get('q', [''])[0]
                         if search_query:
-                            return True, f"searching Google for '{search_query}' in {browser}"
+                            return True, f"Searching for {search_query} in {browser.title()}, Sir"
                         else:
-                            return True, f"opening Google search in {browser}"
+                            return True, f"Opening Google search in {browser.title()}"
                     elif 'google.com' in url.lower():
                         return True, f"opening Google in {browser}"
                     else:
@@ -618,7 +618,22 @@ class MacOSController:
             cmd = f"open '{url}'"
             success, message = self.execute_shell(cmd)
             if success:
-                return True, f"Opened {url}"
+                # More conversational response for default browser
+                if 'google.com/search?q=' in url.lower():
+                    from urllib.parse import urlparse, parse_qs
+                    parsed = urlparse(url)
+                    query_params = parse_qs(parsed.query)
+                    search_query = query_params.get('q', [''])[0]
+                    if search_query:
+                        return True, f"Searching for {search_query}, Sir"
+                    else:
+                        return True, f"Opening Google search"
+                elif 'google.com' in url.lower():
+                    return True, f"Opening Google, Sir"
+                else:
+                    from urllib.parse import urlparse
+                    domain = urlparse(url).netloc.replace('www.', '')
+                    return True, f"Navigating to {domain}, Sir"
             return False, f"Failed to open URL: {message}"
         
     def web_search(self, query: str, engine: str = "google", browser: Optional[str] = None) -> Tuple[bool, str]:

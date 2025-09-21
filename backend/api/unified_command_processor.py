@@ -363,10 +363,21 @@ class UnifiedCommandProcessor:
         if len(responses) > 1:
             # Make multi-step responses more natural
             if len(responses) == 2:
-                response = f"{responses[0]} and {responses[1].lower()}"
+                # Keep the first response as-is, lowercase the second but preserve "Sir"
+                second_response = responses[1]
+                if second_response.endswith(", Sir"):
+                    second_response = second_response[:-5].lower() + ", Sir"
+                else:
+                    second_response = second_response.lower()
+                response = f"{responses[0]} and {second_response}"
             else:
                 # For 3+ steps: "Opening Safari, navigating to Google, and taking a screenshot"
-                response = ", ".join(responses[:-1]) + f", and {responses[-1].lower()}"
+                last_response = responses[-1]
+                if last_response.endswith(", Sir"):
+                    last_response = last_response[:-5].lower() + ", Sir"
+                else:
+                    last_response = last_response.lower()
+                response = ", ".join(responses[:-1]) + f", and {last_response}"
         else:
             response = responses[0] if responses else "I'll help you with that"
             

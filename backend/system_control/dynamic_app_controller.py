@@ -365,9 +365,9 @@ class DynamicAppController:
                 subprocess.run(["open", "-a", app_info['actual_name']], check=True)
             
             if is_running:
-                return True, f"Switching to {app_info['name']}"
+                return True, f"{app_info['name']} is already open"
             else:
-                return True, f"Opening {app_info['name']}"
+                return True, f"Opening {app_info['name']}, Sir"
                 
         except Exception as e:
             logger.error(f"Error opening {app_name}: {e}")
