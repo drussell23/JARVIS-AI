@@ -365,7 +365,7 @@ class DynamicAppController:
                 subprocess.run(["open", "-a", app_info['actual_name']], check=True)
             
             if is_running:
-                return True, f"{app_info['name']} brought to front"
+                return True, f"Switching to {app_info['name']}"
             else:
                 return True, f"Opening {app_info['name']}"
                 
@@ -379,7 +379,7 @@ class DynamicAppController:
         if not self.is_app_running(search_name):
             app_info = self.find_app_by_name(search_name)
             app_display_name = app_info['name'] if app_info else search_name
-            return True, f"{app_display_name} is not running"
+            return True, f"{app_display_name} is already closed"
         
         # Find the app in installed apps
         app_info = self.find_app_by_name(search_name)
@@ -433,7 +433,7 @@ class DynamicAppController:
             )
             
             if "not running" in result.stdout:
-                return True, f"{app_info['name']} is not running"
+                return True, f"{app_info['name']} was not running"
             
             return True, f"Closed {app_info['name']}"
             
@@ -447,7 +447,7 @@ class DynamicAppController:
         if self.is_app_running(search_name):
             app_info = self.find_app_by_name(search_name)
             app_display_name = app_info['name'] if app_info else search_name
-            return True, f"{app_display_name} is already running"
+            return True, f"{app_display_name} is already open"
         
         # If not running, open it
         success, message = self.open_app_by_name(search_name)

@@ -138,12 +138,12 @@ class MacOSController:
         success, message = self.execute_applescript(script)
         
         if success:
-            return True, f"Opened {app_name}"
+            return True, f"Opening {app_name}"
         else:
             # Try alternative method
             success, message = self.execute_shell(f"open -a '{app_name}'")
             if success:
-                return True, f"Opened {app_name}"
+                return True, f"Opening {app_name}"
             return False, f"Failed to open {app_name}: {message}"
             
     def close_application(self, app_name: str) -> Tuple[bool, str]:
@@ -155,7 +155,7 @@ class MacOSController:
         success, message = self.execute_applescript(script)
         
         if success:
-            return True, f"Closed {app_name}"
+            return True, f"Closing {app_name}"
         
         # If that fails, try using System Events
         script = f'''
@@ -174,7 +174,7 @@ class MacOSController:
         success, message = self.execute_applescript(script)
         
         if success:
-            return True, f"Closed {app_name}"
+            return True, f"Closing {app_name}"
         
         # Final attempt: Force quit if necessary
         # But only for non-system apps
@@ -313,8 +313,8 @@ class MacOSController:
         success, _ = self.execute_applescript(script)
         
         if success:
-            return True, f"Volume set to {level}%"
-        return False, "Failed to set volume"
+            return True, f"Setting volume to {level}%"
+        return False, "I couldn't adjust the volume"
         
     def mute_volume(self, mute: bool = True) -> Tuple[bool, str]:
         """Mute or unmute system volume"""
@@ -472,14 +472,31 @@ class MacOSController:
             '''
             success, message = self.execute_applescript(script)
             if success:
-                return True, f"Navigated to {url} in {browser}"
+                # Make URL response more conversational
+                if 'google.com' in url.lower():
+                    return True, f"navigating to Google"
+                elif 'github.com' in url.lower():
+                    return True, f"navigating to GitHub"
+                elif 'amazon.com' in url.lower():
+                    return True, f"navigating to Amazon"
+                else:
+                    # For other URLs, simplify the domain
+                    from urllib.parse import urlparse
+                    domain = urlparse(url).netloc.replace('www.', '')
+                    return True, f"navigating to {domain}"
             else:
                 # Fallback to shell command
                 cmd = f"open -a '{browser}' '{url}'"
                 success, message = self.execute_shell(cmd)
                 if success:
-                    return True, f"Opened {url} in {browser}"
-                return False, f"Failed to open URL: {message}"
+                    # Consistent conversational format
+                    if 'google.com' in url.lower():
+                        return True, f"opening Google in {browser}"
+                    else:
+                        from urllib.parse import urlparse
+                        domain = urlparse(url).netloc.replace('www.', '')
+                        return True, f"opening {domain} in {browser}"
+                return False, f"I couldn't open that URL"
         else:
             cmd = f"open '{url}'"
             success, message = self.execute_shell(cmd)

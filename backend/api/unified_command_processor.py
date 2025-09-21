@@ -355,11 +355,16 @@ class UnifiedCommandProcessor:
             if i < len(parts) - 1:
                 await asyncio.sleep(0.5)
                 
-        # Create comprehensive response
+        # Create conversational response
         if len(responses) > 1:
-            response = "Executed commands: " + " → ".join(responses)
+            # Make multi-step responses more natural
+            if len(responses) == 2:
+                response = f"{responses[0]} and {responses[1].lower()}"
+            else:
+                # For 3+ steps: "Opening Safari, navigating to Google, and taking a screenshot"
+                response = ", ".join(responses[:-1]) + f", and {responses[-1].lower()}"
         else:
-            response = responses[0] if responses else "No commands executed"
+            response = responses[0] if responses else "I'll help you with that"
             
         return {
             'success': all_success,
