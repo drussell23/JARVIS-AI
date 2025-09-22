@@ -1,0 +1,20 @@
+{
+  "proximity": {
+    "min_confidence": 80.0,
+    "detection_range": 3.0,
+    "update_frequency": 2
+  },
+  "voice": {
+    "min_confidence": 85.0,
+    "min_samples": 3,
+    "sample_duration": 3.0,
+    "liveness_required": true
+  },
+  "security": {
+    "combined_threshold": 90.0,
+    "max_attempts": 3,
+    "lockout_duration": 300,
+    "proximity_weight": 0.4,
+    "voice_weight": 0.6
+  }
+}
