@@ -68,17 +68,53 @@
 - **28-30% memory**: Check every 200ms
 - **>30% memory**: PANIC MODE - emergency cleanup
 
-## 🛠️ Configuration
+## 🛠️ Advanced Biometric Configuration
 
-All settings in `backend/voice_unlock/config.py` are optimized for 30% target:
-
+### Voice Authentication Settings
 ```python
-# Ultra-aggressive settings for 16GB systems
-max_memory_mb = 300  # Reduced from 400MB
-cache_size_mb = 100  # Reduced from 150MB
-model_unload_timeout = 30  # Reduced from 60s
-aggressive_unload_timeout = 15  # Reduced from 30s
-max_cpu_percent = 20  # Reduced from 25%
+# Biometric Accuracy Settings
+voice_recognition_accuracy = 0.999  # 99.9% target accuracy
+base_authentication_threshold = 0.90  # 90% minimum confidence
+high_security_threshold = 0.95  # For sensitive operations
+
+# Multi-Factor Weights
+voice_pattern_weight = 0.40  # 40% - Primary biometric
+liveness_detection_weight = 0.30  # 30% - Anti-spoofing
+environmental_check_weight = 0.20  # 20% - Consistency
+temporal_pattern_weight = 0.10  # 10% - Rhythm analysis
+
+# Security Parameters
+max_authentication_attempts = 5  # Before lockout
+lockout_duration_seconds = 300  # 5-minute lockout
+liveness_detection_threshold = 0.80  # 80% minimum
+anti_spoofing_level = 'high'  # Maximum protection
+
+# Continuous Learning
+adaptive_learning_enabled = True
+max_voice_samples = 100  # Rolling window
+model_update_interval = 86400  # Daily updates
+incremental_learning_rate = 0.1
+```
+
+### Anti-Spoofing Configuration
+```python
+# Replay Attack Detection
+replay_detection_enabled = True
+audio_fingerprint_size = 256
+phase_correlation_threshold = 0.9
+compression_artifact_threshold = 0.8
+
+# Synthetic Voice Detection  
+synthetic_detection_enabled = True
+spectral_anomaly_threshold = 0.7
+formant_validation_strictness = 0.85
+unnatural_pattern_threshold = 0.6
+
+# Environmental Verification
+environment_check_enabled = True
+noise_consistency_window = 5.0  # seconds
+channel_correlation_threshold = 0.8
+background_change_tolerance = 0.2
 ```
 
 ## 📝 Usage Flow
