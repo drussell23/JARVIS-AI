@@ -202,6 +202,13 @@ backend/voice_unlock/objc/*.dylib
 /tmp/daemon_*.log
 /tmp/*_debug.log
 
+# Proximity Voice Auth specific
+backend/voice_unlock/proximity_voice_auth/python/venv/
+backend/voice_unlock/proximity_voice_auth/bin/
+backend/voice_unlock/proximity_voice_auth/logs/*.log
+backend/voice_unlock/proximity_voice_auth/**/__pycache__/
+backend/voice_unlock/proximity_voice_auth/**/*.pyc
+
 # Keychain passwords - NEVER commit
 **/unlock_token
 **/com.jarvis.voiceunlock
