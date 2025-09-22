@@ -253,6 +253,16 @@ class VoiceUnlockWebSocketServer:
             logger.error(f"Error retrieving password: {e}")
             return None
     
+    def escape_password_for_applescript(self, password: str) -> str:
+        """Escape special characters in password for AppleScript"""
+        # Escape backslashes first, then quotes, then other special characters
+        escaped = password.replace('\\', '\\\\')  # Escape backslashes
+        escaped = escaped.replace('"', '\\"')     # Escape double quotes  
+        escaped = escaped.replace("'", "\\'")     # Escape single quotes
+        escaped = escaped.replace('$', '\\$')     # Escape dollar signs
+        escaped = escaped.replace('`', '\\`')     # Escape backticks
+        return escaped
+
     async def perform_screen_unlock(self, password: str) -> bool:
         """Perform the actual screen unlock using AppleScript"""
         try:
@@ -284,10 +294,14 @@ class VoiceUnlockWebSocketServer:
             
             await asyncio.sleep(0.5)
             
+            # Escape password for AppleScript
+            escaped_password = self.escape_password_for_applescript(password)
+            logger.info("Password escaped for AppleScript input")
+            
             # Type password and press return
             script = f'''
             tell application "System Events"
-                keystroke "{password}"
+                keystroke "{escaped_password}"
                 delay 0.2
                 key code 36
             end tell

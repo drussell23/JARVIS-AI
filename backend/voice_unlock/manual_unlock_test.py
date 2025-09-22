@@ -33,6 +33,16 @@ def wake_display():
     time.sleep(1)
 
 
+def escape_password_for_applescript(password):
+    """Escape special characters in password for AppleScript"""
+    # Escape backslashes first, then quotes, then other special characters
+    escaped = password.replace('\\', '\\\\')  # Escape backslashes
+    escaped = escaped.replace('"', '\\"')     # Escape double quotes  
+    escaped = escaped.replace("'", "\\'")     # Escape single quotes
+    escaped = escaped.replace('$', '\\$')     # Escape dollar signs
+    escaped = escaped.replace('`', '\\`')     # Escape backticks
+    return escaped
+
 def type_password(password):
     """Type the password using AppleScript"""
     print("⌨️  Typing password...")
@@ -47,10 +57,14 @@ def type_password(password):
     subprocess.run(['osascript', '-e', click_script])
     time.sleep(0.5)
     
+    # Escape password for AppleScript
+    escaped_password = escape_password_for_applescript(password)
+    print("🔧 Password escaped for AppleScript input")
+    
     # Type password
     type_script = f'''
     tell application "System Events"
-        keystroke "{password}"
+        keystroke "{escaped_password}"
         delay 0.5
         key code 36
     end tell
