@@ -2,7 +2,7 @@
 
 A sophisticated voice-based authentication system for macOS that enables screen unlocking through voice commands. Built with a hybrid Objective-C and Python architecture for optimal performance and security.
 
-> **Status**: ✅ Fully implemented and functional. The system can detect when your Mac screen is locked and unlock it using voice commands.
+> **Status**: ✅ Fully integrated with JARVIS startup. Voice Unlock starts automatically when you launch JARVIS and processes commands like "unlock my mac" directly without giving instructions.
 
 ## Features
 
@@ -47,7 +47,7 @@ A sophisticated voice-based authentication system for macOS that enables screen 
 
 ## Quick Start
 
-### 1. Enable Screen Unlock (Required First Step)
+### 1. Enable Screen Unlock (One-Time Setup)
 
 ```bash
 cd ~/Documents/repos/JARVIS-AI-Agent/backend/voice_unlock
@@ -59,26 +59,28 @@ This will:
 - Configure the system for actual screen unlocking
 - Set up voice enrollment data
 
-### 2. Start the Voice Unlock System
+### 2. Start JARVIS (Includes Voice Unlock)
 
 ```bash
-./start_voice_unlock_system.sh
+# From the project root
+python start_system.py
 ```
 
-The system will:
-- Start the WebSocket server on port 8765
-- Launch the Voice Unlock daemon
-- Begin monitoring for screen lock events
-- Listen for voice commands when screen is locked
+Voice Unlock starts automatically with JARVIS if you've completed step 1. No need to run `start_voice_unlock_system.sh` separately anymore!
 
-### 3. Test Voice Unlock
+### 3. Using Voice Unlock
 
-1. Lock your screen (⌘+Control+Q)
-2. Say one of these phrases clearly:
-   - "Hello JARVIS, unlock my Mac"
-   - "JARVIS, this is [Your Name]"
-   - "Open sesame, JARVIS"
-3. Your screen will unlock automatically!
+**When talking to JARVIS (screen unlocked or locked):**
+- "Hey JARVIS, unlock my mac" - Directly unlocks your screen
+- "Hey JARVIS, unlock my screen" - Alternative command
+- "Hey JARVIS, unlock the mac" - Another variation
+
+**When screen is locked (standalone phrases):**
+- "Hello JARVIS, unlock my Mac"
+- "JARVIS, this is [Your Name]"
+- "Open sesame, JARVIS"
+
+> **New**: JARVIS now directly unlocks your screen when you say "unlock my mac" instead of giving you instructions!
 
 ## Installation
 
@@ -113,13 +115,22 @@ Grant these in System Settings > Privacy & Security
 
 ## Usage
 
-### Starting the Voice Unlock Service
+### Starting Voice Unlock
+
+Voice Unlock now starts automatically with JARVIS! Just run:
 
 ```bash
-# Quick start (recommended)
+# From the project root
+python start_system.py
+```
+
+If you need to start Voice Unlock manually for debugging:
+
+```bash
+# Manual start (for debugging only)
 ./start_voice_unlock_system.sh
 
-# Or start components manually:
+# Or start components individually:
 # 1. Start WebSocket server
 python3 objc/server/websocket_server.py &
 
@@ -130,7 +141,9 @@ python3 objc/server/websocket_server.py &
 ./objc/bin/JARVISVoiceUnlockDaemon --status
 ```
 
-### Stopping the Service
+### Stopping Voice Unlock
+
+Voice Unlock stops automatically when you stop JARVIS. If you need to stop it manually:
 
 ```bash
 # Stop all components
@@ -140,12 +153,17 @@ pkill -f JARVISVoiceUnlockDaemon
 
 ### Voice Commands
 
-When your screen is locked, say one of these phrases:
-- **"Hello JARVIS, unlock my Mac"** - Direct unlock command
+**Through JARVIS (anytime):**
+- **"Hey JARVIS, unlock my mac"** - Immediately unlocks your screen
+- **"Hey JARVIS, unlock my screen"** - Alternative command  
+- **"Hey JARVIS, unlock the mac"** - Another variation
+
+**Direct to Voice Unlock (when screen is locked):**
+- **"Hello JARVIS, unlock my Mac"** - Standalone unlock command
 - **"JARVIS, this is [Your Name]"** - Personal identification
 - **"Open sesame, JARVIS"** - Alternative unlock phrase
 
-> **Note**: Speak clearly and wait 1-2 seconds after the wake phrase for processing.
+> **Note**: When using JARVIS commands, the screen unlocks immediately without requiring additional phrases!
 
 ### Setup and Enrollment
 
@@ -238,24 +256,34 @@ This will show:
 
 ### Common Issues
 
-1. **"Voice commands not detected"**
+1. **"Voice Unlock didn't start with JARVIS"**
+   - Check if password is stored: `security find-generic-password -s com.jarvis.voiceunlock -a unlock_token -g`
+   - Run setup if needed: `./backend/voice_unlock/enable_screen_unlock.sh`
+   - Check JARVIS startup logs for "🔐 Voice Unlock system started"
+
+2. **"Voice commands not detected"**
    - Check microphone permissions in System Settings
    - Ensure you're saying the exact wake phrases
    - Speak clearly and directly to the microphone
    - Check logs: `tail -f /tmp/daemon_debug.log`
 
-2. **"Screen doesn't unlock"**
-   - Verify password is stored: `security find-generic-password -s com.jarvis.voiceunlock -a unlock_token -g`
+3. **"Screen doesn't unlock when I say 'unlock my mac'"**
+   - Verify Voice Unlock is running: `lsof -i :8765`
    - Check accessibility permissions in System Settings
-   - Ensure the daemon detects screen lock: Check `isScreenLocked` in logs
+   - Look for errors in JARVIS logs
    - Re-run `./enable_screen_unlock.sh` if needed
 
-3. **"WebSocket connection failed"**
-   - Check if port 8765 is in use: `lsof -i :8765`
-   - Kill existing processes: `pkill -f websocket_server.py`
-   - Restart the system: `./start_voice_unlock_system.sh`
+4. **"JARVIS gives instructions instead of unlocking"**
+   - This is the old behavior - restart JARVIS to get the updated integration
+   - Verify you have the latest code with integrated unlock commands
+   - Check that Voice Unlock WebSocket server is running on port 8765
 
-4. **"Daemon crashes or stops"**
+5. **"WebSocket connection failed"**
+   - Voice Unlock should handle port conflicts automatically
+   - If issues persist, manually kill processes: `pkill -f websocket_server.py`
+   - Check JARVIS logs for Voice Unlock startup status
+
+6. **"Daemon crashes or stops"**
    - Check system logs: `log show --predicate 'subsystem == "com.jarvis.voiceunlock"' --last 5m`
    - Rebuild if needed: `cd objc && make clean && make`
    - Check permissions: Terminal needs Full Disk Access
@@ -364,13 +392,14 @@ voice_unlock/
 - Keyboard simulation for password entry
 - Wake phrase detection
 - Background monitoring service
-- JARVIS command integration
+- JARVIS command integration with direct unlock
+- Automatic startup with JARVIS
+- Integrated lifecycle management
 
 ### 🚧 Known Limitations
 - Voice authentication currently uses a default profile (not speaker-specific)
 - Wake phrase detection requires clear speech in quiet environment
 - Screen lock detection may vary with different macOS versions
-- Requires manual start (not yet installed as system daemon)
 
 ### 🔜 Future Enhancements
 - Speaker-specific voice enrollment

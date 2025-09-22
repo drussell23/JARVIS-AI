@@ -100,6 +100,29 @@ class VoiceUnlockWebSocketServer:
                     "message": "Monitoring stopped" if success else "Failed to stop monitoring"
                 }
                 
+            elif command == "unlock_screen":
+                # Direct unlock command from JARVIS
+                logger.info("Received unlock_screen command from JARVIS")
+                
+                # Check if password is stored
+                password = self.retrieve_keychain_password()
+                if not password:
+                    return {
+                        "type": "command_response",
+                        "command": command,
+                        "success": False,
+                        "message": "No password stored. Run enable_screen_unlock.sh first."
+                    }
+                
+                # Perform unlock
+                success = await self.perform_screen_unlock(password)
+                return {
+                    "type": "command_response", 
+                    "command": command,
+                    "success": success,
+                    "message": "Screen unlocked" if success else "Failed to unlock screen"
+                }
+                
             else:
                 return {
                     "type": "error",
@@ -211,6 +234,80 @@ class VoiceUnlockWebSocketServer:
         finally:
             await self.unregister_client(websocket)
             
+    def retrieve_keychain_password(self) -> Optional[str]:
+        """Retrieve the stored password from macOS Keychain"""
+        try:
+            result = subprocess.run([
+                'security', 'find-generic-password',
+                '-s', 'com.jarvis.voiceunlock',
+                '-a', 'unlock_token',
+                '-w'  # Print only the password
+            ], capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                return result.stdout.strip()
+            else:
+                logger.error(f"Failed to retrieve password: {result.stderr}")
+                return None
+        except Exception as e:
+            logger.error(f"Error retrieving password: {e}")
+            return None
+    
+    async def perform_screen_unlock(self, password: str) -> bool:
+        """Perform the actual screen unlock using AppleScript"""
+        try:
+            # Wake the display first
+            logger.info("Waking display...")
+            subprocess.run(['caffeinate', '-u', '-t', '1'])
+            
+            # Move mouse to wake screen
+            subprocess.run([
+                'osascript', '-e',
+                'tell application "System Events" to set frontmost of process "loginwindow" to true'
+            ])
+            
+            await asyncio.sleep(1)
+            
+            # Press a key to show password field if needed
+            subprocess.run([
+                'osascript', '-e',
+                'tell application "System Events" to key code 49'  # Space bar
+            ])
+            
+            await asyncio.sleep(0.5)
+            
+            # Click in center of screen to ensure password field is focused
+            subprocess.run([
+                'osascript', '-e',
+                'tell application "System Events" to click at {720, 450}'
+            ])
+            
+            await asyncio.sleep(0.5)
+            
+            # Type password and press return
+            script = f'''
+            tell application "System Events"
+                keystroke "{password}"
+                delay 0.2
+                key code 36
+            end tell
+            '''
+            
+            result = subprocess.run([
+                'osascript', '-e', script
+            ], capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                logger.info("Screen unlock command executed successfully")
+                return True
+            else:
+                logger.error(f"Screen unlock failed: {result.stderr}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error performing screen unlock: {e}")
+            return False
+    
     async def start(self):
         """Start the WebSocket server"""
         logger.info(f"Starting Voice Unlock WebSocket server on port {self.port}")

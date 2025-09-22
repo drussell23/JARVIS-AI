@@ -154,53 +154,58 @@ async def handle_voice_unlock_in_jarvis(command: str) -> dict:
                 'success': True
             }
             
-    elif any(phrase in command_lower for phrase in ['unlock my mac', 'unlock my screen', 'unlock mac']):
-        # Check if screen is actually locked
-        import subprocess
+    elif any(phrase in command_lower for phrase in ['unlock my mac', 'unlock my screen', 'unlock mac', 'unlock the mac', 'unlock computer']):
+        # User wants to unlock NOW - send unlock command directly to the daemon
         try:
-            # Check screen lock status
-            result = subprocess.run(
-                ["python3", "-c", "import Quartz; print('locked' if Quartz.CGSessionCopyCurrentDictionary().get('CGSSessionScreenIsLocked', False) else 'unlocked')"],
-                capture_output=True,
-                text=True
-            )
-            screen_locked = result.stdout.strip() == 'locked'
+            if not voice_unlock_connector or not voice_unlock_connector.connected:
+                await initialize_voice_unlock()
             
-            if screen_locked:
-                # Enable monitoring if not already enabled
-                if not voice_unlock_connector or not voice_unlock_connector.connected:
-                    await initialize_voice_unlock()
-                    
-                status = await voice_unlock_connector.get_status()
-                if status and status.get('isMonitoring'):
+            # Send unlock command to daemon
+            result = await voice_unlock_connector.send_command("unlock_screen", {
+                "source": "jarvis_command",
+                "authenticated": True  # Already authenticated via JARVIS
+            })
+            
+            if result and result.get('success'):
+                return {
+                    'type': 'voice_unlock',
+                    'action': 'unlock_complete',
+                    'message': 'Unlocking your Mac now, Sir.',
+                    'success': True
+                }
+            else:
+                # Fallback - check if screen is locked and provide instructions
+                import subprocess
+                check_result = subprocess.run(
+                    ["python3", "-c", "import Quartz; print('locked' if Quartz.CGSessionCopyCurrentDictionary() and Quartz.CGSessionCopyCurrentDictionary().get('CGSSessionScreenIsLocked', False) else 'unlocked')"],
+                    capture_output=True,
+                    text=True
+                )
+                screen_locked = 'locked' in check_result.stdout
+                
+                if not screen_locked:
                     return {
                         'type': 'voice_unlock',
-                        'action': 'unlock_ready',
-                        'message': 'Voice monitoring is active. Say "Hello JARVIS, unlock my Mac" to unlock your screen.',
+                        'action': 'already_unlocked',
+                        'message': 'Your Mac is already unlocked, Sir.',
                         'success': True
                     }
                 else:
-                    # Enable monitoring first
+                    # Enable monitoring as fallback
                     await voice_unlock_connector.enable_monitoring()
                     return {
                         'type': 'voice_unlock',
-                        'action': 'unlock_enabled',
-                        'message': 'Voice unlock is now enabled. Say "Hello JARVIS, unlock my Mac" to unlock your screen.',
-                        'success': True
+                        'action': 'unlock_failed',
+                        'message': 'I couldn\'t unlock directly. Voice monitoring is now enabled. Say "Hello JARVIS, unlock my Mac" to unlock.',
+                        'success': False
                     }
-            else:
-                return {
-                    'type': 'voice_unlock',
-                    'action': 'already_unlocked',
-                    'message': 'Your Mac is already unlocked, Sir.',
-                    'success': True
-                }
+                    
         except Exception as e:
-            logger.error(f"Error checking screen status: {e}")
+            logger.error(f"Error unlocking screen: {e}")
             return {
                 'type': 'voice_unlock',
                 'action': 'error',
-                'message': 'I encountered an error checking your screen status.',
+                'message': 'I encountered an error trying to unlock your screen.',
                 'success': False
             }
             

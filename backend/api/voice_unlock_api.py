@@ -58,7 +58,12 @@ def initialize_voice_unlock():
     
     if not VOICE_UNLOCK_AVAILABLE:
         logger.warning("Voice unlock modules not available, using daemon connector instead")
-        # We'll use the daemon connector from voice_unlock_integration
+        # Initialize the voice_unlock_integration for JARVIS command handling
+        try:
+            from . import voice_unlock_integration
+            logger.info("Voice unlock integration loaded for JARVIS commands")
+        except ImportError:
+            logger.error("Could not import voice_unlock_integration")
         return True
     
     try:

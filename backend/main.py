@@ -334,10 +334,25 @@ def import_voice_unlock():
         # Try to initialize immediately
         if initialize_voice_unlock():
             voice_unlock['initialized'] = True
-            logger.info("  ✅ Voice Unlock system initialized")
+            logger.info("  ✅ Voice Unlock API initialized")
         else:
             voice_unlock['initialized'] = False
-            logger.warning("  ⚠️  Voice Unlock initialization failed")
+            logger.warning("  ⚠️  Voice Unlock API initialization failed")
+        
+        # Also import the startup integration for WebSocket server
+        try:
+            from voice_unlock.startup_integration import (
+                initialize_voice_unlock_system,
+                shutdown_voice_unlock_system,
+                voice_unlock_startup
+            )
+            voice_unlock['startup_integration'] = True
+            voice_unlock['initialize_system'] = initialize_voice_unlock_system
+            voice_unlock['shutdown_system'] = shutdown_voice_unlock_system
+            voice_unlock['startup_manager'] = voice_unlock_startup
+        except ImportError:
+            logger.warning("  ⚠️  Voice Unlock startup integration not available")
+            voice_unlock['startup_integration'] = False
             
     except ImportError as e:
         logger.warning(f"  ⚠️  Voice Unlock not available: {e}")
@@ -581,6 +596,22 @@ async def lifespan(app: FastAPI):
     
     logger.info("=" * 60 + "\n")
     
+    # Initialize Voice Unlock system components (WebSocket server)
+    voice_unlock = components.get('voice_unlock', {})
+    if voice_unlock.get('startup_integration') and voice_unlock.get('initialize_system'):
+        try:
+            logger.info("🔐 Starting Voice Unlock system components...")
+            init_system = voice_unlock['initialize_system']
+            success = await init_system()
+            if success:
+                app.state.voice_unlock_system = voice_unlock['startup_manager']
+                logger.info("✅ Voice Unlock system started")
+                logger.info("   Say 'Hey JARVIS, unlock my mac' when screen is locked")
+            else:
+                logger.warning("⚠️ Voice Unlock system failed to start")
+        except Exception as e:
+            logger.error(f"Failed to start Voice Unlock system: {e}")
+    
     # Initialize wake word service after all components are loaded
     wake_word = components.get('wake_word', {})
     if wake_word.get('service') and wake_word.get('initialized'):
@@ -608,6 +639,15 @@ async def lifespan(app: FastAPI):
     
     # Cleanup
     logger.info("🛑 Shutting down JARVIS backend...")
+    
+    # Stop Voice Unlock system
+    if hasattr(app.state, 'voice_unlock_system') and voice_unlock.get('shutdown_system'):
+        try:
+            shutdown_system = voice_unlock['shutdown_system']
+            await shutdown_system()
+            logger.info("✅ Voice Unlock system stopped")
+        except Exception as e:
+            logger.error(f"Failed to stop Voice Unlock system: {e}")
     
     # Stop dynamic component loader and self-healer
     try:
