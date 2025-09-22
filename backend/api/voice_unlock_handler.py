@@ -48,6 +48,7 @@ async def handle_voice_unlock_command(command: str, websocket=None) -> Dict[str,
     
     logger.info(f"[VOICE UNLOCK] Handling command: {command}")
     command_lower = command.lower()
+    logger.info(f"[VOICE UNLOCK] Command lower: {command_lower}")
     
     # Initialize if needed
     if not unlock_service:
@@ -189,7 +190,7 @@ async def handle_voice_unlock_command(command: str, websocket=None) -> Dict[str,
             }
     
     # Test voice unlock
-    elif any(phrase in command_lower for phrase in ['test voice unlock', 'try voice unlock', 'unlock now']):
+    elif any(phrase in command_lower for phrase in ['test voice unlock', 'text voice unlock', 'try voice unlock', 'unlock now']):
         try:
             # For testing through JARVIS, check if user is enrolled
             import json
@@ -302,20 +303,31 @@ async def handle_voice_unlock_command(command: str, websocket=None) -> Dict[str,
                 'command': command
             }
     
-    # Default response
+    # Check if they're asking about voice unlock in general
+    if 'voice unlock' in command_lower and len(command_lower.split()) <= 2:
+        # Just "voice unlock" - show help
+        return {
+            'type': 'voice_unlock',
+            'action': 'help',
+            'message': 'Voice unlock commands: "enable voice unlock", "enroll my voice", "test voice unlock", "voice unlock status", "disable voice unlock"',
+            'available_commands': [
+                'enable voice unlock',
+                'disable voice unlock',
+                'enroll my voice',
+                'test voice unlock',
+                'voice unlock status',
+                'delete my voiceprint',
+                'test audio'
+            ]
+        }
+    
+    # Default - unrecognized voice unlock command
+    logger.warning(f"[VOICE UNLOCK] Unrecognized command: {command}")
     return {
         'type': 'voice_unlock',
-        'action': 'help',
-        'message': 'Voice unlock commands: "enable voice unlock", "enroll my voice", "test voice unlock", "voice unlock status", "disable voice unlock"',
-        'available_commands': [
-            'enable voice unlock',
-            'disable voice unlock',
-            'enroll my voice',
-            'test voice unlock',
-            'voice unlock status',
-            'delete my voiceprint',
-            'test audio'
-        ]
+        'action': 'error',
+        'message': f'I didn\'t understand that voice unlock command. Try "test voice unlock" or "voice unlock status".',
+        'success': False
     }
 
 
