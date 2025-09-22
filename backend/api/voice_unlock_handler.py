@@ -46,6 +46,7 @@ def initialize_handlers():
 async def handle_voice_unlock_command(command: str, websocket=None) -> Dict[str, Any]:
     """Handle voice unlock related commands"""
     
+    logger.info(f"[VOICE UNLOCK] Handling command: {command}")
     command_lower = command.lower()
     
     # Initialize if needed

@@ -586,14 +586,41 @@ class UnifiedCommandProcessor:
                         'command_type': 'meta'
                     }
             elif command_type == CommandType.VOICE_UNLOCK:
-                # Handle voice unlock commands
-                result = await handler.handle_command(command_text, websocket)
-                return {
-                    'success': result.get('success', result.get('type') == 'voice_unlock'),
-                    'response': result.get('message', result.get('response', '')),
-                    'command_type': command_type.value,
-                    **result
-                }
+                # Handle voice unlock commands with quick response
+                command_lower = command_text.lower()
+                
+                # Check for initial enrollment request
+                if 'enroll' in command_lower and 'voice' in command_lower and 'start' not in command_lower:
+                    # Quick response for enrollment instructions
+                    return {
+                        'success': True,
+                        'response': 'To enroll your voice, Sir, I need you to speak clearly for about 10 seconds. Say "Start voice enrollment now" when you are ready in a quiet environment.',
+                        'command_type': command_type.value,
+                        'type': 'voice_unlock',
+                        'action': 'enrollment_instructions',
+                        'next_command': 'start voice enrollment now'
+                    }
+                # Check for actual enrollment start
+                elif any(phrase in command_lower for phrase in ['start voice enrollment now', 'begin voice enrollment', 'start enrollment now']):
+                    # Quick response to start enrollment
+                    return {
+                        'success': True,
+                        'response': 'Starting voice enrollment now, Sir. Please say the following phrase clearly: "Hello JARVIS, unlock my Mac". Speak naturally and I will capture your voice pattern. Say it three times when you hear the beep.',
+                        'command_type': command_type.value,
+                        'type': 'voice_unlock',
+                        'action': 'enrollment_active',
+                        'enrollment_phrase': 'Hello JARVIS, unlock my Mac',
+                        'instructions': 'Say the phrase 3 times after the beep'
+                    }
+                else:
+                    # Other voice unlock commands - use the handler
+                    result = await handler.handle_command(command_text, websocket)
+                    return {
+                        'success': result.get('success', result.get('type') == 'voice_unlock'),
+                        'response': result.get('message', result.get('response', '')),
+                        'command_type': command_type.value,
+                        **result
+                    }
             else:
                 # Generic handler interface
                 return {
@@ -1211,6 +1238,22 @@ class UnifiedCommandProcessor:
     
     async def _execute_system_command(self, command_text: str) -> Dict[str, Any]:
         """Dynamically execute system commands without hardcoding"""
+        
+        # Check if this is actually a voice unlock command misclassified as system
+        command_lower = command_text.lower()
+        if ('voice' in command_lower and 'unlock' in command_lower) or \
+           ('enable' in command_lower and 'voice unlock' in command_lower):
+            # Redirect to voice unlock handler
+            handler = await self._get_handler(CommandType.VOICE_UNLOCK)
+            if handler:
+                result = await handler.handle_command(command_text)
+                return {
+                    'success': result.get('success', result.get('type') == 'voice_unlock'),
+                    'response': result.get('message', result.get('response', '')),
+                    'command_type': 'voice_unlock',
+                    **result
+                }
+        
         try:
             from system_control.macos_controller import MacOSController
             from system_control.dynamic_app_controller import get_dynamic_app_controller

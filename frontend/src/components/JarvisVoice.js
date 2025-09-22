@@ -690,6 +690,30 @@ const JarvisVoice = () => {
         setIsProcessing(true);
         // Don't cancel speech here - it might cancel the wake word response
         break;
+      case 'voice_unlock':
+        // Handle voice unlock responses
+        console.log('Voice unlock response received:', data);
+        setResponse(data.message || data.text || 'Voice unlock command processed');
+        setIsProcessing(false);
+        
+        // Speak the response
+        if (data.message && data.speak !== false) {
+          speakResponse(data.message);
+        }
+        
+        // Reset waiting state after voice unlock command
+        if (isWaitingForCommandRef.current) {
+          setTimeout(() => {
+            setIsWaitingForCommand(false);
+            isWaitingForCommandRef.current = false;
+            // Ensure continuous listening remains active
+            if (!continuousListeningRef.current && jarvisStatus === 'online') {
+              console.log('Re-enabling continuous listening after voice unlock command');
+              enableContinuousListening();
+            }
+          }, 1000);
+        }
+        break;
       case 'response':
         console.log('WebSocket response received:', data);
         
