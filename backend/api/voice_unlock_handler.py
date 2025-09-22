@@ -189,6 +189,42 @@ async def handle_voice_unlock_command(command: str, websocket=None) -> Dict[str,
                 'next_command': 'start voice enrollment now'
             }
     
+    # Handle actual unlock commands
+    elif any(phrase in command_lower for phrase in ['unlock my mac', 'unlock my screen', 'unlock mac', 'unlock the mac']):
+        try:
+            # Check if screen is actually locked
+            import subprocess
+            result = subprocess.run(
+                ["osascript", "-e", "tell application \"System Events\" to get (name of current screen saver)"],
+                capture_output=True,
+                text=True
+            )
+            
+            screen_locked = result.returncode == 0 and result.stdout.strip()
+            
+            if screen_locked:
+                # Attempt to unlock
+                return {
+                    'type': 'voice_unlock',
+                    'action': 'unlock_attempt',
+                    'success': False,
+                    'message': 'Screen unlock requires the Voice Unlock monitor to be running. Please ensure you have enabled voice unlock with "enable voice unlock" first.'
+                }
+            else:
+                return {
+                    'type': 'voice_unlock',
+                    'action': 'unlock_not_needed',
+                    'success': True,
+                    'message': 'Your Mac screen is not locked, Sir. No need to unlock.'
+                }
+                
+        except Exception as e:
+            return {
+                'type': 'error',
+                'message': f'Could not check screen status: {str(e)}',
+                'command': command
+            }
+    
     # Test voice unlock
     elif any(phrase in command_lower for phrase in ['test voice unlock', 'text voice unlock', 'try voice unlock', 'unlock now']):
         try:
