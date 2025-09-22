@@ -83,6 +83,8 @@ archived_local_models/
 backend/swift_bridge/.build/
 backend/swift_bridge/.swiftpm/
 backend/swift_bridge/Package.resolved
+backend/voice_unlock/proximity_voice_auth/swift/.build/
+backend/voice_unlock/proximity_voice_auth/swift/.swiftpm/
 *.xcodeproj
 *.xcworkspace
 DerivedData/

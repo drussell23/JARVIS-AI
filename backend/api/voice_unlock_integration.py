@@ -10,8 +10,24 @@ import json
 import logging
 import websockets
 from typing import Optional
+from pathlib import Path
+import sys
+
+# Add voice_unlock to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "voice_unlock"))
 
 logger = logging.getLogger(__name__)
+
+# Import proximity auth if available
+proximity_auth_available = False
+proximity_auth_manager = None
+
+try:
+    from jarvis_proximity_integration import get_proximity_auth_manager, handle_proximity_voice_command
+    proximity_auth_available = True
+    logger.info("✅ Proximity + Voice Auth module available")
+except ImportError:
+    logger.info("ℹ️  Proximity + Voice Auth module not available")
 
 
 class VoiceUnlockDaemonConnector:
@@ -226,6 +242,80 @@ async def handle_voice_unlock_in_jarvis(command: str) -> dict:
                 'type': 'voice_unlock',
                 'action': 'test',
                 'message': f'Voice unlock system test: {"✅ Connected and ready" if status.get("isMonitoring") else "❌ Not monitoring"}',
+                'status': status,
+                'success': True
+            }
+    
+    # Proximity + Voice Auth commands
+    elif proximity_auth_available and any(phrase in command_lower for phrase in [
+        'proximity auth', 'proximity unlock', 'enable proximity', 'check proximity',
+        'enroll my voice', 'voice biometric'
+    ]):
+        if 'enroll' in command_lower:
+            # Voice enrollment would need audio data from the user
+            return {
+                'type': 'proximity_auth',
+                'action': 'enroll_prompt',
+                'message': 'Sir, I need you to say "Hello JARVIS, this is [your name]" three times for voice enrollment.',
+                'requires_audio': True,
+                'success': True
+            }
+            
+        elif 'check proximity' in command_lower:
+            result = await handle_proximity_voice_command('check_proximity')
+            
+            if result['success']:
+                return {
+                    'type': 'proximity_auth',
+                    'action': 'proximity_check',
+                    'message': f"Your Apple Watch proximity score is {result['proximity_score']:.0f}%, Sir.",
+                    'proximity_score': result['proximity_score'],
+                    'success': True
+                }
+            else:
+                return {
+                    'type': 'proximity_auth',
+                    'action': 'proximity_check',
+                    'message': f"Apple Watch not detected in proximity, Sir. {result['reason']}",
+                    'success': False
+                }
+                
+        elif 'enable proximity' in command_lower or 'proximity unlock' in command_lower:
+            status = await handle_proximity_voice_command('status')
+            
+            if status['initialized']:
+                return {
+                    'type': 'proximity_auth',
+                    'action': 'status',
+                    'message': 'Proximity + Voice authentication is active, Sir. Your Apple Watch and voice pattern provide dual-factor security.',
+                    'status': status,
+                    'success': True
+                }
+            else:
+                return {
+                    'type': 'proximity_auth',
+                    'action': 'initialization',
+                    'message': 'Initializing Proximity + Voice authentication system, Sir...',
+                    'success': False
+                }
+                
+        elif 'proximity auth status' in command_lower:
+            status = await handle_proximity_voice_command('status')
+            
+            enrolled = status.get('voice_enrolled', False)
+            proximity = status.get('proximity_service_running', False)
+            
+            message = f"Proximity + Voice Auth Status:\n"
+            message += f"• Apple Watch Detection: {'✅ Running' if proximity else '❌ Not running'}\n"
+            message += f"• Voice Enrollment: {'✅ Complete' if enrolled else '❌ Not enrolled'}\n"
+            
+            if 'thresholds' in status:
+                message += f"• Security Thresholds: Proximity {status['thresholds']['proximity_threshold']}%, Voice {status['thresholds']['voice_threshold']}%"
+            
+            return {
+                'type': 'proximity_auth',
+                'action': 'status',
+                'message': message,
                 'status': status,
                 'success': True
             }
