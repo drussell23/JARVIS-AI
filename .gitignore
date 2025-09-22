@@ -186,3 +186,24 @@ benchmark_results/
 *(2)
 *\(2\).*
 *\(2\)
+
+# Voice Unlock sensitive files
+backend/voice_unlock/test_*.py
+backend/voice_unlock/debug_*.py
+backend/voice_unlock/*_test.py
+backend/voice_unlock/fix_*.py
+backend/voice_unlock/.jarvis/
+backend/voice_unlock/config.json
+backend/voice_unlock/objc/bin/
+backend/voice_unlock/objc/build/
+backend/voice_unlock/objc/*.o
+backend/voice_unlock/objc/*.dylib
+/tmp/websocket_*.log
+/tmp/daemon_*.log
+/tmp/*_debug.log
+
+# Keychain passwords - NEVER commit
+**/unlock_token
+**/com.jarvis.voiceunlock
+**/*password*.txt
+**/*credentials*.txt
