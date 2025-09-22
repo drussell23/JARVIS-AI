@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Audio Input (Microphone) -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+    
+    <!-- Accessibility -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+    
+    <!-- System Events -->
+    <key>com.apple.security.scripting-targets</key>
+    <array>
+        <string>com.apple.systemevents</string>
+        <string>com.apple.finder</string>
+    </array>
+    
+    <!-- Personal Information -->
+    <key>com.apple.security.personal-information.addressbook</key>
+    <false/>
+    <key>com.apple.security.personal-information.calendars</key>
+    <false/>
+    <key>com.apple.security.personal-information.photos-library</key>
+    <false/>
+    
+    <!-- Network -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.network.server</key>
+    <true/>
+    
+    <!-- File Access -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    <key>com.apple.security.files.downloads.read-write</key>
+    <true/>
+    
+    <!-- Temporary Exception for File Access -->
+    <key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key>
+    <array>
+        <string>/.jarvis/</string>
+    </array>
+    
+    <!-- Hardened Runtime -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <false/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <false/>
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <false/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <key>com.apple.security.cs.disable-executable-page-protection</key>
+    <false/>
+    
+    <!-- Inter-process Communication -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>group.com.jarvis.shared</string>
+    </array>
+    
+    <!-- Keychain -->
+    <key>keychain-access-groups</key>
+    <array>
+        <string>$(AppIdentifierPrefix)com.jarvis.voiceunlock</string>
+    </array>
+</dict>
+</plist>

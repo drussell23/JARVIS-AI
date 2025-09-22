@@ -270,6 +270,12 @@ class UnifiedCommandProcessor:
         command_lower = command_text.lower()
         words = command_lower.split()
         
+        # Voice unlock detection FIRST (highest priority to catch "enable voice unlock")
+        voice_patterns = self._detect_voice_unlock_patterns(command_lower)
+        if voice_patterns > 0:
+            logger.info(f"Voice unlock command detected: '{command_lower}' with patterns={voice_patterns}")
+            return CommandType.VOICE_UNLOCK, 0.85 + (voice_patterns * 0.05)
+        
         # Check for implicit compound commands (app + action without connector)
         # Example: "open safari search for cats"
         if len(words) >= 3:
@@ -328,6 +334,7 @@ class UnifiedCommandProcessor:
             if has_action:
                 return CommandType.SYSTEM, 0.9
         
+            
         # Vision detection through semantic analysis
         vision_score = self._calculate_vision_score(words)
         if vision_score > 0.7:
@@ -336,11 +343,6 @@ class UnifiedCommandProcessor:
         # Weather detection - simple but effective
         if 'weather' in words:
             return CommandType.WEATHER, 0.95
-            
-        # Voice unlock detection through pattern matching
-        voice_patterns = self._detect_voice_unlock_patterns(command_lower)
-        if voice_patterns > 0:
-            return CommandType.VOICE_UNLOCK, 0.85 + (voice_patterns * 0.05)
             
         # Autonomy detection
         autonomy_score = self._calculate_autonomy_score(words)
@@ -450,9 +452,23 @@ class UnifiedCommandProcessor:
         elif has_voice or has_unlock:
             patterns += 1
             
-        # Direct phrases
-        if 'voice unlock' in text or 'unlock with voice' in text:
-            patterns += 2
+        # Log for debugging
+        if has_voice or has_unlock:
+            logger.debug(f"Voice unlock pattern detection: text='{text}', has_voice={has_voice}, has_unlock={has_unlock}, patterns={patterns}")
+            
+        # Direct phrases - these are definitely voice unlock commands
+        voice_unlock_phrases = [
+            'voice unlock',
+            'unlock with voice',
+            'enable voice unlock',
+            'disable voice unlock',
+            'enroll my voice',
+            'enroll voice',
+            'voice enrollment'
+        ]
+        
+        if any(phrase in text for phrase in voice_unlock_phrases):
+            patterns += 3  # Strong match
             
         return patterns
     

@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Daemon Identifier -->
+    <key>Label</key>
+    <string>com.jarvis.voiceunlock</string>
+    
+    <!-- Program to run -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/JARVISVoiceUnlockDaemon</string>
+    </array>
+    
+    <!-- Run at load -->
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <!-- Keep alive - restart if crashed -->
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+        <key>Crashed</key>
+        <true/>
+    </dict>
+    
+    <!-- Restart throttling -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+    
+    <!-- Working directory -->
+    <key>WorkingDirectory</key>
+    <string>/tmp</string>
+    
+    <!-- Standard output/error logs -->
+    <key>StandardOutPath</key>
+    <string>/var/log/jarvis-voice-unlock.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/jarvis-voice-unlock.error.log</string>
+    
+    <!-- Environment variables -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>JARVIS_HOME</key>
+        <string>/Users/derekjrussell/.jarvis</string>
+    </dict>
+    
+    <!-- Process type -->
+    <key>ProcessType</key>
+    <string>Background</string>
+    
+    <!-- Nice value (priority) -->
+    <key>Nice</key>
+    <integer>-5</integer>
+    
+    <!-- Session type - run in user session -->
+    <key>LimitLoadToSessionType</key>
+    <array>
+        <string>Aqua</string>
+        <string>LoginWindow</string>
+    </array>
+    
+    <!-- Required OS version -->
+    <key>MinimumOSVersion</key>
+    <string>10.14</string>
+    
+    <!-- Mach services -->
+    <key>MachServices</key>
+    <dict>
+        <key>com.jarvis.voiceunlock.mach</key>
+        <true/>
+    </dict>
+    
+    <!-- Hardware requirements -->
+    <key>HardwareAccess</key>
+    <true/>
+    
+    <!-- Launch only when specific conditions are met -->
+    <key>LaunchOnlyOnce</key>
+    <false/>
+    
+    <!-- Disable automatic termination -->
+    <key>EnableTransactions</key>
+    <true/>
+    
+    <!-- Socket activation (for IPC) -->
+    <key>Sockets</key>
+    <dict>
+        <key>Listeners</key>
+        <dict>
+            <key>SockServiceName</key>
+            <string>com.jarvis.voiceunlock.socket</string>
+            <key>SockType</key>
+            <string>stream</string>
+            <key>SockFamily</key>
+            <string>IPv4</string>
+        </dict>
+    </dict>
+</dict>
+</plist>

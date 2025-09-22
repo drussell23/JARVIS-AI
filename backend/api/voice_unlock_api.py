@@ -19,14 +19,26 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from voice_unlock import (
-    VoiceEnrollmentManager, 
-    VoiceAuthenticator, 
-    MacUnlockService
-)
-from voice_unlock.config import get_config
-from voice_unlock.services.keychain_service import KeychainService
-from voice_unlock.services.screensaver_integration import ScreensaverManager
+try:
+    from voice_unlock import (
+        VoiceEnrollmentManager, 
+        VoiceAuthenticator, 
+        MacUnlockService
+    )
+    from voice_unlock.config import get_config
+    from voice_unlock.services.keychain_service import KeychainService
+    from voice_unlock.services.screensaver_integration import ScreensaverManager
+    VOICE_UNLOCK_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Voice unlock modules not available: {e}")
+    VOICE_UNLOCK_AVAILABLE = False
+    # Dummy classes
+    class VoiceEnrollmentManager: pass
+    class VoiceAuthenticator: pass
+    class MacUnlockService: pass
+    class KeychainService: pass
+    class ScreensaverManager: pass
+    def get_config(): return {}
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +55,11 @@ screensaver_manager = None
 def initialize_voice_unlock():
     """Initialize voice unlock components"""
     global enrollment_manager, authenticator, unlock_service, keychain_service, screensaver_manager
+    
+    if not VOICE_UNLOCK_AVAILABLE:
+        logger.warning("Voice unlock modules not available, using daemon connector instead")
+        # We'll use the daemon connector from voice_unlock_integration
+        return True
     
     try:
         # Initialize services
