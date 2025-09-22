@@ -123,6 +123,17 @@ class VoiceUnlockWebSocketServer:
                     "message": "Screen unlocked" if success else "Failed to unlock screen"
                 }
                 
+            elif command == "lock_screen":
+                # Lock screen command from JARVIS
+                logger.info("Received lock_screen command from JARVIS")
+                success = await self.perform_screen_lock()
+                return {
+                    "type": "command_response",
+                    "command": command,
+                    "success": success,
+                    "message": "Screen locked" if success else "Failed to lock screen"
+                }
+                
             else:
                 return {
                     "type": "error",
@@ -261,6 +272,14 @@ class VoiceUnlockWebSocketServer:
         escaped = escaped.replace("'", "\\'")     # Escape single quotes
         escaped = escaped.replace('$', '\\$')     # Escape dollar signs
         escaped = escaped.replace('`', '\\`')     # Escape backticks
+        # Add more special characters that might need escaping
+        escaped = escaped.replace('!', '\\!')     # Escape exclamation marks
+        escaped = escaped.replace('@', '\\@')     # Escape at symbols
+        escaped = escaped.replace('#', '\\#')     # Escape hash/pound symbols
+        escaped = escaped.replace('&', '\\&')     # Escape ampersands
+        escaped = escaped.replace('*', '\\*')     # Escape asterisks
+        escaped = escaped.replace('(', '\\(')     # Escape open parentheses
+        escaped = escaped.replace(')', '\\)')     # Escape close parentheses
         return escaped
 
     async def perform_screen_unlock(self, password: str) -> bool:
@@ -269,29 +288,37 @@ class VoiceUnlockWebSocketServer:
             # Wake the display first
             logger.info("Waking display...")
             subprocess.run(['caffeinate', '-u', '-t', '1'])
-            
-            # Move mouse to wake screen
-            subprocess.run([
-                'osascript', '-e',
-                'tell application "System Events" to set frontmost of process "loginwindow" to true'
-            ])
-            
             await asyncio.sleep(1)
             
-            # Press a key to show password field if needed
-            subprocess.run([
-                'osascript', '-e',
-                'tell application "System Events" to key code 49'  # Space bar
-            ])
+            # Move mouse to wake screen and ensure loginwindow is active
+            wake_script = '''
+            tell application "System Events"
+                -- Wake the display by moving mouse
+                do shell script "caffeinate -u -t 2"
+                delay 0.5
+                
+                -- Click on the user profile to show password field
+                -- This is more reliable than keyboard navigation
+                click at {720, 860}
+                delay 1
+                
+                -- Make sure loginwindow is frontmost
+                set frontmost of process "loginwindow" to true
+                delay 0.5
+                
+                -- Sometimes need to click again to ensure password field is active
+                click at {720, 500}
+                delay 0.5
+                
+                -- Clear any existing text
+                keystroke "a" using command down
+                delay 0.1
+                key code 51
+                delay 0.2
+            end tell
+            '''
             
-            await asyncio.sleep(0.5)
-            
-            # Click in center of screen to ensure password field is focused
-            subprocess.run([
-                'osascript', '-e',
-                'tell application "System Events" to click at {720, 450}'
-            ])
-            
+            subprocess.run(['osascript', '-e', wake_script])
             await asyncio.sleep(0.5)
             
             # Escape password for AppleScript
@@ -299,16 +326,61 @@ class VoiceUnlockWebSocketServer:
             logger.info("Password escaped for AppleScript input")
             
             # Type password and press return
-            script = f'''
-            tell application "System Events"
-                keystroke "{escaped_password}"
-                delay 0.2
-                key code 36
-            end tell
-            '''
+            # Type the password using System Events
+            logger.info(f"Typing password with {len(password)} characters")
             
+            # Clear any existing text first
+            subprocess.run([
+                'osascript', '-e',
+                'tell application "System Events" to keystroke "a" using command down'
+            ])
+            await asyncio.sleep(0.1)
+            subprocess.run([
+                'osascript', '-e',
+                'tell application "System Events" to key code 51'  # Delete key
+            ])
+            await asyncio.sleep(0.2)
+            
+            # Type password character by character with proper special character handling
+            logger.info(f"Typing password with {len(password)} characters")
+            
+            # Map special characters to their key codes with modifiers
+            special_char_map = {
+                '!': {'keycode': 18, 'modifiers': 'shift down'},  # Shift+1
+                '@': {'keycode': 19, 'modifiers': 'shift down'},  # Shift+2  
+                '#': {'keycode': 20, 'modifiers': 'shift down'},  # Shift+3
+                '$': {'keycode': 21, 'modifiers': 'shift down'},  # Shift+4
+                '%': {'keycode': 22, 'modifiers': 'shift down'},  # Shift+5
+                '^': {'keycode': 23, 'modifiers': 'shift down'},  # Shift+6
+                '&': {'keycode': 24, 'modifiers': 'shift down'},  # Shift+7
+                '*': {'keycode': 25, 'modifiers': 'shift down'},  # Shift+8
+                '(': {'keycode': 26, 'modifiers': 'shift down'},  # Shift+9
+                ')': {'keycode': 27, 'modifiers': 'shift down'},  # Shift+0
+            }
+            
+            # Type each character
+            for i, char in enumerate(password):
+                if char in special_char_map:
+                    # Use key code for special characters
+                    info = special_char_map[char]
+                    script = f'tell application "System Events" to key code {info["keycode"]} using {{{info["modifiers"]}}}'
+                    logger.info(f"Typing special char at position {i+1}: '{char}' using keycode {info['keycode']} with shift")
+                else:
+                    # Use keystroke for regular characters
+                    script = f'tell application "System Events" to keystroke "{char}"'
+                    logger.info(f"Typing regular char at position {i+1}: '{char}'")
+                
+                result = subprocess.run(['osascript', '-e', script], capture_output=True, text=True)
+                if result.returncode != 0:
+                    logger.error(f"Failed to type character '{char}': {result.stderr}")
+                await asyncio.sleep(0.01)  # Faster typing - reduced from 0.05 to 0.01
+            
+            # Press return
+            await asyncio.sleep(0.2)
+            logger.info("Pressing return key...")
             result = subprocess.run([
-                'osascript', '-e', script
+                'osascript', '-e', 
+                'tell application "System Events" to key code 36'
             ], capture_output=True, text=True)
             
             if result.returncode == 0:
@@ -320,6 +392,35 @@ class VoiceUnlockWebSocketServer:
                 
         except Exception as e:
             logger.error(f"Error performing screen unlock: {e}")
+            return False
+    
+    async def perform_screen_lock(self) -> bool:
+        """Lock the Mac screen"""
+        try:
+            logger.info("Locking screen...")
+            
+            # Method 1: Using Control+Command+Q (fastest)
+            lock_script = '''
+            tell application "System Events"
+                keystroke "q" using {control down, command down}
+            end tell
+            '''
+            
+            result = subprocess.run([
+                'osascript', '-e', lock_script
+            ], capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                logger.info("Screen locked successfully")
+                return True
+            else:
+                # Fallback: Use pmset
+                logger.info("Trying alternative lock method...")
+                subprocess.run(['pmset', 'displaysleepnow'])
+                return True
+                
+        except Exception as e:
+            logger.error(f"Error locking screen: {e}")
             return False
     
     async def start(self):

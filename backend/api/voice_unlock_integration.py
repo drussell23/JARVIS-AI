@@ -168,44 +168,50 @@ async def handle_voice_unlock_in_jarvis(command: str) -> dict:
             
             if result and result.get('success'):
                 return {
-                    'type': 'voice_unlock',
-                    'action': 'unlock_complete',
-                    'message': 'Unlocking your Mac now, Sir.',
+                    'response': 'Unlocking your screen now, Sir.',
                     'success': True
                 }
             else:
-                # Fallback - check if screen is locked and provide instructions
-                import subprocess
-                check_result = subprocess.run(
-                    ["python3", "-c", "import Quartz; print('locked' if Quartz.CGSessionCopyCurrentDictionary() and Quartz.CGSessionCopyCurrentDictionary().get('CGSSessionScreenIsLocked', False) else 'unlocked')"],
-                    capture_output=True,
-                    text=True
-                )
-                screen_locked = 'locked' in check_result.stdout
-                
-                if not screen_locked:
-                    return {
-                        'type': 'voice_unlock',
-                        'action': 'already_unlocked',
-                        'message': 'Your Mac is already unlocked, Sir.',
-                        'success': True
-                    }
-                else:
-                    # Enable monitoring as fallback
-                    await voice_unlock_connector.enable_monitoring()
-                    return {
-                        'type': 'voice_unlock',
-                        'action': 'unlock_failed',
-                        'message': 'I couldn\'t unlock directly. Voice monitoring is now enabled. Say "Hello JARVIS, unlock my Mac" to unlock.',
-                        'success': False
-                    }
-                    
+                error_msg = result.get('message', 'Unknown error') if result else 'Not connected to Voice Unlock'
+                return {
+                    'response': f"I couldn't unlock the screen, Sir. {error_msg}",
+                    'success': False
+                }
         except Exception as e:
-            logger.error(f"Error unlocking screen: {e}")
+            logger.error(f"Error sending unlock command: {e}")
             return {
-                'type': 'voice_unlock',
-                'action': 'error',
-                'message': 'I encountered an error trying to unlock your screen.',
+                'response': 'I encountered an error while trying to unlock your screen, Sir.',
+                'error': str(e),
+                'success': False
+            }
+    
+    elif any(phrase in command_lower for phrase in ['lock my mac', 'lock my screen', 'lock mac', 'lock the mac', 'lock computer', 'lock the computer']):
+        # User wants to lock the screen
+        try:
+            if not voice_unlock_connector or not voice_unlock_connector.connected:
+                await initialize_voice_unlock()
+            
+            # Send lock command to daemon
+            result = await voice_unlock_connector.send_command("lock_screen", {
+                "source": "jarvis_command"
+            })
+            
+            if result and result.get('success'):
+                return {
+                    'response': 'Locking your screen now, Sir.',
+                    'success': True
+                }
+            else:
+                error_msg = result.get('message', 'Unknown error') if result else 'Not connected to Voice Unlock'
+                return {
+                    'response': f"I couldn't lock the screen, Sir. {error_msg}",
+                    'success': False
+                }
+        except Exception as e:
+            logger.error(f"Error sending lock command: {e}")
+            return {
+                'response': 'I encountered an error while trying to lock your screen, Sir.',
+                'error': str(e),
                 'success': False
             }
             
