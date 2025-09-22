@@ -1,16 +1,16 @@
-# JARVIS Voice Unlock System
+# JARVIS Voice Unlock System - The Apple Watch Alternative
 
-A sophisticated voice-based authentication system for macOS that enables screen unlocking through voice commands. Built with a hybrid Objective-C and Python architecture for optimal performance and security.
+A sophisticated voice-based authentication system for macOS that provides hands-free screen unlocking through voice commands. Perfect for users who don't have an Apple Watch but want the same convenient unlock experience. Built with a hybrid Objective-C and Python architecture for optimal performance and security.
 
 > **Status**: ✅ Fully integrated with JARVIS startup. Voice Unlock starts automatically when you launch JARVIS and processes commands like "unlock my mac" directly without giving instructions.
 
 ## Features
 
-- 🎤 **Voice Authentication**: Wake phrase detection with voice recognition
-- 🔐 **Automatic Screen Unlock**: Unlocks your Mac screen using stored credentials
+- 🎤 **Voice Authentication**: Wake phrase detection with voice recognition - no Apple Watch needed!
+- 🔐 **Automatic Screen Unlock**: Say "Hey JARVIS, unlock my Mac" instead of typing passwords
 - 🔒 **Secure Password Storage**: Passwords stored encrypted in macOS Keychain
-- 🔄 **Background Monitoring**: Automatically activates when screen locks
-- 📱 **JARVIS Integration**: Works seamlessly with the JARVIS AI assistant
+- 🔄 **Background Monitoring**: Always ready when your screen locks
+- 📱 **JARVIS Integration**: Seamless alternative to Apple Watch Unlock
 - 🌐 **WebSocket Communication**: Real-time bridge between components
 - ⚡ **Native Performance**: Built with Objective-C for optimal macOS integration
 
@@ -68,19 +68,19 @@ python start_system.py
 
 Voice Unlock starts automatically with JARVIS if you've completed step 1. No need to run `start_voice_unlock_system.sh` separately anymore!
 
-### 3. Using Voice Unlock
+### 3. Using Voice Unlock (No Apple Watch Required!)
 
-**When talking to JARVIS (screen unlocked or locked):**
-- "Hey JARVIS, unlock my mac" - Directly unlocks your screen
-- "Hey JARVIS, unlock my screen" - Alternative command
-- "Hey JARVIS, unlock the mac" - Another variation
+**The Apple Watch Alternative in Action:**
+- "Hey JARVIS, unlock my mac" - Instantly unlocks without typing passwords
+- "Hey JARVIS, unlock my screen" - Works just like Apple Watch Unlock
+- "Hey JARVIS, unlock the mac" - No hardware required, just your voice!
 
-**When screen is locked (standalone phrases):**
+**Direct unlock phrases (when screen is locked):**
 - "Hello JARVIS, unlock my Mac"
 - "JARVIS, this is [Your Name]"
 - "Open sesame, JARVIS"
 
-> **New**: JARVIS now directly unlocks your screen when you say "unlock my mac" instead of giving you instructions!
+> **Perfect for Non-Apple Watch Users**: Get the same hands-free unlock convenience without needing to buy an Apple Watch!
 
 ## Installation
 
@@ -238,10 +238,10 @@ This will show:
 ## Security Considerations
 
 1. **Password Storage**: Your Mac password is stored encrypted in the macOS Keychain
-2. **Access Control**: Only the Voice Unlock daemon can retrieve the stored password
+2. **Voice Biometric**: Voice authentication provides security similar to Apple Watch proximity
 3. **Failed Attempts**: Automatic lockout after 5 failed attempts (5-minute cooldown)
 4. **Permission Model**: Requires explicit user consent for all system access
-5. **Local Processing**: All voice processing happens locally on your Mac
+5. **Local Processing**: All voice processing happens locally - no cloud dependency
 
 ### Security Best Practices
 - Use Voice Unlock only in secure environments
@@ -402,11 +402,11 @@ voice_unlock/
 - Screen lock detection may vary with different macOS versions
 
 ### 🔜 Future Enhancements
-- Speaker-specific voice enrollment
-- Machine learning-based voice verification
+- Enhanced speaker-specific voice enrollment
+- Advanced anti-spoofing for voice verification
 - Support for multiple user profiles
 - System daemon auto-start on boot
-- TouchID fallback option
+- Additional biometric fallback options
 
 ## License
 

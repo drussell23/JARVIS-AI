@@ -1,7 +1,7 @@
-# 🤖 JARVIS AI System v13.6.0 - Proximity + Voice Unlock with 30% Memory Target 🔐
+# 🤖 JARVIS AI System v13.6.0 - Voice Unlock Alternative for Non-Apple Watch Users 🔐
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-13.6.0%20Proximity%20Voice%20Unlock-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Version-13.6.0%20Voice%20Unlock%20(Apple%20Watch%20Alternative)-brightgreen" alt="Version">
   <img src="https://img.shields.io/badge/Wake%20Word-Hey%20JARVIS-ff1744" alt="Wake Word">
   <img src="https://img.shields.io/badge/Claude%20Vision-Pure%20Intelligence-ff1744" alt="Pure Intelligence">
   <img src="https://img.shields.io/badge/Proactive-Real%20Time%20Assistant-ff1744" alt="Proactive Assistant">
@@ -17,24 +17,29 @@
   <img src="https://img.shields.io/badge/Research-Helper%20✅-red" alt="Research Helper">
   <img src="https://img.shields.io/badge/Workflow-Optimizer%20🎯-success" alt="Workflow Optimizer">
   <img src="https://img.shields.io/badge/Memory%20Target-30%25%20(4.8GB)-ff1744" alt="30% Memory">
-  <img src="https://img.shields.io/badge/Apple%20Watch-Proximity%20Unlock-007AFF" alt="Apple Watch">
-  <img src="https://img.shields.io/badge/Dual%20Factor-Voice%2BProximity-success" alt="Dual Factor">
+  <img src="https://img.shields.io/badge/No%20Apple%20Watch-Voice%20Unlock%20Works-007AFF" alt="No Watch Needed">
+  <img src="https://img.shields.io/badge/Alternative-To%20Apple%20Watch%20Unlock-success" alt="Watch Alternative">
 </p>
 
 <p align="center">
   <em>"Perfection is achieved not when there is nothing more to add, but when there is nothing left to take away." - Antoine de Saint-Exupéry</em>
 </p>
 
-## 🆕 What's New in v13.6.0 - Proximity + Voice Unlock with 30% Memory Target 🔐
+## 🆕 What's New in v13.6.0 - Voice Unlock Alternative for Non-Apple Watch Users 🔐
 
-### 🔐 Proximity + Voice Unlock (Option 3) - REVOLUTIONARY!
-**DUAL-FACTOR AUTHENTICATION WITH APPLE WATCH!** Ultra-optimized features:
-- ✅ **Apple Watch Detection** - Bluetooth LE proximity (3m unlock, 10m auto-lock)
-- ✅ **Dual Authentication** - BOTH Watch proximity AND voice required
+### 🔐 Voice Unlock - The Perfect Alternative to Apple Watch Unlock!
+**NO APPLE WATCH? NO PROBLEM! JARVIS VOICE UNLOCK HAS YOU COVERED!** Smart features:
+- ✅ **Voice-Based Mac Unlock** - Say "Hey JARVIS, unlock my Mac" to unlock without typing passwords
+- ✅ **Apple Watch Alternative** - Designed specifically for users without an Apple Watch
 - ✅ **30% Memory Target** - Only 4.8GB total on 16GB systems
 - ✅ **Smart ML Management** - ONE model at a time, 30-second auto-unload
 - ✅ **INT8 Quantization** - Models use 8-bit integers for efficiency
 - ✅ **Instant Response** - <1 second total unlock time
+
+💡 **The Voice Unlock Alternative**: 
+- **Have Apple Watch?** → Your Mac already has automatic unlock built-in
+- **No Apple Watch?** → JARVIS Voice Unlock is your perfect alternative!
+- **Why Voice Unlock?** → No typing passwords, no Touch ID needed - just your voice!
 
 ### 🎯 Memory Optimization Features
 **EXTREME EFFICIENCY FOR 16GB MACBOOKS!** Achievements:
@@ -45,13 +50,13 @@
 - ✅ **Compressed Caching** - Voice models compressed with zlib
 - ✅ **Memory-Mapped Files** - Efficient model loading via mmap
 
-### 🎤 How Proximity + Voice Unlock Works
-**SECURE AND CONVENIENT!** Usage flow:
-1. **Approach Mac with Apple Watch** - JARVIS detects Watch within 3 meters
-2. **Say "Hey JARVIS, unlock my Mac"** - Voice command triggers auth
-3. **Dual verification** - Watch proximity ✓ + Voice match ✓
-4. **Mac unlocks** - "Welcome back, Sir" response
-5. **Auto-lock when away** - Locks when Watch moves beyond 10 meters
+### 🎤 How Voice Unlock Works (Apple Watch Alternative)
+**SIMPLE, SECURE, AND NO APPLE WATCH REQUIRED!** Usage flow:
+1. **Mac is locked** - Screensaver or lock screen active
+2. **Say "Hey JARVIS, unlock my Mac"** - Voice command activates unlock
+3. **Voice authentication** - JARVIS verifies your unique voice print
+4. **Mac unlocks instantly** - "Welcome back, Sir" confirmation
+5. **True hands-free unlock** - Alternative to Apple Watch proximity unlock
 
 ### 📊 Resource Budget (16GB System)
 | Component | Memory | Purpose |
@@ -343,25 +348,25 @@ export WAKE_WORD_SAVE_AUDIO="false"
 - **Noise Cancellation**: Works in noisy environments
 - **Anti-Spoofing**: Prevents activation from recordings
 
-## 🔐 Proximity + Voice Unlock Configuration (NEW in v13.6.0)
+## 🔐 Voice Unlock Configuration - Apple Watch Alternative (NEW in v13.6.0)
 
-### 🎯 How to Use Proximity + Voice Unlock
-1. **Enable in settings**: Voice Unlock now includes proximity detection
-2. **Pair Apple Watch**: Ensure Bluetooth is enabled and Watch is paired
-3. **Approach Mac**: Get within 3 meters with your Apple Watch
-4. **Say "Hey JARVIS, unlock my Mac"**: Dual authentication begins
-5. **Both factors verified**: Watch proximity ✓ + Voice match ✓ = Unlock
+### 🎯 How to Use Voice Unlock (Perfect for Non-Apple Watch Users)
+1. **Run Voice Enrollment**: Set up your unique voice print first
+2. **The Apple Watch Alternative**: Designed for users without an Apple Watch
+3. **Lock your Mac**: Normal lock screen or screensaver
+4. **Say "Hey JARVIS, unlock my Mac"**: No typing, no Touch ID needed
+5. **Instant unlock**: Your voice is your password
 
 ### 🔧 Configuration Options
 ```bash
-# Enable proximity detection (default: true)
-export VOICE_UNLOCK_APPLE_WATCH="true"
+# Enable voice unlock (default: true)
+export VOICE_UNLOCK_ENABLED="true"
 
-# Set unlock distance in meters (default: 3.0)
-export VOICE_UNLOCK_UNLOCK_DISTANCE="3.0"
+# Voice authentication threshold (0.0-1.0)
+export VOICE_UNLOCK_THRESHOLD="0.85"
 
-# Set auto-lock distance in meters (default: 10.0)
-export VOICE_UNLOCK_LOCK_DISTANCE="10.0"
+# Anti-spoofing level (low/medium/high)
+export VOICE_UNLOCK_ANTI_SPOOFING="high"
 
 # Memory optimization level (aggressive/normal/relaxed)
 export JARVIS_MEMORY_MODE="aggressive"  # For 30% target
@@ -1061,11 +1066,11 @@ stats = await vision.get_optimization_stats()
 - **Why Critical:** Essential for production stability and debugging
 - **Memory:** ~20MB
 
-### 7️⃣ **VOICE UNLOCK** (Proximity + Voice Authentication)
-- **Purpose:** Dual-factor Mac unlocking with Apple Watch proximity + voice
-- **Features:** Bluetooth LE detection, voice enrollment, anti-spoofing, auto-lock
-- **Why Critical:** Enables secure "Hey JARVIS, unlock my Mac" with Watch nearby
-- **Memory:** ~300MB when active (30% system target)
+### 7️⃣ **VOICE UNLOCK** (The Apple Watch Alternative)
+- **Purpose:** Voice-based Mac unlocking specifically designed as an alternative to Apple Watch Unlock
+- **Features:** Voice enrollment, anti-spoofing, secure Keychain integration, instant unlock
+- **Why Critical:** Gives non-Apple Watch users the same hands-free unlock convenience
+- **Memory:** ~300MB when active (optimized for 30% system memory target)
 
 ### 8️⃣ **WAKE WORD** (Hands-Free Activation) 
 - **Purpose:** Always-listening detection of "Hey JARVIS" without buttons

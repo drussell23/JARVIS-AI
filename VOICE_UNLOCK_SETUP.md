@@ -1,4 +1,4 @@
-# JARVIS Voice Unlock - Quick Setup Guide
+# JARVIS Voice Unlock - Apple Watch Alternative Setup Guide
 
 ## 🚀 Quick Start (5 minutes)
 
@@ -45,7 +45,7 @@ jarvis-voice-unlock enroll john
 ### 5. Test Authentication
 
 ```bash
-# Test with Apple Watch nearby
+# Test Voice Unlock (no Apple Watch needed)
 jarvis-voice-unlock test
 
 # Test voice commands
@@ -74,17 +74,18 @@ pip install -r backend/voice_unlock/requirements.txt
 - Quantization enabled
 - Lazy loading everywhere
 
-### Apple Watch Not Detected
+### Voice Unlock Not Working
 
-1. Check Bluetooth is enabled:
+1. Check microphone is working:
    ```bash
-   system_profiler SPBluetoothDataType
+   # Test microphone input
+   python -c "import sounddevice; print(sounddevice.query_devices())"
    ```
 
-2. Make sure Apple Watch is:
-   - Paired with your Mac
-   - Unlocked
-   - Within 3 meters (10 feet)
+2. Make sure you have:
+   - Enrolled your voice properly
+   - Granted microphone permissions
+   - Speaking clearly and naturally
 
 ### Microphone Permission
 
@@ -105,19 +106,19 @@ With the optimizations applied:
 
 ## 🎯 Integration with JARVIS
 
-The voice unlock system is now integrated with JARVIS startup:
+The voice unlock system is the perfect Apple Watch alternative:
 
 1. **Automatic Start**: Voice unlock starts with JARVIS
 2. **Background Operation**: Runs without blocking
-3. **Apple Watch**: Proximity detection active
-4. **Commands**: "Hey JARVIS, unlock my Mac"
+3. **Voice Authentication**: No Apple Watch required
+4. **Commands**: "Hey JARVIS, unlock my Mac" - no typing needed!
 
 ## ✅ What's Working Now
 
 1. **ProcessCleanupManager** - Config attribute added ✓
 2. **Dependencies** - Install script created ✓
 3. **Memory Optimization** - 16GB config applied ✓
-4. **Apple Watch Integration** - Proximity detection ✓
+4. **Voice Authentication** - Apple Watch alternative ready ✓
 5. **JARVIS Integration** - Startup hooks added ✓
 
 ## 🚦 Next Steps
@@ -125,7 +126,7 @@ The voice unlock system is now integrated with JARVIS startup:
 1. Run `./install_voice_unlock_deps.sh`
 2. Restart JARVIS
 3. Enroll your voice
-4. Enjoy hands-free Mac unlocking!
+4. Enjoy Apple Watch-free voice unlocking!
 
 ---
 
