@@ -13,7 +13,23 @@ from dataclasses import dataclass, field, asdict
 from typing import Dict, Any, Optional, List
 import logging
 
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
+
+
+def _get_system_ram_gb() -> int:
+    """Get system RAM in GB"""
+    if PSUTIL_AVAILABLE:
+        try:
+            return int(psutil.virtual_memory().total / (1024**3))
+        except:
+            pass
+    return 16  # Default assumption
 
 
 @dataclass
@@ -128,26 +144,54 @@ class SystemIntegrationSettings:
     custom_responses: Dict[str, str] = field(default_factory=lambda: json.loads(
         os.getenv('VOICE_UNLOCK_RESPONSES', '{"success": "Welcome back, Sir", "failure": "Voice not recognized, Sir", "lockout": "Security lockout activated, Sir"}')
     ))
+    
+    # Apple Watch integration
+    enable_apple_watch: bool = os.getenv('VOICE_UNLOCK_APPLE_WATCH', 'true').lower() == 'true'
+    auto_lock_on_distance: bool = os.getenv('VOICE_UNLOCK_AUTO_LOCK', 'true').lower() == 'true'
+    unlock_distance: float = float(os.getenv('VOICE_UNLOCK_UNLOCK_DISTANCE', '3.0'))  # meters
+    lock_distance: float = float(os.getenv('VOICE_UNLOCK_LOCK_DISTANCE', '10.0'))  # meters
 
 
 @dataclass
 class PerformanceSettings:
     """Performance and optimization settings"""
+    # Auto-detect system RAM and apply appropriate limits
+    _total_ram_gb: int = field(default_factory=lambda: _get_system_ram_gb())
+    
     # Processing
     use_gpu: bool = os.getenv('VOICE_UNLOCK_USE_GPU', 'false').lower() == 'true'
     num_threads: int = int(os.getenv('VOICE_UNLOCK_THREADS', '0'))  # 0 = auto
     
-    # Caching
+    # Caching - reduced for 30% memory target
     cache_enabled: bool = os.getenv('VOICE_UNLOCK_CACHE', 'true').lower() == 'true'
-    cache_size_mb: int = int(os.getenv('VOICE_UNLOCK_CACHE_SIZE', '100'))
+    cache_size_mb: int = field(default_factory=lambda: int(os.getenv('VOICE_UNLOCK_CACHE_SIZE', 
+        '100' if _get_system_ram_gb() <= 16 else '200')))  # Reduced from 150 to 100MB
     
     # Background processing
     background_monitoring: bool = os.getenv('VOICE_UNLOCK_BACKGROUND', 'true').lower() == 'true'
     monitoring_interval: float = float(os.getenv('VOICE_UNLOCK_MONITOR_INTERVAL', '0.1'))
     
-    # Resource limits
-    max_cpu_percent: int = int(os.getenv('VOICE_UNLOCK_MAX_CPU', '25'))
-    max_memory_mb: int = int(os.getenv('VOICE_UNLOCK_MAX_MEMORY', '500'))
+    # Resource limits - ultra-aggressive for 30% target on 16GB
+    max_cpu_percent: int = int(os.getenv('VOICE_UNLOCK_MAX_CPU', '20'))  # Reduced from 25
+    max_memory_mb: int = field(default_factory=lambda: int(os.getenv('VOICE_UNLOCK_MAX_MEMORY', 
+        '300' if _get_system_ram_gb() <= 16 else '500')))  # Reduced from 400 to 300MB
+    
+    # ML Optimization settings (especially important for 16GB systems)
+    enable_quantization: bool = field(default_factory=lambda: os.getenv('VOICE_UNLOCK_QUANTIZATION', 
+        'true' if _get_system_ram_gb() <= 16 else 'false').lower() == 'true')
+    enable_compression: bool = field(default_factory=lambda: os.getenv('VOICE_UNLOCK_COMPRESSION', 
+        'true' if _get_system_ram_gb() <= 16 else 'false').lower() == 'true')
+    enable_mmap: bool = os.getenv('VOICE_UNLOCK_MMAP', 'true').lower() == 'true'
+    enable_lazy_loading: bool = os.getenv('VOICE_UNLOCK_LAZY_LOADING', 'true').lower() == 'true'
+    enable_predictive_loading: bool = os.getenv('VOICE_UNLOCK_PREDICTIVE_LOADING', 'true').lower() == 'true'
+    
+    # Model management - ultra-strict for 30% target on 16GB systems
+    model_unload_timeout: int = field(default_factory=lambda: int(os.getenv('VOICE_UNLOCK_UNLOAD_TIMEOUT', 
+        '30' if _get_system_ram_gb() <= 16 else '300')))  # Reduced from 60 to 30
+    aggressive_unload_timeout: int = field(default_factory=lambda: int(os.getenv('VOICE_UNLOCK_AGGRESSIVE_TIMEOUT', 
+        '15' if _get_system_ram_gb() <= 16 else '60')))  # Reduced from 30 to 15
+    model_cache_size: int = field(default_factory=lambda: int(os.getenv('VOICE_UNLOCK_MODEL_CACHE_SIZE', 
+        '5' if _get_system_ram_gb() <= 16 else '10')))
 
 
 class VoiceUnlockConfig:
@@ -170,6 +214,9 @@ class VoiceUnlockConfig:
             
         # Create config directory if needed
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Apply memory optimizations based on system RAM
+        self.apply_memory_optimization()
         
         # Validate configuration
         self.validate()
@@ -300,6 +347,82 @@ class VoiceUnlockConfig:
             'system': asdict(self.system),
             'performance': asdict(self.performance)
         }
+        
+    def apply_memory_optimization(self):
+        """Apply memory optimization based on system RAM"""
+        ram_gb = _get_system_ram_gb()
+        logger.info(f"System RAM: {ram_gb}GB - applying optimizations")
+        
+        if ram_gb <= 16:
+            # Apply 16GB optimizations
+            self.performance.enable_quantization = True
+            self.performance.enable_compression = True
+            self.performance.max_memory_mb = min(self.performance.max_memory_mb, 400)
+            self.performance.cache_size_mb = min(self.performance.cache_size_mb, 150)
+            self.performance.model_unload_timeout = min(self.performance.model_unload_timeout, 60)
+            self.performance.aggressive_unload_timeout = min(self.performance.aggressive_unload_timeout, 30)
+            
+            # Reduce quality for better performance
+            self.enrollment.max_samples = min(self.enrollment.max_samples, 50)
+            
+            logger.info("Applied 16GB RAM optimizations")
+            
+        elif ram_gb <= 32:
+            # Apply 32GB optimizations
+            self.performance.max_memory_mb = min(self.performance.max_memory_mb, 800)
+            self.performance.cache_size_mb = min(self.performance.cache_size_mb, 300)
+            logger.info("Applied 32GB RAM optimizations")
+            
+        else:
+            # 64GB+ systems - use full capabilities
+            logger.info("High-memory system detected - using full capabilities")
+            
+    def get_memory_budget(self) -> Dict[str, int]:
+        """Get memory budget allocation for different components"""
+        total_mb = self.performance.max_memory_mb
+        
+        return {
+            'ml_models': int(total_mb * 0.5),      # 50% for ML models
+            'cache': self.performance.cache_size_mb,  # Fixed cache size
+            'audio_buffer': int(total_mb * 0.125),    # 12.5% for audio
+            'misc': int(total_mb * 0.125)            # 12.5% for misc
+        }
+        
+    def get_system_info(self) -> Dict[str, Any]:
+        """Get system information and recommendations"""
+        info = {
+            'ram_gb': _get_system_ram_gb(),
+            'ram_available_gb': 0,
+            'cpu_count': os.cpu_count() or 4,
+            'optimizations_applied': [],
+            'recommendations': []
+        }
+        
+        if PSUTIL_AVAILABLE:
+            vm = psutil.virtual_memory()
+            info['ram_available_gb'] = round(vm.available / (1024**3), 1)
+            
+        # Check optimization status
+        if self.performance.enable_quantization:
+            info['optimizations_applied'].append('Model quantization')
+        if self.performance.enable_compression:
+            info['optimizations_applied'].append('Model compression')
+        if self.performance.enable_lazy_loading:
+            info['optimizations_applied'].append('Lazy loading')
+        if self.performance.enable_predictive_loading:
+            info['optimizations_applied'].append('Predictive loading')
+            
+        # Recommendations
+        if info['ram_gb'] <= 16:
+            if not self.performance.enable_quantization:
+                info['recommendations'].append('Enable quantization for better memory usage')
+            if self.performance.max_memory_mb > 400:
+                info['recommendations'].append('Reduce max_memory_mb to 400 or less')
+                
+        if info['ram_available_gb'] < 2:
+            info['recommendations'].append('Close some applications to free up memory')
+            
+        return info
 
 
 # Global configuration instance
