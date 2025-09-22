@@ -970,8 +970,10 @@ class JARVISVoiceAPI:
                         # Process through unified system
                         result = await processor.process_command(command_text, websocket)
                         
+                        logger.info(f"[JARVIS API] Command result: {result}")
+                        
                         # Send unified response
-                        await websocket.send_json({
+                        response_data = {
                             "type": "response",
                             "text": result.get('response', 'I processed your command.'),
                             "command_type": result.get('command_type', 'unknown'),
@@ -979,7 +981,10 @@ class JARVISVoiceAPI:
                             "timestamp": datetime.now().isoformat(),
                             "speak": True,
                             **{k: v for k, v in result.items() if k not in ['response', 'command_type', 'success']}
-                        })
+                        }
+                        
+                        await websocket.send_json(response_data)
+                        logger.info(f"[JARVIS API] Sent response: {response_data['text'][:100]}...")
                         continue
                         
                     except Exception as e:

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.jarvis.voiceunlock</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/backend/voice_unlock/jarvis_voice_unlock.py</string>
+        <string>start</string>
+    </array>
+    
+    <key>WorkingDirectory</key>
+    <string>/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent</string>
+    
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONPATH</key>
+        <string>/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent</string>
+        <key>VOICE_UNLOCK_MAX_MEMORY</key>
+        <string>400</string>
+        <key>VOICE_UNLOCK_CACHE_SIZE</key>
+        <string>150</string>
+        <key>VOICE_UNLOCK_USE_GPU</key>
+        <string>false</string>
+    </dict>
+    
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+        <key>Crashed</key>
+        <true/>
+    </dict>
+    
+    <key>StandardOutPath</key>
+    <string>/Users/derekjrussell/.jarvis/voice_unlock/logs/stdout.log</string>
+    
+    <key>StandardErrorPath</key>
+    <string>/Users/derekjrussell/.jarvis/voice_unlock/logs/stderr.log</string>
+    
+    <key>ProcessType</key>
+    <string>Interactive</string>
+    
+    <key>Nice</key>
+    <integer>10</integer>
+    
+    <key>LowPriorityIO</key>
+    <true/>
+    
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+</dict>
+</plist>

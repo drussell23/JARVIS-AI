@@ -304,7 +304,7 @@ class DynamicAppController:
                 ["osascript", "-e", script],
                 capture_output=True,
                 text=True,
-                timeout=2
+                timeout=10  # Increased timeout for apps like WhatsApp that take longer to close
             )
             
             if result.returncode == 0:
@@ -405,7 +405,7 @@ class DynamicAppController:
                 ["osascript", "-e", script],
                 capture_output=True,
                 text=True,
-                timeout=2
+                timeout=10  # Increased timeout for apps like WhatsApp that take longer to close
             )
             
             if result.returncode == 0:

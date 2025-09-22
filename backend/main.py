@@ -2,7 +2,7 @@
 """
 JARVIS AI Backend - Optimized Main Entry Point
 
-This backend loads 6 critical components that power the JARVIS AI system:
+This backend loads 7 critical components that power the JARVIS AI system:
 
 1. CHATBOTS (Claude Vision Chatbot)
    - Powers conversational AI with Claude 3.5 Sonnet
@@ -43,7 +43,21 @@ This backend loads 6 critical components that power the JARVIS AI system:
    - Essential for production stability
    - Integration metrics tracking for all vision components
 
-All 6 components must load successfully for full JARVIS functionality.
+7. VOICE UNLOCK (Biometric Mac Authentication) - NEW!
+   - Voice-based biometric authentication for macOS
+   - Secure voiceprint enrollment and storage
+   - Anti-spoofing protection with liveness detection
+   - Screensaver and system integration
+   - Adaptive authentication with continuous learning
+
+8. WAKE WORD (Hands-free Activation) - NEW!
+   - "Hey JARVIS" wake word detection
+   - Always-listening mode with zero button clicks
+   - Multi-engine detection (Porcupine, Vosk, WebRTC)
+   - Adaptive sensitivity and anti-spoofing
+   - Customizable wake words and responses
+
+All 8 components must load successfully for full JARVIS functionality.
 The system uses parallel imports to reduce startup time from ~20s to ~7-9s.
 
 Enhanced Vision Features (v13.3.1):
@@ -143,7 +157,9 @@ async def parallel_import_components():
         'memory': import_memory_system,
         'voice': import_voice_system,
         'ml_models': import_ml_models,
-        'monitoring': import_monitoring
+        'monitoring': import_monitoring,
+        'voice_unlock': import_voice_unlock,
+        'wake_word': import_wake_word
     }
     
     # Use thread pool for imports
@@ -305,6 +321,72 @@ def import_monitoring():
     
     return monitoring
 
+def import_voice_unlock():
+    """Import voice unlock components"""
+    voice_unlock = {}
+    
+    try:
+        from api.voice_unlock_api import router as voice_unlock_router, initialize_voice_unlock
+        voice_unlock['router'] = voice_unlock_router
+        voice_unlock['initialize'] = initialize_voice_unlock
+        voice_unlock['available'] = True
+        
+        # Try to initialize immediately
+        if initialize_voice_unlock():
+            voice_unlock['initialized'] = True
+            logger.info("  ✅ Voice Unlock API initialized")
+        else:
+            voice_unlock['initialized'] = False
+            logger.warning("  ⚠️  Voice Unlock API initialization failed")
+        
+        # Also import the startup integration for WebSocket server
+        try:
+            from voice_unlock.startup_integration import (
+                initialize_voice_unlock_system,
+                shutdown_voice_unlock_system,
+                voice_unlock_startup
+            )
+            voice_unlock['startup_integration'] = True
+            voice_unlock['initialize_system'] = initialize_voice_unlock_system
+            voice_unlock['shutdown_system'] = shutdown_voice_unlock_system
+            voice_unlock['startup_manager'] = voice_unlock_startup
+        except ImportError:
+            logger.warning("  ⚠️  Voice Unlock startup integration not available")
+            voice_unlock['startup_integration'] = False
+            
+    except ImportError as e:
+        logger.warning(f"  ⚠️  Voice Unlock not available: {e}")
+        voice_unlock['available'] = False
+        voice_unlock['initialized'] = False
+    
+    return voice_unlock
+
+def import_wake_word():
+    """Import wake word detection components"""
+    wake_word = {}
+    
+    try:
+        from api.wake_word_api import router as wake_word_router, initialize_wake_word, wake_service
+        wake_word['router'] = wake_word_router
+        wake_word['initialize'] = initialize_wake_word
+        wake_word['service'] = wake_service
+        wake_word['available'] = True
+        
+        # Try to initialize immediately
+        if initialize_wake_word():
+            wake_word['initialized'] = True
+            logger.info("  ✅ Wake Word detection initialized")
+        else:
+            wake_word['initialized'] = False
+            logger.warning("  ⚠️  Wake Word initialization failed")
+            
+    except ImportError as e:
+        logger.warning(f"  ⚠️  Wake Word not available: {e}")
+        wake_word['available'] = False
+        wake_word['initialized'] = False
+    
+    return wake_word
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Optimized lifespan handler with parallel initialization"""
@@ -323,6 +405,8 @@ async def lifespan(app: FastAPI):
         components['voice'] = import_voice_system()
         components['ml_models'] = import_ml_models()
         components['monitoring'] = import_monitoring()
+        components['voice_unlock'] = import_voice_unlock()
+        components['wake_word'] = import_wake_word()
     
     # Initialize memory manager
     memory_class = components.get('memory', {}).get('manager_class')
@@ -495,7 +579,9 @@ async def lifespan(app: FastAPI):
         ("✅" if components.get('memory') else "❌", "MEMORY      - Resource management & optimization"),
         ("✅" if components.get('voice') else "❌", "VOICE       - Voice activation & speech synthesis"),
         ("✅" if components.get('ml_models') else "❌", "ML_MODELS   - NLP & sentiment analysis"),
-        ("✅" if components.get('monitoring') else "❌", "MONITORING  - System health & metrics")
+        ("✅" if components.get('monitoring') else "❌", "MONITORING  - System health & metrics"),
+        ("✅" if components.get('voice_unlock') else "❌", "VOICE_UNLOCK - Biometric Mac authentication"),
+        ("✅" if components.get('wake_word') else "❌", "WAKE_WORD   - Hands-free 'Hey JARVIS' activation")
     ]
     
     for status, desc in component_status:
@@ -503,17 +589,65 @@ async def lifespan(app: FastAPI):
     
     logger.info(f"🚀 Mode: {'Optimized' if OPTIMIZE_STARTUP else 'Legacy'}")
     
-    if loaded_count == 6:
+    if loaded_count == 8:
         logger.info("✨ All systems operational - JARVIS is fully functional!")
     else:
-        logger.warning(f"⚠️  Only {loaded_count}/6 components loaded - some features may be limited")
+        logger.warning(f"⚠️  Only {loaded_count}/8 components loaded - some features may be limited")
     
     logger.info("=" * 60 + "\n")
+    
+    # Initialize Voice Unlock system components (WebSocket server)
+    voice_unlock = components.get('voice_unlock', {})
+    if voice_unlock.get('startup_integration') and voice_unlock.get('initialize_system'):
+        try:
+            logger.info("🔐 Starting Voice Unlock system components...")
+            init_system = voice_unlock['initialize_system']
+            success = await init_system()
+            if success:
+                app.state.voice_unlock_system = voice_unlock['startup_manager']
+                logger.info("✅ Voice Unlock system started")
+                logger.info("   Say 'Hey JARVIS, unlock my mac' when screen is locked")
+            else:
+                logger.warning("⚠️ Voice Unlock system failed to start")
+        except Exception as e:
+            logger.error(f"Failed to start Voice Unlock system: {e}")
+    
+    # Initialize wake word service after all components are loaded
+    wake_word = components.get('wake_word', {})
+    if wake_word.get('service') and wake_word.get('initialized'):
+        # Define activation callback that sends to WebSocket clients
+        async def wake_word_activation_callback(data):
+            """Handle wake word activation"""
+            logger.info(f"Wake word activated: {data}")
+            # This will be sent through WebSocket to connected clients
+            # The frontend will handle the actual response
+        
+        try:
+            # Start the wake word service with callback
+            wake_service = wake_word['service']
+            if wake_service:
+                success = await wake_service.start(wake_word_activation_callback)
+                if success:
+                    app.state.wake_service = wake_service
+                    logger.info("🎤 Wake word detection service started - Say 'Hey JARVIS'!")
+                else:
+                    logger.warning("⚠️ Wake word service failed to start")
+        except Exception as e:
+            logger.error(f"Failed to start wake word service: {e}")
     
     yield
     
     # Cleanup
     logger.info("🛑 Shutting down JARVIS backend...")
+    
+    # Stop Voice Unlock system
+    if hasattr(app.state, 'voice_unlock_system') and voice_unlock.get('shutdown_system'):
+        try:
+            shutdown_system = voice_unlock['shutdown_system']
+            await shutdown_system()
+            logger.info("✅ Voice Unlock system stopped")
+        except Exception as e:
+            logger.error(f"Failed to stop Voice Unlock system: {e}")
     
     # Stop dynamic component loader and self-healer
     try:
@@ -679,6 +813,22 @@ async def health_check():
     except:
         self_healing_details = {'enabled': False}
     
+    # Check voice unlock status
+    voice_unlock_details = {}
+    if hasattr(app.state, 'voice_unlock') and app.state.voice_unlock.get('initialized'):
+        try:
+            from voice_unlock.services.mac_unlock_service import MacUnlockService
+            # Get basic status without initializing service
+            voice_unlock_details = {
+                'enabled': True,
+                'initialized': True,
+                'api_available': True
+            }
+        except:
+            voice_unlock_details = {'enabled': False, 'initialized': False}
+    else:
+        voice_unlock_details = {'enabled': False, 'initialized': False}
+    
     return {
         "status": "healthy",
         "mode": "optimized" if OPTIMIZE_STARTUP else "legacy",
@@ -691,7 +841,8 @@ async def health_check():
         "vision_enhanced": vision_details,
         "ml_audio_system": ml_audio_details,
         "rust_acceleration": rust_details,
-        "self_healing": self_healing_details
+        "self_healing": self_healing_details,
+        "voice_unlock": voice_unlock_details
     }
 
 # Mount routers based on available components
@@ -728,6 +879,26 @@ def mount_routers():
     if monitoring and monitoring.get('router'):
         app.include_router(monitoring['router'], prefix="/monitoring", tags=["monitoring"])
         logger.info("✅ Monitoring API mounted")
+    
+    # Voice Unlock API
+    voice_unlock = components.get('voice_unlock', {})
+    if voice_unlock and voice_unlock.get('router'):
+        app.include_router(voice_unlock['router'], tags=["voice_unlock"])
+        logger.info("✅ Voice Unlock API mounted")
+        if voice_unlock.get('initialized'):
+            app.state.voice_unlock = voice_unlock
+            logger.info("✅ Voice Unlock service ready")
+    
+    # Wake Word API
+    wake_word = components.get('wake_word', {})
+    if wake_word and wake_word.get('router'):
+        app.include_router(wake_word['router'], tags=["wake_word"])
+        logger.info("✅ Wake Word API mounted")
+        if wake_word.get('initialized'):
+            app.state.wake_word = wake_word
+            logger.info("✅ Wake Word detection ready")
+        else:
+            logger.warning("⚠️ Wake Word API mounted but not initialized")
     
     # Rust API (if Rust components are available)
     if hasattr(app.state, 'rust_acceleration') and app.state.rust_acceleration.get('available'):
@@ -800,6 +971,22 @@ def mount_routers():
         logger.warning(f"Could not mount static files: {e}")
 
 # Note: Startup tasks are now handled in the lifespan handler above
+
+# Simple command endpoint for testing
+@app.post("/api/command")
+async def process_command(request: dict):
+    """Simple command endpoint for testing"""
+    command = request.get("command", "")
+    
+    # Use unified command processor if available
+    try:
+        from api.unified_command_processor import UnifiedCommandProcessor
+        processor = UnifiedCommandProcessor()
+        result = await processor.process_command(command)
+        return result
+    except Exception as e:
+        logger.error(f"Command processing error: {e}")
+        return {"error": str(e), "command": command}
 
 # Basic test endpoint
 @app.get("/")

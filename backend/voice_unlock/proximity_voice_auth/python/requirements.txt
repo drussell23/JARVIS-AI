@@ -1,0 +1,23 @@
+# Voice Biometrics Dependencies
+librosa==0.10.1
+numpy==1.24.3
+scikit-learn==1.3.0
+joblib==1.3.0
+pyAudioAnalysis==0.3.14
+scipy==1.10.1
+soundfile==0.12.1
+
+# Communication
+pyzmq==25.1.1
+
+# Audio processing
+webrtcvad==2.0.10
+pydub==0.25.1
+
+# Machine Learning
+tensorflow-macos==2.13.0  # For M1/M2 Macs
+tensorflow-metal==1.0.0   # Metal acceleration
+
+# Utilities
+python-dateutil==2.8.2
+pyyaml==6.0.1

@@ -34,6 +34,16 @@ class ProcessCleanupManager:
     def __init__(self):
         """Initialize the cleanup manager"""
         self.swift_monitor = None  # Initialize as None
+        
+        # Default configuration
+        self.config = {
+            'check_interval': 5.0,  # seconds
+            'process_timeout': 30.0,  # seconds
+            'memory_threshold': 0.8,  # 80% memory usage
+            'cpu_threshold': 0.9,  # 90% CPU usage
+            'cpu_threshold_single': 50.0,  # 50% CPU for single process
+            'enable_cleanup': True
+        }
 
     def _get_swift_monitor(self):
         """Lazy load the Swift monitor"""

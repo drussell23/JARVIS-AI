@@ -88,7 +88,7 @@ class MacOSController:
                 ["osascript", "-e", script],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=10  # Increased for apps that take longer to respond
             )
             if result.returncode == 0:
                 return True, result.stdout.strip()
@@ -604,7 +604,7 @@ class MacOSController:
                         query_params = parse_qs(parsed.query)
                         search_query = query_params.get('q', [''])[0]
                         if search_query:
-                            return True, f"Searching for {search_query} in {browser.title()}, Sir"
+                            return True, f"searching for {search_query}"
                         else:
                             return True, f"Opening Google search in {browser.title()}"
                     elif 'google.com' in url.lower():

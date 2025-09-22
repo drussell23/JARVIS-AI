@@ -1,0 +1,28 @@
+[Unit]
+Description=JARVIS Voice Unlock Service
+After=network.target sound.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/Users/%i/Documents/repos/JARVIS-AI-Agent
+Environment="PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+Environment="PYTHONPATH=/Users/%i/Documents/repos/JARVIS-AI-Agent"
+Environment="VOICE_UNLOCK_MAX_MEMORY=400"
+Environment="VOICE_UNLOCK_CACHE_SIZE=150"
+ExecStart=/usr/bin/python3 /Users/%i/Documents/repos/JARVIS-AI-Agent/backend/voice_unlock/jarvis_voice_unlock.py start
+Restart=on-failure
+RestartSec=10
+
+# Resource limits
+MemoryLimit=1G
+CPUQuota=50%
+
+# Security
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/Users/%i/.jarvis
+
+[Install]
+WantedBy=default.target
