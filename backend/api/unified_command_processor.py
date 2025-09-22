@@ -600,17 +600,15 @@ class UnifiedCommandProcessor:
                         'action': 'enrollment_instructions',
                         'next_command': 'start voice enrollment now'
                     }
-                # Check for actual enrollment start
+                # For actual enrollment start, let the handler process it
                 elif any(phrase in command_lower for phrase in ['start voice enrollment now', 'begin voice enrollment', 'start enrollment now']):
-                    # Quick response to start enrollment
+                    # Let the actual handler process enrollment
+                    result = await handler.handle_command(command_text, websocket)
                     return {
-                        'success': True,
-                        'response': 'Starting voice enrollment now, Sir. Please say the following phrase clearly: "Hello JARVIS, unlock my Mac". Speak naturally and I will capture your voice pattern. Say it three times when you hear the beep.',
+                        'success': result.get('success', result.get('type') == 'voice_unlock'),
+                        'response': result.get('message', result.get('response', '')),
                         'command_type': command_type.value,
-                        'type': 'voice_unlock',
-                        'action': 'enrollment_active',
-                        'enrollment_phrase': 'Hello JARVIS, unlock my Mac',
-                        'instructions': 'Say the phrase 3 times after the beep'
+                        **result
                     }
                 else:
                     # Other voice unlock commands - use the handler
