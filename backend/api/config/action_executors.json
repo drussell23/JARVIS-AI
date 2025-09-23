@@ -1,0 +1,44 @@
+{
+  "unlock": {
+    "module": "backend.api.action_executors",
+    "function": "unlock_system",
+    "requires_auth": true,
+    "timeout": 10,
+    "retry_count": 1
+  },
+  "open_app": {
+    "module": "backend.api.action_executors", 
+    "function": "open_application",
+    "requires_auth": false,
+    "timeout": 15,
+    "retry_count": 2
+  },
+  "search": {
+    "module": "backend.api.action_executors",
+    "function": "perform_search",
+    "requires_auth": false,
+    "timeout": 20,
+    "retry_count": 3
+  },
+  "check": {
+    "module": "backend.api.action_executors",
+    "function": "check_resource",
+    "requires_auth": false,
+    "timeout": 10,
+    "retry_count": 2
+  },
+  "create": {
+    "module": "backend.api.action_executors",
+    "function": "create_item",
+    "requires_auth": false,
+    "timeout": 15,
+    "retry_count": 2
+  },
+  "mute": {
+    "module": "backend.api.action_executors",
+    "function": "mute_notifications",
+    "requires_auth": false,
+    "timeout": 5,
+    "retry_count": 1
+  }
+}

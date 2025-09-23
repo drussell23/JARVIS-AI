@@ -35,14 +35,18 @@ class ProcessCleanupManager:
         """Initialize the cleanup manager"""
         self.swift_monitor = None  # Initialize as None
         
-        # Default configuration
+        # Default configuration - Aggressive memory target of 35%
         self.config = {
             'check_interval': 5.0,  # seconds
             'process_timeout': 30.0,  # seconds
-            'memory_threshold': 0.8,  # 80% memory usage
+            'memory_threshold': 0.35,  # 35% memory usage target
+            'memory_threshold_warning': 0.50,  # 50% warning threshold
+            'memory_threshold_critical': 0.70,  # 70% critical threshold
             'cpu_threshold': 0.9,  # 90% CPU usage
+            'cpu_threshold_system': 80.0,  # 80% total system CPU usage threshold
             'cpu_threshold_single': 50.0,  # 50% CPU for single process
-            'enable_cleanup': True
+            'enable_cleanup': True,
+            'aggressive_cleanup': True  # Enable aggressive memory management
         }
 
     def _get_swift_monitor(self):
@@ -428,9 +432,23 @@ class ProcessCleanupManager:
                 f"System CPU is high ({state['cpu_percent']:.1f}%). Consider closing unnecessary applications."
             )
 
-        if state["memory_percent"] > self.config["memory_threshold"]:
+        # Convert memory_percent to 0-1 range for comparison
+        memory_percent_normalized = state["memory_percent"] / 100.0
+        
+        if memory_percent_normalized > self.config.get("memory_threshold_critical", 0.70):
             recommendations.append(
-                f"Memory usage is high ({state['memory_percent']:.1f}%). Some applications may need to be closed."
+                f"⚠️ CRITICAL: Memory usage is very high ({state['memory_percent']:.1f}%). "
+                f"Immediate action required!"
+            )
+        elif memory_percent_normalized > self.config.get("memory_threshold_warning", 0.50):
+            recommendations.append(
+                f"⚡ WARNING: Memory usage is elevated ({state['memory_percent']:.1f}%). "
+                f"Target is {self.config['memory_threshold'] * 100:.0f}%."
+            )
+        elif memory_percent_normalized > self.config["memory_threshold"]:
+            recommendations.append(
+                f"Memory usage ({state['memory_percent']:.1f}%) exceeds target of "
+                f"{self.config['memory_threshold'] * 100:.0f}%. Consider optimization."
             )
 
         if len(state["zombie_processes"]) > 0:

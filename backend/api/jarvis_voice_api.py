@@ -423,6 +423,16 @@ class JARVISVoiceAPI:
     @graceful_endpoint
     async def process_command(self, command: JARVISCommand) -> Dict:
         """Process a JARVIS command"""
+        # Check if this is a multi-command workflow
+        try:
+            from .workflow_command_processor import handle_workflow_command
+            workflow_result = await handle_workflow_command(command)
+            if workflow_result:
+                logger.info(f"[JARVIS API] Processed workflow command with {workflow_result.get('workflow_result', {}).get('actions_completed', 0)} actions")
+                return workflow_result
+        except Exception as e:
+            logger.error(f"Workflow processor error: {e}")
+        
         # First check if this is a vision command
         logger.info(f"[JARVIS API] Checking if '{command.text}' is a vision command...")
         
@@ -907,6 +917,27 @@ class JARVISVoiceAPI:
                         "message": f"[SERVER] Received command: '{command_text}'",
                         "timestamp": datetime.now().isoformat()
                     })
+                    
+                    # Check if this is a multi-command workflow
+                    try:
+                        from .workflow_command_processor import handle_workflow_command
+                        workflow_cmd = JARVISCommand(text=command_text)
+                        workflow_result = await handle_workflow_command(workflow_cmd, websocket=websocket)
+                        
+                        if workflow_result:
+                            logger.info(f"[JARVIS WS] Processed workflow command")
+                            await websocket.send_json({
+                                "type": "response",
+                                "text": workflow_result.get('response'),
+                                "command_type": "workflow",
+                                "workflow_result": workflow_result.get('workflow_result'),
+                                "success": workflow_result.get('success'),
+                                "timestamp": datetime.now().isoformat(),
+                                "speak": True
+                            })
+                            continue
+                    except Exception as e:
+                        logger.error(f"Workflow check error: {e}")
                     
                     # Import autonomy handler
                     try:

@@ -93,12 +93,22 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Optional, Dict, Any
 
-# Configure logging early with more detail
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Enable enhanced ML model logging
+try:
+    from enable_ml_logging import configure_ml_logging
+    ml_logger_instance, memory_visualizer = configure_ml_logging()
+    logger = logging.getLogger(__name__)
+    logger.info("🚀 Enhanced ML model logging enabled")
+    ML_LOGGING_ENABLED = True
+except ImportError:
+    # Configure logging early with more detail
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    logger = logging.getLogger(__name__)
+    logger.warning("Enhanced ML logging not available - using standard logging")
+    ML_LOGGING_ENABLED = False
 
 # Enable debug logging for specific modules
 logging.getLogger("api.jarvis_voice_api").setLevel(logging.DEBUG)
@@ -555,6 +565,13 @@ async def lifespan(app: FastAPI):
     if ml.get('available') and not LAZY_LOAD_MODELS:
         init_func = ml.get('initialize_models')
         if init_func:
+            if ML_LOGGING_ENABLED:
+                logger.info("\n" + "=" * 60)
+                logger.info("🤖 INITIALIZING ML MODELS WITH SMART LAZY LOADING")
+                logger.info("=" * 60)
+                logger.info("Target: <35% memory usage (5.6GB of 16GB)")
+                logger.info("Strategy: Load models one-at-a-time, only when needed")
+                logger.info("Watch the console for real-time loading details...\n")
             asyncio.create_task(init_func())
             logger.info("✅ ML models initialization started")
     

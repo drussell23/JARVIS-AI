@@ -3,6 +3,7 @@ import './JarvisVoice.css';
 import '../styles/JarvisVoiceError.css';
 import MicrophonePermissionHelper from './MicrophonePermissionHelper';
 import MicrophoneIndicator from './MicrophoneIndicator';
+import WorkflowProgress from './WorkflowProgress'; // Workflow progress component
 import mlAudioHandler from '../utils/MLAudioHandler'; // ML-enhanced audio handling
 import { getNetworkRecoveryManager } from '../utils/NetworkRecoveryManager'; // Advanced network recovery
 import WakeWordService from './WakeWordService'; // Wake word detection service
@@ -312,6 +313,7 @@ const JarvisVoice = () => {
   const [micStatus, setMicStatus] = useState('unknown');
   const [networkRetries, setNetworkRetries] = useState(0);
   const [maxNetworkRetries] = useState(3);
+  const [workflowProgress, setWorkflowProgress] = useState(null);
 
   const wsRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -804,6 +806,94 @@ const JarvisVoice = () => {
         if (data.level === 'error') {
           console.error('Full error details:', data);
         }
+        break;
+      case 'workflow_analysis':
+        // Workflow has been analyzed and is about to start
+        console.log('🔄 Workflow analysis:', data);
+        setWorkflowProgress({
+          ...data.workflow,
+          status: 'starting'
+        });
+        break;
+      case 'workflow_started':
+        // Workflow execution has started
+        setWorkflowProgress(prev => ({
+          ...prev,
+          ...data,
+          status: 'running'
+        }));
+        break;
+      case 'action_started':
+        // Individual action has started
+        setWorkflowProgress(prev => {
+          if (!prev || !prev.actions) return prev;
+          const updatedActions = [...prev.actions];
+          if (updatedActions[data.action_index]) {
+            updatedActions[data.action_index].status = 'running';
+          }
+          return {
+            ...prev,
+            actions: updatedActions,
+            currentAction: data.action_index
+          };
+        });
+        break;
+      case 'action_completed':
+        // Individual action completed
+        setWorkflowProgress(prev => {
+          if (!prev || !prev.actions) return prev;
+          const updatedActions = [...prev.actions];
+          if (updatedActions[data.action_index]) {
+            updatedActions[data.action_index].status = 'completed';
+            updatedActions[data.action_index].duration = data.duration;
+          }
+          return {
+            ...prev,
+            actions: updatedActions
+          };
+        });
+        break;
+      case 'action_failed':
+        // Individual action failed
+        setWorkflowProgress(prev => {
+          if (!prev || !prev.actions) return prev;
+          const updatedActions = [...prev.actions];
+          if (updatedActions[data.action_index]) {
+            updatedActions[data.action_index].status = 'failed';
+            updatedActions[data.action_index].error = data.error;
+            updatedActions[data.action_index].duration = data.duration;
+          }
+          return {
+            ...prev,
+            actions: updatedActions
+          };
+        });
+        break;
+      case 'action_retry':
+        // Action is being retried
+        setWorkflowProgress(prev => {
+          if (!prev || !prev.actions) return prev;
+          const updatedActions = [...prev.actions];
+          if (updatedActions[data.action_index]) {
+            updatedActions[data.action_index].status = 'retry';
+            updatedActions[data.action_index].retry_count = data.retry_count;
+          }
+          return {
+            ...prev,
+            actions: updatedActions
+          };
+        });
+        break;
+      case 'workflow_completed':
+        // Workflow execution completed
+        setWorkflowProgress(prev => ({
+          ...prev,
+          status: 'completed',
+          total_duration: data.total_duration,
+          success_rate: data.success_rate
+        }));
+        // Clear workflow progress after 10 seconds
+        setTimeout(() => setWorkflowProgress(null), 10000);
         break;
       default:
         break;
@@ -1808,6 +1898,24 @@ const JarvisVoice = () => {
             </div>
           )}
         </div>
+      )}
+
+      {/* Workflow Progress */}
+      {workflowProgress && (
+        <WorkflowProgress 
+          workflow={workflowProgress}
+          currentAction={workflowProgress.currentAction}
+          onCancel={() => {
+            // Send cancel request to backend
+            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+              wsRef.current.send(JSON.stringify({
+                type: 'cancel_workflow',
+                workflow_id: workflowProgress.workflow_id
+              }));
+            }
+            setWorkflowProgress(null);
+          }}
+        />
       )}
 
       {/* Vision Status */}

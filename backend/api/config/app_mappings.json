@@ -1,0 +1,79 @@
+{
+  "browser": "Safari",
+  "web browser": "Safari",
+  "internet": "Safari",
+  "chrome": "Google Chrome",
+  "firefox": "Firefox",
+  "edge": "Microsoft Edge",
+  
+  "mail": "Mail",
+  "email": "Mail",
+  "outlook": "Microsoft Outlook",
+  "gmail": "Safari",
+  
+  "calendar": "Calendar",
+  "schedule": "Calendar",
+  "events": "Calendar",
+  
+  "notes": "Notes",
+  "notepad": "Notes",
+  "onenote": "Microsoft OneNote",
+  "notion": "Notion",
+  
+  "messages": "Messages",
+  "imessage": "Messages",
+  "sms": "Messages",
+  "whatsapp": "WhatsApp",
+  
+  "music": "Music",
+  "itunes": "Music",
+  "spotify": "Spotify",
+  
+  "photos": "Photos",
+  "pictures": "Photos",
+  "gallery": "Photos",
+  
+  "finder": "Finder",
+  "files": "Finder",
+  "explorer": "Finder",
+  
+  "terminal": "Terminal",
+  "console": "Terminal",
+  "shell": "Terminal",
+  "iterm": "iTerm",
+  
+  "vscode": "Visual Studio Code",
+  "vs code": "Visual Studio Code",
+  "code": "Visual Studio Code",
+  "sublime": "Sublime Text",
+  "atom": "Atom",
+  
+  "word": "Microsoft Word",
+  "docs": "Microsoft Word",
+  "excel": "Microsoft Excel",
+  "sheets": "Microsoft Excel",
+  "powerpoint": "Microsoft PowerPoint",
+  "slides": "Microsoft PowerPoint",
+  "keynote": "Keynote",
+  
+  "slack": "Slack",
+  "teams": "Microsoft Teams",
+  "zoom": "zoom.us",
+  "meet": "Google Meet",
+  "discord": "Discord",
+  
+  "preview": "Preview",
+  "pdf": "Preview",
+  "reader": "Preview",
+  
+  "app store": "App Store",
+  "store": "App Store",
+  
+  "settings": "System Preferences",
+  "preferences": "System Preferences",
+  "system settings": "System Settings",
+  
+  "activity monitor": "Activity Monitor",
+  "task manager": "Activity Monitor",
+  "monitor": "Activity Monitor"
+}

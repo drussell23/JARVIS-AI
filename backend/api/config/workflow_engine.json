@@ -1,0 +1,26 @@
+{
+  "max_workers": 10,
+  "default_timeout": 30,
+  "max_retries": 3,
+  "parallel_threshold": 3,
+  "learning_enabled": true,
+  "real_time_updates": true,
+  "error_recovery_strategies": ["retry", "alternative", "skip", "abort"],
+  "use_alternatives": true,
+  "performance": {
+    "max_concurrent_workflows": 5,
+    "action_queue_size": 100,
+    "websocket_ping_interval": 30
+  },
+  "safety": {
+    "confirm_destructive_actions": true,
+    "max_execution_time": 300,
+    "allowed_action_types": ["unlock", "open_app", "search", "check", "create", "mute", "prepare"]
+  },
+  "learning": {
+    "min_samples_for_prediction": 5,
+    "success_threshold": 0.8,
+    "pattern_retention_days": 90,
+    "user_preference_weight": 0.7
+  }
+}

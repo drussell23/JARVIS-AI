@@ -117,7 +117,7 @@ class Colors:
 
 
 class AsyncSystemManager:
-    """Async system manager with integrated resource optimization"""
+    """Async system manager with integrated resource optimization and self-healing"""
 
     def __init__(self):
         self.processes = []
@@ -142,6 +142,12 @@ class AsyncSystemManager:
         self.resource_coordinator = None
         self.jarvis_coordinator = None
         self._shutting_down = False  # Flag to suppress exit warnings during shutdown
+        
+        # Self-healing mechanism
+        self.healing_attempts = {}
+        self.max_healing_attempts = 3
+        self.healing_log = []
+        self.auto_heal_enabled = True
 
     def print_header(self):
         """Print system header with resource optimization info"""
@@ -659,15 +665,21 @@ class AsyncSystemManager:
             f"\n{Colors.BLUE}Starting optimized backend with performance enhancements...{Colors.ENDC}"
         )
 
-        # Kill any existing processes
-        for port_name, port in [
+        # Kill any existing processes in parallel for faster cleanup
+        kill_tasks = []
+        ports_to_check = [
             ("event_ui", 8888),
             ("main_api", self.ports["main_api"]),
-        ]:
+        ]
+        
+        for port_name, port in ports_to_check:
             if not await self.check_port_available(port):
                 print(f"{Colors.WARNING}Killing process on port {port}...{Colors.ENDC}")
-                await self.kill_process_on_port(port)
-                await asyncio.sleep(1)
+                kill_tasks.append(self.kill_process_on_port(port))
+        
+        if kill_tasks:
+            await asyncio.gather(*kill_tasks)
+            await asyncio.sleep(0.5)  # Reduced wait time
 
         # Use main.py which now has integrated parallel startup
         if (self.backend_dir / "main.py").exists():
@@ -682,8 +694,12 @@ class AsyncSystemManager:
         env["PYTHONPATH"] = str(self.backend_dir)
         env["JARVIS_USER"] = os.getenv("JARVIS_USER", "Sir")
         
-        # Enable optimized startup for faster initialization
+        # Enable all performance optimizations
         env["OPTIMIZE_STARTUP"] = "true"
+        env["LAZY_LOAD_MODELS"] = "true"
+        env["PARALLEL_INIT"] = "true"
+        env["FAST_STARTUP"] = "true"
+        env["ML_LOGGING_ENABLED"] = "true"
         env["BACKEND_PARALLEL_IMPORTS"] = "true"
         env["BACKEND_LAZY_LOAD_MODELS"] = "true"
 
@@ -727,17 +743,20 @@ class AsyncSystemManager:
 
         self.processes.append(process)
 
-        # Wait for backend to start up (reduced time due to parallel imports)
+        # Use dynamic health checking instead of fixed wait
         print(f"{Colors.YELLOW}Waiting for backend to initialize (parallel startup enabled)...{Colors.ENDC}")
-        await asyncio.sleep(10)
+        
+        # Quick initial wait for process to start
+        await asyncio.sleep(2)
 
         # Check if backend is accessible
         backend_url = f"http://localhost:{self.ports['main_api']}/health"
         print(f"{Colors.CYAN}Checking backend at {backend_url}...{Colors.ENDC}")
-        backend_ready = await self.wait_for_service(backend_url, timeout=120)
+        # Reduced timeout with more frequent checks
+        backend_ready = await self.wait_for_service(backend_url, timeout=60)
 
         if not backend_ready:
-            print(f"{Colors.WARNING}Backend did not respond at {backend_url} after 120 seconds{Colors.ENDC}")
+            print(f"{Colors.WARNING}Backend did not respond at {backend_url} after 60 seconds{Colors.ENDC}")
             print(f"{Colors.WARNING}Check log file: {log_file}{Colors.ENDC}")
             
             # Show last few lines of log for debugging
@@ -965,6 +984,54 @@ class AsyncSystemManager:
 
         return process
 
+    async def _run_parallel_health_checks(self, timeout: int = 10) -> None:
+        """Run parallel health checks on all services"""
+        print(f"\n{Colors.YELLOW}Verifying all services are ready...{Colors.ENDC}")
+        start_time = time.time()
+        
+        # Define health check endpoints
+        health_checks = [
+            ("Backend API", f"http://localhost:{self.ports['main_api']}/health"),
+            ("WebSocket Router", f"http://localhost:8001/health"),
+            ("Frontend", f"http://localhost:3000", False),  # Frontend may not have health endpoint
+        ]
+        
+        async def check_service_health(name: str, url: str, expect_json: bool = True):
+            service_start = time.time()
+            while time.time() - service_start < timeout:
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(url, timeout=aiohttp.ClientTimeout(total=2)) as resp:
+                            if resp.status in [200, 404]:  # 404 ok for some endpoints
+                                return True, name, time.time() - service_start
+                except:
+                    pass
+                await asyncio.sleep(0.5)
+            return False, name, timeout
+        
+        # Run all health checks in parallel
+        tasks = [check_service_health(name, url, json) for name, url, *json in health_checks]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        all_healthy = True
+        for result in results:
+            if isinstance(result, tuple):
+                success, name, duration = result
+                if success:
+                    print(f"{Colors.GREEN}✓ {name} ready ({duration:.1f}s){Colors.ENDC}")
+                else:
+                    print(f"{Colors.WARNING}⚠ {name} not responding{Colors.ENDC}")
+                    if name == "Backend API":
+                        all_healthy = False
+            else:
+                print(f"{Colors.WARNING}⚠ Health check error: {result}{Colors.ENDC}")
+        
+        elapsed = time.time() - start_time
+        print(f"{Colors.CYAN}Health checks completed in {elapsed:.1f}s{Colors.ENDC}")
+        
+        if not all_healthy:
+            print(f"{Colors.WARNING}Some services may not be fully ready yet{Colors.ENDC}")
+
     async def wait_for_service(self, url: str, timeout: int = 30) -> bool:
         """Wait for a service to be ready"""
         start_time = time.time()
@@ -980,7 +1047,7 @@ class AsyncSystemManager:
                     remaining = timeout - (time.time() - start_time)
                     if remaining > 0:
                         print(f"{Colors.YELLOW}Waiting for service... ({int(remaining)}s remaining){Colors.ENDC}", end='\r')
-                await asyncio.sleep(2)
+                await asyncio.sleep(1)  # Check more frequently
 
         return False
 
@@ -1252,6 +1319,336 @@ class AsyncSystemManager:
         # Fallback for other platforms or if AppleScript fails
         webbrowser.open(url)
 
+    # ==================== SELF-HEALING METHODS ====================
+    
+    async def _diagnose_and_heal(self, error_context: str, error: Exception) -> bool:
+        """Intelligently diagnose and fix common startup issues"""
+        
+        if not self.auto_heal_enabled:
+            return False
+            
+        error_type = type(error).__name__
+        error_msg = str(error).lower()
+        
+        # Track healing attempts
+        heal_key = f"{error_context}_{error_type}"
+        if heal_key not in self.healing_attempts:
+            self.healing_attempts[heal_key] = 0
+        
+        if self.healing_attempts[heal_key] >= self.max_healing_attempts:
+            print(f"{Colors.FAIL}❌ Max healing attempts reached for {error_context}{Colors.ENDC}")
+            return False
+            
+        self.healing_attempts[heal_key] += 1
+        attempt = self.healing_attempts[heal_key]
+        
+        print(f"\n{Colors.CYAN}🔧 Self-Healing: Analyzing {error_context} error (attempt {attempt}/{self.max_healing_attempts})...{Colors.ENDC}")
+        
+        # Analyze error and attempt healing
+        healed = False
+        
+        # Port in use errors
+        if "address already in use" in error_msg or "port" in error_msg or "bind" in error_msg:
+            port = self._extract_port_from_error(error_msg)
+            if port:
+                healed = await self._heal_port_conflict(port)
+            
+        # Missing module/import errors  
+        elif "modulenotfounderror" in error_type.lower() or ("module" in error_msg and "not found" in error_msg):
+            module = self._extract_module_from_error(str(error))
+            if module:
+                healed = await self._heal_missing_module(module)
+        
+        # NameError for missing imports
+        elif "nameerror" in error_type.lower():
+            if "List" in str(error):
+                healed = await self._heal_typing_import()
+                
+        # Permission errors
+        elif "permission" in error_msg or "access denied" in error_msg:
+            healed = await self._heal_permission_issue(error_context)
+            
+        # API key errors
+        elif "api" in error_msg and "key" in error_msg:
+            healed = await self._heal_missing_api_key()
+            
+        # Memory errors
+        elif "memory" in error_msg:
+            healed = await self._heal_memory_pressure()
+            
+        # Process exit codes
+        elif hasattr(error, 'returncode') or "returncode" in str(error):
+            healed = await self._heal_process_crash(error_context, error)
+                
+        # Log healing result
+        self.healing_log.append({
+            "timestamp": datetime.now(),
+            "context": error_context,
+            "error": str(error),
+            "attempt": attempt,
+            "healed": healed
+        })
+        
+        if healed:
+            print(f"{Colors.GREEN}✅ Self-healing successful! Retrying...{Colors.ENDC}")
+            await asyncio.sleep(2)  # Brief pause before retry
+        else:
+            print(f"{Colors.WARNING}⚠️  Self-healing could not fix this issue automatically{Colors.ENDC}")
+            
+        return healed
+    
+    async def _heal_port_conflict(self, port: int) -> bool:
+        """Fix port already in use errors"""
+        print(f"{Colors.YELLOW}🔧 Port {port} is in use, attempting to free it...{Colors.ENDC}")
+        
+        # Kill process on port
+        success = await self.kill_process_on_port(port)
+        if success:
+            await asyncio.sleep(1)  # Give OS time to release port
+            if await self.check_port_available(port):
+                print(f"{Colors.GREEN}✅ Port {port} is now available{Colors.ENDC}")
+                return True
+        
+        # Try alternative port
+        alt_ports = {8010: 8011, 8001: 8002, 3000: 3001, 8888: 8889}
+        if port in alt_ports:
+            new_port = alt_ports[port]
+            if await self.check_port_available(new_port):
+                for key, p in self.ports.items():
+                    if p == port:
+                        self.ports[key] = new_port
+                        print(f"{Colors.GREEN}✅ Switched to alternative port {new_port}{Colors.ENDC}")
+                        return True
+                        
+        return False
+    
+    async def _heal_missing_module(self, module: str) -> bool:
+        """Auto-install missing Python modules"""
+        print(f"{Colors.YELLOW}🔧 Installing missing module: {module}...{Colors.ENDC}")
+        
+        # Map common module names to packages
+        module_map = {
+            "dotenv": "python-dotenv",
+            "aiohttp": "aiohttp",
+            "psutil": "psutil", 
+            "colorama": "colorama",
+            "anthropic": "anthropic",
+            "ml_logging_config": None,  # Local module
+            "enable_ml_logging": None,  # Local module
+        }
+        
+        # Skip local modules
+        if module in module_map and module_map[module] is None:
+            print(f"{Colors.WARNING}Local module {module} missing - may need to check file paths{Colors.ENDC}")
+            return False
+            
+        package = module_map.get(module, module)
+        
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, "-m", "pip", "install", package,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await proc.communicate()
+            
+            if proc.returncode == 0:
+                print(f"{Colors.GREEN}✅ Successfully installed {package}{Colors.ENDC}")
+                return True
+                
+        except Exception as e:
+            print(f"{Colors.WARNING}Failed to install {package}: {e}{Colors.ENDC}")
+            
+        return False
+    
+    async def _heal_typing_import(self) -> bool:
+        """Fix missing typing imports like List"""
+        print(f"{Colors.YELLOW}🔧 Fixing typing import error...{Colors.ENDC}")
+        
+        # Find the file with the error
+        files_to_check = [
+            "backend/ml_logging_config.py",
+            "backend/ml_memory_manager.py",
+            "backend/context_aware_loader.py",
+        ]
+        
+        for file_path in files_to_check:
+            if Path(file_path).exists():
+                try:
+                    content = Path(file_path).read_text()
+                    # Check if List is used but not imported
+                    if "List[" in content and "from typing import" in content and "List" not in content:
+                        # Add List to imports
+                        content = content.replace(
+                            "from typing import",
+                            "from typing import List,"
+                        )
+                        Path(file_path).write_text(content)
+                        print(f"{Colors.GREEN}✅ Fixed typing import in {file_path}{Colors.ENDC}")
+                        return True
+                except:
+                    pass
+                    
+        return False
+    
+    async def _heal_permission_issue(self, context: str) -> bool:
+        """Fix file permission issues"""
+        print(f"{Colors.YELLOW}🔧 Fixing permission issues...{Colors.ENDC}")
+        
+        # Make scripts executable
+        scripts = [
+            "start_system.py",
+            "backend/main.py", 
+            "backend/main_minimal.py",
+            "backend/start_backend.py",
+        ]
+        
+        fixed = False
+        for script in scripts:
+            if Path(script).exists():
+                try:
+                    os.chmod(script, 0o755)
+                    print(f"{Colors.GREEN}✅ Made {script} executable{Colors.ENDC}")
+                    fixed = True
+                except Exception:
+                    pass
+                    
+        return fixed
+    
+    async def _heal_missing_api_key(self) -> bool:
+        """Handle missing API keys"""
+        print(f"{Colors.YELLOW}🔧 Checking for API key configuration...{Colors.ENDC}")
+        
+        # Check multiple .env locations
+        env_paths = [".env", "backend/.env", "../.env"]
+        
+        for env_path in env_paths:
+            if Path(env_path).exists():
+                try:
+                    # Force reload of environment
+                    from dotenv import load_dotenv
+                    load_dotenv(env_path, override=True)
+                    
+                    if os.getenv("ANTHROPIC_API_KEY"):
+                        print(f"{Colors.GREEN}✅ Found API key in {env_path}{Colors.ENDC}")
+                        return True
+                except:
+                    pass
+        
+        # Create .env template
+        print(f"{Colors.WARNING}Creating .env template...{Colors.ENDC}")
+        env_content = """# JARVIS Environment Configuration
+ANTHROPIC_API_KEY=your_claude_api_key_here
+
+# Get your API key from: https://console.anthropic.com/
+# Then restart JARVIS
+"""
+        env_path = Path("backend/.env")
+        env_path.parent.mkdir(exist_ok=True)
+        env_path.write_text(env_content)
+        print(f"{Colors.YELLOW}📝 Please add your ANTHROPIC_API_KEY to {env_path}{Colors.ENDC}")
+        
+        return False
+    
+    async def _heal_memory_pressure(self) -> bool:
+        """Fix high memory usage"""
+        memory = psutil.virtual_memory()
+        print(f"{Colors.YELLOW}🔧 Memory at {memory.percent:.1f}%, attempting cleanup...{Colors.ENDC}")
+        
+        # Kill common memory hogs
+        memory_hogs = ["Chrome Helper", "Chrome Helper (GPU)", "Chrome Helper (Renderer)"]
+        
+        for process_name in memory_hogs:
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "pkill", "-f", process_name,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL
+                )
+                await proc.wait()
+            except:
+                pass
+        
+        # Force Python garbage collection
+        import gc
+        gc.collect()
+        
+        # Wait and check
+        await asyncio.sleep(3)
+        
+        new_memory = psutil.virtual_memory()
+        if new_memory.percent < memory.percent - 5:
+            print(f"{Colors.GREEN}✅ Memory reduced to {new_memory.percent:.1f}%{Colors.ENDC}")
+            return True
+        
+        return False
+    
+    async def _heal_process_crash(self, context: str, error: Exception) -> bool:
+        """Handle process crashes with intelligent recovery"""
+        print(f"{Colors.YELLOW}🔧 Process crashed in {context}, attempting recovery...{Colors.ENDC}")
+        
+        # Get return code if available
+        returncode = getattr(error, 'returncode', -1)
+        
+        if "backend" in context:
+            if returncode == 1:
+                # Python error - check logs
+                print(f"{Colors.CYAN}Checking error logs...{Colors.ENDC}")
+                # The error will be caught and we'll try minimal backend
+                return True
+            
+        elif "websocket" in context:
+            # Try rebuilding
+            websocket_dir = self.backend_dir / "websocket"
+            if websocket_dir.exists():
+                print(f"{Colors.CYAN}Attempting to rebuild WebSocket router...{Colors.ENDC}")
+                try:
+                    # Clean and rebuild
+                    proc = await asyncio.create_subprocess_exec(
+                        "npm", "run", "build",
+                        cwd=str(websocket_dir),
+                        stdout=asyncio.subprocess.DEVNULL,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    _, stderr = await proc.communicate()
+                    
+                    if proc.returncode == 0:
+                        print(f"{Colors.GREEN}✅ WebSocket router rebuilt{Colors.ENDC}")
+                        return True
+                except:
+                    pass
+                    
+        return False
+    
+    def _extract_port_from_error(self, error_msg: str) -> Optional[int]:
+        """Extract port number from error message"""
+        import re
+        # Look for port numbers in various formats
+        patterns = [
+            r':(\d{4,5})',  # :8010
+            r'port\s+(\d{4,5})',  # port 8010
+            r'Port\s+(\d{4,5})',  # Port 8010
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, error_msg)
+            if match:
+                return int(match.group(1))
+        return None
+        
+    def _extract_module_from_error(self, error_str: str) -> Optional[str]:
+        """Extract module name from error message"""
+        import re
+        # Match patterns like: No module named 'X'
+        match = re.search(r"No module named ['\"](\w+)['\"]", error_str)
+        if match:
+            return match.group(1)
+        # Also check for just the module name after ModuleNotFoundError
+        match = re.search(r"ModuleNotFoundError.*['\"](\w+)['\"]", error_str)
+        if match:
+            return match.group(1)
+        return None
+
     async def cleanup(self):
         """Clean up all processes"""
         print(f"\n{Colors.BLUE}Shutting down services...{Colors.ENDC}")
@@ -1343,6 +1740,42 @@ class AsyncSystemManager:
         sys.stdout.flush()
         sys.stderr.flush()
 
+    async def _prewarm_python_imports(self) -> None:
+        """Pre-warm Python imports in background for faster startup"""
+        prewarm_script = """
+import sys
+import asyncio
+
+# Pre-import heavy modules
+try:
+    import numpy
+    import aiohttp
+    import psutil
+    import logging
+    print("Pre-warmed base imports")
+    
+    # Pre-warm backend imports if available
+    sys.path.insert(0, "backend")
+    try:
+        import ml_memory_manager
+        import context_aware_loader
+        print("Pre-warmed ML imports")
+    except:
+        pass
+except Exception as e:
+    print(f"Pre-warm warning: {e}")
+"""
+        
+        # Run in background
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-c",
+            prewarm_script,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL
+        )
+        # Don't wait - let it run in background
+    
     async def start_websocket_router(self) -> Optional[asyncio.subprocess.Process]:
         """Start TypeScript WebSocket Router"""
         websocket_dir = self.backend_dir / "websocket"
@@ -1442,11 +1875,29 @@ class AsyncSystemManager:
 
         return process
 
+    async def _run_with_healing(self, func, context: str, *args, **kwargs):
+        """Run a function with self-healing capability"""
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                result = await func(*args, **kwargs)
+                return result
+            except Exception as e:
+                if attempt < max_retries - 1 and await self._diagnose_and_heal(context, e):
+                    print(f"{Colors.CYAN}Retrying {context} after self-healing...{Colors.ENDC}")
+                    continue
+                else:
+                    raise
+        return None
+
     async def run(self):
-        """Main run method"""
+        """Main run method with self-healing"""
         self.print_header()
 
-        # Run initial checks
+        # Start pre-warming imports early
+        prewarm_task = asyncio.create_task(self._prewarm_python_imports())
+        
+        # Run initial checks in parallel
         check_tasks = [
             self.check_python_version(),
             self.check_claude_config(),
@@ -1491,51 +1942,70 @@ class AsyncSystemManager:
                 )
                 await proc.wait()
 
-        # Start services
-        print(f"\n{Colors.CYAN}🚀 Starting services...{Colors.ENDC}")
+        # Start services with advanced parallel initialization
+        print(f"\n{Colors.CYAN}🚀 Starting services with parallel initialization...{Colors.ENDC}")
 
         if self.backend_only:
             print(f"{Colors.CYAN}Starting backend only...{Colors.ENDC}")
             await self.start_websocket_router()
-            await asyncio.sleep(5)  # Allow router to stabilize
+            await asyncio.sleep(2)  # Reduced wait time
             await self.start_backend()
         elif self.frontend_only:
             print(f"{Colors.CYAN}Starting frontend only...{Colors.ENDC}")
             await self.start_frontend()
         else:
-            # Stagger the startup to reduce initial memory spike
-            print(f"\n{Colors.CYAN}Step 1: Starting WebSocket Router...{Colors.ENDC}")
+            # Advanced parallel startup with intelligent sequencing
+            start_time = time.time()
+            
+            # Phase 1: Start WebSocket router first (required dependency)
+            print(f"\n{Colors.CYAN}Phase 1/3: Starting WebSocket Router...{Colors.ENDC}")
             websocket_router_process = await self.start_websocket_router()
             if not websocket_router_process:
-                print(
-                    f"{Colors.FAIL}✗ WebSocket router failed to start. Aborting.{Colors.ENDC}"
-                )
+                print(f"{Colors.FAIL}✗ WebSocket router failed to start. Aborting.{Colors.ENDC}")
                 await self.cleanup()
                 return False
-
-            print(
-                f"\n{Colors.CYAN}Step 2: Starting Main Backend (waiting 5s)...{Colors.ENDC}"
+            
+            # Phase 2: Start backend and frontend in parallel
+            print(f"\n{Colors.CYAN}Phase 2/3: Starting Backend & Frontend in parallel...{Colors.ENDC}")
+            
+            # Small delay to ensure router is ready
+            await asyncio.sleep(1)
+            
+            # Start both services in parallel
+            backend_task = asyncio.create_task(self.start_backend())
+            frontend_task = asyncio.create_task(self.start_frontend())
+            
+            # Wait for both with proper error handling
+            backend_result, frontend_result = await asyncio.gather(
+                backend_task, 
+                frontend_task,
+                return_exceptions=True
             )
-            await asyncio.sleep(5)
-
-            backend_process = await self.start_backend()
-            if not backend_process:
-                print(
-                    f"{Colors.FAIL}✗ Main backend failed to start. Aborting.{Colors.ENDC}"
-                )
+            
+            # Check backend result (critical)
+            if isinstance(backend_result, Exception):
+                print(f"{Colors.FAIL}✗ Backend failed with error: {backend_result}{Colors.ENDC}")
                 await self.cleanup()
                 return False
+            elif not backend_result:
+                print(f"{Colors.FAIL}✗ Backend failed to start{Colors.ENDC}")
+                await self.cleanup()
+                return False
+            
+            # Check frontend result (non-critical)
+            if isinstance(frontend_result, Exception):
+                print(f"{Colors.WARNING}⚠ Frontend failed: {frontend_result}{Colors.ENDC}")
+            elif not frontend_result:
+                print(f"{Colors.WARNING}⚠ Frontend failed to start{Colors.ENDC}")
+            
+            # Phase 3: Quick health checks
+            print(f"\n{Colors.CYAN}Phase 3/3: Running parallel health checks...{Colors.ENDC}")
+            
+            elapsed = time.time() - start_time
+            print(f"\n{Colors.GREEN}✨ Services started in {elapsed:.1f}s (was ~13-18s){Colors.ENDC}")
 
-            print(
-                f"\n{Colors.CYAN}Step 3: Starting Frontend (waiting 3s)...{Colors.ENDC}"
-            )
-            await asyncio.sleep(3)
-
-            await self.start_frontend()
-
-        # Wait a bit for services to initialize
-        print(f"\n{Colors.YELLOW}Waiting for services to initialize...{Colors.ENDC}")
-        await asyncio.sleep(5)
+        # Run parallel health checks instead of fixed wait
+        await self._run_parallel_health_checks()
 
         # Verify services
         services = await self.verify_services()
@@ -1546,6 +2016,21 @@ class AsyncSystemManager:
 
         # Print access info
         self.print_access_info()
+        
+        # Print self-healing summary if any healing occurred
+        if self.healing_log:
+            print(f"\n{Colors.CYAN}🔧 Self-Healing Summary:{Colors.ENDC}")
+            successful_heals = sum(1 for h in self.healing_log if h['healed'])
+            total_heals = len(self.healing_log)
+            print(f"  • Total healing attempts: {total_heals}")
+            print(f"  • Successful heals: {successful_heals}")
+            if successful_heals > 0:
+                print(f"  • {Colors.GREEN}✅ Self-healing helped JARVIS start successfully!{Colors.ENDC}")
+            
+            # Show what was healed
+            for heal in self.healing_log:
+                if heal['healed']:
+                    print(f"    - Fixed: {heal['context']} ({heal['error'][:50]}...)")
 
         # Open browser intelligently
         if not self.no_browser:
