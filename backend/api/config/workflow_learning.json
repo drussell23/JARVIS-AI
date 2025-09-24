@@ -1,0 +1,21 @@
+{
+  "patterns": {
+    "unlock_search": {
+      "success": 1,
+      "failure": 0,
+      "avg_duration": 8.064258
+    }
+  },
+  "preferences": {},
+  "success_rates": {
+    "unlock": {
+      "success": 1,
+      "total": 1
+    },
+    "search": {
+      "success": 1,
+      "total": 1
+    }
+  },
+  "last_updated": "2025-09-24T01:08:56.166901"
+}
