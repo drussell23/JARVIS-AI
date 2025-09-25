@@ -278,9 +278,9 @@ class UnifiedCommandProcessor:
         words = command_lower.split()
         
                 # Manual screen unlock detection (highest priority)
-        if command_lower.strip() in ['unlock my screen', 'unlock screen', 'unlock the screen']:
-            logger.info(f"[CLASSIFY] Manual unlock command detected: '{command_lower}'")
-            return CommandType.META, 0.99  # Use META type with high confidence
+        if command_lower.strip() in ['unlock my screen', 'unlock screen', 'unlock the screen', 'lock my screen', 'lock screen', 'lock the screen']:
+            logger.info(f"[CLASSIFY] Manual screen lock/unlock command detected: '{command_lower}'")
+            return CommandType.VOICE_UNLOCK, 0.99  # Route to voice unlock handler with high confidence
         
         # Voice unlock detection FIRST (highest priority to catch "enable voice unlock")
         voice_patterns = self._detect_voice_unlock_patterns(command_lower)
@@ -556,7 +556,7 @@ class UnifiedCommandProcessor:
                 
         handler = self.handlers.get(command_type)
         
-        if not handler and command_type != CommandType.SYSTEM:
+        if not handler and command_type not in [CommandType.SYSTEM, CommandType.META]:
             return {
                 'success': False,
                 'response': f"I don't have a handler for {command_type.value} commands yet.",
@@ -599,11 +599,6 @@ class UnifiedCommandProcessor:
                 }
             elif command_type == CommandType.META:
                 # Handle meta commands (wake words, cancellations)
-
-                # Handle manual unlock requests
-                if command_text.lower().strip() in ['unlock my screen', 'unlock screen', 'unlock the screen']:
-                    return await handle_manual_unlock(command_text, websocket)
-                
                 if command_text.lower().strip() in ['activate', 'wake', 'wake up', 'hello', 'hey']:
                     # Silent acknowledgment for wake words
                     return {

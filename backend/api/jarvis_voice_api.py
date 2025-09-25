@@ -1233,7 +1233,7 @@ class JARVISVoiceAPI:
                             logger.error(f"Context handler not available: {e}")
                             # Fall through to workflow processing
                         except Exception as e:
-                            logger.error(f"Context processing error: {e}")
+                            logger.error(f"Context processing error: {e}", exc_info=True)
                             # Fall through to workflow processing
 
                     # Check if this is a multi-command workflow

@@ -171,100 +171,14 @@ async def handle_voice_unlock_in_jarvis(command: str) -> dict:
             }
             
     elif any(phrase in command_lower for phrase in ['unlock my mac', 'unlock my screen', 'unlock mac', 'unlock the mac', 'unlock computer']):
-        # User wants to unlock NOW
-        try:
-            # First try Voice Unlock if connected
-            if voice_unlock_connector and voice_unlock_connector.connected:
-                result = await voice_unlock_connector.send_command("unlock_screen", {
-                    "source": "jarvis_command",
-                    "authenticated": True  # Already authenticated via JARVIS
-                })
-                
-                if result and result.get('success'):
-                    return {
-                        'response': 'Unlocking your screen now, Sir.',
-                        'success': True
-                    }
-            
-                        
-            # For manual unlock commands, bypass policy and use direct unlock
-            logger.info("Manual unlock command - bypassing policy restrictions")
-            from api.direct_unlock_handler_fixed import unlock_screen_direct
-            
-            # Send immediate feedback
-            if hasattr(voice_unlock_connector, 'websocket') and voice_unlock_connector.websocket:
-                await voice_unlock_connector.websocket.send_json({
-                    "type": "response",
-                    "text": "I'll unlock your screen right away, Sir.",
-                    "speak": True,
-                    "intermediate": True
-                })
-            
-            # Perform direct unlock
-            success = await unlock_screen_direct("Manual unlock command from user")
-            
-            if success:
-                return {
-                    'response': 'Screen unlocked successfully, Sir.',
-                    'success': True,
-                    'method': 'direct_unlock'
-                }
-            else:
-                return {
-                    'response': "I couldn't unlock the screen, Sir. Please check if the Voice Unlock daemon is running.",
-                    'success': False
-                }
-                
-        except Exception as e:
-            logger.error(f"Error sending unlock command: {e}")
-            return {
-                'response': 'I encountered an error while trying to unlock your screen, Sir.',
-                'error': str(e),
-                'success': False
-            }
+        # User wants to unlock NOW - use simple handler to avoid WebSocket conflicts
+        from .simple_unlock_handler import handle_unlock_command
+        return await handle_unlock_command(command)
     
     elif any(phrase in command_lower for phrase in ['lock my mac', 'lock my screen', 'lock mac', 'lock the mac', 'lock computer', 'lock the computer']):
-        # User wants to lock the screen
-        try:
-            # First try Voice Unlock if connected
-            if voice_unlock_connector and voice_unlock_connector.connected:
-                result = await voice_unlock_connector.send_command("lock_screen", {
-                    "source": "jarvis_command"
-                })
-                
-                if result and result.get('success'):
-                    return {
-                        'response': 'Locking your screen now, Sir.',
-                        'success': True,
-                        'method': 'voice_unlock'
-                    }
-            
-            # Fallback to Context Intelligence System
-            logger.info("Voice Unlock not available, using Context Intelligence lock")
-            from context_intelligence.core.unlock_manager import get_unlock_manager
-            unlock_manager = get_unlock_manager()
-            
-            success, message = await unlock_manager.lock_screen("User command from JARVIS")
-            
-            if success:
-                return {
-                    'response': 'Screen locked successfully, Sir.',
-                    'success': True,
-                    'method': 'context_intelligence'
-                }
-            else:
-                return {
-                    'response': f"I couldn't lock the screen, Sir. {message}",
-                    'success': False
-                }
-                
-        except Exception as e:
-            logger.error(f"Error sending lock command: {e}")
-            return {
-                'response': 'I encountered an error while trying to lock your screen, Sir.',
-                'error': str(e),
-                'success': False
-            }
+        # User wants to lock the screen - use simple handler to avoid WebSocket conflicts
+        from .simple_unlock_handler import handle_unlock_command
+        return await handle_unlock_command(command)
             
     elif "test voice unlock" in command_lower:
         # Test the voice unlock system

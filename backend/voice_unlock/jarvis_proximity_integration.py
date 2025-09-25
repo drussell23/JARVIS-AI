@@ -26,7 +26,8 @@ try:
 except ImportError:
     # Fallback to None if not available
     VoiceUnlockConnector = None
-    logger.warning("VoiceUnlockConnector not available")
+    # Only log to logger, not to stdout/stderr
+    logger.debug("VoiceUnlockConnector not available - this is normal if proximity auth is not being used")
 
 
 class ProximityVoiceAuthManager:
