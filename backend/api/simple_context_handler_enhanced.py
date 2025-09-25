@@ -181,14 +181,15 @@ class EnhancedSimpleContextHandler:
                             # Build step-by-step summary
                             steps_summary = self._build_steps_summary()
 
-                            # Combine context handling with command result
-                            result["response"] = (
-                                f"{context_message} {original_response}"
-                            )
+                            # Don't duplicate the context message - it was already spoken
+                            # Just use the original response
+                            result["response"] = original_response
                             result["context_handled"] = True
                             result["screen_unlocked"] = True
                             result["execution_steps"] = self.execution_steps
                             result["steps_summary"] = steps_summary
+                            # Mark this as final response, not intermediate
+                            result["intermediate"] = False
 
                         logger.info(
                             "[ENHANCED CONTEXT] Command completed with context handling"
