@@ -998,8 +998,31 @@ async def process_command(request: dict):
     # Use unified command processor if available
     try:
         from api.unified_command_processor import UnifiedCommandProcessor
-        processor = UnifiedCommandProcessor()
-        result = await processor.process_command(command)
+        
+        # Use enhanced Context Intelligence for screen lock/unlock
+        USE_ENHANCED_CONTEXT = True
+        
+        if USE_ENHANCED_CONTEXT:
+            try:
+                from api.simple_context_handler_enhanced import wrap_with_enhanced_context
+                processor = UnifiedCommandProcessor()
+                context_handler = wrap_with_enhanced_context(processor)
+                result = await context_handler.process_with_context(command)
+            except ImportError as e:
+                logger.error(f"Enhanced context handler not available: {e}")
+                # Fallback to simple context
+                try:
+                    from api.simple_context_handler import wrap_with_simple_context
+                    processor = UnifiedCommandProcessor()
+                    context_handler = wrap_with_simple_context(processor)
+                    result = await context_handler.process_with_context(command)
+                except ImportError:
+                    processor = UnifiedCommandProcessor()
+                    result = await processor.process_command(command)
+        else:
+            # Use standard processor
+            processor = UnifiedCommandProcessor()
+            result = await processor.process_command(command)
         return result
     except Exception as e:
         logger.error(f"Command processing error: {e}")
