@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>JARVIS Audio Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        #console {
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <h1>JARVIS Audio Test Page</h1>
+    
+    <div class="test-section">
+        <h2>1. Backend TTS Test</h2>
+        <p>Test the backend text-to-speech endpoint:</p>
+        <button onclick="testBackendTTS()">Test Backend TTS</button>
+        <button onclick="testBackendTTSPost()">Test Backend TTS (POST)</button>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Browser Audio Test</h2>
+        <p>Test browser audio playback:</p>
+        <button onclick="testSimpleAudio()">Test Simple Audio</button>
+        <button onclick="testBrowserSpeech()">Test Browser Speech</button>
+    </div>
+
+    <div class="test-section">
+        <h2>3. WebSocket Integration Test</h2>
+        <p>Test full WebSocket communication:</p>
+        <button onclick="testWebSocket()">Test WebSocket Command</button>
+    </div>
+
+    <div class="test-section">
+        <h2>Console Output</h2>
+        <div id="console"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+        const consoleDiv = document.getElementById('console');
+
+        function log(message, type = '') {
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type ? ` class="${type}"` : '';
+            consoleDiv.innerHTML += `<div${className}>[${timestamp}] ${message}</div>`;
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+            console.log(message);
+        }
+
+        async function testBackendTTS() {
+            log('Testing backend TTS with GET method...');
+            try {
+                const text = "Hello Sir, this is JARVIS testing the audio system.";
+                const audioUrl = `${API_URL}/audio/speak/${encodeURIComponent(text)}`;
+                
+                log(`Fetching audio from: ${audioUrl}`);
+                
+                const audio = new Audio(audioUrl);
+                audio.volume = 1.0;
+                
+                audio.onloadstart = () => log('Audio loading started...');
+                audio.onloadeddata = () => log('Audio data loaded', 'success');
+                audio.onplay = () => log('Audio playback started', 'success');
+                audio.onended = () => log('Audio playback completed', 'success');
+                
+                audio.onerror = (e) => {
+                    log(`Audio error: ${e.type}`, 'error');
+                    log(`Audio error details: ${JSON.stringify(audio.error)}`, 'error');
+                };
+                
+                await audio.play();
+                log('Play command sent', 'success');
+                
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testBackendTTSPost() {
+            log('Testing backend TTS with POST method...');
+            try {
+                const text = "Testing POST method. Sir, this is a longer message to ensure the POST endpoint is working correctly.";
+                
+                const response = await fetch(`${API_URL}/audio/speak`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ text })
+                });
+
+                log(`Response status: ${response.status}`);
+                log(`Content-Type: ${response.headers.get('content-type')}`);
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    log(`Audio blob size: ${blob.size} bytes`, 'success');
+                    
+                    const audioUrl = URL.createObjectURL(blob);
+                    const audio = new Audio(audioUrl);
+                    audio.volume = 1.0;
+                    
+                    audio.onended = () => {
+                        log('POST audio playback completed', 'success');
+                        URL.revokeObjectURL(audioUrl);
+                    };
+                    
+                    await audio.play();
+                    log('POST audio playing', 'success');
+                } else {
+                    const error = await response.text();
+                    log(`POST failed: ${error}`, 'error');
+                }
+            } catch (error) {
+                log(`POST Error: ${error.message}`, 'error');
+            }
+        }
+
+        function testSimpleAudio() {
+            log('Testing simple audio playback...');
+            try {
+                // Test with a simple sound
+                const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmFgU7k9n1y3IkBSh+zPLaizsIFGS57OihUBELTKXh8bbfWg8KMpba9cd2JwUuiM/w1YctBRtz0PDbgzQHFGS47OqfTQ0LTKPg8LPeWQ8LL5LY9Md4KAUsi8z02YwwBBtwz+/bhDYHE2W67OyfTA0OUKzl77djGAU8lNr0yHkqBSh+zPDYhzcIHWq98+OaRgsKS6Xf77bkWw8JMJbZ9ch2IwUvh8vw14wvBBhsx+/diffHEnia1/DIgykJG2q+8+KXRQsLUKbg8LNgGAU9k9j0yHYnBR9+(vLaizsIGGu98OScRgwOUKvm7blmFgU7k9n1y3IkBSh+zPLaizsIFGS57OihUBELTKXh8bbfWg8KMpba9cd2JwUuiM/w1YctBRtz0PDbgzQHFGS47OqfTQ0LTKPg8LPeWQ8LL5LY9Md4KAUsi8z02YwwBBtwz+/bhDYHE2W67OyfTA0OUKzl77djGAU8lNr0yHkqBSh+zPDYhzcIHWq98+OaRgsKS6Xf77bkWw8JMJbZ9ch2IwUvh8vw14wvBBhsx+/diff');
+                audio.volume = 0.5;
+                
+                audio.onplay = () => log('Simple audio playing', 'success');
+                audio.onended = () => log('Simple audio ended', 'success');
+                audio.onerror = (e) => log(`Simple audio error: ${e}`, 'error');
+                
+                audio.play().then(() => {
+                    log('Simple audio played successfully', 'success');
+                }).catch(err => {
+                    log(`Play error: ${err.message}`, 'error');
+                });
+            } catch (error) {
+                log(`Simple audio error: ${error.message}`, 'error');
+            }
+        }
+
+        function testBrowserSpeech() {
+            log('Testing browser speech synthesis...');
+            
+            if (!('speechSynthesis' in window)) {
+                log('Speech synthesis not supported', 'error');
+                return;
+            }
+            
+            const text = "Testing browser speech synthesis. This is JARVIS speaking.";
+            const utterance = new SpeechSynthesisUtterance(text);
+            
+            const voices = speechSynthesis.getVoices();
+            log(`Available voices: ${voices.length}`);
+            
+            // Look for Daniel voice
+            const danielVoice = voices.find(v => v.name.includes('Daniel'));
+            if (danielVoice) {
+                utterance.voice = danielVoice;
+                log(`Using Daniel voice: ${danielVoice.name}`, 'success');
+            } else {
+                log('Daniel voice not found, using default', 'error');
+                voices.forEach(v => {
+                    if (v.lang.includes('en-GB')) {
+                        log(`Available British voice: ${v.name}`);
+                    }
+                });
+            }
+            
+            utterance.onstart = () => log('Browser speech started', 'success');
+            utterance.onend = () => log('Browser speech ended', 'success');
+            utterance.onerror = (e) => log(`Browser speech error: ${e.error}`, 'error');
+            
+            speechSynthesis.speak(utterance);
+        }
+
+        async function testWebSocket() {
+            log('Testing WebSocket communication...');
+            
+            try {
+                const ws = new WebSocket('ws://localhost:8000/voice/jarvis/stream');
+                
+                ws.onopen = () => {
+                    log('WebSocket connected', 'success');
+                    
+                    // Send a test command
+                    const command = {
+                        type: 'command',
+                        text: 'hello jarvis'
+                    };
+                    ws.send(JSON.stringify(command));
+                    log(`Sent command: ${JSON.stringify(command)}`);
+                };
+                
+                ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    log(`Received: ${JSON.stringify(data)}`);
+                    
+                    if (data.type === 'response' && data.speak) {
+                        log('Response includes speak flag', 'success');
+                    }
+                };
+                
+                ws.onerror = (error) => {
+                    log(`WebSocket error: ${error}`, 'error');
+                };
+                
+                ws.onclose = () => {
+                    log('WebSocket closed');
+                };
+                
+            } catch (error) {
+                log(`WebSocket error: ${error.message}`, 'error');
+            }
+        }
+
+        // Load voices on page load
+        window.addEventListener('load', () => {
+            if ('speechSynthesis' in window) {
+                speechSynthesis.getVoices();
+                speechSynthesis.onvoiceschanged = () => {
+                    const voices = speechSynthesis.getVoices();
+                    log(`Voices loaded: ${voices.length} available`);
+                };
+            }
+        });
+    </script>
+</body>
+</html>

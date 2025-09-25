@@ -16,6 +16,8 @@ from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, timedelta
 from enum import Enum
 import psutil
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+import aiofiles
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +72,10 @@ class RustSelfHealer:
         self._retry_counts: Dict[RustIssueType, int] = {}
         self._last_successful_build: Optional[datetime] = None
         
+        # Thread pools for concurrent operations
+        self._thread_pool = ThreadPoolExecutor(max_workers=4)
+        self._process_pool = ProcessPoolExecutor(max_workers=2)
+        
     async def start(self):
         """Start the self-healing system."""
         if self._running:
@@ -94,6 +100,10 @@ class RustSelfHealer:
                 await self._check_task
             except asyncio.CancelledError:
                 pass
+        
+        # Shutdown thread pools
+        self._thread_pool.shutdown(wait=False)
+        self._process_pool.shutdown(wait=False)
                 
         logger.info("Rust self-healer stopped")
         
@@ -270,12 +280,17 @@ class RustSelfHealer:
                 return await self._build_rust_components()
                 
             elif strategy == FixStrategy.REBUILD:
+                # Clean and build concurrently where possible
                 await self._clean_build_artifacts()
                 return await self._build_rust_components()
                 
             elif strategy == FixStrategy.CLEAN_BUILD:
-                await self._clean_build_artifacts()
-                await self._reset_cargo_cache()
+                # Run cleanup tasks concurrently
+                await asyncio.gather(
+                    self._clean_build_artifacts(),
+                    self._reset_cargo_cache(),
+                    return_exceptions=True
+                )
                 return await self._build_rust_components()
                 
             elif strategy == FixStrategy.INSTALL_DEPS:
@@ -301,8 +316,8 @@ class RustSelfHealer:
                 
             elif strategy == FixStrategy.FREE_MEMORY:
                 await self._free_memory()
-                # Wait a bit for memory to be freed
-                await asyncio.sleep(5)
+                # Brief pause for memory to be freed
+                await asyncio.sleep(1)
                 return await self._build_rust_components()
                 
             elif strategy == FixStrategy.RETRY_LATER:
@@ -371,114 +386,257 @@ class RustSelfHealer:
         return result.returncode == 0
         
     async def _build_rust_components(self, retry_count: int = 0, max_retries: int = 3) -> bool:
-        """Build Rust components with parallel compilation and exponential backoff retry."""
-        logger.info("Building Rust components with parallel compilation...")
+        """Build Rust components with concurrent/async execution for faster startup.
+        Runs multiple build strategies in parallel and uses the first successful one.
+        """
+        logger.info("Building Rust components with concurrent strategies...")
         
-        # Use the build script if available
-        build_script = self.vision_dir / "build_rust_components.py"
+        # Skip if environment says to
+        if os.environ.get('JARVIS_SKIP_RUST_BUILD', '').lower() == 'true':
+            logger.info("Skipping Rust build (JARVIS_SKIP_RUST_BUILD=true)")
+            return False
         
-        # Dynamic config for build
-        build_config = {
-            'build': {
-                'parallel': True,
-                'max_workers': min(multiprocessing.cpu_count(), 8),
-                'timeout': 900,  # 15 minutes for parallel builds
-                'retry_count': max_retries,
-                'clean_build': retry_count > 0  # Clean build on retries
-            },
-            'optimization': {
-                'level': 3,
-                'lto': True,
-                'native_cpu': True
-            }
-        }
-        
-        # Save config temporarily
-        config_file = self.vision_dir / ".rust_build_config.json"
-        with open(config_file, 'w') as f:
-            json.dump(build_config, f)
-        
-        for attempt in range(max_retries):
-            if attempt > 0:
-                # Exponential backoff: 2^attempt seconds (2s, 4s, 8s)
-                wait_time = 2 ** attempt
-                logger.info(f"Retry {attempt}/{max_retries} after {wait_time}s...")
-                await asyncio.sleep(wait_time)
-            
+        # Check if a build is already running
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
-                if build_script.exists():
-                    logger.info(f"Running parallel build (attempt {attempt + 1}/{max_retries})...")
-                    logger.info(f"Using {build_config['build']['max_workers']} parallel workers")
-                    
-                    result = await self._run_command(
-                        [sys.executable, str(build_script), str(config_file)],
-                        cwd=str(self.vision_dir),
-                        capture_output=True,
-                        timeout=build_config['build']['timeout']
-                    )
-                    
-                    # Clean up config
-                    config_file.unlink(missing_ok=True)
-                else:
-                    # Direct cargo build with parallel jobs
-                    logger.info("Using direct cargo build with parallelism...")
-                    env = os.environ.copy()
-                    env['CARGO_BUILD_JOBS'] = str(max(1, multiprocessing.cpu_count() - 2))
-                    
-                    result = await self._run_command(
-                        ["cargo", "build", "--release", "--features", "python-bindings,simd"],
-                        cwd=str(self.rust_core_dir),
-                        capture_output=True,
-                        env=env
-                    )
-                
-                # Save build log
-                build_log = self.rust_core_dir / "build.log"
-                build_log.write_text(result.stdout + "\n" + result.stderr)
-                
-                if result.returncode == 0:
-                    # Run maturin if needed
-                    if (self.rust_core_dir / "pyproject.toml").exists():
-                        maturin_result = await self._run_command(
-                            ["maturin", "develop", "--release"],
-                            cwd=str(self.rust_core_dir)
-                        )
-                        if maturin_result.returncode == 0:
-                            logger.info("✅ Build successful with parallel compilation!")
-                            self._last_successful_build = datetime.now()
-                            return True
-                        else:
-                            logger.warning(f"Maturin failed: {maturin_result.stderr}")
+                if proc.info['name'] == 'cargo' and any('build' in arg for arg in proc.info['cmdline']):
+                    logger.info(f"Cargo build already running (PID: {proc.info['pid']}), waiting for it to complete...")
+                    # Wait a bit and check if build completed
+                    await asyncio.sleep(10)
+                    if await self._quick_validate_rust():
+                        logger.info("✅ Rust components built by external process!")
+                        return True
                     else:
-                        logger.info("✅ Build successful with parallel compilation!")
+                        logger.info("External build still in progress, continuing with our strategies...")
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+        
+        # Check if we can do a quick validation first
+        if await self._quick_validate_rust():
+            logger.info("✅ Rust components already built and working!")
+            return True
+        
+        # Prepare multiple build strategies to run concurrently
+        build_strategies = [
+            self._try_cached_build(),
+            self._try_incremental_build(),
+            self._try_full_build() if retry_count > 0 else None
+        ]
+        
+        # Filter out None strategies
+        build_strategies = [s for s in build_strategies if s is not None]
+        
+        # Run build strategies concurrently
+        logger.info(f"Running {len(build_strategies)} build strategies concurrently...")
+        
+        try:
+            # Create tasks for all strategies
+            tasks = [asyncio.create_task(strategy) for strategy in build_strategies]
+            
+            # Wait for first successful build
+            done, pending = await asyncio.wait(
+                tasks,
+                return_when=asyncio.FIRST_COMPLETED
+            )
+            
+            # Cancel remaining tasks
+            for task in pending:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+            
+            # Check if any succeeded
+            for task in done:
+                try:
+                    result = await task
+                    if result:
+                        logger.info("✅ Build successful with concurrent strategy!")
                         self._last_successful_build = datetime.now()
                         return True
-                else:
-                    # Analyze failure
-                    if "error[E0463]" in result.stderr or "can't find crate" in result.stderr:
-                        # Missing dependencies - try to install them
-                        missing_crates = self._extract_missing_crates(result.stderr)
-                        if missing_crates and attempt < max_retries - 1:
-                            logger.info(f"Missing crates detected: {missing_crates}")
-                            await self._install_missing_crates(missing_crates)
-                            continue  # Retry with newly installed deps
-                    elif "could not find `Cargo.toml`" in result.stderr:
-                        logger.error("Cargo.toml not found!")
-                        return False
-                    elif "no space left on device" in result.stderr:
-                        # Try to free space
-                        await self._free_memory()
-                        continue
-                        
-            except Exception as e:
-                logger.error(f"Build attempt {attempt + 1} failed: {e}")
-                
-            finally:
-                # Clean up config file
-                config_file.unlink(missing_ok=True)
+                except Exception as e:
+                    logger.debug(f"Build strategy failed: {e}")
+            
+            # If we get here, all strategies failed
+            if retry_count < max_retries - 1:
+                # Try again with more aggressive strategies
+                logger.info(f"All strategies failed, retrying ({retry_count + 1}/{max_retries})...")
+                await asyncio.sleep(1)  # Brief pause before retry
+                return await self._build_rust_components(retry_count + 1, max_retries)
+            
+        except Exception as e:
+            logger.error(f"Concurrent build error: {e}")
         
-        logger.error(f"Build failed after {max_retries} attempts")
+        logger.error(f"Build failed after all strategies")
         return False
+    
+    async def _quick_validate_rust(self) -> bool:
+        """Quick validation to check if Rust is already working."""
+        try:
+            # Check if library exists
+            lib_path = self._get_library_path()
+            if not lib_path or not lib_path.exists():
+                return False
+            
+            # Try quick import test
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                self._thread_pool,
+                self._test_rust_import
+            )
+            return result
+        except:
+            return False
+    
+    def _test_rust_import(self) -> bool:
+        """Test if we can import Rust components."""
+        try:
+            sys.path.insert(0, str(self.rust_core_dir / "target" / "release"))
+            import jarvis_rust_core
+            return hasattr(jarvis_rust_core, 'RustAdvancedMemoryPool')
+        except:
+            return False
+        finally:
+            if str(self.rust_core_dir / "target" / "release") in sys.path:
+                sys.path.remove(str(self.rust_core_dir / "target" / "release"))
+    
+    async def _try_cached_build(self) -> bool:
+        """Try to use cached build if available."""
+        logger.info("Strategy 1: Checking for cached build...")
+        
+        target_dir = self.rust_core_dir / "target" / "release"
+        if not target_dir.exists():
+            return False
+        
+        # Check if recent build exists
+        lib_path = self._get_library_path()
+        if lib_path and lib_path.exists():
+            # Check modification time
+            mtime = datetime.fromtimestamp(lib_path.stat().st_mtime)
+            if datetime.now() - mtime < timedelta(hours=24):
+                logger.info("Found recent cached build")
+                
+                # Try maturin develop to ensure Python bindings
+                if (self.rust_core_dir / "pyproject.toml").exists():
+                    result = await self._run_command(
+                        ["maturin", "develop", "--skip-build"],
+                        cwd=str(self.rust_core_dir),
+                        timeout=30
+                    )
+                    if result.returncode == 0:
+                        logger.info("✅ Cached build validated")
+                        return True
+        
+        return False
+    
+    async def _try_incremental_build(self) -> bool:
+        """Try incremental build (faster)."""
+        logger.info("Strategy 2: Attempting incremental build...")
+        
+        env = os.environ.copy()
+        env['CARGO_BUILD_JOBS'] = str(multiprocessing.cpu_count())
+        env['CARGO_INCREMENTAL'] = '1'
+        env['CARGO_TERM_PROGRESS_WHEN'] = 'always'
+        env['CARGO_TERM_PROGRESS_WIDTH'] = '80'
+        
+        # First try cargo check to validate
+        logger.info("Running cargo check to validate dependencies...")
+        check_result = await self._run_command(
+            ["cargo", "check", "--release"],
+            cwd=str(self.rust_core_dir),
+            capture_output=True,
+            env=env,
+            timeout=120
+        )
+        
+        if check_result.returncode != 0:
+            # Check failed, might need dependencies
+            if "error[E0463]" in check_result.stderr:
+                missing = self._extract_missing_crates(check_result.stderr)
+                if missing:
+                    logger.info(f"Installing missing crates: {missing}")
+                    await self._install_missing_crates(missing)
+            else:
+                logger.warning("Cargo check failed, skipping incremental build")
+                return False
+        
+        # Now build
+        logger.info(f"Building with {env['CARGO_BUILD_JOBS']} parallel jobs...")
+        result = await self._run_command(
+            ["cargo", "build", "--release", "--features", "python-bindings,simd"],
+            cwd=str(self.rust_core_dir),
+            capture_output=True,
+            env=env,
+            timeout=900  # 15 minutes for incremental build
+        )
+        
+        if result.returncode == 0:
+            # Save build log asynchronously
+            asyncio.create_task(self._save_build_log(result.stdout + "\n" + result.stderr))
+            
+            # Run maturin
+            if (self.rust_core_dir / "pyproject.toml").exists():
+                maturin_result = await self._run_command(
+                    ["maturin", "develop", "--release"],
+                    cwd=str(self.rust_core_dir),
+                    timeout=120
+                )
+                return maturin_result.returncode == 0
+            
+            return True
+        
+        return False
+    
+    async def _try_full_build(self) -> bool:
+        """Try full clean build (slower but more reliable)."""
+        logger.info("Strategy 3: Attempting full clean build...")
+        
+        # Clean in parallel with prep work
+        clean_task = asyncio.create_task(self._clean_build_artifacts())
+        
+        # Prepare environment
+        env = os.environ.copy()
+        env['CARGO_BUILD_JOBS'] = str(multiprocessing.cpu_count())
+        env['CARGO_INCREMENTAL'] = '0'  # Disable incremental for clean build
+        
+        # Wait for clean to finish
+        await clean_task
+        
+        # Full build
+        result = await self._run_command(
+            ["cargo", "build", "--release", "--features", "python-bindings,simd"],
+            cwd=str(self.rust_core_dir),
+            capture_output=True,
+            env=env,
+            timeout=600
+        )
+        
+        if result.returncode == 0:
+            # Save build log asynchronously
+            asyncio.create_task(self._save_build_log(result.stdout + "\n" + result.stderr))
+            
+            # Run maturin
+            if (self.rust_core_dir / "pyproject.toml").exists():
+                maturin_result = await self._run_command(
+                    ["maturin", "develop", "--release"],
+                    cwd=str(self.rust_core_dir),
+                    timeout=120
+                )
+                return maturin_result.returncode == 0
+            
+            return True
+        
+        return False
+    
+    async def _save_build_log(self, content: str):
+        """Save build log asynchronously."""
+        try:
+            build_log = self.rust_core_dir / "build.log"
+            async with aiofiles.open(build_log, 'w') as f:
+                await f.write(content)
+        except Exception as e:
+            logger.debug(f"Failed to save build log: {e}")
             
     async def _clean_build_artifacts(self):
         """Clean build artifacts."""
@@ -631,10 +789,10 @@ class RustSelfHealer:
         if 'text' not in kwargs:
             kwargs['text'] = True
             
-        # Set a longer timeout for build commands
-        timeout = 300  # 5 minutes default
-        if 'cargo' in cmd[0] or 'maturin' in cmd[0] or 'build' in str(cmd):
-            timeout = 600  # 10 minutes for build commands
+        # Get timeout from kwargs or set default
+        timeout = kwargs.get('timeout', 300)  # 5 minutes default
+        if timeout is None and ('cargo' in cmd[0] or 'maturin' in cmd[0] or 'build' in str(cmd)):
+            timeout = 1200  # 20 minutes for build commands (first build is slow)
         
         proc = await asyncio.create_subprocess_exec(
             *cmd,

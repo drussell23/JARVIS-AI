@@ -403,6 +403,29 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting optimized JARVIS backend...")
     start_time = time.time()
     
+    # CRITICAL: Check for code changes and clean up old instances FIRST
+    try:
+        from process_cleanup_manager import ensure_fresh_jarvis_instance, cleanup_system_for_jarvis
+        
+        logger.info("🔍 Checking for code changes and old instances...")
+        if not ensure_fresh_jarvis_instance():
+            logger.error("❌ Another JARVIS instance is already running on this port!")
+            logger.error("   Please stop the other instance or use a different port.")
+            raise RuntimeError("Port conflict - another JARVIS instance is running")
+        
+        # Run full system cleanup
+        logger.info("🧹 Running system cleanup before startup...")
+        cleanup_report = await cleanup_system_for_jarvis(dry_run=False)
+        
+        if cleanup_report.get('code_changes_cleanup'):
+            logger.info(f"✅ Cleaned {len(cleanup_report['code_changes_cleanup'])} old instances due to code changes")
+        
+    except ImportError:
+        logger.warning("⚠️  Process cleanup manager not available - old instances may still be running")
+    except Exception as e:
+        logger.error(f"Error during process cleanup: {e}")
+        # Continue startup anyway
+    
     # Run parallel imports if enabled
     if OPTIMIZE_STARTUP and PARALLEL_IMPORTS:
         await parallel_import_components()
@@ -656,6 +679,15 @@ async def lifespan(app: FastAPI):
     
     # Cleanup
     logger.info("🛑 Shutting down JARVIS backend...")
+    
+    # Save current code state for next startup
+    try:
+        from process_cleanup_manager import ProcessCleanupManager
+        manager = ProcessCleanupManager()
+        manager._save_code_state()
+        logger.info("✅ Code state saved for next startup")
+    except Exception as e:
+        logger.error(f"Failed to save code state: {e}")
     
     # Stop Voice Unlock system
     if hasattr(app.state, 'voice_unlock_system') and voice_unlock.get('shutdown_system'):

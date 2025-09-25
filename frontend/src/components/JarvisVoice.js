@@ -1687,6 +1687,7 @@ const JarvisVoice = () => {
   };
 
   const playAudioUsingPost = async (text) => {
+    console.log('[JARVIS Audio] POST: Attempting to play audio via POST');
     try {
       const response = await fetch(`${API_URL}/audio/speak`, {
         method: 'POST',
@@ -1696,9 +1697,14 @@ const JarvisVoice = () => {
         body: JSON.stringify({ text })
       });
 
+      console.log('[JARVIS Audio] POST: Response status:', response.status);
+      console.log('[JARVIS Audio] POST: Content-Type:', response.headers.get('content-type'));
+
       if (response.ok) {
         // Get audio data as blob
         const blob = await response.blob();
+        console.log('[JARVIS Audio] POST: Received audio blob:', blob.size, 'bytes');
+
         const audioUrl = URL.createObjectURL(blob);
 
         const audio2 = new Audio(audioUrl);
@@ -1707,23 +1713,30 @@ const JarvisVoice = () => {
         setIsJarvisSpeaking(true);
 
         audio2.onended = () => {
-          console.log('Audio playback completed');
+          console.log('[JARVIS Audio] POST: Playback completed');
           setIsJarvisSpeaking(false);
           URL.revokeObjectURL(audioUrl); // Clean up
         };
 
-        audio2.onerror = () => {
-          console.warn('Audio playback not available');
+        audio2.onerror = (e) => {
+          console.error('[JARVIS Audio] POST: Playback error:', e);
+          if (audio2.error) {
+            console.error('[JARVIS Audio] POST: Error details:', {
+              code: audio2.error.code,
+              message: audio2.error.message
+            });
+          }
           setIsJarvisSpeaking(false);
           URL.revokeObjectURL(audioUrl); // Clean up
         };
 
         await audio2.play();
+        console.log('[JARVIS Audio] POST: Playing audio');
       } else {
-        throw new Error('Audio generation failed');
+        throw new Error(`Audio generation failed: ${response.status}`);
       }
     } catch (postError) {
-      console.warn('Audio POST method failed:', postError.message);
+      console.error('[JARVIS Audio] POST: Failed:', postError);
       setIsJarvisSpeaking(false);
     }
   };
@@ -1732,7 +1745,7 @@ const JarvisVoice = () => {
     // Set the response in state for display
     setResponse(text);
 
-    console.log('Speaking response:', text.substring(0, 100) + '...');
+    console.log('[JARVIS Audio] Speaking response:', text.substring(0, 100) + '...');
 
     try {
       setIsJarvisSpeaking(true);
@@ -1743,31 +1756,66 @@ const JarvisVoice = () => {
       if (!usePost) {
         // Short text: Use GET method with URL
         const audioUrl = `${API_URL}/audio/speak/${encodeURIComponent(text)}`;
-        const audio = new Audio(audioUrl);
-        audio.volume = 1.0;
+        console.log('[JARVIS Audio] Using GET method:', audioUrl);
+        
+        const audio = new Audio();
+        
+        // Set up all event handlers before setting src
+        audio.onloadstart = () => {
+          console.log('[JARVIS Audio] Loading started');
+        };
+        
+        audio.oncanplaythrough = () => {
+          console.log('[JARVIS Audio] Can play through');
+        };
+        
+        audio.onplay = () => {
+          console.log('[JARVIS Audio] Playback started');
+        };
 
         audio.onended = () => {
-          console.log('Audio playback completed');
+          console.log('[JARVIS Audio] Playback completed');
           setIsJarvisSpeaking(false);
         };
 
         audio.onerror = async (e) => {
-          console.error('GET audio failed:', e);
+          console.error('[JARVIS Audio] GET audio error:', e);
+          if (audio.error) {
+            console.error('[JARVIS Audio] Error details:', {
+              code: audio.error.code,
+              message: audio.error.message
+            });
+          }
+          console.log('[JARVIS Audio] Falling back to POST method');
           // Fallback to POST method
           await playAudioUsingPost(text);
         };
 
+        // Set source and properties
+        audio.src = audioUrl;
+        audio.volume = 1.0;
+        audio.crossOrigin = 'anonymous';  // Enable CORS
+        
+        // Try to play
+        console.log('[JARVIS Audio] Attempting to play audio...');
         await audio.play();
+        console.log('[JARVIS Audio] Play promise resolved');
       } else {
         // Long text: Use POST method directly
+        console.log('[JARVIS Audio] Using POST method for long text');
         await playAudioUsingPost(text);
       }
     } catch (error) {
-      console.error('Audio playback failed:', error);
+      console.error('[JARVIS Audio] Playback failed:', error);
+      console.error('[JARVIS Audio] Error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
       setIsJarvisSpeaking(false);
 
       // Fallback to browser speech synthesis if backend TTS fails
-      console.log('Falling back to browser speech synthesis...');
+      console.log('[JARVIS Audio] Falling back to browser speech synthesis...');
       if ('speechSynthesis' in window) {
         // Cancel any ongoing speech first
         window.speechSynthesis.cancel();
@@ -1777,21 +1825,45 @@ const JarvisVoice = () => {
         utterance.pitch = 0.9;
         utterance.volume = 1.0;
 
-        // Try to find a male voice
+        // Try to find Daniel or other British male voice
         const voices = window.speechSynthesis.getVoices();
-        const maleVoice = voices.find(voice => 
-          voice.name.toLowerCase().includes('male') || 
-          voice.name.includes('Daniel') ||
-          voice.name.includes('James') ||
-          voice.name.includes('Oliver')
-        );
+        console.log(`[JARVIS Audio] Available voices: ${voices.length}`);
+        
+        // First try to find Daniel
+        let selectedVoice = voices.find(voice => voice.name.includes('Daniel'));
+        
+        if (!selectedVoice) {
+          // Try other British male voices
+          selectedVoice = voices.find(voice => 
+            (voice.lang.includes('en-GB') || voice.lang.includes('en_GB')) &&
+            (voice.name.includes('Oliver') || voice.name.includes('James') || 
+             voice.name.toLowerCase().includes('male'))
+          );
+        }
+        
+        if (!selectedVoice) {
+          // Try any British voice
+          selectedVoice = voices.find(voice => 
+            voice.lang.includes('en-GB') || voice.lang.includes('en_GB')
+          );
+        }
 
-        if (maleVoice) {
-          utterance.voice = maleVoice;
+        if (selectedVoice) {
+          utterance.voice = selectedVoice;
+          console.log(`[JARVIS Audio] Using voice: ${selectedVoice.name}`);
+        } else {
+          console.log('[JARVIS Audio] No British voice found, using default');
         }
 
         utterance.onstart = () => setIsJarvisSpeaking(true);
-        utterance.onend = () => setIsJarvisSpeaking(false);
+        utterance.onend = () => {
+          console.log('[JARVIS Audio] Browser speech completed');
+          setIsJarvisSpeaking(false);
+        };
+        utterance.onerror = (e) => {
+          console.error('[JARVIS Audio] Browser speech error:', e);
+          setIsJarvisSpeaking(false);
+        };
 
         window.speechSynthesis.speak(utterance);
       }
