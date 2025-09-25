@@ -186,32 +186,25 @@ async def handle_voice_unlock_in_jarvis(command: str) -> dict:
                         'success': True
                     }
             
-                        
-            # For manual unlock commands, bypass policy and use direct unlock
-            logger.info("Manual unlock command - bypassing policy restrictions")
-            from api.direct_unlock_handler_fixed import unlock_screen_direct
+            # Fallback to Context Intelligence System
+            logger.info("Voice Unlock not available, using Context Intelligence unlock")
+            from context_intelligence.core.unlock_manager import get_unlock_manager
+            unlock_manager = get_unlock_manager()
             
-            # Send immediate feedback
-            if hasattr(voice_unlock_connector, 'websocket') and voice_unlock_connector.websocket:
-                await voice_unlock_connector.websocket.send_json({
-                    "type": "response",
-                    "text": "I'll unlock your screen right away, Sir.",
-                    "speak": True,
-                    "intermediate": True
-                })
-            
-            # Perform direct unlock
-            success = await unlock_screen_direct("Manual unlock command from user")
+            success, message = await unlock_manager.unlock_screen(
+                reason="User command from JARVIS",
+                command_context={"command": command, "source": "voice"}
+            )
             
             if success:
                 return {
                     'response': 'Screen unlocked successfully, Sir.',
                     'success': True,
-                    'method': 'direct_unlock'
+                    'method': 'context_intelligence'
                 }
             else:
                 return {
-                    'response': "I couldn't unlock the screen, Sir. Please check if the Voice Unlock daemon is running.",
+                    'response': f"I couldn't unlock the screen, Sir. {message}",
                     'success': False
                 }
                 

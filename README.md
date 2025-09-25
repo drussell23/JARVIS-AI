@@ -127,27 +127,43 @@ v13.7.0: ~5-7 seconds (3x faster!)
 ### 🎤 How Advanced Voice Biometric Authentication Works
 **ENTERPRISE-GRADE BIOMETRIC SECURITY WITHOUT APPLE WATCH!**
 
-**Authentication Flow:**
-1. **Voice Activation** - Say "Hey JARVIS, unlock my Mac"
-2. **Multi-Factor Analysis** begins instantly:
-   - 🔊 **Voice Pattern Recognition** - Analyzes unique voice characteristics
-   - 🎭 **Liveness Detection** - Confirms real-time speech (not a recording)
-   - 🌍 **Environmental Verification** - Checks ambient noise consistency
-   - ⏱️ **Temporal Pattern Analysis** - Validates natural speech rhythm
-3. **Trust Score Calculation** - Combined biometric confidence score
-4. **Authentication Decision** - Unlock if score >90%, deny if <90%
-5. **Continuous Learning** - Updates voice model for improved accuracy
+**🔓 Two Powerful Unlock Modes:**
 
-**Example Authentication:**
+#### 1️⃣ **Manual Unlock - Direct Control**
+Say **"Hey JARVIS, unlock my screen"** for immediate unlock:
+- ⚡ **Instant Response** - No policy restrictions, works 24/7
+- 🌙 **No Quiet Hours** - Works anytime, even at 3 AM
+- 🎯 **Direct Command** - Bypasses all automation, you're in control
+- ✅ **Simple Confirmation** - "Screen unlocked successfully, Sir"
+
+#### 2️⃣ **Context-Aware Unlock - Intelligent Automation**
+When your screen is locked and you request an action:
+- 🧠 **Smart Detection** - JARVIS detects the locked screen automatically
+- 💬 **Clear Communication** - "I see your screen is locked. I'll unlock it now..."
+- 🔓 **Seamless Unlock** - Types your password and continues with your request
+- ✅ **Task Completion** - "I unlocked your screen, opened Safari, and searched for dogs"
+
+**Example Scenarios:**
 ```
-User: "Hey JARVIS, unlock my Mac"
-JARVIS Analysis:
-✅ Voice Pattern Match: 98.5%
-✅ Liveness Confirmed: 99.2%
-✅ Environment Consistent: 95.8%
-✅ Combined Trust Score: 97.8%
-→ Mac Unlocked Successfully!
+📍 Manual Unlock:
+User: "Hey JARVIS, unlock my screen"
+JARVIS: "Screen unlocked successfully, Sir"
+
+📍 Context-Aware Unlock:
+[Screen is locked]
+User: "Hey JARVIS, open Safari and search for Python tutorials"
+JARVIS: "I see your screen is locked. I'll unlock it now by typing in your password so I can open Safari and search for Python tutorials."
+[Unlocks screen]
+[Opens Safari and searches]
+JARVIS: "I unlocked your screen, opened Safari, and searched for Python tutorials, Sir"
 ```
+
+**Authentication Flow:**
+1. **Voice Activation** - Say "Hey JARVIS" to activate
+2. **Command Recognition** - JARVIS understands your intent
+3. **Smart Decision** - Direct unlock vs context-aware unlock
+4. **Secure Execution** - Password typed securely via automation
+5. **Confirmation** - Clear feedback on what was accomplished
 
 ### 📊 Resource Budget (16GB System)
 | Component | Memory | Purpose |

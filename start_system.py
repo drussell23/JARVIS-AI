@@ -19,13 +19,14 @@ The JARVIS backend loads 8 critical components:
 4. VOICE - Voice activation ("Hey JARVIS") with proactive announcements
 5. ML_MODELS - NLP and sentiment analysis (lazy-loaded)
 6. MONITORING - System health tracking and component metrics
-7. VOICE_UNLOCK - Proximity + Voice Authentication (Option 3)
-   ✨ NEW: Apple Watch proximity detection (3m unlock, 10m lock)
-   • Dual-factor authentication: proximity + voice
-   • Ultra-aggressive memory management (300MB ML limit)
-   • INT8 model quantization for efficiency
-   • "Hey JARVIS, unlock my Mac" - only works when Watch nearby
-   • Automatic cleanup - models unloaded in 30 seconds
+7. VOICE_UNLOCK - Advanced Screen Unlock with Dual Modes
+   ✨ Manual Unlock: "Hey JARVIS, unlock my screen" - Direct control 24/7
+   ✨ Context-Aware: Automatically unlocks when needed for tasks
+   • No quiet hours restrictions - works anytime
+   • Secure password automation via WebSocket daemon
+   • Clear voice feedback for every step
+   • Apple Watch alternative - no additional hardware needed
+   • Two modes: Direct unlock or intelligent context-aware unlock
 
 8. WAKE_WORD - Hands-free 'Hey JARVIS' activation
    • Always-listening mode with zero clicks required
@@ -847,7 +848,7 @@ class AsyncSystemManager:
                             print(f"  {Colors.GREEN}✅ VOICE{Colors.ENDC}       - Voice interface ready")
                             print(f"  {Colors.GREEN}✅ ML_MODELS{Colors.ENDC}   - NLP models available (300MB limit)")
                             print(f"  {Colors.GREEN}✅ MONITORING{Colors.ENDC}  - Health tracking active")
-                            print(f"  {Colors.GREEN}✅ VOICE_UNLOCK{Colors.ENDC} - Proximity + Voice auth (Apple Watch)")
+                            print(f"  {Colors.GREEN}✅ VOICE_UNLOCK{Colors.ENDC} - Manual & context-aware screen unlock")
                             print(f"  {Colors.GREEN}✅ WAKE_WORD{Colors.ENDC}   - 'Hey JARVIS' detection active")
             except:
                 # Fallback if we can't check
