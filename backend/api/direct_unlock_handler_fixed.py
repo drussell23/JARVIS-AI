@@ -66,8 +66,11 @@ async def unlock_screen_direct(reason: str = "User request") -> bool:
     except asyncio.TimeoutError:
         logger.error("[DIRECT UNLOCK] Timeout waiting for unlock response")
         return False
-    except websockets.exceptions.ConnectionRefusedError:
-        logger.error("[DIRECT UNLOCK] Voice unlock daemon not running on port 8765")
+    except (ConnectionRefusedError, OSError) as e:
+        if "Connect call failed" in str(e) or "connection refused" in str(e).lower():
+            logger.error("[DIRECT UNLOCK] Voice unlock daemon not running on port 8765")
+        else:
+            logger.error(f"[DIRECT UNLOCK] Connection error: {e}")
         return False
     except Exception as e:
         logger.error(f"[DIRECT UNLOCK] Error in direct unlock: {e}")
@@ -98,10 +101,13 @@ async def check_screen_locked_direct() -> bool:
 
         return False
 
-    except websockets.exceptions.ConnectionRefusedError:
-        logger.warning(
-            "[DIRECT UNLOCK] Voice unlock daemon not running, checking via system"
-        )
+    except (ConnectionRefusedError, OSError) as e:
+        if "Connect call failed" in str(e) or "connection refused" in str(e).lower():
+            logger.warning(
+                "[DIRECT UNLOCK] Voice unlock daemon not running, checking via system"
+            )
+        else:
+            logger.warning(f"[DIRECT UNLOCK] Connection error: {e}")
         return check_screen_locked_system()
     except Exception as e:
         logger.error(f"[DIRECT UNLOCK] Error checking screen lock: {e}")

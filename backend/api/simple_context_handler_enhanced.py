@@ -123,12 +123,16 @@ class EnhancedSimpleContextHandler:
 
                     # Send context message to user
                     if websocket:
+                        # Send as response type to ensure it's spoken
                         await websocket.send_json(
                             {
-                                "type": "context_update",
-                                "message": context_message,
+                                "type": "response",
+                                "text": context_message,
+                                "command_type": "context_aware",
                                 "status": "unlocking_screen",
                                 "steps": self.execution_steps,
+                                "speak": True,
+                                "intermediate": True,  # Mark as intermediate response
                             }
                         )
 
@@ -148,10 +152,13 @@ class EnhancedSimpleContextHandler:
                         if websocket:
                             await websocket.send_json(
                                 {
-                                    "type": "context_update",
-                                    "message": "Screen unlocked. Now executing your command...",
+                                    "type": "response",
+                                    "text": "Screen unlocked. Now executing your command...",
+                                    "command_type": "context_aware",
                                     "status": "executing_command",
                                     "steps": self.execution_steps,
+                                    "speak": True,
+                                    "intermediate": True,
                                 }
                             )
 

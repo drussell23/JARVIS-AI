@@ -14,6 +14,7 @@ import subprocess
 import os
 from datetime import datetime
 from typing import Optional, Dict, Any, Set
+from screen_lock_detector import is_screen_locked
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -60,12 +61,16 @@ class VoiceUnlockWebSocketServer:
                 is_running = self.check_daemon_running()
                 enrolled_users = self.get_enrolled_users()
                 
+                # Check actual screen lock status
+                screen_locked = is_screen_locked()
+                logger.info(f"Screen lock status check: {'LOCKED' if screen_locked else 'UNLOCKED'}")
+                
                 return {
                     "type": "status",
                     "success": True,
                     "status": {
                         "isMonitoring": is_running,
-                        "isScreenLocked": False,  # Would need actual check
+                        "isScreenLocked": screen_locked,
                         "enrolledUser": enrolled_users[0] if enrolled_users else "none",
                         "failedAttempts": 0,
                         "state": 1 if is_running else 0
