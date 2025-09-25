@@ -1732,68 +1732,69 @@ const JarvisVoice = () => {
     // Set the response in state for display
     setResponse(text);
 
-    // Only use browser speech synthesis (skip audio endpoint to avoid duplicate voices)
-    if ('speechSynthesis' in window) {
-      // Cancel any ongoing speech first
-      window.speechSynthesis.cancel();
-      
-      // Function to get Daniel voice
-      const getDanielVoice = () => {
-        const voices = window.speechSynthesis.getVoices();
-        
-        // First try to find Daniel specifically
-        const danielVoice = voices.find(voice => 
-          voice.name.includes('Daniel') && voice.lang.includes('en-GB')
-        );
-        
-        if (danielVoice) return danielVoice;
-        
-        // Then try any British male voice
-        const britishMaleVoice = voices.find(voice =>
-          voice.lang === 'en-GB' &&
-          (voice.name.toLowerCase().includes('male') || 
-           (!voice.name.toLowerCase().includes('female') && 
-            !voice.name.toLowerCase().includes('fiona') &&
-            !voice.name.toLowerCase().includes('moira') &&
-            !voice.name.toLowerCase().includes('tessa')))
-        );
-        
-        return britishMaleVoice;
-      };
+    console.log('Speaking response:', text.substring(0, 100) + '...');
 
-      // Wait for voices to load if needed
-      let selectedVoice = getDanielVoice();
-      
-      if (!selectedVoice && window.speechSynthesis.getVoices().length === 0) {
-        // Voices not loaded yet, wait for them
-        await new Promise(resolve => {
-          window.speechSynthesis.onvoiceschanged = () => {
-            selectedVoice = getDanielVoice();
-            resolve();
-          };
-          // Timeout after 500ms to prevent hanging
-          setTimeout(resolve, 500);
-        });
-      }
+    try {
+      setIsJarvisSpeaking(true);
 
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1.0;
-      utterance.pitch = 0.9;
-      utterance.volume = 1.0;
+      // Use backend TTS endpoint for consistent voice quality
+      const usePost = text.length > 500 || text.includes('\n');
 
-      if (selectedVoice) {
-        utterance.voice = selectedVoice;
-        console.log('Using voice:', selectedVoice.name);
+      if (!usePost) {
+        // Short text: Use GET method with URL
+        const audioUrl = `${API_URL}/audio/speak/${encodeURIComponent(text)}`;
+        const audio = new Audio(audioUrl);
+        audio.volume = 1.0;
+
+        audio.onended = () => {
+          console.log('Audio playback completed');
+          setIsJarvisSpeaking(false);
+        };
+
+        audio.onerror = async (e) => {
+          console.error('GET audio failed:', e);
+          // Fallback to POST method
+          await playAudioUsingPost(text);
+        };
+
+        await audio.play();
       } else {
-        console.log('Daniel voice not found, using default');
-        // Don't speak if we can't find the right voice to avoid female voice
-        return;
+        // Long text: Use POST method directly
+        await playAudioUsingPost(text);
       }
+    } catch (error) {
+      console.error('Audio playback failed:', error);
+      setIsJarvisSpeaking(false);
 
-      utterance.onstart = () => setIsJarvisSpeaking(true);
-      utterance.onend = () => setIsJarvisSpeaking(false);
+      // Fallback to browser speech synthesis if backend TTS fails
+      console.log('Falling back to browser speech synthesis...');
+      if ('speechSynthesis' in window) {
+        // Cancel any ongoing speech first
+        window.speechSynthesis.cancel();
+        
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 1.0;
+        utterance.pitch = 0.9;
+        utterance.volume = 1.0;
 
-      window.speechSynthesis.speak(utterance);
+        // Try to find a male voice
+        const voices = window.speechSynthesis.getVoices();
+        const maleVoice = voices.find(voice => 
+          voice.name.toLowerCase().includes('male') || 
+          voice.name.includes('Daniel') ||
+          voice.name.includes('James') ||
+          voice.name.includes('Oliver')
+        );
+
+        if (maleVoice) {
+          utterance.voice = maleVoice;
+        }
+
+        utterance.onstart = () => setIsJarvisSpeaking(true);
+        utterance.onend = () => setIsJarvisSpeaking(false);
+
+        window.speechSynthesis.speak(utterance);
+      }
     }
   };
 
