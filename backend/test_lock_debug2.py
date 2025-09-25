@@ -1,4 +1,4 @@
-#\!/usr/bin/env python3
+#!/usr/bin/env python3
 """Debug lock command response flow"""
 
 import asyncio
@@ -29,4 +29,3 @@ async def test():
                 break
                 
 asyncio.run(test())
-EOF < /dev/null

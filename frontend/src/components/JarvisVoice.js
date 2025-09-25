@@ -695,12 +695,14 @@ const JarvisVoice = () => {
       case 'voice_unlock':
         // Handle voice unlock responses
         console.log('Voice unlock response received:', data);
-        setResponse(data.message || data.text || 'Voice unlock command processed');
+        const voiceUnlockText = data.message || data.text || 'Voice unlock command processed';
+        setResponse(voiceUnlockText);
         setIsProcessing(false);
         
-        // Speak the response
-        if (data.message && data.speak !== false) {
-          speakResponse(data.message);
+        // Speak the response if speak flag is true
+        if ((data.message || data.text) && data.speak !== false) {
+          console.log('[JARVIS Audio] Speaking voice unlock response:', voiceUnlockText);
+          speakResponse(voiceUnlockText);
         }
         
         // Reset waiting state after voice unlock command

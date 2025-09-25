@@ -812,10 +812,35 @@ class JARVISVoiceAPI:
         if not text:
             raise HTTPException(status_code=400, detail="No text provided")
 
-        # Always use macOS say command for simplicity and reliability
+        # Try async TTS handler first for better performance
+        try:
+            from .async_tts_handler import generate_speech_async
+            
+            # Generate speech with caching and async processing
+            audio_path, content_type = await generate_speech_async(text, voice="Daniel")
+            
+            # Read the audio file
+            with open(audio_path, "rb") as f:
+                audio_data = f.read()
+            
+            return Response(
+                content=audio_data,
+                media_type=content_type,
+                headers={
+                    "Content-Disposition": f"inline; filename=jarvis_speech.{audio_path.suffix}",
+                    "Cache-Control": "public, max-age=3600",  # Cache for 1 hour
+                    "Access-Control-Allow-Origin": "*",
+                },
+            )
+            
+        except ImportError:
+            logger.info("Async TTS handler not available, falling back to synchronous method")
+            
+        # Fallback to synchronous method
         try:
             import subprocess
             import tempfile
+            import asyncio
 
             # Use the full text for audio generation
             audio_text = text
@@ -825,16 +850,21 @@ class JARVISVoiceAPI:
                 tmp_path = tmp.name
 
             # Use macOS say command to generate audio with British voice
-            subprocess.run(
-                [
-                    "say",
-                    "-v",
-                    "Daniel",  # British voice for JARVIS
-                    "-o",
-                    tmp_path,
-                    audio_text,
-                ],
-                check=True,
+            # Run in executor to avoid blocking
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: subprocess.run(
+                    [
+                        "say",
+                        "-v",
+                        "Daniel",  # British voice for JARVIS
+                        "-o",
+                        tmp_path,
+                        audio_text,
+                    ],
+                    check=True,
+                )
             )
 
             # Convert to MP3 for browser compatibility
@@ -843,28 +873,36 @@ class JARVISVoiceAPI:
 
             # Use ffmpeg if available, otherwise use the AIFF directly
             try:
-                subprocess.run(
-                    [
-                        "ffmpeg",
-                        "-i",
-                        tmp_path,
-                        "-acodec",
-                        "mp3",
-                        "-ab",
-                        "128k",
-                        mp3_path,
-                        "-y",
-                    ],
-                    check=True,
-                    capture_output=True,
+                await loop.run_in_executor(
+                    None,
+                    lambda: subprocess.run(
+                        [
+                            "ffmpeg",
+                            "-i",
+                            tmp_path,
+                            "-acodec",
+                            "mp3",
+                            "-ab",
+                            "96k",  # Lower bitrate for speech
+                            "-ar",
+                            "22050",  # Lower sample rate for speech
+                            mp3_path,
+                            "-y",
+                        ],
+                        check=True,
+                        capture_output=True,
+                    )
                 )
             except (subprocess.CalledProcessError, FileNotFoundError):
                 # If ffmpeg not available, use lame
                 try:
-                    subprocess.run(
-                        ["lame", "-b", "128", tmp_path, mp3_path],
-                        check=True,
-                        capture_output=True,
+                    await loop.run_in_executor(
+                        None,
+                        lambda: subprocess.run(
+                            ["lame", "-b", "96", "-m", "m", tmp_path, mp3_path],
+                            check=True,
+                            capture_output=True,
+                        )
                     )
                 except (subprocess.CalledProcessError, FileNotFoundError):
                     # If neither work, use WAV format which browsers universally support
