@@ -39,6 +39,7 @@ class ProcessCleanupManager:
         self.config = {
             'check_interval': 5.0,  # seconds
             'process_timeout': 30.0,  # seconds
+            'stuck_process_time': 7200.0,  # 2 hours - consider process stuck
             'memory_threshold': 0.35,  # 35% memory usage target
             'memory_threshold_warning': 0.50,  # 50% warning threshold
             'memory_threshold_critical': 0.70,  # 70% critical threshold
@@ -46,8 +47,26 @@ class ProcessCleanupManager:
             'cpu_threshold_system': 80.0,  # 80% total system CPU usage threshold
             'cpu_threshold_single': 50.0,  # 50% CPU for single process
             'enable_cleanup': True,
-            'aggressive_cleanup': True  # Enable aggressive memory management
+            'aggressive_cleanup': True,  # Enable aggressive memory management
+            # JARVIS-specific patterns
+            'jarvis_patterns': [
+                'jarvis', 'main.py', 'jarvis_backend', 'jarvis_voice',
+                'voice_unlock', 'websocket_server', 'jarvis-ai-agent',
+                'unified_command_processor', 'resource_manager'
+            ],
+            'jarvis_port_patterns': [8000, 8001, 8080, 8765, 5000],  # Common JARVIS ports
+            'system_critical': [
+                'kernel_task', 'WindowServer', 'loginwindow', 'launchd',
+                'systemd', 'init', 'Finder', 'Dock', 'SystemUIServer'
+            ]
         }
+        
+        # Learning patterns
+        self.problem_patterns = {}
+        self.cleanup_history = []
+        
+        # Load history if exists
+        self._load_cleanup_history()
 
     def _get_swift_monitor(self):
         """Lazy load the Swift monitor"""
@@ -468,6 +487,91 @@ class ProcessCleanupManager:
             )
 
         return recommendations
+    
+    def _load_cleanup_history(self):
+        """Load cleanup history from disk"""
+        history_file = Path.home() / ".jarvis" / "cleanup_history.json"
+        if history_file.exists():
+            try:
+                with open(history_file, "r") as f:
+                    self.cleanup_history = json.load(f)
+                    # Rebuild problem patterns from history
+                    for entry in self.cleanup_history[-50:]:  # Last 50 entries
+                        for action in entry.get("actions", []):
+                            if action.get("success"):
+                                self._update_problem_patterns(
+                                    action.get("name", ""), True
+                                )
+            except Exception as e:
+                logger.error(f"Failed to load cleanup history: {e}")
+    
+    def cleanup_old_jarvis_processes(self, max_age_hours: float = 12.0) -> List[Dict]:
+        """
+        Specifically clean up old JARVIS processes that have been running too long
+        
+        Args:
+            max_age_hours: Maximum age in hours before considering a JARVIS process stale
+            
+        Returns:
+            List of cleaned up processes
+        """
+        cleaned = []
+        current_time = time.time()
+        
+        for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
+            try:
+                if self._is_jarvis_process(proc):
+                    age_hours = (current_time - proc.create_time()) / 3600
+                    
+                    if age_hours > max_age_hours:
+                        # Check if it's the current main process
+                        cmdline = " ".join(proc.cmdline())
+                        if "main.py" in cmdline:
+                            # This is likely an old JARVIS main process
+                            logger.warning(
+                                f"Found stale JARVIS process (PID: {proc.pid}, "
+                                f"Age: {age_hours:.1f} hours)"
+                            )
+                            
+                            try:
+                                proc.terminate()
+                                proc.wait(timeout=5)
+                                cleaned.append({
+                                    "pid": proc.pid,
+                                    "name": proc.name(),
+                                    "age_hours": age_hours,
+                                    "status": "terminated"
+                                })
+                                logger.info(f"Terminated old JARVIS process {proc.pid}")
+                            except psutil.TimeoutExpired:
+                                proc.kill()
+                                cleaned.append({
+                                    "pid": proc.pid,
+                                    "name": proc.name(),
+                                    "age_hours": age_hours,
+                                    "status": "killed"
+                                })
+                                logger.warning(f"Force killed old JARVIS process {proc.pid}")
+                            except Exception as e:
+                                logger.error(f"Failed to clean up PID {proc.pid}: {e}")
+                                
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+                
+        return cleaned
+    
+    def get_jarvis_process_age(self) -> Optional[float]:
+        """Get the age of the main JARVIS process in hours"""
+        for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
+            try:
+                if self._is_jarvis_process(proc):
+                    cmdline = " ".join(proc.cmdline())
+                    if "main.py" in cmdline:
+                        age_hours = (time.time() - proc.create_time()) / 3600
+                        return age_hours
+            except:
+                continue
+        return None
 
 
 # Convenience functions for integration

@@ -4,6 +4,11 @@
       "success": 1,
       "failure": 0,
       "avg_duration": 8.064258
+    },
+    "open_app_search": {
+      "success": 1,
+      "failure": 0,
+      "avg_duration": 10.734148
     }
   },
   "preferences": {},
@@ -13,9 +18,13 @@
       "total": 1
     },
     "search": {
+      "success": 2,
+      "total": 2
+    },
+    "open_app": {
       "success": 1,
       "total": 1
     }
   },
-  "last_updated": "2025-09-24T01:08:56.166901"
+  "last_updated": "2025-09-24T02:42:23.808651"
 }

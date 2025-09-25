@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""
+Direct Unlock Handler
+====================
+
+Provides direct screen unlock functionality
+"""
+
+import asyncio
+import logging
+import websockets
+import json
+from typing import Optional, Dict, Any
+
+logger = logging.getLogger(__name__)
+
+VOICE_UNLOCK_WS_URL = "ws://localhost:8765/voice-unlock"
+
+
+async def unlock_screen_direct(reason: str = "User request") -> bool:
+    """Directly unlock the screen using WebSocket connection"""
+    try:
+        # Connect to voice unlock daemon
+        logger.info("Connecting to voice unlock daemon for direct unlock")
+        
+        async with websockets.connect(VOICE_UNLOCK_WS_URL) as websocket:
+            # Send unlock command
+            unlock_command = {
+                "type": "unlock_screen",
+                "data": {
+                    "source": "context_handler",
+                    "reason": reason,
+                    "authenticated": True
+                }
+            }
+            
+            await websocket.send(json.dumps(unlock_command))
+            logger.info(f"Sent unlock command: {unlock_command}")
+            
+            # Wait for response
+            response = await asyncio.wait_for(websocket.recv(), timeout=10.0)
+            result = json.loads(response)
+            
+            logger.info(f"Unlock response: {result}")
+            
+            if result.get("type") == "unlock_result":
+                return result.get("success", False)
+            else:
+                logger.error(f"Unexpected response type: {result.get('type')}")
+                return False
+                
+    except asyncio.TimeoutError:
+        logger.error("Timeout waiting for unlock response")
+        return False
+    except Exception as e:
+        logger.error(f"Error in direct unlock: {e}")
+        return False
+
+
+async def check_screen_locked_direct() -> bool:
+    """Check if screen is locked via direct WebSocket"""
+    try:
+        logger.info("[DIRECT UNLOCK] Checking screen lock status via WebSocket")
+        async with websockets.connect(VOICE_UNLOCK_WS_URL) as websocket:
+            # Get status
+            status_command = {
+                "type": "command",
+                "command": "get_status"
+            }
+            await websocket.send(json.dumps(status_command))
+            
+            # Wait for response
+            response = await asyncio.wait_for(websocket.recv(), timeout=5.0)
+            result = json.loads(response)
+            logger.info(f"[DIRECT UNLOCK] Voice unlock status: {result}")
+            
+            if result.get("type") == "status" and result.get("success"):
+                status = result.get("status", {})
+                is_locked = status.get("isScreenLocked", False)
+                logger.info(f"[DIRECT UNLOCK] Screen locked from daemon: {is_locked}")
+                return is_locked
+                
+        return False
+        
+    except Exception as e:
+        logger.error(f"Error checking screen lock: {e}")
+        # Fallback to system check
+        return check_screen_locked_system()
+
+
+def check_screen_locked_system() -> bool:
+    """Check screen lock state using system API"""
+    try:
+        logger.info("[DIRECT UNLOCK] Checking screen lock via system API")
+        import subprocess
+        result = subprocess.run(['python', '-c', '''
+import Quartz
+session_dict = Quartz.CGSessionCopyCurrentDictionary()
+if session_dict:
+    locked = session_dict.get("CGSSessionScreenIsLocked", False)
+    print("true" if locked else "false")
+else:
+    print("false")
+'''], capture_output=True, text=True)
+        
+        is_locked = result.stdout.strip().lower() == "true"
+        logger.info(f"[DIRECT UNLOCK] Screen locked from system: {is_locked}")
+        return is_locked
+        
+    except Exception as e:
+        logger.error(f"Error in system screen check: {e}")
+        return False

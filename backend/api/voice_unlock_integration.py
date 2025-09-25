@@ -171,28 +171,43 @@ async def handle_voice_unlock_in_jarvis(command: str) -> dict:
             }
             
     elif any(phrase in command_lower for phrase in ['unlock my mac', 'unlock my screen', 'unlock mac', 'unlock the mac', 'unlock computer']):
-        # User wants to unlock NOW - send unlock command directly to the daemon
+        # User wants to unlock NOW
         try:
-            if not voice_unlock_connector or not voice_unlock_connector.connected:
-                await initialize_voice_unlock()
+            # First try Voice Unlock if connected
+            if voice_unlock_connector and voice_unlock_connector.connected:
+                result = await voice_unlock_connector.send_command("unlock_screen", {
+                    "source": "jarvis_command",
+                    "authenticated": True  # Already authenticated via JARVIS
+                })
+                
+                if result and result.get('success'):
+                    return {
+                        'response': 'Unlocking your screen now, Sir.',
+                        'success': True
+                    }
             
-            # Send unlock command to daemon
-            result = await voice_unlock_connector.send_command("unlock_screen", {
-                "source": "jarvis_command",
-                "authenticated": True  # Already authenticated via JARVIS
-            })
+            # Fallback to Context Intelligence System
+            logger.info("Voice Unlock not available, using Context Intelligence unlock")
+            from context_intelligence.core.unlock_manager import get_unlock_manager
+            unlock_manager = get_unlock_manager()
             
-            if result and result.get('success'):
+            success, message = await unlock_manager.unlock_screen(
+                reason="User command from JARVIS",
+                command_context={"command": command, "source": "voice"}
+            )
+            
+            if success:
                 return {
-                    'response': 'Unlocking your screen now, Sir.',
-                    'success': True
+                    'response': 'Screen unlocked successfully, Sir.',
+                    'success': True,
+                    'method': 'context_intelligence'
                 }
             else:
-                error_msg = result.get('message', 'Unknown error') if result else 'Not connected to Voice Unlock'
                 return {
-                    'response': f"I couldn't unlock the screen, Sir. {error_msg}",
+                    'response': f"I couldn't unlock the screen, Sir. {message}",
                     'success': False
                 }
+                
         except Exception as e:
             logger.error(f"Error sending unlock command: {e}")
             return {
@@ -204,25 +219,38 @@ async def handle_voice_unlock_in_jarvis(command: str) -> dict:
     elif any(phrase in command_lower for phrase in ['lock my mac', 'lock my screen', 'lock mac', 'lock the mac', 'lock computer', 'lock the computer']):
         # User wants to lock the screen
         try:
-            if not voice_unlock_connector or not voice_unlock_connector.connected:
-                await initialize_voice_unlock()
+            # First try Voice Unlock if connected
+            if voice_unlock_connector and voice_unlock_connector.connected:
+                result = await voice_unlock_connector.send_command("lock_screen", {
+                    "source": "jarvis_command"
+                })
+                
+                if result and result.get('success'):
+                    return {
+                        'response': 'Locking your screen now, Sir.',
+                        'success': True,
+                        'method': 'voice_unlock'
+                    }
             
-            # Send lock command to daemon
-            result = await voice_unlock_connector.send_command("lock_screen", {
-                "source": "jarvis_command"
-            })
+            # Fallback to Context Intelligence System
+            logger.info("Voice Unlock not available, using Context Intelligence lock")
+            from context_intelligence.core.unlock_manager import get_unlock_manager
+            unlock_manager = get_unlock_manager()
             
-            if result and result.get('success'):
+            success, message = await unlock_manager.lock_screen("User command from JARVIS")
+            
+            if success:
                 return {
-                    'response': 'Locking your screen now, Sir.',
-                    'success': True
+                    'response': 'Screen locked successfully, Sir.',
+                    'success': True,
+                    'method': 'context_intelligence'
                 }
             else:
-                error_msg = result.get('message', 'Unknown error') if result else 'Not connected to Voice Unlock'
                 return {
-                    'response': f"I couldn't lock the screen, Sir. {error_msg}",
+                    'response': f"I couldn't lock the screen, Sir. {message}",
                     'success': False
                 }
+                
         except Exception as e:
             logger.error(f"Error sending lock command: {e}")
             return {

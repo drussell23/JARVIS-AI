@@ -395,57 +395,29 @@ class VoiceUnlockWebSocketServer:
             return False
     
     async def perform_screen_lock(self) -> bool:
-        """Lock the Mac screen using various methods"""
+        """Lock the Mac screen"""
         try:
             logger.info("Locking screen...")
             
-            # Method 1: Use CGSession (most reliable)
-            try:
-                result = subprocess.run([
-                    '/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession',
-                    '-suspend'
-                ], capture_output=True, text=True)
-                
-                if result.returncode == 0:
-                    logger.info("Screen locked successfully using CGSession")
-                    return True
-            except Exception as e:
-                logger.debug(f"CGSession method failed: {e}")
+            # Method 1: Using Control+Command+Q (fastest)
+            lock_script = '''
+            tell application "System Events"
+                keystroke "q" using {control down, command down}
+            end tell
+            '''
             
-            # Method 2: Use loginwindow
-            try:
-                result = subprocess.run([
-                    'osascript', '-e', 
-                    'tell application "System Events" to tell process "loginwindow" to keystroke "q" using {command down, control down}'
-                ], capture_output=True, text=True)
-                
-                if result.returncode == 0:
-                    logger.info("Screen locked successfully using loginwindow")
-                    return True
-            except Exception as e:
-                logger.debug(f"Loginwindow method failed: {e}")
+            result = subprocess.run([
+                'osascript', '-e', lock_script
+            ], capture_output=True, text=True)
             
-            # Method 3: Use ScreenSaverEngine
-            try:
-                # Start screensaver which will require password on wake
-                subprocess.run([
-                    'open', '-a', 'ScreenSaverEngine'
-                ])
-                logger.info("Started screensaver (will lock if password required)")
+            if result.returncode == 0:
+                logger.info("Screen locked successfully")
                 return True
-            except Exception as e:
-                logger.debug(f"ScreenSaver method failed: {e}")
-            
-            # Method 4: Fallback to sleep display
-            try:
+            else:
+                # Fallback: Use pmset
+                logger.info("Trying alternative lock method...")
                 subprocess.run(['pmset', 'displaysleepnow'])
-                logger.info("Put display to sleep")
                 return True
-            except Exception as e:
-                logger.debug(f"Display sleep method failed: {e}")
-                
-            logger.error("All lock methods failed")
-            return False
                 
         except Exception as e:
             logger.error(f"Error locking screen: {e}")

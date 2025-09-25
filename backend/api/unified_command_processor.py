@@ -1044,7 +1044,14 @@ class UnifiedCommandProcessor:
                 if not app_mentioned:
                     # Add browser context
                     if has_search:
-                        command = f"search in {active_app} for " + command.replace('search for', '').replace('search', '').strip()
+                        # Clean up the command - remove "and", "search", "search for" to get just the query
+                        cleaned = command
+                        # Remove leading "and" if present
+                        if cleaned.lower().startswith('and '):
+                            cleaned = cleaned[4:]
+                        # Remove search-related words
+                        cleaned = cleaned.replace('search for', '').replace('search', '').strip()
+                        command = f"search in {active_app} for {cleaned}"
                     elif 'go to' in command_lower:
                         command = command.replace('go to', f'tell {active_app} to go to')
                     else:
