@@ -364,13 +364,17 @@ class ScreensaverIntegration:
             
     async def _speak_response(self, text: str):
         """Speak JARVIS response"""
-        try:
-            # This would integrate with JARVIS voice system
-            # For now, use system TTS
-            subprocess.run(["say", "-v", "Daniel", text], capture_output=True)
-            
-        except Exception as e:
-            logger.error(f"Speech error: {e}")
+        # DISABLED: Audio is now handled by frontend to avoid duplicate voices
+        # The WebSocket response includes speak:true flag for frontend TTS
+        logger.debug(f"[Skipping backend TTS] Text would have been: {text}")
+        return
+        # Original code kept for reference:
+        # try:
+        #     # This would integrate with JARVIS voice system
+        #     # For now, use system TTS
+        #     subprocess.run(["say", "-v", "Daniel", text], capture_output=True)
+        # except Exception as e:
+        #     logger.error(f"Speech error: {e}")
             
     def _trigger_event(self, event: str, data: Any = None):
         """Trigger event handlers"""
