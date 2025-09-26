@@ -72,6 +72,18 @@ export class UnifiedWebSocketRouter extends EventEmitter {
     this.server = createServer((req, res) => {
       const parsedUrl = parse(req.url || '');
       
+      // Set CORS headers for all requests
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, HEAD');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      
+      // Handle preflight requests
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
+      
       if (parsedUrl.pathname === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ 
@@ -79,6 +91,13 @@ export class UnifiedWebSocketRouter extends EventEmitter {
           timestamp: new Date().toISOString(),
           routes: Array.from(this.routes.keys()),
           clients: this.clients.size
+        }));
+      } else if (parsedUrl.pathname === '/ws' || parsedUrl.pathname === '/websocket') {
+        // Return info about WebSocket endpoint
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+          message: 'WebSocket endpoint - connect via ws://localhost:8001/ws',
+          type: 'websocket'
         }));
       } else {
         res.writeHead(404, { 'Content-Type': 'text/plain' });

@@ -391,6 +391,25 @@ class MacOSController:
         """Close an application gracefully with event publishing"""
         app_name = self.app_aliases.get(app_name.lower(), app_name)
         
+        # Try enhanced app closer first for problematic apps
+        problematic_apps = ['whatsapp', 'slack', 'discord', 'spotify', 'zoom']
+        if app_name.lower() in problematic_apps:
+            try:
+                from .app_closer_enhanced import close_app_enhanced
+                success, message = close_app_enhanced(app_name)
+                if success:
+                    self.event_builder.publish(
+                        "control.app_closed",
+                        source="macos_controller",
+                        payload={
+                            "app_name": app_name,
+                            "method": "enhanced"
+                        }
+                    )
+                    return True, message
+            except ImportError:
+                logger.warning("Enhanced app closer not available")
+        
         # First try the standard quit command
         script = f'tell application "{app_name}" to quit'
         success, message = self.execute_applescript(script)

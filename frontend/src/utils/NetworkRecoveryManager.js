@@ -3,6 +3,8 @@
  * Implements multiple recovery strategies for network errors
  */
 
+import configService from '../services/DynamicConfigService';
+
 class NetworkRecoveryManager {
     constructor() {
         this.strategies = [
@@ -120,7 +122,8 @@ class NetworkRecoveryManager {
     async strategy_dnsFlush(error, recognition, context) {
         // Signal backend to help with network diagnostics
         try {
-            const response = await fetch(`${window.API_URL || 'http://localhost:8000'}/network/diagnose`, {
+            const apiUrl = configService.getApiUrl() || window.API_URL || 'http://localhost:8010';
+            const response = await fetch(`${apiUrl}/network/diagnose`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -197,7 +200,7 @@ class NetworkRecoveryManager {
         
         try {
             // Check if JARVIS WebSocket is available
-            const wsUrl = `ws://localhost:8000/voice/jarvis/stream`;
+            const wsUrl = configService.getWebSocketUrl('voice/jarvis/stream') || `${window.WS_URL || 'ws://localhost:8010'}/voice/jarvis/stream`;
             const ws = new WebSocket(wsUrl);
             
             return new Promise((resolve) => {
@@ -255,7 +258,8 @@ class NetworkRecoveryManager {
         console.log('🤖 Requesting ML backend assistance...');
         
         try {
-            const response = await fetch(`${window.API_URL || 'http://localhost:8000'}/audio/ml/advanced-recovery`, {
+            const apiUrl = configService.getApiUrl() || window.API_URL || 'http://localhost:8010';
+            const response = await fetch(`${apiUrl}/audio/ml/advanced-recovery`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -437,7 +441,8 @@ class NetworkRecoveryManager {
 
     async logRecoverySuccess(strategy, result) {
         try {
-            await fetch(`${window.API_URL || 'http://localhost:8000'}/audio/ml/recovery-success`, {
+            const apiUrl = configService.getApiUrl() || window.API_URL || 'http://localhost:8010';
+            await fetch(`${apiUrl}/audio/ml/recovery-success`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

@@ -3,6 +3,8 @@
  * Enables real-time workspace monitoring and autonomous actions
  */
 
+import configService from '../services/DynamicConfigService';
+
 class VisionConnection {
     constructor(onWorkspaceUpdate, onActionExecuted) {
         this.visionSocket = null;
@@ -25,7 +27,14 @@ class VisionConnection {
         try {
             console.log('🔌 Connecting to Vision WebSocket...');
 
-            const wsUrl = `ws://localhost:8000/vision/ws/vision`;
+            // Wait for config to be ready
+            await configService.waitForConfig();
+            
+            // Use dynamic WebSocket URL
+            const wsBaseUrl = configService.getWebSocketUrl() || 'ws://localhost:8010';
+            const wsUrl = `${wsBaseUrl}/vision/ws/vision`;
+            console.log('Using Vision WebSocket URL:', wsUrl);
+            
             this.visionSocket = new WebSocket(wsUrl);
 
             this.visionSocket.onopen = () => {

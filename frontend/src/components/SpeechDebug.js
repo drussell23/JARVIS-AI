@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import configService from '../services/DynamicConfigService';
 
 const SpeechDebug = () => {
   const [voices, setVoices] = useState([]);
@@ -102,7 +103,8 @@ const SpeechDebug = () => {
 
   const testBackendSpeech = async () => {
     try {
-      const response = await fetch('http://localhost:8000/voice/jarvis/speak', {
+      const apiUrl = configService.getApiUrl() || 'http://localhost:8010';
+      const response = await fetch(`${apiUrl}/voice/jarvis/speak`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

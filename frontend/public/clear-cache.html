@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clear JARVIS Cache</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 50px;
+            background-color: #1a1a1a;
+            color: #fff;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        pre {
+            background-color: #2a2a2a;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>JARVIS Cache Manager</h1>
+    <button onclick="clearCache()">Clear Config Cache</button>
+    <button onclick="showCache()">Show Cached Config</button>
+    
+    <h2>Current Cache:</h2>
+    <pre id="cache-display">Click "Show Cached Config" to display</pre>
+    
+    <script>
+        function clearCache() {
+            localStorage.removeItem('jarvis_dynamic_config');
+            document.getElementById('cache-display').textContent = 'Cache cleared!';
+            alert('JARVIS config cache has been cleared!');
+        }
+        
+        function showCache() {
+            const cached = localStorage.getItem('jarvis_dynamic_config');
+            if (cached) {
+                const config = JSON.parse(cached);
+                document.getElementById('cache-display').textContent = JSON.stringify(config, null, 2);
+            } else {
+                document.getElementById('cache-display').textContent = 'No cached config found';
+            }
+        }
+    </script>
+</body>
+</html>

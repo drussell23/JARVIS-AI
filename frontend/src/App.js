@@ -5,6 +5,7 @@ import JarvisVoice from './components/JarvisVoice';
 import VisionConnection from './components/VisionConnection';
 import WorkspaceMonitor from './components/WorkspaceMonitor';
 import ActionDisplay from './components/ActionDisplay';
+import ConfigDiagnostic from './components/ConfigDiagnostic';
 
 function App() {
   const [input, setInput] = useState('');
@@ -198,6 +199,9 @@ function App() {
       </div>
 
       <div className="status-strip" />
+      
+      {/* Config Diagnostic Tool */}
+      <ConfigDiagnostic />
     </div>
   );
 }

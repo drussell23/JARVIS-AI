@@ -3,11 +3,34 @@
  * Centralized configuration for API endpoints and constants
  */
 
-// Get API URL from environment variable or use default
-export const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+import configService from './services/DynamicConfigService';
 
-// WebSocket URL derived from API base URL
-export const WS_BASE_URL = API_BASE_URL.replace('http://', 'ws://').replace('https://', 'wss://');
+// Dynamic API URL - will be updated when config service discovers backend
+let API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8010';
+let WS_BASE_URL = API_BASE_URL.replace('http://', 'ws://').replace('https://', 'wss://');
+
+// Update URLs when config service is ready
+configService.on('config-ready', (config) => {
+  API_BASE_URL = config.API_BASE_URL || API_BASE_URL;
+  WS_BASE_URL = config.WS_BASE_URL || WS_BASE_URL;
+  
+  // Update exported values
+  module.exports.API_BASE_URL = API_BASE_URL;
+  module.exports.WS_BASE_URL = WS_BASE_URL;
+});
+
+// Also listen for config updates
+configService.on('config-updated', (config) => {
+  API_BASE_URL = config.API_BASE_URL || API_BASE_URL;
+  WS_BASE_URL = config.WS_BASE_URL || WS_BASE_URL;
+  
+  // Update exported values
+  module.exports.API_BASE_URL = API_BASE_URL;
+  module.exports.WS_BASE_URL = WS_BASE_URL;
+});
+
+// Export dynamic URLs
+export { API_BASE_URL, WS_BASE_URL };
 
 // Other configuration constants
 export const CONFIG = {
@@ -37,4 +60,16 @@ export const CONFIG = {
   ML_RETRY_DELAYS: [100, 500, 1000, 2000, 5000],
   ML_ANOMALY_THRESHOLD: 0.8,
   ML_PREDICTION_THRESHOLD: 0.7
+};
+
+// Helper function to get current API URL
+export const getApiUrl = (endpoint = '') => {
+  const baseUrl = configService.getApiUrl() || API_BASE_URL;
+  return endpoint ? `${baseUrl}/${endpoint.replace(/^\//, '')}` : baseUrl;
+};
+
+// Helper function to get current WebSocket URL
+export const getWebSocketUrl = (endpoint = '') => {
+  const baseUrl = configService.getWebSocketUrl() || WS_BASE_URL;
+  return endpoint ? `${baseUrl}/${endpoint.replace(/^\//, '')}` : baseUrl;
 };
