@@ -1,0 +1,36 @@
+<\!DOCTYPE html>
+<html>
+<head>
+    <title>Clear JARVIS Cache</title>
+</head>
+<body>
+    <h1>Clear JARVIS Frontend Cache</h1>
+    <button onclick="clearCache()">Clear Cache and Reload</button>
+    <div id="status"></div>
+    
+    <script>
+        function clearCache() {
+            // Clear localStorage
+            localStorage.removeItem('jarvis_dynamic_config');
+            localStorage.clear();
+            
+            // Clear sessionStorage
+            sessionStorage.clear();
+            
+            document.getElementById('status').innerHTML = '<p>Cache cleared\! Reloading...</p>';
+            
+            // Reload after a short delay
+            setTimeout(() => {
+                window.location.href = 'http://localhost:3000';
+            }, 1000);
+        }
+        
+        // Show current cache
+        const cached = localStorage.getItem('jarvis_dynamic_config');
+        if (cached) {
+            const config = JSON.parse(cached);
+            document.getElementById('status').innerHTML = '<p>Current cached URL: ' + config.API_BASE_URL + '</p>';
+        }
+    </script>
+</body>
+</html>

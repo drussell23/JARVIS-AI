@@ -405,7 +405,7 @@ class DynamicAppController:
                 ["osascript", "-e", script],
                 capture_output=True,
                 text=True,
-                timeout=10  # Increased timeout for apps like WhatsApp that take longer to close
+                timeout=5  # Reduced timeout, will use enhanced closer as fallback
             )
             
             if result.returncode == 0:
@@ -435,11 +435,37 @@ class DynamicAppController:
             if "not running" in result.stdout:
                 return True, f"{app_info['name']} was not running"
             
-            return True, f"Closed {app_info['name']}"
+            # If we get here, standard methods might have failed
+            # Try enhanced closer as last resort
+            try:
+                from .app_closer_enhanced import close_app_enhanced
+                success, message = close_app_enhanced(app_info.get('actual_name', search_name))
+                if success:
+                    return True, message
+            except ImportError:
+                logger.warning("Enhanced app closer not available")
+            except Exception as e:
+                logger.error(f"Enhanced closer error: {str(e)}")
             
+            return True, f"Attempted to close {app_info['name']}"
+            
+        except subprocess.TimeoutExpired:
+            # Timeout - try enhanced closer
+            logger.warning(f"Standard close timed out for {search_name}, trying enhanced closer")
+            try:
+                from .app_closer_enhanced import close_app_enhanced
+                # Get app name from info or use search name
+                app_name = app_info.get('actual_name', search_name) if 'app_info' in locals() else search_name
+                success, message = close_app_enhanced(app_name)
+                return success, message
+            except Exception as e:
+                logger.error(f"Enhanced closer failed: {str(e)}")
+                return False, f"Failed to close {search_name}: Command timed out"
         except Exception as e:
             logger.error(f"Error closing {search_name}: {e}")
-            return False, f"Failed to close {app_info['name']}: {str(e)}"
+            # Try to get app name for error message
+            app_name = app_info.get('name', search_name) if 'app_info' in locals() else search_name
+            return False, f"Failed to close {app_name}: {str(e)}"
     
     async def open_app_intelligently(self, search_name: str) -> Tuple[bool, str]:
         """Intelligently open app using enhanced discovery"""

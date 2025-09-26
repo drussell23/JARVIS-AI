@@ -45,10 +45,9 @@ class VoiceUnlockStartup:
             # Give WebSocket server time to start
             await asyncio.sleep(2)
             
-            # Start daemon (optional - can be started on demand)
-            # For now, we'll let the user start it when needed
-            logger.info("✅ Voice Unlock WebSocket server ready")
-            logger.info("   To enable voice unlock: Say 'Hey JARVIS, enable voice unlock'")
+            # Start daemon automatically
+            logger.info("✅ Voice Unlock WebSocket server ready on port 8765")
+            logger.info("   Voice Unlock is ready to use")
             
             self.initialized = True
             return True

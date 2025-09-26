@@ -7,6 +7,7 @@ import WorkflowProgress from './WorkflowProgress'; // Workflow progress componen
 import mlAudioHandler from '../utils/MLAudioHandler'; // ML-enhanced audio handling
 import { getNetworkRecoveryManager } from '../utils/NetworkRecoveryManager'; // Advanced network recovery
 import WakeWordService from './WakeWordService'; // Wake word detection service
+import configService from '../services/DynamicConfigService'; // Dynamic configuration service
 
 // Inline styles to ensure button visibility
 const buttonVisibilityStyle = `
@@ -22,9 +23,68 @@ const buttonVisibilityStyle = `
   }
 `;
 
-// Get API URL from environment or use default - moved here for global access
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-const WS_URL = API_URL.replace('http://', 'ws://').replace('https://', 'wss://');
+// Dynamic API configuration - will be set after config service is ready
+let API_URL = null;
+let WS_URL = null;
+let configReady = false;
+
+// Create promise to wait for config
+const configPromise = new Promise((resolve) => {
+  // Check if config is already ready
+  const currentApiUrl = configService.getApiUrl();
+  if (currentApiUrl) {
+    API_URL = currentApiUrl;
+    WS_URL = configService.getWebSocketUrl();
+    configReady = true;
+    console.log('JarvisVoice: Config already ready', { API_URL, WS_URL });
+    resolve();
+    return;
+  }
+
+  // Initialize API URLs when config is ready
+  const handleConfigReady = (config) => {
+    API_URL = config.API_BASE_URL || configService.getApiUrl() || 'http://localhost:8010';
+    WS_URL = config.WS_BASE_URL || configService.getWebSocketUrl() || API_URL.replace('http://', 'ws://').replace('https://', 'wss://');
+    configReady = true;
+    console.log('JarvisVoice: Config ready', { API_URL, WS_URL });
+    resolve();
+  };
+
+  configService.once('config-ready', handleConfigReady);
+  
+  // Check again in case we missed the event
+  setTimeout(() => {
+    if (!configReady) {
+      const currentApiUrl = configService.getApiUrl();
+      if (currentApiUrl) {
+        handleConfigReady(configService.config);
+      }
+    }
+  }, 100);
+  
+  // Final fallback after 1 second
+  setTimeout(() => {
+    if (!configReady) {
+      console.log('JarvisVoice: Using fallback config after timeout');
+      handleConfigReady({
+        API_BASE_URL: 'http://localhost:8010',
+        WS_BASE_URL: 'ws://localhost:8010'
+      });
+    }
+  }, 1000);
+});
+
+// Also listen for config updates
+configService.on('config-updated', (config) => {
+  const newApiUrl = config.API_BASE_URL || configService.getApiUrl();
+  const newWsUrl = config.WS_BASE_URL || configService.getWebSocketUrl();
+  
+  if (newApiUrl !== API_URL || newWsUrl !== WS_URL) {
+    API_URL = newApiUrl;
+    WS_URL = newWsUrl;
+    console.log('JarvisVoice: Config updated', { API_URL, WS_URL });
+  }
+});
 
 // VisionConnection class for real-time workspace monitoring
 class VisionConnection {
@@ -50,8 +110,16 @@ class VisionConnection {
     try {
       console.log('🔌 Connecting to Vision WebSocket...');
 
+      // Wait for config if not ready
+      if (!WS_URL) {
+        console.log('VisionConnection: Waiting for config...');
+        await configPromise;
+      }
+      
       // Use main backend port for vision WebSocket
-      const wsUrl = `${WS_URL}/vision/ws`;  // Use consistent WebSocket URL
+      const wsBaseUrl = WS_URL || configService.getWebSocketUrl() || 'ws://localhost:8010';
+      const wsUrl = `${wsBaseUrl}/vision/ws`;  // Use consistent WebSocket URL
+      console.log('VisionConnection: Connecting to', wsUrl);
       this.socket = new WebSocket(wsUrl);
 
       this.socket.onopen = () => {
@@ -300,6 +368,8 @@ const JarvisVoice = () => {
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [jarvisStatus, setJarvisStatus] = useState('offline');
+  const [systemMode, setSystemMode] = useState('unknown'); // 'minimal' or 'full'
+  const [showUpgradeSuccess, setShowUpgradeSuccess] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [response, setResponse] = useState('');
   const [error, setError] = useState(null);
@@ -351,6 +421,10 @@ const JarvisVoice = () => {
 
     // Auto-activate JARVIS on mount for seamless wake word experience
     const autoActivate = async () => {
+      // Wait for config to be ready before making any API calls
+      await configPromise;
+      console.log('JarvisVoice: Config ready, initializing...');
+      
       await checkJarvisStatus();
       await checkMicrophonePermission();
       await initializeWakeWordService();
@@ -574,22 +648,82 @@ const JarvisVoice = () => {
   }, [jarvisStatus, continuousListening]);
 
   const checkJarvisStatus = async () => {
+    // Ensure config is ready
+    if (!configReady || !API_URL) {
+      console.log('JarvisVoice: Waiting for config before checking status...');
+      await configPromise;
+    }
+    
     try {
-      const response = await fetch(`${API_URL}/voice/jarvis/status`);
+      const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8010';
+      console.log('JarvisVoice: Checking JARVIS status at:', apiUrl);
+      const response = await fetch(`${apiUrl}/voice/jarvis/status`);
       const data = await response.json();
-      console.log('JARVIS status check result:', data);
+      
+      // Enhanced logging for mode detection
+      const previousMode = systemMode;
+      
+      if (data.mode === 'minimal') {
+        console.log('🔄 JARVIS Status: Running in MINIMAL MODE');
+        console.log('  ⏳ This is temporary while full system initializes');
+        console.log('  📊 Available features:', {
+          voice: data.components?.voice || false,
+          vision: data.components?.vision || false,
+          memory: data.components?.memory || false,
+          tools: data.components?.tools || false,
+          rust: data.components?.rust || false
+        });
+        if (data.upgrader) {
+          console.log('  🚀 Upgrade Progress:', {
+            monitoring: data.upgrader.monitoring,
+            attempts: `${data.upgrader.attempts}/${data.upgrader.max_attempts}`,
+            status: 'Waiting for components to initialize...'
+          });
+        }
+        console.log('  ✅ Basic voice commands are available');
+        console.log('  ⚠️  Advanced features (wake word, ML audio) temporarily unavailable');
+        setSystemMode('minimal');
+      } else {
+        // Full mode detected!
+        if (previousMode === 'minimal') {
+          console.log('🎉 JARVIS UPGRADED TO FULL MODE! 🎉');
+          console.log('  ✅ All features now available:');
+          console.log('    • Wake word detection ("Hey JARVIS")');
+          console.log('    • ML-powered audio processing');
+          console.log('    • Vision system active');
+          console.log('    • Memory system online');
+          console.log('    • Advanced tools enabled');
+          console.log('  🚀 System running at full capacity!');
+          
+          // Show success message to user
+          setResponse('System upgraded! All features are now available.');
+          speakResponse('System upgraded. All features are now available, Sir.');
+          
+          // Show upgrade success banner
+          setShowUpgradeSuccess(true);
+          setTimeout(() => setShowUpgradeSuccess(false), 10000); // Hide after 10 seconds
+        } else {
+          console.log('✅ JARVIS Status: Running in FULL MODE');
+          console.log('  🚀 All systems operational');
+        }
+        setSystemMode('full');
+      }
 
       // Map backend status to frontend status
       const status = data.status || 'offline';
-      if (status === 'standby' || status === 'ready') {
-        setJarvisStatus('online'); // Show as online when in standby or ready
+      if (status === 'standby' || status === 'ready' || status === 'available') {
+        setJarvisStatus('online'); // Show as online when in standby, ready, or available
       } else {
         setJarvisStatus(status);
       }
 
-      // Connect WebSocket if JARVIS is available (including standby, ready, and active)
-      if (data.status === 'online' || data.status === 'standby' || data.status === 'active' || data.status === 'ready') {
-        console.log('JARVIS is available, connecting WebSocket...');
+      // Connect WebSocket if JARVIS is available (including standby, ready, active, and available)
+      if (data.status === 'online' || data.status === 'standby' || data.status === 'active' || data.status === 'ready' || data.status === 'available') {
+        if (data.mode === 'minimal') {
+          console.log('📡 Minimal mode: WebSocket features limited');
+        } else {
+          console.log('JARVIS is available, connecting WebSocket...');
+        }
         setTimeout(() => {
           connectWebSocket();
         }, 500);
@@ -638,15 +772,22 @@ const JarvisVoice = () => {
     }
   };
 
-  const connectWebSocket = () => {
+  const connectWebSocket = async () => {
     // Don't connect if already connected or connecting
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
       console.log('WebSocket already connected or connecting');
       return;
     }
+    
+    // Ensure config is ready
+    if (!configReady || !WS_URL) {
+      console.log('JarvisVoice: Waiting for config before WebSocket connection...');
+      await configPromise;
+    }
 
     try {
-      const wsUrl = `${WS_URL}/voice/jarvis/stream`;
+      const wsBaseUrl = WS_URL || configService.getWebSocketUrl() || 'ws://localhost:8010';
+      const wsUrl = `${wsBaseUrl}/voice/jarvis/stream`;
       console.log('Connecting to WebSocket:', wsUrl);
       wsRef.current = new WebSocket(wsUrl);
 
@@ -695,12 +836,14 @@ const JarvisVoice = () => {
       case 'voice_unlock':
         // Handle voice unlock responses
         console.log('Voice unlock response received:', data);
-        setResponse(data.message || data.text || 'Voice unlock command processed');
+        const voiceUnlockText = data.message || data.text || 'Voice unlock command processed';
+        setResponse(voiceUnlockText);
         setIsProcessing(false);
         
-        // Speak the response
-        if (data.message && data.speak !== false) {
-          speakResponse(data.message);
+        // Speak the response if speak flag is true
+        if ((data.message || data.text) && data.speak !== false) {
+          console.log('[JARVIS Audio] Speaking voice unlock response:', voiceUnlockText);
+          speakResponse(voiceUnlockText);
         }
         
         // Reset waiting state after voice unlock command
@@ -950,6 +1093,12 @@ const JarvisVoice = () => {
   };
 
   const initializeWakeWordService = async () => {
+    // Ensure config is ready
+    if (!configReady || !API_URL) {
+      console.log('JarvisVoice: Waiting for config before wake word init...');
+      await configPromise;
+    }
+    
     if (!wakeWordServiceRef.current) {
       // Create a simplified wake word handler object
       wakeWordServiceRef.current = {
@@ -981,7 +1130,9 @@ const JarvisVoice = () => {
       // Try to connect to backend wake word service if available
       try {
         const wakeService = new WakeWordService();
-        const initialized = await wakeService.initialize(API_URL);
+        const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8010';
+        console.log('JarvisVoice: Initializing wake word service at:', apiUrl);
+        const initialized = await wakeService.initialize(apiUrl);
         if (initialized) {
           console.log('✅ Backend wake word service connected');
           // Use backend service callbacks if available
@@ -1372,11 +1523,29 @@ const JarvisVoice = () => {
   };
 
   const activateJarvis = async () => {
+    // Ensure config is ready
+    if (!configReady || !API_URL) {
+      console.log('JarvisVoice: Waiting for config before activating...');
+      await configPromise;
+    }
+    
     try {
-      const response = await fetch(`${API_URL}/voice/jarvis/activate`, {
-        method: 'POST'
+      const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8010';
+      console.log('JarvisVoice: Activating JARVIS at:', apiUrl);
+      const response = await fetch(`${apiUrl}/voice/jarvis/activate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({})
       });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const data = await response.json();
+      console.log('JarvisVoice: Activation response:', data);
       setJarvisStatus('activating');
       setTimeout(async () => {
         setJarvisStatus('online');
@@ -1687,8 +1856,10 @@ const JarvisVoice = () => {
   };
 
   const playAudioUsingPost = async (text) => {
+    console.log('[JARVIS Audio] POST: Attempting to play audio via POST');
     try {
-      const response = await fetch(`${API_URL}/audio/speak`, {
+      const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8010';
+      const response = await fetch(`${apiUrl}/audio/speak`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1696,9 +1867,14 @@ const JarvisVoice = () => {
         body: JSON.stringify({ text })
       });
 
+      console.log('[JARVIS Audio] POST: Response status:', response.status);
+      console.log('[JARVIS Audio] POST: Content-Type:', response.headers.get('content-type'));
+
       if (response.ok) {
         // Get audio data as blob
         const blob = await response.blob();
+        console.log('[JARVIS Audio] POST: Received audio blob:', blob.size, 'bytes');
+
         const audioUrl = URL.createObjectURL(blob);
 
         const audio2 = new Audio(audioUrl);
@@ -1707,23 +1883,30 @@ const JarvisVoice = () => {
         setIsJarvisSpeaking(true);
 
         audio2.onended = () => {
-          console.log('Audio playback completed');
+          console.log('[JARVIS Audio] POST: Playback completed');
           setIsJarvisSpeaking(false);
           URL.revokeObjectURL(audioUrl); // Clean up
         };
 
-        audio2.onerror = () => {
-          console.warn('Audio playback not available');
+        audio2.onerror = (e) => {
+          console.error('[JARVIS Audio] POST: Playback error:', e);
+          if (audio2.error) {
+            console.error('[JARVIS Audio] POST: Error details:', {
+              code: audio2.error.code,
+              message: audio2.error.message
+            });
+          }
           setIsJarvisSpeaking(false);
           URL.revokeObjectURL(audioUrl); // Clean up
         };
 
         await audio2.play();
+        console.log('[JARVIS Audio] POST: Playing audio');
       } else {
-        throw new Error('Audio generation failed');
+        throw new Error(`Audio generation failed: ${response.status}`);
       }
     } catch (postError) {
-      console.warn('Audio POST method failed:', postError.message);
+      console.error('[JARVIS Audio] POST: Failed:', postError);
       setIsJarvisSpeaking(false);
     }
   };
@@ -1732,68 +1915,129 @@ const JarvisVoice = () => {
     // Set the response in state for display
     setResponse(text);
 
-    // Only use browser speech synthesis (skip audio endpoint to avoid duplicate voices)
-    if ('speechSynthesis' in window) {
-      // Cancel any ongoing speech first
-      window.speechSynthesis.cancel();
-      
-      // Function to get Daniel voice
-      const getDanielVoice = () => {
-        const voices = window.speechSynthesis.getVoices();
-        
-        // First try to find Daniel specifically
-        const danielVoice = voices.find(voice => 
-          voice.name.includes('Daniel') && voice.lang.includes('en-GB')
-        );
-        
-        if (danielVoice) return danielVoice;
-        
-        // Then try any British male voice
-        const britishMaleVoice = voices.find(voice =>
-          voice.lang === 'en-GB' &&
-          (voice.name.toLowerCase().includes('male') || 
-           (!voice.name.toLowerCase().includes('female') && 
-            !voice.name.toLowerCase().includes('fiona') &&
-            !voice.name.toLowerCase().includes('moira') &&
-            !voice.name.toLowerCase().includes('tessa')))
-        );
-        
-        return britishMaleVoice;
-      };
+    console.log('[JARVIS Audio] Speaking response:', text.substring(0, 100) + '...');
 
-      // Wait for voices to load if needed
-      let selectedVoice = getDanielVoice();
-      
-      if (!selectedVoice && window.speechSynthesis.getVoices().length === 0) {
-        // Voices not loaded yet, wait for them
-        await new Promise(resolve => {
-          window.speechSynthesis.onvoiceschanged = () => {
-            selectedVoice = getDanielVoice();
-            resolve();
-          };
-          // Timeout after 500ms to prevent hanging
-          setTimeout(resolve, 500);
-        });
-      }
+    try {
+      setIsJarvisSpeaking(true);
 
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1.0;
-      utterance.pitch = 0.9;
-      utterance.volume = 1.0;
+      // Use backend TTS endpoint for consistent voice quality
+      const usePost = text.length > 500 || text.includes('\n');
 
-      if (selectedVoice) {
-        utterance.voice = selectedVoice;
-        console.log('Using voice:', selectedVoice.name);
+      if (!usePost) {
+        // Short text: Use GET method with URL
+        const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8010';
+        const audioUrl = `${apiUrl}/audio/speak/${encodeURIComponent(text)}`;
+        console.log('[JARVIS Audio] Using GET method:', audioUrl);
+        
+        const audio = new Audio();
+        
+        // Set up all event handlers before setting src
+        audio.onloadstart = () => {
+          console.log('[JARVIS Audio] Loading started');
+        };
+        
+        audio.oncanplaythrough = () => {
+          console.log('[JARVIS Audio] Can play through');
+        };
+        
+        audio.onplay = () => {
+          console.log('[JARVIS Audio] Playback started');
+        };
+
+        audio.onended = () => {
+          console.log('[JARVIS Audio] Playback completed');
+          setIsJarvisSpeaking(false);
+        };
+
+        audio.onerror = async (e) => {
+          console.error('[JARVIS Audio] GET audio error:', e);
+          if (audio.error) {
+            console.error('[JARVIS Audio] Error details:', {
+              code: audio.error.code,
+              message: audio.error.message
+            });
+          }
+          console.log('[JARVIS Audio] Falling back to POST method');
+          // Fallback to POST method
+          await playAudioUsingPost(text);
+        };
+
+        // Set source and properties
+        audio.src = audioUrl;
+        audio.volume = 1.0;
+        audio.crossOrigin = 'anonymous';  // Enable CORS
+        
+        // Try to play
+        console.log('[JARVIS Audio] Attempting to play audio...');
+        await audio.play();
+        console.log('[JARVIS Audio] Play promise resolved');
       } else {
-        console.log('Daniel voice not found, using default');
-        // Don't speak if we can't find the right voice to avoid female voice
-        return;
+        // Long text: Use POST method directly
+        console.log('[JARVIS Audio] Using POST method for long text');
+        await playAudioUsingPost(text);
       }
+    } catch (error) {
+      console.error('[JARVIS Audio] Playback failed:', error);
+      console.error('[JARVIS Audio] Error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
+      setIsJarvisSpeaking(false);
 
-      utterance.onstart = () => setIsJarvisSpeaking(true);
-      utterance.onend = () => setIsJarvisSpeaking(false);
+      // Fallback to browser speech synthesis if backend TTS fails
+      console.log('[JARVIS Audio] Falling back to browser speech synthesis...');
+      if ('speechSynthesis' in window) {
+        // Cancel any ongoing speech first
+        window.speechSynthesis.cancel();
+        
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 1.0;
+        utterance.pitch = 0.9;
+        utterance.volume = 1.0;
 
-      window.speechSynthesis.speak(utterance);
+        // Try to find Daniel or other British male voice
+        const voices = window.speechSynthesis.getVoices();
+        console.log(`[JARVIS Audio] Available voices: ${voices.length}`);
+        
+        // First try to find Daniel
+        let selectedVoice = voices.find(voice => voice.name.includes('Daniel'));
+        
+        if (!selectedVoice) {
+          // Try other British male voices
+          selectedVoice = voices.find(voice => 
+            (voice.lang.includes('en-GB') || voice.lang.includes('en_GB')) &&
+            (voice.name.includes('Oliver') || voice.name.includes('James') || 
+             voice.name.toLowerCase().includes('male'))
+          );
+        }
+        
+        if (!selectedVoice) {
+          // Try any British voice
+          selectedVoice = voices.find(voice => 
+            voice.lang.includes('en-GB') || voice.lang.includes('en_GB')
+          );
+        }
+
+        if (selectedVoice) {
+          utterance.voice = selectedVoice;
+          console.log(`[JARVIS Audio] Using voice: ${selectedVoice.name}`);
+        } else {
+          console.log('[JARVIS Audio] No British voice found, using default');
+        }
+
+        utterance.onstart = () => setIsJarvisSpeaking(true);
+        utterance.onend = () => {
+          console.log('[JARVIS Audio] Browser speech completed');
+          setIsJarvisSpeaking(false);
+        };
+        utterance.onerror = (e) => {
+          console.error('[JARVIS Audio] Browser speech error:', e);
+          setIsJarvisSpeaking(false);
+        };
+
+        window.speechSynthesis.speak(utterance);
+      }
     }
   };
 
@@ -1831,7 +2075,7 @@ const JarvisVoice = () => {
         <div className={`status-indicator ${jarvisStatus || 'offline'}`}></div>
         <span className="status-text">
           {jarvisStatus === 'online' || jarvisStatus === 'active' ? (
-            <>SYSTEM READY</>
+            <>SYSTEM READY {systemMode === 'minimal' && <span className="mode-badge minimal">[MINIMAL MODE]</span>}</>
           ) : jarvisStatus === 'activating' ? (
             <>INITIALIZING...</>
           ) : (
@@ -1844,6 +2088,31 @@ const JarvisVoice = () => {
           </span>
         )}
       </div>
+      
+      {/* Mode Information Banner */}
+      {systemMode === 'minimal' && jarvisStatus === 'online' && (
+        <div className="minimal-mode-banner">
+          <div className="mode-info">
+            <span className="mode-icon">⚡</span>
+            <span className="mode-text">Running in Minimal Mode - Full features loading...</span>
+            <span className="mode-spinner">🔄</span>
+          </div>
+        </div>
+      )}
+      
+      {/* Upgrade Success Banner */}
+      {showUpgradeSuccess && (
+        <div className="upgrade-success-banner">
+          <div className="success-info">
+            <span className="success-icon">🎉</span>
+            <span className="success-text">System Upgraded to Full Mode!</span>
+            <span className="success-check">✅</span>
+          </div>
+          <div className="success-features">
+            All advanced features now available: Wake word • ML Audio • Vision • Memory • Tools
+          </div>
+        </div>
+      )}
 
       {/* Simplified Status Indicator */}
       <div className="status-indicator-bar">

@@ -16,6 +16,13 @@ from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
+# Import manual unlock handler
+try:
+    from api.manual_unlock_handler import handle_manual_unlock
+except ImportError:
+    handle_manual_unlock = None
+    logger.warning("Manual unlock handler not available")
+
 
 class DynamicPatternLearner:
     """Learns command patterns from usage and system analysis"""
@@ -270,6 +277,11 @@ class UnifiedCommandProcessor:
         command_lower = command_text.lower()
         words = command_lower.split()
         
+                # Manual screen unlock detection (highest priority)
+        if command_lower.strip() in ['unlock my screen', 'unlock screen', 'unlock the screen', 'lock my screen', 'lock screen', 'lock the screen']:
+            logger.info(f"[CLASSIFY] Manual screen lock/unlock command detected: '{command_lower}'")
+            return CommandType.VOICE_UNLOCK, 0.99  # Route to voice unlock handler with high confidence
+        
         # Voice unlock detection FIRST (highest priority to catch "enable voice unlock")
         voice_patterns = self._detect_voice_unlock_patterns(command_lower)
         if voice_patterns > 0:
@@ -431,7 +443,7 @@ class UnifiedCommandProcessor:
         score += sum(0.15 for word in words if word in vision_nouns)
         
         # Questioning about visual
-        if words[0] in {'what', 'what\'s', 'whats'} and any(word in words for word in {'screen', 'see', 'display'}):
+        if words and words[0] in {'what', 'what\'s', 'whats'} and any(word in words for word in {'screen', 'see', 'display'}):
             score += 0.3
             
         return min(score, 0.95)
@@ -544,7 +556,7 @@ class UnifiedCommandProcessor:
                 
         handler = self.handlers.get(command_type)
         
-        if not handler and command_type != CommandType.SYSTEM:
+        if not handler and command_type not in [CommandType.SYSTEM, CommandType.META]:
             return {
                 'success': False,
                 'response': f"I don't have a handler for {command_type.value} commands yet.",
@@ -1044,7 +1056,14 @@ class UnifiedCommandProcessor:
                 if not app_mentioned:
                     # Add browser context
                     if has_search:
-                        command = f"search in {active_app} for " + command.replace('search for', '').replace('search', '').strip()
+                        # Clean up the command - remove "and", "search", "search for" to get just the query
+                        cleaned = command
+                        # Remove leading "and" if present
+                        if cleaned.lower().startswith('and '):
+                            cleaned = cleaned[4:]
+                        # Remove search-related words
+                        cleaned = cleaned.replace('search for', '').replace('search', '').strip()
+                        command = f"search in {active_app} for {cleaned}"
                     elif 'go to' in command_lower:
                         command = command.replace('go to', f'tell {active_app} to go to')
                     else:

@@ -337,9 +337,11 @@ class MacUnlockService:
     async def _speak(self, text: str):
         """Speak using JARVIS voice"""
         try:
-            # This would integrate with JARVIS voice system
-            # For now, use system TTS
+            # DISABLED: Audio is now handled by frontend to avoid duplicate voices
+            # The WebSocket response includes speak:true flag for frontend TTS
             import subprocess
-            subprocess.run(["say", "-v", "Daniel", text], capture_output=True)
+            logger.debug(f"[Skipping backend TTS] Text would have been: {text}")
+            # Original code kept for reference:
+            # subprocess.run(["say", "-v", "Daniel", text], capture_output=True)
         except Exception as e:
             logger.error(f"Speech error: {e}")

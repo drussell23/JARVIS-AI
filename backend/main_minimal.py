@@ -34,17 +34,34 @@ async def lifespan(app: FastAPI):
     """Manage application lifecycle."""
     global _upgrader
     
-    logger.info("Starting JARVIS Minimal Backend with self-healing upgrader...")
+    logger.info("=" * 60)
+    logger.info("🚀 Starting JARVIS Minimal Backend")
+    logger.info("=" * 60)
+    logger.info("📌 MODE: MINIMAL - Basic functionality only")
+    logger.info("⏳ This is temporary while full system initializes")
+    logger.info("✅ Available: Basic voice commands, health checks")
+    logger.info("⚠️  Unavailable: Wake word, ML audio, vision, advanced features")
+    logger.info("=" * 60)
     
-    # Start the minimal to full upgrader
+    # Create upgrader before yielding
     try:
         from minimal_to_full_upgrader import get_upgrader
         _upgrader = get_upgrader()
-        await _upgrader.start()
-        logger.info("🔄 Minimal to Full Mode upgrader started - monitoring for upgrade opportunities")
+        logger.info("✅ Upgrader initialized - will monitor for full mode readiness")
     except Exception as e:
-        logger.warning(f"Could not start upgrader: {e}")
+        logger.warning(f"⚠️  Could not create upgrader: {e}")
         _upgrader = None
+    
+    # Start the upgrader before yielding
+    if _upgrader:
+        # Start upgrader in background
+        async def start_upgrader():
+            await asyncio.sleep(2)  # Small delay to ensure API is ready
+            logger.info("🔄 Starting upgrade monitor...")
+            await _upgrader.start()
+            
+        asyncio.create_task(start_upgrader())
+        logger.info("📊 Upgrade monitor will check system readiness every 5 seconds")
     
     yield
     
@@ -60,6 +77,7 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
 
 # Configure CORS
 app.add_middleware(
@@ -78,10 +96,13 @@ async def root():
 
 @app.get("/health")
 async def health():
+    global _upgrader
+    
     response = {
         "status": "healthy", 
         "service": "jarvis-minimal",
         "mode": "minimal",
+        "message": "Running in minimal mode - full features loading...",
         "components": {
             "vision": False,
             "memory": False,
@@ -96,8 +117,15 @@ async def health():
         response["upgrader"] = {
             "monitoring": _upgrader._running,
             "attempts": _upgrader._upgrade_attempts,
-            "max_attempts": _upgrader._max_attempts
+            "max_attempts": _upgrader._max_attempts,
+            "status": "checking_readiness" if _upgrader._running else "stopped"
         }
+        
+        # Log health check with upgrade status
+        if _upgrader._upgrade_attempts > 0:
+            logger.debug(f"🔄 Minimal mode health check - Upgrade attempt {_upgrader._upgrade_attempts}/{_upgrader._max_attempts}")
+    else:
+        logger.debug("⚡ Minimal mode health check - No upgrader available")
         
     return response
 
@@ -118,6 +146,9 @@ async def audio_config():
 
 @app.post("/voice/jarvis/activate")
 async def activate_jarvis():
+    logger.info("✅ JARVIS activated in minimal mode")
+    logger.info("  📌 Basic voice commands available")
+    logger.info("  ⏳ Advanced features will activate when full mode is ready")
     return {"success": True, "message": "JARVIS activated in minimal mode"}
 
 
@@ -142,6 +173,32 @@ async def audio_ml_stream(websocket: WebSocket):
             )
     except WebSocketDisconnect:
         pass
+
+
+@app.get("/upgrader/status")
+async def upgrader_status():
+    """Get upgrader status"""
+    if _upgrader:
+        return {
+            "running": _upgrader._running,
+            "minimal_mode": _upgrader._is_minimal_mode,
+            "attempts": _upgrader._upgrade_attempts,
+            "max_attempts": _upgrader._max_attempts
+        }
+    return {"error": "Upgrader not initialized"}
+
+
+@app.post("/upgrader/check")
+async def trigger_upgrade_check():
+    """Manually trigger an upgrade check"""
+    if _upgrader and _upgrader._running:
+        # Force the upgrader to check now
+        logger.info("Manually triggering upgrade check...")
+        _upgrader._is_minimal_mode = True  # Force it to check
+        if not _upgrader._upgrade_task:
+            _upgrader._upgrade_task = asyncio.create_task(_upgrader._upgrade_monitor())
+        return {"status": "Upgrade check triggered"}
+    return {"error": "Upgrader not running"}
 
 
 @app.post("/shutdown")

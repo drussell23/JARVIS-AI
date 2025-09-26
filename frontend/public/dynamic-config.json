@@ -1,0 +1,35 @@
+{
+  "API_BASE_URL": null,
+  "WS_BASE_URL": null,
+  "ENDPOINTS": {},
+  "SERVICES": {
+    "websocket_3000": {
+      "url": "ws://localhost:3000",
+      "health_score": 1.0,
+      "endpoints": {
+        "ws": "/ws"
+      }
+    },
+    "backend_8001": {
+      "url": "http://localhost:8001",
+      "health_score": 1.0,
+      "endpoints": {
+        "health": "/health"
+      }
+    },
+    "websocket_8001": {
+      "url": "http://localhost:8001",
+      "health_score": 1.0,
+      "endpoints": {
+        "health": "/health"
+      }
+    },
+    "backend_8010": {
+      "url": "http://localhost:8010",
+      "health_score": 1.0,
+      "endpoints": {
+        "health": "/health"
+      }
+    }
+  }
+}

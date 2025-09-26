@@ -118,7 +118,7 @@ async def initialize_voice_unlock():
     return False
 
 
-async def handle_voice_unlock_in_jarvis(command: str) -> dict:
+async def handle_voice_unlock_in_jarvis(command: str, jarvis_instance=None) -> dict:
     """
     Handle voice unlock commands from JARVIS
     
@@ -171,65 +171,14 @@ async def handle_voice_unlock_in_jarvis(command: str) -> dict:
             }
             
     elif any(phrase in command_lower for phrase in ['unlock my mac', 'unlock my screen', 'unlock mac', 'unlock the mac', 'unlock computer']):
-        # User wants to unlock NOW - send unlock command directly to the daemon
-        try:
-            if not voice_unlock_connector or not voice_unlock_connector.connected:
-                await initialize_voice_unlock()
-            
-            # Send unlock command to daemon
-            result = await voice_unlock_connector.send_command("unlock_screen", {
-                "source": "jarvis_command",
-                "authenticated": True  # Already authenticated via JARVIS
-            })
-            
-            if result and result.get('success'):
-                return {
-                    'response': 'Unlocking your screen now, Sir.',
-                    'success': True
-                }
-            else:
-                error_msg = result.get('message', 'Unknown error') if result else 'Not connected to Voice Unlock'
-                return {
-                    'response': f"I couldn't unlock the screen, Sir. {error_msg}",
-                    'success': False
-                }
-        except Exception as e:
-            logger.error(f"Error sending unlock command: {e}")
-            return {
-                'response': 'I encountered an error while trying to unlock your screen, Sir.',
-                'error': str(e),
-                'success': False
-            }
+        # User wants to unlock NOW - use simple handler to avoid WebSocket conflicts
+        from .simple_unlock_handler import handle_unlock_command
+        return await handle_unlock_command(command, jarvis_instance)
     
     elif any(phrase in command_lower for phrase in ['lock my mac', 'lock my screen', 'lock mac', 'lock the mac', 'lock computer', 'lock the computer']):
-        # User wants to lock the screen
-        try:
-            if not voice_unlock_connector or not voice_unlock_connector.connected:
-                await initialize_voice_unlock()
-            
-            # Send lock command to daemon
-            result = await voice_unlock_connector.send_command("lock_screen", {
-                "source": "jarvis_command"
-            })
-            
-            if result and result.get('success'):
-                return {
-                    'response': 'Locking your screen now, Sir.',
-                    'success': True
-                }
-            else:
-                error_msg = result.get('message', 'Unknown error') if result else 'Not connected to Voice Unlock'
-                return {
-                    'response': f"I couldn't lock the screen, Sir. {error_msg}",
-                    'success': False
-                }
-        except Exception as e:
-            logger.error(f"Error sending lock command: {e}")
-            return {
-                'response': 'I encountered an error while trying to lock your screen, Sir.',
-                'error': str(e),
-                'success': False
-            }
+        # User wants to lock the screen - use simple handler to avoid WebSocket conflicts
+        from .simple_unlock_handler import handle_unlock_command
+        return await handle_unlock_command(command, jarvis_instance)
             
     elif "test voice unlock" in command_lower:
         # Test the voice unlock system

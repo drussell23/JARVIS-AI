@@ -14,6 +14,7 @@ import subprocess
 import os
 from datetime import datetime
 from typing import Optional, Dict, Any, Set
+from screen_lock_detector import is_screen_locked
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -60,12 +61,16 @@ class VoiceUnlockWebSocketServer:
                 is_running = self.check_daemon_running()
                 enrolled_users = self.get_enrolled_users()
                 
+                # Check actual screen lock status
+                screen_locked = is_screen_locked()
+                logger.info(f"Screen lock status check: {'LOCKED' if screen_locked else 'UNLOCKED'}")
+                
                 return {
                     "type": "status",
                     "success": True,
                     "status": {
                         "isMonitoring": is_running,
-                        "isScreenLocked": False,  # Would need actual check
+                        "isScreenLocked": screen_locked,
                         "enrolledUser": enrolled_users[0] if enrolled_users else "none",
                         "failedAttempts": 0,
                         "state": 1 if is_running else 0
@@ -395,29 +400,57 @@ class VoiceUnlockWebSocketServer:
             return False
     
     async def perform_screen_lock(self) -> bool:
-        """Lock the Mac screen"""
+        """Lock the Mac screen using various methods"""
         try:
             logger.info("Locking screen...")
             
-            # Method 1: Using Control+Command+Q (fastest)
-            lock_script = '''
-            tell application "System Events"
-                keystroke "q" using {control down, command down}
-            end tell
-            '''
+            # Method 1: Use CGSession (most reliable)
+            try:
+                result = subprocess.run([
+                    '/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession',
+                    '-suspend'
+                ], capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    logger.info("Screen locked successfully using CGSession")
+                    return True
+            except Exception as e:
+                logger.debug(f"CGSession method failed: {e}")
             
-            result = subprocess.run([
-                'osascript', '-e', lock_script
-            ], capture_output=True, text=True)
+            # Method 2: Use loginwindow
+            try:
+                result = subprocess.run([
+                    'osascript', '-e', 
+                    'tell application "System Events" to tell process "loginwindow" to keystroke "q" using {command down, control down}'
+                ], capture_output=True, text=True)
+                
+                if result.returncode == 0:
+                    logger.info("Screen locked successfully using loginwindow")
+                    return True
+            except Exception as e:
+                logger.debug(f"Loginwindow method failed: {e}")
             
-            if result.returncode == 0:
-                logger.info("Screen locked successfully")
+            # Method 3: Use ScreenSaverEngine
+            try:
+                # Start screensaver which will require password on wake
+                subprocess.run([
+                    'open', '-a', 'ScreenSaverEngine'
+                ])
+                logger.info("Started screensaver (will lock if password required)")
                 return True
-            else:
-                # Fallback: Use pmset
-                logger.info("Trying alternative lock method...")
+            except Exception as e:
+                logger.debug(f"ScreenSaver method failed: {e}")
+            
+            # Method 4: Fallback to sleep display
+            try:
                 subprocess.run(['pmset', 'displaysleepnow'])
+                logger.info("Put display to sleep")
                 return True
+            except Exception as e:
+                logger.debug(f"Display sleep method failed: {e}")
+                
+            logger.error("All lock methods failed")
+            return False
                 
         except Exception as e:
             logger.error(f"Error locking screen: {e}")

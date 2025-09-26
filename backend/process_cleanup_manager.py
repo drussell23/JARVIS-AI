@@ -3,6 +3,7 @@
 Intelligent Process Cleanup Manager for JARVIS
 Dynamically identifies and cleans up stuck/hanging processes without hardcoding
 Uses Swift performance monitoring for minimal overhead
+Enhanced with code change detection to ensure only latest instance runs
 """
 
 import psutil
@@ -16,6 +17,8 @@ from datetime import datetime, timedelta
 import logging
 from pathlib import Path
 import json
+import hashlib
+import subprocess
 
 # Check for Swift availability
 try:
@@ -29,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 class ProcessCleanupManager:
-    """Manages cleanup of stuck or zombie processes"""
+    """Manages cleanup of stuck or zombie processes with code change detection"""
 
     def __init__(self):
         """Initialize the cleanup manager"""
@@ -39,6 +42,7 @@ class ProcessCleanupManager:
         self.config = {
             'check_interval': 5.0,  # seconds
             'process_timeout': 30.0,  # seconds
+            'stuck_process_time': 7200.0,  # 2 hours - consider process stuck
             'memory_threshold': 0.35,  # 35% memory usage target
             'memory_threshold_warning': 0.50,  # 50% warning threshold
             'memory_threshold_critical': 0.70,  # 70% critical threshold
@@ -46,8 +50,43 @@ class ProcessCleanupManager:
             'cpu_threshold_system': 80.0,  # 80% total system CPU usage threshold
             'cpu_threshold_single': 50.0,  # 50% CPU for single process
             'enable_cleanup': True,
-            'aggressive_cleanup': True  # Enable aggressive memory management
+            'aggressive_cleanup': True,  # Enable aggressive memory management
+            # JARVIS-specific patterns
+            'jarvis_patterns': [
+                'jarvis', 'main.py', 'jarvis_backend', 'jarvis_voice',
+                'voice_unlock', 'websocket_server', 'jarvis-ai-agent',
+                'unified_command_processor', 'resource_manager'
+            ],
+            'jarvis_port_patterns': [8000, 8001, 8010, 8080, 8765, 5000],  # Common JARVIS ports
+            'system_critical': [
+                'kernel_task', 'WindowServer', 'loginwindow', 'launchd',
+                'systemd', 'init', 'Finder', 'Dock', 'SystemUIServer'
+            ],
+            # Critical files to monitor for changes
+            'critical_files': [
+                'main.py',
+                'api/jarvis_voice_api.py',
+                'api/unified_command_processor.py',
+                'api/voice_unlock_integration.py',
+                'voice/jarvis_voice.py',
+                'voice/macos_voice.py',
+                'engines/voice_engine.py'
+            ]
         }
+        
+        # Learning patterns
+        self.problem_patterns = {}
+        self.cleanup_history = []
+        
+        # Code state tracking
+        self.code_state_file = Path.home() / ".jarvis" / "code_state.json"
+        self.code_state = self._load_code_state()
+        
+        # Load history if exists
+        self._load_cleanup_history()
+        
+        # Backend base path
+        self.backend_path = Path(__file__).parent.absolute()
 
     def _get_swift_monitor(self):
         """Lazy load the Swift monitor"""
@@ -56,6 +95,220 @@ class ProcessCleanupManager:
 
             self.swift_monitor = get_swift_system_monitor()
         return self.swift_monitor
+
+    def _calculate_code_hash(self) -> str:
+        """Calculate hash of critical JARVIS files to detect code changes"""
+        hasher = hashlib.sha256()
+        
+        for file_path in self.config['critical_files']:
+            full_path = self.backend_path / file_path
+            if full_path.exists():
+                try:
+                    with open(full_path, 'rb') as f:
+                        hasher.update(f.read())
+                    # Also include file modification time
+                    hasher.update(str(full_path.stat().st_mtime).encode())
+                except Exception as e:
+                    logger.error(f"Error hashing {file_path}: {e}")
+        
+        return hasher.hexdigest()
+
+    def _detect_code_changes(self) -> bool:
+        """Detect if JARVIS code has changed since last run"""
+        current_hash = self._calculate_code_hash()
+        last_hash = self.code_state.get('code_hash', '')
+        
+        if current_hash != last_hash:
+            logger.info(f"Code changes detected! Current: {current_hash[:8]}... Last: {last_hash[:8]}...")
+            return True
+        return False
+
+    def _save_code_state(self):
+        """Save current code state"""
+        self.code_state['code_hash'] = self._calculate_code_hash()
+        self.code_state['last_update'] = datetime.now().isoformat()
+        self.code_state['pid'] = os.getpid()
+        
+        self.code_state_file.parent.mkdir(exist_ok=True)
+        try:
+            with open(self.code_state_file, 'w') as f:
+                json.dump(self.code_state, f, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to save code state: {e}")
+
+    def _load_code_state(self) -> Dict:
+        """Load saved code state"""
+        if self.code_state_file.exists():
+            try:
+                with open(self.code_state_file, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"Failed to load code state: {e}")
+        return {}
+
+    def cleanup_old_instances_on_code_change(self) -> List[Dict]:
+        """
+        Cleanup old JARVIS instances when code changes are detected.
+        This ensures only the latest code is running.
+        """
+        cleaned = []
+        
+        # Check for code changes
+        if not self._detect_code_changes():
+            logger.info("No code changes detected, skipping old instance cleanup")
+            return cleaned
+        
+        logger.warning("🔄 Code changes detected! Cleaning up old JARVIS instances...")
+        
+        current_pid = os.getpid()
+        current_time = time.time()
+        
+        # Find all JARVIS processes
+        for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
+            try:
+                if proc.pid == current_pid:
+                    continue  # Skip self
+                    
+                if self._is_jarvis_process(proc):
+                    cmdline = " ".join(proc.cmdline())
+                    logger.info(f"Found JARVIS process: PID {proc.pid} - {cmdline[:100]}...")
+                    
+                    # Check if it's a main JARVIS process
+                    if "main.py" in cmdline:
+                        age_seconds = current_time - proc.create_time()
+                        logger.warning(
+                            f"Terminating old JARVIS instance (PID: {proc.pid}, "
+                            f"Age: {age_seconds/60:.1f} minutes, Started: {datetime.fromtimestamp(proc.create_time())})"
+                        )
+                        
+                        try:
+                            # Try graceful termination first
+                            proc.terminate()
+                            proc.wait(timeout=5)
+                            cleaned.append({
+                                "pid": proc.pid,
+                                "name": proc.name(),
+                                "cmdline": cmdline[:100],
+                                "age_minutes": age_seconds / 60,
+                                "status": "terminated"
+                            })
+                            logger.info(f"✅ Gracefully terminated old JARVIS process {proc.pid}")
+                        except psutil.TimeoutExpired:
+                            # Force kill if needed
+                            proc.kill()
+                            cleaned.append({
+                                "pid": proc.pid,
+                                "name": proc.name(),
+                                "cmdline": cmdline[:100],
+                                "age_minutes": age_seconds / 60,
+                                "status": "killed"
+                            })
+                            logger.warning(f"⚠️ Force killed old JARVIS process {proc.pid}")
+                        except Exception as e:
+                            logger.error(f"❌ Failed to clean up PID {proc.pid}: {e}")
+                    
+                    # Also clean up related processes (voice_unlock, websocket_server, etc)
+                    elif any(pattern in cmdline for pattern in ['voice_unlock', 'websocket_server', 'jarvis_']):
+                        try:
+                            logger.info(f"Cleaning up related process: {proc.name()} (PID: {proc.pid})")
+                            proc.terminate()
+                            proc.wait(timeout=3)
+                            cleaned.append({
+                                "pid": proc.pid,
+                                "name": proc.name(),
+                                "cmdline": cmdline[:50],
+                                "status": "terminated"
+                            })
+                        except:
+                            try:
+                                proc.kill()
+                            except:
+                                pass
+                                
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        
+        # Clean up orphaned ports after killing processes
+        time.sleep(1)  # Give processes time to release ports
+        self._cleanup_orphaned_ports()
+        
+        # Save new code state after cleanup
+        self._save_code_state()
+        
+        if cleaned:
+            logger.info(f"🧹 Cleaned up {len(cleaned)} old JARVIS processes due to code changes")
+        
+        return cleaned
+
+    def ensure_single_instance(self) -> bool:
+        """
+        Ensure only one instance of JARVIS is running on the same port.
+        Returns True if this is the only instance, False otherwise.
+        """
+        current_pid = os.getpid()
+        target_port = int(os.getenv('BACKEND_PORT', '8000'))
+        
+        # Check for processes using the target port
+        try:
+            for conn in psutil.net_connections():
+                if conn.laddr.port == target_port and conn.status == "LISTEN":
+                    if conn.pid != current_pid:
+                        try:
+                            proc = psutil.Process(conn.pid)
+                            if self._is_jarvis_process(proc):
+                                logger.warning(
+                                    f"Another JARVIS instance (PID: {conn.pid}) is already "
+                                    f"running on port {target_port}"
+                                )
+                                
+                                # Check if we should take over (code changes or old instance)
+                                if self._detect_code_changes():
+                                    logger.info("Code changes detected, terminating old instance...")
+                                    proc.terminate()
+                                    try:
+                                        proc.wait(timeout=5)
+                                    except psutil.TimeoutExpired:
+                                        proc.kill()
+                                    time.sleep(1)
+                                    return True
+                                else:
+                                    return False
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+        except (psutil.AccessDenied, PermissionError):
+            # Fall back to checking specific port using lsof
+            logger.info(f"Permission denied for net_connections, checking port {target_port} with lsof...")
+            try:
+                result = subprocess.run(
+                    ["lsof", "-i", f":{target_port}", "-t"],
+                    capture_output=True,
+                    text=True
+                )
+                if result.stdout.strip():
+                    pids = [int(pid) for pid in result.stdout.strip().split('\n') if pid]
+                    for pid in pids:
+                        if pid != current_pid:
+                            try:
+                                proc = psutil.Process(pid)
+                                if self._is_jarvis_process(proc):
+                                    logger.warning(f"Found JARVIS instance on port {target_port} (PID: {pid})")
+                                    if self._detect_code_changes():
+                                        logger.info("Code changes detected, terminating old instance...")
+                                        proc.terminate()
+                                        try:
+                                            proc.wait(timeout=5)
+                                        except psutil.TimeoutExpired:
+                                            proc.kill()
+                                        time.sleep(1)
+                                        return True
+                                    else:
+                                        return False
+                            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                                pass
+            except Exception as e:
+                logger.error(f"Failed to check port with lsof: {e}")
+        
+        return True
 
     def get_system_snapshot(self) -> Dict[str, Any]:
         """Get a snapshot of the system state using Swift if available"""
@@ -213,10 +466,14 @@ class ProcessCleanupManager:
                 if pattern.lower() in proc_name or pattern.lower() in cmdline:
                     return True
 
-            # Check if it's using JARVIS ports
-            for conn in proc.connections():
-                if conn.laddr.port in self.config["jarvis_port_patterns"]:
-                    return True
+            # Check if it's using JARVIS ports (with permission handling)
+            try:
+                for conn in proc.connections():
+                    if conn.laddr.port in self.config["jarvis_port_patterns"]:
+                        return True
+            except (psutil.AccessDenied, PermissionError):
+                # Can't check connections, but that's okay
+                pass
 
             return False
         except:
@@ -258,6 +515,9 @@ class ProcessCleanupManager:
         """Perform intelligent cleanup of problematic processes"""
         logger.info("🧹 Starting intelligent process cleanup...")
 
+        # First, handle code change cleanup
+        code_cleanup = self.cleanup_old_instances_on_code_change()
+        
         # Analyze system state
         state = self.analyze_system_state()
 
@@ -267,6 +527,7 @@ class ProcessCleanupManager:
                 "cpu_percent": state["cpu_percent"],
                 "memory_percent": state["memory_percent"],
             },
+            "code_changes_cleanup": code_cleanup,
             "actions": [],
             "freed_resources": {"cpu_percent": 0, "memory_mb": 0},
         }
@@ -368,6 +629,8 @@ class ProcessCleanupManager:
         logger.info(
             f"Cleanup complete: {len(cleanup_report['actions'])} processes handled"
         )
+        if code_cleanup:
+            logger.info(f"Code change cleanup: {len(code_cleanup)} old instances terminated")
         logger.info(
             f"Freed approximately {cleanup_report['freed_resources']['cpu_percent']:.1f}% CPU, "
             f"{cleanup_report['freed_resources']['memory_mb']}MB memory"
@@ -467,13 +730,108 @@ class ProcessCleanupManager:
                 f"Found {len(old_jarvis)} old JARVIS processes that may be stuck."
             )
 
+        # Check for code changes
+        if self._detect_code_changes():
+            recommendations.append(
+                "⚠️ CODE CHANGES DETECTED: Old JARVIS instances should be terminated!"
+            )
+
         return recommendations
+    
+    def _load_cleanup_history(self):
+        """Load cleanup history from disk"""
+        history_file = Path.home() / ".jarvis" / "cleanup_history.json"
+        if history_file.exists():
+            try:
+                with open(history_file, "r") as f:
+                    self.cleanup_history = json.load(f)
+                    # Rebuild problem patterns from history
+                    for entry in self.cleanup_history[-50:]:  # Last 50 entries
+                        for action in entry.get("actions", []):
+                            if action.get("success"):
+                                self._update_problem_patterns(
+                                    action.get("name", ""), True
+                                )
+            except Exception as e:
+                logger.error(f"Failed to load cleanup history: {e}")
+    
+    def cleanup_old_jarvis_processes(self, max_age_hours: float = 12.0) -> List[Dict]:
+        """
+        Specifically clean up old JARVIS processes that have been running too long
+        
+        Args:
+            max_age_hours: Maximum age in hours before considering a JARVIS process stale
+            
+        Returns:
+            List of cleaned up processes
+        """
+        cleaned = []
+        current_time = time.time()
+        
+        for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
+            try:
+                if self._is_jarvis_process(proc):
+                    age_hours = (current_time - proc.create_time()) / 3600
+                    
+                    if age_hours > max_age_hours:
+                        # Check if it's the current main process
+                        cmdline = " ".join(proc.cmdline())
+                        if "main.py" in cmdline:
+                            # This is likely an old JARVIS main process
+                            logger.warning(
+                                f"Found stale JARVIS process (PID: {proc.pid}, "
+                                f"Age: {age_hours:.1f} hours)"
+                            )
+                            
+                            try:
+                                proc.terminate()
+                                proc.wait(timeout=5)
+                                cleaned.append({
+                                    "pid": proc.pid,
+                                    "name": proc.name(),
+                                    "age_hours": age_hours,
+                                    "status": "terminated"
+                                })
+                                logger.info(f"Terminated old JARVIS process {proc.pid}")
+                            except psutil.TimeoutExpired:
+                                proc.kill()
+                                cleaned.append({
+                                    "pid": proc.pid,
+                                    "name": proc.name(),
+                                    "age_hours": age_hours,
+                                    "status": "killed"
+                                })
+                                logger.warning(f"Force killed old JARVIS process {proc.pid}")
+                            except Exception as e:
+                                logger.error(f"Failed to clean up PID {proc.pid}: {e}")
+                                
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+                
+        return cleaned
+    
+    def get_jarvis_process_age(self) -> Optional[float]:
+        """Get the age of the main JARVIS process in hours"""
+        for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
+            try:
+                if self._is_jarvis_process(proc):
+                    cmdline = " ".join(proc.cmdline())
+                    if "main.py" in cmdline:
+                        age_hours = (time.time() - proc.create_time()) / 3600
+                        return age_hours
+            except:
+                continue
+        return None
 
 
 # Convenience functions for integration
 async def cleanup_system_for_jarvis(dry_run: bool = False) -> Dict[str, any]:
     """Main entry point for cleaning up system before JARVIS starts"""
     manager = ProcessCleanupManager()
+    
+    # Always check for code changes and clean up old instances
+    manager.cleanup_old_instances_on_code_change()
+    
     return await manager.smart_cleanup(dry_run=dry_run)
 
 
@@ -481,6 +839,22 @@ def get_system_recommendations() -> List[str]:
     """Get recommendations for system optimization"""
     manager = ProcessCleanupManager()
     return manager.get_cleanup_recommendations()
+
+
+def ensure_fresh_jarvis_instance():
+    """
+    Ensure JARVIS is running fresh code. Call this at startup.
+    Returns True if it's safe to start, False if another instance should be used.
+    """
+    manager = ProcessCleanupManager()
+    
+    # Clean up old instances if code has changed
+    cleaned = manager.cleanup_old_instances_on_code_change()
+    if cleaned:
+        logger.info(f"Cleaned {len(cleaned)} old instances due to code changes")
+    
+    # Ensure single instance
+    return manager.ensure_single_instance()
 
 
 if __name__ == "__main__":
@@ -491,6 +865,12 @@ if __name__ == "__main__":
         print("🔍 Analyzing system state...")
 
         manager = ProcessCleanupManager()
+        
+        # Check for code changes
+        if manager._detect_code_changes():
+            print("\n⚠️  CODE CHANGES DETECTED!")
+            print("Old JARVIS instances will be terminated.\n")
+        
         state = manager.analyze_system_state()
 
         print(f"\n📊 System State:")
@@ -514,5 +894,8 @@ if __name__ == "__main__":
 
         if len(report["actions"]) > 5:
             print(f"  ... and {len(report['actions']) - 5} more")
+            
+        if report.get("code_changes_cleanup"):
+            print(f"\nCode change cleanup: {len(report['code_changes_cleanup'])} old instances")
 
     asyncio.run(test())

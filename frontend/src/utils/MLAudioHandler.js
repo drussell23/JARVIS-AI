@@ -3,7 +3,7 @@
  * Integrates with backend ML audio manager for intelligent error recovery
  */
 
-import { API_BASE_URL } from '../config';
+import configService from '../services/DynamicConfigService';
 
 class MLAudioHandler {
     constructor() {
@@ -31,11 +31,8 @@ class MLAudioHandler {
             predictionThreshold: 0.7
         };
 
-        // Load configuration from backend
-        this.loadConfiguration();
-
-        // Initialize WebSocket connection to ML backend with delay
-        setTimeout(() => this.connectToMLBackend(), 5000);
+        // Wait for config service before initializing
+        this.initializeWhenReady();
 
         // Browser detection
         this.browserInfo = this.detectBrowser();
@@ -45,9 +42,32 @@ class MLAudioHandler {
         this.checkPermissionState();
     }
 
+    async initializeWhenReady() {
+        try {
+            await configService.waitForConfig();
+            console.log('ML Audio: Config service ready, initializing...');
+            
+            // Load configuration from backend
+            await this.loadConfiguration();
+            
+            // Initialize WebSocket connection to ML backend
+            setTimeout(() => this.connectToMLBackend(), 2000);
+        } catch (error) {
+            console.error('ML Audio: Failed to initialize', error);
+            // Retry initialization
+            setTimeout(() => this.initializeWhenReady(), 5000);
+        }
+    }
+
     async loadConfiguration() {
         try {
-            const response = await fetch(`${API_BASE_URL}/audio/ml/config`);
+            const apiUrl = configService.getApiUrl('audio/ml/config');
+            if (!apiUrl) {
+                console.warn('ML Audio: API URL not available yet');
+                return;
+            }
+            
+            const response = await fetch(apiUrl);
             if (response.ok) {
                 const config = await response.json();
                 this.config = { ...this.config, ...config };
@@ -58,7 +78,7 @@ class MLAudioHandler {
         }
     }
 
-    connectToMLBackend() {
+    async connectToMLBackend() {
         if (this.isConnecting || this.connectionAttempts >= this.maxConnectionAttempts) {
             if (this.connectionAttempts >= this.maxConnectionAttempts) {
                 console.warn('ML Audio: Max connection attempts reached, stopping reconnection');
@@ -70,7 +90,20 @@ class MLAudioHandler {
         this.connectionAttempts++;
 
         try {
-            this.ws = new WebSocket(`${API_BASE_URL.replace('http', 'ws')}/audio/ml/stream`);
+            // Try unified WebSocket first, fall back to ML-specific endpoint
+            let wsUrl = configService.getWebSocketUrl('ws');
+            if (!wsUrl) {
+                // Try the ML-specific endpoint
+                wsUrl = configService.getWebSocketUrl('audio/ml/stream');
+            }
+            if (!wsUrl) {
+                console.warn('ML Audio: WebSocket URL not available yet');
+                this.isConnecting = false;
+                setTimeout(() => this.connectToMLBackend(), 5000);
+                return;
+            }
+            
+            this.ws = new WebSocket(wsUrl);
 
             this.ws.onopen = () => {
                 console.log('Connected to ML Audio Backend');
@@ -237,7 +270,12 @@ class MLAudioHandler {
 
     async sendErrorToBackend(context) {
         try {
-            const response = await fetch(`${API_BASE_URL}/audio/ml/error`, {
+            const apiUrl = configService.getApiUrl('audio/ml/error');
+            if (!apiUrl) {
+                console.warn('ML Audio: API URL not available for error endpoint');
+                return null;
+            }
+            const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(context)
@@ -536,7 +574,12 @@ class MLAudioHandler {
         };
 
         try {
-            const response = await fetch(`${API_BASE_URL}/audio/ml/predict`, {
+            const apiUrl = configService.getApiUrl('audio/ml/predict');
+            if (!apiUrl) {
+                console.warn('ML Audio: API URL not available for predict endpoint');
+                return null;
+            }
+            const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(context)
@@ -651,8 +694,10 @@ class MLAudioHandler {
 
     sendTelemetry(event, data) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            // Use ml_audio_stream type for unified WebSocket compatibility
             this.ws.send(JSON.stringify({
-                type: 'telemetry',
+                type: 'ml_audio_stream',
+                subtype: 'telemetry',
                 event,
                 data,
                 timestamp: new Date().toISOString()
