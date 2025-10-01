@@ -102,6 +102,7 @@ class CommandType(Enum):
     COMPOUND = "compound"
     META = "meta"
     VOICE_UNLOCK = "voice_unlock"
+    DOCUMENT = "document"
     UNKNOWN = "unknown"
 
 
@@ -347,11 +348,22 @@ class UnifiedCommandProcessor:
                 return CommandType.SYSTEM, 0.9
         
             
+        # Document creation detection (high priority - before vision)
+        document_keywords = ['write', 'create', 'draft', 'compose', 'generate']
+        document_types = ['essay', 'report', 'paper', 'article', 'document', 'blog', 'letter', 'story']
+
+        has_document_keyword = any(kw in words for kw in document_keywords)
+        has_document_type = any(dtype in words for dtype in document_types)
+
+        if has_document_keyword and has_document_type:
+            logger.info(f"[CLASSIFY] Document creation command detected: '{command_text}'")
+            return CommandType.DOCUMENT, 0.95
+
         # Vision detection through semantic analysis
         vision_score = self._calculate_vision_score(words)
         if vision_score > 0.7:
             return CommandType.VISION, vision_score
-            
+
         # Weather detection - simple but effective
         if 'weather' in words:
             return CommandType.WEATHER, 0.95
@@ -612,6 +624,50 @@ class UnifiedCommandProcessor:
                         'success': True,
                         'response': 'Understood',
                         'command_type': 'meta'
+                    }
+            elif command_type == CommandType.DOCUMENT:
+                # Handle document creation commands
+                logger.info(f"[DOCUMENT] Routing to document writer: '{command_text}'")
+                try:
+                    from context_intelligence.executors import get_document_writer, parse_document_request
+
+                    # Parse the document request
+                    doc_request = parse_document_request(command_text, {})
+
+                    # Get document writer
+                    writer = get_document_writer()
+
+                    # Send immediate acknowledgment
+                    if websocket:
+                        await websocket.send_json({
+                            "type": "narration",
+                            "message": f"Creating {doc_request.document_type.value} on '{doc_request.topic}'..."
+                        })
+
+                    # Execute document creation
+                    result = await writer.create_document(request=doc_request, websocket=websocket)
+
+                    if result.get('success'):
+                        return {
+                            'success': True,
+                            'response': result.get('message', f"Document created successfully"),
+                            'command_type': command_type.value,
+                            **result
+                        }
+                    else:
+                        return {
+                            'success': False,
+                            'response': f"Failed to create document: {result.get('error', 'Unknown error')}",
+                            'command_type': command_type.value
+                        }
+
+                except Exception as e:
+                    logger.error(f"[DOCUMENT] Error: {e}", exc_info=True)
+                    return {
+                        'success': False,
+                        'response': f"I encountered an error creating the document: {str(e)}",
+                        'command_type': command_type.value,
+                        'error': str(e)
                     }
             elif command_type == CommandType.VOICE_UNLOCK:
                 # Handle voice unlock commands with quick response
