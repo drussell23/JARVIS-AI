@@ -70,14 +70,19 @@ class ProcessCleanupManager:
                 'kernel_task', 'WindowServer', 'loginwindow', 'launchd',
                 'systemd', 'init', 'Finder', 'Dock', 'SystemUIServer',
                 'python', 'Python',  # Don't kill generic python processes
-                # IDE and development tools
-                'Cursor', 'cursor', 'Code', 'Code Helper', 'Visual Studio Code',
-                'VSCode', 'vscode', 'Electron', 'node',
-                # Browsers
+                # IDE and development tools (with all helper processes)
+                'Cursor', 'cursor', 'Cursor Helper', 'cursor helper',
+                'Code', 'Code Helper', 'Visual Studio Code', 'VSCode', 'vscode',
+                'Electron', 'node', 'Node', 'codeium', 'Codeium',
+                # Browsers (with all helper processes)
                 'Google Chrome', 'Chrome', 'chrome', 'Google Chrome Helper',
-                'Safari', 'safari', 'Firefox', 'firefox', 'Arc', 'Brave',
-                # Other common tools
-                'Terminal', 'iTerm', 'iTerm2', 'Warp'
+                'Chrome Helper', 'Chromium', 'chromium',
+                'Safari', 'safari', 'Safari Helper', 'WebKit',
+                'Firefox', 'firefox', 'Arc', 'Brave',
+                # System tools
+                'Terminal', 'iTerm', 'iTerm2', 'Warp', 'Claude Code',
+                # Media and analysis (often uses lots of memory legitimately)
+                'mediaanalysisd', 'photolibraryd', 'photoanalysisd'
             ],
             # Critical files to monitor for changes
             'critical_files': [
@@ -657,8 +662,21 @@ class ProcessCleanupManager:
             if candidate["priority"] < 0.3:
                 continue  # Skip low priority
 
-            # Skip protected processes
+            # Skip protected processes - check both exact match and substring
+            should_skip = False
+            candidate_name_lower = candidate["name"].lower()
+
+            # Exact match check
             if candidate["name"] in self.config["system_critical"]:
+                should_skip = True
+
+            # Substring match check (for processes like "Cursor Helper", "Code Helper", etc.)
+            for protected in self.config["system_critical"]:
+                if protected.lower() in candidate_name_lower or candidate_name_lower in protected.lower():
+                    should_skip = True
+                    break
+
+            if should_skip:
                 continue
 
             action = {
