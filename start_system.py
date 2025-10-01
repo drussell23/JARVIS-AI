@@ -604,7 +604,7 @@ class AsyncSystemManager:
                 if self.auto_cleanup:
                     print(f"\n{Colors.BLUE}Automatically cleaning up processes...{Colors.ENDC}")
                     should_cleanup = True
-                else:
+            else:
                     should_cleanup = input(
                         f"\n{Colors.CYAN}Clean up these processes? (y/n): {Colors.ENDC}"
                     ).lower() == "y"
@@ -1443,7 +1443,7 @@ class AsyncSystemManager:
 
     async def monitor_services(self):
         """Monitor services with health checks"""
-        print(f"\n{Colors.BLUE}Monitoring services...{Colors.ENDC}")
+            print(f"\n{Colors.BLUE}Monitoring services...{Colors.ENDC}")
 
         last_health_check = time.time()
         consecutive_failures = {"backend": 0}
@@ -2222,7 +2222,7 @@ except Exception as e:
                     self.ports["main_api"] = service.port
                 elif "frontend" in name.lower():
                     self.ports["frontend"] = service.port
-
+        
         # Start pre-warming imports early
         prewarm_task = asyncio.create_task(self._prewarm_python_imports())
         
