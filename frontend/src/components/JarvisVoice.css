@@ -213,6 +213,12 @@
   animation: pulse-border 1s ease-in-out infinite;
 }
 
+.status-item.speech-queue {
+  border-color: rgba(245, 158, 11, 0.3);
+  background: rgba(245, 158, 11, 0.1);
+  color: rgba(245, 158, 11, 0.9);
+}
+
 .status-dot {
   width: 6px;
   height: 6px;

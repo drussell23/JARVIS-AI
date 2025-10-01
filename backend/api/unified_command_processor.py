@@ -640,18 +640,28 @@ class UnifiedCommandProcessor:
                     # Send immediate acknowledgment
                     if websocket:
                         await websocket.send_json({
-                            "type": "narration",
-                            "message": f"Creating {doc_request.document_type.value} on '{doc_request.topic}'..."
+                            "type": "voice_narration",
+                            "message": f"Creating {doc_request.document_type.value} on '{doc_request.topic}'...",
+                            "speak": True
                         })
 
                     # Execute document creation
                     result = await writer.create_document(request=doc_request, websocket=websocket)
 
                     if result.get('success'):
+                        # Send final success message as voice narration
+                        if websocket:
+                            await websocket.send_json({
+                                "type": "voice_narration",
+                                "message": result.get('message', f"Document created successfully"),
+                                "speak": True
+                            })
+                        
                         return {
                             'success': True,
                             'response': result.get('message', f"Document created successfully"),
                             'command_type': command_type.value,
+                            'speak': True,  # Ensure the response is spoken
                             **result
                         }
                     else:

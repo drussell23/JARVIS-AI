@@ -264,6 +264,16 @@ class DocumentWriterExecutor:
         self._google_docs = None
         self._claude = None
         self._browser = None
+        self._narration_context = {
+            "phase": "initializing",
+            "topic": "",
+            "progress": 0,
+            "current_section": "",
+            "word_count": 0,
+            "total_words_target": 0
+        }
+        self._last_narration_time = 0
+        self._min_narration_interval = 3.0  # Minimum 3 seconds between narrations
 
     async def create_document(self,
                             request: DocumentRequest,
@@ -281,25 +291,32 @@ class DocumentWriterExecutor:
             Execution result with document details
         """
         try:
-            # Phase 1: Announce with full context
-            article = "an" if request.document_type.value[0] in 'aeiou' else "a"
-            format_spec = FORMAT_SPECIFICATIONS.get(request.formatting.value, {})
-            format_name = format_spec.get("name", "standard format")
+            # Initialize narration context
+            self._narration_context = {
+                "phase": "starting",
+                "topic": request.topic,
+                "document_type": request.document_type.value,
+                "format": request.formatting.value,
+                "progress": 0,
+                "word_count": 0,
+                "total_words_target": request.word_count or 1000,
+                "current_section": "initialization"
+            }
 
-            await self._narrate(progress_callback, websocket,
-                f"Understood, Sir. I'll create {article} {request.document_type.value} about '{request.topic}' "
-                f"in {format_name}.")
+            # Phase 1: Dynamic announcement
+            await self._narrate(progress_callback, websocket, context={
+                "phase": "acknowledging_request",
+                "topic": request.topic,
+                "document_type": request.document_type.value,
+                "format": request.formatting.value,
+                "total_words_target": request.word_count or 1000
+            })
 
-            if request.word_count:
-                await self._narrate(progress_callback, websocket,
-                    f"Target length: {request.word_count} words.")
-            elif request.page_count:
-                await self._narrate(progress_callback, websocket,
-                    f"Target length: {request.page_count} pages.")
-
-            # Phase 2: Initialize services with detailed feedback
-            await self._narrate(progress_callback, websocket,
-                "Initializing document creation systems...")
+            # Phase 2: Initialize services with dynamic feedback
+            await self._narrate(progress_callback, websocket, context={
+                "phase": "initializing_services",
+                "progress": 10
+            })
 
             if not await self._initialize_services(request):
                 return {
@@ -307,16 +324,17 @@ class DocumentWriterExecutor:
                     "error": "Failed to initialize required services"
                 }
 
-            await self._narrate(progress_callback, websocket,
-                "✓ Claude AI connected and ready")
-            await self._narrate(progress_callback, websocket,
-                "✓ Google Docs API authenticated")
-            await self._narrate(progress_callback, websocket,
-                "✓ Browser automation ready")
+            await self._narrate(progress_callback, websocket, context={
+                "phase": "services_ready",
+                "progress": 20
+            })
 
             # Phase 3: Create Google Doc via API
-            await self._narrate(progress_callback, websocket,
-                f"Creating new Google Doc titled '{request.title}'...")
+            await self._narrate(progress_callback, websocket, context={
+                "phase": "creating_document",
+                "progress": 25,
+                "current_section": f"Google Doc: {request.title}"
+            })
 
             doc_info = await self._create_google_doc(request)
             if not doc_info:
@@ -328,44 +346,51 @@ class DocumentWriterExecutor:
             document_id = doc_info['document_id']
             document_url = doc_info['document_url']
 
-            await self._narrate(progress_callback, websocket,
-                f"✓ Document created successfully")
+            await self._narrate(progress_callback, websocket, context={
+                "phase": "document_created",
+                "progress": 30
+            })
 
             # Phase 4: Open in Chrome
-            await self._narrate(progress_callback, websocket,
-                f"Opening document in {request.browser}...")
+            await self._narrate(progress_callback, websocket, context={
+                "phase": "opening_browser",
+                "progress": 35
+            })
 
             await self._open_in_browser(document_url, request)
-            await asyncio.sleep(1.5)  # Let user see the document open
+            await asyncio.sleep(1.5)
 
-            await self._narrate(progress_callback, websocket,
-                "✓ Document opened in browser")
+            await self._narrate(progress_callback, websocket, context={
+                "phase": "browser_ready",
+                "progress": 40
+            })
 
             # Phase 5: Generate outline with detail
-            await self._narrate(progress_callback, websocket,
-                f"Analyzing '{request.topic}' and structuring the content...")
-
-            await self._narrate(progress_callback, websocket,
-                "Creating comprehensive outline with Claude AI...")
+            await self._narrate(progress_callback, websocket, context={
+                "phase": "analyzing_topic",
+                "progress": 45,
+                "current_section": "outline generation"
+            })
 
             outline = await self._generate_outline(request)
 
             section_count = len(outline.get('sections', []))
-            await self._narrate(progress_callback, websocket,
-                f"✓ Outline complete: {section_count} main sections identified")
-
-            # Announce the structure
             sections = outline.get('sections', [])
-            if sections:
-                await self._narrate(progress_callback, websocket,
-                    f"Structure planned: {', '.join([s['name'] for s in sections])}")
+            section_names = ', '.join([s['name'] for s in sections])
+
+            await self._narrate(progress_callback, websocket, context={
+                "phase": "outline_complete",
+                "progress": 50,
+                "section_count": section_count,
+                "sections": section_names
+            })
 
             # Phase 6: Stream content with detailed progress
-            await self._narrate(progress_callback, websocket,
-                f"Beginning to write your {request.document_type.value} in {format_name}...")
-
-            await self._narrate(progress_callback, websocket,
-                "Claude AI is now generating content. You'll see it appear in real-time, Sir.")
+            await self._narrate(progress_callback, websocket, context={
+                "phase": "starting_writing",
+                "progress": 55,
+                "current_section": sections[0]['name'] if sections else "introduction"
+            })
 
             word_count = await self._stream_content(
                 document_id, request, outline,
@@ -373,14 +398,18 @@ class DocumentWriterExecutor:
             )
 
             # Phase 7: Completion with summary
-            await self._narrate(progress_callback, websocket,
-                f"✓ Writing complete!")
+            await self._narrate(progress_callback, websocket, context={
+                "phase": "writing_complete",
+                "progress": 95,
+                "word_count": word_count
+            })
 
-            await self._narrate(progress_callback, websocket,
-                f"Your {request.document_type.value} about '{request.topic}' is ready, Sir.")
-
-            await self._narrate(progress_callback, websocket,
-                f"Final statistics: {word_count} words, {format_name}, {section_count} sections")
+            await self._narrate(progress_callback, websocket, context={
+                "phase": "document_ready",
+                "progress": 100,
+                "word_count": word_count,
+                "section_count": section_count
+            })
 
             return {
                 "success": True,
@@ -506,16 +535,6 @@ Provide a clear, structured outline."""
         current_section_index = 0
         section_announced = False
 
-        # Check if we're using real API or demo mode
-        if self._claude and not self._claude.api_key:
-            await self._narrate(progress_callback, websocket,
-                "⚠️ Running in DEMO mode (no Claude API key configured). The content will be generic.")
-            await self._narrate(progress_callback, websocket,
-                "For real AI-generated content, set up your API key with: python backend/setup_claude_api.py")
-
-        await self._narrate(progress_callback, websocket,
-            "Starting with the MLA heading..." if request.formatting == DocumentFormat.MLA else "Starting with the document...")
-
         try:
             async for chunk in self._claude.stream_content(
                 content_prompt,
@@ -538,8 +557,13 @@ Provide a clear, structured outline."""
                         # Detect section changes (simple heuristic)
                         if current_section_index < len(sections) and not section_announced:
                             section_name = sections[current_section_index]['name']
-                            await self._narrate(progress_callback, websocket,
-                                f"Writing {section_name} section...")
+                            # Dynamic section announcement
+                            await self._narrate(progress_callback, websocket, context={
+                                "phase": "writing_section",
+                                "current_section": section_name,
+                                "word_count": word_count,
+                                "progress": 55 + int((word_count / (request.word_count or 1000)) * 40)
+                            })
                             section_announced = True
 
                         # Move to next section periodically
@@ -547,17 +571,15 @@ Provide a clear, structured outline."""
                             current_section_index += 1
                             section_announced = False
 
-                        # Progress milestones with more detail
+                        # Progress milestones with dynamic narration
                         if word_count >= next_milestone:
-                            percentage = min(int((word_count / (request.word_count or 750)) * 100), 99) if request.word_count or request.document_type != DocumentType.BLOG_POST else 0
-
-                            if percentage > 0:
-                                await self._narrate(progress_callback, websocket,
-                                    f"Progress: {word_count} words ({percentage}% complete)")
-                            else:
-                                await self._narrate(progress_callback, websocket,
-                                    f"Progress: {word_count} words written")
-
+                            percentage = min(int((word_count / (request.word_count or 1000)) * 100), 99)
+                            await self._narrate(progress_callback, websocket, context={
+                                "phase": "progress_update",
+                                "word_count": word_count,
+                                "progress": 55 + int(percentage * 0.4),
+                                "current_section": sections[current_section_index]['name'] if current_section_index < len(sections) else "conclusion"
+                            })
                             next_milestone += progress_interval
 
                     buffer = ""
@@ -570,8 +592,12 @@ Provide a clear, structured outline."""
 
             # Final section notification
             if current_section_index < len(sections):
-                await self._narrate(progress_callback, websocket,
-                    "Finalizing conclusion and Works Cited/References...")
+                await self._narrate(progress_callback, websocket, context={
+                    "phase": "finalizing",
+                    "current_section": "conclusion and references",
+                    "word_count": word_count,
+                    "progress": 90
+                })
 
             return word_count
 
@@ -649,9 +675,83 @@ Write the complete {request.document_type.value} now, starting with the proper {
                 lines.append(f"  * {point}")
         return '\n'.join(lines)
 
+    async def _generate_dynamic_narration(self, context_update: Dict[str, Any]) -> str:
+        """
+        Generate natural, context-aware narration using Claude API.
+        No hardcoded messages - all narration is dynamically generated.
+        """
+        # Update context
+        self._narration_context.update(context_update)
+
+        # Build prompt for Claude to generate natural narration
+        prompt = f"""You are JARVIS, Tony Stark's AI assistant. You're helping write a {self._narration_context.get('document_type', 'document')} about "{self._narration_context.get('topic', 'the topic')}".
+
+Current status:
+- Phase: {self._narration_context.get('phase')}
+- Progress: {self._narration_context.get('progress')}% complete
+- Word count: {self._narration_context.get('word_count')} / {self._narration_context.get('total_words_target')} words
+- Current section: {self._narration_context.get('current_section', 'N/A')}
+- Format: {self._narration_context.get('format', 'standard')}
+
+Generate a single, natural sentence (10-15 words) that JARVIS would say to update the user about this progress. Be conversational, professional, and engaging. Reference specific details when relevant. Don't use generic phrases.
+
+Narration:"""
+
+        try:
+            # Use Claude to generate the narration
+            if self._claude:
+                response = ""
+                async for chunk in self._claude.stream_content(prompt, max_tokens=50):
+                    response += chunk
+
+                # Clean up the response
+                narration = response.strip().strip('"').strip()
+                return narration if narration else self._get_fallback_narration()
+            else:
+                # Fallback if Claude not available
+                return self._get_fallback_narration()
+        except Exception as e:
+            logger.error(f"Error generating dynamic narration: {e}")
+            return self._get_fallback_narration()
+
+    def _get_fallback_narration(self) -> str:
+        """Generate intelligent fallback narration when Claude is not available"""
+        phase = self._narration_context.get('phase', 'working')
+        topic = self._narration_context.get('topic', 'your document')
+        progress = self._narration_context.get('progress', 0)
+        current_section = self._narration_context.get('current_section', 'the document')
+        
+        # Context-aware fallback messages with natural pacing
+        fallback_messages = {
+            'acknowledging_request': f"I'll create {topic} for you, Sir.",
+            'initializing_services': "Initializing document creation systems.",
+            'services_ready': "All systems ready for document creation.",
+            'creating_document': f"Creating your {topic} document now.",
+            'document_created': "Document created successfully.",
+            'opening_browser': "Opening the document in your browser.",
+            'browser_ready': "Browser ready for document editing.",
+            'analyzing_topic': f"Analyzing the topic: {topic}.",
+            'outline_complete': "Document outline completed.",
+            'starting_writing': f"Beginning to write {current_section}.",
+            'writing_section': f"Writing the {current_section} section.",
+            'progress_update': f"Progress: {progress}% complete.",
+            'finalizing': "Finalizing the document.",
+            'writing_complete': "Document writing completed.",
+            'document_ready': "Your document is ready for review."
+        }
+        
+        return fallback_messages.get(phase, f"Working on {current_section}, Sir.")
+
     async def _narrate(self, progress_callback: Optional[Callable],
-                      websocket, message: str):
-        """Send narration update"""
+                      websocket, message: str = None, context: Dict[str, Any] = None):
+        """Send narration update with voice feedback - fully dynamic with pacing"""
+        import time
+        import asyncio
+
+        # If context provided, generate dynamic narration
+        if context:
+            message = await self._generate_dynamic_narration(context)
+
         logger.info(f"[DOCUMENT WRITER] {message}")
 
         if progress_callback:
@@ -659,13 +759,30 @@ Write the complete {request.document_type.value} now, starting with the proper {
 
         if websocket:
             try:
-                import json
-                await websocket.send_text(json.dumps({
-                    "type": "narration",
-                    "message": message
-                }))
+                # Implement throttling for smooth speech pacing
+                current_time = time.time()
+                time_since_last = current_time - self._last_narration_time
+
+                # If not enough time has passed, add a delay
+                if time_since_last < self._min_narration_interval and self._last_narration_time > 0:
+                    delay_needed = self._min_narration_interval - time_since_last
+                    logger.info(f"[DOCUMENT WRITER] Pacing speech - waiting {delay_needed:.1f}s")
+                    await asyncio.sleep(delay_needed)
+
+                # Send narration message with voice output
+                logger.info(f"[DOCUMENT WRITER] Sending narration: {message[:100]}...")
+                await websocket.send_json({
+                    "type": "voice_narration",
+                    "message": message,
+                    "speak": True
+                })
+
+                # Update last narration time
+                self._last_narration_time = time.time()
+                logger.info(f"[DOCUMENT WRITER] Narration sent at natural pace")
+
             except Exception as e:
-                logger.debug(f"Could not send narration to websocket: {e}")
+                logger.error(f"Could not send narration to websocket: {e}")
 
 
 def parse_document_request(command: str, intent: Dict[str, Any]) -> DocumentRequest:

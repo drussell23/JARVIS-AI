@@ -1038,6 +1038,32 @@ const JarvisVoice = () => {
         // Clear workflow progress after 10 seconds
         setTimeout(() => setWorkflowProgress(null), 10000);
         break;
+      case 'narration':
+        // Handle document writing narration (display only, no voice)
+        console.log('📝 Document narration:', data.message);
+        if (data.message) {
+          setResponse(data.message);
+          // Don't speak narration messages to prevent overlap
+        }
+        break;
+      case 'voice_narration':
+        // Handle voice narration from document writer
+        console.log('🎤 Voice narration received:', data.message);
+        console.log('🎤 Speak flag:', data.speak);
+        if (data.message && data.speak !== false) {
+          setResponse(data.message);
+          // Speak narration with a small delay to prevent overlap
+          setTimeout(() => {
+            if (!isJarvisSpeaking) {
+              speakResponse(data.message);
+            } else {
+              console.log('[JARVIS Audio] Skipping narration - already speaking');
+            }
+          }, 500);
+        } else {
+          console.log('🎤 Skipping narration - speak flag is false or no message');
+        }
+        break;
       default:
         break;
     }
@@ -1901,7 +1927,7 @@ const JarvisVoice = () => {
         };
 
         await audio2.play();
-        console.log('[JARVIS Audio] POST: Playing audio');
+        console.log('[JARVIS Audio] POST: Playing audio successfully');
       } else {
         throw new Error(`Audio generation failed: ${response.status}`);
       }
@@ -1911,17 +1937,29 @@ const JarvisVoice = () => {
     }
   };
 
+
+
   const speakResponse = async (text) => {
     // Set the response in state for display
     setResponse(text);
 
     console.log('[JARVIS Audio] Speaking response:', text.substring(0, 100) + '...');
+    console.log('[JARVIS Audio] Current speaking state:', isJarvisSpeaking);
+
+    // Prevent overlapping speech for regular responses
+    if (isJarvisSpeaking) {
+      console.log('[JARVIS Audio] Already speaking, skipping to prevent overlap');
+      return;
+    }
 
     try {
+      console.log('[JARVIS Audio] Setting speaking state to true');
       setIsJarvisSpeaking(true);
 
       // Use backend TTS endpoint for consistent voice quality
       const usePost = text.length > 500 || text.includes('\n');
+      console.log('[JARVIS Audio] Text length:', text.length);
+      console.log('[JARVIS Audio] Using POST method:', usePost);
 
       if (!usePost) {
         // Short text: Use GET method with URL
@@ -1941,11 +1979,11 @@ const JarvisVoice = () => {
         };
         
         audio.onplay = () => {
-          console.log('[JARVIS Audio] Playback started');
+          console.log('[JARVIS Audio] GET method playback started');
         };
 
         audio.onended = () => {
-          console.log('[JARVIS Audio] Playback completed');
+          console.log('[JARVIS Audio] GET method playback completed');
           setIsJarvisSpeaking(false);
         };
 
@@ -1992,9 +2030,9 @@ const JarvisVoice = () => {
         window.speechSynthesis.cancel();
         
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 1.0;
-        utterance.pitch = 0.9;
-        utterance.volume = 1.0;
+        utterance.rate = 0.8;   // Slower rate for more natural, smooth speech
+        utterance.pitch = 0.95; // Slightly lower pitch for more authoritative tone
+        utterance.volume = 0.9; // Slightly lower volume for more natural sound
 
         // Try to find Daniel or other British male voice
         const voices = window.speechSynthesis.getVoices();
@@ -2026,7 +2064,10 @@ const JarvisVoice = () => {
           console.log('[JARVIS Audio] No British voice found, using default');
         }
 
-        utterance.onstart = () => setIsJarvisSpeaking(true);
+        utterance.onstart = () => {
+          console.log('[JARVIS Audio] Browser speech synthesis started');
+          setIsJarvisSpeaking(true);
+        };
         utterance.onend = () => {
           console.log('[JARVIS Audio] Browser speech completed');
           setIsJarvisSpeaking(false);

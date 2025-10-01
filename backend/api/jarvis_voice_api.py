@@ -859,6 +859,7 @@ class JARVISVoiceAPI:
                         "say",
                         "-v",
                         "Daniel",  # British voice for JARVIS
+                        "-r", "180",  # Slower speech rate (words per minute)
                         "-o",
                         tmp_path,
                         audio_text,
