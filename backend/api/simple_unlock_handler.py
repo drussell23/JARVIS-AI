@@ -147,18 +147,49 @@ async def handle_unlock_command(command: str, jarvis_instance=None) -> Dict[str,
                 }
                 
     except (ConnectionRefusedError, OSError) as e:
-        logger.error(f"[SIMPLE UNLOCK] Voice unlock daemon not running: {e}")
-        return {
-            'success': False,
-            'response': "The Voice Unlock service isn't running, Sir. Shall I start it?",
-            'type': 'voice_unlock',
-            'action': action
-        }
+        logger.warning(f"[SIMPLE UNLOCK] Voice unlock daemon not running: {e}")
+
+        # For lock_screen, execute directly without the daemon
+        if action == "lock_screen":
+            logger.info("[SIMPLE UNLOCK] Falling back to direct macOS lock command")
+            import subprocess
+            try:
+                # Use pmset to lock the screen (works on all macOS versions)
+                subprocess.run([
+                    "pmset", "displaysleepnow"
+                ], check=True)
+
+                logger.info("[SIMPLE UNLOCK] Screen locked successfully via direct command")
+                return {
+                    'success': True,
+                    'response': response_text,
+                    'type': 'screen_lock',
+                    'action': action,
+                    'method': 'direct'
+                }
+            except subprocess.CalledProcessError as lock_error:
+                logger.error(f"[SIMPLE UNLOCK] Failed to lock screen: {lock_error}")
+                return {
+                    'success': False,
+                    'response': "I couldn't lock your screen, Sir. Please check system permissions.",
+                    'type': 'screen_lock',
+                    'action': action
+                }
+        else:
+            # For unlock, we need the daemon
+            return {
+                'success': False,
+                'response': "The Voice Unlock service isn't running, Sir. I can't unlock without it.",
+                'type': 'voice_unlock',
+                'action': action,
+                'requires_daemon': True
+            }
+
     except Exception as e:
         logger.error(f"[SIMPLE UNLOCK] Error: {e}")
         return {
             'success': False,
             'response': f"I encountered an error: {str(e)}",
-            'type': 'voice_unlock', 
+            'type': 'voice_unlock',
             'action': action
         }
