@@ -882,8 +882,8 @@ const JarvisVoice = () => {
 
     try {
       const wsBaseUrl = WS_URL || configService.getWebSocketUrl() || 'ws://localhost:8010';
-      const wsUrl = `${wsBaseUrl}/voice/jarvis/stream`;
-      console.log('Connecting to WebSocket:', wsUrl);
+      const wsUrl = `${wsBaseUrl}/ws`;  // Use unified WebSocket endpoint
+      console.log('Connecting to unified WebSocket:', wsUrl);
       wsRef.current = new WebSocket(wsUrl);
 
       wsRef.current.onopen = () => {
