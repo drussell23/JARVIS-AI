@@ -168,11 +168,12 @@ class AutonomousOrchestrator:
                 "endpoints": {
                     "health": "/health",
                     "ml_audio_config": "/audio/ml/config",
-                    "ml_audio_stream": "/audio/ml/stream",
+                    "ml_audio_status": "/audio/ml/status",
                     "jarvis_status": "/voice/jarvis/status",
                     "jarvis_activate": "/voice/jarvis/activate",
+                    "jarvis_speak": "/voice/jarvis/speak",
                     "wake_word_status": "/api/wake-word/status",
-                    "vision_websocket": "/vision/ws/vision"
+                    "command": "/api/command"
                 }
             },
             "services": {
