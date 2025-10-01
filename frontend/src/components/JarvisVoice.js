@@ -364,6 +364,101 @@ class VisionConnection {
   }
 }
 
+// Dynamic greeting generators
+const getStartupGreeting = () => {
+  const hour = new Date().getHours();
+  const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+  
+  // Determine time of day
+  let timeContext = 'evening';
+  if (hour >= 5 && hour < 12) timeContext = 'morning';
+  else if (hour >= 12 && hour < 17) timeContext = 'afternoon';
+  else if (hour >= 17 && hour < 22) timeContext = 'evening';
+  else timeContext = 'night';
+  
+  const greetings = {
+    morning: [
+      "Good morning, Sir. JARVIS systems initialized and ready for your command.",
+      "Morning, Sir. All systems operational. How may I assist you today?",
+      "Systems online, Sir. Another beautiful " + dayName + " morning to be of service.",
+      "Good morning. Neural networks calibrated. At your service.",
+      "Rise and shine, Sir. JARVIS fully operational.",
+      "Morning protocols complete. Ready to tackle today's challenges."
+    ],
+    afternoon: [
+      "Good afternoon, Sir. JARVIS at your disposal.",
+      "Welcome back. Systems online and ready to assist.",
+      "Afternoon, Sir. All systems functioning at peak efficiency.",
+      "System reactivation complete. How may I help you this " + dayName + " afternoon?",
+      "JARVIS systems restored. Ready to continue where we left off."
+    ],
+    evening: [
+      "Good evening, Sir. JARVIS at your service.",
+      "Welcome back. Systems online for your evening session.",
+      "Evening, Sir. All systems are operational.",
+      "System activation complete. How may I be of service tonight?",
+      "JARVIS online, Sir. I trust you've had a productive day?"
+    ],
+    night: [
+      "Good evening, Sir. Working late again, I see.",
+      "Welcome back. JARVIS systems online despite the late hour.",
+      "System activation complete. Ready for your late-night commands.",
+      "Late night session initiated. How may I assist you?",
+      "Systems operational, Sir. Burning the midnight oil?"
+    ]
+  };
+  
+  // Add some variety with status messages
+  const statusMessages = [
+    "JARVIS initialization complete. All systems operational.",
+    "System boot sequence finished. Ready to serve.",
+    "Welcome back, Sir. What can I do for you today?",
+    "JARVIS online. All systems nominal.",
+    "AI neural pathways synchronized. Ready to proceed.",
+    "Voice recognition calibrated. Standing by for your command."
+  ];
+  
+  // Mix time-based and status-based greetings
+  let greetingPool = [...greetings[timeContext]];
+  if (Math.random() < 0.3) {
+    greetingPool.push(...statusMessages);
+  }
+  
+  // Weekend special
+  if (dayName === 'Saturday' || dayName === 'Sunday') {
+    if (Math.random() < 0.3) {
+      greetingPool.push(
+        "Happy " + dayName + ", Sir. JARVIS ready for your weekend commands.",
+        "Weekend systems activated. How may I assist you this " + dayName + "?"
+      );
+    }
+  }
+  
+  return greetingPool[Math.floor(Math.random() * greetingPool.length)];
+};
+
+const getWakeWordResponse = () => {
+  const responses = [
+    "Yes, Sir. How may I assist you?",
+    "At your service, Sir.",
+    "Ready for your command, Sir.",
+    "Listening, Sir.",
+    "How can I help you?",
+    "Yes, Sir?",
+    "Standing by for instructions.",
+    "What do you need, Sir?",
+    "I'm here, Sir.",
+    "Go ahead, Sir.",
+    "Ready and waiting.",
+    "Your command, Sir?",
+    "How may I be of service?",
+    "JARVIS ready. What's on your mind?",
+    "Systems ready. What can I do for you?"
+  ];
+  
+  return responses[Math.floor(Math.random() * responses.length)];
+};
+
 const JarvisVoice = () => {
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -1144,8 +1239,8 @@ const JarvisVoice = () => {
           setIsWaitingForCommand(true);
           setIsListening(true);
 
-          // Play the response
-          const responseText = data.response || "Ready for your command, sir";
+          // Play the response with dynamic variation
+          const responseText = data.response || getWakeWordResponse();
           speakResponse(responseText);
 
           // Start timeout for command (30 seconds - more time to speak)
@@ -1495,8 +1590,9 @@ const JarvisVoice = () => {
     isWaitingForCommandRef.current = true;
     setIsListening(true);
     
-    // Always speak response immediately
-    speakResponse("Yes, sir?");
+    // Always speak dynamic response immediately
+    const wakeResponse = getWakeWordResponse();
+    speakResponse(wakeResponse);
 
     // Don't send anything to backend - we're handling the wake word response locally
     // Just ensure WebSocket is connected for subsequent commands
@@ -1587,8 +1683,9 @@ const JarvisVoice = () => {
           await initializeWakeWordService();
         }
 
-        // Speak activation confirmation  
-        speakResponse("JARVIS online. Say 'Hey JARVIS' to begin.");
+        // Generate dynamic startup greeting
+        const startupGreeting = getStartupGreeting();
+        speakResponse(startupGreeting);
 
         // Enable continuous listening for wake word detection
         console.log('🎙️ Enabling continuous listening for wake word...');

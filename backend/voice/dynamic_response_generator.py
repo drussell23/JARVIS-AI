@@ -359,6 +359,137 @@ class DynamicResponseGenerator:
                 
         return base_response
     
+    def generate_startup_greeting(self, context: Dict[str, Any] = None) -> str:
+        """Generate sophisticated JARVIS-style startup greetings with variety"""
+        import platform
+        import psutil
+        from datetime import datetime
+        import random
+        
+        # Get system context
+        hour = datetime.now().hour
+        day_name = datetime.now().strftime('%A')
+        
+        # Determine time of day
+        if 5 <= hour < 12:
+            time_context = "morning"
+        elif 12 <= hour < 17:
+            time_context = "afternoon"
+        elif 17 <= hour < 22:
+            time_context = "evening"
+        else:
+            time_context = "night"
+        
+        # Get system status (if available)
+        try:
+            cpu_percent = psutil.cpu_percent(interval=0.1)
+            memory_percent = psutil.virtual_memory().percent
+            system_status = "optimal" if cpu_percent < 50 and memory_percent < 70 else "elevated"
+        except:
+            system_status = "normal"
+        
+        # JARVIS-style sophisticated greetings
+        greetings = {
+            "morning": [
+                f"Good morning, {self.user_name or 'Sir'}. All systems are operational and ready for your command.",
+                f"Welcome back, {self.user_name or 'Sir'}. JARVIS systems initialized. How may I assist you this {day_name} morning?",
+                f"Good morning. Systems check complete. Standing by for your instructions.",
+                f"Morning, {self.user_name or 'Sir'}. I've completed the startup diagnostics. Everything's running smoothly.",
+                f"Systems online, {self.user_name or 'Sir'}. Another beautiful {day_name} morning to be of service.",
+                f"Good morning. Neural networks calibrated, voice recognition optimized. At your service.",
+                f"Rise and shine, {self.user_name or 'Sir'}. JARVIS fully operational. What's on the agenda today?",
+                f"Morning protocols complete. Ready to tackle whatever challenges {day_name} brings.",
+            ],
+            "afternoon": [
+                f"Good afternoon, {self.user_name or 'Sir'}. Systems are at your disposal.",
+                f"Welcome back. JARVIS online and ready to assist with your afternoon tasks.",
+                f"Afternoon, {self.user_name or 'Sir'}. All systems functioning at peak efficiency.",
+                f"System reactivation complete. How may I help you this {day_name} afternoon?",
+                f"Good afternoon. Standing by for your commands.",
+                f"JARVIS systems restored, {self.user_name or 'Sir'}. Ready to continue where we left off.",
+                f"Afternoon. Diagnostics complete, all systems green. What can I do for you?",
+            ],
+            "evening": [
+                f"Good evening, {self.user_name or 'Sir'}. JARVIS at your service.",
+                f"Welcome back. Systems online for your evening session.",
+                f"Evening, {self.user_name or 'Sir'}. All systems are operational.",
+                f"Good evening. Ready to assist with whatever you need this {day_name} evening.",
+                f"System activation complete. How may I be of service tonight?",
+                f"Evening protocols initiated. Standing by for your instructions.",
+                f"JARVIS online, {self.user_name or 'Sir'}. I trust you've had a productive day?",
+            ],
+            "night": [
+                f"Good evening, {self.user_name or 'Sir'}. Working late again, I see.",
+                f"Welcome back. JARVIS systems online despite the late hour.",
+                f"System activation complete. Ready for your late-night commands.",
+                f"JARVIS online. Shall I adjust the display brightness for the evening?",
+                f"Late night session initiated. How may I assist you?",
+                f"Systems operational, {self.user_name or 'Sir'}. Burning the midnight oil?",
+            ]
+        }
+        
+        # Advanced status-aware greetings - build them dynamically
+        status_greetings = []
+        
+        # Build varied status messages
+        system_type = random.choice(['primary', 'core', 'essential'])
+        op_status = random.choice(['operational', 'online', 'functioning optimally'])
+        status_greetings.append(f"JARVIS initialization complete. All {system_type} systems are {op_status}.")
+        
+        ready_msg = random.choice(['Ready to serve', 'At your command', 'Standing by'])
+        status_greetings.append(f"System boot sequence finished. {ready_msg}.")
+        
+        query = random.choice(['How may I be of assistance?', 'What can I do for you today?', 'Ready for your instructions.'])
+        status_greetings.append(f"Welcome back, {self.user_name or 'Sir'}. {query}")
+        
+        perf_status = random.choice(['All systems nominal', 'Operating at peak performance', 'Systems fully operational'])
+        status_greetings.append(f"JARVIS online. {perf_status}.")
+        
+        ai_status = random.choice(['AI neural pathways synchronized', 'Voice recognition calibrated', 'Machine learning models loaded'])
+        status_greetings.append(f"Greetings, {self.user_name or 'Sir'}. {ai_status}. Ready to proceed.")
+        
+        # Mix time-based and status-based greetings
+        greeting_pool = greetings.get(time_context, greetings['morning'])
+        
+        # Add some status greetings for variety
+        if random.random() < 0.3:  # 30% chance to use a status greeting
+            greeting_pool.extend(status_greetings)
+        
+        # Special greetings for specific conditions
+        if system_status == "elevated" and random.random() < 0.2:
+            special_greetings = [
+                f"Systems online, though I'm detecting elevated resource usage. Shall I optimize?",
+                f"JARVIS operational. Note: System resources are running a bit high.",
+            ]
+            greeting_pool.extend(special_greetings)
+        
+        # Weekend special
+        if day_name in ['Saturday', 'Sunday'] and random.random() < 0.3:
+            weekend_greetings = [
+                f"Happy {day_name}, {self.user_name or 'Sir'}. JARVIS ready for your weekend commands.",
+                f"Weekend systems activated. How may I assist you this {day_name}?",
+            ]
+            greeting_pool.extend(weekend_greetings)
+        
+        # Filter out recently used greetings if tracking
+        if hasattr(self, 'last_startup_greetings'):
+            available_greetings = [g for g in greeting_pool if g not in self.last_startup_greetings]
+            if not available_greetings:
+                available_greetings = greeting_pool
+                self.last_startup_greetings = []
+        else:
+            available_greetings = greeting_pool
+            self.last_startup_greetings = []
+        
+        chosen_greeting = random.choice(available_greetings)
+        
+        # Track this greeting
+        self.last_startup_greetings.append(chosen_greeting)
+        if len(self.last_startup_greetings) > 5:  # Remember last 5 startup greetings
+            self.last_startup_greetings.pop(0)
+        
+        return chosen_greeting
+    
     def generate_document_narration(self, phase: str, context: Dict[str, Any]) -> str:
         """Generate natural document writing narration"""
         topic = context.get('topic', 'the topic')

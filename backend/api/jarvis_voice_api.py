@@ -1171,10 +1171,19 @@ class JARVISVoiceAPI:
             ):
                 user_name = self.jarvis.personality.user_preferences.get("name", "Sir")
 
+            # Generate dynamic startup greeting
+            try:
+                from voice.dynamic_response_generator import get_response_generator
+                generator = get_response_generator(user_name)
+                startup_greeting = generator.generate_startup_greeting()
+            except:
+                # Fallback if generator not available
+                startup_greeting = f"JARVIS online. How may I assist you, {user_name}?"
+            
             await websocket.send_json(
                 {
                     "type": "connected",
-                    "message": f"JARVIS online. How may I assist you, {user_name}?",
+                    "message": startup_greeting,
                     "timestamp": datetime.now().isoformat(),
                 }
             )
