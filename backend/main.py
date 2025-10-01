@@ -142,11 +142,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-# Load environment variables
+# Load environment variables (force override of system env vars)
 try:
     from dotenv import load_dotenv
 
-    load_dotenv()
+    load_dotenv(override=True)  # Force .env to override existing environment variables
 except ImportError:
     pass
 
