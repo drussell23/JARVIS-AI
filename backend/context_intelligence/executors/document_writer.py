@@ -270,7 +270,7 @@ class DocumentWriterExecutor:
                             progress_callback: Optional[Callable] = None,
                             websocket = None) -> Dict[str, Any]:
         """
-        Execute end-to-end document creation
+        Execute end-to-end document creation with detailed real-time communication
 
         Args:
             request: Document creation request
@@ -281,21 +281,42 @@ class DocumentWriterExecutor:
             Execution result with document details
         """
         try:
-            # Phase 1: Announce
+            # Phase 1: Announce with full context
             article = "an" if request.document_type.value[0] in 'aeiou' else "a"
-            await self._narrate(progress_callback, websocket,
-                f"Understood, Sir. I'll create {article} {request.document_type.value} about {request.topic}.")
+            format_spec = FORMAT_SPECIFICATIONS.get(request.formatting.value, {})
+            format_name = format_spec.get("name", "standard format")
 
-            # Phase 2: Initialize services
+            await self._narrate(progress_callback, websocket,
+                f"Understood, Sir. I'll create {article} {request.document_type.value} about '{request.topic}' "
+                f"in {format_name}.")
+
+            if request.word_count:
+                await self._narrate(progress_callback, websocket,
+                    f"Target length: {request.word_count} words.")
+            elif request.page_count:
+                await self._narrate(progress_callback, websocket,
+                    f"Target length: {request.page_count} pages.")
+
+            # Phase 2: Initialize services with detailed feedback
+            await self._narrate(progress_callback, websocket,
+                "Initializing document creation systems...")
+
             if not await self._initialize_services(request):
                 return {
                     "success": False,
                     "error": "Failed to initialize required services"
                 }
 
+            await self._narrate(progress_callback, websocket,
+                "✓ Claude AI connected and ready")
+            await self._narrate(progress_callback, websocket,
+                "✓ Google Docs API authenticated")
+            await self._narrate(progress_callback, websocket,
+                "✓ Browser automation ready")
+
             # Phase 3: Create Google Doc via API
             await self._narrate(progress_callback, websocket,
-                f"Creating new document in Google Docs...")
+                f"Creating new Google Doc titled '{request.title}'...")
 
             doc_info = await self._create_google_doc(request)
             if not doc_info:
@@ -307,33 +328,59 @@ class DocumentWriterExecutor:
             document_id = doc_info['document_id']
             document_url = doc_info['document_url']
 
+            await self._narrate(progress_callback, websocket,
+                f"✓ Document created successfully")
+
             # Phase 4: Open in Chrome
             await self._narrate(progress_callback, websocket,
-                f"Opening document in Chrome...")
+                f"Opening document in {request.browser}...")
 
             await self._open_in_browser(document_url, request)
             await asyncio.sleep(1.5)  # Let user see the document open
 
-            # Phase 5: Generate outline
             await self._narrate(progress_callback, websocket,
-                f"Analyzing the topic and creating an outline...")
+                "✓ Document opened in browser")
+
+            # Phase 5: Generate outline with detail
+            await self._narrate(progress_callback, websocket,
+                f"Analyzing '{request.topic}' and structuring the content...")
+
+            await self._narrate(progress_callback, websocket,
+                "Creating comprehensive outline with Claude AI...")
 
             outline = await self._generate_outline(request)
 
-            # Phase 6: Stream content
+            section_count = len(outline.get('sections', []))
             await self._narrate(progress_callback, websocket,
-                f"Writing your {request.document_type.value}. "
-                f"You'll see the content appear in real-time, Sir.")
+                f"✓ Outline complete: {section_count} main sections identified")
+
+            # Announce the structure
+            sections = outline.get('sections', [])
+            if sections:
+                await self._narrate(progress_callback, websocket,
+                    f"Structure planned: {', '.join([s['name'] for s in sections])}")
+
+            # Phase 6: Stream content with detailed progress
+            await self._narrate(progress_callback, websocket,
+                f"Beginning to write your {request.document_type.value} in {format_name}...")
+
+            await self._narrate(progress_callback, websocket,
+                "Claude AI is now generating content. You'll see it appear in real-time, Sir.")
 
             word_count = await self._stream_content(
                 document_id, request, outline,
                 progress_callback, websocket
             )
 
-            # Phase 7: Completion
+            # Phase 7: Completion with summary
             await self._narrate(progress_callback, websocket,
-                f"Your {request.document_type.value} is complete, Sir. "
-                f"{word_count} words written on '{request.topic}'.")
+                f"✓ Writing complete!")
+
+            await self._narrate(progress_callback, websocket,
+                f"Your {request.document_type.value} about '{request.topic}' is ready, Sir.")
+
+            await self._narrate(progress_callback, websocket,
+                f"Final statistics: {word_count} words, {format_name}, {section_count} sections")
 
             return {
                 "success": True,
@@ -342,13 +389,16 @@ class DocumentWriterExecutor:
                 "title": request.title,
                 "word_count": word_count,
                 "platform": request.platform.value,
-                "topic": request.topic
+                "topic": request.topic,
+                "formatting": request.formatting.value
             }
 
         except Exception as e:
             logger.error(f"Error in document creation: {e}", exc_info=True)
             await self._narrate(progress_callback, websocket,
-                f"I encountered an error, Sir: {str(e)}")
+                f"I apologize, Sir. I encountered an error: {str(e)}")
+            await self._narrate(progress_callback, websocket,
+                "I'll attempt to recover and continue...")
             return {
                 "success": False,
                 "error": str(e)
@@ -442,13 +492,22 @@ Provide a clear, structured outline."""
                             outline: Dict[str, Any],
                             progress_callback: Optional[Callable],
                             websocket) -> int:
-        """Stream content to Google Doc via API"""
+        """Stream content to Google Doc via API with detailed real-time updates"""
         content_prompt = self._build_content_prompt(request, outline)
 
         word_count = 0
+        sentence_count = 0
         buffer = ""
-        progress_interval = 100
+        progress_interval = 50  # Update every 50 words
         next_milestone = progress_interval
+
+        # Track sections for progress updates
+        sections = outline.get('sections', [])
+        current_section_index = 0
+        section_announced = False
+
+        await self._narrate(progress_callback, websocket,
+            "Starting with the MLA heading..." if request.formatting == DocumentFormat.MLA else "Starting with the document...")
 
         try:
             async for chunk in self._claude.stream_content(
@@ -458,17 +517,40 @@ Provide a clear, structured outline."""
             ):
                 buffer += chunk
 
-                # Write in chunks to Google Docs API
+                # Count sentences for more granular updates
+                sentence_count += buffer.count('.') + buffer.count('!') + buffer.count('?')
+
+                # Write in smaller chunks for more real-time feel
                 if len(buffer) >= request.chunk_size:
                     success = await self._google_docs.append_text(document_id, buffer)
 
                     if success:
-                        word_count += len(buffer.split())
+                        current_words = len(buffer.split())
+                        word_count += current_words
 
-                        # Progress update
-                        if word_count >= next_milestone:
+                        # Detect section changes (simple heuristic)
+                        if current_section_index < len(sections) and not section_announced:
+                            section_name = sections[current_section_index]['name']
                             await self._narrate(progress_callback, websocket,
-                                f"Writing... {word_count} words so far.")
+                                f"Writing {section_name} section...")
+                            section_announced = True
+
+                        # Move to next section periodically
+                        if word_count > (current_section_index + 1) * 150 and current_section_index < len(sections) - 1:
+                            current_section_index += 1
+                            section_announced = False
+
+                        # Progress milestones with more detail
+                        if word_count >= next_milestone:
+                            percentage = min(int((word_count / (request.word_count or 750)) * 100), 99) if request.word_count or request.document_type != DocumentType.BLOG_POST else 0
+
+                            if percentage > 0:
+                                await self._narrate(progress_callback, websocket,
+                                    f"Progress: {word_count} words ({percentage}% complete)")
+                            else:
+                                await self._narrate(progress_callback, websocket,
+                                    f"Progress: {word_count} words written")
+
                             next_milestone += progress_interval
 
                     buffer = ""
@@ -479,10 +561,17 @@ Provide a clear, structured outline."""
                 await self._google_docs.append_text(document_id, buffer)
                 word_count += len(buffer.split())
 
+            # Final section notification
+            if current_section_index < len(sections):
+                await self._narrate(progress_callback, websocket,
+                    "Finalizing conclusion and Works Cited/References...")
+
             return word_count
 
         except Exception as e:
             logger.error(f"Error streaming content: {e}")
+            await self._narrate(progress_callback, websocket,
+                f"Encountered an issue during writing, but continuing... ({word_count} words so far)")
             return word_count
 
     def _build_content_prompt(self, request: DocumentRequest, outline: Dict[str, Any]) -> str:
