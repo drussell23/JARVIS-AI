@@ -843,7 +843,8 @@ const JarvisVoice = () => {
         // Speak the response if speak flag is true
         if ((data.message || data.text) && data.speak !== false) {
           console.log('[JARVIS Audio] Speaking voice unlock response:', voiceUnlockText);
-          speakResponse(voiceUnlockText);
+          // Don't update display again since we just set it above
+          speakResponse(voiceUnlockText, false);
         }
         
         // Reset waiting state after voice unlock command
@@ -871,17 +872,21 @@ const JarvisVoice = () => {
           return;
         }
         
-        setResponse(data.text || data.message || 'Response received');
+        // Use the EXACT same text for both display and speech
+        const responseText = data.text || data.message || 'Response received';
+        console.log('[JARVIS Audio] Setting display text:', responseText);
+        setResponse(responseText);
         setIsProcessing(false);
 
         // Use speech synthesis with Daniel voice
-        if (data.text && data.speak !== false) {
-          // Always speak the full response, regardless of length or type
-          speakResponse(data.text);
+        if (responseText && data.speak !== false) {
+          // Speak the EXACT same text that we just displayed
+          console.log('[JARVIS Audio] Speaking exact text:', responseText);
+          speakResponse(responseText, false);
         }
         
         // Reset waiting state after successful command
-        if (isWaitingForCommandRef.current && !data.text.toLowerCase().includes('error')) {
+        if (isWaitingForCommandRef.current && responseText && !responseText.toLowerCase().includes('error')) {
           setTimeout(() => {
             setIsWaitingForCommand(false);
             isWaitingForCommandRef.current = false;
@@ -894,11 +899,11 @@ const JarvisVoice = () => {
         }
 
         // Check for autonomy activation commands in response
-        const responseText = data.text.toLowerCase();
+        const responseTextLower = responseText.toLowerCase();
         if (data.command_type === 'autonomy_activation' ||
-          responseText.includes('autonomous mode activated') ||
-          responseText.includes('full autonomy enabled') ||
-          responseText.includes('all systems online')) {
+          responseTextLower.includes('autonomous mode activated') ||
+          responseTextLower.includes('full autonomy enabled') ||
+          responseTextLower.includes('all systems online')) {
           // Activate autonomous mode
           if (!autonomousMode) {
             setAutonomousMode(true);
@@ -1051,15 +1056,16 @@ const JarvisVoice = () => {
         console.log('🎤 Voice narration received:', data.message);
         console.log('🎤 Speak flag:', data.speak);
         if (data.message && data.speak !== false) {
-          setResponse(data.message);
-          // Speak narration with a small delay to prevent overlap
-          setTimeout(() => {
-            if (!isJarvisSpeaking) {
-              speakResponse(data.message);
-            } else {
-              console.log('[JARVIS Audio] Skipping narration - already speaking');
-            }
-          }, 500);
+          // Store the exact message
+          const narrationText = data.message;
+          console.log('[JARVIS Audio] Narration text:', narrationText);
+
+          // For narrations, WAIT to update display until voice actually starts
+          // This ensures perfect synchronization
+          speakResponseWithCallback(narrationText, () => {
+            // Update display when voice actually starts
+            setResponse(narrationText);
+          });
         } else {
           console.log('🎤 Skipping narration - speak flag is false or no message');
         }
@@ -1881,7 +1887,7 @@ const JarvisVoice = () => {
     }
   };
 
-  const playAudioUsingPost = async (text) => {
+  const playAudioUsingPost = async (text, onStartCallback = null) => {
     console.log('[JARVIS Audio] POST: Attempting to play audio via POST');
     try {
       const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8010';
@@ -1908,10 +1914,22 @@ const JarvisVoice = () => {
 
         setIsJarvisSpeaking(true);
 
+        audio2.onplay = () => {
+          console.log('[JARVIS Audio] POST: Playback started');
+          // Call the callback when audio ACTUALLY starts playing (perfect sync!)
+          if (onStartCallback && typeof onStartCallback === 'function') {
+            console.log('[JARVIS Audio] Calling start callback - text will appear NOW');
+            onStartCallback();
+          }
+        };
+
         audio2.onended = () => {
           console.log('[JARVIS Audio] POST: Playback completed');
           setIsJarvisSpeaking(false);
+          isSpeakingRef.current = false;
           URL.revokeObjectURL(audioUrl); // Clean up
+          // Process next in queue after a small delay
+          setTimeout(() => processNextInSpeechQueue(), 200);
         };
 
         audio2.onerror = (e) => {
@@ -1923,7 +1941,10 @@ const JarvisVoice = () => {
             });
           }
           setIsJarvisSpeaking(false);
+          isSpeakingRef.current = false;
           URL.revokeObjectURL(audioUrl); // Clean up
+          // Process next in queue even after error
+          setTimeout(() => processNextInSpeechQueue(), 200);
         };
 
         await audio2.play();
@@ -1934,30 +1955,91 @@ const JarvisVoice = () => {
     } catch (postError) {
       console.error('[JARVIS Audio] POST: Failed:', postError);
       setIsJarvisSpeaking(false);
+      isSpeakingRef.current = false;
+      // Process next in queue even after error
+      setTimeout(() => processNextInSpeechQueue(), 200);
     }
   };
 
 
 
-  const speakResponse = async (text) => {
-    // Set the response in state for display
-    setResponse(text);
+  // Speech queue to prevent overlapping
+  const speechQueueRef = useRef([]);
+  const isSpeakingRef = useRef(false);
+  
+  const processNextInSpeechQueue = async () => {
+    if (speechQueueRef.current.length === 0 || isSpeakingRef.current) {
+      return;
+    }
+
+    const nextItem = speechQueueRef.current.shift();
+    // Handle both old format (string) and new format (object with text and callback)
+    const text = typeof nextItem === 'string' ? nextItem : nextItem.text;
+    const callback = typeof nextItem === 'object' ? nextItem.callback : null;
+
+    await speakResponseInternal(text, callback);
+  };
+  
+  const stopAllSpeech = () => {
+    console.log('[JARVIS Audio] Stopping all speech and clearing queue');
+    // Clear the queue
+    speechQueueRef.current = [];
+    // Stop browser synthesis if active
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    // Reset speaking states
+    setIsJarvisSpeaking(false);
+    isSpeakingRef.current = false;
+  };
+
+  const speakResponse = async (text, updateDisplay = true) => {
+    // Only set the response in state if explicitly requested (default true for backward compatibility)
+    if (updateDisplay) {
+      setResponse(text);
+    }
 
     console.log('[JARVIS Audio] Speaking response:', text.substring(0, 100) + '...');
     console.log('[JARVIS Audio] Current speaking state:', isJarvisSpeaking);
 
-    // Prevent overlapping speech for regular responses
-    if (isJarvisSpeaking) {
-      console.log('[JARVIS Audio] Already speaking, skipping to prevent overlap');
+    // Add to speech queue instead of skipping
+    speechQueueRef.current.push({ text, callback: null });
+
+    // Process queue if not already speaking
+    if (!isSpeakingRef.current) {
+      await processNextInSpeechQueue();
+    }
+  };
+
+  const speakResponseWithCallback = async (text, onStartCallback) => {
+    console.log('[JARVIS Audio] Speaking response with callback:', text.substring(0, 100) + '...');
+
+    // Add to speech queue with callback
+    speechQueueRef.current.push({ text, callback: onStartCallback });
+
+    // Process queue if not already speaking
+    if (!isSpeakingRef.current) {
+      await processNextInSpeechQueue();
+    }
+  };
+  
+  const speakResponseInternal = async (text, onStartCallback = null) => {
+    // Prevent overlapping speech
+    if (isSpeakingRef.current) {
+      console.log('[JARVIS Audio] Already speaking, adding to queue');
       return;
     }
 
     try {
       console.log('[JARVIS Audio] Setting speaking state to true');
+      console.log('[JARVIS Audio] Text to speak (exact):', text);
       setIsJarvisSpeaking(true);
+      isSpeakingRef.current = true;
 
       // Use backend TTS endpoint for consistent voice quality
-      const usePost = text.length > 500 || text.includes('\n');
+      // Use POST for any text with special characters or newlines to avoid URL encoding issues
+      const hasSpecialChars = /[^\w\s.,!?-]/.test(text);
+      const usePost = text.length > 500 || text.includes('\n') || hasSpecialChars;
       console.log('[JARVIS Audio] Text length:', text.length);
       console.log('[JARVIS Audio] Using POST method:', usePost);
 
@@ -1966,25 +2048,33 @@ const JarvisVoice = () => {
         const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8010';
         const audioUrl = `${apiUrl}/audio/speak/${encodeURIComponent(text)}`;
         console.log('[JARVIS Audio] Using GET method:', audioUrl);
-        
+
         const audio = new Audio();
-        
+
         // Set up all event handlers before setting src
         audio.onloadstart = () => {
           console.log('[JARVIS Audio] Loading started');
         };
-        
+
         audio.oncanplaythrough = () => {
           console.log('[JARVIS Audio] Can play through');
         };
-        
+
         audio.onplay = () => {
           console.log('[JARVIS Audio] GET method playback started');
+          // Call the callback when audio ACTUALLY starts playing (perfect sync!)
+          if (onStartCallback && typeof onStartCallback === 'function') {
+            console.log('[JARVIS Audio] Calling start callback - text will appear NOW');
+            onStartCallback();
+          }
         };
 
         audio.onended = () => {
           console.log('[JARVIS Audio] GET method playback completed');
           setIsJarvisSpeaking(false);
+          isSpeakingRef.current = false;
+          // Process next in queue after a small delay
+          setTimeout(() => processNextInSpeechQueue(), 200);
         };
 
         audio.onerror = async (e) => {
@@ -1996,8 +2086,8 @@ const JarvisVoice = () => {
             });
           }
           console.log('[JARVIS Audio] Falling back to POST method');
-          // Fallback to POST method
-          await playAudioUsingPost(text);
+          // Fallback to POST method with callback
+          await playAudioUsingPost(text, onStartCallback);
         };
 
         // Set source and properties
@@ -2010,9 +2100,9 @@ const JarvisVoice = () => {
         await audio.play();
         console.log('[JARVIS Audio] Play promise resolved');
       } else {
-        // Long text: Use POST method directly
+        // Long text: Use POST method directly with callback
         console.log('[JARVIS Audio] Using POST method for long text');
-        await playAudioUsingPost(text);
+        await playAudioUsingPost(text, onStartCallback);
       }
     } catch (error) {
       console.error('[JARVIS Audio] Playback failed:', error);
@@ -2022,37 +2112,40 @@ const JarvisVoice = () => {
         stack: error.stack
       });
       setIsJarvisSpeaking(false);
+      isSpeakingRef.current = false;
+      // Process next in queue even after error
+      setTimeout(() => processNextInSpeechQueue(), 200);
 
       // Fallback to browser speech synthesis if backend TTS fails
       console.log('[JARVIS Audio] Falling back to browser speech synthesis...');
       if ('speechSynthesis' in window) {
         // Cancel any ongoing speech first
         window.speechSynthesis.cancel();
-        
+
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.8;   // Slower rate for more natural, smooth speech
+        utterance.rate = 0.7;   // Even slower rate for smooth, non-rushed speech
         utterance.pitch = 0.95; // Slightly lower pitch for more authoritative tone
         utterance.volume = 0.9; // Slightly lower volume for more natural sound
 
         // Try to find Daniel or other British male voice
         const voices = window.speechSynthesis.getVoices();
         console.log(`[JARVIS Audio] Available voices: ${voices.length}`);
-        
+
         // First try to find Daniel
         let selectedVoice = voices.find(voice => voice.name.includes('Daniel'));
-        
+
         if (!selectedVoice) {
           // Try other British male voices
-          selectedVoice = voices.find(voice => 
+          selectedVoice = voices.find(voice =>
             (voice.lang.includes('en-GB') || voice.lang.includes('en_GB')) &&
-            (voice.name.includes('Oliver') || voice.name.includes('James') || 
+            (voice.name.includes('Oliver') || voice.name.includes('James') ||
              voice.name.toLowerCase().includes('male'))
           );
         }
-        
+
         if (!selectedVoice) {
           // Try any British voice
-          selectedVoice = voices.find(voice => 
+          selectedVoice = voices.find(voice =>
             voice.lang.includes('en-GB') || voice.lang.includes('en_GB')
           );
         }
@@ -2067,14 +2160,25 @@ const JarvisVoice = () => {
         utterance.onstart = () => {
           console.log('[JARVIS Audio] Browser speech synthesis started');
           setIsJarvisSpeaking(true);
+          // Call the callback when browser speech ACTUALLY starts playing (perfect sync!)
+          if (onStartCallback && typeof onStartCallback === 'function') {
+            console.log('[JARVIS Audio] Calling start callback - text will appear NOW');
+            onStartCallback();
+          }
         };
         utterance.onend = () => {
           console.log('[JARVIS Audio] Browser speech completed');
           setIsJarvisSpeaking(false);
+          isSpeakingRef.current = false;
+          // Process next in queue after a small delay
+          setTimeout(() => processNextInSpeechQueue(), 200);
         };
         utterance.onerror = (e) => {
           console.error('[JARVIS Audio] Browser speech error:', e);
           setIsJarvisSpeaking(false);
+          isSpeakingRef.current = false;
+          // Process next in queue even after error
+          setTimeout(() => processNextInSpeechQueue(), 200);
         };
 
         window.speechSynthesis.speak(utterance);

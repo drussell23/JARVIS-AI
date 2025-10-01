@@ -273,7 +273,7 @@ class DocumentWriterExecutor:
             "total_words_target": 0
         }
         self._last_narration_time = 0
-        self._min_narration_interval = 3.0  # Minimum 3 seconds between narrations
+        self._min_narration_interval = 5.0  # Minimum 5 seconds between narrations for better speech pacing
 
     async def create_document(self,
                             request: DocumentRequest,

@@ -118,8 +118,9 @@ class AsyncTTSHandler:
         with tempfile.NamedTemporaryFile(suffix=".aiff", delete=False) as tmp:
             aiff_path = Path(tmp.name)
         
-        # Generate audio with say command (async) - slower rate for natural speech
-        say_cmd = ["say", "-v", voice, "-r", "180", "-o", str(aiff_path), text]
+        # Generate audio with say command (async) - much slower rate for smooth, natural speech
+        # Default macOS speech rate is 200, we'll use 160 for smoother delivery
+        say_cmd = ["say", "-v", voice, "-r", "160", "-o", str(aiff_path), text]
         await self._run_subprocess_async(say_cmd)
         
         # Try to convert to MP3 for smaller size and better compatibility
