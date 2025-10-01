@@ -357,6 +357,9 @@ def import_monitoring():
 
 def import_voice_unlock():
     """Import voice unlock components"""
+    import logging
+    logger = logging.getLogger(__name__)
+
     voice_unlock = {}
 
     try:

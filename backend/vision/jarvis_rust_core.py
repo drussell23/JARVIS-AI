@@ -10,13 +10,31 @@ logger = logging.getLogger(__name__)
 
 # Try to import Rust core with fallback
 try:
+    # First try to import the actual Rust module
     import jarvis_rust_core as jrc
-    RUST_AVAILABLE = True
-    logger.info("Rust core loaded successfully")
+    # Check if it's the stub or real implementation
+    if hasattr(jrc, '__rust_available__'):
+        RUST_AVAILABLE = jrc.__rust_available__
+        if not RUST_AVAILABLE:
+            logger.info("Using Python stub for Rust core (build in progress)")
+    else:
+        RUST_AVAILABLE = True
+        logger.info("Rust core loaded successfully")
 except ImportError:
-    jrc = None
-    RUST_AVAILABLE = False
-    logger.warning("Rust core not available - using Python fallback")
+    # Try to load the stub from jarvis-rust-core directory
+    try:
+        import sys
+        from pathlib import Path
+        stub_dir = Path(__file__).parent / "jarvis-rust-core"
+        if stub_dir.exists():
+            sys.path.insert(0, str(stub_dir))
+            import jarvis_rust_core as jrc
+            RUST_AVAILABLE = False
+            logger.info("Loaded Python stub for Rust core")
+    except ImportError:
+        jrc = None
+        RUST_AVAILABLE = False
+        logger.warning("Rust core not available - using Python fallback")
 
 # Global references to Rust components
 _runtime_manager = None
