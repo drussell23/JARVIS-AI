@@ -275,7 +275,9 @@ class ClaudeContentStreamer:
         stats.model_used = model
 
         if not self._ensure_client():
-            logger.info("Using mock content streaming (no API client)")
+            logger.warning("⚠️ Using DEMO mode - No valid Claude API key configured")
+            logger.info("To use real Claude API: Set ANTHROPIC_API_KEY environment variable")
+            logger.info("Get a key at: https://console.anthropic.com/settings/keys")
             async for chunk in self._mock_stream(prompt):
                 stats.total_chunks += 1
                 stats.total_chars += len(chunk)
@@ -327,6 +329,14 @@ class ClaudeContentStreamer:
                 logger.warning(f"Rate limit with {current_model}, trying next model...")
                 await asyncio.sleep(2)
                 continue
+
+            except anthropic.AuthenticationError as e:
+                last_error = e
+                stats.errors_encountered += 1
+                logger.error(f"❌ Authentication failed: Invalid API key")
+                logger.info("Please check your ANTHROPIC_API_KEY environment variable")
+                logger.info("Get a valid key at: https://console.anthropic.com/settings/keys")
+                break  # Don't retry on auth errors
 
             except anthropic.APIError as e:
                 last_error = e
@@ -735,5 +745,11 @@ def get_claude_streamer(api_key: Optional[str] = None) -> ClaudeContentStreamer:
     """Get or create global Claude streamer instance"""
     global _claude_streamer
     if _claude_streamer is None:
+        # Try to load from environment if no key provided
+        if not api_key:
+            import os
+            api_key = os.getenv('ANTHROPIC_API_KEY')
+            if api_key:
+                logger.info(f"Loaded API key from environment: {api_key[:20]}...")
         _claude_streamer = ClaudeContentStreamer(api_key)
     return _claude_streamer

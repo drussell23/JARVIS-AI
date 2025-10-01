@@ -506,6 +506,13 @@ Provide a clear, structured outline."""
         current_section_index = 0
         section_announced = False
 
+        # Check if we're using real API or demo mode
+        if self._claude and not self._claude.api_key:
+            await self._narrate(progress_callback, websocket,
+                "⚠️ Running in DEMO mode (no Claude API key configured). The content will be generic.")
+            await self._narrate(progress_callback, websocket,
+                "For real AI-generated content, set up your API key with: python backend/setup_claude_api.py")
+
         await self._narrate(progress_callback, websocket,
             "Starting with the MLA heading..." if request.formatting == DocumentFormat.MLA else "Starting with the document...")
 
