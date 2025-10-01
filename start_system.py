@@ -604,11 +604,11 @@ class AsyncSystemManager:
                 if self.auto_cleanup:
                     print(f"\n{Colors.BLUE}Automatically cleaning up processes...{Colors.ENDC}")
                     should_cleanup = True
-            else:
+                else:
                     should_cleanup = input(
                         f"\n{Colors.CYAN}Clean up these processes? (y/n): {Colors.ENDC}"
                     ).lower() == "y"
-                
+
                 if should_cleanup:
                     if not self.auto_cleanup:
                         print(f"\n{Colors.BLUE}Cleaning up processes...{Colors.ENDC}")
@@ -1443,7 +1443,7 @@ class AsyncSystemManager:
 
     async def monitor_services(self):
         """Monitor services with health checks"""
-            print(f"\n{Colors.BLUE}Monitoring services...{Colors.ENDC}")
+        print(f"\n{Colors.BLUE}Monitoring services...{Colors.ENDC}")
 
         last_health_check = time.time()
         consecutive_failures = {"backend": 0}
