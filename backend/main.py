@@ -786,10 +786,60 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Failed to start wake word service: {e}")
 
+    # Register with autonomous systems
+    try:
+        from core.autonomous_orchestrator import get_orchestrator
+        from core.zero_config_mesh import get_mesh
+
+        orchestrator = get_orchestrator()
+        mesh = get_mesh()
+
+        # Start autonomous systems
+        await orchestrator.start()
+        await mesh.start()
+
+        # Register backend service
+        backend_port = int(os.getenv("BACKEND_PORT", "8000"))
+        await orchestrator.register_service("jarvis_backend", backend_port, "http")
+        await mesh.join({
+            "name": "jarvis_backend",
+            "port": backend_port,
+            "protocol": "http",
+            "type": "backend",
+            "endpoints": {
+                "health": "/health",
+                "vision": "/vision",
+                "voice": "/voice",
+                "chat": "/chat"
+            }
+        })
+
+        app.state.orchestrator = orchestrator
+        app.state.mesh = mesh
+
+        logger.info("✅ Registered with autonomous orchestrator and mesh network")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not register with autonomous systems: {e}")
+
     yield
 
     # Cleanup
     logger.info("🛑 Shutting down JARVIS backend...")
+
+    # Stop autonomous systems
+    if hasattr(app.state, "orchestrator"):
+        try:
+            await app.state.orchestrator.stop()
+            logger.info("✅ Autonomous orchestrator stopped")
+        except Exception as e:
+            logger.error(f"Failed to stop orchestrator: {e}")
+
+    if hasattr(app.state, "mesh"):
+        try:
+            await app.state.mesh.stop()
+            logger.info("✅ Mesh network stopped")
+        except Exception as e:
+            logger.error(f"Failed to stop mesh: {e}")
 
     # Save current code state for next startup
     try:
@@ -1022,6 +1072,43 @@ async def health_check():
         "self_healing": self_healing_details,
         "voice_unlock": voice_unlock_details,
     }
+
+
+@app.get("/autonomous/status")
+async def autonomous_status():
+    """Get autonomous orchestrator and mesh network status"""
+    orchestrator_status = None
+    mesh_status = None
+
+    if hasattr(app.state, "orchestrator"):
+        try:
+            orchestrator_status = app.state.orchestrator.get_status()
+        except Exception as e:
+            orchestrator_status = {"error": str(e)}
+
+    if hasattr(app.state, "mesh"):
+        try:
+            mesh_status = app.state.mesh.get_status()
+        except Exception as e:
+            mesh_status = {"error": str(e)}
+
+    return {
+        "autonomous_enabled": orchestrator_status is not None or mesh_status is not None,
+        "orchestrator": orchestrator_status,
+        "mesh": mesh_status
+    }
+
+
+@app.get("/autonomous/services")
+async def autonomous_services():
+    """Get list of all discovered services"""
+    if not hasattr(app.state, "orchestrator"):
+        return {"error": "Orchestrator not available"}
+
+    try:
+        return app.state.orchestrator.get_frontend_config()
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # Mount routers based on available components
