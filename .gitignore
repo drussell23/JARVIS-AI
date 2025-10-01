@@ -175,19 +175,43 @@ core.*
 benchmark_results/
 *.bench
 
-# Duplicate files prevention
+# Duplicate files prevention (macOS/editor duplicates)
 * 2.*
+* 3.*
+* 4.*
+* 5.*
 * 2
+* 3
+* 4
+* 5
 *\ 2.*
+*\ 3.*
+*\ 4.*
+*\ 5.*
 *\ 2
+*\ 3
+*\ 4
+*\ 5
 * copy.*
 * copy
 *-copy.*
 *-copy
 *(2).*
+*(3).*
+*(4).*
+*(5).*
 *(2)
+*(3)
+*(4)
+*(5)
 *\(2\).*
+*\(3\).*
+*\(4\).*
+*\(5\).*
 *\(2\)
+*\(3\)
+*\(4\)
+*\(5\)
 
 # Voice Unlock sensitive files
 backend/voice_unlock/test_*.py
