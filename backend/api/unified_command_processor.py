@@ -637,31 +637,20 @@ class UnifiedCommandProcessor:
                     # Get document writer
                     writer = get_document_writer()
 
-                    # Send immediate acknowledgment
-                    if websocket:
-                        await websocket.send_json({
-                            "type": "voice_narration",
-                            "message": f"Creating {doc_request.document_type.value} on '{doc_request.topic}'...",
-                            "speak": True
-                        })
+                    # Don't send immediate acknowledgment here - let the document writer handle all narration
+                    # This avoids duplicate messages
 
                     # Execute document creation
                     result = await writer.create_document(request=doc_request, websocket=websocket)
 
                     if result.get('success'):
-                        # Send final success message as voice narration
-                        if websocket:
-                            await websocket.send_json({
-                                "type": "voice_narration",
-                                "message": result.get('message', f"Document created successfully"),
-                                "speak": True
-                            })
+                        # Don't send duplicate final message - document writer already handles completion narration
                         
                         return {
                             'success': True,
-                            'response': result.get('message', f"Document created successfully"),
+                            'response': result.get('message', f"Document created successfully with {result.get('word_count', 0)} words"),
                             'command_type': command_type.value,
-                            'speak': True,  # Ensure the response is spoken
+                            'speak': False,  # Don't speak again since document writer already spoke
                             **result
                         }
                     else:

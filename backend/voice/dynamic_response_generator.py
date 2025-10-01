@@ -20,6 +20,8 @@ class DynamicResponseGenerator:
         self.sir_usage_count = 0
         self.total_responses = 0
         self.last_sir_used = 0
+        self.last_phrases = []  # Track recent phrases to avoid repetition
+        self.max_phrase_history = 10  # Remember last 10 phrases
         
         # Personality traits that affect response style
         self.personality = {
@@ -65,17 +67,21 @@ class DynamicResponseGenerator:
         """Generate varied acknowledgment phrases"""
         formal_acks = [
             "Certainly", "Of course", "Right away", "Understood", 
-            "Very well", "As you wish", "Indeed"
+            "Very well", "As you wish", "Indeed", "Affirmative",
+            "Acknowledged", "By all means"
         ]
         
         casual_acks = [
             "Got it", "Sure thing", "On it", "No problem",
-            "Absolutely", "You bet", "Will do", "Alright"
+            "Absolutely", "You bet", "Will do", "Alright",
+            "Sounds good", "Perfect", "Great", "Okay"
         ]
         
         creative_acks = [
             "Consider it done", "Leave it to me", "I'm on the case",
-            "Coming right up", "Happy to help", "Let me handle that"
+            "Coming right up", "Happy to help", "Let me handle that",
+            "I'll take care of it", "Allow me", "Right on it",
+            "Let's do this", "I've got this"
         ]
         
         # Mix based on personality
@@ -87,7 +93,18 @@ class DynamicResponseGenerator:
         if self.personality['wit'] > 0.7:
             pool.extend(random.sample(creative_acks, 3))
             
-        ack = random.choice(pool)
+        # Filter out recently used phrases
+        available_pool = [p for p in pool if p not in self.last_phrases]
+        if not available_pool:  # If all phrases were recently used, reset
+            available_pool = pool
+            self.last_phrases = []
+            
+        ack = random.choice(available_pool)
+        
+        # Track this phrase
+        self.last_phrases.append(ack)
+        if len(self.last_phrases) > self.max_phrase_history:
+            self.last_phrases.pop(0)
         
         # Occasionally add Sir
         if self.should_use_sir():
@@ -216,18 +233,36 @@ class DynamicResponseGenerator:
             "Let me see",
             "Checking",
             "Working on it",
-            "Give me a second"
+            "Give me a second",
+            "Examining that",
+            "Investigating",
+            "Let me find out",
+            "Calculating",
+            "Searching",
+            "Just a moment",
+            "Hold on",
+            "I'll check"
         ]
         
-        phrase = random.choice(thinking)
+        # Filter out recently used phrases
+        available = [p for p in thinking if p not in self.last_phrases]
+        if not available:
+            available = thinking
+            
+        phrase = random.choice(available)
         
-        # Add variation
-        if random.random() < 0.3:
+        # Track this phrase
+        self.last_phrases.append(phrase)
+        if len(self.last_phrases) > self.max_phrase_history:
+            self.last_phrases.pop(0)
+        
+        # Add variation less frequently
+        if random.random() < 0.2:  # Reduced from 0.3
             additions = ["for you", "now", "right away"]
             phrase = f"{phrase} {random.choice(additions)}"
             
         # Rarely add Sir to thinking phrases
-        if self.should_use_sir() and random.random() < 0.2:
+        if self.should_use_sir() and random.random() < 0.15:  # Reduced from 0.2
             phrase = f"{phrase}, Sir"
             
         return phrase
@@ -337,8 +372,11 @@ class DynamicResponseGenerator:
             'acknowledging_request': [
                 f"I'll write that {doc_type} on {topic}",
                 f"Starting your {doc_type} about {topic}",
-                f"{topic} - {random.choice(['interesting', 'good', 'great'])} topic",
-                f"Let me create that {doc_type} for you"
+                f"{topic} - {random.choice(['interesting', 'good', 'great', 'excellent', 'fascinating'])} topic",
+                f"Let me create that {doc_type} for you",
+                f"Beginning work on your {doc_type}",
+                f"{doc_type} on {topic} coming up",
+                f"I'll prepare that {doc_type}"
             ],
             'analyzing_topic': [
                 f"Analyzing {topic}",
@@ -356,7 +394,10 @@ class DynamicResponseGenerator:
                 f"Writing {section}",
                 f"Working on {section}",
                 f"Developing {section}",
-                f"{self.get_transition_phrase()} {section}"
+                f"{self.get_transition_phrase()} {section}",
+                f"Crafting {section}",
+                f"Composing {section}",
+                f"Now on {section}"
             ],
             'progress_update': [
                 self.get_progress_update(progress, context),

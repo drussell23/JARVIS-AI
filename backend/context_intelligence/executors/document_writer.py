@@ -273,7 +273,10 @@ class DocumentWriterExecutor:
             "total_words_target": 0
         }
         self._last_narration_time = 0
-        self._min_narration_interval = 5.0  # Minimum 5 seconds between narrations for better speech pacing
+        self._min_narration_interval = 8.0  # Minimum 8 seconds between narrations for better speech pacing
+        self._last_phase = None  # Track last phase to avoid repeating similar messages
+        self._narration_count = 0  # Track total narrations to reduce frequency
+        self._skip_similar_phases = True  # Skip narration for similar phases
 
     async def create_document(self,
                             request: DocumentRequest,
@@ -527,7 +530,7 @@ Provide a clear, structured outline."""
         word_count = 0
         sentence_count = 0
         buffer = ""
-        progress_interval = 50  # Update every 50 words
+        progress_interval = 150  # Update every 150 words instead of 50 to reduce redundancy
         next_milestone = progress_interval
 
         # Track sections for progress updates
@@ -557,13 +560,14 @@ Provide a clear, structured outline."""
                         # Detect section changes (simple heuristic)
                         if current_section_index < len(sections) and not section_announced:
                             section_name = sections[current_section_index]['name']
-                            # Dynamic section announcement
-                            await self._narrate(progress_callback, websocket, context={
-                                "phase": "writing_section",
-                                "current_section": section_name,
-                                "word_count": word_count,
-                                "progress": 55 + int((word_count / (request.word_count or 1000)) * 40)
-                            })
+                            # Only announce major sections, not every small one
+                            if current_section_index % 2 == 0:  # Announce every other section
+                                await self._narrate(progress_callback, websocket, context={
+                                    "phase": "writing_section",
+                                    "current_section": section_name,
+                                    "word_count": word_count,
+                                    "progress": 55 + int((word_count / (request.word_count or 1000)) * 40)
+                                })
                             section_announced = True
 
                         # Move to next section periodically
@@ -870,8 +874,33 @@ Narration:"""
         import time
         import asyncio
 
-        # If context provided, generate dynamic narration
+        # Check if we should skip this narration to reduce redundancy
         if context:
+            current_phase = context.get('phase')
+            
+            # Skip redundant progress updates if too frequent
+            if current_phase == 'progress_update':
+                self._narration_count += 1
+                # Only narrate every 3rd progress update
+                if self._narration_count % 3 != 0:
+                    logger.info(f"[DOCUMENT WRITER] Skipping redundant progress update")
+                    return
+            
+            # Skip similar consecutive phases
+            if self._skip_similar_phases and self._last_phase:
+                similar_phases = [
+                    ('initializing_services', 'services_ready'),
+                    ('creating_document', 'document_created'),
+                    ('opening_browser', 'browser_ready'),
+                    ('analyzing_topic', 'outline_complete')
+                ]
+                for phase_pair in similar_phases:
+                    if self._last_phase in phase_pair and current_phase in phase_pair:
+                        logger.info(f"[DOCUMENT WRITER] Skipping similar phase: {current_phase} (last was {self._last_phase})")
+                        self._last_phase = current_phase
+                        return
+            
+            self._last_phase = current_phase
             message = await self._generate_dynamic_narration(context)
 
         logger.info(f"[DOCUMENT WRITER] {message}")
