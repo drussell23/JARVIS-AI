@@ -6,11 +6,9 @@ use pyo3::prelude::*;
 #[cfg(feature = "python-bindings")]
 use pyo3::exceptions::{PyValueError, PyRuntimeError, PyMemoryError};
 #[cfg(feature = "python-bindings")]
-use numpy::{PyArray1, PyArray2, PyArray3, PyArray4, PyReadonlyArray3};
+use numpy::{PyArray1, PyArray2, PyArray3, PyArray4, PyReadonlyArray1, PyReadonlyArray3};
 #[cfg(feature = "python-bindings")]
 use pyo3::types::{PyDict, PyList, PyBytes};
-#[cfg(feature = "python-bindings")]
-use pyo3::buffer::PyBuffer;
 
 use crate::{Result as RustResult, JarvisError};
 use crate::vision::{
@@ -57,7 +55,7 @@ struct ProcessingStats {
 #[pymethods]
 impl RustImageProcessor {
     #[new]
-    #[args(config = "None")]
+    #[pyo3(signature = (config=None))]
     fn new(config: Option<&PyDict>) -> PyResult<Self> {
         let mut proc_config = ProcessingConfig::from_env();
         
@@ -552,7 +550,7 @@ pub struct RustScreenCapture {
 #[pymethods]
 impl RustScreenCapture {
     #[new]
-    #[args(config = "None")]
+    #[pyo3(signature = (config=None))]
     fn new(config: Option<&PyDict>) -> PyResult<Self> {
         let mut cap_config = CaptureConfig::from_env();
         
@@ -785,7 +783,7 @@ pub struct RustVisionContext {
 #[pymethods]
 impl RustVisionContext {
     #[new]
-    #[args(config = "None")]
+    #[pyo3(signature = (config=None))]
     fn new(config: Option<&PyDict>) -> PyResult<Self> {
         let mut vision_config = VisionGlobalConfig::from_env();
         
@@ -1279,7 +1277,7 @@ impl RustWorkspaceOrganizer {
 
 /// Register all Python bindings with enhanced functionality
 #[cfg(feature = "python-bindings")]
-pub fn register_python_module(m: &PyModule) -> PyResult<()> {
+pub fn register_python_module(py: Python, m: &PyModule) -> PyResult<()> {
     // Initialize vision module
     crate::vision::initialize()
         .map_err(|e| PyRuntimeError::new_err(e.to_string()))?;

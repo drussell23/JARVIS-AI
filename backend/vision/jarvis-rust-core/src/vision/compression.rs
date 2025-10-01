@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 // Import compression libraries
 use lz4;
 use zstd;
-use brotli::{CompressorWriter, DecompressorReader};
+use brotli::{CompressorWriter, CompressorReader};
 use snap;
 
 /// Global compression configuration
@@ -158,21 +158,21 @@ pub struct ImageCompressor {
 }
 
 #[derive(Debug, Clone, Default)]
-struct CompressionStats {
-    total_compressions: u64,
-    total_decompressions: u64,
-    total_bytes_processed: u64,
-    total_bytes_compressed: u64,
-    avg_compression_time_ms: f64,
-    avg_decompression_time_ms: f64,
+pub struct CompressionStats {
+    pub total_compressions: u64,
+    pub total_decompressions: u64,
+    pub total_bytes_processed: u64,
+    pub total_bytes_compressed: u64,
+    pub avg_compression_time_ms: f64,
+    pub avg_decompression_time_ms: f64,
 }
 
 #[derive(Debug, Clone, Default)]
-struct AlgorithmPerformance {
-    uses: u64,
-    avg_ratio: f32,
-    avg_time_ms: f64,
-    success_rate: f32,
+pub struct AlgorithmPerformance {
+    pub uses: u64,
+    pub avg_ratio: f32,
+    pub avg_time_ms: f64,
+    pub success_rate: f32,
 }
 
 impl ImageCompressor {

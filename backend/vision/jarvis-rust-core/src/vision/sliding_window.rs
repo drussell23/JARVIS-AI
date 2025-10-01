@@ -374,7 +374,7 @@ impl SlidingWindowCapture {
     fn get_available_memory_mb(&self) -> f32 {
         #[cfg(target_os = "macos")]
         {
-            use sysinfo::{System, SystemExt};
+            use sysinfo::System;
             let mut sys = System::new();
             sys.refresh_memory();
             (sys.available_memory() / 1024 / 1024) as f32
@@ -502,7 +502,7 @@ impl MemoryMonitor {
         
         #[cfg(target_os = "macos")]
         {
-            use sysinfo::{System, SystemExt};
+            use sysinfo::System;
             let mut sys = System::new();
             sys.refresh_memory();
             let available_mb = (sys.available_memory() / 1024 / 1024) as f32;

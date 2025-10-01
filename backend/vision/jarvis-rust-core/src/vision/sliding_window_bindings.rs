@@ -18,7 +18,7 @@ pub mod python_bindings {
     #[pymethods]
     impl PySlidingWindow {
         #[new]
-        #[args(window_size = "30", overlap_threshold = "0.9")]
+        #[pyo3(signature = (window_size=30, overlap_threshold=0.9))]
         fn new(window_size: usize, overlap_threshold: f32) -> PyResult<Self> {
             let mut config = SlidingWindowConfig::from_env();
             config.overlap_percentage = overlap_threshold;

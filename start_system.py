@@ -652,17 +652,55 @@ class AsyncSystemManager:
             return True
 
     async def kill_process_on_port(self, port: int):
-        """Kill process using a specific port"""
+        """Kill process using a specific port, excluding IDEs"""
         if platform.system() == "Darwin":  # macOS
-            cmd = f"lsof -ti:{port} | xargs kill -9"
+            # Get PIDs on port, but exclude IDE processes
+            try:
+                result = subprocess.run(
+                    f"lsof -ti:{port}",
+                    shell=True,
+                    capture_output=True,
+                    text=True
+                )
+                pids = result.stdout.strip().split('\n')
+
+                for pid in pids:
+                    if not pid:
+                        continue
+
+                    # Check if this PID belongs to an IDE
+                    try:
+                        proc_info = subprocess.run(
+                            f"ps -p {pid} -o comm=",
+                            shell=True,
+                            capture_output=True,
+                            text=True
+                        )
+                        proc_name = proc_info.stdout.strip().lower()
+
+                        # Skip IDE processes
+                        ide_patterns = ['cursor', 'code', 'vscode', 'sublime', 'pycharm',
+                                       'intellij', 'webstorm', 'atom', 'vim', 'emacs']
+
+                        if any(pattern in proc_name for pattern in ide_patterns):
+                            print(f"{Colors.YELLOW}Skipping IDE process: {proc_name} (PID {pid}){Colors.ENDC}")
+                            continue
+
+                        # Kill non-IDE process
+                        subprocess.run(f"kill -9 {pid}", shell=True, capture_output=True)
+                    except:
+                        pass
+
+            except:
+                pass
         else:  # Linux
             cmd = f"fuser -k {port}/tcp"
+            try:
+                subprocess.run(cmd, shell=True, capture_output=True)
+            except:
+                pass
 
-        try:
-            subprocess.run(cmd, shell=True, capture_output=True)
-            await asyncio.sleep(1)
-        except:
-            pass
+        await asyncio.sleep(1)
 
     async def check_performance_fixes(self):
         """Check if performance fixes have been applied"""
@@ -2022,13 +2060,44 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
             )
             await node_kill.wait()
             
-            # Kill python processes running our backend
-            python_kill = await asyncio.create_subprocess_shell(
-                "pkill -f 'python.*main.py|python.*jarvis' || true",
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            await python_kill.wait()
+            # Kill python processes running our backend (but not IDE-related processes)
+            # First get all matching PIDs
+            try:
+                result = subprocess.run(
+                    "pgrep -f 'python.*main.py|python.*jarvis'",
+                    shell=True,
+                    capture_output=True,
+                    text=True
+                )
+                pids = result.stdout.strip().split('\n')
+
+                for pid in pids:
+                    if not pid:
+                        continue
+
+                    # Check parent process to avoid killing IDE extensions
+                    try:
+                        parent_check = subprocess.run(
+                            f"ps -o ppid= -p {pid} | xargs ps -o comm= -p 2>/dev/null || echo ''",
+                            shell=True,
+                            capture_output=True,
+                            text=True
+                        )
+                        parent_name = parent_check.stdout.strip().lower()
+
+                        # Skip if parent is an IDE
+                        ide_patterns = ['cursor', 'code', 'vscode', 'sublime', 'pycharm',
+                                       'intellij', 'webstorm', 'atom']
+
+                        if any(pattern in parent_name for pattern in ide_patterns):
+                            continue
+
+                        # Kill the process
+                        subprocess.run(f"kill {pid}", shell=True, capture_output=True)
+                    except:
+                        pass
+            except:
+                pass
             
         except Exception:
             pass  # Ignore errors in cleanup

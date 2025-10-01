@@ -88,7 +88,7 @@ class ClaudeContentStreamer:
             api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
         """
         self.api_key = api_key or os.getenv('ANTHROPIC_API_KEY')
-        self._client = None
+        self._client: Optional[anthropic.Anthropic] = None
         self._outline_cache: Dict[str, Dict[str, Any]] = {}
         self._request_times: List[float] = []
         self._token_counts: List[int] = []
@@ -96,8 +96,16 @@ class ClaudeContentStreamer:
 
         if not self.api_key:
             logger.warning("No Anthropic API key provided - streaming will use mock data")
+        elif not ANTHROPIC_AVAILABLE:
+            logger.error("Anthropic package not available - install with: pip install anthropic")
         else:
-            logger.info("Claude streamer initialized with API key")
+            # Initialize client immediately if we have API key and package
+            try:
+                self._client = anthropic.Anthropic(api_key=self.api_key)
+                logger.info("✅ Claude API client initialized successfully in __init__")
+            except Exception as e:
+                logger.error(f"Failed to initialize Claude API client in __init__: {e}")
+                self._client = None
 
     async def __aenter__(self):
         """Async context manager entry"""
@@ -115,20 +123,31 @@ class ClaudeContentStreamer:
             logger.info(f"Session complete: {total_tokens} tokens in {total_duration:.1f}s")
         return False
 
-    def _ensure_client(self):
+    def _ensure_client(self) -> bool:
         """Ensure we have a Claude API client"""
         if not ANTHROPIC_AVAILABLE:
+            logger.error("❌ Anthropic package not available")
             return False
 
-        if self._client is None and self.api_key:
+        if not self.api_key:
+            logger.error("❌ No API key available")
+            return False
+
+        if self._client is None:
             try:
                 self._client = anthropic.Anthropic(api_key=self.api_key)
-                logger.info("✓ Claude API client initialized successfully")
+                logger.info("✅ Claude API client initialized in _ensure_client")
             except Exception as e:
-                logger.error(f"Failed to initialize Claude API client: {e}")
+                logger.error(f"❌ Failed to initialize Claude API client: {e}")
                 return False
 
-        return self._client is not None
+        is_ready = self._client is not None
+        if is_ready:
+            logger.info("✅ Claude API client is ready")
+        else:
+            logger.error("❌ Claude API client is None after initialization attempt")
+
+        return is_ready
 
     def _check_rate_limits(self, estimated_tokens: int = 0) -> bool:
         """
@@ -345,7 +364,7 @@ class ClaudeContentStreamer:
                                  chunk_callback: Optional[Callable],
                                  stats_callback: Optional[Callable]) -> AsyncIterator[str]:
         """
-        Internal method to stream with a specific model
+        Internal method to stream with a specific model using real Claude API
 
         Args:
             model: Model to use
@@ -356,65 +375,58 @@ class ClaudeContentStreamer:
             stats_callback: Optional stats callback
 
         Yields:
-            Content chunks
+            Content chunks from Claude API
         """
-        # Run streaming in executor to avoid blocking
-        def sync_stream():
+        if self._client is None:
+            logger.error("❌ Cannot stream: client is None")
+            raise RuntimeError("Claude API client not initialized")
+
+        logger.info(f"🤖 Starting real Claude API streaming with {model}")
+        logger.info(f"Prompt length: {len(prompt)} chars, Max tokens: {max_tokens}")
+
+        try:
+            # Use Claude's streaming API directly
             with self._client.messages.stream(
                 model=model,
                 max_tokens=max_tokens,
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{
+                    "role": "user",
+                    "content": prompt
+                }],
+                temperature=0.7
             ) as stream:
+                logger.info("✓ Claude API stream opened successfully")
+
                 for text in stream.text_stream:
                     if text:
+                        # Update statistics
+                        stats.total_chunks += 1
+                        stats.total_chars += len(text)
+                        stats.total_tokens += self._estimate_tokens(text)
+
+                        # Execute callbacks synchronously (they're in sync context)
+                        if chunk_callback:
+                            try:
+                                chunk_callback(text)
+                            except Exception as e:
+                                logger.debug(f"Chunk callback error: {e}")
+
+                        if stats_callback and stats.total_chunks % 10 == 0:
+                            try:
+                                stats_callback(stats)
+                            except Exception as e:
+                                logger.debug(f"Stats callback error: {e}")
+
                         yield text
 
-        # Convert sync generator to async
-        sync_gen = sync_stream()
+                        # Small async delay for natural pacing
+                        await asyncio.sleep(0.02)
 
-        try:
-            while True:
-                try:
-                    # Get next chunk asynchronously
-                    chunk = await asyncio.get_event_loop().run_in_executor(
-                        None,
-                        lambda: next(sync_gen)
-                    )
+                logger.info(f"✓ Streaming complete: {stats.total_tokens} tokens, {stats.total_chunks} chunks")
 
-                    # Update statistics
-                    stats.total_chunks += 1
-                    stats.total_chars += len(chunk)
-                    stats.total_tokens += self._estimate_tokens(chunk)
-
-                    # Callbacks
-                    if chunk_callback:
-                        await asyncio.get_event_loop().run_in_executor(
-                            None,
-                            chunk_callback,
-                            chunk
-                        )
-
-                    if stats_callback and stats.total_chunks % 10 == 0:
-                        await asyncio.get_event_loop().run_in_executor(
-                            None,
-                            stats_callback,
-                            stats
-                        )
-
-                    yield chunk
-
-                    # Small async delay to prevent overwhelming
-                    await asyncio.sleep(0.01)
-
-                except StopIteration:
-                    break
-
-        finally:
-            # Cleanup
-            try:
-                sync_gen.close()
-            except:
-                pass
+        except Exception as e:
+            logger.error(f"Error in _stream_with_model: {e}", exc_info=True)
+            raise
 
     async def generate_outline(self,
                               prompt: str,
@@ -450,6 +462,10 @@ class ClaudeContentStreamer:
         # Try with model fallback
         models_to_try = [self.MODELS["primary"], self.MODELS["fallback"]]
 
+        if self._client is None:
+            logger.error("❌ Cannot generate outline: client is None")
+            return self._mock_outline()
+
         for model in models_to_try:
             try:
                 logger.info(f"Generating outline with {model}")
@@ -459,6 +475,8 @@ class ClaudeContentStreamer:
 
                 # Create outline with retry
                 async def _create_outline():
+                    if self._client is None:
+                        raise RuntimeError("Client not initialized")
                     loop = asyncio.get_event_loop()
                     response = await loop.run_in_executor(
                         None,
