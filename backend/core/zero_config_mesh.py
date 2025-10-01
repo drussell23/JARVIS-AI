@@ -182,6 +182,7 @@ class ZeroConfigMesh:
             "stats": {
                 "total_nodes": len(self.nodes),
                 "active_nodes": sum(1 for node in self.nodes.values() if node.get("last_seen")),
+                "healthy_nodes": sum(1 for node in self.nodes.values() if node.get("last_seen")),  # Same as active for now
                 "service_types": len(set(node.get("type") for node in self.nodes.values() if node.get("type"))),
                 "total_connections": len(self.nodes) * (len(self.nodes) - 1) if len(self.nodes) > 1 else 0  # Mesh topology
             }
