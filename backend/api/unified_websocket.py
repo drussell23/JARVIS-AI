@@ -131,20 +131,22 @@ class UnifiedWebSocketManager:
             
             # Process through JARVIS
             result = await jarvis_api.process_command(command_obj)
-            
+
             return {
-                "type": "voice_response",
-                "response": result.get("response", ""),
+                "type": "response",
+                "text": result.get("response", ""),
                 "status": result.get("status", "success"),
-                "command_type": result.get("command_type", "unknown")
+                "command_type": result.get("command_type", "unknown"),
+                "speak": True
             }
             
         except Exception as e:
             logger.error(f"Error processing voice command: {e}")
             return {
-                "type": "voice_response",
-                "response": f"Error processing command: {str(e)}",
-                "status": "error"
+                "type": "response",
+                "text": f"I encountered an error: {str(e)}",
+                "status": "error",
+                "speak": True
             }
     
     async def _handle_vision_analyze(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
