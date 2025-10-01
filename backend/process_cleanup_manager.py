@@ -42,25 +42,42 @@ class ProcessCleanupManager:
         self.config = {
             'check_interval': 5.0,  # seconds
             'process_timeout': 30.0,  # seconds
-            'stuck_process_time': 7200.0,  # 2 hours - consider process stuck
+            'stuck_process_time': 3600.0,  # 1 hour - consider process stuck (reduced from 2 hours)
             'memory_threshold': 0.35,  # 35% memory usage target
             'memory_threshold_warning': 0.50,  # 50% warning threshold
-            'memory_threshold_critical': 0.70,  # 70% critical threshold
+            'memory_threshold_critical': 0.65,  # 65% critical threshold (reduced from 70%)
+            'memory_threshold_single_process': 500,  # 500MB per process threshold
+            'memory_threshold_jarvis_process': 1000,  # 1GB for JARVIS main process
             'cpu_threshold': 0.9,  # 90% CPU usage
             'cpu_threshold_system': 80.0,  # 80% total system CPU usage threshold
-            'cpu_threshold_single': 50.0,  # 50% CPU for single process
+            'cpu_threshold_single': 40.0,  # 40% CPU for single process (reduced from 50%)
             'enable_cleanup': True,
             'aggressive_cleanup': True,  # Enable aggressive memory management
-            # JARVIS-specific patterns
+            # JARVIS-specific patterns (improved detection)
             'jarvis_patterns': [
                 'jarvis', 'main.py', 'jarvis_backend', 'jarvis_voice',
                 'voice_unlock', 'websocket_server', 'jarvis-ai-agent',
-                'unified_command_processor', 'resource_manager'
+                'unified_command_processor', 'resource_manager',
+                'wake_word_api', 'document_writer', 'neural_trinity'
+            ],
+            'jarvis_excluded_patterns': [
+                # Exclude IDE/editor processes that may contain "jarvis" in path
+                'vscode', 'code helper', 'cursor', 'sublime', 'pycharm',
+                'codeium', 'copilot', 'node_modules', '.vscode'
             ],
             'jarvis_port_patterns': [8000, 8001, 8010, 8080, 8765, 5000],  # Common JARVIS ports
             'system_critical': [
                 'kernel_task', 'WindowServer', 'loginwindow', 'launchd',
-                'systemd', 'init', 'Finder', 'Dock', 'SystemUIServer'
+                'systemd', 'init', 'Finder', 'Dock', 'SystemUIServer',
+                'python', 'Python',  # Don't kill generic python processes
+                # IDE and development tools
+                'Cursor', 'cursor', 'Code', 'Code Helper', 'Visual Studio Code',
+                'VSCode', 'vscode', 'Electron', 'node',
+                # Browsers
+                'Google Chrome', 'Chrome', 'chrome', 'Google Chrome Helper',
+                'Safari', 'safari', 'Firefox', 'firefox', 'Arc', 'Brave',
+                # Other common tools
+                'Terminal', 'iTerm', 'iTerm2', 'Warp'
             ],
             # Critical files to monitor for changes
             'critical_files': [
@@ -343,6 +360,7 @@ class ProcessCleanupManager:
 
         # Find problematic processes
         state["high_cpu_processes"] = self._find_high_cpu_processes()
+        state["high_memory_processes"] = self._find_high_memory_processes()
         state["stuck_processes"] = self._find_stuck_processes()
         state["zombie_processes"] = self._find_zombie_processes()
         state["jarvis_processes"] = self._find_jarvis_processes()
@@ -359,6 +377,8 @@ class ProcessCleanupManager:
             try:
                 # Get CPU usage over a short interval
                 cpu = proc.cpu_percent(interval=0.1)
+                memory_info = proc.memory_info()
+                memory_mb = memory_info.rss / (1024 * 1024)
 
                 if cpu > self.config["cpu_threshold_single"]:
                     proc_info = {
@@ -366,6 +386,7 @@ class ProcessCleanupManager:
                         "name": proc.name(),
                         "cpu_percent": cpu,
                         "memory_percent": proc.memory_percent(),
+                        "memory_mb": memory_mb,
                         "cmdline": " ".join(proc.cmdline()[:5]),  # First 5 args
                         "create_time": datetime.fromtimestamp(proc.create_time()),
                         "is_jarvis": self._is_jarvis_process(proc),
@@ -375,6 +396,39 @@ class ProcessCleanupManager:
                 continue
 
         return sorted(high_cpu, key=lambda x: x["cpu_percent"], reverse=True)
+
+    def _find_high_memory_processes(self) -> List[Dict]:
+        """Find processes using excessive memory"""
+        high_memory = []
+
+        for proc in psutil.process_iter(
+            ["pid", "name", "cpu_percent", "memory_percent"]
+        ):
+            try:
+                memory_info = proc.memory_info()
+                memory_mb = memory_info.rss / (1024 * 1024)
+                is_jarvis = self._is_jarvis_process(proc)
+
+                # Check against thresholds
+                threshold = self.config["memory_threshold_jarvis_process"] if is_jarvis else \
+                           self.config["memory_threshold_single_process"]
+
+                if memory_mb > threshold:
+                    proc_info = {
+                        "pid": proc.pid,
+                        "name": proc.name(),
+                        "cpu_percent": proc.cpu_percent(interval=0.1),
+                        "memory_percent": proc.memory_percent(),
+                        "memory_mb": memory_mb,
+                        "cmdline": " ".join(proc.cmdline()[:5]),
+                        "create_time": datetime.fromtimestamp(proc.create_time()),
+                        "is_jarvis": is_jarvis,
+                    }
+                    high_memory.append(proc_info)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+        return sorted(high_memory, key=lambda x: x["memory_mb"], reverse=True)
 
     def _find_stuck_processes(self) -> List[Dict]:
         """Find processes that appear to be stuck or hanging"""
@@ -461,6 +515,26 @@ class ProcessCleanupManager:
             # Check command line
             cmdline = " ".join(proc.cmdline()).lower()
 
+            # First check exclusions - IDE/editor processes should be excluded
+            for excluded_pattern in self.config.get("jarvis_excluded_patterns", []):
+                if excluded_pattern.lower() in proc_name or excluded_pattern.lower() in cmdline:
+                    return False
+
+            # Check if it's a generic python/Python process without JARVIS context
+            if proc_name in ['python', 'python3', 'python3.11', 'python3.12'] and \
+               not any(pattern in cmdline for pattern in ['jarvis', 'main.py', 'backend']):
+                return False
+
+            # Check working directory for JARVIS project
+            try:
+                cwd = proc.cwd()
+                if 'jarvis-ai-agent' in cwd.lower() or 'jarvis' in cwd.lower():
+                    # It's in JARVIS directory, now check if it's actually JARVIS code
+                    if any(pattern.lower() in cmdline for pattern in self.config["jarvis_patterns"]):
+                        return True
+            except (psutil.AccessDenied, PermissionError, psutil.NoSuchProcess):
+                pass
+
             # Dynamic pattern matching
             for pattern in self.config["jarvis_patterns"]:
                 if pattern.lower() in proc_name or pattern.lower() in cmdline:
@@ -485,29 +559,42 @@ class ProcessCleanupManager:
 
         # CPU usage factor
         if proc_info.get("cpu_percent", 0) > self.config["cpu_threshold_single"]:
-            score += proc_info["cpu_percent"] / 100.0 * 0.4
+            score += proc_info["cpu_percent"] / 100.0 * 0.3
 
-        # Memory usage factor
-        if proc_info.get("memory_percent", 0) > 20:
-            score += proc_info["memory_percent"] / 100.0 * 0.2
+        # Memory usage factor (enhanced)
+        memory_mb = proc_info.get("memory_mb", 0)
+        is_jarvis = proc_info.get("is_jarvis", False)
+
+        # Use appropriate threshold
+        mem_threshold = self.config["memory_threshold_jarvis_process"] if is_jarvis else \
+                       self.config["memory_threshold_single_process"]
+
+        if memory_mb > mem_threshold:
+            # Higher score for processes significantly over threshold
+            excess_ratio = memory_mb / mem_threshold
+            score += min(excess_ratio * 0.3, 0.5)  # Cap at 0.5
+
+        # Memory percentage factor
+        if proc_info.get("memory_percent", 0) > 5:
+            score += min(proc_info["memory_percent"] / 100.0 * 0.2, 0.3)
 
         # Age factor (older = higher priority)
         age_hours = proc_info.get("age_seconds", 0) / 3600
         if age_hours > 1:
-            score += min(age_hours / 24, 1.0) * 0.2
+            score += min(age_hours / 24, 1.0) * 0.15
 
         # Stuck/zombie factor
         if proc_info.get("status") in ["zombie", "likely_stuck"]:
             score += 0.5
 
         # JARVIS process factor (be more aggressive with our own processes)
-        if proc_info.get("is_jarvis", False):
-            score += 0.3
+        if is_jarvis:
+            score += 0.25
 
         # Learn from patterns
         proc_name = proc_info.get("name", "")
         if proc_name in self.problem_patterns:
-            score += self.problem_patterns[proc_name] * 0.2
+            score += self.problem_patterns[proc_name] * 0.15
 
         return min(score, 1.0)
 
@@ -539,6 +626,15 @@ class ProcessCleanupManager:
         for proc in state["high_cpu_processes"]:
             proc["reason"] = "high_cpu"
             proc["priority"] = self.calculate_cleanup_priority(proc)
+            candidates.append(proc)
+
+        # Add high memory processes
+        for proc in state["high_memory_processes"]:
+            proc["reason"] = "high_memory"
+            proc["priority"] = self.calculate_cleanup_priority(proc)
+            # Increase priority if system memory is critical
+            if state["memory_percent"] > self.config["memory_threshold_critical"] * 100:
+                proc["priority"] = min(proc["priority"] + 0.3, 1.0)
             candidates.append(proc)
 
         # Add stuck processes
@@ -877,6 +973,7 @@ if __name__ == "__main__":
         print(f"  CPU: {state['cpu_percent']:.1f}%")
         print(f"  Memory: {state['memory_percent']:.1f}%")
         print(f"  High CPU processes: {len(state['high_cpu_processes'])}")
+        print(f"  High memory processes: {len(state['high_memory_processes'])}")
         print(f"  Stuck processes: {len(state['stuck_processes'])}")
         print(f"  Zombie processes: {len(state['zombie_processes'])}")
         print(f"  JARVIS processes: {len(state['jarvis_processes'])}")

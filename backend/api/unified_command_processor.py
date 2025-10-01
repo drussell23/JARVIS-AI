@@ -568,7 +568,7 @@ class UnifiedCommandProcessor:
                 
         handler = self.handlers.get(command_type)
         
-        if not handler and command_type not in [CommandType.SYSTEM, CommandType.META]:
+        if not handler and command_type not in [CommandType.SYSTEM, CommandType.META, CommandType.DOCUMENT]:
             return {
                 'success': False,
                 'response': f"I don't have a handler for {command_type.value} commands yet.",
