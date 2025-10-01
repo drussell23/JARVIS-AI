@@ -23,15 +23,16 @@ class BrowserController:
     requiring Selenium or other heavy dependencies.
     """
 
-    def __init__(self, preferred_browser: str = "Safari"):
+    def __init__(self, preferred_browser: str = "Chrome"):
         """
         Initialize browser controller
 
         Args:
-            preferred_browser: "Safari" or "Chrome"
+            preferred_browser: "Safari" or "Chrome" (default: Chrome for Google Docs)
         """
         self.browser = preferred_browser
         self._current_url = None
+        self._browser_app_name = "Google Chrome" if preferred_browser == "Chrome" else "Safari"
 
     async def navigate(self, url: str) -> bool:
         """
@@ -278,7 +279,40 @@ class BrowserController:
 
     def _build_navigation_script(self, url: str) -> str:
         """Build AppleScript for navigation"""
-        if self.browser == "Safari":
+        if self.browser == "Chrome":
+            # Chrome: Open in normal (non-incognito) window
+            return f'''
+            tell application "Google Chrome"
+                activate
+
+                -- Check if Chrome is running
+                if (count of windows) is 0 then
+                    -- No windows, create new one
+                    make new window
+                    set URL of active tab of front window to "{url}"
+                else
+                    -- Use existing normal window or create new tab
+                    set foundWindow to false
+                    repeat with w in windows
+                        if mode of w is not "incognito" then
+                            set foundWindow to true
+                            tell w
+                                set URL of (make new tab) to "{url}"
+                                set active tab index to (count of tabs)
+                            end tell
+                            exit repeat
+                        end if
+                    end repeat
+
+                    if foundWindow is false then
+                        -- All windows are incognito, create normal window
+                        make new window
+                        set URL of active tab of front window to "{url}"
+                    end if
+                end if
+            end tell
+            '''
+        else:  # Safari
             return f'''
             tell application "Safari"
                 activate
@@ -286,16 +320,6 @@ class BrowserController:
                     make new document
                 end if
                 set URL of front document to "{url}"
-            end tell
-            '''
-        else:  # Chrome
-            return f'''
-            tell application "Google Chrome"
-                activate
-                if (count of windows) is 0 then
-                    make new window
-                end if
-                set URL of active tab of front window to "{url}"
             end tell
             '''
 
@@ -340,8 +364,8 @@ class BrowserController:
 _browser_controller: Optional[BrowserController] = None
 
 
-def get_browser_controller(preferred_browser: str = "Safari") -> BrowserController:
-    """Get or create global browser controller instance"""
+def get_browser_controller(preferred_browser: str = "Chrome") -> BrowserController:
+    """Get or create global browser controller instance (defaults to Chrome for Google Docs)"""
     global _browser_controller
     if _browser_controller is None:
         _browser_controller = BrowserController(preferred_browser)
