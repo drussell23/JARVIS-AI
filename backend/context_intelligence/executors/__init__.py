@@ -1,8 +1,10 @@
 """
-Context Intelligence Executors
-=============================
+Executors Module
+================
+
+Provides task execution capabilities for Context Intelligence.
 """
 
-from .unified_command_executor import get_command_executor, UnifiedCommandExecutor
+from .document_writer import get_document_writer, parse_document_request, DocumentRequest
 
-__all__ = ['get_command_executor', 'UnifiedCommandExecutor']
+__all__ = ["get_document_writer", "parse_document_request", "DocumentRequest"]

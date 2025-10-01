@@ -20,6 +20,15 @@ from system_control.weather_bridge import WeatherBridge
 
 logger = logging.getLogger(__name__)
 
+# Document Writer Integration
+try:
+    from context_intelligence.executors.document_writer import get_document_writer, parse_document_request
+    DOCUMENT_WRITER_AVAILABLE = True
+    logger.info("✅ Document Writer module available")
+except ImportError as e:
+    DOCUMENT_WRITER_AVAILABLE = False
+    logger.warning(f"Document Writer not available: {e}")
+
 # Vision System v2.0 Integration
 try:
     from voice.vision_v2_integration import VisionV2Integration
@@ -357,6 +366,24 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             else:
 
                 return f"I need my vision capabilities to monitor your screen, {self.user_name}."
+
+        # Check for document creation commands
+        document_keywords = ["write", "create", "draft", "compose", "generate"]
+        document_types = ["essay", "report", "paper", "article", "document", "blog"]
+
+        has_document_keyword = any(keyword in text_lower for keyword in document_keywords)
+        has_document_type = any(dtype in text_lower for dtype in document_types)
+
+        if has_document_keyword and has_document_type:
+            logger.info(f"[JARVIS DEBUG] DOCUMENT CREATION COMMAND DETECTED! Text: '{text}'")
+            if DOCUMENT_WRITER_AVAILABLE:
+                try:
+                    return await self._handle_document_creation(text)
+                except Exception as e:
+                    logger.error(f"Error handling document creation: {e}", exc_info=True)
+                    return f"I encountered an error creating the document, {self.user_name}: {str(e)}"
+            else:
+                return f"I apologize, {self.user_name}, but the document creation system is not available at the moment."
 
         # Detect if this is a system command
         if self._is_system_command(text):
@@ -761,6 +788,39 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         except Exception as e:
             logger.error(f"System command error: {e}")
             return f"I encountered an error, {self.user_name}. Please try again."
+
+    async def _handle_document_creation(self, text: str) -> str:
+        """Handle document creation commands"""
+        logger.info(f"[DOCUMENT WRITER] Processing document creation: '{text}'")
+
+        try:
+            # Parse the document request from the command
+            intent = {"text": text}  # Minimal intent structure
+            document_request = parse_document_request(text, intent)
+
+            logger.info(f"[DOCUMENT WRITER] Parsed request: {document_request.document_type.value} on '{document_request.topic}'")
+
+            # Get the document writer
+            writer = get_document_writer()
+
+            # Create the document (this will handle Google Docs API + Claude streaming)
+            result = await writer.create_document(
+                request=document_request,
+                progress_callback=None,  # Could add voice narration here
+                websocket=None
+            )
+
+            if result.get("success"):
+                doc_url = result.get("document_url", "")
+                word_count = result.get("word_count", 0)
+                return f"Your {document_request.document_type.value} on '{document_request.topic}' is complete, {self.user_name}. I've written {word_count} words and opened it in Google Docs."
+            else:
+                error = result.get("error", "Unknown error")
+                return f"I encountered an issue creating your document, {self.user_name}: {error}"
+
+        except Exception as e:
+            logger.error(f"[DOCUMENT WRITER] Error: {e}", exc_info=True)
+            return f"I apologize, {self.user_name}, but I encountered an error while creating your document: {str(e)}"
 
     async def _handle_confirmation(self, text: str) -> str:
         """Handle confirmation responses"""
