@@ -26,9 +26,10 @@ class UnifiedWebSocketManager:
         self.connections: Dict[str, WebSocket] = {}
         self.handlers = {
             # Voice/JARVIS handlers
+            "command": self._handle_voice_command,  # Main command handler
             "voice_command": self._handle_voice_command,
             "jarvis_command": self._handle_voice_command,  # Alias
-            
+
             # Vision handlers
             "vision_analyze": self._handle_vision_analyze,
             "vision_monitor": self._handle_vision_monitor,
