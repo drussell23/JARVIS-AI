@@ -156,53 +156,78 @@ class ClaudeVisionChatbot:
         return False
         
     async def capture_screenshot(self) -> Optional[Image.Image]:
-        """Enhanced screenshot capture with multiple methods and smart caching"""
+        """Fast async screenshot capture with intelligent method selection"""
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+        
+        # Skip cache for immediate response
         # Generate cache key based on intent
         cache_key = self._generate_cache_key()
         
-        # Check intelligent cache
-        cached_screenshot = await self._get_cached_screenshot(cache_key)
-        if cached_screenshot:
-            logger.info(f"Using cached screenshot (key: {cache_key})")
-            return cached_screenshot
+        # Quick cache check (non-blocking)
+        cached_screenshot = None
+        try:
+            cached_screenshot = await asyncio.wait_for(
+                self._get_cached_screenshot(cache_key),
+                timeout=0.1  # 100ms timeout for cache check
+            )
+            if cached_screenshot:
+                logger.info(f"Using cached screenshot (key: {cache_key})")
+                return cached_screenshot
+        except asyncio.TimeoutError:
+            pass  # Skip cache if it takes too long
             
-        # Try capture methods in platform-specific order
+        # Use the fastest method based on platform
         screenshot = None
-        used_method = None
-        errors = []
         
-        for method_info in self._capture_methods:
-            method_name = method_info['name']
-            method_func = method_info['function']
-            
+        # For macOS, use the fastest native method
+        if self._platform == 'darwin':
             try:
-                logger.debug(f"Attempting screenshot capture via {method_name}")
-                screenshot = await method_func()
-                
+                # Use screencapture command directly (fastest on macOS)
+                screenshot = await self._capture_screencapture_cmd_fast()
                 if screenshot:
-                    # Validate the screenshot
-                    if isinstance(screenshot, Image.Image):
-                        width, height = screenshot.size
-                        if width > 0 and height > 0:
-                            used_method = method_name
-                            logger.info(f"Successfully captured screenshot using {method_name}: {width}x{height}")
-                            break
-                        else:
-                            logger.warning(f"{method_name} returned invalid image size: {width}x{height}")
-                            errors.append(f"{method_name}: Invalid image size")
-                    else:
-                        logger.warning(f"{method_name} returned non-Image object: {type(screenshot)}")
-                        errors.append(f"{method_name}: Invalid type")
-                        
+                    logger.info(f"Fast screenshot captured: {screenshot.size}")
+                    # Cache asynchronously (don't wait)
+                    asyncio.create_task(self._cache_screenshot(cache_key, screenshot))
+                    return screenshot
             except Exception as e:
-                error_msg = f"{method_name} capture failed: {type(e).__name__}: {str(e)}"
-                logger.warning(error_msg)
-                errors.append(error_msg)
+                logger.debug(f"Fast capture failed, falling back: {e}")
+        
+        # Fallback to PyAutoGUI if available (cross-platform)
+        if SCREENSHOT_AVAILABLE:
+            try:
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    screenshot = await asyncio.wait_for(
+                        asyncio.get_event_loop().run_in_executor(
+                            executor,
+                            pyautogui.screenshot
+                        ),
+                        timeout=2.0  # 2 second timeout
+                    )
+                    if screenshot:
+                        logger.info(f"PyAutoGUI screenshot captured: {screenshot.size}")
+                        # Cache asynchronously
+                        asyncio.create_task(self._cache_screenshot(cache_key, screenshot))
+                        return screenshot
+            except Exception as e:
+                logger.warning(f"PyAutoGUI capture failed: {e}")
+        
+        # Last resort: try all methods with timeout
+        for method_info in self._capture_methods[:2]:  # Try only first 2 methods
+            try:
+                screenshot = await asyncio.wait_for(
+                    method_info['function'](),
+                    timeout=1.0  # 1 second per method
+                )
+                if screenshot and isinstance(screenshot, Image.Image):
+                    logger.info(f"Screenshot captured using {method_info['name']}")
+                    asyncio.create_task(self._cache_screenshot(cache_key, screenshot))
+                    return screenshot
+            except Exception:
                 continue
                 
-        if not screenshot:
-            logger.error(f"All screenshot capture methods failed. Errors: {errors}")
-            return None
+        logger.error("All screenshot capture methods failed")
+        return None
             
         # Post-process screenshot based on intent
         if hasattr(self, '_last_vision_intent'):
@@ -549,8 +574,51 @@ class ClaudeVisionChatbot:
             pass
         return None
     
+    async def _capture_screencapture_cmd_fast(self) -> Optional[Image.Image]:
+        """Ultra-fast screenshot capture for macOS using screencapture"""
+        import asyncio
+        import os
+        try:
+            # Use in-memory approach for speed
+            tmp_path = f"/tmp/jarvis_screen_{os.getpid()}.png"
+            
+            # Run screencapture with minimal options for speed
+            cmd = ['screencapture', '-x', '-t', 'png', tmp_path]
+            
+            # Use asyncio subprocess for true async
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+            
+            # Wait with timeout
+            try:
+                await asyncio.wait_for(process.wait(), timeout=1.0)
+            except asyncio.TimeoutError:
+                process.kill()
+                return None
+                
+            if process.returncode == 0 and os.path.exists(tmp_path):
+                # Load image and immediately delete temp file
+                img = Image.open(tmp_path)
+                # Convert to RGB to ensure compatibility
+                if img.mode == 'RGBA':
+                    img = img.convert('RGB')
+                # Make a copy to ensure file can be deleted
+                img_copy = img.copy()
+                img.close()
+                try:
+                    os.unlink(tmp_path)
+                except:
+                    pass
+                return img_copy
+        except Exception as e:
+            logger.debug(f"Fast screencapture failed: {e}")
+        return None
+    
     async def _capture_screencapture_cmd(self) -> Optional[Image.Image]:
-        """Capture using macOS screencapture command"""
+        """Capture using macOS screencapture command (fallback method)"""
         try:
             with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
                 cmd = ['screencapture', '-x']
@@ -642,13 +710,13 @@ class ClaudeVisionChatbot:
         
         return None
     
-    async def _cache_screenshot(self, cache_key: str, screenshot: Image.Image, method: str):
+    async def _cache_screenshot(self, cache_key: str, screenshot: Image.Image, method: str = "unknown"):
         """Cache screenshot with metadata"""
         if not hasattr(self, '_screenshot_cache_store'):
             self._screenshot_cache_store = {}
         
         # Implement LRU cache
-        max_size = self._cache_config['max_size']
+        max_size = self._cache_config.get('max_size', 10)
         if len(self._screenshot_cache_store) >= max_size:
             # Remove least recently used
             oldest_key = min(self._screenshot_cache_store.keys(), 

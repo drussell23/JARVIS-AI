@@ -693,12 +693,27 @@ Current status:
 - Current section: {self._narration_context.get('current_section', 'N/A')}
 - Format: {self._narration_context.get('format', 'standard')}
 
-Generate a single, natural sentence (10-15 words) that JARVIS would say to update the user about this progress. Be conversational, professional, and engaging. Reference specific details when relevant. Don't use generic phrases.
+Generate a single, natural sentence (10-15 words) that JARVIS would say to update the user about this progress. 
+Be conversational and natural. Only occasionally use "Sir" (maybe 20% of the time). Vary your language - don't be repetitive.
+Reference specific details when relevant. Sound engaged and interested in the topic.
 
 Narration:"""
 
         try:
-            # Use Claude to generate the narration
+            # Try to use dynamic response generator first for consistent personality
+            try:
+                from voice.dynamic_response_generator import get_response_generator
+                generator = get_response_generator()
+                narration = generator.generate_document_narration(
+                    self._narration_context.get('phase'),
+                    self._narration_context
+                )
+                if narration:
+                    return narration
+            except Exception as e:
+                logger.debug(f"Dynamic generator not available: {e}")
+            
+            # Use Claude to generate the narration if available
             if self._claude:
                 response = ""
                 async for chunk in self._claude.stream_content(prompt, max_tokens=50):
@@ -715,32 +730,139 @@ Narration:"""
             return self._get_fallback_narration()
 
     def _get_fallback_narration(self) -> str:
-        """Generate intelligent fallback narration when Claude is not available"""
+        """Generate intelligent, dynamic fallback narration when Claude is not available"""
+        import random
+        
         phase = self._narration_context.get('phase', 'working')
         topic = self._narration_context.get('topic', 'your document')
         progress = self._narration_context.get('progress', 0)
         current_section = self._narration_context.get('current_section', 'the document')
+        word_count = self._narration_context.get('word_count', 0)
+        doc_type = self._narration_context.get('document_type', 'document')
         
-        # Context-aware fallback messages with natural pacing
-        fallback_messages = {
-            'acknowledging_request': f"I'll create {topic} for you, Sir.",
-            'initializing_services': "Initializing document creation systems.",
-            'services_ready': "All systems ready for document creation.",
-            'creating_document': f"Creating your {topic} document now.",
-            'document_created': "Document created successfully.",
-            'opening_browser': "Opening the document in your browser.",
-            'browser_ready': "Browser ready for document editing.",
-            'analyzing_topic': f"Analyzing the topic: {topic}.",
-            'outline_complete': "Document outline completed.",
-            'starting_writing': f"Beginning to write {current_section}.",
-            'writing_section': f"Writing the {current_section} section.",
-            'progress_update': f"Progress: {progress}% complete.",
-            'finalizing': "Finalizing the document.",
-            'writing_complete': "Document writing completed.",
-            'document_ready': "Your document is ready for review."
-        }
+        # Dynamic phrase components for natural variation
+        acknowledgments = ["Got it", "Understood", "Absolutely", "Right away", "On it", "Let's begin", "Starting now"]
+        transitions = ["Moving on to", "Now working on", "Progressing to", "Shifting to", "Starting", "Beginning"]
+        progress_phrases = ["We're at", "Progress update:", "Currently at", "Now at", "Reached"]
+        completion_phrases = ["All done", "Finished", "Complete", "Ready", "Done"]
         
-        return fallback_messages.get(phase, f"Working on {current_section}, Sir.")
+        # Occasionally use "Sir" (20-30% chance)
+        use_sir = random.random() < 0.25
+        sir_phrase = ", Sir" if use_sir else ""
+        
+        # Generate natural, varied responses based on phase
+        if phase == 'acknowledging_request':
+            intros = [
+                f"{random.choice(acknowledgments)}{sir_phrase}. Creating your {doc_type} about {topic}",
+                f"I'll write that {doc_type} on {topic} for you{sir_phrase}",
+                f"{topic} - interesting topic. Let me create that {doc_type}",
+                f"Starting your {doc_type} about {topic} now"
+            ]
+            return random.choice(intros)
+            
+        elif phase == 'initializing_services':
+            return random.choice([
+                "Connecting to Google Docs",
+                "Setting up document services",
+                "Initializing the writing system",
+                f"Preparing to write{sir_phrase}"
+            ])
+            
+        elif phase == 'creating_document':
+            return random.choice([
+                "Creating your document in Google Docs",
+                "Setting up the document structure",
+                f"Opening a new {doc_type} for you",
+                "Establishing document framework"
+            ])
+            
+        elif phase == 'analyzing_topic':
+            analyses = [
+                f"Analyzing key aspects of {topic}",
+                f"Researching {topic} for comprehensive coverage",
+                f"Identifying main themes about {topic}",
+                f"Structuring thoughts on {topic}"
+            ]
+            return random.choice(analyses)
+            
+        elif phase == 'outline_complete':
+            return random.choice([
+                f"Outline ready - found several interesting angles",
+                "Structure mapped out, ready to write",
+                f"Framework complete{sir_phrase}",
+                "Got the blueprint, starting content"
+            ])
+            
+        elif phase == 'starting_writing':
+            return random.choice([
+                f"Writing about {topic} now",
+                "Composing the content",
+                f"Let me craft this {doc_type} for you",
+                "Beginning the actual writing"
+            ])
+            
+        elif phase == 'writing_section':
+            section_updates = [
+                f"{random.choice(transitions)} {current_section}",
+                f"Writing {current_section}",
+                f"Developing {current_section} now",
+                f"Crafting {current_section}"
+            ]
+            return random.choice(section_updates)
+            
+        elif phase == 'progress_update':
+            # Vary progress announcements
+            if progress < 30:
+                stage = "Getting started"
+            elif progress < 60:
+                stage = "Making good progress"
+            elif progress < 90:
+                stage = "Nearly there"
+            else:
+                stage = "Almost done"
+                
+            progress_msgs = [
+                f"{stage} - {word_count} words written",
+                f"{random.choice(progress_phrases)} {progress}% complete",
+                f"{word_count} words down, {stage.lower()}",
+                f"{stage}{sir_phrase}"
+            ]
+            return random.choice(progress_msgs)
+            
+        elif phase == 'finalizing':
+            return random.choice([
+                "Adding final touches",
+                "Wrapping up the conclusion",
+                "Polishing the final sections",
+                f"Nearly finished{sir_phrase}"
+            ])
+            
+        elif phase == 'writing_complete':
+            completions = [
+                f"{random.choice(completion_phrases)}! {word_count} words on {topic}",
+                f"Your {doc_type} is ready - {word_count} words",
+                f"Finished writing{sir_phrase}. {word_count} words total",
+                f"All {word_count} words complete"
+            ]
+            return random.choice(completions)
+            
+        elif phase == 'document_ready':
+            ready_msgs = [
+                f"Your {doc_type} is open in Google Docs{sir_phrase}",
+                "Ready for your review in the browser",
+                f"All set - document's on your screen",
+                f"There you go{sir_phrase}, it's ready"
+            ]
+            return random.choice(ready_msgs)
+            
+        else:
+            # Default fallback with variation
+            return random.choice([
+                f"Working on {current_section}",
+                f"Processing {current_section}",
+                f"Continuing with {current_section}",
+                f"Still writing{sir_phrase}"
+            ])
 
     async def _narrate(self, progress_callback: Optional[Callable],
                       websocket, message: str = None, context: Dict[str, Any] = None):
