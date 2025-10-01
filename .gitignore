@@ -167,9 +167,13 @@ coverage.xml
 *.perf
 *.trace
 
-# Core dumps
+# Core dumps (but allow backend/core/ directory)
+# Note: Negation must come AFTER to override
 core
 core.*
+# Exception: Allow backend/core directory and its contents
+!backend/core/
+!backend/core/*.py
 
 # Benchmark results
 benchmark_results/
