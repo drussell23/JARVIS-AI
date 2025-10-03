@@ -388,7 +388,7 @@ impl SlidingWindowCapture {
     }
 
     /// Analyze windows with caching
-    pub async fn analyze_windows<F>(&self, windows: Vec<WindowRegion>, analyzer: F) -> Result<Vec<AnalysisResult>>
+    pub async fn analyze_windows<F>(&mut self, windows: Vec<WindowRegion>, analyzer: F) -> Result<Vec<AnalysisResult>>
     where
         F: Fn(&WindowRegion) -> Result<String> + Send + Sync,
     {

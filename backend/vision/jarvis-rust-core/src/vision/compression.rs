@@ -309,7 +309,7 @@ impl ImageCompressor {
                 // Score based on compression ratio and time
                 let time_factor = 1.0 - (perf.avg_time_ms / config.max_compression_time_ms as f64).min(1.0);
                 let ratio_factor = perf.avg_ratio / config.target_ratio;
-                let score = time_factor * 0.4 + ratio_factor * 0.6;
+                let score = time_factor * 0.4 + (ratio_factor * 0.6) as f64;
                 
                 if score > best_score {
                     best_score = score;
@@ -436,7 +436,7 @@ impl ImageCompressor {
     
     fn decompress_brotli(&self, compressed: &[u8]) -> Result<Vec<u8>> {
         let mut decompressed = Vec::new();
-        let mut decoder = DecompressorReader::new(std::io::Cursor::new(compressed), 4096);
+        let mut decoder = brotli::Decompressor::new(std::io::Cursor::new(compressed), 4096);
         
         std::io::Read::read_to_end(&mut decoder, &mut decompressed)
             .map_err(|e| JarvisError::VisionError(format!("Brotli decompression failed: {}", e)))?;

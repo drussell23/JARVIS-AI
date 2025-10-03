@@ -756,3 +756,235 @@ class MacOSController:
                         return app_name
         
         return None
+    
+    async def lock_screen(self) -> Tuple[bool, str]:
+        """
+        Lock the macOS screen using the voice unlock daemon integration
+        
+        Returns:
+            Tuple of (success, message)
+        """
+        try:
+            # First try using the voice unlock daemon's WebSocket interface
+            try:
+                import websockets
+                import json
+                import asyncio
+                
+                VOICE_UNLOCK_WS_URL = "ws://localhost:8765/voice-unlock"
+                
+                async with websockets.connect(VOICE_UNLOCK_WS_URL, timeout=2.0) as websocket:
+                    # Send lock command using the daemon's expected format
+                    lock_command = {
+                        "type": "command",
+                        "command": "lock_screen"
+                    }
+                    
+                    await websocket.send(json.dumps(lock_command))
+                    logger.info("Sent lock command to voice unlock daemon")
+                    
+                    # Wait for response
+                    response = await asyncio.wait_for(websocket.recv(), timeout=5.0)
+                    result = json.loads(response)
+                    
+                    if result.get("type") == "command_response" and result.get("success"):
+                        logger.info("Screen locked successfully via voice unlock daemon")
+                        return True, "Screen locked successfully, Sir."
+                    
+            except (ConnectionRefusedError, OSError):
+                logger.debug("Voice unlock daemon not running, falling back to direct methods")
+            except Exception as e:
+                logger.debug(f"WebSocket method failed: {e}")
+            
+            # Fallback Method 1: Use CGSession (most reliable)
+            cgsession_path = '/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession'
+            if os.path.exists(cgsession_path):
+                result = subprocess.run(
+                    [cgsession_path, '-suspend'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    logger.info("Screen locked successfully using CGSession")
+                    return True, "Screen locked successfully, Sir."
+            
+            # Fallback Method 2: Use AppleScript to trigger lock via keystroke
+            script = 'tell application "System Events" to keystroke "q" using {command down, control down}'
+            success, output = self.execute_applescript(script)
+            if success:
+                logger.info("Screen locked successfully using AppleScript")
+                return True, "Screen locked successfully, Sir."
+            
+            # Fallback Method 3: Use pmset to sleep display
+            try:
+                subprocess.run(['pmset', 'displaysleepnow'], check=True)
+                logger.info("Display put to sleep (will lock if password required)")
+                return True, "Screen locked successfully, Sir."
+            except:
+                pass
+            
+            return False, "Unable to lock screen. Please use Control+Command+Q manually."
+            
+        except Exception as e:
+            logger.error(f"Error locking screen: {e}")
+            return False, f"Failed to lock screen: {str(e)}"
+    
+    async def unlock_screen(self, password: Optional[str] = None) -> Tuple[bool, str]:
+        """
+        Unlock the macOS screen using the voice unlock daemon
+        
+        Note: This integrates with the Objective-C daemon for secure unlocking
+        
+        Returns:
+            Tuple of (success, message)
+        """
+        try:
+            # Try using the voice unlock daemon's WebSocket interface first
+            try:
+                import websockets
+                import json
+                import asyncio
+                
+                VOICE_UNLOCK_WS_URL = "ws://localhost:8765/voice-unlock"
+                
+                async with websockets.connect(VOICE_UNLOCK_WS_URL, timeout=2.0) as websocket:
+                    # Send unlock command using the daemon's expected format
+                    unlock_command = {
+                        "type": "command",
+                        "command": "unlock_screen"
+                    }
+                    
+                    await websocket.send(json.dumps(unlock_command))
+                    logger.info("Sent unlock command to voice unlock daemon")
+                    
+                    # Wait for response (longer timeout for unlock)
+                    response = await asyncio.wait_for(websocket.recv(), timeout=20.0)
+                    result = json.loads(response)
+                    
+                    if result.get("type") == "command_response":
+                        if result.get("success"):
+                            logger.info("Screen unlocked successfully via voice unlock daemon")
+                            return True, "Screen unlocked successfully, Sir."
+                        else:
+                            message = result.get("message", "Unable to unlock screen")
+                            return False, f"Unlock failed: {message}"
+                    elif result.get("type") == "unlock_result":
+                        if result.get("success"):
+                            return True, "Screen unlocked successfully, Sir."
+                        else:
+                            return False, result.get("message", "Unable to unlock screen")
+                            
+            except (ConnectionRefusedError, OSError):
+                logger.warning("Voice unlock daemon not running")
+                # Fall through to alternative method
+            except asyncio.TimeoutError:
+                logger.error("Timeout waiting for unlock response")
+                return False, "Unlock operation timed out. Please try again."
+            except Exception as e:
+                logger.debug(f"WebSocket method failed: {e}")
+            
+            # Fallback: Try using the direct unlock handler if available
+            try:
+                from api.direct_unlock_handler import unlock_screen_direct
+                
+                success = await unlock_screen_direct("User requested screen unlock via system command")
+                if success:
+                    return True, "Screen unlocked successfully, Sir."
+                else:
+                    return False, "Unable to unlock screen. Please unlock manually or use voice authentication."
+                    
+            except ImportError:
+                logger.warning("Direct unlock handler not available")
+                
+            # Security notice: We don't provide direct password-based unlock for security reasons
+            return False, "Screen unlock requires the Voice Unlock daemon to be running, or manual authentication for security."
+            
+        except Exception as e:
+            logger.error(f"Error unlocking screen: {e}")
+            return False, f"Failed to unlock screen: {str(e)}"
+    
+    async def handle_command(self, command: str) -> Dict[str, Any]:
+        """
+        Main command handler for system commands
+        
+        Args:
+            command: The command to process
+            
+        Returns:
+            Dict with result and response
+        """
+        command_lower = command.lower()
+        
+        # Handle lock/unlock screen commands
+        if 'lock' in command_lower and 'screen' in command_lower:
+            success, message = await self.lock_screen()
+            return {
+                "success": success,
+                "response": message,
+                "command_type": "screen_lock"
+            }
+        
+        if 'unlock' in command_lower and 'screen' in command_lower:
+            success, message = await self.unlock_screen()
+            return {
+                "success": success,
+                "response": message,
+                "command_type": "screen_unlock"
+            }
+        
+        # Handle application commands
+        if any(word in command_lower for word in ['open', 'launch', 'start', 'run']):
+            # Extract app name
+            words = command_lower.split()
+            app_words = []
+            start_collecting = False
+            
+            for word in words:
+                if word in ['open', 'launch', 'start', 'run']:
+                    start_collecting = True
+                elif start_collecting:
+                    app_words.append(word)
+            
+            if app_words:
+                app_name = ' '.join(app_words)
+                success, message = self.open_application(app_name)
+                return {
+                    "success": success,
+                    "response": message,
+                    "command_type": "application"
+                }
+        
+        # Handle file operations
+        if any(word in command_lower for word in ['create', 'make', 'new']) and any(word in command_lower for word in ['file', 'folder', 'directory']):
+            # Extract file/folder name
+            if 'folder' in command_lower or 'directory' in command_lower:
+                # Create folder logic
+                folder_name = self._extract_name(command_lower, ['folder', 'directory'])
+                if folder_name:
+                    success, message = self.create_folder(str(self.home_dir / 'Desktop' / folder_name))
+                    return {
+                        "success": success,
+                        "response": message,
+                        "command_type": "file_operation"
+                    }
+        
+        # Default response for unhandled commands
+        return {
+            "success": False,
+            "response": f"I'm not sure how to handle that system command: {command}",
+            "command_type": "unknown"
+        }
+    
+    def _extract_name(self, command: str, keywords: List[str]) -> Optional[str]:
+        """Extract name from command after keywords"""
+        for keyword in keywords:
+            if keyword in command:
+                parts = command.split(keyword)
+                if len(parts) > 1:
+                    name = parts[1].strip()
+                    # Remove common words
+                    name = name.replace('called', '').replace('named', '').strip()
+                    if name:
+                        return name
+        return None

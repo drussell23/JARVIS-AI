@@ -130,7 +130,7 @@ impl AppStateDetector {
             Ok(Self {
                 workspace,
                 cache: Arc::new(RwLock::new(HashMap::new())),
-                dispatch_queue: Queue::global(QueueAttribute::HighPriority),
+                dispatch_queue: Queue::global(dispatch::QueuePriority::High),
             })
         }
     }
@@ -291,7 +291,7 @@ impl ChunkedTextExtractor {
                 .unwrap_or_else(|_| "1024".to_string())
                 .parse()
                 .unwrap_or(1024),
-            dispatch_queue: Queue::global(QueueAttribute::Background),
+            dispatch_queue: Queue::global(dispatch::QueuePriority::Background),
         }
     }
     

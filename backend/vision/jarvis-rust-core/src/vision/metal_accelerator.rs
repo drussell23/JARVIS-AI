@@ -1,81 +1,62 @@
-//! Metal GPU acceleration for macOS video processing
-//! Optimized for Apple Silicon M1 and 16GB RAM systems
+//! Refactored Metal GPU acceleration using thread-safe message passing
+//! 
+//! This module replaces direct Metal object ownership with message passing
+//! to solve thread-safety issues.
 
 #[cfg(target_os = "macos")]
-use metal::*;
+use crate::{Result, JarvisError};
+use crate::bridge::{ObjCBridge, ObjCCommand, ObjCResponse};
 use std::sync::Arc;
 use parking_lot::RwLock;
 use ndarray::{Array3, ArrayView3};
 use std::collections::HashMap;
-use rayon::prelude::*;
+use std::time::Instant;
 
-#[cfg(target_os = "macos")]
-use objc::{msg_send, sel, sel_impl};
-#[cfg(target_os = "macos")]
-use cocoa::base::{id, nil};
-#[cfg(target_os = "macos")]
-use cocoa::foundation::NSString;
+// ============================================================================
+// REFACTORED METAL ACCELERATOR
+// ============================================================================
 
-/// Metal compute pipeline for video processing
+/// Thread-safe Metal compute pipeline using message passing
 #[cfg(target_os = "macos")]
 pub struct MetalAccelerator {
-    device: Device,
-    command_queue: CommandQueue,
-    pipelines: Arc<RwLock<HashMap<String, ComputePipelineState>>>,
-    buffers: Arc<RwLock<HashMap<String, Buffer>>>,
+    /// Bridge to Objective-C actor (which owns Metal objects)
+    bridge: Arc<ObjCBridge>,
+    
+    /// Performance statistics
     performance_stats: Arc<RwLock<PerformanceStats>>,
+    
+    /// Shader configuration
+    shader_config: Arc<RwLock<HashMap<String, ShaderConfig>>>,
+}
+
+// Mark as thread-safe (no raw Metal pointers!)
+#[cfg(target_os = "macos")]
+unsafe impl Send for MetalAccelerator {}
+#[cfg(target_os = "macos")]
+unsafe impl Sync for MetalAccelerator {}
+
+#[derive(Debug, Clone)]
+pub struct ShaderConfig {
+    pub name: String,
+    pub thread_group_size: (u32, u32, u32),
+    pub parameters: HashMap<String, f32>,
 }
 
 #[derive(Debug, Default)]
-struct PerformanceStats {
-    total_frames_processed: u64,
-    total_compute_time_ms: f64,
-    average_frame_time_ms: f64,
-    gpu_memory_used_mb: f64,
+pub struct PerformanceStats {
+    pub total_frames_processed: u64,
+    pub total_compute_time_ms: f64,
+    pub average_frame_time_ms: f64,
+    pub gpu_memory_used_mb: f64,
 }
 
 #[cfg(target_os = "macos")]
 impl MetalAccelerator {
-    /// Create new Metal accelerator with dynamic configuration
-    pub fn new() -> Result<Self, String> {
-        // Get the default Metal device
-        let device = Device::system_default()
-            .ok_or("No Metal device found")?;
-            
-        // Log device info
-        println!("Metal device: {}", device.name());
-        println!("Unified memory: {}", device.is_unified_memory());
-        println!("Max threads per threadgroup: {}", 
-                 device.max_threads_per_threadgroup().width);
+    /// Create new thread-safe Metal accelerator
+    pub fn new(bridge: Arc<ObjCBridge>) -> Result<Self> {
+        let mut shader_config = HashMap::new();
         
-        // Create command queue with dynamic priority
-        let command_queue = device.new_command_queue();
-        
-        let mut accelerator = Self {
-            device: device.clone(),
-            command_queue,
-            pipelines: Arc::new(RwLock::new(HashMap::new())),
-            buffers: Arc::new(RwLock::new(HashMap::new())),
-            performance_stats: Arc::new(RwLock::new(PerformanceStats::default())),
-        };
-        
-        // Load default shaders
-        accelerator.load_default_shaders()?;
-        
-        Ok(accelerator)
-    }
-    
-    /// Load default Metal shaders
-    fn load_default_shaders(&mut self) -> Result<(), String> {
-        let shader_source = include_str!("shaders/vision_shaders.metal");
-        
-        // Compile shaders
-        let compile_options = CompileOptions::new();
-        let library = self.device
-            .new_library_with_source(shader_source, &compile_options)
-            .map_err(|e| format!("Failed to compile shaders: {}", e))?;
-            
-        // Create compute pipelines
+        // Configure default shaders
         let shader_names = vec![
             "frame_difference",
             "motion_detection",
@@ -84,305 +65,281 @@ impl MetalAccelerator {
             "feature_extraction",
         ];
         
-        let mut pipelines = self.pipelines.write();
-        
-        for shader_name in shader_names {
-            if let Some(function) = library.get_function(shader_name, None) {
-                let pipeline = self.device
-                    .new_compute_pipeline_state_with_function(&function)
-                    .map_err(|e| format!("Failed to create pipeline {}: {}", shader_name, e))?;
-                    
-                pipelines.insert(shader_name.to_string(), pipeline);
-            }
+        for name in shader_names {
+            shader_config.insert(name.to_string(), ShaderConfig {
+                name: name.to_string(),
+                thread_group_size: (32, 32, 1),
+                parameters: HashMap::new(),
+            });
         }
         
-        Ok(())
-    }
-    
-    /// Process frame batch on GPU
-    pub fn process_frame_batch(&self, frames: &[Vec<u8>]) -> Vec<ProcessedFrame> {
-        let start_time = std::time::Instant::now();
-        
-        // Process frames in parallel on GPU
-        let results: Vec<ProcessedFrame> = frames.par_iter()
-            .enumerate()
-            .map(|(idx, frame_data)| {
-                self.process_single_frame(frame_data, idx)
-                    .unwrap_or_else(|e| {
-                        eprintln!("Frame {} processing error: {}", idx, e);
-                        ProcessedFrame::default()
-                    })
-            })
-            .collect();
-            
-        // Update stats
-        let elapsed = start_time.elapsed().as_millis() as f64;
-        let mut stats = self.performance_stats.write();
-        stats.total_frames_processed += frames.len() as u64;
-        stats.total_compute_time_ms += elapsed;
-        stats.average_frame_time_ms = 
-            stats.total_compute_time_ms / stats.total_frames_processed as f64;
-            
-        results
-    }
-    
-    /// Process single frame with Metal
-    fn process_single_frame(&self, frame_data: &[u8], idx: usize) -> Result<ProcessedFrame, String> {
-        // Create buffers
-        let input_buffer = self.device.new_buffer_with_data(
-            frame_data.as_ptr() as *const _,
-            frame_data.len() as u64,
-            MTLResourceOptions::StorageModeShared,
-        );
-        
-        let output_size = frame_data.len();
-        let output_buffer = self.device.new_buffer(
-            output_size as u64,
-            MTLResourceOptions::StorageModeShared,
-        );
-        
-        // Get pipeline
-        let pipelines = self.pipelines.read();
-        let pipeline = pipelines.get("feature_extraction")
-            .ok_or("Feature extraction pipeline not found")?;
-            
-        // Create command buffer and encoder
-        let command_buffer = self.command_queue.new_command_buffer();
-        let encoder = command_buffer.new_compute_command_encoder();
-        
-        encoder.set_compute_pipeline_state(pipeline);
-        encoder.set_buffer(0, Some(&input_buffer), 0);
-        encoder.set_buffer(1, Some(&output_buffer), 0);
-        
-        // Calculate thread groups dynamically
-        let thread_group_size = MTLSize {
-            width: 32,
-            height: 32,
-            depth: 1,
-        };
-        
-        let thread_groups = MTLSize {
-            width: (1920 + 31) / 32,  // Assuming 1920x1080
-            height: (1080 + 31) / 32,
-            depth: 1,
-        };
-        
-        encoder.dispatch_thread_groups(thread_groups, thread_group_size);
-        encoder.end_encoding();
-        
-        // Execute and wait
-        command_buffer.commit();
-        command_buffer.wait_until_completed();
-        
-        // Extract results
-        let features = self.extract_features_from_buffer(&output_buffer, output_size);
-        
-        Ok(ProcessedFrame {
-            index: idx,
-            features,
-            motion_score: 0.0,  // Would be calculated by motion_detection shader
-            change_regions: vec![],
+        Ok(Self {
+            bridge,
+            performance_stats: Arc::new(RwLock::new(PerformanceStats::default())),
+            shader_config: Arc::new(RwLock::new(shader_config)),
         })
     }
     
-    /// Extract features from Metal buffer
-    fn extract_features_from_buffer(&self, buffer: &Buffer, size: usize) -> Vec<f32> {
-        let ptr = buffer.contents() as *const f32;
-        let features = unsafe {
-            std::slice::from_raw_parts(ptr, size / 4)
-        };
-        features.to_vec()
-    }
-    
-    /// Analyze frames for changes and motion
-    pub async fn analyze_frames_async(
+    /// Process frame with Metal shader (thread-safe)
+    pub async fn process_frame(
         &self,
-        frames: Vec<Vec<u8>>,
-        detect_changes: bool,
-        extract_features: bool,
-    ) -> Vec<FrameAnalysis> {
-        // Process on thread pool
-        let handle = tokio::task::spawn_blocking(move || {
-            frames.into_par_iter()
-                .enumerate()
-                .map(|(idx, frame)| {
-                    FrameAnalysis {
-                        frame_index: idx,
-                        change_magnitude: if detect_changes { 0.5 } else { 0.0 },
-                        features: if extract_features {
-                            HashMap::from([
-                                ("brightness".to_string(), 0.7),
-                                ("contrast".to_string(), 0.8),
-                                ("edges".to_string(), 0.3),
-                            ])
-                        } else {
-                            HashMap::new()
-                        },
-                        objects: vec![],
-                        timestamp: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
-                            .as_millis() as u64,
-                    }
-                })
-                .collect()
-        });
+        input_data: &[u8],
+        shader_name: &str,
+        width: u32,
+        height: u32,
+    ) -> Result<Vec<u8>> {
+        let start = Instant::now();
         
-        handle.await.unwrap_or_else(|_| vec![])
+        // Allocate shared buffer and copy input data
+        let buffer_size = input_data.len();
+        let buffer_id = self.bridge.allocate_buffer(buffer_size)?;
+        
+        // Copy data to shared buffer (this would be done through shared memory)
+        if let Some(mut buffer) = self.bridge.get_buffer(buffer_id) {
+            // Safety: We just allocated this buffer with the correct size
+            unsafe {
+                let buffer_mut = Arc::get_mut(&mut buffer)
+                    .ok_or_else(|| JarvisError::VisionError("Cannot get mutable buffer".to_string()))?;
+                buffer_mut.as_mut_slice().copy_from_slice(input_data);
+            }
+        }
+        
+        // Send Metal processing command
+        let command = ObjCCommand::ProcessWithMetal {
+            buffer_id,
+            shader_name: shader_name.to_string(),
+        };
+        
+        let response = self.bridge.call(command).await?;
+        
+        match response {
+            ObjCResponse::MetalProcessingComplete { buffer_id: result_id, elapsed_ms } => {
+                // Get processed data from shared buffer
+                let buffer = self.bridge.get_buffer(result_id)
+                    .ok_or_else(|| JarvisError::VisionError("Result buffer not found".to_string()))?;
+                
+                let result = buffer.as_slice().to_vec();
+                
+                // Update stats
+                let mut stats = self.performance_stats.write();
+                stats.total_frames_processed += 1;
+                stats.total_compute_time_ms += elapsed_ms as f64;
+                stats.average_frame_time_ms = 
+                    stats.total_compute_time_ms / stats.total_frames_processed as f64;
+                
+                Ok(result)
+            }
+            ObjCResponse::Error(msg) => {
+                Err(JarvisError::VisionError(format!("Metal processing failed: {}", msg)))
+            }
+            _ => {
+                Err(JarvisError::VisionError("Unexpected response type".to_string()))
+            }
+        }
     }
     
-    /// Get GPU memory usage
-    pub fn get_memory_usage(&self) -> f64 {
-        // This is an approximation - Metal doesn't expose exact memory usage
-        let stats = self.performance_stats.read();
-        stats.gpu_memory_used_mb
+    /// Compute frame difference using Metal (thread-safe)
+    pub async fn frame_difference<'a>(
+        &self,
+        frame1: ArrayView3<'a, u8>,
+        frame2: ArrayView3<'a, u8>,
+    ) -> Result<Array3<f32>> {
+        let (height, width, channels) = frame1.dim();
+        
+        // Flatten frames for GPU processing
+        let frame1_flat: Vec<u8> = frame1.iter().cloned().collect();
+        let frame2_flat: Vec<u8> = frame2.iter().cloned().collect();
+        
+        // Concatenate frames for single buffer transfer
+        let mut combined = frame1_flat;
+        combined.extend(frame2_flat);
+        
+        // Process with Metal
+        let result = self.process_frame(
+            &combined,
+            "frame_difference",
+            width as u32,
+            height as u32,
+        ).await?;
+        
+        // Convert result back to ndarray
+        let result_f32: Vec<f32> = result.chunks(4)
+            .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+            .collect();
+        
+        Array3::from_shape_vec((height, width, channels), result_f32)
+            .map_err(|e| JarvisError::VisionError(format!("Shape error: {}", e)))
+    }
+    
+    /// Detect motion using Metal (thread-safe)
+    pub async fn detect_motion<'a>(
+        &self,
+        frame: ArrayView3<'a, u8>,
+        threshold: f32,
+    ) -> Result<MotionMask> {
+        let (height, width, _) = frame.dim();
+        
+        // Update shader parameters
+        {
+            let mut config = self.shader_config.write();
+            if let Some(shader) = config.get_mut("motion_detection") {
+                shader.parameters.insert("threshold".to_string(), threshold);
+            }
+        }
+        
+        // Process frame
+        let frame_data: Vec<u8> = frame.iter().cloned().collect();
+        let result = self.process_frame(
+            &frame_data,
+            "motion_detection",
+            width as u32,
+            height as u32,
+        ).await?;
+        
+        Ok(MotionMask {
+            width: width as u32,
+            height: height as u32,
+            mask: result,
+            motion_pixels: 0, // Would be calculated by shader
+        })
+    }
+    
+    /// Edge detection using Metal (thread-safe)
+    pub async fn detect_edges<'a>(
+        &self,
+        frame: ArrayView3<'a, u8>,
+        low_threshold: f32,
+        high_threshold: f32,
+    ) -> Result<EdgeMap> {
+        let (height, width, _) = frame.dim();
+        
+        // Update shader parameters
+        {
+            let mut config = self.shader_config.write();
+            if let Some(shader) = config.get_mut("edge_detection") {
+                shader.parameters.insert("low_threshold".to_string(), low_threshold);
+                shader.parameters.insert("high_threshold".to_string(), high_threshold);
+            }
+        }
+        
+        // Process frame
+        let frame_data: Vec<u8> = frame.iter().cloned().collect();
+        let result = self.process_frame(
+            &frame_data,
+            "edge_detection",
+            width as u32,
+            height as u32,
+        ).await?;
+        
+        Ok(EdgeMap {
+            width: width as u32,
+            height: height as u32,
+            edges: result,
+            edge_count: 0, // Would be calculated by shader
+        })
     }
     
     /// Get performance statistics
-    pub fn get_stats(&self) -> HashMap<String, f64> {
-        let stats = self.performance_stats.read();
-        HashMap::from([
-            ("total_frames".to_string(), stats.total_frames_processed as f64),
-            ("avg_frame_time_ms".to_string(), stats.average_frame_time_ms),
-            ("gpu_memory_mb".to_string(), stats.gpu_memory_used_mb),
-        ])
+    pub fn stats(&self) -> PerformanceStats {
+        self.performance_stats.read().clone()
+    }
+    
+    /// Reset performance statistics
+    pub fn reset_stats(&self) {
+        let mut stats = self.performance_stats.write();
+        *stats = PerformanceStats::default();
     }
 }
 
-/// Placeholder for non-macOS systems
+// ============================================================================
+// RESULT TYPES
+// ============================================================================
+
+#[derive(Debug, Clone)]
+pub struct MotionMask {
+    pub width: u32,
+    pub height: u32,
+    pub mask: Vec<u8>,
+    pub motion_pixels: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct EdgeMap {
+    pub width: u32,
+    pub height: u32,
+    pub edges: Vec<u8>,
+    pub edge_count: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct ColorHistogram {
+    pub red: Vec<f32>,
+    pub green: Vec<f32>,
+    pub blue: Vec<f32>,
+    pub luminance: Vec<f32>,
+}
+
+// ============================================================================
+// NON-MACOS FALLBACK
+// ============================================================================
+
 #[cfg(not(target_os = "macos"))]
 pub struct MetalAccelerator;
 
 #[cfg(not(target_os = "macos"))]
 impl MetalAccelerator {
-    pub fn new() -> Result<Self, String> {
-        Err("Metal acceleration only available on macOS".to_string())
-    }
-    
-    pub fn process_frame_batch(&self, _frames: &[Vec<u8>]) -> Vec<ProcessedFrame> {
-        vec![]
-    }
-    
-    pub async fn analyze_frames_async(
-        &self,
-        _frames: Vec<Vec<u8>>,
-        _detect_changes: bool,
-        _extract_features: bool,
-    ) -> Vec<FrameAnalysis> {
-        vec![]
-    }
-    
-    pub fn get_memory_usage(&self) -> f64 {
-        0.0
-    }
-    
-    pub fn get_stats(&self) -> HashMap<String, f64> {
-        HashMap::new()
+    pub fn new(_bridge: Arc<ObjCBridge>) -> Result<Self> {
+        Err(JarvisError::VisionError("Metal acceleration only available on macOS".to_string()))
     }
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct ProcessedFrame {
-    pub index: usize,
-    pub features: Vec<f32>,
-    pub motion_score: f64,
-    pub change_regions: Vec<Region>,
-}
+// ============================================================================
+// TESTS
+// ============================================================================
 
-#[derive(Debug, Clone)]
-pub struct Region {
-    pub x: u32,
-    pub y: u32,
-    pub width: u32,
-    pub height: u32,
-    pub confidence: f32,
-}
-
-#[derive(Debug, Clone)]
-pub struct FrameAnalysis {
-    pub frame_index: usize,
-    pub change_magnitude: f64,
-    pub features: HashMap<String, f64>,
-    pub objects: Vec<DetectedObject>,
-    pub timestamp: u64,
-}
-
-#[derive(Debug, Clone)]
-pub struct DetectedObject {
-    pub class: String,
-    pub confidence: f32,
-    pub bbox: Region,
-}
-
-// Python bindings
-#[cfg(feature = "python-bindings")]
-mod python_bindings {
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
     use super::*;
-    use pyo3::prelude::*;
+    use ndarray::Array3;
     
-    #[pyclass]
-    pub struct PyMetalAccelerator {
-        inner: Arc<MetalAccelerator>,
-    }
-    
-    #[pymethods]
-    impl PyMetalAccelerator {
-        #[new]
-        fn new() -> PyResult<Self> {
-            MetalAccelerator::new()
-                .map(|acc| Self { inner: Arc::new(acc) })
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))
-        }
+    #[tokio::test]
+    async fn test_thread_safe_metal() {
+        let bridge = Arc::new(ObjCBridge::new(3).unwrap());
+        let accelerator = MetalAccelerator::new(bridge).unwrap();
         
-        fn process_batch(&self, frames: Vec<Vec<u8>>) -> Vec<Vec<f32>> {
-            self.inner.process_frame_batch(&frames)
-                .into_iter()
-                .map(|f| f.features)
-                .collect()
-        }
+        // Create test frame
+        let frame = Array3::<u8>::zeros((100, 100, 4));
         
-        fn analyze_frames_async(
-            &self,
-            py: Python,
-            frames: Vec<Vec<u8>>,
-            detect_changes: bool,
-            extract_features: bool,
-        ) -> PyResult<&PyAny> {
-            let inner = self.inner.clone();
-            
-            pyo3_asyncio::tokio::future_into_py(py, async move {
-                let results = inner.analyze_frames_async(frames, detect_changes, extract_features).await;
-                
-                // Convert to Python-friendly format
-                let py_results: Vec<HashMap<String, PyObject>> = Python::with_gil(|py| {
-                    results.into_iter()
-                        .map(|analysis| {
-                            let mut result = HashMap::new();
-                            result.insert("frame_index".to_string(), analysis.frame_index.into_py(py));
-                            result.insert("change_magnitude".to_string(), analysis.change_magnitude.into_py(py));
-                            result.insert("features".to_string(), analysis.features.into_py(py));
-                            result.insert("timestamp".to_string(), analysis.timestamp.into_py(py));
-                            result
-                        })
-                        .collect()
-                });
-                
-                Ok(py_results)
+        // Spawn multiple tasks to test thread safety
+        let handles: Vec<_> = (0..5)
+            .map(|_| {
+                let accel_clone = accelerator.clone();
+                let frame_clone = frame.clone();
+                tokio::spawn(async move {
+                    accel_clone.detect_motion(frame_clone.view(), 0.5).await
+                })
             })
-        }
+            .collect();
         
-        fn get_stats(&self) -> HashMap<String, f64> {
-            self.inner.get_stats()
+        // All should complete without panic
+        for handle in handles {
+            assert!(handle.await.is_ok());
         }
     }
     
-    pub fn register_module(parent: &PyModule) -> PyResult<()> {
-        let m = PyModule::new(parent.py(), "metal_accelerator")?;
-        m.add_class::<PyMetalAccelerator>()?;
-        parent.add_submodule(m)?;
-        Ok(())
+    #[tokio::test]
+    async fn test_performance_stats() {
+        let bridge = Arc::new(ObjCBridge::new(3).unwrap());
+        let accelerator = MetalAccelerator::new(bridge).unwrap();
+        
+        let stats = accelerator.stats();
+        assert_eq!(stats.total_frames_processed, 0);
+        
+        // Process a frame (would update stats)
+        let data = vec![0u8; 1024];
+        let _ = accelerator.process_frame(&data, "test_shader", 32, 32).await;
+        
+        let stats = accelerator.stats();
+        assert!(stats.total_frames_processed > 0);
     }
 }
-
-#[cfg(feature = "python-bindings")]
-pub use python_bindings::register_module;

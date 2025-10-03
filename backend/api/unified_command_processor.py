@@ -359,6 +359,12 @@ class UnifiedCommandProcessor:
             logger.info(f"[CLASSIFY] Document creation command detected: '{command_text}'")
             return CommandType.DOCUMENT, 0.95
 
+        # Check for lock/unlock screen commands BEFORE vision detection
+        # This prevents "lock screen" from being misrouted to vision handler
+        if any(word in ['lock', 'unlock'] for word in words) and 'screen' in words:
+            logger.info(f"[CLASSIFY] Screen lock/unlock command detected: '{command_text}'")
+            return CommandType.SYSTEM, 0.95 # Route to screen lock/unlock handler with high confidence
+
         # Vision detection through semantic analysis
         vision_score = self._calculate_vision_score(words)
         if vision_score > 0.7:
@@ -1348,6 +1354,37 @@ class UnifiedCommandProcessor:
             
             macos_controller = MacOSController()
             dynamic_controller = get_dynamic_app_controller()
+            
+            # Check for lock/unlock screen commands first
+            # Use the existing voice unlock integration for proper daemon support
+            if ('lock' in command_lower or 'unlock' in command_lower) and 'screen' in command_lower:
+                logger.info(f"[SYSTEM] Screen lock/unlock command detected, using voice unlock handler")
+                try:
+                    from api.simple_unlock_handler import handle_unlock_command
+                    
+                    # Pass the command to the existing unlock handler which integrates with the daemon
+                    result = await handle_unlock_command(command_text)
+                    
+                    # Ensure we return a properly formatted result
+                    if isinstance(result, dict):
+                        # Add command_type if not present
+                        if 'command_type' not in result:
+                            result['command_type'] = 'screen_lock' if 'lock' in command_lower else 'screen_unlock'
+                        return result
+                    else:
+                        # Fallback to macos_controller if the unlock handler returns unexpected format
+                        logger.warning(f"[SYSTEM] Unexpected result from unlock handler, falling back")
+                        result = await macos_controller.handle_command(command_text)
+                        return result
+                        
+                except ImportError:
+                    logger.warning(f"[SYSTEM] Simple unlock handler not available, using macos_controller")
+                    result = await macos_controller.handle_command(command_text)
+                    return result
+                except Exception as e:
+                    logger.error(f"[SYSTEM] Error with unlock handler: {e}, falling back")
+                    result = await macos_controller.handle_command(command_text)
+                    return result
             
             # Parse command dynamically
             command_type, target, params = self._parse_system_command(command_text)
