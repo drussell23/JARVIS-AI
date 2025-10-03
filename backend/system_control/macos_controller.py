@@ -816,13 +816,6 @@ class MacOSController:
                 logger.info("Screen locked successfully using AppleScript")
                 return True, "Screen locked successfully, Sir."
             
-            # Fallback Method 3: Use pmset to sleep display
-            try:
-                subprocess.run(['pmset', 'displaysleepnow'], check=True)
-                logger.info("Display put to sleep (will lock if password required)")
-                return True, "Screen locked successfully, Sir."
-            except:
-                pass
             
             return False, "Unable to lock screen. Please use Control+Command+Q manually."
             

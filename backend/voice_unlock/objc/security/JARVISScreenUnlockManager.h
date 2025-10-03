@@ -60,6 +60,10 @@ typedef NS_ENUM(NSInteger, JARVISUnlockMethod) {
 - (BOOL)isSystemSleeping;
 - (JARVISScreenState)detectScreenState;
 
+// Lock operations
+- (BOOL)lockScreen;
+- (BOOL)lockScreenWithError:(NSError **)error;
+
 // Unlock operations
 - (BOOL)unlockScreenWithError:(NSError **)error;
 - (void)unlockScreenAsync:(void (^)(JARVISUnlockResult *result))completion;

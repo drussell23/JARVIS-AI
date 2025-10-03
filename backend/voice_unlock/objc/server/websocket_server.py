@@ -439,13 +439,6 @@ class VoiceUnlockWebSocketServer:
             except Exception as e:
                 logger.debug(f"ScreenSaver method failed: {e}")
             
-            # Method 4: Fallback to sleep display
-            try:
-                subprocess.run(['pmset', 'displaysleepnow'])
-                logger.info("Put display to sleep")
-                return True
-            except Exception as e:
-                logger.debug(f"Display sleep method failed: {e}")
                 
             logger.error("All lock methods failed")
             return False

@@ -11,6 +11,7 @@ import asyncio
 import logging
 import websockets
 import json
+import os
 from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
@@ -153,13 +154,42 @@ async def handle_unlock_command(command: str, jarvis_instance=None) -> Dict[str,
         if action == "lock_screen":
             logger.info("[SIMPLE UNLOCK] Falling back to direct macOS lock command")
             import subprocess
-            try:
-                # Use pmset to lock the screen (works on all macOS versions)
-                subprocess.run([
-                    "pmset", "displaysleepnow"
-                ], check=True)
 
-                logger.info("[SIMPLE UNLOCK] Screen locked successfully via direct command")
+            # Try multiple methods to lock the screen
+            lock_success = False
+
+            # Method 1: Try CGSession first (most reliable on older macOS)
+            try:
+                cgsession_path = '/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession'
+                if os.path.exists(cgsession_path):
+                    result = subprocess.run([cgsession_path, '-suspend'], capture_output=True, text=True)
+                    if result.returncode == 0:
+                        lock_success = True
+                        logger.info("[SIMPLE UNLOCK] Screen locked using CGSession")
+            except Exception as e:
+                logger.debug(f"CGSession method failed: {e}")
+
+            # Method 2: Use AppleScript keyboard shortcut (Cmd+Ctrl+Q)
+            if not lock_success:
+                try:
+                    script = 'tell application "System Events" to keystroke "q" using {command down, control down}'
+                    result = subprocess.run(['osascript', '-e', script], capture_output=True, text=True)
+                    if result.returncode == 0:
+                        lock_success = True
+                        logger.info("[SIMPLE UNLOCK] Screen locked using AppleScript")
+                except Exception as e:
+                    logger.debug(f"AppleScript method failed: {e}")
+
+            # Method 3: Start screensaver as last resort
+            if not lock_success:
+                try:
+                    subprocess.run(['open', '-a', 'ScreenSaverEngine'], check=True)
+                    lock_success = True
+                    logger.info("[SIMPLE UNLOCK] Started screensaver")
+                except Exception as e:
+                    logger.debug(f"ScreenSaver method failed: {e}")
+
+            if lock_success:
                 return {
                     'success': True,
                     'response': response_text,
@@ -167,11 +197,11 @@ async def handle_unlock_command(command: str, jarvis_instance=None) -> Dict[str,
                     'action': action,
                     'method': 'direct'
                 }
-            except subprocess.CalledProcessError as lock_error:
-                logger.error(f"[SIMPLE UNLOCK] Failed to lock screen: {lock_error}")
+            else:
+                logger.error("[SIMPLE UNLOCK] All lock methods failed")
                 return {
                     'success': False,
-                    'response': "I couldn't lock your screen, Sir. Please check system permissions.",
+                    'response': "I couldn't lock your screen, Sir. Please use Control+Command+Q manually.",
                     'type': 'screen_lock',
                     'action': action
                 }
