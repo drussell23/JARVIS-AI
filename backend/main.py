@@ -1502,10 +1502,17 @@ if __name__ == "__main__":
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.getenv("BACKEND_PORT", "8000")),
+        default=int(os.getenv("BACKEND_PORT", "8010")),
         help="Port to run the server on",
     )
     args = parser.parse_args()
+
+    # Print startup information
+    print(f"\n🚀 Starting JARVIS Backend")
+    print(f"   HTTP:      http://localhost:{args.port}")
+    print(f"   WebSocket: ws://localhost:{args.port}/ws")
+    print(f"   API Docs:  http://localhost:{args.port}/docs")
+    print("=" * 60)
 
     # Use optimized settings if enabled
     if OPTIMIZE_STARTUP:

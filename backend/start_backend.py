@@ -11,6 +11,7 @@ import subprocess
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['USE_TORCH'] = '1'
 os.environ['USE_TF'] = '0'
+os.environ['BACKEND_PORT'] = '8010'  # Set default port to 8010
 
 # Suppress warnings
 import warnings
@@ -52,13 +53,15 @@ except ImportError:
     print("⚠️  Screen monitoring not available")
 
 # Run the backend
-print("\n🎯 Starting FastAPI server on port 8000...")
+print("\n🎯 Starting FastAPI server on port 8010...")
+print("   WebSocket will be available at ws://localhost:8010/ws")
 print("=" * 50 + "\n")
 
 try:
     backend_dir = os.path.dirname(os.path.abspath(__file__))
     main_path = os.path.join(backend_dir, "main.py")
-    subprocess.run([sys.executable, main_path, "--port", "8000"])
+    # Use port 8010 to match frontend expectations
+    subprocess.run([sys.executable, main_path, "--port", "8010"])
 except KeyboardInterrupt:
     print("\n\n✋ Backend stopped by user")
 except Exception as e:

@@ -170,7 +170,7 @@ class JarvisParallelSystem:
         """Check if backend API is responding"""
         import aiohttp
         
-        url = f"http://localhost:{os.getenv('BACKEND_PORT', '8000')}/health"
+        url = f"http://localhost:{os.getenv('BACKEND_PORT', '8010')}/health"
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
@@ -214,8 +214,9 @@ class JarvisParallelSystem:
         
         print(f"\n🌐 Access Points:")
         print(f"  Frontend:   http://localhost:3000")
-        print(f"  Backend:    http://localhost:{os.getenv('BACKEND_PORT', '8000')}")
-        print(f"  API Docs:   http://localhost:{os.getenv('BACKEND_PORT', '8000')}/docs")
+        print(f"  Backend:    http://localhost:{os.getenv('BACKEND_PORT', '8010')}")
+        print(f"  API Docs:   http://localhost:{os.getenv('BACKEND_PORT', '8010')}/docs")
+        print(f"  WebSocket:  ws://localhost:{os.getenv('BACKEND_PORT', '8010')}/ws")
         print(f"  Monitoring: http://localhost:8888")
         
         print(f"\n⚡ Performance:")
