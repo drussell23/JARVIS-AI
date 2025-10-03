@@ -567,7 +567,21 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         if self._is_time_command(text_lower):
             return await self._handle_time_command(text_lower)
 
-        # CHECK FOR ACTION COMMANDS FIRST - these should execute, not analyze
+        # CHECK FOR LOCK/UNLOCK COMMANDS FIRST - these must never go to vision
+        if any(phrase in text_lower for phrase in ["lock my screen", "unlock my screen", "lock screen", "unlock screen", "lock the screen", "unlock the screen"]):
+            logger.info(f"Lock/unlock command detected: {text}")
+            # Route to system control for proper lock/unlock handling
+            try:
+                from api.unified_command_processor import UnifiedCommandProcessor
+                processor = UnifiedCommandProcessor()
+                result = await processor.process_command(text)
+                if result and result.get('response'):
+                    return result['response']
+            except Exception as e:
+                logger.error(f"Failed to process lock/unlock command: {e}")
+                return "I couldn't process the lock/unlock command. Please try again."
+
+        # CHECK FOR ACTION COMMANDS - these should execute, not analyze
         action_commands = {
             "close": ["close", "quit", "exit", "terminate"],
             "open": ["open", "launch", "start", "run"],
@@ -675,8 +689,8 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             if has_keyword:
                 return await self._handle_workspace_command(text)
 
-        # Standard vision triggers (only if not an action command)
-        if not is_action_command:
+        # Standard vision triggers (only if not an action command and not lock/unlock)
+        if not is_action_command and not any(word in text_lower for word in ["lock", "unlock"]):
             vision_triggers = [
                 "screen",
                 "update",

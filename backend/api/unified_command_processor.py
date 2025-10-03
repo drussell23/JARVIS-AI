@@ -275,13 +275,14 @@ class UnifiedCommandProcessor:
         
     async def _classify_command(self, command_text: str) -> Tuple[CommandType, float]:
         """Dynamically classify command using learned patterns"""
-        command_lower = command_text.lower()
+        command_lower = command_text.lower().strip()
         words = command_lower.split()
-        
-                # Manual screen lock/unlock detection (highest priority)
-        if command_lower.strip() in ['unlock my screen', 'unlock screen', 'unlock the screen', 'lock my screen', 'lock screen', 'lock the screen']:
+
+        # Manual screen lock/unlock detection (HIGHEST PRIORITY - check first!)
+        # Check for exact matches first
+        if command_lower in ['unlock my screen', 'unlock screen', 'unlock the screen', 'lock my screen', 'lock screen', 'lock the screen']:
             logger.info(f"[CLASSIFY] Manual screen lock/unlock command detected: '{command_lower}'")
-            return CommandType.SYSTEM, 0.99  # Route to system handler for proper lock/unlock
+            return CommandType.VOICE_UNLOCK, 0.99  # Route to voice unlock handler with high confidence
         
         # Voice unlock detection FIRST (highest priority to catch "enable voice unlock")
         voice_patterns = self._detect_voice_unlock_patterns(command_lower)
@@ -358,12 +359,6 @@ class UnifiedCommandProcessor:
         if has_document_keyword and has_document_type:
             logger.info(f"[CLASSIFY] Document creation command detected: '{command_text}'")
             return CommandType.DOCUMENT, 0.95
-
-        # Check for lock/unlock screen commands BEFORE vision detection
-        # This prevents "lock screen" from being misrouted to vision handler
-        if any(word in ['lock', 'unlock'] for word in words) and 'screen' in words:
-            logger.info(f"[CLASSIFY] Screen lock/unlock command detected: '{command_text}'")
-            return CommandType.SYSTEM, 0.95 # Route to screen lock/unlock handler with high confidence
 
         # Vision detection through semantic analysis
         vision_score = self._calculate_vision_score(words)
@@ -451,19 +446,27 @@ class UnifiedCommandProcessor:
     def _calculate_vision_score(self, words: List[str]) -> float:
         """Calculate likelihood of vision command"""
         score = 0.0
-        
+
+        # EXCLUDE lock/unlock commands - they're system commands, not vision
+        if 'lock' in words or 'unlock' in words:
+            return 0.0
+
         # Vision verbs
         vision_verbs = {'see', 'look', 'watch', 'monitor', 'analyze', 'describe', 'show', 'read'}
         score += sum(0.2 for word in words if word in vision_verbs)
-        
-        # Vision nouns
-        vision_nouns = {'screen', 'display', 'window', 'image', 'visual', 'picture'}
+
+        # Vision nouns (but be careful with 'screen' - it could be system related)
+        vision_nouns = {'display', 'window', 'image', 'visual', 'picture'}
         score += sum(0.15 for word in words if word in vision_nouns)
-        
+
+        # 'screen' only counts as vision if paired with vision verbs
+        if 'screen' in words and any(word in vision_verbs for word in words):
+            score += 0.15
+
         # Questioning about visual
         if words and words[0] in {'what', 'what\'s', 'whats'} and any(word in words for word in {'screen', 'see', 'display'}):
             score += 0.3
-            
+
         return min(score, 0.95)
     
     def _detect_voice_unlock_patterns(self, text: str) -> int:

@@ -244,3 +244,4 @@ backend/voice_unlock/proximity_voice_auth/**/*.pyc
 **/com.jarvis.voiceunlock
 **/*password*.txt
 **/*credentials*.txt
+backend/.jarvis_cache/
