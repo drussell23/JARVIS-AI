@@ -133,6 +133,12 @@ class ClaudeVisionChatbot:
         """Enhanced vision command detection with intent analysis"""
         input_lower = user_input.lower().strip()
         
+        # IMPORTANT: Exclude lock/unlock screen commands - these are system commands
+        if 'lock' in input_lower and 'screen' in input_lower:
+            return False
+        if 'unlock' in input_lower and 'screen' in input_lower:
+            return False
+        
         # Quick keyword pre-check for performance
         if not any(keyword in input_lower for keyword in self._vision_keywords):
             return False
@@ -1111,6 +1117,11 @@ class ClaudeVisionChatbot:
         
     async def _is_monitoring_command(self, user_input: str) -> bool:
         """Check if this is a continuous monitoring command"""
+        # IMPORTANT: Exclude lock/unlock screen commands
+        text_lower = user_input.lower()
+        if 'lock' in text_lower or 'unlock' in text_lower:
+            return False  # Never treat lock/unlock as monitoring
+        
         monitoring_keywords = [
             'monitor', 'monitoring', 'watch', 'watching', 'track', 'tracking',
             'continuous', 'continuously', 'real-time', 'realtime', 'actively',
@@ -1119,7 +1130,6 @@ class ClaudeVisionChatbot:
         
         screen_keywords = ['screen', 'display', 'desktop', 'workspace', 'monitor']
         
-        text_lower = user_input.lower()
         has_monitoring = any(keyword in text_lower for keyword in monitoring_keywords)
         has_screen = any(keyword in text_lower for keyword in screen_keywords)
         
