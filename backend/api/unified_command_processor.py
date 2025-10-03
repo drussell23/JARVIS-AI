@@ -278,10 +278,10 @@ class UnifiedCommandProcessor:
         command_lower = command_text.lower()
         words = command_lower.split()
         
-                # Manual screen unlock detection (highest priority)
+                # Manual screen lock/unlock detection (highest priority)
         if command_lower.strip() in ['unlock my screen', 'unlock screen', 'unlock the screen', 'lock my screen', 'lock screen', 'lock the screen']:
             logger.info(f"[CLASSIFY] Manual screen lock/unlock command detected: '{command_lower}'")
-            return CommandType.VOICE_UNLOCK, 0.99  # Route to voice unlock handler with high confidence
+            return CommandType.SYSTEM, 0.99  # Route to system handler for proper lock/unlock
         
         # Voice unlock detection FIRST (highest priority to catch "enable voice unlock")
         voice_patterns = self._detect_voice_unlock_patterns(command_lower)
