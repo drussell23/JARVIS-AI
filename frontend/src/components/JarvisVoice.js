@@ -652,13 +652,13 @@ const JarvisVoice = () => {
 
           // Process workspace updates
           if (data.type === 'update' && data.workspace) {
-            // Check for important notifications
+            // Check for important notifications - NO AUDIO FEEDBACK (removed to prevent feedback loops)
             if (data.workspace.notifications && data.workspace.notifications.length > 0) {
               const notification = data.workspace.notifications[0];
-              speakResponse(`I've detected: ${notification}`);
+              console.log(`📢 Notification: ${notification}`);
             }
 
-            // Handle autonomous actions
+            // Handle autonomous actions - NO AUDIO FEEDBACK (removed to prevent feedback loops)
             if (data.autonomousActions && data.autonomousActions.length > 0 && autonomousMode) {
               const highPriorityActions = data.autonomousActions.filter(a =>
                 a.priority === 'HIGH' || a.priority === 'CRITICAL'
@@ -666,7 +666,7 @@ const JarvisVoice = () => {
 
               if (highPriorityActions.length > 0) {
                 const action = highPriorityActions[0];
-                speakResponse(`I'm going to ${action.type.replace(/_/g, ' ')} for ${action.target}`);
+                console.log(`🎯 Action: ${action.type.replace(/_/g, ' ')} for ${action.target}`);
               }
             }
 
@@ -676,11 +676,11 @@ const JarvisVoice = () => {
             }
           }
         },
-        // Action executed callback
+        // Action executed callback - NO AUDIO FEEDBACK (removed to prevent feedback loops)
         (result) => {
           console.log('Action executed:', result);
           if (!result.success) {
-            speakResponse(`I encountered an issue: ${result.message}`);
+            console.error(`❌ Issue encountered: ${result.message}`);
           }
         }
       );
@@ -796,9 +796,8 @@ const JarvisVoice = () => {
           console.log('    • Advanced tools enabled');
           console.log('  🚀 System running at full capacity!');
           
-          // Show success message to user
+          // Show success message to user - NO AUDIO FEEDBACK (removed to prevent feedback loops)
           setResponse('System upgraded! All features are now available.');
-          speakResponse('System upgraded. All features are now available, Sir.');
           
           // Show upgrade success banner
           setShowUpgradeSuccess(true);
@@ -941,11 +940,9 @@ const JarvisVoice = () => {
         setResponse(voiceUnlockText);
         setIsProcessing(false);
         
-        // Speak the response if speak flag is true
+        // NO AUDIO FEEDBACK for voice unlock (removed to prevent feedback loops)
         if ((data.message || data.text) && data.speak !== false) {
-          console.log('[JARVIS Audio] Speaking voice unlock response:', voiceUnlockText);
-          // Don't update display again since we just set it above
-          speakResponse(voiceUnlockText, false);
+          console.log('[JARVIS Audio] Voice unlock response (silent):', voiceUnlockText);
         }
         
         // Reset waiting state after voice unlock command
@@ -1721,9 +1718,7 @@ const JarvisVoice = () => {
     isWaitingForCommandRef.current = true;
     setIsListening(true);
 
-    // Always speak dynamic response immediately
-    const wakeResponse = getWakeWordResponse();
-    speakResponse(wakeResponse);
+    // Wake word detected - NO AUDIO FEEDBACK (removed to prevent feedback loops)
 
     // Don't send anything to backend - we're handling the wake word response locally
     // Just ensure WebSocket is connected for subsequent commands
@@ -1830,9 +1825,7 @@ const JarvisVoice = () => {
           await initializeWakeWordService();
         }
 
-        // Generate dynamic startup greeting
-        const startupGreeting = getStartupGreeting();
-        speakResponse(startupGreeting);
+        // NO STARTUP GREETING - removed to prevent feedback loops
 
         // Enable continuous listening for wake word detection
         console.log('🎙️ Enabling continuous listening for wake word...');
@@ -1849,8 +1842,7 @@ const JarvisVoice = () => {
     setAutonomousMode(newMode);
 
     if (newMode) {
-      // Enable autonomous mode
-      speakResponse("Initiating full autonomy. All systems coming online. Vision system activating. AI brain engaged. Sir, I am now fully autonomous.");
+      // Enable autonomous mode - NO AUDIO FEEDBACK (removed to prevent feedback loops)
 
       // Connect vision system
       if (visionConnectionRef.current) {
@@ -1873,8 +1865,7 @@ const JarvisVoice = () => {
         }));
       }
     } else {
-      // Disable autonomous mode
-      speakResponse("Disabling autonomous mode. Returning to manual control. Standing by for your commands, sir.");
+      // Disable autonomous mode - NO AUDIO FEEDBACK (removed to prevent feedback loops)
 
       // Stop vision monitoring
       if (visionConnectionRef.current && visionConnectionRef.current.isConnected) {
