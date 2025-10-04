@@ -49,10 +49,10 @@ class AdaptiveVoiceDetection {
 
     // Dynamic thresholds (start conservative, get more aggressive as confidence builds)
     this.thresholds = {
-      minimumConfidence: 0.85, // Will decrease as user voice is learned
+      minimumConfidence: 0.01, // LOWERED - Browser speech recognition gives very low scores
       highConfidenceBonus: 0.0, // Bonus added based on voice profile match
-      wakeWordConfidence: 0.75, // Lower for wake word (more permissive)
-      commandConfidence: 0.85, // Higher for commands (more conservative initially)
+      wakeWordConfidence: 0.01, // LOWERED - More permissive for wake word
+      commandConfidence: 0.01, // LOWERED - More permissive for commands
       adaptiveAdjustment: 0.0, // Dynamic adjustment based on success rate
     };
 
