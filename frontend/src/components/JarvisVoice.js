@@ -1263,9 +1263,8 @@ const JarvisVoice = () => {
           setIsWaitingForCommand(true);
           setIsListening(true);
 
-          // Play the response with dynamic variation
-          const responseText = data.response || getWakeWordResponse();
-          speakResponse(responseText);
+          // NO AUDIO FEEDBACK for wake word (removed to prevent feedback loops)
+          console.log('🎯 Wake word detected - listening for command (silent)');
 
           // Start timeout for command (30 seconds - more time to speak)
           setTimeout(() => {
