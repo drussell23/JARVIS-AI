@@ -12,8 +12,9 @@ import adaptiveVoiceDetection from '../utils/AdaptiveVoiceDetection'; // Adaptiv
 import VoiceStatsDisplay from './VoiceStatsDisplay'; // Adaptive voice stats display
 import EnvironmentalStatsDisplay from './EnvironmentalStatsDisplay'; // Environmental stats display
 import AudioQualityStatsDisplay from './AudioQualityStatsDisplay'; // Audio quality stats display
-import environmentalAdaptation from '../utils/EnvironmentalAdaptation'; // Environmental noise handling
-import audioQualityAdaptation from '../utils/AudioQualityAdaptation'; // Audio quality enhancement
+// DISABLED - Environmental and audio quality adaptation (causing echo/feedback)
+// import environmentalAdaptation from '../utils/EnvironmentalAdaptation'; // Environmental noise handling
+// import audioQualityAdaptation from '../utils/AudioQualityAdaptation'; // Audio quality enhancement
 
 // Inline styles to ensure button visibility
 const buttonVisibilityStyle = `
@@ -1305,15 +1306,16 @@ const JarvisVoice = () => {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       recognitionRef.current = new SpeechRecognition();
 
-      // 🌍🎚️ Initialize environmental adaptation and audio quality enhancement
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        await environmentalAdaptation.initializeAudioProcessing(stream);
-        await audioQualityAdaptation.initializeAudioProcessing(stream);
-        console.log('✅ Environmental adaptation and audio quality enhancement initialized');
-      } catch (error) {
-        console.warn('⚠️ Could not initialize audio processing:', error);
-      }
+      // 🌍🎚️ DISABLED - Environmental adaptation and audio quality enhancement (causing echo/feedback)
+      // try {
+      //   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      //   await environmentalAdaptation.initializeAudioProcessing(stream);
+      //   await audioQualityAdaptation.initializeAudioProcessing(stream);
+      //   console.log('✅ Environmental adaptation and audio quality enhancement initialized');
+      // } catch (error) {
+      //   console.warn('⚠️ Could not initialize audio processing:', error);
+      // }
+      console.log('⚠️ Environmental audio processing DISABLED to prevent echo/feedback');
 
       // Track if JARVIS is speaking to avoid self-triggering
       let jarvisSpeaking = false;
@@ -2005,9 +2007,10 @@ const JarvisVoice = () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      // 🌍🎚️ Initialize environmental and audio quality adaptation with microphone stream
-      await environmentalAdaptation.initializeAudioProcessing(stream);
-      await audioQualityAdaptation.initializeAudioProcessing(stream);
+      // 🌍🎚️ DISABLED - Environmental and audio quality adaptation (causing echo/feedback)
+      // await environmentalAdaptation.initializeAudioProcessing(stream);
+      // await audioQualityAdaptation.initializeAudioProcessing(stream);
+      console.log('⚠️ Environmental audio processing DISABLED to prevent echo/feedback');
 
       mediaRecorderRef.current = new MediaRecorder(stream);
       audioChunksRef.current = [];
