@@ -544,72 +544,84 @@ class JARVISVoiceAPI:
         except Exception as e:
             logger.error(f"Workflow processor error: {e}")
 
-        # First check if this is a vision command
-        logger.info(f"[JARVIS API] Checking if '{command.text}' is a vision command...")
+        # IMPORTANT: Check for document commands BEFORE vision to avoid misclassification
+        document_keywords = ['write', 'create', 'draft', 'compose', 'generate']
+        document_types = ['essay', 'report', 'paper', 'article', 'document', 'blog', 'letter', 'story']
+        words = command.text.lower().split()
 
-        # Quick check for monitoring commands
-        is_monitoring_cmd = any(
-            phrase in command.text.lower()
-            for phrase in [
-                "start monitoring",
-                "enable monitoring",
-                "monitor my screen",
-                "enable screen monitoring",
-                "monitoring capabilities",
-                "turn on monitoring",
-                "activate monitoring",
-                "begin monitoring",
-                "stop monitoring",
-                "disable monitoring",
-            ]
-        )
+        has_document_keyword = any(kw in words for kw in document_keywords)
+        has_document_type = any(dtype in words for dtype in document_types)
 
-        if is_monitoring_cmd:
-            logger.info(
-                "[JARVIS API] Detected monitoring command - routing to vision handler"
+        if has_document_keyword and has_document_type:
+            logger.info(f"[JARVIS API] Document creation command detected - skipping vision handler: '{command.text}'")
+            # Skip vision handler entirely - will go to unified processor below
+        else:
+            # First check if this is a vision command
+            logger.info(f"[JARVIS API] Checking if '{command.text}' is a vision command...")
+
+            # Quick check for monitoring commands
+            is_monitoring_cmd = any(
+                phrase in command.text.lower()
+                for phrase in [
+                    "start monitoring",
+                    "enable monitoring",
+                    "monitor my screen",
+                    "enable screen monitoring",
+                    "monitoring capabilities",
+                    "turn on monitoring",
+                    "activate monitoring",
+                    "begin monitoring",
+                    "stop monitoring",
+                    "disable monitoring",
+                ]
             )
 
-        try:
-            from .vision_command_handler import vision_command_handler
+            if is_monitoring_cmd:
+                logger.info(
+                    "[JARVIS API] Detected monitoring command - routing to vision handler"
+                )
 
-            # Ensure vision handler is initialized
-            if not vision_command_handler.intelligence:
-                logger.info("[JARVIS API] Initializing vision command handler...")
-                # Try to get API key from environment or app state
-                api_key = None
-                try:
-                    from api.jarvis_factory import get_app_state
+            try:
+                from .vision_command_handler import vision_command_handler
 
-                    app_state = get_app_state()
-                    if (
-                        app_state
-                        and hasattr(app_state, "vision_analyzer")
-                        and app_state.vision_analyzer
-                    ):
-                        api_key = getattr(app_state.vision_analyzer, "api_key", None)
-                except:
-                    pass
+                # Ensure vision handler is initialized
+                if not vision_command_handler.intelligence:
+                    logger.info("[JARVIS API] Initializing vision command handler...")
+                    # Try to get API key from environment or app state
+                    api_key = None
+                    try:
+                        from api.jarvis_factory import get_app_state
 
-                if not api_key:
-                    api_key = os.getenv("ANTHROPIC_API_KEY")
+                        app_state = get_app_state()
+                        if (
+                            app_state
+                            and hasattr(app_state, "vision_analyzer")
+                            and app_state.vision_analyzer
+                        ):
+                            api_key = getattr(app_state.vision_analyzer, "api_key", None)
+                    except:
+                        pass
 
-                await vision_command_handler.initialize_intelligence(api_key)
+                    if not api_key:
+                        api_key = os.getenv("ANTHROPIC_API_KEY")
 
-            vision_result = await vision_command_handler.handle_command(command.text)
-            logger.info(
-                f"[JARVIS API] Vision handler result: handled={vision_result.get('handled')}"
-            )
+                    await vision_command_handler.initialize_intelligence(api_key)
 
-            if vision_result.get("handled"):
-                return {
-                    "response": vision_result["response"],
-                    "status": "success",
-                    "confidence": 1.0,
-                    "command_type": "vision",
-                    "monitoring_active": vision_result.get("monitoring_active"),
-                }
-        except Exception as e:
-            logger.error(f"Vision command handler error: {e}", exc_info=True)
+                vision_result = await vision_command_handler.handle_command(command.text)
+                logger.info(
+                    f"[JARVIS API] Vision handler result: handled={vision_result.get('handled')}"
+                )
+
+                if vision_result.get("handled"):
+                    return {
+                        "response": vision_result["response"],
+                        "status": "success",
+                        "confidence": 1.0,
+                        "command_type": "vision",
+                        "monitoring_active": vision_result.get("monitoring_active"),
+                    }
+            except Exception as e:
+                logger.error(f"Vision command handler error: {e}", exc_info=True)
 
         if not self.jarvis_available:
             # Check if this is a weather command - we can handle it even in limited mode
