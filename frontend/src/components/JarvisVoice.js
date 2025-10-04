@@ -11,7 +11,9 @@ import configService from '../services/DynamicConfigService'; // Dynamic configu
 import adaptiveVoiceDetection from '../utils/AdaptiveVoiceDetection'; // Adaptive voice learning system
 import VoiceStatsDisplay from './VoiceStatsDisplay'; // Adaptive voice stats display
 import EnvironmentalStatsDisplay from './EnvironmentalStatsDisplay'; // Environmental stats display
+import AudioQualityStatsDisplay from './AudioQualityStatsDisplay'; // Audio quality stats display
 import environmentalAdaptation from '../utils/EnvironmentalAdaptation'; // Environmental noise handling
+import audioQualityAdaptation from '../utils/AudioQualityAdaptation'; // Audio quality enhancement
 
 // Inline styles to ensure button visibility
 const buttonVisibilityStyle = `
@@ -1300,13 +1302,14 @@ const JarvisVoice = () => {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       recognitionRef.current = new SpeechRecognition();
 
-      // 🌍 Initialize environmental adaptation for advanced noise handling
+      // 🌍🎚️ Initialize environmental adaptation and audio quality enhancement
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         await environmentalAdaptation.initializeAudioProcessing(stream);
-        console.log('✅ Environmental adaptation initialized for speech recognition');
+        await audioQualityAdaptation.initializeAudioProcessing(stream);
+        console.log('✅ Environmental adaptation and audio quality enhancement initialized');
       } catch (error) {
-        console.warn('⚠️ Could not initialize environmental adaptation:', error);
+        console.warn('⚠️ Could not initialize audio processing:', error);
       }
 
       // Track if JARVIS is speaking to avoid self-triggering
@@ -1361,6 +1364,13 @@ const JarvisVoice = () => {
 
         // Legacy high confidence check (kept for fallback)
         const isHighConfidence = enhancedConfidence >= 0.85;
+
+        // Check for typing BEFORE any processing to suppress feedback
+        const typingDetected = environmentalAdaptation.processingState?.flags?.keyboardTypingDetected || false;
+        if (typingDetected) {
+          console.log('⌨️ Keyboard typing detected - suppressing all audio feedback and processing');
+          return; // Exit early - no feedback, no processing
+        }
 
         // Process based on adaptive decision
         if (!shouldProcess && !isWaitingForCommandRef.current) return;
@@ -1674,10 +1684,18 @@ const JarvisVoice = () => {
 
   const handleWakeWordDetected = () => {
     console.log('🎯 handleWakeWordDetected called!');
+
+    // Check for typing before any feedback
+    const typingDetected = environmentalAdaptation.processingState?.flags?.keyboardTypingDetected || false;
+    if (typingDetected) {
+      console.log('⌨️ Keyboard typing detected - suppressing wake word response');
+      return; // Exit early - no feedback
+    }
+
     setIsWaitingForCommand(true);
     isWaitingForCommandRef.current = true;
     setIsListening(true);
-    
+
     // Always speak dynamic response immediately
     const wakeResponse = getWakeWordResponse();
     speakResponse(wakeResponse);
@@ -1972,8 +1990,9 @@ const JarvisVoice = () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      // 🌍 Initialize environmental adaptation with microphone stream
+      // 🌍🎚️ Initialize environmental and audio quality adaptation with microphone stream
       await environmentalAdaptation.initializeAudioProcessing(stream);
+      await audioQualityAdaptation.initializeAudioProcessing(stream);
 
       mediaRecorderRef.current = new MediaRecorder(stream);
       audioChunksRef.current = [];
@@ -2597,6 +2616,9 @@ const JarvisVoice = () => {
 
       {/* Environmental Adaptation Stats Display */}
       <EnvironmentalStatsDisplay show={jarvisStatus === 'online' && continuousListening} />
+
+      {/* Audio Quality Stats Display */}
+      <AudioQualityStatsDisplay show={jarvisStatus === 'online' && continuousListening} />
 
     </div>
   );

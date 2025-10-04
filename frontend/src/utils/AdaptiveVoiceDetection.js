@@ -14,6 +14,7 @@
  */
 
 import environmentalAdaptation from './EnvironmentalAdaptation';
+import audioQualityAdaptation from './AudioQualityAdaptation';
 
 class AdaptiveVoiceDetection {
   constructor() {
@@ -136,6 +137,17 @@ class AdaptiveVoiceDetection {
     // Log environmental factors
     if (environmentalAssessment.environmentalFactors) {
       console.log('🌍 Environmental factors:', environmentalAssessment.environmentalFactors);
+    }
+
+    // 🎚️ AUDIO QUALITY ADAPTATION - Get microphone and signal quality assessment
+    const audioQualityAssessment = audioQualityAdaptation.getEnhancedConfidence(enhancedConfidence, transcript);
+
+    // Apply audio quality multiplier
+    enhancedConfidence = audioQualityAssessment.enhancedConfidence;
+
+    // Log audio quality factors
+    if (audioQualityAssessment.qualityFactors) {
+      console.log('🎚️ Audio quality factors:', audioQualityAssessment.qualityFactors);
     }
 
     // 1. Voice Pattern Match Bonus (+0.05 to +0.15)

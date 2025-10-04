@@ -62,11 +62,17 @@ class EnvironmentalAdaptation {
         lastUpdated: null,
       },
 
-      // Transient noise (doors, clicks, bumps)
+      // Transient noise (doors, clicks, bumps, typing, keyboard)
       transientNoise: {
         recentSpikes: [],
         spikeThreshold: null, // Adaptive
         suppressionActive: false,
+        keyboardTypingDetected: false,
+        typingPattern: {
+          recentEvents: [],
+          avgInterval: 0,
+          isTyping: false,
+        },
       },
 
       // Periodic noise (TV, music, speech from others)
@@ -125,6 +131,7 @@ class EnvironmentalAdaptation {
         multiSpeakerDetected: false,
         tvRadioDetected: false,
         musicDetected: false,
+        keyboardTypingDetected: false,
       },
 
       // Processing parameters (all adaptive)
@@ -199,23 +206,37 @@ class EnvironmentalAdaptation {
       // Create microphone source
       this.microphone = this.audioContext.createMediaStreamSource(stream);
 
-      // Create script processor for custom analysis
-      const bufferSize = 4096;
-      this.scriptProcessor = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
+      // Use AudioWorklet if available, fallback to ScriptProcessor
+      if (this.audioContext.audioWorklet) {
+        // TODO: Implement AudioWorklet for better performance
+        // For now, use polling approach instead of deprecated ScriptProcessor
+        this.microphone.connect(this.analyser);
 
-      // Connect audio graph
-      this.microphone.connect(this.analyser);
-      this.analyser.connect(this.scriptProcessor);
-      this.scriptProcessor.connect(this.audioContext.destination);
+        // Initialize data arrays
+        this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount);
+        this.timeData = new Uint8Array(this.analyser.frequencyBinCount);
 
-      // Initialize data arrays
-      this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount);
-      this.timeData = new Uint8Array(this.analyser.frequencyBinCount);
+        // Use polling instead of ScriptProcessor
+        this.startPollingAudio();
+      } else {
+        // Fallback for older browsers
+        const bufferSize = 4096;
+        this.scriptProcessor = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
 
-      // Start processing
-      this.scriptProcessor.onaudioprocess = (event) => {
-        this.processAudioFrame(event.inputBuffer);
-      };
+        // Connect audio graph
+        this.microphone.connect(this.analyser);
+        this.analyser.connect(this.scriptProcessor);
+        this.scriptProcessor.connect(this.audioContext.destination);
+
+        // Initialize data arrays
+        this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount);
+        this.timeData = new Uint8Array(this.analyser.frequencyBinCount);
+
+        // Start processing
+        this.scriptProcessor.onaudioprocess = (event) => {
+          this.processAudioFrame(event.inputBuffer);
+        };
+      }
 
       // Start continuous background noise profiling
       this.startContinuousNoiseProfiling();
@@ -231,6 +252,32 @@ class EnvironmentalAdaptation {
       console.error('❌ Failed to initialize audio processing:', error);
       return false;
     }
+  }
+
+  /**
+   * Start polling audio data (alternative to ScriptProcessor)
+   */
+  startPollingAudio() {
+    const pollInterval = 100; // Poll every 100ms
+
+    this.pollTimer = setInterval(() => {
+      // Get analyser data without using deprecated ScriptProcessor
+      this.analyser.getByteFrequencyData(this.frequencyData);
+      this.analyser.getByteTimeDomainData(this.timeData);
+
+      // Process frame using time domain data
+      const samples = new Float32Array(this.timeData.length);
+      for (let i = 0; i < this.timeData.length; i++) {
+        samples[i] = (this.timeData[i] - 128) / 128.0; // Convert to -1 to 1
+      }
+
+      // Create mock buffer for compatibility
+      const mockBuffer = {
+        getChannelData: () => samples
+      };
+
+      this.processAudioFrame(mockBuffer);
+    }, pollInterval);
   }
 
   /**
@@ -862,6 +909,7 @@ class EnvironmentalAdaptation {
     const tvRadioDetection = await this.detectTVRadio(samples, metrics);
     const musicDetection = await this.detectMusic(samples, metrics);
     const echoDetection = await this.detectEcho(samples, metrics);
+    const keyboardTypingDetection = await this.detectKeyboardTyping(samples, metrics);
 
     return {
       snr,
@@ -870,6 +918,7 @@ class EnvironmentalAdaptation {
       tvRadio: tvRadioDetection,
       music: musicDetection,
       echo: echoDetection,
+      keyboardTyping: keyboardTypingDetection,
     };
   }
 
@@ -968,6 +1017,113 @@ class EnvironmentalAdaptation {
     return {
       detected: hasEcho,
       delays,
+    };
+  }
+
+  /**
+   * Detect keyboard typing and mouse clicks
+   */
+  async detectKeyboardTyping(samples, metrics) {
+    // Keyboard typing characteristics:
+    // 1. Very short duration (10-50ms)
+    // 2. High-frequency content (3kHz-10kHz dominant) - HIGHER than speech
+    // 3. Sharp attack, quick decay
+    // 4. Rhythmic pattern when typing continuously
+    // 5. Low fundamental frequency energy (mostly noise, not tonal)
+    // 6. NO speech formants (unlike voice)
+
+    const isShortDuration = metrics.spectralFlux > 8; // Sharp change (more strict)
+
+    // Check for high-frequency dominance (ABOVE speech range)
+    const binWidth = this.sampleRate / (2 * this.frequencyData.length);
+    let highFreqEnergy = 0; // 3kHz-10kHz (above speech)
+    let speechFreqEnergy = 0;  // 80-3000Hz (speech range)
+    let totalEnergy = 0;
+
+    for (let i = 0; i < this.frequencyData.length; i++) {
+      const frequency = i * binWidth;
+      const magnitude = this.frequencyData[i];
+
+      if (frequency >= 3000 && frequency <= 10000) {
+        highFreqEnergy += magnitude;
+      } else if (frequency >= 80 && frequency < 3000) {
+        speechFreqEnergy += magnitude;
+      }
+      totalEnergy += magnitude;
+    }
+
+    const highFreqRatio = totalEnergy > 0 ? highFreqEnergy / totalEnergy : 0;
+    const speechFreqRatio = totalEnergy > 0 ? speechFreqEnergy / totalEnergy : 0;
+
+    // Typing has high-frequency dominance AND low speech frequency content
+    const hasTypingSpectrum = highFreqRatio > 0.5 && speechFreqRatio < 0.3;
+
+    // Check for very high zero-crossing rate (noise-like) - stricter
+    const isNoisy = metrics.zeroCrossingRate > 0.5; // Much higher than speech (0.15-0.3)
+
+    // Check that it's NOT speech-like
+    const isSpeechLike = this.processingState.currentFrame.isSpeech || metrics.zeroCrossingRate < 0.35;
+
+    // Detect rhythmic pattern (typing bursts)
+    const now = Date.now();
+    const typingPattern = this.noiseProfile.transientNoise.typingPattern;
+
+    // Track short bursts of high-frequency noise (ONLY if not speech-like)
+    if (hasTypingSpectrum && isNoisy && isShortDuration && !isSpeechLike) {
+      typingPattern.recentEvents.push(now);
+
+      // Keep only last 1.5 seconds of events (shorter window)
+      typingPattern.recentEvents = typingPattern.recentEvents.filter(t => now - t < 1500);
+
+      // Calculate typing rhythm (need at least 4 events for confidence)
+      if (typingPattern.recentEvents.length >= 4) {
+        const intervals = [];
+        for (let i = 1; i < typingPattern.recentEvents.length; i++) {
+          intervals.push(typingPattern.recentEvents[i] - typingPattern.recentEvents[i - 1]);
+        }
+        typingPattern.avgInterval = this.calculateMean(intervals);
+
+        // Typing intervals typically 50-400ms (stricter range)
+        typingPattern.isTyping = typingPattern.avgInterval > 50 && typingPattern.avgInterval < 400;
+      }
+    }
+
+    // Clean up old events - faster timeout
+    if (typingPattern.recentEvents.length > 0 && now - typingPattern.recentEvents[typingPattern.recentEvents.length - 1] > 800) {
+      typingPattern.isTyping = false;
+      typingPattern.recentEvents = [];
+    }
+
+    // Typing probability - STRICTER requirements
+    const typingProbability = (
+      (hasTypingSpectrum ? 0.35 : 0) +
+      (isNoisy ? 0.25 : 0) +
+      (isShortDuration ? 0.15 : 0) +
+      (typingPattern.isTyping ? 0.25 : 0)
+    );
+
+    // Require BOTH high probability AND pattern confirmation, AND not speech-like
+    const isTyping = (typingProbability > 0.75 && typingPattern.isTyping && !isSpeechLike);
+
+    this.processingState.flags.keyboardTypingDetected = isTyping;
+    this.noiseProfile.transientNoise.keyboardTypingDetected = isTyping;
+
+    if (isTyping) {
+      console.log('⌨️ Typing detected:', {
+        probability: typingProbability.toFixed(2),
+        highFreqRatio: highFreqRatio.toFixed(2),
+        speechFreqRatio: speechFreqRatio.toFixed(2),
+        recentEvents: typingPattern.recentEvents.length,
+        avgInterval: typingPattern.avgInterval,
+      });
+    }
+
+    return {
+      detected: isTyping,
+      probability: typingProbability,
+      highFreqRatio,
+      pattern: typingPattern.isTyping,
+      recentEventCount: typingPattern.recentEvents.length,
     };
   }
 
@@ -1091,9 +1247,15 @@ class EnvironmentalAdaptation {
     // Low-pass to remove high-frequency noise
     params.lowPassCutoff = this.processingState.flags.tvRadioDetected ? 4000 : 8000;
 
-    // Adjust analyser smoothing based on environment stability
+    // Adjust analyser smoothing based on environment stability (rate-limited)
     const stability = this.calculateSpectralStability();
-    this.analyser.smoothingTimeConstant = 0.1 + (stability * 0.4); // 0.1-0.5
+    const targetSmoothing = 0.1 + (stability * 0.4); // 0.1-0.5
+
+    // Rate-limit parameter changes to prevent filter instability
+    const currentSmoothing = this.analyser.smoothingTimeConstant;
+    const maxChange = 0.05; // Maximum change per update
+    const clampedChange = Math.max(-maxChange, Math.min(maxChange, targetSmoothing - currentSmoothing));
+    this.analyser.smoothingTimeConstant = currentSmoothing + clampedChange;
   }
 
   /**
@@ -1240,7 +1402,16 @@ class EnvironmentalAdaptation {
     const flags = this.processingState.flags;
 
     // Don't process if:
-    // 1. Sudden noise spike detected
+    // 1. Keyboard typing detected
+    if (flags.keyboardTypingDetected) {
+      return {
+        shouldProcess: false,
+        reason: 'keyboard_typing_detected',
+        confidence: 0,
+      };
+    }
+
+    // 2. Sudden noise spike detected
     if (flags.suddenNoiseDetected) {
       return {
         shouldProcess: false,
@@ -1249,7 +1420,7 @@ class EnvironmentalAdaptation {
       };
     }
 
-    // 2. Not speech
+    // 3. Not speech
     if (!frame.isSpeech) {
       return {
         shouldProcess: false,
@@ -1258,7 +1429,7 @@ class EnvironmentalAdaptation {
       };
     }
 
-    // 3. Not primary user (if enrolled)
+    // 4. Not primary user (if enrolled)
     if (this.primaryUserProfile.enrolled && !frame.isPrimaryUser) {
       return {
         shouldProcess: false,
@@ -1393,6 +1564,7 @@ class EnvironmentalAdaptation {
       echoDetected: this.processingState.flags.echoDetected,
       multiSpeakerDetected: this.processingState.flags.multiSpeakerDetected,
       suddenNoiseDetected: this.processingState.flags.suddenNoiseDetected,
+      keyboardTypingDetected: this.processingState.flags.keyboardTypingDetected,
 
       // Other speakers
       otherSpeakersCount: this.noiseProfile.periodicNoise.otherSpeakerSignatures.length,
@@ -1497,6 +1669,11 @@ class EnvironmentalAdaptation {
    * Cleanup
    */
   destroy() {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
+
     if (this.scriptProcessor) {
       this.scriptProcessor.disconnect();
       this.scriptProcessor = null;
