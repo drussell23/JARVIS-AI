@@ -1288,27 +1288,44 @@ const JarvisVoice = () => {
       recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = 'en-US';
-      recognitionRef.current.maxAlternatives = 1;
+      recognitionRef.current.maxAlternatives = 3; // Get multiple alternatives for better accuracy
 
-      // Increase timeouts to be more patient
+      // Optimize for faster, more responsive recognition
       // Note: These are non-standard but work in some browsers
       if ('speechTimeout' in recognitionRef.current) {
-        recognitionRef.current.speechTimeout = 999999999; // Effectively infinite
+        recognitionRef.current.speechTimeout = 5000; // Faster timeout for quicker response
       }
       if ('noSpeechTimeout' in recognitionRef.current) {
-        recognitionRef.current.noSpeechTimeout = 999999999; // Effectively infinite
+        recognitionRef.current.noSpeechTimeout = 3000; // Shorter silence timeout
+      }
+
+      // Enable faster recognition (non-standard but supported by Chrome)
+      if ('grammar' in recognitionRef.current) {
+        // Add grammar hints for common commands to improve recognition speed
+        const commandHints = [
+          'lock my screen', 'unlock my screen', 'lock screen', 'unlock screen',
+          'lock the screen', 'unlock the screen', 'hey jarvis', 'jarvis'
+        ];
+        recognitionRef.current.grammars = commandHints;
       }
 
       recognitionRef.current.onresult = (event) => {
         const last = event.results.length - 1;
-        const transcript = event.results[last][0].transcript.toLowerCase();
+        const result = event.results[last][0];
+        const transcript = result.transcript.toLowerCase();
         const isFinal = event.results[last].isFinal;
+        const confidence = result.confidence || 0;
 
-        // Debug logging
-        console.log(`🎙️ Speech detected: "${transcript}" (final: ${isFinal}) | Waiting: ${isWaitingForCommandRef.current} | Continuous: ${continuousListeningRef.current}`);
+        // Debug logging with confidence score
+        console.log(`🎙️ Speech detected: "${transcript}" (final: ${isFinal}, confidence: ${(confidence * 100).toFixed(1)}%) | Waiting: ${isWaitingForCommandRef.current} | Continuous: ${continuousListeningRef.current}`);
 
-        // Process both interim and final results when waiting for command
-        if (!isFinal && !isWaitingForCommandRef.current) return;
+        // Enhanced processing: Accept high-confidence interim results for faster response
+        // This allows JARVIS to respond immediately to clear, confident speech
+        const isHighConfidence = confidence >= 0.85; // 85% confidence threshold
+        const shouldProcess = isFinal || (isHighConfidence && transcript.length > 3);
+
+        // Process high-confidence interim or final results
+        if (!shouldProcess && !isWaitingForCommandRef.current) return;
 
         // Check for wake words when not waiting for command
         if (!isWaitingForCommandRef.current && continuousListeningRef.current) {
@@ -1316,46 +1333,56 @@ const JarvisVoice = () => {
           const detectedWakeWord = wakeWords.find(word => transcript.includes(word));
 
           if (detectedWakeWord) {
-            console.log('🎯 Wake word detected:', detectedWakeWord, '| Current state:', {
+            console.log('🎯 Wake word detected:', detectedWakeWord, `(confidence: ${(confidence * 100).toFixed(1)}%)`, '| Current state:', {
               isWaitingForCommand: isWaitingForCommandRef.current,
               continuousListening: continuousListeningRef.current,
-              isListening
+              isListening,
+              isFinal,
+              isHighConfidence
             });
 
             // Check if there's a command after the wake word in the same sentence
-            const fullTranscript = event.results[last][0].transcript;
+            const fullTranscript = result.transcript;
             let commandAfterWakeWord = fullTranscript.toLowerCase();
-            
+
             // Remove the wake word to get just the command
             const wakeWordIndex = commandAfterWakeWord.indexOf(detectedWakeWord);
             if (wakeWordIndex !== -1) {
               commandAfterWakeWord = commandAfterWakeWord.substring(wakeWordIndex + detectedWakeWord.length).trim();
             }
 
-            // If there's a command after the wake word, process it directly
-            if (commandAfterWakeWord.length > 0) {
-              console.log('🎯 Command found after wake word:', commandAfterWakeWord);
+            // If there's a command after the wake word, process it directly (for final or high-confidence results)
+            if (commandAfterWakeWord.length > 5 && (isFinal || isHighConfidence)) {
+              console.log('🎯 Command found after wake word:', commandAfterWakeWord, `(${isFinal ? 'final' : 'high-confidence'})`);
               // Process the command immediately
               handleVoiceCommand(commandAfterWakeWord);
               return;
             }
 
-            // Otherwise, just activate wake word mode
-            setTranscript('');
-            console.log('🚀 Triggering wake word handler for listening mode...');
-            handleWakeWordDetected();
-            return;
+            // For wake word only (no command after), require final result to avoid false positives
+            if (isFinal && commandAfterWakeWord.length <= 5) {
+              setTranscript('');
+              console.log('🚀 Triggering wake word handler for listening mode...');
+              handleWakeWordDetected();
+              return;
+            }
           }
         }
 
         // When waiting for command after wake word, process any speech
         if (isWaitingForCommandRef.current && transcript.length > 0) {
-          // Only process final results for commands
-          if (!isFinal) return;
-          
+          // Process final results OR high-confidence interim results for faster response
+          if (!isFinal && !isHighConfidence) return;
+
+          // For interim results, wait for a complete command (at least 5 chars)
+          if (!isFinal && transcript.length < 5) return;
+
+          // Log what we're processing
+          console.log(`🎯 Processing ${isFinal ? 'final' : 'high-confidence interim'} command result`);
+
           // Filter out wake words from commands
           const wakeWords = ['hey jarvis', 'jarvis', 'ok jarvis', 'hello jarvis'];
-          let commandText = event.results[last][0].transcript;
+          let commandText = result.transcript;
 
           // Remove wake word if it's at the beginning of the command
           wakeWords.forEach(word => {
@@ -1377,6 +1404,19 @@ const JarvisVoice = () => {
             console.log('⚠️ No command text after removing wake word, continuing to listen...');
           }
         }
+      };
+
+      // Enhanced: Faster recognition start on speech
+      recognitionRef.current.onspeechstart = () => {
+        console.log('🎤 Speech start detected - ready for immediate processing');
+      };
+
+      recognitionRef.current.onspeechend = () => {
+        console.log('🎤 Speech end detected');
+      };
+
+      recognitionRef.current.onsoundstart = () => {
+        console.log('🔊 Sound detected');
       };
 
       recognitionRef.current.onerror = async (event) => {
