@@ -8,6 +8,8 @@ import mlAudioHandler from '../utils/MLAudioHandler'; // ML-enhanced audio handl
 import { getNetworkRecoveryManager } from '../utils/NetworkRecoveryManager'; // Advanced network recovery
 import WakeWordService from './WakeWordService'; // Wake word detection service
 import configService from '../services/DynamicConfigService'; // Dynamic configuration service
+import adaptiveVoiceDetection from '../utils/AdaptiveVoiceDetection'; // Adaptive voice learning system
+import VoiceStatsDisplay from './VoiceStatsDisplay'; // Adaptive voice stats display
 
 // Inline styles to ensure button visibility
 const buttonVisibilityStyle = `
@@ -957,16 +959,30 @@ const JarvisVoice = () => {
         break;
       case 'response':
         console.log('WebSocket response received:', data);
-        
+
         // Check if this is an error response we should ignore
         const errorText = (data.text || '').toLowerCase();
+        const isError = errorText.includes("don't have a handler") || errorText.includes("error") || errorText.includes("failed");
+
         if (errorText.includes("don't have a handler for query commands")) {
           console.log('Ignoring query handler error, continuing to listen...');
           setIsProcessing(false);
           // Don't reset waiting state - keep listening
           return;
         }
-        
+
+        // 🧠 Record command success/failure in adaptive system
+        const lastCommand = data.metadata?.originalCommand || transcript;
+        if (lastCommand && data.metadata) {
+          const executionTime = Date.now() - (data.metadata.startTime || Date.now());
+          adaptiveVoiceDetection.recordCommandExecution(lastCommand, {
+            success: !isError,
+            confidence: data.metadata.confidence || 0.85,
+            executionTime,
+            wasRetry: false,
+          });
+        }
+
         // Use the EXACT same text for both display and speech
         const responseText = data.text || data.message || 'Response received';
         console.log('[JARVIS Audio] Setting display text:', responseText);
@@ -1316,15 +1332,26 @@ const JarvisVoice = () => {
         const isFinal = event.results[last].isFinal;
         const confidence = result.confidence || 0;
 
-        // Debug logging with confidence score
-        console.log(`🎙️ Speech detected: "${transcript}" (final: ${isFinal}, confidence: ${(confidence * 100).toFixed(1)}%) | Waiting: ${isWaitingForCommandRef.current} | Continuous: ${continuousListeningRef.current}`);
+        // 🧠 ADAPTIVE VOICE DETECTION - Analyze with learning system
+        const adaptiveDecision = adaptiveVoiceDetection.shouldProcessResult(result, {
+          transcript,
+          confidence,
+          isFinal,
+          isWaitingForCommand: isWaitingForCommandRef.current,
+          timestamp: Date.now(),
+        });
 
-        // Enhanced processing: Accept high-confidence interim results for faster response
-        // This allows JARVIS to respond immediately to clear, confident speech
-        const isHighConfidence = confidence >= 0.85; // 85% confidence threshold
-        const shouldProcess = isFinal || (isHighConfidence && transcript.length > 3);
+        const enhancedConfidence = adaptiveDecision.enhancedConfidence;
+        const shouldProcess = adaptiveDecision.shouldProcess;
 
-        // Process high-confidence interim or final results
+        // Debug logging with adaptive confidence score
+        console.log(`🎙️ Speech detected: "${transcript}" (final: ${isFinal}, original: ${(confidence * 100).toFixed(1)}%, enhanced: ${(enhancedConfidence * 100).toFixed(1)}%) | Threshold: ${(adaptiveDecision.threshold * 100).toFixed(1)}% | Should Process: ${shouldProcess}`);
+        console.log(`📊 Reason: ${adaptiveDecision.reason}`);
+
+        // Legacy high confidence check (kept for fallback)
+        const isHighConfidence = enhancedConfidence >= 0.85;
+
+        // Process based on adaptive decision
         if (!shouldProcess && !isWaitingForCommandRef.current) return;
 
         // Check for wake words when not waiting for command
@@ -1354,8 +1381,13 @@ const JarvisVoice = () => {
             // If there's a command after the wake word, process it directly (for final or high-confidence results)
             if (commandAfterWakeWord.length > 5 && (isFinal || isHighConfidence)) {
               console.log('🎯 Command found after wake word:', commandAfterWakeWord, `(${isFinal ? 'final' : 'high-confidence'})`);
-              // Process the command immediately
-              handleVoiceCommand(commandAfterWakeWord);
+              // Process the command immediately with confidence info
+              handleVoiceCommand(commandAfterWakeWord, {
+                confidence: enhancedConfidence,
+                originalConfidence: confidence,
+                isFinal,
+                wasWakeWordCombo: true,
+              });
               return;
             }
 
@@ -1395,7 +1427,12 @@ const JarvisVoice = () => {
           if (commandText.length > 0) {
             console.log('📢 Processing command:', commandText);
             console.log('🚀 Sending command to backend via WebSocket');
-            handleVoiceCommand(commandText);
+            handleVoiceCommand(commandText, {
+              confidence: enhancedConfidence,
+              originalConfidence: confidence,
+              isFinal,
+              wasWaitingForCommand: true,
+            });
 
             // Reset waiting state
             setIsWaitingForCommand(false);
@@ -1655,10 +1692,13 @@ const JarvisVoice = () => {
     }, 30000);
   };
 
-  const handleVoiceCommand = (command) => {
+  const handleVoiceCommand = (command, confidenceInfo = {}) => {
     console.log('🎯 handleVoiceCommand called with:', command);
     console.log('📡 WebSocket state:', wsRef.current ? wsRef.current.readyState : 'No WebSocket');
     setTranscript(command);
+
+    // Track command start time for adaptive learning
+    const commandStartTime = Date.now();
 
     // Check for autonomy activation commands
     const lowerCommand = command.toLowerCase();
@@ -1669,6 +1709,15 @@ const JarvisVoice = () => {
       lowerCommand.includes('activate all systems')) {
       // Direct autonomy activation
       toggleAutonomousMode();
+
+      // Record successful command execution in adaptive system
+      adaptiveVoiceDetection.recordCommandExecution(command, {
+        success: true,
+        confidence: confidenceInfo.confidence || 0.9,
+        executionTime: Date.now() - commandStartTime,
+        wasRetry: false,
+      });
+
       return;
     }
 
@@ -1677,7 +1726,11 @@ const JarvisVoice = () => {
       wsRef.current.send(JSON.stringify({
         type: 'command',
         text: command,
-        mode: autonomousMode ? 'autonomous' : 'manual'
+        mode: autonomousMode ? 'autonomous' : 'manual',
+        metadata: {
+          ...confidenceInfo,
+          startTime: commandStartTime,
+        }
       }));
       setResponse('Processing...');
     } else {
@@ -2525,6 +2578,8 @@ const JarvisVoice = () => {
         </div>
       </div>
 
+      {/* Adaptive Voice Learning Stats Display */}
+      <VoiceStatsDisplay show={jarvisStatus === 'online' && continuousListening} />
 
     </div>
   );
