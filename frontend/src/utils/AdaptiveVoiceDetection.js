@@ -13,8 +13,9 @@
  * - Environmental noise handling with speaker isolation
  */
 
-import environmentalAdaptation from './EnvironmentalAdaptation';
-import audioQualityAdaptation from './AudioQualityAdaptation';
+// DISABLED - These modules cause confidence to drop from 96% to 5%
+// import environmentalAdaptation from './EnvironmentalAdaptation';
+// import audioQualityAdaptation from './AudioQualityAdaptation';
 
 class AdaptiveVoiceDetection {
   constructor() {
@@ -128,27 +129,13 @@ class AdaptiveVoiceDetection {
     const { transcript, confidence } = context;
     let enhancedConfidence = confidence;
 
-    // 🌍 ENVIRONMENTAL ADAPTATION - Get acoustic quality assessment
-    const environmentalAssessment = environmentalAdaptation.getEnhancedConfidence(confidence, transcript);
+    // DISABLED - Environmental and audio quality modules were reducing confidence from 96% to 5%
+    // These caused echo/feedback and confidence issues
+    // const environmentalAssessment = environmentalAdaptation.getEnhancedConfidence(confidence, transcript);
+    // enhancedConfidence = environmentalAssessment.enhancedConfidence;
 
-    // Apply environmental confidence multiplier
-    enhancedConfidence = environmentalAssessment.enhancedConfidence;
-
-    // Log environmental factors
-    if (environmentalAssessment.environmentalFactors) {
-      console.log('🌍 Environmental factors:', environmentalAssessment.environmentalFactors);
-    }
-
-    // 🎚️ AUDIO QUALITY ADAPTATION - Get microphone and signal quality assessment
-    const audioQualityAssessment = audioQualityAdaptation.getEnhancedConfidence(enhancedConfidence, transcript);
-
-    // Apply audio quality multiplier
-    enhancedConfidence = audioQualityAssessment.enhancedConfidence;
-
-    // Log audio quality factors
-    if (audioQualityAssessment.qualityFactors) {
-      console.log('🎚️ Audio quality factors:', audioQualityAssessment.qualityFactors);
-    }
+    // const audioQualityAssessment = audioQualityAdaptation.getEnhancedConfidence(enhancedConfidence, transcript);
+    // enhancedConfidence = audioQualityAssessment.enhancedConfidence;
 
     // 1. Voice Pattern Match Bonus (+0.05 to +0.15)
     const voiceMatchBonus = this.calculateVoiceMatchBonus(context);
