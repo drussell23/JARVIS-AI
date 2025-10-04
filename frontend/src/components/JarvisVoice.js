@@ -10,6 +10,8 @@ import WakeWordService from './WakeWordService'; // Wake word detection service
 import configService from '../services/DynamicConfigService'; // Dynamic configuration service
 import adaptiveVoiceDetection from '../utils/AdaptiveVoiceDetection'; // Adaptive voice learning system
 import VoiceStatsDisplay from './VoiceStatsDisplay'; // Adaptive voice stats display
+import EnvironmentalStatsDisplay from './EnvironmentalStatsDisplay'; // Environmental stats display
+import environmentalAdaptation from '../utils/EnvironmentalAdaptation'; // Environmental noise handling
 
 // Inline styles to ensure button visibility
 const buttonVisibilityStyle = `
@@ -1293,10 +1295,19 @@ const JarvisVoice = () => {
     }
   };
 
-  const initializeSpeechRecognition = () => {
+  const initializeSpeechRecognition = async () => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       recognitionRef.current = new SpeechRecognition();
+
+      // 🌍 Initialize environmental adaptation for advanced noise handling
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        await environmentalAdaptation.initializeAudioProcessing(stream);
+        console.log('✅ Environmental adaptation initialized for speech recognition');
+      } catch (error) {
+        console.warn('⚠️ Could not initialize environmental adaptation:', error);
+      }
 
       // Track if JARVIS is speaking to avoid self-triggering
       let jarvisSpeaking = false;
@@ -1961,6 +1972,9 @@ const JarvisVoice = () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
+      // 🌍 Initialize environmental adaptation with microphone stream
+      await environmentalAdaptation.initializeAudioProcessing(stream);
+
       mediaRecorderRef.current = new MediaRecorder(stream);
       audioChunksRef.current = [];
 
@@ -2580,6 +2594,9 @@ const JarvisVoice = () => {
 
       {/* Adaptive Voice Learning Stats Display */}
       <VoiceStatsDisplay show={jarvisStatus === 'online' && continuousListening} />
+
+      {/* Environmental Adaptation Stats Display */}
+      <EnvironmentalStatsDisplay show={jarvisStatus === 'online' && continuousListening} />
 
     </div>
   );

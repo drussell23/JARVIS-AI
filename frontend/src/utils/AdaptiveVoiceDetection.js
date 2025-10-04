@@ -10,7 +10,10 @@
  * - Acoustic environment adaptation
  * - Predictive command recognition
  * - Real-time performance optimization
+ * - Environmental noise handling with speaker isolation
  */
+
+import environmentalAdaptation from './EnvironmentalAdaptation';
 
 class AdaptiveVoiceDetection {
   constructor() {
@@ -123,6 +126,17 @@ class AdaptiveVoiceDetection {
   calculateEnhancedConfidence(result, context) {
     const { transcript, confidence } = context;
     let enhancedConfidence = confidence;
+
+    // 🌍 ENVIRONMENTAL ADAPTATION - Get acoustic quality assessment
+    const environmentalAssessment = environmentalAdaptation.getEnhancedConfidence(confidence, transcript);
+
+    // Apply environmental confidence multiplier
+    enhancedConfidence = environmentalAssessment.enhancedConfidence;
+
+    // Log environmental factors
+    if (environmentalAssessment.environmentalFactors) {
+      console.log('🌍 Environmental factors:', environmentalAssessment.environmentalFactors);
+    }
 
     // 1. Voice Pattern Match Bonus (+0.05 to +0.15)
     const voiceMatchBonus = this.calculateVoiceMatchBonus(context);
