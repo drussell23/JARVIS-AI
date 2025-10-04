@@ -37,7 +37,7 @@ class SafetyLevel(Enum):
 
 class MacOSController:
     """Controls macOS system operations with safety checks"""
-    
+
     def __init__(self):
         self.home_dir = Path.home()
         self.safe_directories = [
@@ -48,13 +48,15 @@ class MacOSController:
             self.home_dir / "Music",
             self.home_dir / "Movies"
         ]
-        
+        self._screen_lock_checked = False
+        self._is_locked = False
+
         # Blocked applications for safety
         self.blocked_apps = {
             "System Preferences", "System Settings", "Activity Monitor",
             "Terminal", "Console", "Disk Utility", "Keychain Access"
         }
-        
+
         # Common application mappings
         self.app_aliases = {
             "chrome": "Google Chrome",
@@ -80,6 +82,46 @@ class MacOSController:
             "numbers": "Numbers",
             "keynote": "Keynote"
         }
+
+    def _check_screen_lock_status(self) -> bool:
+        """
+        Check if screen is currently locked
+
+        Returns:
+            bool: True if screen is locked, False otherwise
+        """
+        try:
+            from voice_unlock.objc.server.screen_lock_detector import is_screen_locked
+            self._is_locked = is_screen_locked()
+            self._screen_lock_checked = True
+            return self._is_locked
+        except Exception as e:
+            logger.debug(f"Could not check screen lock status: {e}")
+            return False
+
+    def _handle_locked_screen_command(self, command_type: str) -> Tuple[bool, str]:
+        """
+        Handle commands when screen is locked
+
+        Args:
+            command_type: Type of command being attempted
+
+        Returns:
+            Tuple of (should_proceed, message)
+        """
+        # Commands that should work when locked
+        allowed_when_locked = {
+            'unlock_screen',
+            'lock_screen',
+            'get_status',
+            'check_time'
+        }
+
+        if command_type in allowed_when_locked:
+            return True, ""
+
+        # For other commands, inform user and suggest unlock
+        return False, f"Your screen is locked, Sir. I cannot execute {command_type} commands while locked. Would you like me to unlock your screen first?"
         
     def execute_applescript(self, script: str) -> Tuple[bool, str]:
         """Execute AppleScript and return result"""
@@ -127,6 +169,12 @@ class MacOSController:
     
     def open_application(self, app_name: str) -> Tuple[bool, str]:
         """Open an application"""
+        # Check if screen is locked
+        if self._check_screen_lock_status():
+            should_proceed, message = self._handle_locked_screen_command('open_application')
+            if not should_proceed:
+                return False, message
+
         # Resolve aliases
         app_name = self.app_aliases.get(app_name.lower(), app_name)
         
@@ -148,6 +196,12 @@ class MacOSController:
             
     def close_application(self, app_name: str) -> Tuple[bool, str]:
         """Close an application gracefully"""
+        # Check if screen is locked
+        if self._check_screen_lock_status():
+            should_proceed, message = self._handle_locked_screen_command('close_application')
+            if not should_proceed:
+                return False, message
+
         app_name = self.app_aliases.get(app_name.lower(), app_name)
         
         # First try the standard quit command
@@ -187,6 +241,12 @@ class MacOSController:
         
     def switch_to_application(self, app_name: str) -> Tuple[bool, str]:
         """Switch to an already open application"""
+        # Check if screen is locked
+        if self._check_screen_lock_status():
+            should_proceed, message = self._handle_locked_screen_command('switch_to_application')
+            if not should_proceed:
+                return False, message
+
         app_name = self.app_aliases.get(app_name.lower(), app_name)
         
         script = f'''
@@ -239,6 +299,12 @@ class MacOSController:
         
     def open_file(self, file_path: str) -> Tuple[bool, str]:
         """Open a file with its default application"""
+        # Check if screen is locked
+        if self._check_screen_lock_status():
+            should_proceed, message = self._handle_locked_screen_command('open_file')
+            if not should_proceed:
+                return False, message
+
         path = Path(file_path).expanduser()
         
         if not path.exists():
@@ -254,6 +320,12 @@ class MacOSController:
         
     def create_file(self, file_path: str, content: str = "") -> Tuple[bool, str]:
         """Create a new file"""
+        # Check if screen is locked
+        if self._check_screen_lock_status():
+            should_proceed, message = self._handle_locked_screen_command('create_file')
+            if not should_proceed:
+                return False, message
+
         path = Path(file_path).expanduser()
         
         if not self.is_safe_path(path):
@@ -268,6 +340,12 @@ class MacOSController:
             
     def delete_file(self, file_path: str, confirm: bool = True) -> Tuple[bool, str]:
         """Delete a file (requires confirmation)"""
+        # Check if screen is locked
+        if self._check_screen_lock_status():
+            should_proceed, message = self._handle_locked_screen_command('delete_file')
+            if not should_proceed:
+                return False, message
+
         path = Path(file_path).expanduser()
         
         if not path.exists():
@@ -370,6 +448,12 @@ class MacOSController:
     
     async def click_at(self, x: int, y: int) -> Tuple[bool, str]:
         """Click at specific coordinates"""
+        # Check if screen is locked
+        if self._check_screen_lock_status():
+            should_proceed, message = self._handle_locked_screen_command('click_at')
+            if not should_proceed:
+                return False, message
+
         try:
             # Use AppleScript to click at coordinates
             script = f'''
@@ -392,6 +476,12 @@ class MacOSController:
     
     async def click_and_hold(self, x: int, y: int, hold_duration: float = 0.2) -> Tuple[bool, str]:
         """Click and hold at specific coordinates (simulates human press-and-hold)"""
+        # Check if screen is locked
+        if self._check_screen_lock_status():
+            should_proceed, message = self._handle_locked_screen_command('click_and_hold')
+            if not should_proceed:
+                return False, message
+
         try:
             # Try cliclick first for more reliable click-and-hold
             try:
@@ -458,6 +548,12 @@ class MacOSController:
     
     def open_new_tab(self, browser: Optional[str] = None, url: Optional[str] = None) -> Tuple[bool, str]:
         """Open a new tab in browser"""
+        # Check if screen is locked
+        if self._check_screen_lock_status():
+            should_proceed, message = self._handle_locked_screen_command('open_new_tab')
+            if not should_proceed:
+                return False, message
+
         if not browser:
             browser = "Safari"  # Default browser
         browser = self.app_aliases.get(browser.lower(), browser)
@@ -531,6 +627,12 @@ class MacOSController:
     
     def click_search_bar(self, browser: Optional[str] = None) -> Tuple[bool, str]:
         """Click on the browser's search/address bar"""
+        # Check if screen is locked
+        if self._check_screen_lock_status():
+            should_proceed, message = self._handle_locked_screen_command('click_search_bar')
+            if not should_proceed:
+                return False, message
+
         if not browser:
             browser = "Safari"
         browser = self.app_aliases.get(browser.lower(), browser)
@@ -555,6 +657,12 @@ class MacOSController:
     
     def open_url(self, url: str, browser: Optional[str] = None) -> Tuple[bool, str]:
         """Open URL in browser"""
+        # Check if screen is locked
+        if self._check_screen_lock_status():
+            should_proceed, message = self._handle_locked_screen_command('open_url')
+            if not should_proceed:
+                return False, message
+
         if browser:
             browser = self.app_aliases.get(browser.lower(), browser)
             # Use AppleScript for better browser control

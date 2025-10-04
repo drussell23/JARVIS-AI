@@ -12,11 +12,118 @@ import logging
 import websockets
 import json
 import os
+import subprocess
 from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
 VOICE_UNLOCK_WS_URL = "ws://localhost:8765/voice-unlock"
+
+
+def _escape_password_for_applescript(password: str) -> str:
+    """Escape special characters in password for AppleScript"""
+    escaped = password.replace('\\', '\\\\')  # Escape backslashes
+    escaped = escaped.replace('"', '\\"')     # Escape double quotes
+    return escaped
+
+
+async def _perform_direct_unlock(password: str) -> bool:
+    """
+    Perform direct screen unlock using AppleScript and password
+
+    Args:
+        password: The user's Mac password from keychain
+
+    Returns:
+        bool: True if unlock succeeded, False otherwise
+    """
+    try:
+        logger.info("[DIRECT UNLOCK] Starting unlock sequence")
+
+        # Wake the display first
+        subprocess.run(['caffeinate', '-u', '-t', '1'], capture_output=True)
+        await asyncio.sleep(1)
+
+        # Wake script - move mouse and activate loginwindow
+        wake_script = '''
+        tell application "System Events"
+            -- Wake the display by moving mouse
+            do shell script "caffeinate -u -t 2"
+            delay 0.5
+
+            -- Click on the user profile to show password field
+            click at {720, 860}
+            delay 1
+
+            -- Make sure loginwindow is frontmost
+            set frontmost of process "loginwindow" to true
+            delay 0.5
+
+            -- Sometimes need to click again to ensure password field is active
+            click at {720, 500}
+            delay 0.5
+
+            -- Clear any existing text
+            keystroke "a" using command down
+            delay 0.1
+            key code 51
+            delay 0.2
+        end tell
+        '''
+
+        subprocess.run(['osascript', '-e', wake_script], capture_output=True)
+        await asyncio.sleep(0.5)
+
+        # Escape password for AppleScript
+        escaped_password = _escape_password_for_applescript(password)
+        logger.info(f"[DIRECT UNLOCK] Typing password ({len(password)} characters)")
+
+        # Type password using System Events
+        password_script = f'''
+        tell application "System Events"
+            tell process "loginwindow"
+                set frontmost to true
+                delay 0.3
+
+                -- Type the password
+                keystroke "{escaped_password}"
+                delay 0.5
+
+                -- Press return to unlock
+                keystroke return
+                delay 1
+            end tell
+        end tell
+        '''
+
+        result = subprocess.run(['osascript', '-e', password_script], capture_output=True, text=True)
+
+        if result.returncode == 0:
+            # Wait a bit for unlock to complete
+            await asyncio.sleep(1.5)
+
+            # Verify unlock by checking screen state
+            try:
+                from voice_unlock.objc.server.screen_lock_detector import is_screen_locked
+                is_locked = is_screen_locked()
+
+                if not is_locked:
+                    logger.info("[DIRECT UNLOCK] Unlock verified successful")
+                    return True
+                else:
+                    logger.warning("[DIRECT UNLOCK] Screen still locked after attempt")
+                    return False
+            except:
+                # If we can't verify, assume success if no errors
+                logger.info("[DIRECT UNLOCK] Unlock completed (verification unavailable)")
+                return True
+        else:
+            logger.error(f"[DIRECT UNLOCK] AppleScript error: {result.stderr}")
+            return False
+
+    except Exception as e:
+        logger.error(f"[DIRECT UNLOCK] Error during unlock: {e}")
+        return False
 
 
 async def handle_unlock_command(command: str, jarvis_instance=None) -> Dict[str, Any]:
@@ -147,13 +254,13 @@ async def handle_unlock_command(command: str, jarvis_instance=None) -> Dict[str,
                     'action': action
                 }
                 
-    except (ConnectionRefusedError, OSError) as e:
+    except Exception as e:
+        # This catches websockets connection errors and other exceptions
         logger.warning(f"[SIMPLE UNLOCK] Voice unlock daemon not running: {e}")
 
         # For lock_screen, execute directly without the daemon
         if action == "lock_screen":
             logger.info("[SIMPLE UNLOCK] Falling back to direct macOS lock command")
-            import subprocess
 
             # Try multiple methods to lock the screen
             lock_success = False
@@ -206,13 +313,72 @@ async def handle_unlock_command(command: str, jarvis_instance=None) -> Dict[str,
                     'action': action
                 }
         else:
-            # For unlock, we need the daemon
+            # For unlock - try direct methods if daemon not available
+            logger.info(f"[SIMPLE UNLOCK] Attempting unlock without daemon")
+
+            # Check if screen is actually locked first
+            try:
+                from voice_unlock.objc.server.screen_lock_detector import is_screen_locked
+                if not is_screen_locked():
+                    return {
+                        'success': True,
+                        'response': "Your screen is already unlocked, Sir.",
+                        'type': 'screen_unlock',
+                        'action': action
+                    }
+            except:
+                pass
+
+            # Method 1: Try to retrieve password from keychain and unlock
+            unlock_success = False
+            unlock_method = None
+
+            try:
+                logger.info("[SIMPLE UNLOCK] Attempting to retrieve password from keychain")
+
+                # Try to get password from keychain
+                result = subprocess.run([
+                    'security', 'find-generic-password',
+                    '-s', 'com.jarvis.voiceunlock',
+                    '-a', 'unlock_token',
+                    '-w'  # Print only the password
+                ], capture_output=True, text=True)
+                if result.returncode == 0:
+                    password = result.stdout.strip()
+                    logger.info("[SIMPLE UNLOCK] Password retrieved from keychain, attempting unlock")
+
+                    # Perform unlock using the password
+                    unlock_result = await _perform_direct_unlock(password)
+
+                    if unlock_result:
+                        logger.info("[SIMPLE UNLOCK] Direct unlock successful")
+                        return {
+                            'success': True,
+                            'response': response_text,
+                            'type': 'screen_unlock',
+                            'action': action,
+                            'method': 'keychain_direct'
+                        }
+                    else:
+                        logger.error("[SIMPLE UNLOCK] Direct unlock failed")
+
+                else:
+                    logger.warning(f"[SIMPLE UNLOCK] Password not in keychain: {result.stderr}")
+
+            except Exception as e:
+                logger.debug(f"Keychain unlock failed: {e}")
+
+            # If keychain method failed, provide helpful message about setup
             return {
                 'success': False,
-                'response': "The Voice Unlock service isn't running, Sir. I can't unlock without it.",
+                'response': "I cannot unlock your screen without the Voice Unlock daemon, Sir. To enable automatic unlocking, please run: ./backend/voice_unlock/enable_screen_unlock.sh",
                 'type': 'voice_unlock',
                 'action': action,
-                'requires_daemon': True
+                'requires_daemon': True,
+                'setup_instructions': {
+                    'command': './backend/voice_unlock/enable_screen_unlock.sh',
+                    'description': 'This will securely store your password and start the unlock service'
+                }
             }
 
     except Exception as e:
