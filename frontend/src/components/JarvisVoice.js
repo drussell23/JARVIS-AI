@@ -1219,6 +1219,13 @@ const JarvisVoice = () => {
       console.log('Speech recognition started');
       setError('');
       setMicStatus('ready');
+
+      // ENABLE CONTINUOUS LISTENING IMMEDIATELY for wake word detection
+      if (!continuousListeningRef.current) {
+        console.log('🎯 Auto-enabling continuous listening for wake word detection');
+        continuousListeningRef.current = true;
+        setContinuousListening(true);
+      }
     };
 
     return recognition;
@@ -1346,6 +1353,9 @@ const JarvisVoice = () => {
         const isFinal = event.results[last].isFinal;
         const confidence = result.confidence || 0;
 
+        // IMMEDIATE DEBUG LOG - to see if we're even getting input
+        console.log('🎤 RAW SPEECH:', transcript, `(final: ${isFinal}, conf: ${confidence})`);
+
         // 🧠 ADAPTIVE VOICE DETECTION - Analyze with learning system
         const adaptiveDecision = adaptiveVoiceDetection.shouldProcessResult(result, {
           transcript,
@@ -1365,12 +1375,19 @@ const JarvisVoice = () => {
         // Legacy high confidence check (kept for fallback)
         const isHighConfidence = enhancedConfidence >= 0.85;
 
-        // Check for typing BEFORE any processing to suppress feedback
-        const typingDetected = environmentalAdaptation.processingState?.flags?.keyboardTypingDetected || false;
-        if (typingDetected) {
-          console.log('⌨️ Keyboard typing detected - suppressing all audio feedback and processing');
-          return; // Exit early - no feedback, no processing
-        }
+        // TEMPORARILY DISABLED - Check for typing BEFORE any processing to suppress feedback
+        // const typingDetected = environmentalAdaptation.processingState?.flags?.keyboardTypingDetected || false;
+        // console.log('🔍 Typing check:', {
+        //   typingDetected,
+        //   hasProcessingState: !!environmentalAdaptation.processingState,
+        //   hasFlags: !!environmentalAdaptation.processingState?.flags,
+        //   allFlags: environmentalAdaptation.processingState?.flags
+        // });
+
+        // if (typingDetected) {
+        //   console.log('⌨️ Keyboard typing detected - suppressing all audio feedback and processing');
+        //   return; // Exit early - no feedback, no processing
+        // }
 
         // Process based on adaptive decision
         if (!shouldProcess && !isWaitingForCommandRef.current) return;
@@ -1379,6 +1396,14 @@ const JarvisVoice = () => {
         if (!isWaitingForCommandRef.current && continuousListeningRef.current) {
           const wakeWords = ['hey jarvis', 'jarvis', 'ok jarvis', 'hello jarvis'];
           const detectedWakeWord = wakeWords.find(word => transcript.includes(word));
+
+          console.log('🔍 Wake word check:', {
+            transcript,
+            isWaiting: isWaitingForCommandRef.current,
+            continuousListening: continuousListeningRef.current,
+            detectedWakeWord,
+            shouldProcess
+          });
 
           if (detectedWakeWord) {
             console.log('🎯 Wake word detected:', detectedWakeWord, `(confidence: ${(confidence * 100).toFixed(1)}%)`, '| Current state:', {
@@ -1685,12 +1710,12 @@ const JarvisVoice = () => {
   const handleWakeWordDetected = () => {
     console.log('🎯 handleWakeWordDetected called!');
 
-    // Check for typing before any feedback
-    const typingDetected = environmentalAdaptation.processingState?.flags?.keyboardTypingDetected || false;
-    if (typingDetected) {
-      console.log('⌨️ Keyboard typing detected - suppressing wake word response');
-      return; // Exit early - no feedback
-    }
+    // TEMPORARILY DISABLED - Check for typing before any feedback
+    // const typingDetected = environmentalAdaptation.processingState?.flags?.keyboardTypingDetected || false;
+    // if (typingDetected) {
+    //   console.log('⌨️ Keyboard typing detected - suppressing wake word response');
+    //   return; // Exit early - no feedback
+    // }
 
     setIsWaitingForCommand(true);
     isWaitingForCommandRef.current = true;

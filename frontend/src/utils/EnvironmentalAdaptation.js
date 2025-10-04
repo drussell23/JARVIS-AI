@@ -1021,109 +1021,66 @@ class EnvironmentalAdaptation {
   }
 
   /**
-   * Detect keyboard typing and mouse clicks
+   * Detect keyboard typing and mouse clicks - SIMPLE APPROACH
    */
   async detectKeyboardTyping(samples, metrics) {
-    // Keyboard typing characteristics:
-    // 1. Very short duration (10-50ms)
-    // 2. High-frequency content (3kHz-10kHz dominant) - HIGHER than speech
-    // 3. Sharp attack, quick decay
-    // 4. Rhythmic pattern when typing continuously
-    // 5. Low fundamental frequency energy (mostly noise, not tonal)
-    // 6. NO speech formants (unlike voice)
+    // Simple approach: Look for rapid short bursts with high zero-crossing rate
+    // that are NOT sustained (unlike speech)
 
-    const isShortDuration = metrics.spectralFlux > 8; // Sharp change (more strict)
-
-    // Check for high-frequency dominance (ABOVE speech range)
-    const binWidth = this.sampleRate / (2 * this.frequencyData.length);
-    let highFreqEnergy = 0; // 3kHz-10kHz (above speech)
-    let speechFreqEnergy = 0;  // 80-3000Hz (speech range)
-    let totalEnergy = 0;
-
-    for (let i = 0; i < this.frequencyData.length; i++) {
-      const frequency = i * binWidth;
-      const magnitude = this.frequencyData[i];
-
-      if (frequency >= 3000 && frequency <= 10000) {
-        highFreqEnergy += magnitude;
-      } else if (frequency >= 80 && frequency < 3000) {
-        speechFreqEnergy += magnitude;
-      }
-      totalEnergy += magnitude;
-    }
-
-    const highFreqRatio = totalEnergy > 0 ? highFreqEnergy / totalEnergy : 0;
-    const speechFreqRatio = totalEnergy > 0 ? speechFreqEnergy / totalEnergy : 0;
-
-    // Typing has high-frequency dominance AND low speech frequency content
-    const hasTypingSpectrum = highFreqRatio > 0.5 && speechFreqRatio < 0.3;
-
-    // Check for very high zero-crossing rate (noise-like) - stricter
-    const isNoisy = metrics.zeroCrossingRate > 0.5; // Much higher than speech (0.15-0.3)
-
-    // Check that it's NOT speech-like
-    const isSpeechLike = this.processingState.currentFrame.isSpeech || metrics.zeroCrossingRate < 0.35;
-
-    // Detect rhythmic pattern (typing bursts)
     const now = Date.now();
     const typingPattern = this.noiseProfile.transientNoise.typingPattern;
 
-    // Track short bursts of high-frequency noise (ONLY if not speech-like)
-    if (hasTypingSpectrum && isNoisy && isShortDuration && !isSpeechLike) {
+    // Key characteristics that distinguish typing from speech:
+    // 1. Very high zero-crossing rate (>0.6) - much higher than speech
+    // 2. Short bursts (spectral flux indicates sudden change)
+    // 3. NOT sustained energy (speech has longer sustained periods)
+
+    const isHighZCR = metrics.zeroCrossingRate > 0.6; // Much higher than speech (0.15-0.3)
+    const hasSharpTransient = metrics.spectralFlux > 10; // Very sharp change
+    const isLowEnergy = metrics.rms < 0.15; // Typing is quieter than speech
+
+    // Current frame is a typing event if it has typing characteristics
+    // AND is NOT already classified as speech
+    const isSpeech = this.processingState.currentFrame.isSpeech;
+    const isTypingEvent = isHighZCR && hasSharpTransient && isLowEnergy && !isSpeech;
+
+    if (isTypingEvent) {
       typingPattern.recentEvents.push(now);
-
-      // Keep only last 1.5 seconds of events (shorter window)
-      typingPattern.recentEvents = typingPattern.recentEvents.filter(t => now - t < 1500);
-
-      // Calculate typing rhythm (need at least 4 events for confidence)
-      if (typingPattern.recentEvents.length >= 4) {
-        const intervals = [];
-        for (let i = 1; i < typingPattern.recentEvents.length; i++) {
-          intervals.push(typingPattern.recentEvents[i] - typingPattern.recentEvents[i - 1]);
-        }
-        typingPattern.avgInterval = this.calculateMean(intervals);
-
-        // Typing intervals typically 50-400ms (stricter range)
-        typingPattern.isTyping = typingPattern.avgInterval > 50 && typingPattern.avgInterval < 400;
-      }
+      console.log('⌨️ Typing event:', {
+        zcr: metrics.zeroCrossingRate.toFixed(3),
+        flux: metrics.spectralFlux.toFixed(2),
+        rms: metrics.rms.toFixed(3),
+        isSpeech
+      });
     }
 
-    // Clean up old events - faster timeout
-    if (typingPattern.recentEvents.length > 0 && now - typingPattern.recentEvents[typingPattern.recentEvents.length - 1] > 800) {
+    // Keep only last 1 second of events
+    typingPattern.recentEvents = typingPattern.recentEvents.filter(t => now - t < 1000);
+
+    // If we have 3+ typing events in the last second, we're typing
+    const isTyping = typingPattern.recentEvents.length >= 3;
+
+    // Clear typing state if no events in last 500ms
+    if (typingPattern.recentEvents.length > 0 &&
+        now - typingPattern.recentEvents[typingPattern.recentEvents.length - 1] > 500) {
       typingPattern.isTyping = false;
       typingPattern.recentEvents = [];
+    } else {
+      typingPattern.isTyping = isTyping;
     }
-
-    // Typing probability - STRICTER requirements
-    const typingProbability = (
-      (hasTypingSpectrum ? 0.35 : 0) +
-      (isNoisy ? 0.25 : 0) +
-      (isShortDuration ? 0.15 : 0) +
-      (typingPattern.isTyping ? 0.25 : 0)
-    );
-
-    // Require BOTH high probability AND pattern confirmation, AND not speech-like
-    const isTyping = (typingProbability > 0.75 && typingPattern.isTyping && !isSpeechLike);
 
     this.processingState.flags.keyboardTypingDetected = isTyping;
     this.noiseProfile.transientNoise.keyboardTypingDetected = isTyping;
 
     if (isTyping) {
-      console.log('⌨️ Typing detected:', {
-        probability: typingProbability.toFixed(2),
-        highFreqRatio: highFreqRatio.toFixed(2),
-        speechFreqRatio: speechFreqRatio.toFixed(2),
-        recentEvents: typingPattern.recentEvents.length,
-        avgInterval: typingPattern.avgInterval,
-      });
+      console.log('⌨️ TYPING DETECTED - suppressing feedback');
     }
 
     return {
       detected: isTyping,
-      probability: typingProbability,
-      highFreqRatio,
-      pattern: typingPattern.isTyping,
+      probability: isTyping ? 1.0 : 0.0,
       recentEventCount: typingPattern.recentEvents.length,
+      pattern: typingPattern.isTyping,
     };
   }
 
@@ -1247,15 +1204,8 @@ class EnvironmentalAdaptation {
     // Low-pass to remove high-frequency noise
     params.lowPassCutoff = this.processingState.flags.tvRadioDetected ? 4000 : 8000;
 
-    // Adjust analyser smoothing based on environment stability (rate-limited)
-    const stability = this.calculateSpectralStability();
-    const targetSmoothing = 0.1 + (stability * 0.4); // 0.1-0.5
-
-    // Rate-limit parameter changes to prevent filter instability
-    const currentSmoothing = this.analyser.smoothingTimeConstant;
-    const maxChange = 0.05; // Maximum change per update
-    const clampedChange = Math.max(-maxChange, Math.min(maxChange, targetSmoothing - currentSmoothing));
-    this.analyser.smoothingTimeConstant = currentSmoothing + clampedChange;
+    // DON'T adjust analyser smoothing - causes BiquadFilter instability warnings
+    // Keep it fixed at initialization value (0.3)
   }
 
   /**
