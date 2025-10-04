@@ -183,11 +183,12 @@ class VisionConnection {
         const summary = notifications.slice(0, 3).join(', ');
         const message = `I've detected ${notifications.length} notification${notifications.length > 1 ? 's' : ''}: ${summary}`;
 
-        // Use speech synthesis to announce
-        if (window.speechSynthesis) {
-            const utterance = new SpeechSynthesisUtterance(message);
-            window.speechSynthesis.speak(utterance);
-        }
+        // ALL AUDIO DISABLED - No speech synthesis (removed to prevent ALL feedback)
+        console.log('[VisionConnection] Notification (SILENT MODE):', message);
+        // if (window.speechSynthesis) {
+        //     const utterance = new SpeechSynthesisUtterance(message);
+        //     window.speechSynthesis.speak(utterance);
+        // } // DISABLED
     }
 
     attemptReconnect() {

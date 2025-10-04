@@ -990,11 +990,10 @@ const JarvisVoice = () => {
         setResponse(responseText);
         setIsProcessing(false);
 
-        // Use speech synthesis with Daniel voice
+        // ALL AUDIO DISABLED - No speech synthesis (removed to prevent ALL feedback)
         if (responseText && data.speak !== false) {
-          // Speak the EXACT same text that we just displayed
-          console.log('[JARVIS Audio] Speaking exact text:', responseText);
-          speakResponse(responseText, false);
+          console.log('[JARVIS Audio] Response (SILENT MODE):', responseText);
+          // speakResponse(responseText, false); // DISABLED
         }
         
         // Reset waiting state after successful command
@@ -1170,14 +1169,14 @@ const JarvisVoice = () => {
         if (data.message && data.speak !== false) {
           // Store the exact message
           const narrationText = data.message;
-          console.log('[JARVIS Audio] Narration text:', narrationText);
+          console.log('[JARVIS Audio] Narration (SILENT MODE):', narrationText);
 
-          // For narrations, WAIT to update display until voice actually starts
-          // This ensures perfect synchronization
-          speakResponseWithCallback(narrationText, () => {
-            // Update display when voice actually starts
-            setResponse(narrationText);
-          });
+          // ALL AUDIO DISABLED - No narration speech (removed to prevent ALL feedback)
+          setResponse(narrationText);
+          // speakResponseWithCallback(narrationText, () => {
+          //   // Update display when voice actually starts
+          //   setResponse(narrationText);
+          // }); // DISABLED
         } else {
           console.log('🎤 Skipping narration - speak flag is false or no message');
         }
@@ -2262,6 +2261,12 @@ const JarvisVoice = () => {
   };
   
   const speakResponseInternal = async (text, onStartCallback = null) => {
+    // ALL AUDIO COMPLETELY DISABLED - No speech at all
+    console.log('[JARVIS Audio] SILENT MODE - Would have spoken:', text);
+    if (onStartCallback) onStartCallback();
+    return; // EXIT IMMEDIATELY - NO AUDIO
+
+    // DISABLED CODE BELOW
     // Prevent overlapping speech
     if (isSpeakingRef.current) {
       console.log('[JARVIS Audio] Already speaking, adding to queue');
