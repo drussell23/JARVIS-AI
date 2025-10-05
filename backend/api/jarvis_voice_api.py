@@ -355,6 +355,9 @@ class JARVISVoiceAPI:
         self._jarvis = None
         self._jarvis_initialized = False
 
+        # Initialize async pipeline for all commands
+        self._pipeline = None
+
         # Check if we have API key
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
         # For now, enable basic JARVIS functionality even without full imports
@@ -370,6 +373,15 @@ class JARVISVoiceAPI:
             )
 
         self._register_routes()
+
+    @property
+    def pipeline(self):
+        """Get or create async pipeline instance"""
+        if self._pipeline is None:
+            from core.async_pipeline import get_async_pipeline
+            self._pipeline = get_async_pipeline(self.jarvis)
+            logger.info("[JARVIS API] Async pipeline initialized for voice commands")
+        return self._pipeline
 
     @property
     def jarvis(self):
@@ -881,16 +893,34 @@ class JARVISVoiceAPI:
                     self.jarvis.running = True
                     logger.info("Activating JARVIS for command processing")
 
-            # Process command through JARVIS agent (with system control)
-            logger.info(f"[JARVIS API] Processing command: '{command.text}'")
+            # Process command through async pipeline for better performance and alignment
+            logger.info(f"[JARVIS API] Processing command through async pipeline: '{command.text}'")
 
-            # Add timeout to prevent hanging
+            # Use async pipeline for all commands - ensures consistent handling
             try:
-                response = await asyncio.wait_for(
-                    self.jarvis.process_voice_input(command.text),
+                # Process through pipeline with proper metadata
+                pipeline_result = await asyncio.wait_for(
+                    self.pipeline.process_async(
+                        command.text,
+                        user_name=getattr(self.jarvis, "user_name", "Sir") if self.jarvis else "Sir",
+                        metadata={
+                            "source": "voice_api",
+                            "jarvis_instance": self.jarvis
+                        }
+                    ),
                     timeout=35.0,  # 35 second timeout for API calls (to accommodate weather)
                 )
-                logger.info(f"[JARVIS API] Response: '{response[:100]}...' (truncated)")
+
+                # Extract response from pipeline result
+                if isinstance(pipeline_result, dict):
+                    response = pipeline_result.get("response", "I processed your command, Sir.")
+                    # If we got a lock/unlock response, use it directly
+                    if pipeline_result.get("type") in ["voice_unlock", "screen_lock", "screen_unlock"]:
+                        response = pipeline_result.get("response", response)
+                else:
+                    response = str(pipeline_result)
+
+                logger.info(f"[JARVIS API] Pipeline response: '{response[:100]}...' (truncated)")
             except asyncio.TimeoutError:
                 logger.error(
                     f"[JARVIS API] Command processing timed out after 35s: '{command.text}'"
