@@ -1131,7 +1131,12 @@ async def health_check():
             "memory_pressure": mgr.memory_monitor.current_pressure().value,
             "arm64_optimized": mgr.arm64_optimizer.is_arm64,
             "m1_detected": mgr.arm64_optimizer.is_m1,
-            "config_loaded": os.path.exists(mgr.config_path) if mgr.config_path else False
+            "config_loaded": os.path.exists(mgr.config_path) if mgr.config_path else False,
+            "advanced_preloader": {
+                "predictor_active": mgr.advanced_predictor is not None,
+                "dependency_resolver_active": mgr.dependency_resolver is not None,
+                "smart_cache_active": mgr.smart_cache is not None,
+            }
         }
     else:
         component_manager_details = {"enabled": False}
@@ -1454,6 +1459,17 @@ def mount_routers():
 async def process_command(request: dict):
     """Simple command endpoint for testing"""
     command = request.get("command", "")
+
+    # Trigger intelligent preloading (Phase 2) if available
+    if hasattr(app.state, "component_manager") and app.state.component_manager:
+        mgr = app.state.component_manager
+        if mgr.advanced_predictor:
+            try:
+                # Predict and preload next 1-3 components in background
+                asyncio.create_task(mgr.predict_and_preload(command, steps_ahead=3))
+                logger.debug(f"🔮 Advanced preloading triggered for: '{command[:50]}'")
+            except Exception as e:
+                logger.debug(f"Advanced preloading failed: {e}")
 
     # Use unified command processor if available
     try:

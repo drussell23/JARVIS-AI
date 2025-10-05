@@ -25,15 +25,30 @@ import os
 import platform
 import psutil
 import time
-from typing import Dict, List, Optional, Any, Callable, Set
+from typing import Dict, List, Optional, Any, Callable, Set, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
-from collections import defaultdict, deque
+from collections import defaultdict, deque, Counter
 from pathlib import Path
 import importlib
 import sys
 
 logger = logging.getLogger(__name__)
+
+# Import advanced preloader components
+try:
+    from .advanced_preloader import (
+        AdvancedMLPredictor,
+        DependencyResolver,
+        SmartComponentCache,
+        PreloadPrediction,
+        EvictionPolicy
+    )
+    ADVANCED_PRELOADER_AVAILABLE = True
+    logger.info("✅ Advanced Preloader components loaded")
+except ImportError as e:
+    ADVANCED_PRELOADER_AVAILABLE = False
+    logger.warning(f"⚠️ Advanced Preloader not available: {e}")
 
 
 # ============================================================================
@@ -196,7 +211,21 @@ class MLIntentPredictor:
         # ARM64 vectorizer for feature extraction
         self.vectorizer = ARM64Vectorizer()
 
-        # Model state
+        # CoreML classifier (Neural Engine accelerated)
+        self.coreml_classifier = None
+        if use_neural_engine:
+            try:
+                from .coreml_intent_classifier import CoreMLIntentClassifier
+                self.coreml_classifier = CoreMLIntentClassifier(
+                    component_names=component_names,
+                    feature_dim=self.vectorizer.feature_dim
+                )
+                logger.info("✅ CoreML Neural Engine classifier initialized")
+            except Exception as e:
+                logger.warning(f"CoreML classifier not available: {e}")
+                self.coreml_classifier = None
+
+        # Fallback sklearn model
         self.model = None
         self.model_path = None
         self.is_trained = False
@@ -210,7 +239,7 @@ class MLIntentPredictor:
         self.total_inference_time_ms = 0
         self.accuracy_buffer = deque(maxlen=100)
 
-        # Initialize lightweight sklearn model (convert to CoreML later)
+        # Initialize lightweight sklearn model (CoreML fallback)
         self._init_model()
 
     def _init_model(self):
@@ -248,6 +277,25 @@ class MLIntentPredictor:
         Returns:
             (predicted_components, confidence_scores, inference_time_ms)
         """
+        # Try CoreML Neural Engine first (15x faster)
+        if self.coreml_classifier and self.coreml_classifier.is_trained:
+            start = time.perf_counter()
+
+            # Vectorize input (ARM64 SIMD optimized)
+            features, vec_time = self.vectorizer.vectorize(text)
+
+            # CoreML inference
+            prediction = await self.coreml_classifier.predict_async(features, threshold)
+
+            total_time_ms = (time.perf_counter() - start) * 1000
+
+            # Update statistics
+            self.inference_count += 1
+            self.total_inference_time_ms += total_time_ms
+
+            return (prediction.components, prediction.confidence_scores, total_time_ms)
+
+        # Fallback to sklearn model
         if not self.is_trained or self.model is None:
             return set(), {}, 0
 
@@ -323,14 +371,29 @@ class MLIntentPredictor:
         X = self.np.vstack([x[0] for x in self.training_data])
         y = self.np.array([x[1] for x in self.training_data])
 
-        # Train in thread pool (non-blocking)
+        # Train CoreML model first (if available)
+        if self.coreml_classifier:
+            try:
+                logger.info("🔄 Training CoreML Neural Engine model...")
+                coreml_success = await self.coreml_classifier.train_async(
+                    X, y, epochs=30, batch_size=32
+                )
+                if coreml_success:
+                    self.is_trained = True
+                    train_time_s = time.perf_counter() - start
+                    logger.info(f"✅ CoreML model trained in {train_time_s:.2f}s (with Neural Engine acceleration)")
+                    return True
+            except Exception as e:
+                logger.warning(f"CoreML training failed: {e}, falling back to sklearn")
+
+        # Fallback to sklearn training
         loop = asyncio.get_event_loop()
         success = await loop.run_in_executor(None, self._train_sync, X, y)
 
         if success:
             self.is_trained = True
             train_time_ms = (time.perf_counter() - start) * 1000
-            logger.info(f"✅ Model retrained in {train_time_ms:.0f}ms")
+            logger.info(f"✅ sklearn model retrained in {train_time_ms:.0f}ms")
 
         return success
 
@@ -403,7 +466,7 @@ class MLIntentPredictor:
             if self.inference_count > 0 else 0
         )
 
-        return {
+        stats = {
             'is_trained': self.is_trained,
             'training_samples': len(self.training_data),
             'inference_count': self.inference_count,
@@ -413,6 +476,14 @@ class MLIntentPredictor:
             'arm64_neon_enabled': self.vectorizer.use_neon if self.vectorizer else False,
             'coreml_model_path': self.model_path
         }
+
+        # Add CoreML-specific stats if available
+        if self.coreml_classifier:
+            coreml_stats = self.coreml_classifier.get_stats()
+            stats['coreml'] = coreml_stats
+            stats['using_coreml'] = self.coreml_classifier.is_trained
+
+        return stats
 
 
 # ============================================================================
@@ -709,6 +780,57 @@ class IntentAnalyzer:
                     predictions.update(next_comps)
 
         return predictions
+
+    async def predict_and_preload(self, command: str, steps_ahead: int = 3):
+        """
+        Advanced ML-based prediction and preloading using AdvancedMLPredictor (Phase 2).
+
+        Args:
+            command: Current command to analyze
+            steps_ahead: Number of future commands to predict (1-3)
+
+        Returns:
+            List of PreloadPrediction objects
+        """
+        if not self.advanced_predictor:
+            # Fallback to basic prediction
+            basic_predictions = self.predict_next_components(command)
+            for comp in basic_predictions:
+                await self.schedule_preload(comp, priority="DELAYED")
+            return []
+
+        try:
+            # Use AdvancedMLPredictor for multi-step lookahead
+            predictions = await self.advanced_predictor.predict_with_lookahead(
+                command, steps_ahead=steps_ahead
+            )
+
+            # Schedule preloads based on priority
+            for pred in predictions:
+                # pred.priority is already a string ("IMMEDIATE", "DELAYED", "BACKGROUND")
+                queue_priority = pred.priority
+
+                # Mark as predicted in smart cache (protect from eviction)
+                if self.smart_cache:
+                    self.smart_cache.mark_predicted(pred.component_name)
+
+                # Schedule preload
+                await self.schedule_preload(pred.component_name, priority=queue_priority)
+
+                logger.debug(
+                    f"Scheduled {pred.component_name} for {queue_priority} preload "
+                    f"(confidence={pred.confidence:.2f}, step={pred.step_ahead})"
+                )
+
+            return predictions
+
+        except Exception as e:
+            logger.error(f"Advanced prediction failed: {e}", exc_info=True)
+            # Fallback to basic prediction
+            basic_predictions = self.predict_next_components(command)
+            for comp in basic_predictions:
+                await self.schedule_preload(comp, priority="DELAYED")
+            return []
 
     def get_ml_stats(self) -> Dict[str, Any]:
         """Get ML prediction statistics including ARM64 assembly performance"""
@@ -1074,9 +1196,45 @@ class DynamicComponentManager:
         # Register memory pressure callback
         self.memory_monitor.register_callback(self._handle_memory_pressure)
 
+        # Advanced Preloader Components (Phase 2)
+        self.advanced_predictor: Optional[AdvancedMLPredictor] = None
+        self.dependency_resolver: Optional[DependencyResolver] = None
+        self.smart_cache: Optional[SmartComponentCache] = None
+
+        if ADVANCED_PRELOADER_AVAILABLE:
+            try:
+                # Initialize AdvancedMLPredictor with CoreML classifier
+                if hasattr(self.intent_analyzer, 'ml_predictor') and self.intent_analyzer.ml_predictor:
+                    coreml_classifier = getattr(self.intent_analyzer.ml_predictor, 'coreml_classifier', None)
+                    if coreml_classifier:
+                        self.advanced_predictor = AdvancedMLPredictor(
+                            coreml_classifier=coreml_classifier
+                        )
+                        logger.info("✅ AdvancedMLPredictor initialized with CoreML")
+                    else:
+                        logger.warning("⚠️ CoreML classifier not available, AdvancedMLPredictor disabled")
+
+                # Initialize DependencyResolver with component configurations
+                self.dependency_resolver = DependencyResolver(self.components)
+                logger.info("✅ DependencyResolver initialized")
+
+                # Initialize SmartComponentCache with 3GB budget
+                self.smart_cache = SmartComponentCache(
+                    max_memory_mb=3000,
+                    eviction_policy=EvictionPolicy.HYBRID
+                )
+                logger.info("✅ SmartComponentCache initialized (3000MB, HYBRID policy)")
+
+            except Exception as e:
+                logger.error(f"Failed to initialize advanced preloader components: {e}")
+                self.advanced_predictor = None
+                self.dependency_resolver = None
+                self.smart_cache = None
+
         logger.info(f"✅ Dynamic Component Manager initialized")
         logger.info(f"   ARM64: {self.arm64_optimizer.is_arm64}")
         logger.info(f"   M1: {self.arm64_optimizer.is_m1}")
+        logger.info(f"   Advanced Preloader: {ADVANCED_PRELOADER_AVAILABLE}")
         logger.info(f"   Registered components: {len(self.components)}")
 
     async def start_monitoring(self):
@@ -1373,11 +1531,31 @@ class DynamicComponentManager:
             # Try to unload low-priority components
             await self._free_memory(component.memory_estimate_mb)
 
-        # Load dependencies first
-        for dep in component.dependencies:
-            if not await self.load_component(dep):
-                logger.error(f"Failed to load dependency {dep} for {name}")
-                return False
+        # Load dependencies first using DependencyResolver (Phase 2)
+        if self.dependency_resolver:
+            try:
+                # Get optimal load order using topological sort
+                load_order = self.dependency_resolver.resolve_load_order(name)
+                logger.debug(f"Dependency load order for {name}: {load_order}")
+
+                # Load dependencies in order (excluding the component itself)
+                for dep in load_order[:-1]:  # Last item is the component itself
+                    if not await self.load_component(dep):
+                        logger.error(f"Failed to load dependency {dep} for {name}")
+                        return False
+            except Exception as e:
+                logger.warning(f"Dependency resolution failed for {name}, using manual deps: {e}")
+                # Fallback to manual dependency loading
+                for dep in component.dependencies:
+                    if not await self.load_component(dep):
+                        logger.error(f"Failed to load dependency {dep} for {name}")
+                        return False
+        else:
+            # Manual dependency loading (legacy)
+            for dep in component.dependencies:
+                if not await self.load_component(dep):
+                    logger.error(f"Failed to load dependency {dep} for {name}")
+                    return False
 
         # Check conflicts
         for conflict in component.conflicts:
@@ -1417,6 +1595,11 @@ class DynamicComponentManager:
                     component.average_load_time_ms = (component.average_load_time_ms + load_time_ms) / 2
 
                 self.stats['total_loads'] += 1
+
+                # Update SmartComponentCache (Phase 2)
+                if self.smart_cache:
+                    self.smart_cache.access(name, memory_mb=component.memory_estimate_mb)
+
                 logger.info(f"✅ Loaded {name} in {load_time_ms:.0f}ms")
                 return True
             else:
@@ -1635,10 +1818,38 @@ class DynamicComponentManager:
                     await self.unload_component(name)
 
     async def _free_memory(self, needed_mb: int):
-        """Free up memory by unloading components"""
+        """Free up memory by unloading components using SmartComponentCache (Phase 2)"""
         freed_mb = 0
 
-        # Unload in reverse priority order (LOW -> MEDIUM -> HIGH)
+        # Use SmartComponentCache for intelligent eviction if available
+        if self.smart_cache:
+            try:
+                # Get eviction candidates from smart cache
+                candidates = self.smart_cache.evict_candidates(needed_mb)
+                logger.info(f"Smart cache suggests evicting: {candidates}")
+
+                # Unload candidates in order
+                for comp_name in candidates:
+                    if comp_name in self.components:
+                        comp = self.components[comp_name]
+                        if comp.state == ComponentState.LOADED:
+                            if await self.unload_component(comp_name):
+                                freed_mb += comp.memory_estimate_mb
+                                logger.debug(f"Evicted {comp_name} ({comp.memory_estimate_mb}MB)")
+
+                                if freed_mb >= needed_mb:
+                                    break
+
+                if freed_mb >= needed_mb:
+                    logger.info(f"✅ Freed {freed_mb}MB using smart eviction (needed {needed_mb}MB)")
+                    return
+                else:
+                    logger.warning(f"Smart eviction freed {freed_mb}MB, but need {needed_mb}MB. Falling back to priority-based eviction.")
+
+            except Exception as e:
+                logger.warning(f"Smart cache eviction failed: {e}, using priority-based eviction")
+
+        # Fallback: Unload in reverse priority order (LOW -> MEDIUM -> HIGH)
         for priority in [ComponentPriority.LOW, ComponentPriority.MEDIUM, ComponentPriority.HIGH]:
             if freed_mb >= needed_mb:
                 break
@@ -1650,7 +1861,7 @@ class DynamicComponentManager:
                         if freed_mb >= needed_mb:
                             break
 
-        logger.info(f"Freed {freed_mb}MB of memory")
+        logger.info(f"Freed {freed_mb}MB of memory (legacy eviction)")
 
     def get_status(self) -> Dict[str, Any]:
         """Get comprehensive system status with performance metrics"""
@@ -1726,6 +1937,21 @@ class DynamicComponentManager:
                 'm1': self.arm64_optimizer.is_m1,
                 'neural_engine': self.arm64_optimizer.neural_engine_available,
                 'optimizations': self.arm64_optimizer.get_optimization_flags()
+            },
+            'advanced_preloader': {
+                'enabled': ADVANCED_PRELOADER_AVAILABLE,
+                'predictor_active': self.advanced_predictor is not None,
+                'dependency_resolver_active': self.dependency_resolver is not None,
+                'smart_cache_active': self.smart_cache is not None,
+                'smart_cache_stats': self.smart_cache.get_stats() if self.smart_cache else {},
+                'prediction_accuracy': self.stats.get('prediction_accuracy', 0.0),
+                'preload_hits': self.stats.get('preload_hits', 0),
+                'preload_misses': self.stats.get('preload_misses', 0),
+                'preload_wasted': self.stats.get('preload_wasted', 0),
+                'preload_hit_rate': round(
+                    (self.stats.get('preload_hits', 0) / max(1, self.stats.get('preload_hits', 0) + self.stats.get('preload_misses', 0))) * 100,
+                    1
+                )
             },
             'stats': self.stats
         }
