@@ -467,7 +467,7 @@ class AdvancedAsyncPipeline:
                            text: str,
                            user_name: str = "Sir",
                            priority: int = 0,
-                           metadata: Optional[Dict[str, Any]] = None) -> str:
+                           metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Process command through advanced async pipeline"""
 
         # Create pipeline context
@@ -514,7 +514,7 @@ class AdvancedAsyncPipeline:
             if command_id in self.active_commands:
                 del self.active_commands[command_id]
 
-    async def _execute_pipeline(self, context: PipelineContext) -> str:
+    async def _execute_pipeline(self, context: PipelineContext) -> Dict[str, Any]:
         """Execute all pipeline stages"""
         pipeline_start = time.time()
 
@@ -538,7 +538,14 @@ class AdvancedAsyncPipeline:
 
         context.metrics["total_pipeline_duration"] = time.time() - pipeline_start
 
-        return context.response or "Task completed successfully."
+        # Return dictionary containing both response and metadata
+        return {
+            "response": context.response or "Task completed successfully.",
+            "metadata": context.metadata,
+            "success": True,
+            "command_id": context.command_id,
+            "metrics": context.metrics
+        }
 
     async def _validate_command(self, context: PipelineContext):
         """Validate command input"""
@@ -639,7 +646,7 @@ class AdvancedAsyncPipeline:
 
         logger.info(f"Response generated: {context.response[:100]}...")
 
-    def _generate_error_response(self, context: PipelineContext, error: Exception) -> str:
+    def _generate_error_response(self, context: PipelineContext, error: Exception) -> Dict[str, Any]:
         """Generate user-friendly error response"""
         error_responses = {
             "TimeoutError": f"I apologize, {context.user_name}, but that's taking longer than expected. Please try again.",
@@ -649,7 +656,17 @@ class AdvancedAsyncPipeline:
         }
 
         error_type = type(error).__name__
-        return error_responses.get(error_type, error_responses["default"])
+        error_message = error_responses.get(error_type, error_responses["default"])
+
+        return {
+            "response": error_message,
+            "metadata": context.metadata,
+            "success": False,
+            "command_id": context.command_id,
+            "error": str(error),
+            "error_type": error_type,
+            "metrics": context.metrics
+        }
 
     def _record_performance(self, context: PipelineContext):
         """Record performance metrics"""

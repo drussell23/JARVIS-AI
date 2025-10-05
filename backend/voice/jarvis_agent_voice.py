@@ -292,8 +292,9 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
 
         # Use async pipeline for completely non-blocking processing
         try:
-            response = await self.async_pipeline.process_async(text, self.user_name)
-            return response
+            result = await self.async_pipeline.process_async(text, self.user_name)
+            # Pipeline now returns dict, extract response string
+            return result.get("response", "I apologize, but I couldn't process that request.")
         except Exception as e:
             logger.error(f"Async pipeline error: {e}", exc_info=True)
             # Fallback to legacy processing if async pipeline fails

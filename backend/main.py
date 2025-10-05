@@ -1303,7 +1303,8 @@ def mount_routers():
     # Wake Word API
     wake_word = components.get("wake_word", {})
     if wake_word and wake_word.get("router"):
-        app.include_router(wake_word["router"], prefix="/api/wake-word", tags=["wake_word"])
+        # Router already has prefix="/api/wake-word", don't add it again
+        app.include_router(wake_word["router"])
         logger.info("✅ Wake Word API mounted at /api/wake-word")
         if wake_word.get("initialized"):
             app.state.wake_word = wake_word
