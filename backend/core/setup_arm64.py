@@ -22,20 +22,24 @@ if not is_arm64:
 # Compiler flags for ARM64 NEON optimization
 extra_compile_args = [
     '-O3',                    # Maximum optimization
-    '-march=armv8-a+simd',    # ARM64 with NEON SIMD
-    '-mtune=apple-m1',        # Optimize for Apple M1
     '-ffast-math',            # Fast floating-point math
     '-funroll-loops',         # Loop unrolling
     '-fvectorize',            # Auto-vectorization
-    '-flto',                  # Link-time optimization
 ]
 
-# M1-specific optimizations
+# M1-specific optimizations (only when compiling for ARM64)
 if is_arm64:
     extra_compile_args.extend([
+        '-arch', 'arm64',         # Force ARM64 only
         '-mcpu=apple-m1',         # M1-specific tuning
         '-DARM_NEON',             # Enable NEON intrinsics
     ])
+
+# Link-time optimization
+extra_link_args = []
+if is_arm64:
+    extra_link_args.append('-arch')
+    extra_link_args.append('arm64')
 
 # Custom build command to handle ARM64 assembly
 class ARM64BuildExt(build_ext):
@@ -70,7 +74,7 @@ arm64_simd_ext = Extension(
     sources=['arm64_simd.c'],  # Only C file in sources
     include_dirs=[np.get_include()],
     extra_compile_args=extra_compile_args,
-    extra_link_args=['-flto'],
+    extra_link_args=extra_link_args,
 )
 
 setup(
