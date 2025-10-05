@@ -459,7 +459,7 @@ async def lifespan(app: FastAPI):
     start_time = time.time()
 
     # Initialize dynamic component manager if enabled
-    global dynamic_component_manager
+    global dynamic_component_manager, DYNAMIC_LOADING_ENABLED
     if DYNAMIC_LOADING_ENABLED and get_component_manager:
         logger.info("🧩 Initializing Dynamic Component Management System...")
         dynamic_component_manager = get_component_manager()
@@ -1303,8 +1303,8 @@ def mount_routers():
     # Wake Word API
     wake_word = components.get("wake_word", {})
     if wake_word and wake_word.get("router"):
-        app.include_router(wake_word["router"], tags=["wake_word"])
-        logger.info("✅ Wake Word API mounted")
+        app.include_router(wake_word["router"], prefix="/api/wake-word", tags=["wake_word"])
+        logger.info("✅ Wake Word API mounted at /api/wake-word")
         if wake_word.get("initialized"):
             app.state.wake_word = wake_word
             logger.info("✅ Wake Word detection ready")
