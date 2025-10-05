@@ -59,16 +59,21 @@ async def _caffeinate_async(context):
     from api.jarvis_voice_api import async_subprocess_run
 
     try:
+        # Ensure command is properly formatted
+        caffeinate_cmd = ['caffeinate', '-u', '-t', '1']
         stdout, stderr, returncode = await async_subprocess_run(
-            ['caffeinate', '-u', '-t', '1'],
+            caffeinate_cmd,
             timeout=2.0
         )
         context.metadata["caffeinate_success"] = (returncode == 0)
         context.metadata["success"] = True
+        logger.debug(f"Caffeinate result: returncode={returncode}")
     except Exception as e:
+        logger.warning(f"Caffeinate failed: {e}")
         context.metadata["caffeinate_success"] = False
         context.metadata["error"] = str(e)
-        context.metadata["success"] = False
+        # Don't fail the entire pipeline just because caffeinate failed
+        context.metadata["success"] = True  # Allow continuation
 
 async def _applescript_unlock_async(context):
     """Async pipeline handler for AppleScript unlock"""
@@ -97,7 +102,7 @@ def _escape_password_for_applescript(password: str) -> str:
 
 async def _perform_direct_unlock(password: str) -> bool:
     """
-    Perform direct screen unlock using AppleScript and password via async pipeline
+    Perform direct screen unlock using AppleScript and password WITHOUT pipeline to avoid loops
 
     Args:
         password: The user's Mac password from keychain
@@ -106,14 +111,20 @@ async def _perform_direct_unlock(password: str) -> bool:
         bool: True if unlock succeeded, False otherwise
     """
     try:
-        logger.info("[DIRECT UNLOCK] Starting unlock sequence via async pipeline")
-        pipeline = _get_pipeline()
+        logger.info("[DIRECT UNLOCK] Starting unlock sequence (direct, no pipeline)")
 
-        # Wake the display first via pipeline
-        wake_result = await pipeline.process_async(
-            text="Wake display for unlock",
-            metadata={"stage": "unlock_caffeinate"}
-        )
+        # Import all required functions at the beginning
+        from api.jarvis_voice_api import async_subprocess_run, async_osascript
+
+        # Wake the display first directly
+        try:
+            await async_subprocess_run(
+                ['caffeinate', '-u', '-t', '1'],
+                timeout=2.0
+            )
+        except Exception as e:
+            logger.debug(f"Caffeinate failed (non-critical): {e}")
+
         await asyncio.sleep(1)
 
         # Wake script - move mouse and activate loginwindow
@@ -143,15 +154,14 @@ async def _perform_direct_unlock(password: str) -> bool:
         end tell
         '''
 
-        # Execute wake script via pipeline
-        wake_script_result = await pipeline.process_async(
-            text="Execute wake script",
-            metadata={
-                "script": wake_script,
-                "timeout": 10.0,
-                "stage": "unlock_applescript"
-            }
-        )
+        # Execute wake script directly (no pipeline)
+        try:
+            stdout, stderr, returncode = await async_osascript(wake_script, timeout=10.0)
+            if returncode != 0:
+                logger.debug(f"Wake script failed: {stderr}")
+        except Exception as e:
+            logger.debug(f"Wake script error: {e}")
+
         await asyncio.sleep(0.5)
 
         # Escape password for AppleScript
@@ -176,18 +186,8 @@ async def _perform_direct_unlock(password: str) -> bool:
         end tell
         '''
 
-        # Execute password script via pipeline
-        result = await pipeline.process_async(
-            text="Execute password unlock script",
-            metadata={
-                "script": password_script,
-                "timeout": 15.0,
-                "stage": "unlock_applescript"
-            }
-        )
-
-        metadata = result.get("metadata", {})
-        returncode = metadata.get("returncode", -1)
+        # Execute password script directly (no pipeline)
+        stdout, stderr, returncode = await async_osascript(password_script, timeout=15.0)
 
         if returncode == 0:
             # Wait a bit for unlock to complete
@@ -209,7 +209,7 @@ async def _perform_direct_unlock(password: str) -> bool:
                 logger.info("[DIRECT UNLOCK] Unlock completed (verification unavailable)")
                 return True
         else:
-            logger.error(f"[DIRECT UNLOCK] AppleScript error: {result.stderr}")
+            logger.error(f"[DIRECT UNLOCK] AppleScript error: {stderr}")
             return False
 
     except Exception as e:

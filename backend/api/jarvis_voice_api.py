@@ -31,17 +31,26 @@ logger = logging.getLogger(__name__)
 # ASYNC SUBPROCESS HELPERS - Non-blocking subprocess calls
 # ============================================================================
 
-async def async_subprocess_run(cmd: list, timeout: float = 10.0) -> tuple:
+async def async_subprocess_run(cmd, timeout: float = 10.0) -> tuple:
     """
     Non-blocking async subprocess execution.
 
     Args:
-        cmd: Command and arguments as list
+        cmd: Command and arguments as list or string
         timeout: Maximum execution time in seconds
 
     Returns:
         (stdout, stderr, returncode)
     """
+    # Handle both list and string inputs
+    if isinstance(cmd, str):
+        import shlex
+        cmd = shlex.split(cmd)
+
+    if not cmd or len(cmd) == 0:
+        logger.error("async_subprocess_run: Empty command list")
+        return b'', b'Empty command', -1
+
     try:
         process = await asyncio.create_subprocess_exec(
             *cmd,

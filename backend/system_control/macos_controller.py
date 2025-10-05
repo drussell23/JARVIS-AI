@@ -97,8 +97,8 @@ class MacOSController:
         self.pipeline.register_stage(
             "applescript_execution",
             self._execute_applescript_async,
-            timeout=10.0,
-            retry_count=1,
+            timeout=5.0,
+            retry_count=2,
             required=True
         )
 
@@ -118,6 +118,24 @@ class MacOSController:
             timeout=15.0,
             retry_count=2,
             required=True
+        )
+
+        # Screen unlock WebSocket stage
+        self.pipeline.register_stage(
+            "screen_unlock_ws",
+            self._screen_unlock_ws_async,
+            timeout=20.0,
+            retry_count=1,
+            required=False
+        )
+
+        # Screen unlock AppleScript stage (fallback)
+        self.pipeline.register_stage(
+            "screen_unlock_applescript",
+            self._screen_unlock_applescript_async,
+            timeout=15.0,
+            retry_count=1,
+            required=False
         )
 
     async def _execute_applescript_async(self, context):
@@ -189,6 +207,91 @@ class MacOSController:
         context.metadata["script"] = script
         await self._execute_applescript_async(context)
 
+    async def _screen_unlock_ws_async(self, context):
+        """Non-blocking screen unlock via WebSocket to voice unlock daemon"""
+        try:
+            import websockets
+            import json
+
+            VOICE_UNLOCK_WS_URL = "ws://localhost:8765/voice-unlock"
+
+            async with websockets.connect(VOICE_UNLOCK_WS_URL, ping_interval=20) as websocket:
+                # Send unlock command using the daemon's expected format
+                unlock_command = {
+                    "type": "command",
+                    "command": "unlock_screen"
+                }
+
+                await websocket.send(json.dumps(unlock_command))
+                logger.info("[Pipeline] Sent unlock command to voice unlock daemon")
+
+                # Wait for response (longer timeout for unlock)
+                response = await asyncio.wait_for(websocket.recv(), timeout=15.0)
+                result = json.loads(response)
+
+                if result.get("type") == "command_response" or result.get("type") == "unlock_result":
+                    if result.get("success"):
+                        context.metadata["success"] = True
+                        context.metadata["message"] = "Screen unlocked successfully via daemon"
+                        logger.info("[Pipeline] Screen unlocked successfully via voice unlock daemon")
+                    else:
+                        context.metadata["success"] = False
+                        context.metadata["error"] = result.get("message", "Unable to unlock screen")
+                else:
+                    context.metadata["success"] = False
+                    context.metadata["error"] = "Unexpected response from daemon"
+
+        except (ConnectionRefusedError, OSError) as e:
+            context.metadata["success"] = False
+            context.metadata["error"] = "Voice unlock daemon not running"
+            logger.warning(f"[Pipeline] Voice unlock daemon not available: {e}")
+        except asyncio.TimeoutError:
+            context.metadata["success"] = False
+            context.metadata["error"] = "Unlock operation timed out"
+            logger.error("[Pipeline] Timeout waiting for unlock response")
+        except Exception as e:
+            context.metadata["success"] = False
+            context.metadata["error"] = str(e)
+            logger.error(f"[Pipeline] Unlock WebSocket error: {e}")
+
+    async def _screen_unlock_applescript_async(self, context):
+        """Non-blocking screen unlock via AppleScript (fallback)"""
+        password = context.metadata.get("password")
+
+        if not password:
+            # Try to retrieve from keychain
+            try:
+                from api.jarvis_voice_api import async_subprocess_run
+                stdout, stderr, returncode = await async_subprocess_run(
+                    ['security', 'find-generic-password', '-s', 'com.jarvis.voiceunlock', '-a', 'unlock_token', '-w'],
+                    timeout=5.0
+                )
+                if returncode == 0 and stdout:
+                    password = stdout.decode().strip()
+                else:
+                    context.metadata["success"] = False
+                    context.metadata["error"] = "No password available for unlock"
+                    return
+            except Exception as e:
+                context.metadata["success"] = False
+                context.metadata["error"] = f"Failed to retrieve password: {e}"
+                return
+
+        # Use simple_unlock_handler's direct unlock method
+        try:
+            from api.simple_unlock_handler import _perform_direct_unlock
+            success = await _perform_direct_unlock(password)
+
+            if success:
+                context.metadata["success"] = True
+                context.metadata["message"] = "Screen unlocked successfully via AppleScript"
+            else:
+                context.metadata["success"] = False
+                context.metadata["error"] = "AppleScript unlock failed"
+        except Exception as e:
+            context.metadata["success"] = False
+            context.metadata["error"] = f"AppleScript unlock error: {e}"
+
     def _check_screen_lock_status(self) -> bool:
         """
         Check if screen is currently locked
@@ -253,15 +356,24 @@ class MacOSController:
             return False, str(e)
 
     def execute_applescript(self, script: str) -> Tuple[bool, str]:
-        """Execute AppleScript (LEGACY - synchronous fallback)"""
-        # Run async version in sync context
+        """Execute AppleScript (LEGACY - synchronous fallback without pipeline)"""
+        # Direct execution without pipeline to avoid timeouts
+        import subprocess
         try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        return loop.run_until_complete(self.execute_applescript_pipeline(script))
+            result = subprocess.run(
+                ['osascript', '-e', script],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if result.returncode == 0:
+                return True, result.stdout.strip()
+            else:
+                return False, result.stderr.strip()
+        except subprocess.TimeoutExpired:
+            return False, "AppleScript execution timed out"
+        except Exception as e:
+            return False, str(e)
             
     async def execute_shell_pipeline(self, command: str, safe_mode: bool = True, timeout: float = 30.0) -> Tuple[bool, str]:
         """Execute shell command through async pipeline (NEW METHOD)"""
@@ -544,21 +656,45 @@ class MacOSController:
         
     # System Settings Control
     
+    async def set_volume_async(self, level: int) -> Tuple[bool, str]:
+        """Set system volume (0-100) - ASYNC VERSION for better performance"""
+        from api.jarvis_voice_api import async_osascript
+
+        level = max(0, min(100, level))
+        script = f"set volume output volume {level}"
+        stdout, stderr, returncode = await async_osascript(script, timeout=5.0)
+
+        if returncode == 0:
+            return True, f"Setting volume to {level}%"
+        return False, "I couldn't adjust the volume"
+
     def set_volume(self, level: int) -> Tuple[bool, str]:
-        """Set system volume (0-100)"""
+        """Set system volume (0-100) - LEGACY sync version"""
         level = max(0, min(100, level))
         script = f"set volume output volume {level}"
         success, _ = self.execute_applescript(script)
-        
+
         if success:
             return True, f"Setting volume to {level}%"
         return False, "I couldn't adjust the volume"
-        
+
+    async def mute_volume_async(self, mute: bool = True) -> Tuple[bool, str]:
+        """Mute or unmute system volume - ASYNC VERSION for better performance"""
+        from api.jarvis_voice_api import async_osascript
+
+        script = f"set volume output muted {str(mute).lower()}"
+        stdout, stderr, returncode = await async_osascript(script, timeout=5.0)
+
+        if returncode == 0:
+            state = "muted" if mute else "unmuted"
+            return True, f"Volume {state}"
+        return False, "Failed to change mute state"
+
     def mute_volume(self, mute: bool = True) -> Tuple[bool, str]:
-        """Mute or unmute system volume"""
+        """Mute or unmute system volume - LEGACY sync version"""
         script = f"set volume output muted {str(mute).lower()}"
         success, _ = self.execute_applescript(script)
-        
+
         if success:
             state = "muted" if mute else "unmuted"
             return True, f"Volume {state}"
@@ -1066,26 +1202,36 @@ class MacOSController:
             except Exception as e:
                 logger.debug(f"WebSocket method failed: {e}")
 
-            # Fallback Method 1: Use CGSession via async pipeline (most reliable)
+            # Primary Method: Use AppleScript directly (not through full pipeline to avoid loops)
+            from api.jarvis_voice_api import async_osascript
+            script = 'tell application "System Events" to keystroke "q" using {command down, control down}'
+            try:
+                stdout, stderr, returncode = await async_osascript(script, timeout=5.0)
+                if returncode == 0:
+                    logger.info("Screen locked successfully using AppleScript")
+                    return True, "Screen locked successfully, Sir."
+            except Exception as e:
+                logger.debug(f"AppleScript method failed: {e}")
+
+            # Fallback Method 1: Use CGSession directly (most reliable)
+            from api.jarvis_voice_api import async_subprocess_run
             cgsession_path = '/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession'
             if os.path.exists(cgsession_path):
-                # Use async pipeline for subprocess execution
-                success, output = await self.execute_shell_pipeline(
-                    f"{cgsession_path} -suspend",
-                    safe_mode=False,  # CGSession is a system command
+                # Direct async execution
+                stdout, stderr, returncode = await async_subprocess_run(
+                    [cgsession_path, '-suspend'],
                     timeout=5.0
                 )
-                if success:
+                if returncode == 0:
                     logger.info("Screen locked successfully using CGSession")
                     return True, "Screen locked successfully, Sir."
 
-            # Fallback Method 2: Use pmset command via async pipeline
-            success, output = await self.execute_shell_pipeline(
-                "pmset displaysleepnow",
-                safe_mode=False,
+            # Fallback Method 2: Use pmset command directly
+            stdout, stderr, returncode = await async_subprocess_run(
+                ['pmset', 'displaysleepnow'],
                 timeout=5.0
             )
-            if success:
+            if returncode == 0:
                 logger.info("Screen locked successfully using pmset")
                 return True, "Screen locked successfully, Sir."
 
@@ -1097,76 +1243,76 @@ class MacOSController:
     
     async def unlock_screen(self, password: Optional[str] = None) -> Tuple[bool, str]:
         """
-        Unlock the macOS screen using the voice unlock daemon
-        
-        Note: This integrates with the Objective-C daemon for secure unlocking
-        
+        Unlock the macOS screen using direct async methods (avoiding full pipeline loops)
+
+        Integrates with voice unlock daemon and AppleScript fallback
+
         Returns:
             Tuple of (success, message)
         """
         try:
-            # Try using the voice unlock daemon's WebSocket interface first
+            logger.info("[UnlockScreen] Starting screen unlock")
+
+            # Method 1: Try WebSocket unlock directly
             try:
                 import websockets
                 import json
-                import asyncio
-                
+
                 VOICE_UNLOCK_WS_URL = "ws://localhost:8765/voice-unlock"
-                
-                async with websockets.connect(VOICE_UNLOCK_WS_URL, timeout=2.0) as websocket:
+
+                async with websockets.connect(VOICE_UNLOCK_WS_URL, ping_interval=20) as websocket:
                     # Send unlock command using the daemon's expected format
                     unlock_command = {
                         "type": "command",
                         "command": "unlock_screen"
                     }
-                    
+
                     await websocket.send(json.dumps(unlock_command))
-                    logger.info("Sent unlock command to voice unlock daemon")
-                    
+                    logger.info("[UnlockScreen] Sent unlock command to voice unlock daemon")
+
                     # Wait for response (longer timeout for unlock)
-                    response = await asyncio.wait_for(websocket.recv(), timeout=20.0)
+                    response = await asyncio.wait_for(websocket.recv(), timeout=15.0)
                     result = json.loads(response)
-                    
-                    if result.get("type") == "command_response":
+
+                    if result.get("type") == "command_response" or result.get("type") == "unlock_result":
                         if result.get("success"):
-                            logger.info("Screen unlocked successfully via voice unlock daemon")
+                            logger.info("[UnlockScreen] Successfully unlocked via WebSocket daemon")
                             return True, "Screen unlocked successfully, Sir."
                         else:
-                            message = result.get("message", "Unable to unlock screen")
-                            return False, f"Unlock failed: {message}"
-                    elif result.get("type") == "unlock_result":
-                        if result.get("success"):
-                            return True, "Screen unlocked successfully, Sir."
-                        else:
-                            return False, result.get("message", "Unable to unlock screen")
-                            
-            except (ConnectionRefusedError, OSError):
-                logger.warning("Voice unlock daemon not running")
-                # Fall through to alternative method
+                            logger.warning(f"[UnlockScreen] Daemon unlock failed: {result.get('message', 'Unknown error')}")
+
+            except (ConnectionRefusedError, OSError) as e:
+                logger.info("[UnlockScreen] Voice unlock daemon not running, trying fallback")
             except asyncio.TimeoutError:
-                logger.error("Timeout waiting for unlock response")
-                return False, "Unlock operation timed out. Please try again."
+                logger.warning("[UnlockScreen] Timeout waiting for unlock response from daemon")
             except Exception as e:
-                logger.debug(f"WebSocket method failed: {e}")
-            
-            # Fallback: Try using the direct unlock handler if available
-            try:
-                from api.direct_unlock_handler import unlock_screen_direct
-                
-                success = await unlock_screen_direct("User requested screen unlock via system command")
-                if success:
-                    return True, "Screen unlocked successfully, Sir."
-                else:
-                    return False, "Unable to unlock screen. Please unlock manually or use voice authentication."
-                    
-            except ImportError:
-                logger.warning("Direct unlock handler not available")
-                
-            # Security notice: We don't provide direct password-based unlock for security reasons
-            return False, "Screen unlock requires the Voice Unlock daemon to be running, or manual authentication for security."
-            
+                logger.warning(f"[UnlockScreen] WebSocket error: {e}")
+
+            # Method 2: Try direct AppleScript unlock (fallback)
+            if not password:
+                # Try to retrieve from keychain
+                try:
+                    from api.jarvis_voice_api import async_subprocess_run
+                    stdout, stderr, returncode = await async_subprocess_run(
+                        ['security', 'find-generic-password', '-s', 'com.jarvis.voiceunlock', '-a', 'unlock_token', '-w'],
+                        timeout=5.0
+                    )
+                    if returncode == 0 and stdout:
+                        password = stdout.decode().strip()
+                    else:
+                        logger.info("[UnlockScreen] No password in keychain")
+                        return False, "Unable to unlock screen. The Voice Unlock daemon is not running. Please run './backend/voice_unlock/enable_screen_unlock.sh' to enable it."
+                except Exception as e:
+                    logger.warning(f"[UnlockScreen] Failed to retrieve password: {e}")
+                    return False, "Unable to unlock screen without password. Please setup Voice Unlock first."
+
+            # For now, if no daemon is running and we have a password, report that unlock is not available
+            # This prevents infinite loops while we fix the underlying issue
+            logger.info("[UnlockScreen] Direct unlock temporarily disabled to prevent loops")
+            return False, "Screen unlock requires Voice Unlock daemon. Please run './backend/voice_unlock/enable_screen_unlock.sh' to enable automatic unlocking."
+
         except Exception as e:
-            logger.error(f"Error unlocking screen: {e}")
+            logger.error(f"[UnlockScreen] Error unlocking screen: {e}")
             return False, f"Failed to unlock screen: {str(e)}"
     
     async def handle_command(self, command: str) -> Dict[str, Any]:
@@ -1220,6 +1366,29 @@ class MacOSController:
                     "command_type": "application"
                 }
         
+        # Handle volume commands (using ASYNC versions for better performance)
+        if 'volume' in command_lower:
+            if 'mute' in command_lower or 'unmute' in command_lower:
+                mute = 'mute' in command_lower
+                success, message = await self.mute_volume_async(mute)
+                return {
+                    "success": success,
+                    "response": message,
+                    "command_type": "volume_control"
+                }
+            elif any(word in command_lower for word in ['set', 'change', 'adjust']):
+                # Extract volume level
+                import re
+                numbers = re.findall(r'\d+', command_lower)
+                if numbers:
+                    level = int(numbers[0])
+                    success, message = await self.set_volume_async(level)
+                    return {
+                        "success": success,
+                        "response": message,
+                        "command_type": "volume_control"
+                    }
+
         # Handle file operations
         if any(word in command_lower for word in ['create', 'make', 'new']) and any(word in command_lower for word in ['file', 'folder', 'directory']):
             # Extract file/folder name
@@ -1233,7 +1402,7 @@ class MacOSController:
                         "response": message,
                         "command_type": "file_operation"
                     }
-        
+
         # Default response for unhandled commands
         return {
             "success": False,
