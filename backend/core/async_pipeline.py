@@ -86,6 +86,15 @@ class AdaptiveCircuitBreaker:
         self.adaptive = adaptive
         self.failure_history: List[float] = []
         self.success_rate_history: List[float] = []
+        self._total_calls = 0
+        self._successful_calls = 0
+
+    @property
+    def success_rate(self) -> float:
+        """Calculate current success rate"""
+        if self._total_calls == 0:
+            return 1.0  # Default to 100% success if no calls yet
+        return self._successful_calls / self._total_calls
 
     async def call(self, func: Callable, *args, **kwargs):
         """Execute function with adaptive circuit breaker protection"""
@@ -111,6 +120,8 @@ class AdaptiveCircuitBreaker:
     def on_success(self, duration: float):
         """Handle successful execution with adaptive learning"""
         self.success_count += 1
+        self._total_calls += 1
+        self._successful_calls += 1
         self.failure_count = max(0, self.failure_count - 1)  # Gradual recovery
 
         if self.state == "HALF_OPEN":
@@ -130,6 +141,7 @@ class AdaptiveCircuitBreaker:
     def on_failure(self):
         """Handle failed execution with adaptive learning"""
         self.failure_count += 1
+        self._total_calls += 1
         self.last_failure_time = time.time()
         self.failure_history.append(time.time())
 
@@ -173,6 +185,8 @@ class AsyncEventBus:
         self.event_queue = asyncio.PriorityQueue()
         self.event_history: List[Dict[str, Any]] = []
         self.max_history = 1000
+        self.listeners = {}  # For compatibility with get_metrics
+        self.queue = self.event_queue  # Alias for compatibility
 
     def subscribe(self,
                   event_type: str,
@@ -510,31 +524,61 @@ class AdvancedAsyncPipeline:
             return self._generate_error_response(context, e)
 
         finally:
-            # Cleanup after processing
-            if command_id in self.active_commands:
-                del self.active_commands[command_id]
+            # Cleanup after processing (thread-safe)
+            try:
+                self.active_commands.pop(command_id, None)
+            except RuntimeError:
+                # Handle dictionary changed size during iteration
+                pass
 
     async def _execute_pipeline(self, context: PipelineContext) -> Dict[str, Any]:
-        """Execute all pipeline stages"""
+        """Execute pipeline stages (only specific stage if specified in metadata)"""
         pipeline_start = time.time()
 
         # Execute middleware (preprocessing)
         for mw in self.middleware:
             context = await mw.process(context)
 
-        # Execute stages in order
-        for stage_name, stage in self.stages.items():
-            context.stage = PipelineStage[stage_name.upper()] if stage_name.upper() in PipelineStage.__members__ else PipelineStage.PROCESSING
+        # Check if a specific stage is requested
+        specific_stage = context.metadata.get("stage")
 
-            await self.event_bus.emit(f"stage_{stage_name}", context)
+        if specific_stage:
+            # Execute only the specific stage requested
+            if specific_stage in self.stages:
+                stage = self.stages[specific_stage]
+                context.stage = PipelineStage[specific_stage.upper()] if specific_stage.upper() in PipelineStage.__members__ else PipelineStage.PROCESSING
 
-            try:
-                await stage.execute(context)
-            except Exception as e:
-                if stage.required:
-                    raise
-                else:
-                    logger.warning(f"Non-critical stage {stage_name} failed: {e}")
+                await self.event_bus.emit(f"stage_{specific_stage}", context)
+
+                try:
+                    await stage.execute(context)
+                except Exception as e:
+                    if stage.required:
+                        raise
+                    else:
+                        logger.warning(f"Stage {specific_stage} failed: {e}")
+            else:
+                logger.warning(f"Requested stage '{specific_stage}' not found")
+        else:
+            # Execute default pipeline stages (not custom registered ones like applescript_execution)
+            default_stages = ["validation", "preprocessing", "intent_analysis",
+                             "component_loading", "processing", "postprocessing",
+                             "response_generation"]
+
+            for stage_name in default_stages:
+                if stage_name in self.stages:
+                    stage = self.stages[stage_name]
+                    context.stage = PipelineStage[stage_name.upper()] if stage_name.upper() in PipelineStage.__members__ else PipelineStage.PROCESSING
+
+                    await self.event_bus.emit(f"stage_{stage_name}", context)
+
+                    try:
+                        await stage.execute(context)
+                    except Exception as e:
+                        if stage.required:
+                            raise
+                        else:
+                            logger.warning(f"Non-critical stage {stage_name} failed: {e}")
 
         context.metrics["total_pipeline_duration"] = time.time() - pipeline_start
 
@@ -603,8 +647,38 @@ class AdvancedAsyncPipeline:
 
     async def _process_command(self, context: PipelineContext):
         """Process command based on intent"""
+        # Check for lock/unlock commands first - these can work without JARVIS
+        text_lower = context.text.lower()
+        if any(phrase in text_lower for phrase in ['lock my screen', 'lock screen', 'unlock my screen', 'unlock screen', 'lock the screen', 'unlock the screen']):
+            # Handle lock/unlock directly through simple handler
+            try:
+                from api.simple_unlock_handler import handle_unlock_command
+                result = await handle_unlock_command(context.text, self.jarvis)
+
+                if result.get('success'):
+                    context.response = result.get('response', 'Command executed successfully.')
+                    context.metadata["lock_unlock_result"] = result
+                else:
+                    context.response = result.get('response', 'Command failed.')
+                    context.metadata["lock_unlock_error"] = result.get('error', 'Unknown error')
+
+                context.metadata["handled_by"] = "simple_unlock_handler"
+                return
+            except Exception as e:
+                logger.error(f"Error handling lock/unlock: {e}")
+                context.metadata["lock_unlock_error"] = str(e)
+                context.response = f"I couldn't execute that screen command: {str(e)}"
+                return
+
+        # For other commands, check if JARVIS is available
         if not self.jarvis:
-            context.metadata["warning"] = "No JARVIS instance available"
+            # Some commands don't require JARVIS - handle them here
+            if context.intent == "system_control":
+                # Try to handle basic system commands without JARVIS
+                context.metadata["handled_without_jarvis"] = True
+                context.response = "System command received but JARVIS is not fully initialized."
+            else:
+                context.metadata["warning"] = "No JARVIS instance available"
             return
 
         # Route to appropriate handler based on intent
@@ -634,11 +708,19 @@ class AdvancedAsyncPipeline:
 
     async def _generate_response(self, context: PipelineContext):
         """Generate final response from context"""
+        # If response was already set (e.g., by lock/unlock handler), use it
+        if context.response:
+            logger.info(f"Using pre-set response: {context.response[:100]}...")
+            return
+
         # Prioritize responses from metadata
         if "claude_response" in context.metadata:
             context.response = context.metadata["claude_response"]
         elif "system_response" in context.metadata:
             context.response = context.metadata["system_response"]
+        elif "lock_unlock_result" in context.metadata:
+            # Response already set in _process_command for lock/unlock
+            pass
         elif context.metadata.get("warning"):
             context.response = f"Warning: {context.metadata['warning']}"
         else:
@@ -668,8 +750,56 @@ class AdvancedAsyncPipeline:
             "metrics": context.metrics
         }
 
+    def get_metrics(self) -> Dict[str, Any]:
+        """Get current pipeline metrics and statistics"""
+        metrics = {
+            "circuit_breaker": {
+                "state": self.circuit_breaker.state,
+                "failure_count": self.circuit_breaker.failure_count,
+                "threshold": self.circuit_breaker.threshold,
+                "success_rate": self.circuit_breaker.success_rate
+            },
+            "event_bus": {
+                "listeners": len(self.event_bus.listeners),
+                "queue_size": self.event_bus.queue.qsize() if hasattr(self.event_bus, 'queue') else 0
+            },
+            "stages": {
+                name: {
+                    "timeout": stage.timeout,
+                    "retry_count": stage.retry_count,
+                    "required": stage.required
+                } for name, stage in self.stages.items()
+            },
+            "performance": {
+                "average_processing_time": self._calculate_average_processing_time(),
+                "total_commands_processed": self._total_commands_processed
+            }
+        }
+        return metrics
+
+    def _calculate_average_processing_time(self) -> float:
+        """Calculate average processing time from recent commands"""
+        if not hasattr(self, '_processing_times'):
+            return 0.0
+        if len(self._processing_times) == 0:
+            return 0.0
+        return sum(self._processing_times) / len(self._processing_times)
+
     def _record_performance(self, context: PipelineContext):
         """Record performance metrics"""
+        if not hasattr(self, '_processing_times'):
+            self._processing_times = []
+        if not hasattr(self, '_total_commands_processed'):
+            self._total_commands_processed = 0
+
+        # Record processing time
+        if 'total_time' in context.metrics:
+            self._processing_times.append(context.metrics['total_time'])
+            # Keep only last 100 processing times
+            if len(self._processing_times) > 100:
+                self._processing_times.pop(0)
+
+        self._total_commands_processed += 1
         total_duration = context.metrics.get("total_pipeline_duration", 0)
         self.performance_metrics["total_duration"].append(total_duration)
         self.performance_metrics["intents"].append(context.intent or "unknown")

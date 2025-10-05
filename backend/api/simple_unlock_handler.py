@@ -14,6 +14,7 @@ import logging
 import websockets
 import json
 import os
+import subprocess
 from typing import Dict, Any
 
 # Import async pipeline
