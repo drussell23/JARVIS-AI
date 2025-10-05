@@ -27,6 +27,89 @@ if backend_dir not in sys.path:
 
 logger = logging.getLogger(__name__)
 
+# ============================================================================
+# ASYNC SUBPROCESS HELPERS - Non-blocking subprocess calls
+# ============================================================================
+
+async def async_subprocess_run(cmd: list, timeout: float = 10.0) -> tuple:
+    """
+    Non-blocking async subprocess execution.
+
+    Args:
+        cmd: Command and arguments as list
+        timeout: Maximum execution time in seconds
+
+    Returns:
+        (stdout, stderr, returncode)
+    """
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        stdout, stderr = await asyncio.wait_for(
+            process.communicate(),
+            timeout=timeout
+        )
+
+        return stdout, stderr, process.returncode
+
+    except asyncio.TimeoutError:
+        logger.warning(f"Subprocess timeout after {timeout}s: {' '.join(cmd)}")
+        try:
+            process.kill()
+            await process.wait()
+        except:
+            pass
+        return b'', b'Timeout', -1
+
+    except Exception as e:
+        logger.error(f"Subprocess error: {e}")
+        return b'', str(e).encode(), -1
+
+
+async def async_open_app(app_name: str) -> bool:
+    """
+    Non-blocking app launch on macOS.
+
+    Args:
+        app_name: Name of the application to open
+
+    Returns:
+        True if successful, False otherwise
+    """
+    stdout, stderr, returncode = await async_subprocess_run(
+        ["open", "-a", app_name],
+        timeout=5.0
+    )
+
+    if returncode == 0:
+        logger.info(f"✅ Launched {app_name} (async)")
+        return True
+    else:
+        logger.warning(f"⚠️ Failed to launch {app_name}: {stderr.decode()}")
+        return False
+
+
+async def async_osascript(script: str, timeout: float = 10.0) -> tuple:
+    """
+    Non-blocking AppleScript execution.
+
+    Args:
+        script: AppleScript code to execute
+        timeout: Maximum execution time
+
+    Returns:
+        (stdout, stderr, returncode)
+    """
+    return await async_subprocess_run(
+        ["osascript", "-e", script],
+        timeout=timeout
+    )
+
+
 # Try to import graceful handler, but don't fail if it's not available
 try:
     from graceful_http_handler import graceful_endpoint
@@ -724,31 +807,27 @@ class JARVISVoiceAPI:
 
                     # LIMITED MODE - No vision
                     logger.info(
-                        "[JARVIS API] LIMITED MODE: Opening Weather app with navigation"
+                        "[JARVIS API] LIMITED MODE: Opening Weather app with navigation (async)"
                     )
-                    import subprocess
 
-                    subprocess.run(["open", "-a", "Weather"], check=False)
+                    # ✅ ASYNC FIX: Non-blocking app launch
+                    await async_open_app("Weather")
 
-                    # Navigate to My Location
+                    # ✅ ASYNC FIX: Non-blocking wait
                     await asyncio.sleep(1.5)
-                    subprocess.run(
-                        [
-                            "osascript",
-                            "-e",
-                            """
+
+                    # ✅ ASYNC FIX: Non-blocking AppleScript
+                    await async_osascript("""
                         tell application "System Events"
                             key code 126
                             delay 0.2
                             key code 126
-                            delay 0.2  
+                            delay 0.2
                             key code 125
                             delay 0.2
                             key code 36
                         end tell
-                    """,
-                        ]
-                    )
+                    """)
 
                     return {
                         "response": "I'm operating in limited mode without vision analysis. I've opened the Weather app and navigated to your location. For automatic weather reading, please ensure the vision system is initialized with your ANTHROPIC_API_KEY.",
@@ -813,9 +892,7 @@ class JARVISVoiceAPI:
                     for word in ["weather", "temperature", "forecast", "rain"]
                 ):
                     try:
-                        import subprocess
-
-                        subprocess.run(["open", "-a", "Weather"], check=False)
+                        success = await async_open_app("Weather")
                         response = "I'm having trouble reading the weather data. I've opened the Weather app for you to check directly, Sir."
                     except:
                         response = "I'm experiencing a delay accessing the weather information. Please check the Weather app directly, Sir."
@@ -897,23 +974,20 @@ class JARVISVoiceAPI:
                 tmp_path = tmp.name
 
             # Use macOS say command to generate audio with British voice
-            # Run in executor to avoid blocking
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None,
-                lambda: subprocess.run(
-                    [
-                        "say",
-                        "-v",
-                        "Daniel",  # British voice for JARVIS
-                        "-r", "160",  # Much slower speech rate for natural delivery (words per minute)
-                        "-o",
-                        tmp_path,
-                        audio_text,
-                    ],
-                    check=True,
-                )
+            stdout, stderr, returncode = await async_subprocess_run(
+                [
+                    "say",
+                    "-v",
+                    "Daniel",  # British voice for JARVIS
+                    "-r", "160",  # Much slower speech rate for natural delivery (words per minute)
+                    "-o",
+                    tmp_path,
+                    audio_text,
+                ],
+                timeout=30.0
             )
+            if returncode != 0:
+                raise subprocess.CalledProcessError(returncode, "say", stderr=stderr)
 
             # Convert to MP3 for browser compatibility
             mp3_path = tmp_path.replace(".aiff", ".mp3")
@@ -921,42 +995,38 @@ class JARVISVoiceAPI:
 
             # Use ffmpeg if available, otherwise use the AIFF directly
             try:
-                await loop.run_in_executor(
-                    None,
-                    lambda: subprocess.run(
-                        [
-                            "ffmpeg",
-                            "-i",
-                            tmp_path,
-                            "-acodec",
-                            "mp3",
-                            "-ab",
-                            "96k",  # Lower bitrate for speech
-                            "-ar",
-                            "22050",  # Lower sample rate for speech
-                            mp3_path,
-                            "-y",
-                        ],
-                        check=True,
-                        capture_output=True,
-                    )
+                stdout, stderr, returncode = await async_subprocess_run(
+                    [
+                        "ffmpeg",
+                        "-i",
+                        tmp_path,
+                        "-acodec",
+                        "mp3",
+                        "-ab",
+                        "96k",  # Lower bitrate for speech
+                        "-ar",
+                        "22050",  # Lower sample rate for speech
+                        mp3_path,
+                        "-y",
+                    ],
+                    timeout=30.0
                 )
+                if returncode != 0:
+                    raise subprocess.CalledProcessError(returncode, "ffmpeg", stderr=stderr)
             except (subprocess.CalledProcessError, FileNotFoundError):
                 # If ffmpeg not available, use lame
                 try:
-                    await loop.run_in_executor(
-                        None,
-                        lambda: subprocess.run(
-                            ["lame", "-b", "96", "-m", "m", tmp_path, mp3_path],
-                            check=True,
-                            capture_output=True,
-                        )
+                    stdout, stderr, returncode = await async_subprocess_run(
+                        ["lame", "-b", "96", "-m", "m", tmp_path, mp3_path],
+                        timeout=30.0
                     )
+                    if returncode != 0:
+                        raise subprocess.CalledProcessError(returncode, "lame", stderr=stderr)
                 except (subprocess.CalledProcessError, FileNotFoundError):
                     # If neither work, use WAV format which browsers universally support
                     wav_path = tmp_path.replace(".aiff", ".wav")
                     try:
-                        subprocess.run(
+                        stdout, stderr, returncode = await async_subprocess_run(
                             [
                                 "afconvert",
                                 "-f",
@@ -966,10 +1036,15 @@ class JARVISVoiceAPI:
                                 tmp_path,
                                 wav_path,
                             ],
-                            check=True,
+                            timeout=30.0
                         )
-                        mp3_path = wav_path
-                        media_type = "audio/wav"
+                        if returncode == 0:
+                            mp3_path = wav_path
+                            media_type = "audio/wav"
+                        else:
+                            # Last resort: use AIFF
+                            mp3_path = tmp_path
+                            media_type = "audio/aiff"
                     except:
                         # Last resort: use AIFF
                         mp3_path = tmp_path
@@ -1761,20 +1836,14 @@ class JARVISVoiceAPI:
                                     logger.info(
                                         "[JARVIS WS] LIMITED MODE: Weather system without vision"
                                     )
-                                    import subprocess
 
                                     # Open Weather app
-                                    subprocess.run(
-                                        ["open", "-a", "Weather"], check=False
-                                    )
+                                    await async_open_app("Weather")
 
                                     # Try to navigate to My Location
                                     await asyncio.sleep(1.5)  # Wait for app to open
-                                    subprocess.run(
-                                        [
-                                            "osascript",
-                                            "-e",
-                                            """
+                                    await async_osascript(
+                                        """
                                         tell application "System Events"
                                             key code 126
                                             delay 0.2
@@ -1784,8 +1853,7 @@ class JARVISVoiceAPI:
                                             delay 0.2
                                             key code 36
                                         end tell
-                                    """,
-                                        ]
+                                    """
                                     )
 
                                     response = "I'm operating in limited mode without vision capabilities. I've opened the Weather app and navigated to your location. To enable full weather analysis with automatic reading, please ensure all JARVIS components are loaded."
@@ -1795,11 +1863,8 @@ class JARVISVoiceAPI:
                                     logger.info(
                                         "[JARVIS WS] NO WEATHER SYSTEM: Basic fallback"
                                     )
-                                    import subprocess
 
-                                    subprocess.run(
-                                        ["open", "-a", "Weather"], check=False
-                                    )
+                                    await async_open_app("Weather")
                                     response = "I'm in basic mode. I've opened the Weather app for you. For automatic weather analysis, please ensure the weather system is properly initialized."
 
                             except Exception as e:
@@ -1808,11 +1873,7 @@ class JARVISVoiceAPI:
 
                                 traceback.print_exc()
                                 try:
-                                    import subprocess
-
-                                    subprocess.run(
-                                        ["open", "-a", "Weather"], check=False
-                                    )
+                                    await async_open_app("Weather")
                                     response = "I encountered an error accessing the weather system. I've opened the Weather app for manual viewing."
                                 except:
                                     response = "I'm having difficulty accessing weather data at the moment."
