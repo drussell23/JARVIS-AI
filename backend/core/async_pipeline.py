@@ -651,9 +651,12 @@ class AdvancedAsyncPipeline:
         text_lower = context.text.lower()
         if any(phrase in text_lower for phrase in ['lock my screen', 'lock screen', 'unlock my screen', 'unlock screen', 'lock the screen', 'unlock the screen']):
             # Handle lock/unlock directly through simple handler
+            logger.info(f"[PIPELINE] Processing lock/unlock command: {context.text}")
             try:
                 from api.simple_unlock_handler import handle_unlock_command
                 result = await handle_unlock_command(context.text, self.jarvis)
+
+                logger.info(f"[PIPELINE] Lock/unlock result: success={result.get('success')}, action={result.get('action', 'unknown')}")
 
                 if result.get('success'):
                     context.response = result.get('response', 'Command executed successfully.')
@@ -663,6 +666,7 @@ class AdvancedAsyncPipeline:
                     context.metadata["lock_unlock_error"] = result.get('error', 'Unknown error')
 
                 context.metadata["handled_by"] = "simple_unlock_handler"
+                logger.info(f"[PIPELINE] Lock/unlock response: {context.response}")
                 return
             except Exception as e:
                 logger.error(f"Error handling lock/unlock: {e}")

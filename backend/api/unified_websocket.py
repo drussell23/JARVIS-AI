@@ -283,6 +283,14 @@ class UnifiedWebSocketManager:
                 )
 
                 # Return response from pipeline
+                # First check if we have a direct response
+                if result.get("response"):
+                    return {
+                        "type": "command_response",
+                        "response": result.get("response"),
+                        "success": result.get("success", True)
+                    }
+                # Fall back to metadata response
                 return result.get("metadata", {}).get("response", {
                     "type": "error",
                     "error": "No response generated"
