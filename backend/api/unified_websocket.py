@@ -547,20 +547,28 @@ ws_manager = UnifiedWebSocketManager()
 async def unified_websocket_endpoint(websocket: WebSocket):
     """Single unified WebSocket endpoint for all communication"""
     client_id = f"client_{id(websocket)}_{datetime.now().timestamp()}"
-    
+
     await ws_manager.connect(websocket, client_id)
-    
+
     try:
         while True:
             # Receive message
             data = await websocket.receive_json()
-            
+
+            # Log incoming command for debugging
+            if data.get("type") == "command" or data.get("type") == "voice_command":
+                logger.info(f"[WS] Received command: {data.get('text', data.get('command', 'unknown'))}")
+
             # Handle message
             response = await ws_manager.handle_message(client_id, data)
-            
+
+            # Log outgoing response for debugging lock/unlock
+            if "lock" in str(data).lower() or "unlock" in str(data).lower():
+                logger.info(f"[WS] Sending lock/unlock response: {response}")
+
             # Send response
             await websocket.send_json(response)
-            
+
     except WebSocketDisconnect:
         logger.info(f"Client {client_id} disconnected")
     except Exception as e:
