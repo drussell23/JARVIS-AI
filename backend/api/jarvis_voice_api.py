@@ -531,6 +531,41 @@ class JARVISVoiceAPI:
     @graceful_endpoint
     async def process_command(self, command: JARVISCommand) -> Dict:
         """Process a JARVIS command"""
+
+        # DYNAMIC COMPONENT LOADING - Load required components based on command intent
+        try:
+            from api.jarvis_factory import get_app_state
+            app_state = get_app_state()
+
+            if app_state and hasattr(app_state, 'component_manager') and app_state.component_manager:
+                manager = app_state.component_manager
+                logger.info(f"[DYNAMIC] Analyzing command for required components: '{command.text}'")
+
+                # Analyze intent and load required components
+                required_components = await manager.intent_analyzer.analyze(command.text)
+
+                if required_components:
+                    logger.info(f"[DYNAMIC] Required components: {required_components}")
+
+                    # Load each required component
+                    for comp_name in required_components:
+                        if comp_name in manager.components:
+                            comp = manager.components[comp_name]
+                            if comp.state.value != 'loaded':
+                                logger.info(f"[DYNAMIC] Loading {comp_name}...")
+                                success = await manager.load_component(comp_name)
+                                if success:
+                                    logger.info(f"[DYNAMIC] ✅ {comp_name} loaded successfully")
+                                else:
+                                    logger.warning(f"[DYNAMIC] ⚠️ {comp_name} failed to load")
+                            else:
+                                logger.debug(f"[DYNAMIC] {comp_name} already loaded")
+                                comp.last_used = asyncio.get_event_loop().time()
+                else:
+                    logger.debug(f"[DYNAMIC] No specific components required for: '{command.text}'")
+        except Exception as e:
+            logger.debug(f"[DYNAMIC] Component loading skipped: {e}")
+
         # Check if this is a multi-command workflow
         try:
             from .workflow_command_processor import handle_workflow_command

@@ -1,0 +1,37 @@
+{
+  "memory": {
+    "memory_limit_gb": 16.0,
+    "memory_buffer_percent": 0.2,
+    "pressure_thresholds": {
+      "low": 0.125,
+      "medium": 0.25,
+      "high": 0.50,
+      "critical": 0.75,
+      "emergency": 0.90
+    }
+  },
+  "loading": {
+    "max_parallel_loads": 4,
+    "load_timeout_seconds": 30,
+    "retry_attempts": 3,
+    "retry_delay_seconds": 1
+  },
+  "unloading": {
+    "idle_timeout_high_priority_seconds": 300,
+    "idle_timeout_medium_priority_seconds": 120,
+    "idle_timeout_low_priority_seconds": 60,
+    "unload_delay_seconds": 2
+  },
+  "monitoring": {
+    "memory_check_interval_seconds": 2.0,
+    "stats_update_interval_seconds": 10.0,
+    "enable_predictive_loading": true,
+    "prediction_confidence_threshold": 0.7
+  },
+  "optimization": {
+    "enable_arm64_optimizations": true,
+    "enable_neural_engine": true,
+    "enable_preloading": true,
+    "max_preload_queue_size": 3
+  }
+}

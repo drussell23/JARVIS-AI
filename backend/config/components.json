@@ -1,0 +1,74 @@
+{
+  "chatbots": {
+    "priority": "CORE",
+    "estimated_memory_mb": 150,
+    "estimated_load_time_ms": 50,
+    "intent_keywords": ["chat", "ask", "tell", "conversation", "talk", "respond", "answer", "question"],
+    "dependencies": [],
+    "description": "AI conversation & Claude Vision chatbot",
+    "import_function": "import_chatbots"
+  },
+  "vision": {
+    "priority": "HIGH",
+    "estimated_memory_mb": 300,
+    "estimated_load_time_ms": 100,
+    "intent_keywords": ["screen", "see", "look", "watch", "monitor", "capture", "desktop", "window", "vision", "analyze", "show me", "what's on"],
+    "dependencies": [],
+    "description": "Screen capture & real-time monitoring",
+    "import_function": "import_vision_system"
+  },
+  "memory": {
+    "priority": "CORE",
+    "estimated_memory_mb": 50,
+    "estimated_load_time_ms": 30,
+    "intent_keywords": [],
+    "dependencies": [],
+    "description": "Memory management & optimization",
+    "import_function": "import_memory_system"
+  },
+  "voice": {
+    "priority": "CORE",
+    "estimated_memory_mb": 100,
+    "estimated_load_time_ms": 80,
+    "intent_keywords": ["speak", "say", "tell me", "voice", "audio", "listen", "hear"],
+    "dependencies": [],
+    "description": "Voice activation & speech synthesis",
+    "import_function": "import_voice_system"
+  },
+  "ml_models": {
+    "priority": "LOW",
+    "estimated_memory_mb": 200,
+    "estimated_load_time_ms": 1500,
+    "intent_keywords": ["sentiment", "analyze text", "nlp", "language model", "classification"],
+    "dependencies": [],
+    "description": "NLP & sentiment analysis models",
+    "import_function": "import_ml_models"
+  },
+  "monitoring": {
+    "priority": "MEDIUM",
+    "estimated_memory_mb": 30,
+    "estimated_load_time_ms": 40,
+    "intent_keywords": ["status", "health", "metrics", "performance", "monitoring"],
+    "dependencies": [],
+    "description": "System health & metrics tracking",
+    "import_function": "import_monitoring"
+  },
+  "voice_unlock": {
+    "priority": "MEDIUM",
+    "estimated_memory_mb": 80,
+    "estimated_load_time_ms": 200,
+    "intent_keywords": ["unlock", "lock", "screen lock", "authenticate", "login", "voiceprint"],
+    "dependencies": ["voice"],
+    "description": "Biometric Mac authentication",
+    "import_function": "import_voice_unlock"
+  },
+  "wake_word": {
+    "priority": "HIGH",
+    "estimated_memory_mb": 120,
+    "estimated_load_time_ms": 150,
+    "intent_keywords": ["hey jarvis", "wake word", "activation"],
+    "dependencies": ["voice"],
+    "description": "Hands-free 'Hey JARVIS' activation",
+    "import_function": "import_wake_word"
+  }
+}

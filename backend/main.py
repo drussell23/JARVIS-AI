@@ -154,6 +154,22 @@ except ImportError:
 components = {}
 import_times = {}
 
+# Dynamic Component Manager
+dynamic_component_manager = None
+DYNAMIC_LOADING_ENABLED = False
+
+try:
+    from core.dynamic_component_manager import get_component_manager
+    logger.info("✅ Dynamic Component Manager available")
+    DYNAMIC_LOADING_ENABLED = os.getenv("DYNAMIC_COMPONENT_LOADING", "true").lower() == "true"
+    if DYNAMIC_LOADING_ENABLED:
+        logger.info("🧩 Dynamic Component Loading: ENABLED")
+    else:
+        logger.info("⚠️ Dynamic Component Loading: DISABLED (set DYNAMIC_COMPONENT_LOADING=true to enable)")
+except ImportError:
+    logger.warning("⚠️ Dynamic Component Manager not available - using legacy loading")
+    DYNAMIC_LOADING_ENABLED = False
+
 
 async def parallel_import_components():
     """Import all components in parallel for faster startup"""
@@ -442,6 +458,19 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting optimized JARVIS backend...")
     start_time = time.time()
 
+    # Initialize dynamic component manager if enabled
+    global dynamic_component_manager
+    if DYNAMIC_LOADING_ENABLED and get_component_manager:
+        logger.info("🧩 Initializing Dynamic Component Management System...")
+        dynamic_component_manager = get_component_manager()
+        app.state.component_manager = dynamic_component_manager
+
+        # Start memory pressure monitoring
+        asyncio.create_task(dynamic_component_manager.start_monitoring())
+        logger.info(f"   Memory limit: {dynamic_component_manager.memory_limit_gb}GB")
+        logger.info(f"   ARM64 optimized: {dynamic_component_manager.arm64_optimizer.is_arm64}")
+        logger.info("✅ Dynamic component loading enabled")
+
     # CRITICAL: Check for code changes and clean up old instances FIRST
     try:
         from process_cleanup_manager import (
@@ -473,19 +502,51 @@ async def lifespan(app: FastAPI):
         # Continue startup anyway
 
     # Run parallel imports if enabled
-    if OPTIMIZE_STARTUP and PARALLEL_IMPORTS:
-        await parallel_import_components()
-    else:
-        # Sequential imports (legacy mode)
-        logger.info("Running sequential imports (legacy mode)")
-        components["chatbots"] = import_chatbots()
-        components["vision"] = import_vision_system()
-        components["memory"] = import_memory_system()
-        components["voice"] = import_voice_system()
-        components["ml_models"] = import_ml_models()
-        components["monitoring"] = import_monitoring()
-        components["voice_unlock"] = import_voice_unlock()
-        components["wake_word"] = import_wake_word()
+    if DYNAMIC_LOADING_ENABLED and dynamic_component_manager:
+        # Dynamic loading mode - load only CORE components at startup
+        logger.info("🧩 Loading CORE components dynamically...")
+        try:
+            from core.dynamic_component_manager import ComponentPriority
+
+            # Load only CORE priority components at startup
+            core_components = [
+                name for name, comp in dynamic_component_manager.components.items()
+                if comp.priority == ComponentPriority.CORE
+            ]
+
+            logger.info(f"   Loading {len(core_components)} CORE components: {core_components}")
+
+            for comp_name in core_components:
+                success = await dynamic_component_manager.load_component(comp_name)
+                if success:
+                    comp = dynamic_component_manager.components[comp_name]
+                    components[comp_name] = comp.instance
+                    logger.info(f"   ✅ {comp_name} loaded ({comp.memory_estimate_mb}MB)")
+                else:
+                    logger.warning(f"   ⚠️ {comp_name} failed to load")
+
+            logger.info(f"✅ Dynamic component loading active - {len(core_components)} CORE components loaded")
+            logger.info(f"   Other components will load on-demand based on user commands")
+
+        except Exception as e:
+            logger.error(f"Dynamic loading failed, falling back to legacy mode: {e}")
+            DYNAMIC_LOADING_ENABLED = False
+
+    if not DYNAMIC_LOADING_ENABLED:
+        # Legacy mode - load all components at startup
+        if OPTIMIZE_STARTUP and PARALLEL_IMPORTS:
+            await parallel_import_components()
+        else:
+            # Sequential imports (legacy mode)
+            logger.info("Running sequential imports (legacy mode)")
+            components["chatbots"] = import_chatbots()
+            components["vision"] = import_vision_system()
+            components["memory"] = import_memory_system()
+            components["voice"] = import_voice_system()
+            components["ml_models"] = import_ml_models()
+            components["monitoring"] = import_monitoring()
+            components["voice_unlock"] = import_voice_unlock()
+            components["wake_word"] = import_wake_word()
 
     # Initialize memory manager
     memory_class = components.get("memory", {}).get("manager_class")
@@ -1060,6 +1121,21 @@ async def health_check():
     else:
         voice_unlock_details = {"enabled": False, "initialized": False}
 
+    # Check dynamic component manager status
+    component_manager_details = {}
+    if hasattr(app.state, "component_manager"):
+        mgr = app.state.component_manager
+        component_manager_details = {
+            "enabled": True,
+            "total_components": len(mgr.components),
+            "memory_pressure": mgr.memory_monitor.current_pressure().value,
+            "arm64_optimized": mgr.arm64_optimizer.is_arm64,
+            "m1_detected": mgr.arm64_optimizer.is_m1,
+            "config_loaded": os.path.exists(mgr.config_path) if mgr.config_path else False
+        }
+    else:
+        component_manager_details = {"enabled": False}
+
     return {
         "status": "healthy",
         "mode": "optimized" if OPTIMIZE_STARTUP else "legacy",
@@ -1074,6 +1150,7 @@ async def health_check():
         "rust_acceleration": rust_details,
         "self_healing": self_healing_details,
         "voice_unlock": voice_unlock_details,
+        "component_manager": component_manager_details,
     }
 
 
@@ -1099,6 +1176,59 @@ async def autonomous_status():
         "autonomous_enabled": orchestrator_status is not None or mesh_status is not None,
         "orchestrator": orchestrator_status,
         "mesh": mesh_status
+    }
+
+
+@app.get("/components/status")
+async def component_status():
+    """Get dynamic component manager status with performance metrics"""
+    if not hasattr(app.state, "component_manager"):
+        return {"enabled": False, "message": "Dynamic component loading not enabled"}
+
+    mgr = app.state.component_manager
+    status = mgr.get_status()
+
+    return {
+        "enabled": True,
+        "config_path": mgr.config_path,
+        "memory_limit_gb": mgr.memory_limit_gb,
+        **status  # Unpack all status fields
+    }
+
+
+@app.get("/components/metrics")
+async def component_metrics():
+    """Get detailed performance metrics"""
+    if not hasattr(app.state, "component_manager"):
+        return {"enabled": False}
+
+    mgr = app.state.component_manager
+    status = mgr.get_status()
+
+    # Calculate efficiency score
+    total_loads = status['performance']['total_loads']
+    cache_hit_rate = status['performance']['cache_hit_rate']
+    memory_saved = status['memory']['saved_mb']
+
+    efficiency_score = 0
+    if total_loads > 0:
+        # Score based on cache hits, memory savings, and load count
+        efficiency_score = min(100, (cache_hit_rate * 0.4) + (min(memory_saved / 100, 50) * 0.6))
+
+    return {
+        "enabled": True,
+        "timestamp": datetime.now().isoformat(),
+        "efficiency_score": round(efficiency_score, 1),
+        "metrics": {
+            "component_utilization": {
+                "total": status['total_components'],
+                "loaded": status['loaded_components'],
+                "utilization_percent": round((status['loaded_components'] / status['total_components']) * 100, 1) if status['total_components'] > 0 else 0
+            },
+            "memory_metrics": status['memory'],
+            "performance_metrics": status['performance'],
+            "platform_info": status['platform']
+        }
     }
 
 
