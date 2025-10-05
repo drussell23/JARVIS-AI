@@ -17,6 +17,7 @@ from voice.jarvis_personality_adapter import PersonalityAdapter
 from system_control import ClaudeCommandInterpreter, CommandCategory, SafetyLevel
 from chatbots.claude_vision_chatbot import ClaudeVisionChatbot
 from system_control.weather_bridge import WeatherBridge
+from core.async_pipeline import get_async_pipeline, AsyncCommandPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +224,10 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             "time_with_appointment": "It's {time}, {user}. {appointment_info}",
         }
 
+        # Initialize async command pipeline for non-blocking operations
+        self.async_pipeline = get_async_pipeline(jarvis_instance=self)
+        logger.info("✅ Async command pipeline initialized for non-blocking processing")
+
     def _ensure_vision_v2_initialized(self):
         """Lazy initialize Vision System v2.0 when needed"""
         if self._vision_v2_initialized:
@@ -282,8 +287,21 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         # are already set up at initialization
 
     async def process_voice_input(self, text: str) -> str:
-        """Process voice input with system control capabilities"""
+        """Process voice input with system control capabilities using async pipeline"""
         logger.info(f"[JARVIS DEBUG] process_voice_input received: '{text}'")
+
+        # Use async pipeline for completely non-blocking processing
+        try:
+            response = await self.async_pipeline.process_async(text, self.user_name)
+            return response
+        except Exception as e:
+            logger.error(f"Async pipeline error: {e}", exc_info=True)
+            # Fallback to legacy processing if async pipeline fails
+            return await self._legacy_process_voice_input(text)
+
+    async def _legacy_process_voice_input(self, text: str) -> str:
+        """Legacy processing method (fallback)"""
+        logger.info(f"[JARVIS DEBUG] Using legacy processing for: '{text}'")
 
         # Check if we need to detect wake word in text
         if not self.running:
