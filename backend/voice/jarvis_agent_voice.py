@@ -17,7 +17,7 @@ from voice.jarvis_personality_adapter import PersonalityAdapter
 from system_control import ClaudeCommandInterpreter, CommandCategory, SafetyLevel
 from chatbots.claude_vision_chatbot import ClaudeVisionChatbot
 from system_control.weather_bridge import WeatherBridge
-from core.async_pipeline import get_async_pipeline, AsyncCommandPipeline
+from core.async_pipeline import get_async_pipeline, AdvancedAsyncPipeline
 
 logger = logging.getLogger(__name__)
 

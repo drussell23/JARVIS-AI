@@ -13,6 +13,9 @@ import base64
 from PIL import Image
 import io
 
+# Import async pipeline for non-blocking vision operations
+from core.async_pipeline import get_async_pipeline, AdvancedAsyncPipeline
+
 logger = logging.getLogger(__name__)
 
 # Try to import necessary components
@@ -62,7 +65,11 @@ class VisionSystemV2:
         """Initialize Vision System v2.0 with all available components"""
         self.initialized = False
         self.components = {}
-        
+
+        # Initialize async pipeline for vision operations
+        self.pipeline = get_async_pipeline()
+        self._register_pipeline_stages()
+
         # Phase 1: ML Intent Classification
         if INTENT_CLASSIFIER_AVAILABLE:
             try:
@@ -118,31 +125,132 @@ class VisionSystemV2:
             logger.info(f"✅ Vision System v2.0 initialized with {len(self.components)} components")
         else:
             logger.error("❌ Vision System v2.0 failed to initialize any components")
-    
+
+    def _register_pipeline_stages(self):
+        """Register async pipeline stages for vision operations"""
+
+        # Screen capture stage
+        self.pipeline.register_stage(
+            "screen_capture",
+            self._capture_screen_async,
+            timeout=5.0,
+            retry_count=1,
+            required=True
+        )
+
+        # Intent classification stage
+        self.pipeline.register_stage(
+            "intent_classification",
+            self._classify_intent_async,
+            timeout=3.0,
+            retry_count=0,
+            required=False  # Optional - can proceed without intent
+        )
+
+        # Vision analysis stage
+        self.pipeline.register_stage(
+            "vision_analysis",
+            self._analyze_vision_async,
+            timeout=15.0,
+            retry_count=1,
+            required=True
+        )
+
+    async def _capture_screen_async(self, context):
+        """Non-blocking screen capture via async pipeline"""
+        try:
+            screenshot = await self._capture_screen()
+
+            if screenshot:
+                context.metadata["screenshot"] = screenshot
+                context.metadata["capture_success"] = True
+            else:
+                context.metadata["error"] = "Failed to capture screenshot"
+
+        except Exception as e:
+            logger.error(f"Screen capture failed: {e}")
+            context.metadata["error"] = str(e)
+
+    async def _classify_intent_async(self, context):
+        """Non-blocking intent classification via async pipeline"""
+        try:
+            command = context.text
+
+            if hasattr(self, 'intent_classifier') and self.intent_classifier:
+                intent_result = await self._classify_intent(command)
+                context.metadata["intent"] = intent_result.get('intent', 'analyze')
+                context.metadata["intent_confidence"] = intent_result.get('confidence', 0.5)
+            else:
+                context.metadata["intent"] = "analyze"
+                context.metadata["intent_confidence"] = 0.5
+
+        except Exception as e:
+            logger.error(f"Intent classification failed: {e}")
+            context.metadata["intent"] = "analyze"
+
+    async def _analyze_vision_async(self, context):
+        """Non-blocking vision analysis via async pipeline"""
+        try:
+            screenshot = context.metadata.get("screenshot")
+            command = context.text
+            intent = context.metadata.get("intent", "analyze")
+            params = context.metadata.get("params", {})
+
+            if screenshot:
+                # Execute analysis based on available analyzers
+                if hasattr(self, 'claude_analyzer') and self.claude_analyzer:
+                    result = await self._execute_claude_analysis(command, intent, params)
+                elif hasattr(self, 'memory_analyzer') and self.memory_analyzer:
+                    result = await self._execute_memory_analysis(command, intent, params)
+                else:
+                    result = await self._execute_fallback_analysis(command, intent, params)
+
+                context.metadata["analysis_result"] = result
+            else:
+                context.metadata["error"] = "No screenshot available for analysis"
+
+        except Exception as e:
+            logger.error(f"Vision analysis failed: {e}")
+            context.metadata["error"] = str(e)
+
     async def process_command(self, command: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Process vision command through ML pipeline"""
+        """
+        Process vision command through async pipeline
+
+        Args:
+            command: Vision command to process
+            params: Optional parameters
+
+        Returns:
+            Analysis result dictionary
+        """
         if not self.initialized:
             return {
                 "success": False,
                 "error": "Vision System v2.0 not initialized",
                 "message": "No vision components available"
             }
-        
+
         try:
-            # Phase 1: Classify intent
-            intent = None
-            if hasattr(self, 'intent_classifier') and self.intent_classifier:
-                intent_result = await self._classify_intent(command)
-                intent = intent_result.get('intent', 'analyze')
-            
-            # Phase 2: Execute vision analysis
-            if hasattr(self, 'claude_analyzer') and self.claude_analyzer:
-                return await self._execute_claude_analysis(command, intent, params)
-            elif hasattr(self, 'memory_analyzer') and self.memory_analyzer:
-                return await self._execute_memory_analysis(command, intent, params)
+            # Process through async pipeline for non-blocking execution
+            result = await self.pipeline.process_async(
+                text=command,
+                metadata={"params": params or {}}
+            )
+
+            # Extract analysis result from pipeline
+            analysis_result = result.get("metadata", {}).get("analysis_result")
+
+            if analysis_result:
+                return analysis_result
             else:
-                return await self._execute_fallback_analysis(command, intent, params)
-                
+                error = result.get("metadata", {}).get("error", "Unknown error")
+                return {
+                    "success": False,
+                    "error": error,
+                    "message": "Failed to process vision command"
+                }
+
         except Exception as e:
             logger.error(f"Error processing command: {e}")
             return {

@@ -19,6 +19,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from datetime import datetime
 
+# Import async pipeline for non-blocking document operations
+from core.async_pipeline import get_async_pipeline, AdvancedAsyncPipeline
+
 logger = logging.getLogger(__name__)
 
 
@@ -278,6 +281,147 @@ class DocumentWriterExecutor:
         self._narration_count = 0  # Track total narrations to reduce frequency
         self._skip_similar_phases = True  # Skip narration for similar phases
 
+        # Initialize async pipeline for non-blocking document operations
+        self.pipeline = get_async_pipeline()
+        self._register_pipeline_stages()
+
+    def _register_pipeline_stages(self):
+        """Register async pipeline stages for document operations"""
+
+        # Service initialization stage
+        self.pipeline.register_stage(
+            "service_init",
+            self._init_services_async,
+            timeout=15.0,
+            retry_count=2,
+            required=True
+        )
+
+        # Google Doc creation stage
+        self.pipeline.register_stage(
+            "doc_creation",
+            self._create_doc_async,
+            timeout=20.0,
+            retry_count=3,
+            required=True
+        )
+
+        # Content generation stage
+        self.pipeline.register_stage(
+            "content_generation",
+            self._generate_content_async,
+            timeout=120.0,  # Longer timeout for AI content generation
+            retry_count=1,
+            required=True
+        )
+
+        # Content streaming stage
+        self.pipeline.register_stage(
+            "content_streaming",
+            self._stream_to_doc_async,
+            timeout=60.0,
+            retry_count=1,
+            required=True
+        )
+
+    async def _init_services_async(self, context):
+        """Non-blocking service initialization via async pipeline"""
+        request = context.metadata.get("request")
+
+        try:
+            # Initialize Google Docs API
+            if request.use_google_docs_api:
+                from ..automation.google_docs_api import get_google_docs_client
+                self._google_docs = get_google_docs_client()
+
+                if not await self._google_docs.authenticate():
+                    context.metadata["error"] = "Failed to authenticate with Google Docs API"
+                    return
+
+            # Initialize Claude
+            from ..automation.claude_streamer import get_claude_streamer
+            self._claude = get_claude_streamer()
+
+            # Initialize browser
+            from ..automation.browser_controller import get_browser_controller
+            self._browser = get_browser_controller(request.browser)
+
+            context.metadata["services_ready"] = True
+
+        except Exception as e:
+            logger.error(f"Error initializing services: {e}")
+            context.metadata["error"] = str(e)
+
+    async def _create_doc_async(self, context):
+        """Non-blocking Google Doc creation via async pipeline"""
+        request = context.metadata.get("request")
+
+        for attempt in range(request.max_retries):
+            try:
+                doc_info = await self._google_docs.create_document(request.title)
+                if doc_info:
+                    logger.info(f"Created Google Doc: {doc_info['document_id']}")
+                    context.metadata["doc_info"] = doc_info
+                    context.metadata["document_id"] = doc_info['document_id']
+                    context.metadata["document_url"] = doc_info['document_url']
+                    return
+            except Exception as e:
+                logger.warning(f"Attempt {attempt + 1} failed: {e}")
+                if attempt < request.max_retries - 1:
+                    await asyncio.sleep(request.retry_delay)
+
+        context.metadata["error"] = "Failed to create Google Doc after retries"
+
+    async def _generate_content_async(self, context):
+        """Non-blocking content generation via async pipeline"""
+        request = context.metadata.get("request")
+        outline = context.metadata.get("outline")
+
+        content_prompt = self._build_content_prompt(request, outline)
+        context.metadata["content_prompt"] = content_prompt
+        context.metadata["ready_for_streaming"] = True
+
+    async def _stream_to_doc_async(self, context):
+        """Non-blocking content streaming to Google Doc via async pipeline"""
+        document_id = context.metadata.get("document_id")
+        request = context.metadata.get("request")
+        content_prompt = context.metadata.get("content_prompt")
+        progress_callback = context.metadata.get("progress_callback")
+        websocket = context.metadata.get("websocket")
+
+        word_count = 0
+        buffer = ""
+
+        try:
+            async for chunk in self._claude.stream_content(
+                content_prompt,
+                max_tokens=request.claude_max_tokens,
+                model=request.claude_model
+            ):
+                buffer += chunk
+
+                if len(buffer) >= request.chunk_size:
+                    success = await self._google_docs.append_text(document_id, buffer)
+
+                    if success:
+                        current_words = len(buffer.split())
+                        word_count += current_words
+
+                    buffer = ""
+                    await asyncio.sleep(request.stream_delay)
+
+            # Write remaining buffer
+            if buffer:
+                await self._google_docs.append_text(document_id, buffer)
+                word_count += len(buffer.split())
+
+            context.metadata["word_count"] = word_count
+
+        except Exception as e:
+            logger.error(f"Error streaming content: {e}")
+            context.metadata["error"] = str(e)
+            context.metadata["word_count"] = word_count
+
     async def create_document(self,
                             request: DocumentRequest,
                             progress_callback: Optional[Callable] = None,
@@ -315,16 +459,25 @@ class DocumentWriterExecutor:
                 "total_words_target": request.word_count or 1000
             })
 
-            # Phase 2: Initialize services with dynamic feedback
+            # Phase 2: Initialize services via async pipeline
             await self._narrate(progress_callback, websocket, context={
                 "phase": "initializing_services",
                 "progress": 10
             })
 
-            if not await self._initialize_services(request):
+            # Route through async pipeline for service initialization
+            init_result = await self.pipeline.process_async(
+                text=f"Initialize document services for {request.topic}",
+                metadata={
+                    "request": request,
+                    "stage": "service_init"
+                }
+            )
+
+            if init_result.get("metadata", {}).get("error"):
                 return {
                     "success": False,
-                    "error": "Failed to initialize required services"
+                    "error": init_result["metadata"]["error"]
                 }
 
             await self._narrate(progress_callback, websocket, context={
@@ -332,22 +485,37 @@ class DocumentWriterExecutor:
                 "progress": 20
             })
 
-            # Phase 3: Create Google Doc via API
+            # Phase 3: Create Google Doc via async pipeline
             await self._narrate(progress_callback, websocket, context={
                 "phase": "creating_document",
                 "progress": 25,
                 "current_section": f"Google Doc: {request.title}"
             })
 
-            doc_info = await self._create_google_doc(request)
-            if not doc_info:
+            # Route through async pipeline for doc creation
+            doc_result = await self.pipeline.process_async(
+                text=f"Create Google Doc: {request.title}",
+                metadata={
+                    "request": request,
+                    "stage": "doc_creation"
+                }
+            )
+
+            doc_metadata = doc_result.get("metadata", {})
+            if doc_metadata.get("error"):
+                return {
+                    "success": False,
+                    "error": doc_metadata["error"]
+                }
+
+            document_id = doc_metadata.get("document_id")
+            document_url = doc_metadata.get("document_url")
+
+            if not document_id or not document_url:
                 return {
                     "success": False,
                     "error": "Failed to create Google Doc"
                 }
-
-            document_id = doc_info['document_id']
-            document_url = doc_info['document_url']
 
             await self._narrate(progress_callback, websocket, context={
                 "phase": "document_created",

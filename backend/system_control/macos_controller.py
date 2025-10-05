@@ -15,6 +15,9 @@ import asyncio
 from enum import Enum
 import re
 
+# Import async pipeline for non-blocking operations
+from core.async_pipeline import get_async_pipeline, AdvancedAsyncPipeline
+
 logger = logging.getLogger(__name__)
 
 class CommandCategory(Enum):
@@ -83,6 +86,100 @@ class MacOSController:
             "keynote": "Keynote"
         }
 
+        # Initialize async pipeline for non-blocking operations
+        self.pipeline = get_async_pipeline()
+        self._register_pipeline_stages()
+
+    def _register_pipeline_stages(self):
+        """Register async pipeline stages for system operations"""
+
+        # AppleScript execution stage
+        self.pipeline.register_stage(
+            "applescript_execution",
+            self._execute_applescript_async,
+            timeout=10.0,
+            retry_count=1,
+            required=True
+        )
+
+        # Shell command execution stage
+        self.pipeline.register_stage(
+            "shell_execution",
+            self._execute_shell_async,
+            timeout=30.0,
+            retry_count=1,
+            required=True
+        )
+
+        # Application control stage
+        self.pipeline.register_stage(
+            "app_control",
+            self._app_control_async,
+            timeout=15.0,
+            retry_count=2,
+            required=True
+        )
+
+    async def _execute_applescript_async(self, context):
+        """Non-blocking AppleScript execution via async pipeline"""
+        from api.jarvis_voice_api import async_osascript
+
+        script = context.metadata.get("script", "")
+        timeout = context.metadata.get("timeout", 10.0)
+
+        stdout, stderr, returncode = await async_osascript(script, timeout=timeout)
+
+        context.metadata["returncode"] = returncode
+        context.metadata["stdout"] = stdout.decode() if stdout else ""
+        context.metadata["stderr"] = stderr.decode() if stderr else ""
+        context.metadata["success"] = returncode == 0
+
+    async def _execute_shell_async(self, context):
+        """Non-blocking shell command execution via async pipeline"""
+        from api.jarvis_voice_api import async_subprocess_run
+
+        command = context.metadata.get("command", "")
+        timeout = context.metadata.get("timeout", 30.0)
+        safe_mode = context.metadata.get("safe_mode", True)
+
+        # Safety checks if safe_mode is enabled
+        if safe_mode:
+            dangerous_patterns = [
+                r'rm\s+-rf', r'sudo', r'dd\s+', r'mkfs', r'format',
+                r'>\s*/dev/', r'chmod\s+777', r'pkill', r'killall'
+            ]
+            for pattern in dangerous_patterns:
+                if re.search(pattern, command, re.IGNORECASE):
+                    context.metadata["success"] = False
+                    context.metadata["error"] = f"Blocked dangerous command pattern: {pattern}"
+                    return
+
+        stdout, stderr, returncode = await async_subprocess_run(command, timeout=timeout)
+
+        context.metadata["returncode"] = returncode
+        context.metadata["stdout"] = stdout.decode() if stdout else ""
+        context.metadata["stderr"] = stderr.decode() if stderr else ""
+        context.metadata["success"] = returncode == 0
+
+    async def _app_control_async(self, context):
+        """Non-blocking application control via async pipeline"""
+        action = context.metadata.get("action", "")
+        app_name = context.metadata.get("app_name", "")
+
+        if action == "open":
+            script = f'tell application "{app_name}" to activate'
+        elif action == "close":
+            script = f'tell application "{app_name}" to quit'
+        elif action == "switch":
+            script = f'tell application "System Events" to set frontmost of process "{app_name}" to true'
+        else:
+            context.metadata["success"] = False
+            context.metadata["error"] = f"Unknown action: {action}"
+            return
+
+        context.metadata["script"] = script
+        await self._execute_applescript_async(context)
+
     def _check_screen_lock_status(self) -> bool:
         """
         Check if screen is currently locked
@@ -123,52 +220,84 @@ class MacOSController:
         # For other commands, inform user and suggest unlock
         return False, f"Your screen is locked, Sir. I cannot execute {command_type} commands while locked. Would you like me to unlock your screen first?"
         
+    async def execute_applescript_pipeline(self, script: str, timeout: float = 10.0) -> Tuple[bool, str]:
+        """Execute AppleScript through async pipeline (NEW METHOD)"""
+        try:
+            result = await self.pipeline.process_async(
+                text=f"Execute AppleScript",
+                metadata={
+                    "script": script,
+                    "timeout": timeout,
+                    "stage": "applescript_execution"
+                }
+            )
+
+            metadata = result.get("metadata", {})
+            success = metadata.get("success", False)
+            stdout = metadata.get("stdout", "")
+            stderr = metadata.get("stderr", "")
+
+            return (success, stdout if success else stderr)
+
+        except Exception as e:
+            logger.error(f"Pipeline AppleScript execution failed: {e}")
+            return False, str(e)
+
     def execute_applescript(self, script: str) -> Tuple[bool, str]:
-        """Execute AppleScript and return result"""
+        """Execute AppleScript (LEGACY - synchronous fallback)"""
+        # Run async version in sync context
         try:
-            result = subprocess.run(
-                ["osascript", "-e", script],
-                capture_output=True,
-                text=True,
-                timeout=10  # Increased for apps that take longer to respond
-            )
-            if result.returncode == 0:
-                return True, result.stdout.strip()
-            else:
-                return False, result.stderr.strip()
-        except subprocess.TimeoutExpired:
-            return False, "Command timed out"
-        except Exception as e:
-            return False, str(e)
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        return loop.run_until_complete(self.execute_applescript_pipeline(script))
             
-    def execute_shell(self, command: str, safe_mode: bool = True) -> Tuple[bool, str]:
-        """Execute shell command with safety checks"""
-        if safe_mode:
-            # Block dangerous commands
-            dangerous_patterns = [
-                r'rm\s+-rf', r'sudo', r'dd\s+', r'mkfs', r'format',
-                r'>\s*/dev/', r'chmod\s+777', r'pkill', r'killall'
-            ]
-            for pattern in dangerous_patterns:
-                if re.search(pattern, command, re.IGNORECASE):
-                    return False, f"Blocked dangerous command pattern: {pattern}"
-                    
+    async def execute_shell_pipeline(self, command: str, safe_mode: bool = True, timeout: float = 30.0) -> Tuple[bool, str]:
+        """Execute shell command through async pipeline (NEW METHOD)"""
         try:
-            result = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=30
+            result = await self.pipeline.process_async(
+                text=f"Execute shell command",
+                metadata={
+                    "command": command,
+                    "safe_mode": safe_mode,
+                    "timeout": timeout,
+                    "stage": "shell_execution"
+                }
             )
-            return result.returncode == 0, result.stdout or result.stderr
+
+            metadata = result.get("metadata", {})
+
+            # Check if command was blocked
+            if "error" in metadata:
+                return False, metadata["error"]
+
+            success = metadata.get("success", False)
+            stdout = metadata.get("stdout", "")
+            stderr = metadata.get("stderr", "")
+
+            return (success, stdout if success else stderr)
+
         except Exception as e:
+            logger.error(f"Pipeline shell execution failed: {e}")
             return False, str(e)
+
+    def execute_shell(self, command: str, safe_mode: bool = True) -> Tuple[bool, str]:
+        """Execute shell command (LEGACY - synchronous fallback)"""
+        # Run async version in sync context
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        return loop.run_until_complete(self.execute_shell_pipeline(command, safe_mode))
             
     # Application Control Methods
-    
-    def open_application(self, app_name: str) -> Tuple[bool, str]:
-        """Open an application"""
+
+    async def open_application_pipeline(self, app_name: str) -> Tuple[bool, str]:
+        """Open application through async pipeline (NEW METHOD)"""
         # Check if screen is locked
         if self._check_screen_lock_status():
             should_proceed, message = self._handle_locked_screen_command('open_application')
@@ -177,22 +306,44 @@ class MacOSController:
 
         # Resolve aliases
         app_name = self.app_aliases.get(app_name.lower(), app_name)
-        
+
         # Check if blocked
         if app_name in self.blocked_apps:
             return False, f"Opening {app_name} is blocked for safety"
-            
-        script = f'tell application "{app_name}" to activate'
-        success, message = self.execute_applescript(script)
-        
-        if success:
-            return True, f"Opening {app_name}, Sir"
-        else:
-            # Try alternative method
-            success, message = self.execute_shell(f"open -a '{app_name}'")
+
+        try:
+            # Use async pipeline for app control
+            result = await self.pipeline.process_async(
+                text=f"Open application {app_name}",
+                metadata={
+                    "action": "open",
+                    "app_name": app_name,
+                    "stage": "app_control"
+                }
+            )
+
+            metadata = result.get("metadata", {})
+            success = metadata.get("success", False)
+
             if success:
-                return True, f"Opening {app_name} for you"
+                return True, f"Opening {app_name}, Sir"
+            else:
+                # Try alternative method through shell pipeline
+                return await self.execute_shell_pipeline(f"open -a '{app_name}'")
+
+        except Exception as e:
+            logger.error(f"Failed to open {app_name}: {e}")
             return False, f"I'm unable to open {app_name}, Sir"
+
+    def open_application(self, app_name: str) -> Tuple[bool, str]:
+        """Open an application (LEGACY - synchronous fallback)"""
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        return loop.run_until_complete(self.open_application_pipeline(app_name))
             
     def close_application(self, app_name: str) -> Tuple[bool, str]:
         """Close an application gracefully"""

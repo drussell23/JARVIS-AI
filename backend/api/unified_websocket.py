@@ -10,6 +10,9 @@ import asyncio
 from typing import Dict, Any, Optional, Set
 from datetime import datetime
 
+# Import async pipeline for non-blocking WebSocket operations
+from core.async_pipeline import get_async_pipeline, AdvancedAsyncPipeline
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -21,9 +24,14 @@ connection_capabilities: Dict[str, Set[str]] = {}
 
 class UnifiedWebSocketManager:
     """Manages all WebSocket connections and message routing"""
-    
+
     def __init__(self):
         self.connections: Dict[str, WebSocket] = {}
+
+        # Initialize async pipeline for WebSocket operations
+        self.pipeline = get_async_pipeline()
+        self._register_pipeline_stages()
+
         self.handlers = {
             # Voice/JARVIS handlers
             "command": self._handle_voice_command,  # Main command handler
@@ -49,7 +57,177 @@ class UnifiedWebSocketManager:
             "subscribe": self._handle_subscribe,
             "unsubscribe": self._handle_unsubscribe,
         }
-        
+
+    def _register_pipeline_stages(self):
+        """Register async pipeline stages for WebSocket operations"""
+
+        # Message processing stage
+        self.pipeline.register_stage(
+            "message_processing",
+            self._process_message_async,
+            timeout=30.0,
+            retry_count=1,
+            required=True
+        )
+
+        # Command execution stage
+        self.pipeline.register_stage(
+            "command_execution",
+            self._execute_command_async,
+            timeout=45.0,
+            retry_count=2,
+            required=True
+        )
+
+        # Response streaming stage
+        self.pipeline.register_stage(
+            "response_streaming",
+            self._stream_response_async,
+            timeout=60.0,
+            retry_count=0,
+            required=False  # Optional for non-streaming responses
+        )
+
+    async def _process_message_async(self, context):
+        """Non-blocking message processing via async pipeline"""
+        try:
+            message = context.metadata.get("message", {})
+            client_id = context.metadata.get("client_id", "")
+
+            # Parse message type
+            msg_type = message.get("type", "")
+            context.metadata["msg_type"] = msg_type
+
+            # Validate message
+            if not msg_type:
+                context.metadata["error"] = "Missing message type"
+                return
+
+            # Store for next stage
+            context.metadata["validated"] = True
+
+        except Exception as e:
+            logger.error(f"Message processing error: {e}")
+            context.metadata["error"] = str(e)
+
+    async def _execute_command_async(self, context):
+        """Non-blocking command execution via async pipeline"""
+        try:
+            message = context.metadata.get("message", {})
+            msg_type = context.metadata.get("msg_type", "")
+            client_id = context.metadata.get("client_id", "")
+
+            # Route to appropriate handler
+            if msg_type == "command" or msg_type == "voice_command":
+                # Execute voice command
+                from .jarvis_voice_api import jarvis_api
+                from pydantic import BaseModel
+
+                class VoiceCommand(BaseModel):
+                    text: str
+
+                command_text = message.get("command", message.get("text", ""))
+                command_obj = VoiceCommand(text=command_text)
+
+                result = await jarvis_api.process_command(command_obj)
+
+                context.metadata["response"] = {
+                    "type": "response",
+                    "text": result.get("response", ""),
+                    "status": result.get("status", "success"),
+                    "command_type": result.get("command_type", "unknown"),
+                    "speak": True
+                }
+
+            elif msg_type == "vision_analyze":
+                # Execute vision analysis
+                context.metadata["response"] = await self._execute_vision_analysis(message)
+
+            else:
+                context.metadata["response"] = {
+                    "type": "error",
+                    "error": f"Unknown message type: {msg_type}"
+                }
+
+        except Exception as e:
+            logger.error(f"Command execution error: {e}")
+            context.metadata["error"] = str(e)
+            context.metadata["response"] = {
+                "type": "error",
+                "error": str(e)
+            }
+
+    async def _stream_response_async(self, context):
+        """Non-blocking response streaming via async pipeline"""
+        try:
+            websocket = context.metadata.get("websocket")
+            response = context.metadata.get("response", {})
+            stream_mode = context.metadata.get("stream_mode", False)
+
+            if stream_mode and websocket:
+                # Stream response in chunks
+                response_text = response.get("text", "")
+                chunk_size = 50
+
+                for i in range(0, len(response_text), chunk_size):
+                    chunk = response_text[i:i + chunk_size]
+                    await websocket.send_json({
+                        "type": "stream_chunk",
+                        "chunk": chunk,
+                        "progress": (i + chunk_size) / len(response_text)
+                    })
+                    await asyncio.sleep(0.05)
+
+                # Send completion
+                await websocket.send_json({
+                    "type": "stream_complete",
+                    "message": "Streaming complete"
+                })
+            else:
+                # Send complete response
+                if websocket and response:
+                    await websocket.send_json(response)
+
+            context.metadata["sent"] = True
+
+        except Exception as e:
+            logger.error(f"Response streaming error: {e}")
+            context.metadata["error"] = str(e)
+
+    async def _execute_vision_analysis(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute vision analysis (helper for command execution)"""
+        try:
+            from ..main import app
+
+            if hasattr(app.state, 'vision_analyzer'):
+                analyzer = app.state.vision_analyzer
+
+                screenshot = await analyzer.capture_screen()
+                if screenshot:
+                    query = message.get("query", "Describe what you see on screen")
+                    result = await analyzer.describe_screen({"screenshot": screenshot, "query": query})
+
+                    return {
+                        "type": "vision_result",
+                        "success": result.get("success", False),
+                        "description": result.get("description", ""),
+                        "timestamp": datetime.now().isoformat()
+                    }
+
+            return {
+                "type": "vision_result",
+                "success": False,
+                "error": "Vision analyzer not available"
+            }
+
+        except Exception as e:
+            logger.error(f"Vision analysis error: {e}")
+            return {
+                "type": "vision_result",
+                "success": False,
+                "error": str(e)
+            }
+
     async def connect(self, websocket: WebSocket, client_id: str):
         """Accept new WebSocket connection"""
         await websocket.accept()
@@ -74,10 +252,52 @@ class UnifiedWebSocketManager:
         logger.info(f"Client {client_id} disconnected")
         
     async def handle_message(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
-        """Route message to appropriate handler"""
+        """
+        Route message to appropriate handler via async pipeline
+
+        Args:
+            client_id: Client identifier
+            message: Message to process
+
+        Returns:
+            Response dictionary
+        """
         msg_type = message.get("type", "")
-        
-        if msg_type in self.handlers:
+
+        # Check if message type should use pipeline processing
+        pipeline_types = {"command", "voice_command", "jarvis_command", "vision_analyze", "vision_monitor"}
+
+        if msg_type in pipeline_types:
+            try:
+                # Process through async pipeline for non-blocking execution
+                websocket = self.connections.get(client_id)
+
+                result = await self.pipeline.process_async(
+                    text=message.get("text", message.get("command", "")),
+                    metadata={
+                        "message": message,
+                        "client_id": client_id,
+                        "websocket": websocket,
+                        "stream_mode": message.get("stream", False)
+                    }
+                )
+
+                # Return response from pipeline
+                return result.get("metadata", {}).get("response", {
+                    "type": "error",
+                    "error": "No response generated"
+                })
+
+            except Exception as e:
+                logger.error(f"Pipeline processing error for {msg_type}: {e}")
+                return {
+                    "type": "error",
+                    "error": str(e),
+                    "original_type": msg_type
+                }
+
+        # Fall back to legacy handlers for other message types
+        elif msg_type in self.handlers:
             try:
                 return await self.handlers[msg_type](client_id, message)
             except Exception as e:
