@@ -5,6 +5,8 @@ Simple Unlock Handler
 
 Direct unlock functionality without complex state management.
 Just unlock the screen when asked.
+
+Now integrated with AdvancedAsyncPipeline for non-blocking operations.
 """
 
 import asyncio
@@ -12,12 +14,78 @@ import logging
 import websockets
 import json
 import os
-import subprocess
 from typing import Dict, Any
+
+# Import async pipeline
+from core.async_pipeline import get_async_pipeline
 
 logger = logging.getLogger(__name__)
 
 VOICE_UNLOCK_WS_URL = "ws://localhost:8765/voice-unlock"
+
+# Global pipeline instance
+_pipeline = None
+
+def _get_pipeline():
+    """Get or create the async pipeline instance"""
+    global _pipeline
+    if _pipeline is None:
+        _pipeline = get_async_pipeline()
+        _register_pipeline_stages()
+    return _pipeline
+
+def _register_pipeline_stages():
+    """Register simple unlock handler pipeline stages"""
+    global _pipeline
+
+    _pipeline.register_stage(
+        "unlock_caffeinate",
+        _caffeinate_async,
+        timeout=3.0,
+        retry_count=1,
+        required=False
+    )
+    _pipeline.register_stage(
+        "unlock_applescript",
+        _applescript_unlock_async,
+        timeout=15.0,
+        retry_count=1,
+        required=True
+    )
+    logger.info("✅ Simple unlock handler pipeline stages registered")
+
+async def _caffeinate_async(context):
+    """Async pipeline handler for waking display"""
+    from api.jarvis_voice_api import async_subprocess_run
+
+    try:
+        stdout, stderr, returncode = await async_subprocess_run(
+            ['caffeinate', '-u', '-t', '1'],
+            timeout=2.0
+        )
+        context.metadata["caffeinate_success"] = (returncode == 0)
+        context.metadata["success"] = True
+    except Exception as e:
+        context.metadata["caffeinate_success"] = False
+        context.metadata["error"] = str(e)
+        context.metadata["success"] = False
+
+async def _applescript_unlock_async(context):
+    """Async pipeline handler for AppleScript unlock"""
+    from api.jarvis_voice_api import async_osascript
+
+    script = context.metadata.get("script", "")
+    timeout = context.metadata.get("timeout", 10.0)
+
+    try:
+        stdout, stderr, returncode = await async_osascript(script, timeout=timeout)
+        context.metadata["returncode"] = returncode
+        context.metadata["stdout"] = stdout.decode() if stdout else ""
+        context.metadata["stderr"] = stderr.decode() if stderr else ""
+        context.metadata["success"] = (returncode == 0)
+    except Exception as e:
+        context.metadata["success"] = False
+        context.metadata["error"] = str(e)
 
 
 def _escape_password_for_applescript(password: str) -> str:
@@ -29,7 +97,7 @@ def _escape_password_for_applescript(password: str) -> str:
 
 async def _perform_direct_unlock(password: str) -> bool:
     """
-    Perform direct screen unlock using AppleScript and password
+    Perform direct screen unlock using AppleScript and password via async pipeline
 
     Args:
         password: The user's Mac password from keychain
@@ -38,10 +106,14 @@ async def _perform_direct_unlock(password: str) -> bool:
         bool: True if unlock succeeded, False otherwise
     """
     try:
-        logger.info("[DIRECT UNLOCK] Starting unlock sequence")
+        logger.info("[DIRECT UNLOCK] Starting unlock sequence via async pipeline")
+        pipeline = _get_pipeline()
 
-        # Wake the display first
-        subprocess.run(['caffeinate', '-u', '-t', '1'], capture_output=True)
+        # Wake the display first via pipeline
+        wake_result = await pipeline.process_async(
+            text="Wake display for unlock",
+            metadata={"stage": "unlock_caffeinate"}
+        )
         await asyncio.sleep(1)
 
         # Wake script - move mouse and activate loginwindow
@@ -71,7 +143,15 @@ async def _perform_direct_unlock(password: str) -> bool:
         end tell
         '''
 
-        subprocess.run(['osascript', '-e', wake_script], capture_output=True)
+        # Execute wake script via pipeline
+        wake_script_result = await pipeline.process_async(
+            text="Execute wake script",
+            metadata={
+                "script": wake_script,
+                "timeout": 10.0,
+                "stage": "unlock_applescript"
+            }
+        )
         await asyncio.sleep(0.5)
 
         # Escape password for AppleScript
@@ -96,9 +176,20 @@ async def _perform_direct_unlock(password: str) -> bool:
         end tell
         '''
 
-        result = subprocess.run(['osascript', '-e', password_script], capture_output=True, text=True)
+        # Execute password script via pipeline
+        result = await pipeline.process_async(
+            text="Execute password unlock script",
+            metadata={
+                "script": password_script,
+                "timeout": 15.0,
+                "stage": "unlock_applescript"
+            }
+        )
 
-        if result.returncode == 0:
+        metadata = result.get("metadata", {})
+        returncode = metadata.get("returncode", -1)
+
+        if returncode == 0:
             # Wait a bit for unlock to complete
             await asyncio.sleep(1.5)
 
@@ -258,34 +349,19 @@ async def handle_unlock_command(command: str, jarvis_instance=None) -> Dict[str,
         # This catches websockets connection errors and other exceptions
         logger.warning(f"[SIMPLE UNLOCK] Voice unlock daemon not running: {e}")
 
-        # For lock_screen, execute directly without the daemon
+        # For lock_screen, use the MacOS controller which has async pipeline integration
         if action == "lock_screen":
-            logger.info("[SIMPLE UNLOCK] Falling back to direct macOS lock command")
+            logger.info("[SIMPLE UNLOCK] Routing lock command to MacOS controller with async pipeline")
 
-            # Try multiple methods to lock the screen
-            lock_success = False
-
-            # Method 1: Try CGSession first (most reliable on older macOS)
             try:
-                cgsession_path = '/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession'
-                if os.path.exists(cgsession_path):
-                    result = subprocess.run([cgsession_path, '-suspend'], capture_output=True, text=True)
-                    if result.returncode == 0:
-                        lock_success = True
-                        logger.info("[SIMPLE UNLOCK] Screen locked using CGSession")
+                from system_control.macos_controller import MacOSController
+                controller = MacOSController()
+                success, message = await controller.lock_screen()
+                lock_success = success
+                logger.info(f"[SIMPLE UNLOCK] Lock result: {success}, {message}")
             except Exception as e:
-                logger.debug(f"CGSession method failed: {e}")
-
-            # Method 2: Use AppleScript keyboard shortcut (Cmd+Ctrl+Q)
-            if not lock_success:
-                try:
-                    script = 'tell application "System Events" to keystroke "q" using {command down, control down}'
-                    result = subprocess.run(['osascript', '-e', script], capture_output=True, text=True)
-                    if result.returncode == 0:
-                        lock_success = True
-                        logger.info("[SIMPLE UNLOCK] Screen locked using AppleScript")
-                except Exception as e:
-                    logger.debug(f"AppleScript method failed: {e}")
+                logger.error(f"MacOS controller lock failed: {e}")
+                lock_success = False
 
             # Method 3: Start screensaver as last resort
             if not lock_success:

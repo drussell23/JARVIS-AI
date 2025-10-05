@@ -136,6 +136,7 @@ class MacOSController:
 
     async def _execute_shell_async(self, context):
         """Non-blocking shell command execution via async pipeline"""
+        import shlex
         from api.jarvis_voice_api import async_subprocess_run
 
         command = context.metadata.get("command", "")
@@ -154,7 +155,15 @@ class MacOSController:
                     context.metadata["error"] = f"Blocked dangerous command pattern: {pattern}"
                     return
 
-        stdout, stderr, returncode = await async_subprocess_run(command, timeout=timeout)
+        # Convert command string to list using shlex (handles spaces and quotes properly)
+        try:
+            cmd_list = shlex.split(command)
+        except ValueError as e:
+            context.metadata["success"] = False
+            context.metadata["error"] = f"Invalid command format: {e}"
+            return
+
+        stdout, stderr, returncode = await async_subprocess_run(cmd_list, timeout=timeout)
 
         context.metadata["returncode"] = returncode
         context.metadata["stdout"] = stdout.decode() if stdout else ""
@@ -1056,7 +1065,7 @@ class MacOSController:
                 logger.debug("Voice unlock daemon not running or timeout, falling back to direct methods")
             except Exception as e:
                 logger.debug(f"WebSocket method failed: {e}")
-            
+
             # Fallback Method 1: Use CGSession via async pipeline (most reliable)
             cgsession_path = '/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession'
             if os.path.exists(cgsession_path):
@@ -1070,14 +1079,16 @@ class MacOSController:
                     logger.info("Screen locked successfully using CGSession")
                     return True, "Screen locked successfully, Sir."
 
-            # Fallback Method 2: Use AppleScript via async pipeline
-            script = 'tell application "System Events" to keystroke "q" using {command down, control down}'
-            success, output = await self.execute_applescript_pipeline(script)
+            # Fallback Method 2: Use pmset command via async pipeline
+            success, output = await self.execute_shell_pipeline(
+                "pmset displaysleepnow",
+                safe_mode=False,
+                timeout=5.0
+            )
             if success:
-                logger.info("Screen locked successfully using AppleScript")
+                logger.info("Screen locked successfully using pmset")
                 return True, "Screen locked successfully, Sir."
-            
-            
+
             return False, "Unable to lock screen. Please use Control+Command+Q manually."
             
         except Exception as e:

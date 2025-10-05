@@ -9,12 +9,15 @@ import asyncio
 import json
 import logging
 import websockets
-from typing import Optional
+from typing import Optional, Dict, Any
 from pathlib import Path
 import sys
 
 # Add voice_unlock to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "voice_unlock"))
+
+# Import async pipeline
+from core.async_pipeline import get_async_pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -32,27 +35,108 @@ except ImportError:
 
 class VoiceUnlockDaemonConnector:
     """Connects to the Voice Unlock Objective-C daemon via WebSocket"""
-    
+
     def __init__(self, daemon_host: str = "localhost", daemon_port: int = 8765):
         self.daemon_host = daemon_host
         self.daemon_port = daemon_port
         self.daemon_ws: Optional[websockets.WebSocketClientProtocol] = None
         self.connected = False
-        
+
+        # Initialize async pipeline
+        self.pipeline = get_async_pipeline()
+        self._register_pipeline_stages()
+
+    def _register_pipeline_stages(self):
+        """Register voice unlock pipeline stages"""
+        self.pipeline.register_stage(
+            "voice_unlock_connect",
+            self._connect_async,
+            timeout=5.0,
+            retry_count=2,
+            required=True
+        )
+        self.pipeline.register_stage(
+            "voice_unlock_command",
+            self._send_command_async,
+            timeout=10.0,
+            retry_count=1,
+            required=True
+        )
+        logger.info("✅ Voice unlock pipeline stages registered")
+
+    async def _connect_async(self, context):
+        """Async pipeline handler for connecting to daemon"""
+        uri = context.metadata.get("uri")
+        try:
+            ws = await websockets.connect(uri, timeout=2.0)
+            context.metadata["websocket"] = ws
+            context.metadata["success"] = True
+            context.metadata["connected"] = True
+        except Exception as e:
+            context.metadata["success"] = False
+            context.metadata["error"] = str(e)
+            logger.error(f"Failed to connect to Voice Unlock daemon: {e}")
+
+    async def _send_command_async(self, context):
+        """Async pipeline handler for sending commands to daemon"""
+        command = context.metadata.get("command")
+        parameters = context.metadata.get("parameters", {})
+        ws = context.metadata.get("websocket")
+
+        if not ws:
+            context.metadata["success"] = False
+            context.metadata["error"] = "No websocket connection"
+            return
+
+        message = {
+            "type": "command",
+            "command": command,
+            "parameters": parameters
+        }
+
+        try:
+            await ws.send(json.dumps(message))
+            response = await asyncio.wait_for(ws.recv(), timeout=5.0)
+            result = json.loads(response)
+
+            context.metadata["response"] = result
+            context.metadata["success"] = result.get("success", False)
+        except asyncio.TimeoutError:
+            context.metadata["success"] = False
+            context.metadata["error"] = "Command timeout"
+        except Exception as e:
+            context.metadata["success"] = False
+            context.metadata["error"] = str(e)
+
     async def connect(self):
-        """Connect to the Voice Unlock daemon"""
+        """Connect to the Voice Unlock daemon via async pipeline"""
         try:
             uri = f"ws://{self.daemon_host}:{self.daemon_port}/voice-unlock"
-            self.daemon_ws = await websockets.connect(uri)
-            self.connected = True
-            logger.info(f"Connected to Voice Unlock daemon at {uri}")
-            
-            # Send handshake
-            await self.send_command("handshake", {
-                "client": "jarvis-api",
-                "version": "1.0"
-            })
-            
+
+            # Route through async pipeline
+            result = await self.pipeline.process_async(
+                text="Connect to Voice Unlock daemon",
+                metadata={
+                    "uri": uri,
+                    "stage": "voice_unlock_connect"
+                }
+            )
+
+            metadata = result.get("metadata", {})
+            if metadata.get("success"):
+                self.daemon_ws = metadata.get("websocket")
+                self.connected = True
+                logger.info(f"Connected to Voice Unlock daemon at {uri}")
+
+                # Send handshake
+                await self.send_command("handshake", {
+                    "client": "jarvis-api",
+                    "version": "1.0"
+                })
+            else:
+                self.connected = False
+                logger.error(f"Failed to connect: {metadata.get('error')}")
+
         except Exception as e:
             logger.error(f"Failed to connect to Voice Unlock daemon: {e}")
             self.connected = False
@@ -64,24 +148,30 @@ class VoiceUnlockDaemonConnector:
             self.connected = False
             
     async def send_command(self, command: str, parameters: dict = None):
-        """Send command to the daemon"""
+        """Send command to the daemon via async pipeline"""
         if not self.connected or not self.daemon_ws:
             logger.error("Not connected to Voice Unlock daemon")
             return None
-            
-        message = {
-            "type": "command",
-            "command": command,
-            "parameters": parameters or {}
-        }
-        
+
         try:
-            await self.daemon_ws.send(json.dumps(message))
-            
-            # Wait for response
-            response = await self.daemon_ws.recv()
-            return json.loads(response)
-            
+            # Route through async pipeline
+            result = await self.pipeline.process_async(
+                text=f"Send voice unlock command: {command}",
+                metadata={
+                    "command": command,
+                    "parameters": parameters or {},
+                    "websocket": self.daemon_ws,
+                    "stage": "voice_unlock_command"
+                }
+            )
+
+            metadata = result.get("metadata", {})
+            if metadata.get("success"):
+                return metadata.get("response")
+            else:
+                logger.error(f"Command failed: {metadata.get('error')}")
+                return None
+
         except Exception as e:
             logger.error(f"Failed to send command to daemon: {e}")
             return None
