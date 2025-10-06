@@ -913,42 +913,62 @@ class AdvancedAsyncPipeline:
                 context.response = f"I encountered an error processing that command, Sir."
                 return
 
-        # Handle document creation commands with context awareness
+        # ENHANCED: Context-aware handling for ALL commands, not just document creation
+        from context_intelligence.handlers.context_aware_handler import get_context_aware_handler
+        context_handler = get_context_aware_handler()
+
+        # Get comprehensive system context
+        system_context = await self._get_enhanced_system_context()
+        context.metadata["system_context"] = system_context
+        logger.info(f"[PIPELINE] System state: screen_locked={system_context.get('screen_locked')}, active_apps={system_context.get('active_apps', [])[:3]}")
+
+        # Handle document creation commands with FULL context awareness
         if context.intent == "document_creation":
-            logger.info(f"[PIPELINE] Processing document creation command: {context.text}")
-            logger.info(f"[PIPELINE] *** USING CONTEXT-AWARE HANDLER FOR DOCUMENT CREATION ***")
+            logger.info(f"[PIPELINE] Document creation with enhanced context awareness")
+
+            # Define intelligent document creation callback
+            async def create_document(command: str, ctx: Dict[str, Any] = None):
+                """Create document with full context awareness"""
+                logger.info(f"[PIPELINE] Creating document with context: screen_locked={ctx.get('screen_locked') if ctx else 'unknown'}")
+
+                # Intelligent document type detection
+                doc_type = self._detect_document_type(command)
+                logger.info(f"[PIPELINE] Detected document type: {doc_type}")
+
+                # Check if screen is locked and document needs visual confirmation
+                if ctx and ctx.get('screen_locked') and doc_type in ['presentation', 'visual_document']:
+                    logger.info(f"[PIPELINE] Visual document requested but screen is locked - will notify user")
+
+                # Smart API selection based on context
+                if "google doc" in command.lower() or "google docs" in command.lower():
+                    result = await self._create_google_doc(command)
+                elif ctx and 'Google Chrome' in ctx.get('active_apps', []):
+                    # If Chrome is open, prefer Google Docs
+                    logger.info(f"[PIPELINE] Chrome is active, suggesting Google Docs")
+                    result = await self._create_google_doc(command)
+                else:
+                    result = await self._create_local_document(command)
+
+                return result
+
+            # Process through context-aware handler
             try:
-                # Use ContextAwareCommandHandler for screen lock detection
-                from context_intelligence.handlers.context_aware_handler import ContextAwareCommandHandler
-
-                handler = ContextAwareCommandHandler()
-                logger.info(f"[PIPELINE] Context-aware handler initialized")
-
-                # Define document creation callback
-                async def create_document(command: str, context: Dict[str, Any] = None):
-                    """Create document after context handling"""
-                    logger.info(f"[PIPELINE] Document creation callback invoked for: {command}")
-                    # Extract document details from command
-                    doc_type = "essay" if "essay" in command.lower() else "document"
-
-                    # Check if Google Docs API should be used
-                    if "google doc" in command.lower() or "google docs" in command.lower():
-                        # Use Google Docs API
-                        result = await self._create_google_doc(command)
-                    else:
-                        # Use local document creation
-                        result = await self._create_local_document(command)
-
-                    logger.info(f"[PIPELINE] Document creation result: {result}")
-                    return result
-
-                # Handle with context awareness (includes screen lock detection)
-                logger.info(f"[PIPELINE] About to call handle_command_with_context...")
-                result = await handler.handle_command_with_context(
+                result = await context_handler.handle_command_with_context(
                     context.text,
                     execute_callback=create_document
                 )
-                logger.info(f"[PIPELINE] handle_command_with_context returned: {result}")
+                logger.info(f"[PIPELINE] Context-aware processing completed successfully")
+
+                # Store detailed context information
+                context.metadata["context_steps"] = result.get("steps_taken", [])
+                context.metadata["screen_was_locked"] = result.get("context", {}).get("screen_locked", False)
+
+            except Exception as handler_error:
+                logger.error(f"[PIPELINE] Context-aware processing error: {handler_error}")
+                result = {
+                    "success": False,
+                    "messages": [f"Context processing error: {str(handler_error)}"]
+                }
 
                 # Set response
                 if result.get("messages"):
@@ -1259,6 +1279,73 @@ class AdvancedAsyncPipeline:
                 "success": False,
                 "message": f"I couldn't create the document: {str(e)}"
             }
+
+    async def _get_enhanced_system_context(self) -> Dict[str, Any]:
+        """Get comprehensive system context for intelligent processing"""
+        try:
+            from context_intelligence.detectors.screen_lock_detector import get_screen_lock_detector
+
+            screen_detector = get_screen_lock_detector()
+            is_locked = await screen_detector.is_screen_locked()
+
+            # Get active applications
+            active_apps = []
+            try:
+                import subprocess
+                result = subprocess.run(['osascript', '-e', 'tell application "System Events" to get name of (processes where background only is false)'],
+                                      capture_output=True, text=True, timeout=2)
+                if result.returncode == 0:
+                    active_apps = result.stdout.strip().split(', ')
+            except:
+                pass
+
+            # Get network status
+            network_connected = True  # You can expand this
+
+            return {
+                'screen_locked': is_locked,
+                'active_apps': active_apps,
+                'network_connected': network_connected,
+                'timestamp': datetime.now().isoformat(),
+                'system_load': self._get_system_load()
+            }
+        except Exception as e:
+            logger.warning(f"Could not get full system context: {e}")
+            return {
+                'screen_locked': False,
+                'active_apps': [],
+                'network_connected': True,
+                'timestamp': datetime.now().isoformat()
+            }
+
+    def _get_system_load(self) -> Dict[str, float]:
+        """Get system resource usage"""
+        try:
+            import psutil
+            return {
+                'cpu_percent': psutil.cpu_percent(interval=0.1),
+                'memory_percent': psutil.virtual_memory().percent
+            }
+        except:
+            return {'cpu_percent': 0.0, 'memory_percent': 0.0}
+
+    def _detect_document_type(self, command: str) -> str:
+        """Intelligently detect the type of document requested"""
+        command_lower = command.lower()
+
+        # Check for specific document types
+        if any(word in command_lower for word in ['presentation', 'slides', 'powerpoint']):
+            return 'presentation'
+        elif any(word in command_lower for word in ['spreadsheet', 'excel', 'data', 'table']):
+            return 'spreadsheet'
+        elif any(word in command_lower for word in ['diagram', 'chart', 'graph', 'visual']):
+            return 'visual_document'
+        elif any(word in command_lower for word in ['essay', 'paper', 'report']):
+            return 'text_document'
+        elif any(word in command_lower for word in ['email', 'letter', 'memo']):
+            return 'correspondence'
+        else:
+            return 'general_document'
 
     def _extract_document_topic(self, command: str) -> str:
         """Extract the topic from a document creation command"""

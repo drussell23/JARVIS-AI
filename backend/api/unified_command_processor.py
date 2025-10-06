@@ -225,17 +225,25 @@ class UnifiedCommandProcessor:
         }
         
     async def process_command(self, command_text: str, websocket=None) -> Dict[str, Any]:
-        """Process any command through unified pipeline with learning"""
-        logger.info(f"[UNIFIED] Processing: '{command_text}'")
-        
+        """Process any command through unified pipeline with FULL context awareness"""
+        logger.info(f"[UNIFIED] Processing with context awareness: '{command_text}'")
+
         # Track command frequency
         self.command_stats[command_text.lower()] += 1
-        
+
+        # NEW: Get context-aware handler for ALL commands
+        from context_intelligence.handlers.context_aware_handler import get_context_aware_handler
+        context_handler = get_context_aware_handler()
+
         # Step 1: Classify command intent
         command_type, confidence = await self._classify_command(command_text)
         logger.info(f"[UNIFIED] Classified as {command_type.value} (confidence: {confidence})")
-        
-        # Step 2: Resolve references if needed
+
+        # Step 2: Check system context FIRST (screen lock, active apps, etc.)
+        system_context = await self._get_full_system_context()
+        logger.info(f"[UNIFIED] System context: screen_locked={system_context.get('screen_locked')}, active_apps={len(system_context.get('active_apps', []))}")
+
+        # Step 3: Resolve references with context
         resolved_text = command_text
         reference, ref_confidence = self.context.resolve_reference(command_text)
         if reference and ref_confidence > 0.5:
@@ -245,33 +253,59 @@ class UnifiedCommandProcessor:
                     resolved_text = command_text.lower().replace(word, reference)
                     logger.info(f"[UNIFIED] Resolved '{word}' to '{reference}'")
                     break
-                    
-        # Step 3: Handle compound commands
-        if command_type == CommandType.COMPOUND:
-            result = await self._handle_compound_command(resolved_text)
+
+        # Step 4: Define command execution callback
+        async def execute_with_context(cmd: str, context: Dict[str, Any] = None):
+            """Execute command with full context awareness"""
+            if command_type == CommandType.COMPOUND:
+                return await self._handle_compound_command(cmd, context=context)
+            else:
+                return await self._execute_command(command_type, cmd, websocket, context=context)
+
+        # Step 5: Process through context-aware handler
+        logger.info(f"[UNIFIED] Processing through context-aware handler...")
+        result = await context_handler.handle_command_with_context(
+            resolved_text,
+            execute_callback=execute_with_context
+        )
+
+        # Step 6: Extract actual result from context handler response
+        if result.get('result'):
+            # Use the nested result from context handler
+            actual_result = result['result']
         else:
-            # Step 4: Route to appropriate handler
-            result = await self._execute_command(command_type, resolved_text, websocket)
-        
-        # Step 5: Learn from the result
-        if result.get('success', False):
+            # Fallback to the full result
+            actual_result = result
+
+        # Step 7: Learn from the result
+        if actual_result.get('success', False):
             self.pattern_learner.learn_pattern(command_text, command_type.value, True)
             self.success_patterns[command_type.value].append({
                 'command': command_text,
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat(),
+                'context': system_context  # Store context for learning
             })
             # Keep only recent patterns
             if len(self.success_patterns[command_type.value]) > 100:
                 self.success_patterns[command_type.value] = self.success_patterns[command_type.value][-100:]
-        
-        # Step 6: Update context
-        self.context.update_from_command(command_type, result)
-        
+
+        # Step 8: Update context with result
+        self.context.update_from_command(command_type, actual_result)
+        self.context.system_state = system_context  # Update system state
+
         # Save learned data periodically (every 10 commands)
         if sum(self.command_stats.values()) % 10 == 0:
             self._save_learned_data()
-        
-        return result
+
+        # Return the formatted result
+        return {
+            'success': actual_result.get('success', False),
+            'response': result.get('summary', actual_result.get('response', '')),
+            'command_type': command_type.value,
+            'context_aware': True,
+            'system_context': system_context,
+            **actual_result
+        }
         
     async def _classify_command(self, command_text: str) -> Tuple[CommandType, float]:
         """Dynamically classify command using learned patterns"""
@@ -566,7 +600,43 @@ class UnifiedCommandProcessor:
                 
         return False
         
-    async def _execute_command(self, command_type: CommandType, command_text: str, websocket=None) -> Dict[str, Any]:
+    async def _get_full_system_context(self) -> Dict[str, Any]:
+        """Get comprehensive system context for intelligent command processing"""
+        try:
+            from context_intelligence.detectors.screen_lock_detector import get_screen_lock_detector
+
+            screen_detector = get_screen_lock_detector()
+            is_locked = await screen_detector.is_screen_locked()
+
+            # Get active applications (you can expand this)
+            active_apps = []
+            try:
+                import subprocess
+                result = subprocess.run(['osascript', '-e', 'tell application "System Events" to get name of (processes where background only is false)'],
+                                      capture_output=True, text=True, timeout=2)
+                if result.returncode == 0:
+                    active_apps = result.stdout.strip().split(', ')
+            except:
+                pass
+
+            return {
+                'screen_locked': is_locked,
+                'active_apps': active_apps,
+                'network_connected': True,  # You can expand this check
+                'timestamp': datetime.now().isoformat(),
+                'user_preferences': self.context.user_preferences,
+                'conversation_history': len(self.context.conversation_history)
+            }
+        except Exception as e:
+            logger.warning(f"Could not get full system context: {e}")
+            return {
+                'screen_locked': False,
+                'active_apps': [],
+                'network_connected': True,
+                'timestamp': datetime.now().isoformat()
+            }
+
+    async def _execute_command(self, command_type: CommandType, command_text: str, websocket=None, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Execute command using appropriate handler"""
         
         # Get or initialize handler
@@ -635,42 +705,56 @@ class UnifiedCommandProcessor:
                         'command_type': 'meta'
                     }
             elif command_type == CommandType.DOCUMENT:
-                # Handle document creation commands
-                logger.info(f"[DOCUMENT] Routing to document writer: '{command_text}'")
+                # Handle document creation commands WITH CONTEXT AWARENESS
+                logger.info(f"[DOCUMENT] Routing to context-aware document handler: '{command_text}'")
                 try:
+                    from context_intelligence.handlers.context_aware_handler import get_context_aware_handler
                     from context_intelligence.executors import get_document_writer, parse_document_request
 
-                    # Parse the document request
-                    doc_request = parse_document_request(command_text, {})
+                    # Get the context-aware handler
+                    context_handler = get_context_aware_handler()
 
-                    # Get document writer
-                    writer = get_document_writer()
+                    # Define the document creation callback
+                    async def create_document_callback(command: str, context: Dict[str, Any] = None):
+                        logger.info(f"[DOCUMENT] Creating document within context-aware flow")
 
-                    # Don't send immediate acknowledgment here - let the document writer handle all narration
-                    # This avoids duplicate messages
+                        # Parse the document request
+                        doc_request = parse_document_request(command, {})
 
-                    # Execute document creation
-                    result = await writer.create_document(request=doc_request, websocket=websocket)
+                        # Get document writer
+                        writer = get_document_writer()
 
+                        # Execute document creation
+                        result = await writer.create_document(request=doc_request, websocket=websocket)
+
+                        return result
+
+                    # Use context-aware handler to check screen lock FIRST
+                    logger.info(f"[DOCUMENT] Checking context (including screen lock) before document creation...")
+                    result = await context_handler.handle_command_with_context(
+                        command_text,
+                        execute_callback=create_document_callback
+                    )
+
+                    # The context handler will handle all messaging including screen lock notifications
                     if result.get('success'):
-                        # Don't send duplicate final message - document writer already handles completion narration
-                        
                         return {
                             'success': True,
-                            'response': result.get('message', f"Document created successfully with {result.get('word_count', 0)} words"),
+                            'response': result.get('summary', result.get('messages', ['Document created'])[0]),
                             'command_type': command_type.value,
-                            'speak': False,  # Don't speak again since document writer already spoke
+                            'speak': False,  # Context handler already spoke if needed
                             **result
                         }
                     else:
                         return {
                             'success': False,
-                            'response': f"Failed to create document: {result.get('error', 'Unknown error')}",
-                            'command_type': command_type.value
+                            'response': result.get('summary', result.get('messages', ['Failed to create document'])[0]),
+                            'command_type': command_type.value,
+                            **result
                         }
 
                 except Exception as e:
-                    logger.error(f"[DOCUMENT] Error: {e}", exc_info=True)
+                    logger.error(f"[DOCUMENT] Error in context-aware document creation: {e}", exc_info=True)
                     return {
                         'success': False,
                         'response': f"I encountered an error creating the document: {str(e)}",
@@ -757,18 +841,24 @@ class UnifiedCommandProcessor:
             logger.error(f"Failed to import handler for {command_type.value}: {e}")
             return None
             
-    async def _handle_compound_command(self, command_text: str) -> Dict[str, Any]:
+    async def _handle_compound_command(self, command_text: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Handle commands with multiple parts and maintain context between them"""
+        logger.info(f"[COMPOUND] Handling compound command with context: {context is not None}")
+
         # Parse compound commands more intelligently
         parts = self._parse_compound_parts(command_text)
-        
+
         results = []
         all_success = True
         responses = []
-        
+
         # Track context for dependent commands
         active_app = None
         previous_result = None
+
+        # Use provided context if available
+        if context:
+            logger.info(f"[COMPOUND] Using provided system context")
         
         # Check if all parts are similar operations that can be parallelized
         can_parallelize = self._can_parallelize_commands(parts)
@@ -886,7 +976,9 @@ class UnifiedCommandProcessor:
             'command_type': CommandType.COMPOUND.value,
             'sub_results': results,
             'steps_completed': len([r for r in results if r.get('success', False)]),
-            'total_steps': len(parts)
+            'total_steps': len(parts),
+            'context': context or {},
+            'steps_taken': [f"Step {i+1}: {part}" for i, part in enumerate(parts)]
         }
     
     def _parse_compound_parts(self, command_text: str) -> List[str]:
