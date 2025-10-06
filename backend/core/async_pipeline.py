@@ -916,11 +916,13 @@ class AdvancedAsyncPipeline:
         # Handle document creation commands with context awareness
         if context.intent == "document_creation":
             logger.info(f"[PIPELINE] Processing document creation command: {context.text}")
+            logger.info(f"[PIPELINE] *** USING CONTEXT-AWARE HANDLER FOR DOCUMENT CREATION ***")
             try:
                 # Use ContextAwareCommandHandler for screen lock detection
                 from context_intelligence.handlers.context_aware_handler import ContextAwareCommandHandler
 
                 handler = ContextAwareCommandHandler()
+                logger.info(f"[PIPELINE] Context-aware handler initialized")
 
                 # Define document creation callback
                 async def create_document(command: str, context: Dict[str, Any] = None):
