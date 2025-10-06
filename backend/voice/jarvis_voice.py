@@ -160,15 +160,15 @@ class EnhancedVoiceEngine:
         self.recognizer = sr.Recognizer()
         self.microphone = sr.Microphone()
 
-        # Configure recognizer for better accuracy
+        # Configure recognizer for better accuracy and FAST response
         self.recognizer.energy_threshold = (
-            300  # Minimum audio energy to consider for recording
+            200  # Lower threshold = more sensitive (was 300)
         )
         self.recognizer.dynamic_energy_threshold = True
-        self.recognizer.dynamic_energy_adjustment_damping = 0.15
-        self.recognizer.dynamic_energy_ratio = 1.5
+        self.recognizer.dynamic_energy_adjustment_damping = 0.10  # Faster adaptation (was 0.15)
+        self.recognizer.dynamic_energy_ratio = 1.3  # More aggressive (was 1.5)
         self.recognizer.pause_threshold = (
-            0.8  # Seconds of silence before phrase is considered complete
+            0.5  # Faster detection - only 0.5s silence needed (was 0.8)
         )
 
         # Text-to-speech
@@ -286,7 +286,7 @@ class EnhancedVoiceEngine:
             # Record noise sample for profile
             try:
                 print("📊 Creating noise profile...")
-                audio = self.recognizer.listen(source, timeout=2, phrase_time_limit=2)
+                audio = self.recognizer.listen(source, timeout=1, phrase_time_limit=5)
                 # Store noise profile for future noise reduction
                 self.noise_profile = audio.get_raw_data()
                 print("✅ Calibration complete. Noise profile created.")
@@ -294,7 +294,7 @@ class EnhancedVoiceEngine:
                 print("✅ Calibration complete.")
 
     def listen_with_confidence(
-        self, timeout: int = 5, phrase_time_limit: int = 5
+        self, timeout: int = 1, phrase_time_limit: int = 8
     ) -> Tuple[Optional[str], float]:
         """Listen for speech and return text with confidence score"""
         with self.microphone as source:
