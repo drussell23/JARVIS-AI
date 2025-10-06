@@ -22,6 +22,10 @@ class ActionType(Enum):
     SEARCH_WEB = "search_web"
     NAVIGATE_URL = "navigate_url"
     EXECUTE_SCRIPT = "execute_script"
+    CREATE_DOCUMENT = "create_document"
+    TAKE_SCREENSHOT = "take_screenshot"
+    CLICK = "click"
+    TYPE_TEXT = "type_text"
     SYSTEM_COMMAND = "system_command"
     UNKNOWN = "unknown"
 
@@ -61,6 +65,11 @@ class CompoundActionParser:
             'navigate': ActionType.NAVIGATE_URL,
             'go to': ActionType.NAVIGATE_URL,
             'visit': ActionType.NAVIGATE_URL,
+            'write': ActionType.CREATE_DOCUMENT,
+            'create': ActionType.CREATE_DOCUMENT,
+            'draft': ActionType.CREATE_DOCUMENT,
+            'compose': ActionType.CREATE_DOCUMENT,
+            'make': ActionType.CREATE_DOCUMENT,
         }
 
     async def parse(self, command: str) -> List[AtomicAction]:
@@ -164,6 +173,8 @@ class CompoundActionParser:
                     return self._parse_search_web(target, phrase, order)
                 elif action_type == ActionType.NAVIGATE_URL:
                     return self._parse_navigate_url(target, order)
+                elif action_type == ActionType.CREATE_DOCUMENT:
+                    return self._parse_create_document(target, phrase, order)
 
         # If no verb matched, might be a continuation of previous action
         # e.g., "search for dogs" where "search for" is the verb
@@ -238,6 +249,24 @@ class CompoundActionParser:
             order=order
         )
 
+    def _parse_create_document(self, target: str, original_phrase: str, order: int) -> AtomicAction:
+        """Parse a 'create document' action"""
+        # Extract the content description from the target
+        # e.g., "write me an essay on dolphins" → content: "an essay on dolphins"
+        content = target
+        if target.startswith('me '):
+            content = target[3:].strip()
+        elif target.startswith('an ') or target.startswith('a '):
+            # Keep "an essay..." or "a document..."
+            pass
+
+        return AtomicAction(
+            type=ActionType.CREATE_DOCUMENT,
+            params={'content': content, 'full_command': original_phrase},
+            confidence=0.95,
+            order=order
+        )
+
     async def _parse_implicit_action(self, phrase: str, order: int) -> Optional[AtomicAction]:
         """Parse an action that doesn't have an explicit verb"""
         # This could be a search query by default
@@ -267,6 +296,8 @@ class CompoundActionParser:
                 plan_parts.append(f"Search for '{action.params['query']}'")
             elif action.type == ActionType.NAVIGATE_URL:
                 plan_parts.append(f"Navigate to {action.params['url']}")
+            elif action.type == ActionType.CREATE_DOCUMENT:
+                plan_parts.append(f"Create document: {action.params['content']}")
 
         return " → ".join(plan_parts)
 
