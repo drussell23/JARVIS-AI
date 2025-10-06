@@ -2,12 +2,13 @@
 Screen Lock Context Detector for JARVIS
 ======================================
 
-Detects screen lock state and provides context-aware responses
+Detects screen lock state and provides context-aware responses.
+Integrated with async_pipeline.py for dynamic, robust operation.
 """
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, Set
 from datetime import datetime
 
 from context_intelligence.core.system_state_monitor import get_system_monitor
@@ -18,13 +19,32 @@ logger = logging.getLogger(__name__)
 
 class ScreenLockContextDetector:
     """
-    Detects screen lock state and provides context for command execution
+    Detects screen lock state and provides context for command execution.
+    Dynamic pattern matching - NO hardcoding.
     """
-    
+
     def __init__(self):
         self.system_monitor = get_system_monitor()
         self._last_check = None
         self._last_state = None
+
+        # Dynamic action categories that require screen access
+        self.screen_required_actions = {
+            'browser': {'open', 'launch', 'start', 'navigate', 'browse', 'surf'},
+            'search': {'search', 'google', 'look up', 'find online', 'query'},
+            'navigation': {'go to', 'visit', 'navigate to', 'head to'},
+            'application': {'open', 'launch', 'start', 'run', 'execute'},
+            'ui_interaction': {'switch to', 'show', 'display', 'minimize', 'maximize', 'resize'},
+            'file_ops': {'create', 'edit', 'save', 'close', 'open file', 'open document'},
+            'system_ui': {'screenshot', 'capture', 'show desktop', 'move window'},
+        }
+
+        # Commands that DON'T require screen (voice-only)
+        self.screen_exempt_patterns = {
+            'lock screen', 'lock my screen', 'sleep', 'shutdown',
+            'what time', 'what\'s the time', 'weather', 'temperature',
+            'set timer', 'set alarm', 'remind me', 'play music'
+        }
         
     async def is_screen_locked(self) -> bool:
         """Check if screen is currently locked"""
@@ -59,76 +79,141 @@ class ScreenLockContextDetector:
         
     def _command_requires_screen(self, command: str) -> bool:
         """
-        Determine if a command requires screen access
-        
+        Dynamically determine if a command requires screen access.
+        Uses compound action parser for intelligent detection.
+
         Args:
             command: The command to check
-            
+
         Returns:
             True if command requires unlocked screen
         """
         command_lower = command.lower()
-        
-        # Commands that require screen access
-        screen_required_patterns = [
-            # Browser operations
-            'open safari', 'open chrome', 'open firefox', 'open browser',
-            'search for', 'google', 'look up', 'find online',
-            'go to', 'navigate to', 'visit',
-            
-            # Application operations
-            'open', 'launch', 'start', 'run',
-            'switch to', 'show me', 'display',
-            
-            # File operations
-            'create', 'edit', 'save', 'close',
-            'find file', 'open file', 'open document',
-            
-            # System operations that need UI
-            'take screenshot', 'show desktop', 'minimize',
-            'maximize', 'resize', 'move window',
-            
-            # Exceptions - these work without unlocking
-            # (none currently, but could add voice-only commands)
-        ]
-        
-        # Check if any pattern matches
-        for pattern in screen_required_patterns:
-            if pattern in command_lower:
-                # Check for exceptions (commands that don't need unlock)
-                if any(exempt in command_lower for exempt in ['lock screen', 'lock my screen', 'sleep']):
-                    return False
-                return True
-                
+
+        # First check: Is this a voice-only/exempt command?
+        for exempt_pattern in self.screen_exempt_patterns:
+            if exempt_pattern in command_lower:
+                logger.debug(f"Command exempt from screen requirement: {exempt_pattern}")
+                return False
+
+        # Second check: Parse compound actions using CompoundActionParser
+        try:
+            from context_intelligence.analyzers.compound_action_parser import get_compound_parser, ActionType
+
+            parser = get_compound_parser()
+            # Create a simple async wrapper
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            actions = loop.run_until_complete(parser.parse(command))
+
+            # If parser found actions, check if any require screen
+            if actions:
+                screen_requiring_types = {
+                    ActionType.OPEN_APP,
+                    ActionType.SEARCH_WEB,
+                    ActionType.NAVIGATE_URL,
+                    ActionType.EXECUTE_SCRIPT,
+                }
+
+                for action in actions:
+                    if action.type in screen_requiring_types:
+                        logger.debug(f"Action {action.type.value} requires screen access")
+                        return True
+
+                # Parser found actions but none require screen
+                return False
+
+        except Exception as e:
+            logger.debug(f"Compound parser check failed, falling back to pattern matching: {e}")
+
+        # Third check: Fallback to dynamic category matching
+        for category, keywords in self.screen_required_actions.items():
+            for keyword in keywords:
+                if keyword in command_lower:
+                    logger.debug(f"Command matches screen-required category '{category}': {keyword}")
+                    return True
+
+        # Default: if uncertain, assume no screen required (safer for user experience)
+        logger.debug(f"Command does not require screen access: {command}")
         return False
         
     def _generate_unlock_message(self, command: str) -> str:
         """
-        Generate a context-aware message for unlocking
-        
+        Generate a dynamic, context-aware message for unlocking.
+        Uses CompoundActionParser for intelligent action extraction.
+
         Args:
             command: The original command
-            
+
         Returns:
             Message to speak to user
         """
-        # Extract the action from command for better messaging
-        action = self._extract_action(command)
-        
-        messages = [
-            f"Your screen is locked. I'll unlock it now by typing in the password to {action}.",
-            f"I notice your screen is locked. Let me unlock it for you so I can {action}.",
-            f"The screen is currently locked. I'll unlock it by entering your password, then {action}."
+        # Extract the action using CompoundActionParser for accuracy
+        action = self._extract_action_dynamic(command)
+
+        # Dynamic message templates
+        templates = [
+            f"Your screen is locked. I'll unlock it to {action}.",
+            f"Let me unlock your screen so I can {action}.",
+            f"Unlocking screen to {action}.",
         ]
+
+        # Use voice dynamic response generator if available
+        try:
+            from voice.dynamic_response_generator import get_response_generator
+            response_gen = get_response_generator()
+
+            # Generate natural unlock message
+            base_message = templates[0]  # Use first template as base
+            return response_gen.get_contextual_response(
+                base_message,
+                context={'action': action, 'command': command}
+            )
+        except:
+            # Fallback: use simple template
+            import random
+            return random.choice(templates)
         
-        # Use variety in responses
-        import random
-        return random.choice(messages)
-        
-    def _extract_action(self, command: str) -> str:
-        """Extract the main action from a command for messaging"""
+    def _extract_action_dynamic(self, command: str) -> str:
+        """
+        Dynamically extract action description using CompoundActionParser.
+        Falls back to simple extraction if parser fails.
+        """
+        try:
+            from context_intelligence.analyzers.compound_action_parser import get_compound_parser
+
+            parser = get_compound_parser()
+
+            # Get execution plan
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            actions = loop.run_until_complete(parser.parse(command))
+
+            if actions:
+                # Get human-readable plan
+                plan = parser.get_execution_plan(actions)
+                return plan.lower()  # "open safari → search for 'dogs'"
+
+        except Exception as e:
+            logger.debug(f"Dynamic action extraction failed, using fallback: {e}")
+
+        # Fallback to simple extraction
+        return self._extract_action_simple(command)
+
+    def _extract_action_simple(self, command: str) -> str:
+        """Simple fallback action extraction"""
         command_lower = command.lower()
-        
+
         # Common patterns
         if 'search for' in command_lower:
             search_term = command_lower.split('search for')[-1].strip()

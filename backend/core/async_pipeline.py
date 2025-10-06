@@ -732,68 +732,55 @@ class AdvancedAsyncPipeline:
                 context.response = f"I couldn't execute that screen command: {str(e)}"
                 return
 
-        # Handle system commands directly (no JARVIS required)
+        # Handle compound system commands (e.g., "open safari and search for dogs")
         if context.intent == "system_control":
-            logger.info(f"[PIPELINE] Processing system command: {context.text}")
+            logger.info(f"[PIPELINE] Processing compound system command: {context.text}")
             try:
-                # Use MacOS controller directly for system commands
-                from system_control.macos_controller import MacOSController
-                controller = MacOSController()
+                # Import compound action parser
+                from context_intelligence.analyzers.compound_action_parser import get_compound_parser, ActionType
 
-                # Parse command for app name
-                text_lower = context.text.lower()
+                # Parse command into atomic actions
+                parser = get_compound_parser()
+                actions = await parser.parse(context.text)
 
-                # Extract app name from various command patterns
-                app_name = None
-                if 'open ' in text_lower:
-                    # "open safari" or "open google chrome"
-                    parts = text_lower.split('open ', 1)
-                    if len(parts) > 1:
-                        app_name = parts[1].strip()
-                elif 'launch ' in text_lower:
-                    # "launch safari"
-                    parts = text_lower.split('launch ', 1)
-                    if len(parts) > 1:
-                        app_name = parts[1].strip()
-                elif 'start ' in text_lower:
-                    # "start safari"
-                    parts = text_lower.split('start ', 1)
-                    if len(parts) > 1:
-                        app_name = parts[1].strip()
-
-                if app_name:
-                    # Clean up app name - stop at common separators
-                    # Handle cases like "open safari and search for dogs"
-                    for separator in [' and ', ' then ', ' to ', ',']:
-                        if separator in app_name:
-                            app_name = app_name.split(separator)[0].strip()
-                            break
-
-                    # Final cleanup
-                    app_name = app_name.strip('.,!?')
-
-                    # Try to open the application (sync method, run in thread)
-                    success, message = await asyncio.to_thread(controller.open_application, app_name)
-
-                    if success:
-                        context.response = message  # Use the message from controller
-                        context.metadata["system_command_executed"] = True
-                        context.metadata["app_opened"] = app_name
-                        logger.info(f"[PIPELINE] Successfully opened {app_name}")
-                    else:
-                        context.response = message  # Error message from controller
-                        context.metadata["system_command_failed"] = True
-                        context.metadata["error"] = message
-                else:
-                    context.response = "I didn't understand which application to open, Sir."
+                if not actions:
+                    context.response = "I didn't understand that command, Sir."
                     context.metadata["parsing_failed"] = True
+                    return
 
+                # Log execution plan
+                plan = parser.get_execution_plan(actions)
+                logger.info(f"[COMPOUND] Execution plan: {plan}")
+
+                # Execute actions in sequence
+                results = []
+                for action in actions:
+                    result = await self._execute_atomic_action(action)
+                    results.append(result)
+                    if not result.get('success'):
+                        logger.warning(f"[COMPOUND] Action failed: {action.type.value}")
+
+                # Generate response based on results
+                if all(r.get('success') for r in results):
+                    context.response = f"Done, Sir. {plan}"
+                    context.metadata["compound_success"] = True
+                elif any(r.get('success') for r in results):
+                    context.response = f"Partially completed, Sir. {plan}"
+                    context.metadata["compound_partial"] = True
+                else:
+                    context.response = "I couldn't complete that command, Sir."
+                    context.metadata["compound_failed"] = True
+
+                context.metadata["execution_plan"] = plan
+                context.metadata["actions_executed"] = len(actions)
                 return
 
             except Exception as e:
-                logger.error(f"Error handling system command: {e}")
-                context.metadata["system_error"] = str(e)
-                context.response = f"I encountered an error opening that application, Sir."
+                logger.error(f"Error handling compound command: {e}")
+                import traceback
+                traceback.print_exc()
+                context.metadata["compound_error"] = str(e)
+                context.response = f"I encountered an error processing that command, Sir."
                 return
 
         # Handle document creation commands directly (no JARVIS required for basic creation)
@@ -880,6 +867,81 @@ class AdvancedAsyncPipeline:
             except Exception as e:
                 logger.error(f"Error in system control: {e}")
                 context.metadata["system_error"] = str(e)
+
+    async def _execute_atomic_action(self, action) -> Dict[str, Any]:
+        """
+        Execute a single atomic action from the CompoundActionParser
+
+        Args:
+            action: AtomicAction object from CompoundActionParser
+
+        Returns:
+            Result dictionary with success status
+        """
+        from context_intelligence.analyzers.compound_action_parser import ActionType
+
+        try:
+            if action.type == ActionType.OPEN_APP:
+                # Open application using MacOS controller
+                from system_control.macos_controller import MacOSController
+                controller = MacOSController()
+
+                app_name = action.params.get('app_name', '')
+                success, message = await asyncio.to_thread(controller.open_application, app_name)
+
+                return {
+                    'success': success,
+                    'action': 'open_app',
+                    'app_name': app_name,
+                    'message': message
+                }
+
+            elif action.type == ActionType.SEARCH_WEB:
+                # Perform web search using BrowserController
+                from context_intelligence.automation.browser_controller import get_browser_controller
+                browser = get_browser_controller(preferred_browser="Safari")
+
+                query = action.params.get('query', '')
+                success = await browser.search_google(query)
+
+                return {
+                    'success': success,
+                    'action': 'search_web',
+                    'query': query,
+                    'message': f"Searched for: {query}" if success else f"Failed to search for: {query}"
+                }
+
+            elif action.type == ActionType.NAVIGATE_URL:
+                # Navigate to URL using BrowserController
+                from context_intelligence.automation.browser_controller import get_browser_controller
+                browser = get_browser_controller(preferred_browser="Safari")
+
+                url = action.params.get('url', '')
+                success = await browser.navigate(url)
+
+                return {
+                    'success': success,
+                    'action': 'navigate_url',
+                    'url': url,
+                    'message': f"Navigated to: {url}" if success else f"Failed to navigate to: {url}"
+                }
+
+            else:
+                logger.warning(f"Unknown action type: {action.type}")
+                return {
+                    'success': False,
+                    'action': str(action.type),
+                    'message': 'Unknown action type'
+                }
+
+        except Exception as e:
+            logger.error(f"Error executing atomic action {action.type}: {e}")
+            return {
+                'success': False,
+                'action': str(action.type),
+                'error': str(e),
+                'message': f"Error: {str(e)}"
+            }
 
     async def _postprocess_response(self, context: PipelineContext):
         """Postprocess response before delivery"""

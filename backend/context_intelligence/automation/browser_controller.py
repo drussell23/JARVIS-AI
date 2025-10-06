@@ -359,6 +359,79 @@ class BrowserController:
         escaped = js_code.replace('\\', '\\\\').replace('"', '\\"')
         return escaped
 
+    async def search_google(self, query: str) -> bool:
+        """
+        Perform a Google search
+
+        Args:
+            query: Search query
+
+        Returns:
+            True if successful
+        """
+        try:
+            # URL encode the query
+            import urllib.parse
+            encoded_query = urllib.parse.quote(query)
+            search_url = f"https://www.google.com/search?q={encoded_query}"
+
+            logger.info(f"Searching Google for: {query}")
+            success = await self.navigate(search_url)
+
+            if success:
+                # Wait a moment for the page to load
+                await asyncio.sleep(1.5)
+                logger.info(f"Google search completed for: {query}")
+                return True
+
+            return False
+
+        except Exception as e:
+            logger.error(f"Failed to search Google: {e}")
+            return False
+
+    async def open_app_and_search(self, app_name: str, query: str) -> bool:
+        """
+        Open an app (browser) and perform a search
+
+        Args:
+            app_name: Application name (Safari, Chrome, etc.)
+            query: Search query
+
+        Returns:
+            True if successful
+        """
+        try:
+            # Map common browser names
+            browser_map = {
+                'safari': 'Safari',
+                'chrome': 'Google Chrome',
+                'firefox': 'Firefox',
+                'edge': 'Microsoft Edge'
+            }
+
+            app_lower = app_name.lower()
+            actual_app_name = browser_map.get(app_lower, app_name)
+
+            # Open the browser first
+            script = f'tell application "{actual_app_name}" to activate'
+            await self._run_applescript(script)
+
+            # Wait for browser to open
+            await asyncio.sleep(1.0)
+
+            # Update browser preference if needed
+            if app_lower in ['safari', 'chrome', 'firefox', 'edge']:
+                self.browser = "Chrome" if app_lower == "chrome" else "Safari" if app_lower == "safari" else self.browser
+                self._browser_app_name = actual_app_name
+
+            # Perform the search
+            return await self.search_google(query)
+
+        except Exception as e:
+            logger.error(f"Failed to open {app_name} and search: {e}")
+            return False
+
 
 # Global instance
 _browser_controller: Optional[BrowserController] = None
