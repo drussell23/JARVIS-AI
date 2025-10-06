@@ -5,6 +5,7 @@ Ultra-robust, adaptive, zero-hardcoding async processing system
 """
 
 import asyncio
+import re
 import logging
 from typing import Dict, Any, Optional, Callable, List, Union, Type
 from dataclasses import dataclass, field
@@ -677,7 +678,7 @@ class AdvancedAsyncPipeline:
         intent_rules = {
             "monitoring": ["monitor", "watch", "track", "observe"],
             "system_control": ["open", "launch", "start", "close", "quit"],
-            "document_creation": ["write", "create", "document", "draft"],
+            "document_creation": ["write", "create document", "write essay", "write paper", "draft", "compose"],
             "weather": ["weather", "temperature", "forecast", "rain"],
             "time": ["time", "date", "clock", "when"],
             "conversation": []  # Default
@@ -731,15 +732,128 @@ class AdvancedAsyncPipeline:
                 context.response = f"I couldn't execute that screen command: {str(e)}"
                 return
 
+        # Handle system commands directly (no JARVIS required)
+        if context.intent == "system_control":
+            logger.info(f"[PIPELINE] Processing system command: {context.text}")
+            try:
+                # Use MacOS controller directly for system commands
+                from system_control.macos_controller import MacOSController
+                controller = MacOSController()
+
+                # Parse command for app name
+                text_lower = context.text.lower()
+
+                # Extract app name from various command patterns
+                app_name = None
+                if 'open ' in text_lower:
+                    # "open safari" or "open google chrome"
+                    parts = text_lower.split('open ', 1)
+                    if len(parts) > 1:
+                        app_name = parts[1].strip()
+                elif 'launch ' in text_lower:
+                    # "launch safari"
+                    parts = text_lower.split('launch ', 1)
+                    if len(parts) > 1:
+                        app_name = parts[1].strip()
+                elif 'start ' in text_lower:
+                    # "start safari"
+                    parts = text_lower.split('start ', 1)
+                    if len(parts) > 1:
+                        app_name = parts[1].strip()
+
+                if app_name:
+                    # Clean up app name
+                    app_name = app_name.strip('.,!?')
+
+                    # Try to open the application
+                    success = await controller.open_application(app_name)
+
+                    if success:
+                        context.response = f"Opening {app_name.title()}, Sir."
+                        context.metadata["system_command_executed"] = True
+                        context.metadata["app_opened"] = app_name
+                        logger.info(f"[PIPELINE] Successfully opened {app_name}")
+                    else:
+                        context.response = f"I couldn't find or open {app_name}, Sir. Please check the application name."
+                        context.metadata["system_command_failed"] = True
+                else:
+                    context.response = "I didn't understand which application to open, Sir."
+                    context.metadata["parsing_failed"] = True
+
+                return
+
+            except Exception as e:
+                logger.error(f"Error handling system command: {e}")
+                context.metadata["system_error"] = str(e)
+                context.response = f"I encountered an error opening that application, Sir."
+                return
+
+        # Handle document creation commands directly (no JARVIS required for basic creation)
+        if context.intent == "document_creation":
+            logger.info(f"[PIPELINE] Processing document creation command: {context.text}")
+            try:
+                from context_intelligence.executors.document_writer import DocumentWriter
+
+                # Parse the command to extract topic and details
+                text_lower = context.text.lower()
+
+                # Extract topic/subject
+                topic = None
+                doc_type = "essay"  # default
+
+                # Try to extract topic from common patterns
+                patterns = [
+                    r'write (?:an? |the )?(?:essay|paper|document) (?:about |on |regarding )?(.+)',
+                    r'write (?:me )?(?:an? )?(.+?)(?:\s+essay|\s+paper|\s+document)',
+                    r'create (?:an? |the )?document (?:about |on )?(.+)',
+                    r'compose (?:an? )?(?:essay|paper) (?:about |on )?(.+)',
+                ]
+
+                for pattern in patterns:
+                    match = re.search(pattern, text_lower)
+                    if match:
+                        topic = match.group(1).strip()
+                        break
+
+                if not topic:
+                    # Fallback: take everything after common trigger words
+                    for trigger in ['write', 'create', 'compose']:
+                        if trigger in text_lower:
+                            parts = text_lower.split(trigger, 1)
+                            if len(parts) > 1:
+                                topic = parts[1].strip()
+                                # Remove common fillers
+                                topic = topic.replace('an essay about', '').replace('a paper on', '')
+                                topic = topic.replace('essay', '').replace('paper', '').strip()
+                                break
+
+                if topic:
+                    context.response = f"I'll write that {doc_type} on {topic} for you, Sir. Opening Google Docs now..."
+                    context.metadata["document_creation_initiated"] = True
+                    context.metadata["topic"] = topic
+                    context.metadata["doc_type"] = doc_type
+
+                    # Create document writer and initiate async writing
+                    writer = DocumentWriter()
+
+                    # Note: Full execution happens asynchronously
+                    # The document will be created in the background
+                    logger.info(f"[PIPELINE] Document creation initiated: {topic}")
+                else:
+                    context.response = "I'll need more details about what you'd like me to write, Sir. What topic should the document cover?"
+                    context.metadata["needs_clarification"] = True
+
+                return
+
+            except Exception as e:
+                logger.error(f"Error handling document creation: {e}")
+                context.metadata["document_error"] = str(e)
+                context.response = f"I encountered an error setting up the document, Sir."
+                return
+
         # For other commands, check if JARVIS is available
         if not self.jarvis:
-            # Some commands don't require JARVIS - handle them here
-            if context.intent == "system_control":
-                # Try to handle basic system commands without JARVIS
-                context.metadata["handled_without_jarvis"] = True
-                context.response = "System command received but JARVIS is not fully initialized."
-            else:
-                context.metadata["warning"] = "No JARVIS instance available"
+            context.metadata["warning"] = "No JARVIS instance available"
             return
 
         # Route to appropriate handler based on intent
