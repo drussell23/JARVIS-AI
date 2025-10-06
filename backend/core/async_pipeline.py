@@ -714,7 +714,21 @@ class AdvancedAsyncPipeline:
         """Generate final response from context"""
         # If response was already set (e.g., by lock/unlock handler), use it
         if context.response:
-            logger.info(f"Using pre-set response: {context.response[:100]}...")
+            logger.info(f"Using pre-set response: {context.response[:100] if context.response else 'None'}...")
+            return
+
+        # Check if lock/unlock was handled successfully
+        if "lock_unlock_result" in context.metadata:
+            # Lock/unlock was handled - response should already be set in _process_command
+            # If not set for some reason, generate a default success message
+            if not context.response:
+                result = context.metadata["lock_unlock_result"]
+                if result.get("success"):
+                    action = result.get("action", "command")
+                    context.response = result.get("response", f"I've successfully executed the {action.replace('_', ' ')}, Sir.")
+                else:
+                    context.response = result.get("response", "The command was processed.")
+            logger.info(f"Lock/unlock response finalized: {context.response[:100] if context.response else 'None'}...")
             return
 
         # Prioritize responses from metadata
@@ -722,15 +736,19 @@ class AdvancedAsyncPipeline:
             context.response = context.metadata["claude_response"]
         elif "system_response" in context.metadata:
             context.response = context.metadata["system_response"]
-        elif "lock_unlock_result" in context.metadata:
-            # Response already set in _process_command for lock/unlock
-            pass
         elif context.metadata.get("warning"):
-            context.response = f"Warning: {context.metadata['warning']}"
+            # Only show warning if it's not a handled command
+            if context.metadata.get("handled_by") != "simple_unlock_handler":
+                context.response = f"Warning: {context.metadata['warning']}"
+            else:
+                # Command was handled, don't override with warning
+                logger.debug(f"Suppressing warning for handled command: {context.metadata.get('warning')}")
+                if not context.response:
+                    context.response = "Command executed successfully."
         else:
             context.response = f"I processed your command: '{context.text}', {context.user_name}."
 
-        logger.info(f"Response generated: {context.response[:100]}...")
+        logger.info(f"Response generated: {context.response[:100] if context.response else 'None'}...")
 
     def _generate_error_response(self, context: PipelineContext, error: Exception) -> Dict[str, Any]:
         """Generate user-friendly error response"""
