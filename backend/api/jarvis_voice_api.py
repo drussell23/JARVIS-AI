@@ -1,6 +1,60 @@
 """
 JARVIS Voice API - Voice endpoints with Iron Man-style personality
 Integrates JARVIS personality with the web application
+
+CoreML Voice Engine Integration:
+================================
+This API integrates the ultra-fast CoreML Voice Engine for real-time voice detection.
+
+Hardware Acceleration:
+- Runs on Apple Neural Engine (hardware accelerated)
+- 232KB Silero VAD model (4-bit quantized)
+- <10ms inference latency per detection
+- ~5-10MB runtime memory usage
+
+Features:
+- Voice Activity Detection (VAD) - Detects if speech is present
+- Speaker Recognition - Identifies specific user's voice
+- Adaptive thresholds - Learns and adjusts over time
+- Circuit breaker protection - Graceful failure handling
+- Async task queue - Non-blocking voice processing
+
+API Endpoints:
+- POST /voice/detect-coreml - Full voice + speaker detection
+- POST /voice/detect-vad-coreml - Voice activity only (faster)
+- POST /voice/train-speaker-coreml - Train speaker recognition
+- GET /voice/coreml-metrics - Get performance metrics
+- GET /voice/coreml-status - Check availability
+
+Usage:
+    # Detect user voice with full speaker recognition
+    audio = np.random.randn(512).astype(np.float32)  # 512 samples at 16kHz
+    audio_b64 = base64.b64encode(audio.tobytes()).decode()
+    response = await client.post("/voice/detect-coreml", json={
+        "audio_data": audio_b64,
+        "priority": 1  # 0=normal, 1=high, 2=critical
+    })
+
+    # Returns:
+    # {
+    #   "is_user_voice": true,
+    #   "vad_confidence": 0.89,
+    #   "speaker_confidence": 0.75,
+    #   "metrics": {...}
+    # }
+
+Performance:
+- Inference: <10ms per chunk
+- Model size: 232KB (Neural Engine optimized)
+- Memory: ~5-10MB runtime
+- Sample rate: 16kHz mono
+- Chunk size: 512 samples (32ms at 16kHz)
+
+Technical Implementation:
+- C++ CoreML library: voice/coreml/libvoice_engine.dylib (78KB)
+- Python bridge: voice/coreml/voice_engine_bridge.py
+- Model: models/vad_model.mlmodelc (Silero VAD v6.0.0)
+- See COREML_SETUP_STATUS.md for full integration details
 """
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
@@ -128,6 +182,22 @@ except ImportError:
     def graceful_endpoint(func):
         return func
 
+
+# Import CoreML Voice Engine with error handling
+try:
+    from backend.voice.coreml.voice_engine_bridge import (
+        create_coreml_engine,
+        is_coreml_available,
+        CoreMLVoiceEngineBridge
+    )
+    import numpy as np
+    COREML_AVAILABLE = is_coreml_available()
+    logger.info(f"[CoreML] CoreML Voice Engine available: {COREML_AVAILABLE}")
+except ImportError as e:
+    logger.warning(f"[CoreML] CoreML Voice Engine not available: {e}")
+    COREML_AVAILABLE = False
+    # Define placeholder for type annotation when CoreML is not available
+    CoreMLVoiceEngineBridge = None
 
 # Import JARVIS voice components with error handling
 try:
@@ -2009,3 +2079,231 @@ class JARVISVoiceAPI:
 # Create and export the router instance
 jarvis_api = JARVISVoiceAPI()
 router = jarvis_api.router
+
+# Initialize global CoreML engine (if available)
+coreml_engine: Optional[CoreMLVoiceEngineBridge] = None
+
+if COREML_AVAILABLE:
+    try:
+        # Check if CoreML models exist before initializing
+        vad_model_path = "models/vad_model.mlmodelc"
+        speaker_model_path = "models/speaker_model.mlmodelc"
+
+        # Initialize with adaptive thresholds
+        coreml_engine = create_coreml_engine(
+            vad_model_path=vad_model_path,
+            speaker_model_path=speaker_model_path,
+            config={
+                'vad_threshold': 0.5,           # Adapts 0.2-0.9
+                'speaker_threshold': 0.7,        # Adapts 0.4-0.95
+                'enable_adaptive': True,
+                'learning_rate': 0.01,
+                'adaptation_window': 100
+            }
+        )
+
+        # Start background queue worker
+        import asyncio
+        asyncio.create_task(coreml_engine.process_voice_queue_worker())
+
+        logger.info("[CoreML] CoreML Voice Engine initialized successfully")
+        logger.info(f"[CoreML] VAD model: {vad_model_path}")
+        logger.info(f"[CoreML] Speaker model: {speaker_model_path}")
+
+    except FileNotFoundError as e:
+        logger.warning(f"[CoreML] CoreML models not found: {e}")
+        logger.warning("[CoreML] CoreML voice detection disabled - models required")
+        coreml_engine = None
+    except Exception as e:
+        logger.error(f"[CoreML] Failed to initialize CoreML engine: {e}")
+        coreml_engine = None
+else:
+    logger.info("[CoreML] CoreML not available - using standard voice recognition")
+
+
+# ========================================
+# CoreML Voice Detection Endpoints
+# ========================================
+
+@router.post("/voice/detect-coreml")
+async def detect_voice_coreml(
+    audio_data: str,  # Base64-encoded float32 audio
+    priority: int = 0  # 0=normal, 1=high, 2=critical
+):
+    """
+    Async voice detection using CoreML with circuit breaker protection.
+
+    - **audio_data**: Base64-encoded float32 numpy array (16kHz, mono)
+    - **priority**: Task priority (0=normal, 1=high, 2=critical)
+
+    Returns:
+    - **is_user_voice**: True if user voice detected
+    - **vad_confidence**: Voice activity detection confidence (0-1)
+    - **speaker_confidence**: Speaker recognition confidence (0-1)
+    - **metrics**: Performance metrics (latency, success rate, thresholds)
+    """
+    if not coreml_engine:
+        raise HTTPException(
+            status_code=503,
+            detail="CoreML engine not available - models not loaded"
+        )
+
+    try:
+        # Decode base64 audio
+        import base64
+        audio_bytes = base64.b64decode(audio_data)
+        audio = np.frombuffer(audio_bytes, dtype=np.float32)
+
+        # Async detection with circuit breaker
+        is_user, vad_conf, speaker_conf = await coreml_engine.detect_user_voice_async(
+            audio,
+            priority=priority
+        )
+
+        return {
+            "is_user_voice": is_user,
+            "vad_confidence": float(vad_conf),
+            "speaker_confidence": float(speaker_conf),
+            "metrics": coreml_engine.get_metrics()
+        }
+
+    except Exception as e:
+        logger.error(f"[CoreML] Voice detection error: {e}")
+        raise HTTPException(status_code=500, detail=f"Voice detection failed: {str(e)}")
+
+
+@router.post("/voice/detect-vad-coreml")
+async def detect_vad_coreml(
+    audio_data: str,
+    priority: int = 0
+):
+    """
+    Voice Activity Detection only (faster, no speaker recognition).
+
+    - **audio_data**: Base64-encoded float32 audio
+    - **priority**: Task priority
+
+    Returns:
+    - **voice_detected**: True if voice activity detected
+    - **confidence**: VAD confidence (0-1)
+    """
+    if not coreml_engine:
+        raise HTTPException(
+            status_code=503,
+            detail="CoreML engine not available"
+        )
+
+    try:
+        import base64
+        audio_bytes = base64.b64decode(audio_data)
+        audio = np.frombuffer(audio_bytes, dtype=np.float32)
+
+        # Async VAD with circuit breaker
+        voice_detected, confidence = await coreml_engine.detect_voice_activity_async(
+            audio,
+            priority=priority
+        )
+
+        return {
+            "voice_detected": voice_detected,
+            "confidence": float(confidence)
+        }
+
+    except Exception as e:
+        logger.error(f"[CoreML] VAD error: {e}")
+        raise HTTPException(status_code=500, detail=f"VAD failed: {str(e)}")
+
+
+@router.post("/voice/train-speaker-coreml")
+async def train_speaker_coreml(
+    audio_data: str,
+    is_user: bool = True
+):
+    """
+    Train speaker recognition model with new audio samples.
+
+    - **audio_data**: Base64-encoded float32 audio
+    - **is_user**: True for user voice, False for non-user voice
+
+    Returns:
+    - **samples_collected**: Total samples collected (user/non-user)
+    """
+    if not coreml_engine:
+        raise HTTPException(
+            status_code=503,
+            detail="CoreML engine not available"
+        )
+
+    try:
+        import base64
+        audio_bytes = base64.b64decode(audio_data)
+        audio = np.frombuffer(audio_bytes, dtype=np.float32)
+
+        # Train speaker model
+        coreml_engine.train_speaker_model(audio, is_user=is_user)
+
+        metrics = coreml_engine.get_metrics()
+
+        return {
+            "success": True,
+            "is_user_sample": is_user,
+            "metrics": metrics
+        }
+
+    except Exception as e:
+        logger.error(f"[CoreML] Speaker training error: {e}")
+        raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}")
+
+
+@router.get("/voice/coreml-metrics")
+async def get_coreml_metrics():
+    """
+    Get CoreML voice engine performance metrics.
+
+    Returns:
+    - **avg_latency_ms**: Average inference latency
+    - **success_rate**: Detection success rate
+    - **vad_threshold**: Current adaptive VAD threshold
+    - **speaker_threshold**: Current adaptive speaker threshold
+    - **circuit_breaker_state**: Circuit breaker state (CLOSED/OPEN/HALF_OPEN)
+    - **circuit_breaker_success_rate**: Circuit breaker success rate
+    - **queue_size**: Current voice task queue size
+    """
+    if not coreml_engine:
+        raise HTTPException(
+            status_code=503,
+            detail="CoreML engine not available"
+        )
+
+    try:
+        metrics = coreml_engine.get_metrics()
+        return metrics
+
+    except Exception as e:
+        logger.error(f"[CoreML] Metrics retrieval error: {e}")
+        raise HTTPException(status_code=500, detail=f"Metrics failed: {str(e)}")
+
+
+@router.get("/voice/coreml-status")
+async def get_coreml_status():
+    """
+    Check CoreML engine availability and status.
+
+    Returns:
+    - **available**: True if CoreML engine is available
+    - **initialized**: True if engine is initialized
+    - **models_loaded**: True if CoreML models are loaded
+    """
+    return {
+        "available": COREML_AVAILABLE,
+        "initialized": coreml_engine is not None,
+        "models_loaded": coreml_engine is not None,
+        "version": "1.0.0",
+        "features": {
+            "vad": coreml_engine is not None,
+            "speaker_recognition": coreml_engine is not None,
+            "adaptive_thresholds": coreml_engine is not None,
+            "circuit_breaker": coreml_engine is not None,
+            "async_queue": coreml_engine is not None
+        }
+    }

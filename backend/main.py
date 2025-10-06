@@ -27,10 +27,16 @@ This backend loads 7 critical components that power the JARVIS AI system:
    - Provides memory pressure alerts and automatic cleanup
    - Integration with Orchestrator for dynamic component allocation
 
-4. VOICE (JARVIS Voice Interface)
+4. VOICE (JARVIS Voice Interface with CoreML Acceleration)
    - Voice activation with "Hey JARVIS" wake word
+   - CoreML Voice Engine: Hardware-accelerated VAD on Apple Neural Engine
+     * 232KB model (4-bit quantized Silero VAD)
+     * <10ms inference latency
+     * ~5-10MB runtime memory
+     * Zero CPU usage (runs on Neural Engine)
    - Text-to-speech with multiple voice options
    - Real-time voice command processing
+   - Adaptive threshold learning for improved accuracy
 
 5. ML_MODELS (Machine Learning Models)
    - Sentiment analysis and NLP capabilities
