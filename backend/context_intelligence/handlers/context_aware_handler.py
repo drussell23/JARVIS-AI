@@ -36,6 +36,7 @@ class ContextAwareCommandHandler:
         Returns:
             Response dict with status and messages
         """
+        logger.info(f"[CONTEXT AWARE] Starting context-aware handling for: {command}")
         self.execution_steps = []
         response = {
             "success": True,
@@ -45,14 +46,17 @@ class ContextAwareCommandHandler:
             "context": {},
             "timestamp": datetime.now().isoformat()
         }
-        
+
         try:
             # Step 1: Get system context
+            logger.info("[CONTEXT AWARE] Getting system context...")
             system_context = await self._get_system_context()
             response["context"] = system_context
-            
+            logger.info(f"[CONTEXT AWARE] System context: screen_locked={system_context.get('screen_locked', False)}")
+
             # Step 2: Check screen lock context
             is_locked = system_context.get("screen_locked", False)
+            logger.info(f"[CONTEXT AWARE] Screen is {'LOCKED' if is_locked else 'UNLOCKED'}")
             
             if is_locked:
                 self._add_step("Detected locked screen", {"screen_locked": True})
@@ -86,15 +90,24 @@ class ContextAwareCommandHandler:
             # Step 3: Execute the actual command
             if execute_callback:
                 self._add_step("Executing command", {"command": command})
-                
+
                 try:
                     # Execute with context
                     exec_result = await execute_callback(command, context=system_context)
-                    
+
                     if isinstance(exec_result, dict):
                         if exec_result.get("success", True):
                             self._add_step("Command executed successfully", exec_result)
-                            response["messages"].append(exec_result.get("message", "Command completed successfully"))
+                            # Only add message if one was provided (not None)
+                            message = exec_result.get("message")
+                            if message:
+                                response["messages"].append(message)
+                            elif exec_result.get("task_started"):
+                                # For document creation, provide appropriate message
+                                topic = exec_result.get("topic", "the requested topic")
+                                response["messages"].append(f"I'm creating an essay about {topic} for you, Sir.")
+                            else:
+                                response["messages"].append("Command completed successfully")
                             response["result"] = exec_result
                         else:
                             self._add_step("Command execution failed", exec_result)
@@ -125,6 +138,7 @@ class ContextAwareCommandHandler:
         
     async def _get_system_context(self) -> Dict[str, Any]:
         """Get current system context"""
+        logger.info("[CONTEXT AWARE] _get_system_context called")
         # Get key system states
         states_to_check = [
             "screen_locked",
@@ -132,9 +146,11 @@ class ContextAwareCommandHandler:
             "network_connected",
             "active_window"
         ]
-        
+
         # Get context without system_monitor (simplified for now)
+        logger.info("[CONTEXT AWARE] Checking if screen is locked...")
         is_locked = await self.screen_lock_detector.is_screen_locked()
+        logger.info(f"[CONTEXT AWARE] Screen lock detector returned: {is_locked}")
         context = {
             "screen_locked": is_locked,
             "active_apps": [],

@@ -927,28 +927,39 @@ class AdvancedAsyncPipeline:
                 # Define document creation callback
                 async def create_document(command: str, context: Dict[str, Any] = None):
                     """Create document after context handling"""
+                    logger.info(f"[PIPELINE] Document creation callback invoked for: {command}")
                     # Extract document details from command
                     doc_type = "essay" if "essay" in command.lower() else "document"
 
                     # Check if Google Docs API should be used
                     if "google doc" in command.lower() or "google docs" in command.lower():
                         # Use Google Docs API
-                        return await self._create_google_doc(command)
+                        result = await self._create_google_doc(command)
                     else:
                         # Use local document creation
-                        return await self._create_local_document(command)
+                        result = await self._create_local_document(command)
+
+                    logger.info(f"[PIPELINE] Document creation result: {result}")
+                    return result
 
                 # Handle with context awareness (includes screen lock detection)
+                logger.info(f"[PIPELINE] About to call handle_command_with_context...")
                 result = await handler.handle_command_with_context(
                     context.text,
                     execute_callback=create_document
                 )
+                logger.info(f"[PIPELINE] handle_command_with_context returned: {result}")
 
                 # Set response
                 if result.get("messages"):
+                    # Use the messages from the context-aware handler (including unlock notifications)
                     context.response = " ".join(result["messages"])
+                elif result.get("success"):
+                    # If successful but no specific message, provide a default
+                    topic = self._extract_document_topic(context.text)
+                    context.response = f"I'm creating an essay about {topic} for you. Opening Google Docs now..."
                 else:
-                    context.response = "Document created successfully, Sir."
+                    context.response = "I encountered an issue with that request, Sir."
 
                 context.metadata["document_creation"] = True
                 context.metadata["steps_taken"] = result.get("steps_taken", [])
@@ -1229,12 +1240,17 @@ class AdvancedAsyncPipeline:
             # Create writer and initiate document creation
             writer = DocumentWriterExecutor()
             # This will trigger async document creation in background
+            # NOTE: We start the task but don't await it - it runs asynchronously
+            # IMPORTANT: This task will only start AFTER the context-aware handler
+            # has finished checking screen lock and unlocking if necessary
             asyncio.create_task(writer.create_document(request))
 
             return {
                 "success": True,
-                "message": f"I'm creating an essay about {topic} for you. Opening Google Docs now...",
-                "topic": topic
+                # Return a message that will be used by context-aware handler
+                "message": f"I'm creating an essay about {topic} for you, Sir.",
+                "topic": topic,
+                "task_started": True
             }
 
         except Exception as e:
