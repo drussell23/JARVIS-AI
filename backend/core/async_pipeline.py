@@ -484,6 +484,11 @@ class AdvancedAsyncPipeline:
                            metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Process command through advanced async pipeline"""
 
+        # FAST PATH for lock/unlock commands - bypass heavy processing
+        text_lower = text.lower()
+        if any(phrase in text_lower for phrase in ['lock my screen', 'lock screen', 'unlock my screen', 'unlock screen', 'lock the screen', 'unlock the screen']):
+            return await self._fast_lock_unlock(text, user_name, metadata)
+
         # Create pipeline context
         command_id = f"cmd_{int(time.time() * 1000)}"
         context = PipelineContext(
@@ -530,6 +535,58 @@ class AdvancedAsyncPipeline:
             except RuntimeError:
                 # Handle dictionary changed size during iteration
                 pass
+
+    async def _fast_lock_unlock(self, text: str, user_name: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Fast path for lock/unlock commands - minimal overhead, maximum speed"""
+        import asyncio
+        from api.simple_unlock_handler import handle_unlock_command
+
+        logger.info(f"[FAST PATH] Processing lock/unlock: {text}")
+        start_time = time.time()
+
+        # Determine action and prepare response in parallel
+        text_lower = text.lower()
+        is_lock = 'lock' in text_lower and 'unlock' not in text_lower
+
+        # Execute command and prepare response concurrently
+        async def execute_command():
+            try:
+                result = await handle_unlock_command(text, self.jarvis)
+                return result
+            except Exception as e:
+                logger.error(f"[FAST PATH] Command execution error: {e}")
+                return {'success': False, 'error': str(e)}
+
+        async def prepare_response(is_lock_cmd: bool):
+            if is_lock_cmd:
+                return "Of course, Sir. Locking for you."
+            else:
+                return "Of course, Sir. Unlocking for you."
+
+        # Execute both tasks in parallel for maximum speed
+        command_task = asyncio.create_task(execute_command())
+        response_task = asyncio.create_task(prepare_response(is_lock))
+
+        # Start voice synthesis immediately (don't wait for command to complete)
+        immediate_response = await response_task
+
+        # Get command result
+        result = await command_task
+
+        elapsed = (time.time() - start_time) * 1000
+        logger.info(f"[FAST PATH] Command completed in {elapsed:.1f}ms")
+
+        # Return immediately with pre-generated response
+        return {
+            "success": result.get('success', False),
+            "response": immediate_response,
+            "action": result.get('action', 'lock' if is_lock else 'unlock'),
+            "metadata": {
+                "handled_by": "fast_lock_unlock",
+                "execution_time_ms": elapsed,
+                "lock_unlock_result": result
+            }
+        }
 
     async def _execute_pipeline(self, context: PipelineContext) -> Dict[str, Any]:
         """Execute pipeline stages (only specific stage if specified in metadata)"""
@@ -715,6 +772,10 @@ class AdvancedAsyncPipeline:
         # If response was already set (e.g., by lock/unlock handler), use it
         if context.response:
             logger.info(f"Using pre-set response: {context.response[:100] if context.response else 'None'}...")
+            # Mark that TTS should be triggered
+            context.metadata["speak_response"] = True
+            # Trigger voice synthesis for the response
+            await self._synthesize_voice(context)
             return
 
         # Check if lock/unlock was handled successfully
@@ -729,6 +790,10 @@ class AdvancedAsyncPipeline:
                 else:
                     context.response = result.get("response", "The command was processed.")
             logger.info(f"Lock/unlock response finalized: {context.response[:100] if context.response else 'None'}...")
+            # Mark that TTS should be triggered for lock/unlock confirmations
+            context.metadata["speak_response"] = True
+            # Trigger voice synthesis for the response
+            await self._synthesize_voice(context)
             return
 
         # Prioritize responses from metadata
@@ -748,7 +813,63 @@ class AdvancedAsyncPipeline:
         else:
             context.response = f"I processed your command: '{context.text}', {context.user_name}."
 
+        # Mark that TTS should be triggered for all responses
+        context.metadata["speak_response"] = True
         logger.info(f"Response generated: {context.response[:100] if context.response else 'None'}...")
+
+        # Trigger voice synthesis for the response
+        await self._synthesize_voice(context)
+
+    async def _synthesize_voice(self, context: PipelineContext):
+        """Synthesize voice response using TTS if enabled"""
+        if not context.metadata.get("speak_response", False):
+            return
+
+        if not context.response:
+            return
+
+        try:
+            # Check if we should skip voice for certain responses
+            skip_voice_phrases = ["Warning: No JARVIS instance", "Processing..."]
+            if any(phrase in context.response for phrase in skip_voice_phrases):
+                logger.debug(f"Skipping voice synthesis for: {context.response[:50]}...")
+                return
+
+            # Check if TTS is available through the WebSocket or API
+            if context.metadata.get("websocket"):
+                # If WebSocket is available, the speak flag is already set in metadata
+                logger.info(f"[VOICE] WebSocket will handle TTS for: {context.response[:50]}...")
+            else:
+                # Try to use the TTS API directly for non-WebSocket contexts
+                logger.info(f"[VOICE] Triggering TTS for: {context.response[:50]}...")
+
+                # Import TTS handler
+                try:
+                    from api.async_tts_handler import generate_speech_async
+
+                    # Generate speech asynchronously (fire and forget)
+                    asyncio.create_task(self._speak_response(context.response))
+                    logger.info("[VOICE] TTS task created for response")
+                except ImportError:
+                    logger.debug("TTS handler not available, voice synthesis skipped")
+
+        except Exception as e:
+            logger.error(f"Error in voice synthesis: {e}")
+            # Don't fail the pipeline for voice synthesis errors
+
+    async def _speak_response(self, text: str):
+        """Helper method to speak text using TTS"""
+        try:
+            from api.jarvis_voice_api import async_subprocess_run
+
+            # Use macOS say command for quick TTS
+            await async_subprocess_run(
+                ["say", "-v", "Daniel", "-r", "180", text],
+                timeout=30.0
+            )
+            logger.info(f"[VOICE] Spoken: {text[:50]}...")
+        except Exception as e:
+            logger.error(f"Error speaking response: {e}")
 
     def _generate_error_response(self, context: PipelineContext, error: Exception) -> Dict[str, Any]:
         """Generate user-friendly error response"""

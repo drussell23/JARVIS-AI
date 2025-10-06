@@ -959,11 +959,32 @@ const JarvisVoice = () => {
           }, 1000);
         }
         break;
+      case 'command_response':
+        // Handle new async pipeline responses
+        console.log('WebSocket command_response received:', data);
+
+        if (data.response) {
+          // Update the UI with the response
+          setResponse(data.response);
+          setIsProcessing(false);
+
+          // If speak flag is set, trigger text-to-speech
+          if (data.speak && data.response) {
+            speakResponse(data.response);
+          }
+
+          // Log successful command execution
+          if (data.action) {
+            console.log(`✅ Command executed: ${data.action}`);
+          }
+        }
+        break;
+
       case 'response':
         console.log('WebSocket response received:', data);
 
         // Check if this is an error response we should ignore
-        const errorText = (data.text || '').toLowerCase();
+        const errorText = (data.text || data.response || '').toLowerCase();
         const isError = errorText.includes("don't have a handler") || errorText.includes("error") || errorText.includes("failed");
 
         if (errorText.includes("don't have a handler for query commands")) {

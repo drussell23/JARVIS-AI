@@ -1163,52 +1163,19 @@ class MacOSController:
     
     async def lock_screen(self) -> Tuple[bool, str]:
         """
-        Lock the macOS screen using the voice unlock daemon integration
-        
+        Lock the macOS screen - optimized for speed
+
         Returns:
             Tuple of (success, message)
         """
         try:
-            # First try using the voice unlock daemon's WebSocket interface (with short timeout)
-            try:
-                import websockets
-                import json
-                import asyncio
-
-                VOICE_UNLOCK_WS_URL = "ws://localhost:8765/voice-unlock"
-
-                # Use shorter timeout and wrap in wait_for to prevent hanging
-                async with asyncio.timeout(1.0):  # 1 second total timeout
-                    async with websockets.connect(VOICE_UNLOCK_WS_URL, timeout=0.5) as websocket:
-                        # Send lock command using the daemon's expected format
-                        lock_command = {
-                            "type": "command",
-                            "command": "lock_screen"
-                        }
-
-                        await websocket.send(json.dumps(lock_command))
-                        logger.info("Sent lock command to voice unlock daemon")
-
-                        # Wait for response with short timeout
-                        response = await asyncio.wait_for(websocket.recv(), timeout=0.5)
-                        result = json.loads(response)
-
-                        if result.get("type") == "command_response" and result.get("success"):
-                            logger.info("Screen locked successfully via voice unlock daemon")
-                            return True, "Screen locked successfully, Sir."
-
-            except (ConnectionRefusedError, OSError, asyncio.TimeoutError):
-                logger.debug("Voice unlock daemon not running or timeout, falling back to direct methods")
-            except Exception as e:
-                logger.debug(f"WebSocket method failed: {e}")
-
-            # Primary Method: Use AppleScript directly (not through full pipeline to avoid loops)
+            # FAST PATH: Go straight to AppleScript (most reliable and fastest)
             from api.jarvis_voice_api import async_osascript
             script = 'tell application "System Events" to keystroke "q" using {command down, control down}'
             try:
-                stdout, stderr, returncode = await async_osascript(script, timeout=5.0)
+                stdout, stderr, returncode = await async_osascript(script, timeout=2.0)
                 if returncode == 0:
-                    logger.info("Screen locked successfully using AppleScript")
+                    logger.info("[FAST LOCK] Screen locked successfully using AppleScript")
                     return True, "Screen locked successfully, Sir."
             except Exception as e:
                 logger.debug(f"AppleScript method failed: {e}")
