@@ -152,22 +152,37 @@ class ContextAwareCommandHandler:
         return context
         
     async def _speak_message(self, message: str):
-        """Speak a message immediately using JARVIS voice"""
+        """Speak a message immediately using JARVIS voice through WebSocket"""
         try:
-            # Try to use JARVIS voice API first
-            from api.jarvis_voice_api import JarvisVoice
-            jarvis = JarvisVoice()
-            if jarvis and hasattr(jarvis, 'speak'):
-                await jarvis.speak(message)
-                logger.info(f"Spoke message: {message}")
-        except:
+            # Send message through WebSocket to trigger TTS
+            from api.unified_websocket import broadcast_message
+
+            logger.info(f"[CONTEXT AWARE] Speaking unlock notification: {message}")
+
+            # Broadcast the unlock notification
+            await broadcast_message({
+                "type": "speak",
+                "text": message,
+                "priority": "high"
+            })
+
+            # Also use macOS say as backup
             try:
-                # Fallback to macOS say command
                 import subprocess
-                subprocess.run(["say", "-v", "Daniel", "-r", "180", message])
-                logger.info(f"Spoke message via say command: {message}")
-            except:
-                logger.warning(f"Could not speak message: {message}")
+                import asyncio
+                # Run say command asynchronously
+                process = await asyncio.create_subprocess_exec(
+                    "say", "-v", "Daniel", "-r", "180", message,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                await process.wait()
+                logger.info(f"[CONTEXT AWARE] Spoke via say command: {message[:50]}...")
+            except Exception as e:
+                logger.debug(f"Say command failed: {e}")
+
+        except Exception as e:
+            logger.error(f"[CONTEXT AWARE] Failed to speak message: {e}")
 
     def _add_step(self, description: str, details: Dict[str, Any]):
         """Add an execution step for tracking"""
