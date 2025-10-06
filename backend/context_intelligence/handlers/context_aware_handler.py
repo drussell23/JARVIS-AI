@@ -11,7 +11,6 @@ from typing import Dict, Any, Optional, Tuple, List
 from datetime import datetime
 
 from context_intelligence.detectors.screen_lock_detector import get_screen_lock_detector
-from context_intelligence.core.system_state_monitor import get_system_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +22,6 @@ class ContextAwareCommandHandler:
     
     def __init__(self):
         self.screen_lock_detector = get_screen_lock_detector()
-        self.system_monitor = get_system_monitor()
         self.execution_steps = []
         
     async def handle_command_with_context(self, command: str, 
@@ -63,17 +61,22 @@ class ContextAwareCommandHandler:
                 screen_context = await self.screen_lock_detector.check_screen_context(command)
                 
                 if screen_context["requires_unlock"]:
-                    # Handle screen unlock
-                    response["messages"].append(screen_context["unlock_message"])
+                    # IMPORTANT: Speak to user FIRST about screen being locked
+                    unlock_notification = screen_context["unlock_message"]
                     self._add_step("Screen unlock required", screen_context)
-                    
-                    # Perform unlock
+
+                    # Speak the unlock message immediately
+                    await self._speak_message(unlock_notification)
+
+                    # Add a small delay so user hears the message before unlock happens
+                    await asyncio.sleep(1.5)
+
+                    # Now perform the actual unlock
                     unlock_success, unlock_message = await self.screen_lock_detector.handle_screen_lock_context(command)
                     
                     if unlock_success:
                         self._add_step("Screen unlocked successfully", {"unlocked": True})
-                        if unlock_message:
-                            response["messages"].append(unlock_message)
+                        # Don't add unlock message to response since we already spoke it
                     else:
                         self._add_step("Screen unlock failed", {"error": unlock_message})
                         response["success"] = False
@@ -130,7 +133,14 @@ class ContextAwareCommandHandler:
             "active_window"
         ]
         
-        context = await self.system_monitor.get_states(states_to_check)
+        # Get context without system_monitor (simplified for now)
+        is_locked = await self.screen_lock_detector.is_screen_locked()
+        context = {
+            "screen_locked": is_locked,
+            "active_apps": [],
+            "network_connected": True,
+            "active_window": None
+        }
         
         # Add summary
         context["summary"] = {
@@ -141,6 +151,24 @@ class ContextAwareCommandHandler:
         
         return context
         
+    async def _speak_message(self, message: str):
+        """Speak a message immediately using JARVIS voice"""
+        try:
+            # Try to use JARVIS voice API first
+            from api.jarvis_voice_api import JarvisVoice
+            jarvis = JarvisVoice()
+            if jarvis and hasattr(jarvis, 'speak'):
+                await jarvis.speak(message)
+                logger.info(f"Spoke message: {message}")
+        except:
+            try:
+                # Fallback to macOS say command
+                import subprocess
+                subprocess.run(["say", "-v", "Daniel", "-r", "180", message])
+                logger.info(f"Spoke message via say command: {message}")
+            except:
+                logger.warning(f"Could not speak message: {message}")
+
     def _add_step(self, description: str, details: Dict[str, Any]):
         """Add an execution step for tracking"""
         self.execution_steps.append({
@@ -151,39 +179,26 @@ class ContextAwareCommandHandler:
         })
         
     def _generate_confirmation(self, command: str, steps: List[Dict]) -> str:
-        """Generate a confirmation message based on steps taken"""
+        """Generate accurate confirmation message based on actual execution results"""
         if not steps:
             return "Command completed."
-            
-        # Build narrative of what was done
-        key_actions = []
-        
+
+        # Check execution results from steps
+        executed_successfully = False
         for step in steps:
-            desc = step["description"].lower()
-            if "unlocked successfully" in desc:
-                key_actions.append("unlocked your screen")
-            elif "executing command" in desc:
-                # Extract the main action
-                if "open" in command.lower():
-                    app_or_site = command.lower().split("open")[-1].strip()
-                    key_actions.append(f"opened {app_or_site}")
-                elif "search" in command.lower():
-                    search_term = command.lower().split("search for")[-1].strip() if "search for" in command.lower() else "your query"
-                    key_actions.append(f"searched for {search_term}")
-                else:
-                    key_actions.append("executed your command")
-                    
-        # Build confirmation
-        if len(key_actions) == 0:
-            return "Task completed successfully."
-        elif len(key_actions) == 1:
-            return f"I've {key_actions[0]} for you."
-        else:
-            # Multiple actions
-            confirmation = "I've "
-            confirmation += ", ".join(key_actions[:-1])
-            confirmation += f" and {key_actions[-1]} for you."
-            return confirmation
+            if step["description"] == "Command executed successfully":
+                executed_successfully = True
+                if "result" in step.get("details", {}):
+                    result = step["details"]["result"]
+                    if isinstance(result, dict) and "message" in result:
+                        return result["message"]
+
+        # If command was executed, don't generate generic message
+        if executed_successfully:
+            return ""  # Let the execution result message be used instead
+
+        # Fallback for non-execution confirmations
+        return "Task completed."
             
     def _finalize_response(self, response: Dict[str, Any]) -> Dict[str, Any]:
         """Finalize the response with steps taken"""

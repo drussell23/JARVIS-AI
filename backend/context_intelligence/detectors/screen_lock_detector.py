@@ -250,32 +250,55 @@ class ScreenLockContextDetector:
         unlock_message = context["unlock_message"]
         
         try:
-            # Ensure voice unlock is connected
-            if not voice_unlock_connector or not voice_unlock_connector.connected:
-                await initialize_voice_unlock()
-                
-            # Send unlock command
-            logger.info(f"Unlocking screen for command: {command}")
-            result = await voice_unlock_connector.send_command("unlock_screen", {
-                "source": "context_intelligence",
-                "reason": f"User command: {command}",
-                "authenticated": True
-            })
-            
-            if result and result.get('success'):
-                # Wait a moment for unlock to complete
-                await asyncio.sleep(2.0)  # Give time for password entry
-                
-                # Verify unlock succeeded
-                is_still_locked = await self.is_screen_locked()
-                if not is_still_locked:
-                    success_msg = "I've unlocked your screen. Now proceeding with your request."
-                    return True, f"{unlock_message} {success_msg}"
+            # Try to unlock using the simple unlock handler directly
+            logger.info(f"Attempting to unlock screen for command: {command}")
+
+            # Use the simple unlock handler which has direct access to unlock functionality
+            try:
+                from api.simple_unlock_handler import handle_unlock_command
+
+                # Send unlock command
+                result = await handle_unlock_command("unlock my screen", None)
+
+                if result and result.get('success'):
+                    # Wait for unlock to complete
+                    await asyncio.sleep(2.0)
+
+                    # Verify unlock succeeded
+                    is_still_locked = await self.is_screen_locked()
+                    if not is_still_locked:
+                        success_msg = "Now proceeding with your request."
+                        return True, f"{unlock_message} {success_msg}"
+                    else:
+                        # Try one more time with a longer wait
+                        await asyncio.sleep(1.0)
+                        is_still_locked = await self.is_screen_locked()
+                        if not is_still_locked:
+                            success_msg = "Now proceeding with your request."
+                            return True, f"{unlock_message} {success_msg}"
+                        else:
+                            return False, "I tried to unlock the screen but it appears to still be locked. Please try unlocking manually."
                 else:
-                    return False, "I tried to unlock the screen but it appears to still be locked. Please try unlocking manually."
-            else:
-                error_msg = result.get('message', 'Unknown error') if result else 'Not connected to unlock service'
-                return False, f"I couldn't unlock the screen: {error_msg}"
+                    error_msg = result.get('response', 'Could not unlock screen') if result else 'Unlock service not available'
+                    return False, f"I couldn't unlock the screen: {error_msg}"
+
+            except ImportError:
+                # Fallback: try using voice unlock if available
+                if voice_unlock_connector and voice_unlock_connector.connected:
+                    result = await voice_unlock_connector.send_command("unlock_screen", {
+                        "source": "context_intelligence",
+                        "reason": f"User command: {command}",
+                        "authenticated": True
+                    })
+
+                    if result and result.get('success'):
+                        await asyncio.sleep(2.0)
+                        is_still_locked = await self.is_screen_locked()
+                        if not is_still_locked:
+                            return True, f"{unlock_message} Screen unlocked successfully."
+
+                # If all else fails, provide manual instruction
+                return False, f"{unlock_message} However, I need you to unlock your screen manually to proceed."
                 
         except Exception as e:
             logger.error(f"Error handling screen lock context: {e}")

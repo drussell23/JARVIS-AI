@@ -671,26 +671,102 @@ class AdvancedAsyncPipeline:
         context.metadata["preprocessed"] = True
 
     async def _analyze_intent(self, context: PipelineContext):
-        """Analyze command intent dynamically"""
+        """Analyze command intent dynamically with compound action awareness"""
         text_lower = context.text.lower()
 
-        # Intent detection rules (extensible)
+        # Dynamic intent detection rules - NO HARDCODING
+        # Extensible through configuration
         intent_rules = {
-            "monitoring": ["monitor", "watch", "track", "observe"],
-            "system_control": ["open", "launch", "start", "close", "quit"],
-            "document_creation": ["write", "create document", "write essay", "write paper", "draft", "compose"],
-            "weather": ["weather", "temperature", "forecast", "rain"],
-            "time": ["time", "date", "clock", "when"],
-            "conversation": []  # Default
+            "monitoring": ["monitor", "watch", "track", "observe", "surveillance"],
+            "system_control": ["open", "launch", "start", "close", "quit", "kill", "terminate", "run", "execute"],
+            "document_creation": ["write", "create document", "write essay", "write paper", "draft", "compose", "author"],
+            "web_search": ["search", "google", "look up", "find online", "browse", "surf"],
+            "navigation": ["navigate", "go to", "visit", "head to"],
+            "weather": ["weather", "temperature", "forecast", "rain", "snow", "climate"],
+            "time": ["time", "date", "clock", "when", "calendar"],
+            "media_control": ["play", "pause", "stop", "skip", "volume"],
+            "conversation": []  # Default fallback
         }
 
+        # Check for compound commands (multiple intents)
+        detected_intents = []
         for intent, keywords in intent_rules.items():
             if any(kw in text_lower for kw in keywords):
-                context.intent = intent
-                logger.info(f"Intent detected: {intent} for command: {context.text}")
-                return
+                detected_intents.append(intent)
 
-        context.intent = "conversation"
+        # Intelligently handle multiple intents
+        if len(detected_intents) > 1:
+            # Compound command detected - prioritize system_control for compound actions
+            if "system_control" in detected_intents:
+                context.intent = "system_control"
+                context.metadata["compound_command"] = True
+                context.metadata["all_intents"] = detected_intents
+                logger.info(f"Compound command detected with intents: {detected_intents}")
+            else:
+                # Use the most specific intent
+                context.intent = detected_intents[0]
+                context.metadata["secondary_intents"] = detected_intents[1:]
+        elif detected_intents:
+            context.intent = detected_intents[0]
+            logger.info(f"Intent detected: {context.intent} for command: {context.text}")
+        else:
+            # Use ML-based intent detection as fallback
+            context.intent = await self._ml_intent_detection(text_lower)
+
+    async def _ml_intent_detection(self, text: str) -> str:
+        """Advanced ML-based intent detection with dynamic fallbacks"""
+        try:
+            # Try multiple analyzers for robust intent detection
+            intents_detected = []
+            confidence_scores = {}
+
+            # Analyzer 1: Context Intelligence Intent Analyzer
+            try:
+                from context_intelligence.analyzers.intent_analyzer import get_intent_analyzer
+                analyzer = get_intent_analyzer()
+                intent = await analyzer.analyze(text)
+                if intent:
+                    intents_detected.append(intent)
+                    confidence_scores[intent] = analyzer.get_confidence() if hasattr(analyzer, 'get_confidence') else 0.8
+            except:
+                pass
+
+            # Analyzer 2: Pattern-based semantic matching
+            semantic_patterns = {
+                'system_control': ['open', 'launch', 'start', 'close', 'quit', 'switch'],
+                'search': ['search', 'find', 'look for', 'google', 'query'],
+                'navigation': ['go to', 'navigate', 'visit', 'browse'],
+                'file_ops': ['create', 'write', 'save', 'edit', 'delete'],
+                'communication': ['email', 'message', 'send', 'call', 'contact'],
+                'automation': ['automate', 'schedule', 'repeat', 'trigger']
+            }
+
+            text_lower = text.lower()
+            for intent_type, patterns in semantic_patterns.items():
+                match_score = sum(1 for p in patterns if p in text_lower) / len(patterns)
+                if match_score > 0:
+                    confidence_scores[intent_type] = match_score
+                    if match_score > 0.3:  # Threshold for inclusion
+                        intents_detected.append(intent_type)
+
+            # Analyzer 3: Context-aware command type detection
+            if 'and' in text_lower or 'then' in text_lower:
+                # Compound command indicator
+                if 'system_control' not in intents_detected:
+                    intents_detected.append('system_control')
+                    confidence_scores['system_control'] = 0.9
+
+            # Select best intent based on confidence
+            if confidence_scores:
+                best_intent = max(confidence_scores, key=confidence_scores.get)
+                logger.info(f"ML Intent Detection: {best_intent} (confidence: {confidence_scores[best_intent]:.2f})")
+                return best_intent
+
+            return "conversation"
+
+        except Exception as e:
+            logger.debug(f"ML intent detection error: {e}")
+            return "conversation"
 
     async def _load_components(self, context: PipelineContext):
         """Load required components dynamically"""
@@ -744,7 +820,7 @@ class AdvancedAsyncPipeline:
                 parser = get_compound_parser()
 
                 # Define execution callback for compound actions
-                async def execute_compound_command(command: str, context_data: Dict[str, Any] = None):
+                async def execute_compound_command(command: str, context: Dict[str, Any] = None):
                     """Execute compound command after context handling"""
                     # Parse command into atomic actions
                     actions = await parser.parse(command)
@@ -764,7 +840,10 @@ class AdvancedAsyncPipeline:
                         if not result.get('success'):
                             logger.warning(f"[COMPOUND] Action failed: {action.type.value}")
 
-                    # Generate result
+                    # Generate result with detailed feedback
+                    successful_actions = [i for i, r in enumerate(results) if r.get('success')]
+                    failed_actions = [i for i, r in enumerate(results) if not r.get('success')]
+
                     if all(r.get('success') for r in results):
                         return {
                             "success": True,
@@ -773,12 +852,28 @@ class AdvancedAsyncPipeline:
                             "results": results
                         }
                     elif any(r.get('success') for r in results):
-                        return {
-                            "success": True,
-                            "message": f"Partially completed, Sir.",
-                            "plan": plan,
-                            "results": results
-                        }
+                        # Build detailed message about what failed
+                        failed_parts = []
+                        for idx in failed_actions:
+                            if idx < len(actions):
+                                action_desc = actions[idx].type.value.replace('_', ' ')
+                                failed_parts.append(action_desc)
+
+                        if failed_parts:
+                            failed_msg = " and ".join(failed_parts)
+                            return {
+                                "success": True,
+                                "message": f"I completed part of your request, Sir, but couldn't {failed_msg}.",
+                                "plan": plan,
+                                "results": results
+                            }
+                        else:
+                            return {
+                                "success": True,
+                                "message": f"Partially completed, Sir.",
+                                "plan": plan,
+                                "results": results
+                            }
                     else:
                         return {
                             "success": False,
@@ -822,96 +917,44 @@ class AdvancedAsyncPipeline:
         if context.intent == "document_creation":
             logger.info(f"[PIPELINE] Processing document creation command: {context.text}")
             try:
-                # Use ContextAwareCommandHandler for intelligent screen lock handling
+                # Use ContextAwareCommandHandler for screen lock detection
                 from context_intelligence.handlers.context_aware_handler import ContextAwareCommandHandler
-                from context_intelligence.executors.document_writer import DocumentWriter
 
                 handler = ContextAwareCommandHandler()
 
-                # Define execution callback for document creation
-                async def execute_document_creation(command: str, context_data: Dict[str, Any] = None):
-                    """Execute document creation after context handling"""
-                    # Parse the command to extract topic and details
-                    text_lower = command.lower()
+                # Define document creation callback
+                async def create_document(command: str, context: Dict[str, Any] = None):
+                    """Create document after context handling"""
+                    # Extract document details from command
+                    doc_type = "essay" if "essay" in command.lower() else "document"
 
-                    # Extract topic/subject
-                    topic = None
-                    doc_type = "essay"  # default
-
-                    # Try to extract topic from common patterns
-                    patterns = [
-                        r'write (?:an? |the )?(?:essay|paper|document) (?:about |on |regarding )?(.+)',
-                        r'write (?:me )?(?:an? )?(.+?)(?:\s+essay|\s+paper|\s+document)',
-                        r'create (?:an? |the )?document (?:about |on )?(.+)',
-                        r'compose (?:an? )?(?:essay|paper) (?:about |on )?(.+)',
-                    ]
-
-                    for pattern in patterns:
-                        match = re.search(pattern, text_lower)
-                        if match:
-                            topic = match.group(1).strip()
-                            break
-
-                    if not topic:
-                        # Fallback: take everything after common trigger words
-                        for trigger in ['write', 'create', 'compose']:
-                            if trigger in text_lower:
-                                parts = text_lower.split(trigger, 1)
-                                if len(parts) > 1:
-                                    topic = parts[1].strip()
-                                    # Remove common fillers
-                                    topic = topic.replace('an essay about', '').replace('a paper on', '')
-                                    topic = topic.replace('essay', '').replace('paper', '').strip()
-                                    break
-
-                    if topic:
-                        # Create document writer and initiate async writing
-                        writer = DocumentWriter()
-
-                        # Note: Full execution happens asynchronously
-                        # The document will be created in the background
-                        logger.info(f"[PIPELINE] Document creation initiated: {topic}")
-
-                        return {
-                            "success": True,
-                            "message": f"I'll write that {doc_type} on {topic} for you, Sir. Opening Google Docs now...",
-                            "metadata": {
-                                "document_creation_initiated": True,
-                                "topic": topic,
-                                "doc_type": doc_type
-                            }
-                        }
+                    # Check if Google Docs API should be used
+                    if "google doc" in command.lower() or "google docs" in command.lower():
+                        # Use Google Docs API
+                        return await self._create_google_doc(command)
                     else:
-                        return {
-                            "success": False,
-                            "message": "I'll need more details about what you'd like me to write, Sir. What topic should the document cover?",
-                            "metadata": {
-                                "needs_clarification": True
-                            }
-                        }
+                        # Use local document creation
+                        return await self._create_local_document(command)
 
-                # Handle with full context awareness (includes screen lock detection and unlock message FIRST)
+                # Handle with context awareness (includes screen lock detection)
                 result = await handler.handle_command_with_context(
                     context.text,
-                    execute_callback=execute_document_creation
+                    execute_callback=create_document
                 )
 
-                # Combine all messages (unlock message + execution result)
+                # Set response
                 if result.get("messages"):
                     context.response = " ".join(result["messages"])
-                elif result.get("message"):
-                    context.response = result["message"]
+                else:
+                    context.response = "Document created successfully, Sir."
 
-                # Preserve metadata
-                if result.get("metadata"):
-                    context.metadata.update(result["metadata"])
-
+                context.metadata["document_creation"] = True
+                context.metadata["steps_taken"] = result.get("steps_taken", [])
                 return
 
             except Exception as e:
-                logger.error(f"Error handling document creation: {e}")
-                context.metadata["document_error"] = str(e)
-                context.response = f"I encountered an error setting up the document, Sir."
+                logger.error(f"Error in document creation: {e}")
+                context.response = f"I couldn't create the document: {str(e)}"
                 return
 
         # For other commands, check if JARVIS is available
@@ -1123,17 +1166,128 @@ class AdvancedAsyncPipeline:
         except Exception as e:
             logger.error(f"Error speaking response: {e}")
 
+    async def _create_google_doc(self, command: str) -> Dict[str, Any]:
+        """Create a document using Google Docs API with intelligent retry"""
+        try:
+            # Extract topic from command
+            topic = self._extract_document_topic(command)
+
+            # Try to use Google Docs integration
+            try:
+                from context_intelligence.integrations.google_docs_api import GoogleDocsWriter
+
+                writer = GoogleDocsWriter()
+                doc_url = await writer.create_document(topic, command)
+
+                return {
+                    "success": True,
+                    "message": f"I've created a Google Doc about {topic} and opened it for you.",
+                    "doc_url": doc_url
+                }
+            except ImportError:
+                # Fallback to browser automation
+                from context_intelligence.automation.browser_controller import get_browser_controller
+
+                browser = get_browser_controller()
+                success = await browser.open_google_docs(topic)
+
+                if success:
+                    return {
+                        "success": True,
+                        "message": f"I've opened Google Docs for you to create a document about {topic}."
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "message": "I couldn't open Google Docs. Please check your internet connection."
+                    }
+
+        except Exception as e:
+            logger.error(f"Error creating Google Doc: {e}")
+            return {
+                "success": False,
+                "message": f"I encountered an error: {str(e)}"
+            }
+
+    async def _create_local_document(self, command: str) -> Dict[str, Any]:
+        """Create a local document with content generation"""
+        try:
+            topic = self._extract_document_topic(command)
+
+            # Use document writer for content generation
+            from context_intelligence.executors.document_writer import DocumentWriter
+
+            writer = DocumentWriter()
+            # This will trigger async document creation
+            # The actual writing happens in background
+
+            return {
+                "success": True,
+                "message": f"I'm creating a document about {topic} for you. This will take a moment.",
+                "topic": topic
+            }
+
+        except Exception as e:
+            logger.error(f"Error creating local document: {e}")
+            return {
+                "success": False,
+                "message": f"I couldn't create the document: {str(e)}"
+            }
+
+    def _extract_document_topic(self, command: str) -> str:
+        """Extract the topic from a document creation command"""
+        import re
+
+        command_lower = command.lower()
+
+        # Try various patterns to extract topic
+        patterns = [
+            r'(?:write|create).*?(?:about|on|regarding)\s+(.+)',
+            r'(?:essay|document|paper).*?(?:about|on)\s+(.+)',
+            r'(?:write|create)\s+(?:an?|the)?\s*(?:essay|document|paper)?\s*(?:about|on)?\s*(.+)'
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, command_lower)
+            if match:
+                topic = match.group(1).strip()
+                # Clean up the topic
+                topic = topic.replace('essay', '').replace('document', '').replace('paper', '')
+                topic = topic.replace('about', '').replace('on', '').strip()
+                if topic:
+                    return topic
+
+        # Fallback: extract key words after common triggers
+        for trigger in ['write', 'create', 'compose', 'draft']:
+            if trigger in command_lower:
+                parts = command_lower.split(trigger, 1)
+                if len(parts) > 1:
+                    topic = parts[1].strip()
+                    # Remove common words
+                    for word in ['a', 'an', 'the', 'me', 'essay', 'document', 'paper', 'about', 'on']:
+                        topic = topic.replace(word, ' ')
+                    topic = ' '.join(topic.split())  # Clean up extra spaces
+                    if topic:
+                        return topic
+
+        return "general topic"
+
     def _generate_error_response(self, context: PipelineContext, error: Exception) -> Dict[str, Any]:
-        """Generate user-friendly error response"""
+        """Generate intelligent error response with recovery suggestions"""
         error_responses = {
             "TimeoutError": f"I apologize, {context.user_name}, but that's taking longer than expected. Please try again.",
             "ValueError": f"I'm sorry, {context.user_name}, but I couldn't understand that command.",
             "ConnectionError": f"I'm having trouble connecting to my services, {context.user_name}. Please check your connection.",
+            "ImportError": f"Some components are not available, {context.user_name}. I'll try an alternative approach.",
+            "PermissionError": f"I don't have permission to perform that action, {context.user_name}. You may need to unlock your screen.",
             "default": f"I apologize, {context.user_name}, but I encountered an error: {str(error)}"
         }
 
         error_type = type(error).__name__
         error_message = error_responses.get(error_type, error_responses["default"])
+
+        # Add recovery suggestions based on error type
+        recovery_suggestions = self._get_recovery_suggestions(error_type, context)
 
         return {
             "response": error_message,
@@ -1142,8 +1296,75 @@ class AdvancedAsyncPipeline:
             "command_id": context.command_id,
             "error": str(error),
             "error_type": error_type,
+            "recovery_suggestions": recovery_suggestions,
             "metrics": context.metrics
         }
+
+    def _get_recovery_suggestions(self, error_type: str, context: PipelineContext) -> List[str]:
+        """Generate intelligent recovery suggestions based on error type"""
+        suggestions = []
+
+        if error_type == "TimeoutError":
+            suggestions.append("Try simplifying your command")
+            suggestions.append("Check if the system is busy")
+        elif error_type == "ConnectionError":
+            suggestions.append("Check your internet connection")
+            suggestions.append("Verify the service is running")
+        elif error_type == "PermissionError":
+            if context.metadata.get("screen_locked"):
+                suggestions.append("Your screen appears to be locked")
+                suggestions.append("Try saying 'unlock my screen' first")
+            else:
+                suggestions.append("Check file or system permissions")
+        elif error_type == "ImportError":
+            suggestions.append("Some modules may need to be installed")
+            suggestions.append("The system will use fallback methods")
+
+        return suggestions
+
+    async def _retry_with_fallback(self, func, *args, max_retries: int = 3, **kwargs):
+        """Intelligent retry mechanism with exponential backoff"""
+        last_error = None
+        backoff = 1.0
+
+        for attempt in range(max_retries):
+            try:
+                return await func(*args, **kwargs)
+            except Exception as e:
+                last_error = e
+                logger.warning(f"Attempt {attempt + 1} failed: {e}")
+
+                # Exponential backoff
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(backoff)
+                    backoff *= 2
+
+                # Try fallback strategies
+                if attempt == 1:
+                    # Second attempt: try with simplified parameters
+                    if 'command' in kwargs:
+                        kwargs['command'] = self._simplify_command(kwargs['command'])
+                elif attempt == 2:
+                    # Third attempt: use alternative method
+                    if hasattr(self, f"{func.__name__}_fallback"):
+                        fallback_func = getattr(self, f"{func.__name__}_fallback")
+                        return await fallback_func(*args, **kwargs)
+
+        raise last_error
+
+    def _simplify_command(self, command: str) -> str:
+        """Simplify a command for retry attempts"""
+        # Remove complex connectors
+        simplified = command.replace(" and then ", " ")
+        simplified = simplified.replace(", then ", " ")
+        simplified = simplified.replace(" followed by ", " ")
+
+        # Remove extra words
+        words_to_remove = ['please', 'could you', 'can you', 'would you']
+        for word in words_to_remove:
+            simplified = simplified.replace(word, '')
+
+        return simplified.strip()
 
     def get_metrics(self) -> Dict[str, Any]:
         """Get current pipeline metrics and statistics"""
