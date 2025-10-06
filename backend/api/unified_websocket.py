@@ -285,11 +285,22 @@ class UnifiedWebSocketManager:
                 # Return response from pipeline
                 # First check if we have a direct response
                 if result.get("response"):
-                    return {
+                    # Include speak flag for voice output
+                    response_dict = {
                         "type": "command_response",
                         "response": result.get("response"),
-                        "success": result.get("success", True)
+                        "success": result.get("success", True),
+                        "speak": True  # Enable text-to-speech for all responses
                     }
+
+                    # Add additional metadata for lock/unlock commands
+                    if result.get("metadata", {}).get("lock_unlock_result"):
+                        lock_result = result["metadata"]["lock_unlock_result"]
+                        response_dict["action"] = lock_result.get("action", "")
+                        response_dict["command_type"] = lock_result.get("type", "system_control")
+
+                    return response_dict
+
                 # Fall back to metadata response
                 return result.get("metadata", {}).get("response", {
                     "type": "error",
