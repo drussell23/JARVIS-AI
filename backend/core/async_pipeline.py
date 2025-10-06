@@ -762,20 +762,28 @@ class AdvancedAsyncPipeline:
                         app_name = parts[1].strip()
 
                 if app_name:
-                    # Clean up app name
+                    # Clean up app name - stop at common separators
+                    # Handle cases like "open safari and search for dogs"
+                    for separator in [' and ', ' then ', ' to ', ',']:
+                        if separator in app_name:
+                            app_name = app_name.split(separator)[0].strip()
+                            break
+
+                    # Final cleanup
                     app_name = app_name.strip('.,!?')
 
-                    # Try to open the application
-                    success = await controller.open_application(app_name)
+                    # Try to open the application (sync method, run in thread)
+                    success, message = await asyncio.to_thread(controller.open_application, app_name)
 
                     if success:
-                        context.response = f"Opening {app_name.title()}, Sir."
+                        context.response = message  # Use the message from controller
                         context.metadata["system_command_executed"] = True
                         context.metadata["app_opened"] = app_name
                         logger.info(f"[PIPELINE] Successfully opened {app_name}")
                     else:
-                        context.response = f"I couldn't find or open {app_name}, Sir. Please check the application name."
+                        context.response = message  # Error message from controller
                         context.metadata["system_command_failed"] = True
+                        context.metadata["error"] = message
                 else:
                     context.response = "I didn't understand which application to open, Sir."
                     context.metadata["parsing_failed"] = True

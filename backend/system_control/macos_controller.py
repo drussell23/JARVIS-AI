@@ -457,14 +457,36 @@ class MacOSController:
             return False, f"I'm unable to open {app_name}, Sir"
 
     def open_application(self, app_name: str) -> Tuple[bool, str]:
-        """Open an application (LEGACY - synchronous fallback)"""
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+        """Open an application directly without pipeline (for system commands)"""
+        # Resolve aliases
+        app_name = self.app_aliases.get(app_name.lower(), app_name)
 
-        return loop.run_until_complete(self.open_application_pipeline(app_name))
+        # Check if blocked
+        if app_name in self.blocked_apps:
+            return False, f"Opening {app_name} is blocked for safety"
+
+        # Direct AppleScript to open application
+        script = f'tell application "{app_name}" to activate'
+        success, message = self.execute_applescript(script)
+
+        if success:
+            return True, f"Opening {app_name}, Sir"
+        else:
+            # Fallback: try with 'open' command
+            import subprocess
+            try:
+                result = subprocess.run(
+                    ['open', '-a', app_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    return True, f"Opening {app_name}, Sir"
+                else:
+                    return False, f"Couldn't find application: {app_name}"
+            except Exception as e:
+                return False, f"Error opening {app_name}: {str(e)}"
             
     def close_application(self, app_name: str) -> Tuple[bool, str]:
         """Close an application gracefully"""
