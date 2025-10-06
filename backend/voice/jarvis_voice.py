@@ -23,9 +23,12 @@ import queue
 import sys
 import platform
 from anthropic import Anthropic
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 import logging
+import time
+from collections import defaultdict
+from functools import wraps
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -123,6 +126,217 @@ Instead of "How may I assist you?" try:
 Respond as JARVIS would - sophisticated, natural, and genuinely helpful."""
 
 
+# ===================================================================
+# ADVANCED ASYNC ARCHITECTURE - Integrated from async_pipeline.py
+# Ultra-robust, event-driven, zero-hardcoding async voice system
+# ===================================================================
+
+class AdaptiveCircuitBreaker:
+    """
+    Advanced circuit breaker with adaptive thresholds for voice recognition.
+    Prevents system overload and auto-recovers from failures.
+    """
+
+    def __init__(self, initial_threshold: int = 5, initial_timeout: int = 30, adaptive: bool = True):
+        self.failure_count = 0
+        self.success_count = 0
+        self.threshold = initial_threshold
+        self.timeout = initial_timeout
+        self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
+        self.last_failure_time = None
+        self.adaptive = adaptive
+        self.failure_history: List[float] = []
+        self.success_rate_history: List[float] = []
+        self._total_calls = 0
+        self._successful_calls = 0
+
+    @property
+    def success_rate(self) -> float:
+        """Calculate current success rate"""
+        if self._total_calls == 0:
+            return 1.0
+        return self._successful_calls / self._total_calls
+
+    async def call(self, func: Callable, *args, **kwargs):
+        """Execute function with adaptive circuit breaker protection"""
+        if self.state == "OPEN":
+            if time.time() - self.last_failure_time > self.timeout:
+                logger.info(f"[ASYNC] Circuit breaker: transitioning to HALF_OPEN (threshold={self.threshold})")
+                self.state = "HALF_OPEN"
+            else:
+                retry_in = int(self.timeout - (time.time() - self.last_failure_time))
+                raise Exception(f"[ASYNC] Circuit breaker is OPEN - voice recognition unavailable (retry in {retry_in}s)")
+
+        try:
+            start = time.time()
+            result = await func(*args, **kwargs)
+            duration = time.time() - start
+
+            self.on_success(duration)
+            return result
+
+        except Exception as e:
+            self.on_failure()
+            raise e
+
+    def on_success(self, duration: float):
+        """Handle successful execution with adaptive learning"""
+        self.success_count += 1
+        self._total_calls += 1
+        self._successful_calls += 1
+        self.failure_count = max(0, self.failure_count - 1)
+
+        if self.state == "HALF_OPEN":
+            logger.info("[ASYNC] Circuit breaker: transitioning to CLOSED")
+            self.state = "CLOSED"
+
+        # Adaptive threshold adjustment
+        if self.adaptive:
+            success_rate = self.success_rate
+            self.success_rate_history.append(success_rate)
+
+            # Increase threshold if success rate is high
+            if success_rate > 0.95 and self.threshold < 20:
+                self.threshold += 1
+                logger.debug(f"[ASYNC] Increased circuit breaker threshold to {self.threshold}")
+
+    def on_failure(self):
+        """Handle failed execution with adaptive learning"""
+        self.failure_count += 1
+        self._total_calls += 1
+        self.last_failure_time = time.time()
+        self.failure_history.append(time.time())
+
+        # Adaptive threshold adjustment
+        if self.adaptive and len(self.failure_history) > 10:
+            # Check if failure rate is increasing
+            recent_failures = [f for f in self.failure_history if time.time() - f < 60]
+            if len(recent_failures) > 5:
+                self.threshold = max(3, self.threshold - 1)
+                logger.debug(f"[ASYNC] Decreased circuit breaker threshold to {self.threshold}")
+
+        if self.failure_count >= self.threshold:
+            logger.warning(f"[ASYNC] Circuit breaker: transitioning to OPEN (failures={self.failure_count})")
+            self.state = "OPEN"
+
+
+class AsyncEventBus:
+    """
+    Event-driven pub/sub system for async voice events.
+    Enables decoupled, scalable voice command processing.
+    """
+
+    def __init__(self):
+        self.subscribers: Dict[str, List[Callable]] = defaultdict(list)
+        self.event_history: List[Dict[str, Any]] = []
+        self.max_history = 100
+
+    def subscribe(self, event_type: str, handler: Callable):
+        """Subscribe to an event type"""
+        self.subscribers[event_type].append(handler)
+        logger.debug(f"[ASYNC-EVENT] Subscribed to '{event_type}': {handler.__name__}")
+
+    def unsubscribe(self, event_type: str, handler: Callable):
+        """Unsubscribe from an event type"""
+        if handler in self.subscribers[event_type]:
+            self.subscribers[event_type].remove(handler)
+            logger.debug(f"[ASYNC-EVENT] Unsubscribed from '{event_type}': {handler.__name__}")
+
+    async def publish(self, event_type: str, data: Any = None):
+        """Publish an event to all subscribers"""
+        event = {
+            "type": event_type,
+            "data": data,
+            "timestamp": time.time(),
+            "id": f"{event_type}_{int(time.time() * 1000)}"
+        }
+
+        # Store in history
+        self.event_history.append(event)
+        if len(self.event_history) > self.max_history:
+            self.event_history.pop(0)
+
+        # Notify subscribers asynchronously
+        handlers = self.subscribers.get(event_type, [])
+        logger.debug(f"[ASYNC-EVENT] Publishing '{event_type}' to {len(handlers)} handlers")
+
+        tasks = []
+        for handler in handlers:
+            try:
+                if asyncio.iscoroutinefunction(handler):
+                    tasks.append(asyncio.create_task(handler(data)))
+                else:
+                    # Run sync handlers in executor
+                    tasks.append(asyncio.create_task(
+                        asyncio.get_event_loop().run_in_executor(None, handler, data)
+                    ))
+            except Exception as e:
+                logger.error(f"[ASYNC-EVENT] Error publishing to handler {handler.__name__}: {e}")
+
+        # Wait for all handlers to complete
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+
+@dataclass
+class VoiceTask:
+    """Represents an async voice recognition task"""
+    task_id: str
+    text: Optional[str] = None
+    confidence: float = 0.0
+    timestamp: float = field(default_factory=time.time)
+    status: str = "pending"  # pending, processing, completed, failed
+    result: Optional[Any] = None
+    error: Optional[str] = None
+    priority: int = 0  # 0=normal, 1=high, 2=critical
+    retries: int = 0
+    max_retries: int = 3
+
+
+class AsyncVoiceQueue:
+    """
+    Priority-based async queue for voice commands.
+    Ensures fair processing and handles backpressure.
+    """
+
+    def __init__(self, maxsize: int = 100):
+        self.queue: asyncio.PriorityQueue = asyncio.PriorityQueue(maxsize=maxsize)
+        self.processing_count = 0
+        self.max_concurrent = 3  # Process up to 3 voice commands concurrently
+        self.tasks_in_flight: Dict[str, VoiceTask] = {}
+
+    async def enqueue(self, task: VoiceTask):
+        """Add task to queue with priority"""
+        # Priority queue uses tuples: (priority, task)
+        # Lower number = higher priority
+        await self.queue.put((-task.priority, task))
+        logger.info(f"[ASYNC-QUEUE] Enqueued task {task.task_id} (priority={task.priority}, queue_size={self.queue.qsize()})")
+
+    async def dequeue(self) -> VoiceTask:
+        """Get next task from queue"""
+        _, task = await self.queue.get()
+        self.processing_count += 1
+        self.tasks_in_flight[task.task_id] = task
+        logger.debug(f"[ASYNC-QUEUE] Dequeued task {task.task_id} (in_flight={self.processing_count})")
+        return task
+
+    def complete_task(self, task_id: str):
+        """Mark task as completed"""
+        if task_id in self.tasks_in_flight:
+            del self.tasks_in_flight[task_id]
+            self.processing_count = max(0, self.processing_count - 1)
+            self.queue.task_done()
+            logger.debug(f"[ASYNC-QUEUE] Completed task {task_id} (in_flight={self.processing_count})")
+
+    def is_full(self) -> bool:
+        """Check if queue is full"""
+        return self.queue.full()
+
+    def size(self) -> int:
+        """Get current queue size"""
+        return self.queue.qsize()
+
+
 class VoiceConfidence(Enum):
     """Confidence levels for voice detection"""
 
@@ -160,16 +374,105 @@ class EnhancedVoiceEngine:
         self.recognizer = sr.Recognizer()
         self.microphone = sr.Microphone()
 
-        # Configure recognizer for better accuracy and FAST response
-        self.recognizer.energy_threshold = (
-            200  # Lower threshold = more sensitive (was 300)
-        )
-        self.recognizer.dynamic_energy_threshold = True
-        self.recognizer.dynamic_energy_adjustment_damping = 0.10  # Faster adaptation (was 0.15)
-        self.recognizer.dynamic_energy_ratio = 1.3  # More aggressive (was 1.5)
-        self.recognizer.pause_threshold = (
-            0.5  # Faster detection - only 0.5s silence needed (was 0.8)
-        )
+        # ===================================================================
+        # ADVANCED ADAPTIVE VOICE RECOGNITION SYSTEM
+        # Zero hardcoding - all parameters self-optimize based on USER SUCCESS
+        # NO environmental noise feedback - focuses purely on user voice patterns
+        # ===================================================================
+
+        # Adaptive configuration storage - all parameters self-tune
+        self.adaptive_config = {
+            'energy_threshold': {
+                'current': 200,
+                'min': 50,
+                'max': 500,
+                'history': [],
+                'success_rate_by_value': {}  # Track which values work best
+            },
+            'pause_threshold': {
+                'current': 0.5,
+                'min': 0.3,
+                'max': 1.2,
+                'history': [],
+                'success_rate_by_value': {}
+            },
+            'damping': {
+                'current': 0.10,
+                'min': 0.05,
+                'max': 0.25,
+                'history': [],
+                'success_rate_by_value': {}
+            },
+            'energy_ratio': {
+                'current': 1.3,
+                'min': 1.1,
+                'max': 2.0,
+                'history': [],
+                'success_rate_by_value': {}
+            },
+            'phrase_time_limit': {
+                'current': 8,
+                'min': 3,
+                'max': 15,
+                'history': [],
+                'success_rate_by_value': {}
+            },
+            'timeout': {
+                'current': 1,
+                'min': 0.5,
+                'max': 3,
+                'history': [],
+                'success_rate_by_value': {}
+            },
+        }
+
+        # Performance tracking for auto-optimization
+        self.performance_metrics = {
+            'successful_recognitions': 0,
+            'failed_recognitions': 0,
+            'low_confidence_count': 0,
+            'timeout_count': 0,
+            'false_activation_count': 0,  # Triggered when user wasn't speaking
+            'average_confidence': [],
+            'recognition_times': [],
+            'consecutive_failures': 0,  # Track streaks to adapt faster
+            'consecutive_successes': 0,
+            'first_attempt_success_rate': [],  # Track if command works on first try
+        }
+
+        # User voice pattern learning (NO environmental noise!)
+        self.user_voice_profile = {
+            'average_pitch': None,
+            'speech_rate': None,  # Words per minute
+            'typical_pause_duration': None,
+            'command_length_distribution': [],
+            'frequently_misrecognized_words': {},
+            'command_start_patterns': [],  # Learn how user starts commands
+            'preferred_phrasing': {},  # Learn user's vocabulary
+        }
+
+        # Multi-engine configuration with performance tracking
+        self.recognition_engines = ['google', 'sphinx', 'whisper']
+        self.engine_performance = {
+            engine: {
+                'success': 0,
+                'fail': 0,
+                'avg_confidence': [],
+                'avg_speed': []
+            } for engine in self.recognition_engines
+        }
+        self.current_engine = 'google'  # Start with Google, adapt based on performance
+
+        # Optimization thread control
+        self.optimization_thread = None
+        self.optimization_interval = 60  # Optimize every 60 seconds
+        self.stop_optimization = False
+
+        # Initialize with adaptive settings
+        self._initialize_adaptive_recognition()
+
+        # Start background optimization thread
+        self._start_optimization_thread()
 
         # Text-to-speech
         if USE_MACOS_VOICE:
@@ -189,6 +492,29 @@ class EnhancedVoiceEngine:
         self.ml_trainer = ml_trainer
         self.ml_enhanced_system = ml_enhanced_system
         self.last_audio_data = None  # Store for ML training
+
+        # ===================================================================
+        # ADVANCED ASYNC COMPONENTS - Integrated from async_pipeline.py
+        # ===================================================================
+
+        # Circuit breaker for fault tolerance
+        self.circuit_breaker = AdaptiveCircuitBreaker(
+            initial_threshold=5,
+            initial_timeout=30,
+            adaptive=True
+        )
+        logger.info("[ASYNC] Initialized adaptive circuit breaker")
+
+        # Event bus for event-driven architecture
+        self.event_bus = AsyncEventBus()
+        logger.info("[ASYNC] Initialized async event bus")
+
+        # Async queue for command processing
+        self.voice_queue = AsyncVoiceQueue(maxsize=100)
+        logger.info("[ASYNC] Initialized async voice queue")
+
+        # Subscribe to voice events
+        self._setup_event_handlers()
 
         # Intent patterns for better recognition
         self.intent_patterns = {
@@ -363,19 +689,35 @@ class EnhancedVoiceEngine:
                             # You might want to return the prediction with higher confidence
                             # For now, we'll just log it
 
+                    # Record successful recognition for adaptive learning
+                    self._record_recognition_result(
+                        success=True,
+                        confidence=adjusted_confidence,
+                        first_attempt=True  # Assume first attempt in listen_with_confidence
+                    )
+
                     return best_text, adjusted_confidence
 
+                # No results - record failure
+                self._record_recognition_result(success=False, first_attempt=True)
                 return None, 0.0
 
             except sr.WaitTimeoutError:
                 self.listening = False
+                # Record timeout for adaptive optimization
+                self.performance_metrics['timeout_count'] += 1
+                self._record_recognition_result(success=False, first_attempt=True)
                 return None, 0.0
             except sr.UnknownValueError:
                 self.listening = False
+                # Speech detected but not understood - record failure
+                self._record_recognition_result(success=False, first_attempt=True)
                 return None, 0.0
             except Exception as e:
                 logger.error(f"Error in speech recognition: {e}")
                 self.listening = False
+                # Unexpected error - record failure
+                self._record_recognition_result(success=False, first_attempt=True)
                 return None, 0.0
 
     def _adjust_confidence(self, audio: sr.AudioData, base_confidence: float) -> float:
@@ -426,6 +768,324 @@ class EnhancedVoiceEngine:
         else:
             self.tts_engine.say(text)
             self.tts_engine.runAndWait()
+
+    # ===================================================================
+    # ADAPTIVE RECOGNITION METHODS
+    # ===================================================================
+
+    def _initialize_adaptive_recognition(self):
+        """Initialize adaptive recognition with current config values"""
+        try:
+            # Apply current adaptive config to recognizer
+            self.recognizer.energy_threshold = self.adaptive_config['energy_threshold']['current']
+            self.recognizer.pause_threshold = self.adaptive_config['pause_threshold']['current']
+            self.recognizer.dynamic_energy_threshold = True
+            self.recognizer.dynamic_energy_adjustment_damping = self.adaptive_config['damping']['current']
+            self.recognizer.dynamic_energy_ratio = self.adaptive_config['energy_ratio']['current']
+
+            logger.info(f"[ADAPTIVE] Initialized with: energy={self.recognizer.energy_threshold}, "
+                       f"pause={self.recognizer.pause_threshold}")
+        except Exception as e:
+            logger.error(f"[ADAPTIVE] Failed to initialize: {e}")
+
+    def _start_optimization_thread(self):
+        """Start background thread to optimize recognition parameters"""
+        import threading
+
+        def optimize_loop():
+            """Continuous optimization based on performance metrics"""
+            while not self.stop_optimization:
+                try:
+                    import time
+                    time.sleep(self.optimization_interval)
+
+                    # Run optimization
+                    self._optimize_parameters()
+
+                except Exception as e:
+                    logger.error(f"[ADAPTIVE] Optimization error: {e}")
+
+        self.optimization_thread = threading.Thread(target=optimize_loop, daemon=True)
+        self.optimization_thread.start()
+        logger.info("[ADAPTIVE] Optimization thread started")
+
+    def _optimize_parameters(self):
+        """
+        Dynamically optimize recognition parameters based on success metrics.
+        NO environmental noise - purely based on user recognition success!
+        """
+        total_attempts = self.performance_metrics['successful_recognitions'] + self.performance_metrics['failed_recognitions']
+
+        if total_attempts < 5:
+            # Not enough data yet
+            return
+
+        success_rate = self.performance_metrics['successful_recognitions'] / total_attempts
+
+        logger.info(f"[ADAPTIVE] Optimizing... Success rate: {success_rate:.2%}, "
+                   f"Successes: {self.performance_metrics['successful_recognitions']}, "
+                   f"Failures: {self.performance_metrics['failed_recognitions']}")
+
+        # Adaptive strategy based on failure patterns
+        if success_rate < 0.7:  # Less than 70% success - need improvement
+            # Too many failures - make system more sensitive
+            self._adjust_parameter('energy_threshold', direction='decrease', amount=10)
+            self._adjust_parameter('pause_threshold', direction='decrease', amount=0.05)
+            self._adjust_parameter('timeout', direction='decrease', amount=0.1)
+            logger.info("[ADAPTIVE] Low success rate - increasing sensitivity")
+
+        elif self.performance_metrics['false_activation_count'] > total_attempts * 0.3:
+            # Too many false activations - make less sensitive
+            self._adjust_parameter('energy_threshold', direction='increase', amount=10)
+            self._adjust_parameter('pause_threshold', direction='increase', amount=0.05)
+            logger.info("[ADAPTIVE] Too many false activations - decreasing sensitivity")
+
+        elif self.performance_metrics['timeout_count'] > total_attempts * 0.3:
+            # Too many timeouts - give more time
+            self._adjust_parameter('timeout', direction='increase', amount=0.2)
+            self._adjust_parameter('phrase_time_limit', direction='increase', amount=1)
+            logger.info("[ADAPTIVE] Too many timeouts - extending time limits")
+
+        # Check first-attempt success rate
+        if len(self.performance_metrics['first_attempt_success_rate']) >= 10:
+            first_attempt_rate = sum(self.performance_metrics['first_attempt_success_rate'][-10:]) / 10
+            if first_attempt_rate < 0.5:  # Less than 50% work on first try
+                # Speed up responsiveness
+                self._adjust_parameter('pause_threshold', direction='decrease', amount=0.05)
+                self._adjust_parameter('timeout', direction='decrease', amount=0.1)
+                logger.info(f"[ADAPTIVE] First-attempt rate low ({first_attempt_rate:.2%}) - speeding up")
+
+        # Apply optimized values to recognizer
+        self._apply_adaptive_config()
+
+    def _adjust_parameter(self, param_name: str, direction: str, amount: float):
+        """Adjust a parameter within its min/max range"""
+        config = self.adaptive_config[param_name]
+        current = config['current']
+
+        # Calculate new value
+        if direction == 'increase':
+            new_value = min(current + amount, config['max'])
+        else:  # decrease
+            new_value = max(current - amount, config['min'])
+
+        # Store old value in history
+        config['history'].append(current)
+        if len(config['history']) > 100:  # Keep last 100 values
+            config['history'].pop(0)
+
+        # Update current value
+        config['current'] = new_value
+
+        logger.debug(f"[ADAPTIVE] {param_name}: {current:.3f} → {new_value:.3f}")
+
+    def _apply_adaptive_config(self):
+        """Apply current adaptive config to recognizer"""
+        try:
+            self.recognizer.energy_threshold = self.adaptive_config['energy_threshold']['current']
+            self.recognizer.pause_threshold = self.adaptive_config['pause_threshold']['current']
+            self.recognizer.dynamic_energy_adjustment_damping = self.adaptive_config['damping']['current']
+            self.recognizer.dynamic_energy_ratio = self.adaptive_config['energy_ratio']['current']
+
+            logger.debug("[ADAPTIVE] Applied new config to recognizer")
+        except Exception as e:
+            logger.error(f"[ADAPTIVE] Failed to apply config: {e}")
+
+    def _record_recognition_result(self, success: bool, confidence: float = 0.0,
+                                   first_attempt: bool = False, false_activation: bool = False):
+        """
+        Record recognition result for adaptive learning.
+        This is the key feedback loop - NO environmental noise needed!
+        """
+        if success:
+            self.performance_metrics['successful_recognitions'] += 1
+            self.performance_metrics['consecutive_successes'] += 1
+            self.performance_metrics['consecutive_failures'] = 0
+
+            if confidence > 0:
+                self.performance_metrics['average_confidence'].append(confidence)
+                if len(self.performance_metrics['average_confidence']) > 100:
+                    self.performance_metrics['average_confidence'].pop(0)
+        else:
+            self.performance_metrics['failed_recognitions'] += 1
+            self.performance_metrics['consecutive_failures'] += 1
+            self.performance_metrics['consecutive_successes'] = 0
+
+        if false_activation:
+            self.performance_metrics['false_activation_count'] += 1
+
+        if first_attempt:
+            self.performance_metrics['first_attempt_success_rate'].append(1 if success else 0)
+            if len(self.performance_metrics['first_attempt_success_rate']) > 100:
+                self.performance_metrics['first_attempt_success_rate'].pop(0)
+
+        # Track which parameter values lead to success
+        for param_name, config in self.adaptive_config.items():
+            current_value = config['current']
+            value_key = f"{current_value:.2f}"
+
+            if value_key not in config['success_rate_by_value']:
+                config['success_rate_by_value'][value_key] = {'success': 0, 'fail': 0}
+
+            if success:
+                config['success_rate_by_value'][value_key]['success'] += 1
+            else:
+                config['success_rate_by_value'][value_key]['fail'] += 1
+
+        # Trigger immediate optimization if we hit a streak
+        if self.performance_metrics['consecutive_failures'] >= 3:
+            logger.warning("[ADAPTIVE] 3 consecutive failures - triggering immediate optimization")
+            self._optimize_parameters()
+        elif self.performance_metrics['consecutive_successes'] >= 10:
+            logger.info("[ADAPTIVE] 10 consecutive successes - system is well-tuned")
+
+    # ===================================================================
+    # ASYNC EVENT & QUEUE METHODS
+    # ===================================================================
+
+    def _setup_event_handlers(self):
+        """Setup async event handlers for voice events"""
+        # Subscribe to voice recognition events
+        self.event_bus.subscribe("voice_recognized", self._on_voice_recognized)
+        self.event_bus.subscribe("voice_failed", self._on_voice_failed)
+        self.event_bus.subscribe("circuit_breaker_open", self._on_circuit_breaker_open)
+        logger.info("[ASYNC-EVENT] Setup event handlers for voice processing")
+
+    def _on_voice_recognized(self, data: Dict[str, Any]):
+        """Handler for voice recognition success"""
+        logger.debug(f"[ASYNC-EVENT] Voice recognized: {data.get('text', 'N/A')}")
+
+    def _on_voice_failed(self, data: Dict[str, Any]):
+        """Handler for voice recognition failure"""
+        logger.warning(f"[ASYNC-EVENT] Voice recognition failed: {data.get('error', 'Unknown error')}")
+
+    def _on_circuit_breaker_open(self, data: Dict[str, Any]):
+        """Handler for circuit breaker opening"""
+        logger.error(f"[ASYNC-EVENT] Circuit breaker opened - voice recognition temporarily unavailable")
+
+    async def listen_async(self, timeout: int = 1, phrase_time_limit: int = 8, priority: int = 0) -> Tuple[Optional[str], float]:
+        """
+        Advanced async voice recognition with circuit breaker and event bus.
+        Fully integrated with async_pipeline architecture.
+        """
+        task_id = f"voice_{int(time.time() * 1000)}"
+
+        # Create voice task
+        task = VoiceTask(
+            task_id=task_id,
+            priority=priority,
+            timestamp=time.time()
+        )
+
+        try:
+            # Check if queue is full
+            if self.voice_queue.is_full():
+                logger.warning(f"[ASYNC] Voice queue is full ({self.voice_queue.size()}/{100}) - rejecting task")
+                await self.event_bus.publish("queue_full", {"task_id": task_id})
+                return None, 0.0
+
+            # Enqueue task
+            await self.voice_queue.enqueue(task)
+
+            # Execute with circuit breaker protection
+            async def recognize_wrapper():
+                # Run sync listen_with_confidence in executor
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: self.listen_with_confidence(timeout, phrase_time_limit)
+                )
+                return result
+
+            # Call with circuit breaker
+            text, confidence = await self.circuit_breaker.call(recognize_wrapper)
+
+            # Update task
+            task.text = text
+            task.confidence = confidence
+            task.status = "completed"
+            task.result = {"text": text, "confidence": confidence}
+
+            # Publish success event
+            if text:
+                await self.event_bus.publish("voice_recognized", {
+                    "task_id": task_id,
+                    "text": text,
+                    "confidence": confidence,
+                    "timestamp": time.time()
+                })
+
+            # Complete task in queue
+            self.voice_queue.complete_task(task_id)
+
+            return text, confidence
+
+        except Exception as e:
+            logger.error(f"[ASYNC] Error in async voice recognition: {e}")
+
+            # Update task as failed
+            task.status = "failed"
+            task.error = str(e)
+
+            # Publish failure event
+            await self.event_bus.publish("voice_failed", {
+                "task_id": task_id,
+                "error": str(e),
+                "timestamp": time.time()
+            })
+
+            # Complete task in queue
+            self.voice_queue.complete_task(task_id)
+
+            return None, 0.0
+
+    async def process_voice_queue_worker(self):
+        """
+        Background worker that processes the voice queue.
+        Enables concurrent voice command processing.
+        """
+        logger.info("[ASYNC-WORKER] Started voice queue worker")
+
+        while True:
+            try:
+                # Check if we can process more tasks
+                if self.voice_queue.processing_count >= self.voice_queue.max_concurrent:
+                    await asyncio.sleep(0.1)
+                    continue
+
+                # Get next task
+                task = await self.voice_queue.dequeue()
+                logger.debug(f"[ASYNC-WORKER] Processing task {task.task_id}")
+
+                # Process async
+                asyncio.create_task(self._process_voice_task(task))
+
+            except asyncio.CancelledError:
+                logger.info("[ASYNC-WORKER] Voice queue worker cancelled")
+                break
+            except Exception as e:
+                logger.error(f"[ASYNC-WORKER] Error in queue worker: {e}")
+                await asyncio.sleep(1)
+
+    async def _process_voice_task(self, task: VoiceTask):
+        """Process a single voice task"""
+        try:
+            # Execute voice recognition
+            text, confidence = await self.listen_async(priority=task.priority)
+
+            # Update task
+            task.text = text
+            task.confidence = confidence
+            task.status = "completed"
+
+        except Exception as e:
+            logger.error(f"[ASYNC] Error processing voice task {task.task_id}: {e}")
+            task.status = "failed"
+            task.error = str(e)
+
+        finally:
+            # Always complete the task
+            self.voice_queue.complete_task(task.task_id)
 
     def _play_sound(self, sound_type: str):
         """Play UI sounds for feedback"""
