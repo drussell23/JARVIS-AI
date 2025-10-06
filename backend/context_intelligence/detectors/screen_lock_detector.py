@@ -121,6 +121,10 @@ class ScreenLockContextDetector:
                     ActionType.SEARCH_WEB,
                     ActionType.NAVIGATE_URL,
                     ActionType.EXECUTE_SCRIPT,
+                    ActionType.CREATE_DOCUMENT,  # Document creation requires screen access!
+                    ActionType.TAKE_SCREENSHOT,
+                    ActionType.CLICK,
+                    ActionType.TYPE_TEXT,
                 }
 
                 for action in actions:
