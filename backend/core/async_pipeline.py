@@ -1215,15 +1215,23 @@ class AdvancedAsyncPipeline:
             topic = self._extract_document_topic(command)
 
             # Use document writer for content generation
-            from context_intelligence.executors.document_writer import DocumentWriter
+            from context_intelligence.executors.document_writer import DocumentWriterExecutor, DocumentRequest, DocumentType
 
-            writer = DocumentWriter()
-            # This will trigger async document creation
-            # The actual writing happens in background
+            # Create document request
+            request = DocumentRequest(
+                topic=topic,
+                document_type=DocumentType.ESSAY,
+                original_command=command
+            )
+
+            # Create writer and initiate document creation
+            writer = DocumentWriterExecutor()
+            # This will trigger async document creation in background
+            asyncio.create_task(writer.create_document(request))
 
             return {
                 "success": True,
-                "message": f"I'm creating a document about {topic} for you. This will take a moment.",
+                "message": f"I'm creating an essay about {topic} for you. Opening Google Docs now...",
                 "topic": topic
             }
 
