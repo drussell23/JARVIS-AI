@@ -217,15 +217,22 @@ class ProcessCleanupManager:
                             logger.info(f"✅ Gracefully terminated old JARVIS process {proc.pid}")
                         except psutil.TimeoutExpired:
                             # Force kill if needed
-                            proc.kill()
-                            cleaned.append({
-                                "pid": proc.pid,
-                                "name": proc.name(),
-                                "cmdline": cmdline[:100],
-                                "age_minutes": age_seconds / 60,
-                                "status": "killed"
-                            })
-                            logger.warning(f"⚠️ Force killed old JARVIS process {proc.pid}")
+                            try:
+                                proc.kill()
+                                cleaned.append({
+                                    "pid": proc.pid,
+                                    "name": proc.name(),
+                                    "cmdline": cmdline[:100],
+                                    "age_minutes": age_seconds / 60,
+                                    "status": "killed"
+                                })
+                                logger.warning(f"⚠️ Force killed old JARVIS process {proc.pid}")
+                            except psutil.NoSuchProcess:
+                                # Process already terminated, that's fine
+                                logger.info(f"✅ Process {proc.pid} already terminated")
+                        except psutil.NoSuchProcess:
+                            # Process disappeared during termination, that's fine
+                            logger.info(f"✅ Process {proc.pid} terminated successfully")
                         except Exception as e:
                             logger.error(f"❌ Failed to clean up PID {proc.pid}: {e}")
                     
