@@ -736,43 +736,78 @@ class AdvancedAsyncPipeline:
         if context.intent == "system_control":
             logger.info(f"[PIPELINE] Processing compound system command: {context.text}")
             try:
-                # Import compound action parser
-                from context_intelligence.analyzers.compound_action_parser import get_compound_parser, ActionType
+                # Use ContextAwareCommandHandler for intelligent screen lock handling
+                from context_intelligence.handlers.context_aware_handler import ContextAwareCommandHandler
+                from context_intelligence.analyzers.compound_action_parser import get_compound_parser
 
-                # Parse command into atomic actions
+                handler = ContextAwareCommandHandler()
                 parser = get_compound_parser()
-                actions = await parser.parse(context.text)
 
-                if not actions:
-                    context.response = "I didn't understand that command, Sir."
-                    context.metadata["parsing_failed"] = True
-                    return
+                # Define execution callback for compound actions
+                async def execute_compound_command(command: str, context_data: Dict[str, Any] = None):
+                    """Execute compound command after context handling"""
+                    # Parse command into atomic actions
+                    actions = await parser.parse(command)
 
-                # Log execution plan
-                plan = parser.get_execution_plan(actions)
-                logger.info(f"[COMPOUND] Execution plan: {plan}")
+                    if not actions:
+                        return {"success": False, "message": "I didn't understand that command, Sir."}
 
-                # Execute actions in sequence
-                results = []
-                for action in actions:
-                    result = await self._execute_atomic_action(action)
-                    results.append(result)
-                    if not result.get('success'):
-                        logger.warning(f"[COMPOUND] Action failed: {action.type.value}")
+                    # Log execution plan
+                    plan = parser.get_execution_plan(actions)
+                    logger.info(f"[COMPOUND] Execution plan: {plan}")
 
-                # Generate response based on results
-                if all(r.get('success') for r in results):
-                    context.response = f"Done, Sir. {plan}"
-                    context.metadata["compound_success"] = True
-                elif any(r.get('success') for r in results):
-                    context.response = f"Partially completed, Sir. {plan}"
-                    context.metadata["compound_partial"] = True
+                    # Execute actions in sequence
+                    results = []
+                    for action in actions:
+                        result = await self._execute_atomic_action(action)
+                        results.append(result)
+                        if not result.get('success'):
+                            logger.warning(f"[COMPOUND] Action failed: {action.type.value}")
+
+                    # Generate result
+                    if all(r.get('success') for r in results):
+                        return {
+                            "success": True,
+                            "message": f"Done, Sir.",
+                            "plan": plan,
+                            "results": results
+                        }
+                    elif any(r.get('success') for r in results):
+                        return {
+                            "success": True,
+                            "message": f"Partially completed, Sir.",
+                            "plan": plan,
+                            "results": results
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "message": "I couldn't complete that command, Sir.",
+                            "plan": plan,
+                            "results": results
+                        }
+
+                # Handle command with full context awareness (includes screen lock detection & unlock message)
+                result = await handler.handle_command_with_context(
+                    context.text,
+                    execute_callback=execute_compound_command
+                )
+
+                # Set response from context-aware handler
+                if result.get("messages"):
+                    # Combine all messages (unlock message + execution result)
+                    context.response = " ".join(result["messages"])
                 else:
-                    context.response = "I couldn't complete that command, Sir."
-                    context.metadata["compound_failed"] = True
+                    context.response = result.get("result", {}).get("message", "Command completed, Sir.")
 
-                context.metadata["execution_plan"] = plan
-                context.metadata["actions_executed"] = len(actions)
+                context.metadata["context_aware"] = True
+                context.metadata["steps_taken"] = result.get("steps_taken", [])
+                context.metadata["system_context"] = result.get("context", {})
+
+                if result.get("result"):
+                    context.metadata["execution_plan"] = result["result"].get("plan")
+                    context.metadata["execution_results"] = result["result"].get("results")
+
                 return
 
             except Exception as e:
@@ -783,60 +818,93 @@ class AdvancedAsyncPipeline:
                 context.response = f"I encountered an error processing that command, Sir."
                 return
 
-        # Handle document creation commands directly (no JARVIS required for basic creation)
+        # Handle document creation commands with context awareness
         if context.intent == "document_creation":
             logger.info(f"[PIPELINE] Processing document creation command: {context.text}")
             try:
+                # Use ContextAwareCommandHandler for intelligent screen lock handling
+                from context_intelligence.handlers.context_aware_handler import ContextAwareCommandHandler
                 from context_intelligence.executors.document_writer import DocumentWriter
 
-                # Parse the command to extract topic and details
-                text_lower = context.text.lower()
+                handler = ContextAwareCommandHandler()
 
-                # Extract topic/subject
-                topic = None
-                doc_type = "essay"  # default
+                # Define execution callback for document creation
+                async def execute_document_creation(command: str, context_data: Dict[str, Any] = None):
+                    """Execute document creation after context handling"""
+                    # Parse the command to extract topic and details
+                    text_lower = command.lower()
 
-                # Try to extract topic from common patterns
-                patterns = [
-                    r'write (?:an? |the )?(?:essay|paper|document) (?:about |on |regarding )?(.+)',
-                    r'write (?:me )?(?:an? )?(.+?)(?:\s+essay|\s+paper|\s+document)',
-                    r'create (?:an? |the )?document (?:about |on )?(.+)',
-                    r'compose (?:an? )?(?:essay|paper) (?:about |on )?(.+)',
-                ]
+                    # Extract topic/subject
+                    topic = None
+                    doc_type = "essay"  # default
 
-                for pattern in patterns:
-                    match = re.search(pattern, text_lower)
-                    if match:
-                        topic = match.group(1).strip()
-                        break
+                    # Try to extract topic from common patterns
+                    patterns = [
+                        r'write (?:an? |the )?(?:essay|paper|document) (?:about |on |regarding )?(.+)',
+                        r'write (?:me )?(?:an? )?(.+?)(?:\s+essay|\s+paper|\s+document)',
+                        r'create (?:an? |the )?document (?:about |on )?(.+)',
+                        r'compose (?:an? )?(?:essay|paper) (?:about |on )?(.+)',
+                    ]
 
-                if not topic:
-                    # Fallback: take everything after common trigger words
-                    for trigger in ['write', 'create', 'compose']:
-                        if trigger in text_lower:
-                            parts = text_lower.split(trigger, 1)
-                            if len(parts) > 1:
-                                topic = parts[1].strip()
-                                # Remove common fillers
-                                topic = topic.replace('an essay about', '').replace('a paper on', '')
-                                topic = topic.replace('essay', '').replace('paper', '').strip()
-                                break
+                    for pattern in patterns:
+                        match = re.search(pattern, text_lower)
+                        if match:
+                            topic = match.group(1).strip()
+                            break
 
-                if topic:
-                    context.response = f"I'll write that {doc_type} on {topic} for you, Sir. Opening Google Docs now..."
-                    context.metadata["document_creation_initiated"] = True
-                    context.metadata["topic"] = topic
-                    context.metadata["doc_type"] = doc_type
+                    if not topic:
+                        # Fallback: take everything after common trigger words
+                        for trigger in ['write', 'create', 'compose']:
+                            if trigger in text_lower:
+                                parts = text_lower.split(trigger, 1)
+                                if len(parts) > 1:
+                                    topic = parts[1].strip()
+                                    # Remove common fillers
+                                    topic = topic.replace('an essay about', '').replace('a paper on', '')
+                                    topic = topic.replace('essay', '').replace('paper', '').strip()
+                                    break
 
-                    # Create document writer and initiate async writing
-                    writer = DocumentWriter()
+                    if topic:
+                        # Create document writer and initiate async writing
+                        writer = DocumentWriter()
 
-                    # Note: Full execution happens asynchronously
-                    # The document will be created in the background
-                    logger.info(f"[PIPELINE] Document creation initiated: {topic}")
-                else:
-                    context.response = "I'll need more details about what you'd like me to write, Sir. What topic should the document cover?"
-                    context.metadata["needs_clarification"] = True
+                        # Note: Full execution happens asynchronously
+                        # The document will be created in the background
+                        logger.info(f"[PIPELINE] Document creation initiated: {topic}")
+
+                        return {
+                            "success": True,
+                            "message": f"I'll write that {doc_type} on {topic} for you, Sir. Opening Google Docs now...",
+                            "metadata": {
+                                "document_creation_initiated": True,
+                                "topic": topic,
+                                "doc_type": doc_type
+                            }
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "message": "I'll need more details about what you'd like me to write, Sir. What topic should the document cover?",
+                            "metadata": {
+                                "needs_clarification": True
+                            }
+                        }
+
+                # Handle with full context awareness (includes screen lock detection and unlock message FIRST)
+                result = await handler.handle_command_with_context(
+                    context.text,
+                    execute_callback=execute_document_creation
+                )
+
+                # Combine all messages (unlock message + execution result)
+                if result.get("messages"):
+                    context.response = " ".join(result["messages"])
+                elif result.get("message"):
+                    context.response = result["message"]
+
+                # Preserve metadata
+                if result.get("metadata"):
+                    context.metadata.update(result["metadata"])
 
                 return
 
