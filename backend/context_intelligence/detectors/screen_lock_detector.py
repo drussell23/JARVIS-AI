@@ -11,7 +11,6 @@ import logging
 from typing import Dict, Any, Optional, Tuple, Set
 from datetime import datetime
 
-from context_intelligence.core.system_state_monitor import get_system_monitor
 from api.voice_unlock_integration import voice_unlock_connector, initialize_voice_unlock
 
 logger = logging.getLogger(__name__)
@@ -24,7 +23,6 @@ class ScreenLockContextDetector:
     """
 
     def __init__(self):
-        self.system_monitor = get_system_monitor()
         self._last_check = None
         self._last_state = None
 
@@ -48,7 +46,12 @@ class ScreenLockContextDetector:
         
     async def is_screen_locked(self) -> bool:
         """Check if screen is currently locked"""
-        return await self.system_monitor.get_state("screen_locked", force_refresh=True)
+        try:
+            from voice_unlock.objc.server.screen_lock_detector import is_screen_locked
+            return is_screen_locked()
+        except Exception as e:
+            logger.debug(f"Could not check screen lock status: {e}")
+            return False
         
     async def check_screen_context(self, command: str) -> Dict[str, Any]:
         """
