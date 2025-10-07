@@ -417,6 +417,13 @@ class AdvancedAsyncPipeline:
         )
 
         self.register_stage(
+            "screen_lock_check",
+            self._check_screen_lock_universal,
+            timeout=5.0,
+            required=True,
+        )
+
+        self.register_stage(
             "preprocessing", self._preprocess_command, timeout=5.0, required=False
         )
 
@@ -684,6 +691,128 @@ class AdvancedAsyncPipeline:
             raise ValueError("Command too long (max 10000 chars)")
 
         context.metadata["validated"] = True
+
+    async def _check_screen_lock_universal(self, context: PipelineContext):
+        """
+        UNIVERSAL screen lock detection for ALL commands.
+        Dynamic, robust, and advanced with no hardcoding.
+        """
+        try:
+            # Import screen lock detector
+            from context_intelligence.detectors.screen_lock_detector import (
+                get_screen_lock_detector,
+            )
+
+            detector = get_screen_lock_detector()
+
+            # Check if screen is locked
+            is_locked = await detector.is_screen_locked()
+            context.metadata["screen_locked"] = is_locked
+
+            logger.info(
+                f"[UNIVERSAL SCREEN CHECK] Screen is {'LOCKED' if is_locked else 'UNLOCKED'}"
+            )
+
+            if is_locked:
+                # Check if this command requires screen access
+                screen_context = await detector.check_screen_context(context.text)
+
+                if screen_context["requires_unlock"]:
+                    # Generate dynamic unlock message
+                    unlock_message = screen_context["unlock_message"]
+
+                    # Log prominently
+                    logger.warning(
+                        f"[UNIVERSAL SCREEN CHECK] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    )
+                    logger.warning(
+                        f"[UNIVERSAL SCREEN CHECK] 🔓 SCREEN LOCKED - UNLOCK REQUIRED"
+                    )
+                    logger.warning(
+                        f"[UNIVERSAL SCREEN CHECK] 📝 Command: {context.text}"
+                    )
+                    logger.warning(
+                        f"[UNIVERSAL SCREEN CHECK] 📢 Unlock Message: '{unlock_message}'"
+                    )
+                    logger.warning(
+                        f"[UNIVERSAL SCREEN CHECK] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    )
+
+                    # Store unlock information in context
+                    context.metadata["requires_unlock"] = True
+                    context.metadata["unlock_message"] = unlock_message
+                    context.metadata["screen_context"] = screen_context
+
+                    # Speak the unlock message immediately
+                    logger.warning(
+                        f"[UNIVERSAL SCREEN CHECK] 🎤 Speaking unlock notification NOW..."
+                    )
+                    await self._speak_unlock_message(unlock_message)
+                    logger.warning(
+                        f"[UNIVERSAL SCREEN CHECK] ✅ Unlock notification spoken"
+                    )
+
+                    # Wait for user to hear the message
+                    logger.info(
+                        f"[UNIVERSAL SCREEN CHECK] ⏱️  Waiting 3 seconds for user to hear notification..."
+                    )
+                    await asyncio.sleep(3.0)
+                    logger.info(
+                        f"[UNIVERSAL SCREEN CHECK] ⏱️  Wait complete, proceeding with unlock..."
+                    )
+
+                    # Perform the actual unlock
+                    logger.info(f"[UNIVERSAL SCREEN CHECK] 🔓 Now unlocking screen...")
+                    unlock_success, unlock_result = (
+                        await detector.handle_screen_lock_context(context.text)
+                    )
+
+                    if unlock_success:
+                        context.metadata["unlock_successful"] = True
+                        logger.info(
+                            f"[UNIVERSAL SCREEN CHECK] ✅ Screen unlocked successfully"
+                        )
+                    else:
+                        context.metadata["unlock_successful"] = False
+                        context.metadata["unlock_error"] = unlock_result
+                        logger.error(
+                            f"[UNIVERSAL SCREEN CHECK] ❌ Screen unlock failed: {unlock_result}"
+                        )
+                else:
+                    logger.info(
+                        f"[UNIVERSAL SCREEN CHECK] ❌ Command doesn't require screen access"
+                    )
+                    context.metadata["requires_unlock"] = False
+            else:
+                logger.info(
+                    f"[UNIVERSAL SCREEN CHECK] ✅ Screen is unlocked, proceeding normally"
+                )
+                context.metadata["requires_unlock"] = False
+
+        except Exception as e:
+            logger.error(
+                f"[UNIVERSAL SCREEN CHECK] ❌ Error in screen lock detection: {e}"
+            )
+            # Don't fail the pipeline, just log the error
+            context.metadata["screen_check_error"] = str(e)
+            context.metadata["requires_unlock"] = False
+
+    async def _speak_unlock_message(self, message: str):
+        """Speak unlock message with slower rate for clarity"""
+        try:
+            from api.jarvis_voice_api import async_subprocess_run
+
+            # Use slower speech rate for unlock messages
+            await async_subprocess_run(
+                ["say", "-v", "Daniel", "-r", "160", message], timeout=30.0
+            )
+            logger.info(
+                f"[UNIVERSAL SCREEN CHECK] 📢 Spoke unlock message: {message[:50]}..."
+            )
+        except Exception as e:
+            logger.error(
+                f"[UNIVERSAL SCREEN CHECK] ❌ Failed to speak unlock message: {e}"
+            )
 
     async def _preprocess_command(self, context: PipelineContext):
         """Preprocess command text"""

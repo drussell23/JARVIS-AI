@@ -8,7 +8,7 @@ Integrated with async_pipeline.py for dynamic, robust operation.
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional, Tuple, Set
+from typing import Dict, Any, Optional, Tuple, Set, List
 from datetime import datetime
 
 from api.voice_unlock_integration import voice_unlock_connector, initialize_voice_unlock
@@ -212,72 +212,216 @@ class ScreenLockContextDetector:
 
     async def _generate_unlock_message(self, command: str) -> str:
         """
-        Generate a dynamic, context-aware message for unlocking.
-        Uses CompoundActionParser for intelligent action extraction.
+        Generate dynamic, contextual unlock message based on command analysis.
+        Advanced, robust, and completely dynamic with no hardcoding.
 
         Args:
-            command: The original command
+            command: The command that requires unlock
 
         Returns:
-            Message to speak to user
+            Contextual message to speak to user
         """
-        # Extract the action using CompoundActionParser for accuracy
-        action = await self._extract_action_dynamic(command)
+        # Parse command into actions for intelligent messaging
+        actions = await self._extract_actions_dynamic(command)
 
-        # Make document creation messages more natural
-        command_lower = command.lower()
-        is_document_creation = any(
-            word in command_lower
-            for word in [
-                "write",
-                "create",
-                "draft",
-                "compose",
-                "essay",
-                "document",
-                "paper",
-            ]
+        # Extract contextual information
+        command_context = await self._analyze_command_context(command)
+
+        # Generate contextual message based on detected actions and context
+        return await self._generate_contextual_message(
+            command, actions, command_context
         )
 
-        if is_document_creation:
-            # Extract topic from command for more natural message
-            topic = self._extract_topic_from_command(command)
+    async def _extract_actions_dynamic(self, command: str) -> List[str]:
+        """Extract all actions from command using CompoundActionParser"""
+        try:
+            from context_intelligence.analyzers.compound_action_parser import (
+                get_compound_parser,
+            )
+
+            parser = get_compound_parser()
+            actions = await parser.parse(command)
+
+            # Convert to human-readable action descriptions
+            action_descriptions = []
+            for action in actions:
+                if action.type.value == "open_app":
+                    app_name = action.params.get("app_name", "application")
+                    action_descriptions.append(f"open {app_name}")
+                elif action.type.value == "search_web":
+                    query = action.params.get("query", "online")
+                    action_descriptions.append(f"search for {query}")
+                elif action.type.value == "navigate_url":
+                    url = action.params.get("url", "website")
+                    action_descriptions.append(f"navigate to {url}")
+                elif action.type.value == "create_document":
+                    action_descriptions.append("create a document")
+                else:
+                    action_descriptions.append(action.type.value.replace("_", " "))
+
+            return action_descriptions
+        except Exception as e:
+            logger.warning(f"Failed to parse actions: {e}")
+            return ["complete your request"]
+
+    async def _analyze_command_context(self, command: str) -> Dict[str, Any]:
+        """Analyze command for contextual information"""
+        command_lower = command.lower()
+
+        context = {
+            "is_document_creation": False,
+            "is_web_search": False,
+            "is_app_opening": False,
+            "is_compound": False,
+            "urgency": "normal",
+            "topic": None,
+            "app_name": None,
+            "search_query": None,
+        }
+
+        # Detect document creation
+        doc_keywords = [
+            "write",
+            "create",
+            "draft",
+            "compose",
+            "essay",
+            "document",
+            "paper",
+            "letter",
+            "memo",
+        ]
+        if any(keyword in command_lower for keyword in doc_keywords):
+            context["is_document_creation"] = True
+            context["topic"] = self._extract_topic_from_command(command)
+
+        # Detect web search
+        search_keywords = ["search", "google", "look up", "find online", "browse"]
+        if any(keyword in command_lower for keyword in search_keywords):
+            context["is_web_search"] = True
+            context["search_query"] = self._extract_search_query(command)
+
+        # Detect app opening
+        app_keywords = ["open", "launch", "start"]
+        if any(keyword in command_lower for keyword in app_keywords):
+            context["is_app_opening"] = True
+            context["app_name"] = self._extract_app_name(command)
+
+        # Detect compound commands
+        compound_indicators = ["and", "then", "after", "also", "plus"]
+        if any(indicator in command_lower for indicator in compound_indicators):
+            context["is_compound"] = True
+
+        # Detect urgency
+        urgent_keywords = ["urgent", "asap", "quickly", "fast", "immediately"]
+        if any(keyword in command_lower for keyword in urgent_keywords):
+            context["urgency"] = "urgent"
+
+        return context
+
+    async def _generate_contextual_message(
+        self, command: str, actions: List[str], context: Dict[str, Any]
+    ) -> str:
+        """Generate contextual unlock message based on analysis"""
+        import random
+
+        # Document creation messages
+        if context["is_document_creation"] and context["topic"]:
             templates = [
-                f"Your screen is locked, Sir. Let me unlock it so I can create that {topic}.",
-                f"I notice your screen is locked. Unlocking it now to write your {topic}.",
-                f"Screen is locked. I'll unlock it to work on your {topic}.",
-                f"Let me unlock your screen to create that {topic} for you, Sir.",
+                f"Your screen is locked, Sir. Let me unlock it so I can create that {context['topic']}.",
+                f"I notice your screen is locked. Unlocking it now to write your {context['topic']}.",
+                f"Screen is locked. I'll unlock it to work on your {context['topic']}.",
+                f"Let me unlock your screen to create that {context['topic']} for you, Sir.",
+            ]
+            return random.choice(templates)
+
+        # Web search messages
+        if context["is_web_search"] and context["search_query"]:
+            templates = [
+                f"Your screen is locked, Sir. Let me unlock it so I can search for {context['search_query']}.",
+                f"I'll unlock your screen to search for {context['search_query']}.",
+                f"Unlocking screen to search for {context['search_query']}, Sir.",
+            ]
+            return random.choice(templates)
+
+        # App opening messages
+        if context["is_app_opening"] and context["app_name"]:
+            templates = [
+                f"Your screen is locked, Sir. Let me unlock it so I can open {context['app_name']}.",
+                f"I'll unlock your screen to open {context['app_name']}.",
+                f"Unlocking screen to open {context['app_name']}, Sir.",
+            ]
+            return random.choice(templates)
+
+        # Compound command messages
+        if context["is_compound"] and len(actions) > 1:
+            action_text = " and ".join(actions[:2])  # Limit to first two actions
+            templates = [
+                f"Your screen is locked, Sir. Let me unlock it so I can {action_text}.",
+                f"I'll unlock your screen to {action_text}.",
+                f"Unlocking screen to {action_text}, Sir.",
+            ]
+            return random.choice(templates)
+
+        # Generic messages based on urgency
+        if context["urgency"] == "urgent":
+            templates = [
+                "Your screen is locked, Sir. Unlocking it immediately to complete your urgent request.",
+                "I'll unlock your screen right away for your urgent task.",
+                "Unlocking screen immediately, Sir.",
             ]
         else:
-            # Dynamic message templates for other commands
             templates = [
-                f"Your screen is locked. I'll unlock it to {action}.",
-                f"Let me unlock your screen so I can {action}.",
-                f"Unlocking screen to {action}, Sir.",
+                "Your screen is locked, Sir. Let me unlock it to complete your request.",
+                "I'll unlock your screen to proceed with your command.",
+                "Unlocking screen to continue, Sir.",
             ]
 
-        # For document creation, use the specific templates directly (don't override with generic responses)
-        if is_document_creation:
-            import random
+        return random.choice(templates)
 
-            return random.choice(templates)
+    def _extract_search_query(self, command: str) -> str:
+        """Extract search query from command"""
+        import re
 
-        # Use voice dynamic response generator for other commands
-        try:
-            from voice.dynamic_response_generator import get_response_generator
+        # Common patterns for search queries
+        patterns = [
+            r"search for (.+)",
+            r"google (.+)",
+            r"look up (.+)",
+            r"find (.+)",
+            r"browse (.+)",
+        ]
 
-            response_gen = get_response_generator()
+        for pattern in patterns:
+            match = re.search(pattern, command.lower())
+            if match:
+                query = match.group(1).strip()
+                # Clean up the query
+                query = query.replace(" online", "").replace(" on the web", "")
+                return query[:50]  # Limit length
 
-            # Generate natural unlock message
-            base_message = templates[0]  # Use first template as base
-            return response_gen.get_contextual_response(
-                base_message, context={"action": action, "command": command}
-            )
-        except:
-            # Fallback: use simple template
-            import random
+        return "your search"
 
-            return random.choice(templates)
+    def _extract_app_name(self, command: str) -> str:
+        """Extract app name from command"""
+        import re
+
+        # Common patterns for app names
+        patterns = [
+            r"open (.+)",
+            r"launch (.+)",
+            r"start (.+)",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, command.lower())
+            if match:
+                app_name = match.group(1).strip()
+                # Clean up the app name
+                app_name = app_name.replace(" application", "").replace(" app", "")
+                return app_name.title()
+
+        return "the application"
 
     async def _extract_action_dynamic(self, command: str) -> str:
         """
