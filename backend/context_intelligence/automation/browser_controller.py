@@ -32,7 +32,9 @@ class BrowserController:
         """
         self.browser = preferred_browser
         self._current_url = None
-        self._browser_app_name = "Google Chrome" if preferred_browser == "Chrome" else "Safari"
+        self._browser_app_name = (
+            "Google Chrome" if preferred_browser == "Chrome" else "Safari"
+        )
 
     async def navigate(self, url: str) -> bool:
         """
@@ -48,7 +50,8 @@ class BrowserController:
             script = self._build_navigation_script(url)
             result = await self._run_applescript(script)
 
-            if result:
+            # AppleScript can succeed with empty output, so check for None (error) vs empty string (success)
+            if result is not None:
                 self._current_url = url
                 logger.info(f"Navigated to {url}")
                 return True
@@ -63,17 +66,17 @@ class BrowserController:
         """Get the current URL of the active tab"""
         try:
             if self.browser == "Safari":
-                script = '''
+                script = """
                 tell application "Safari"
                     return URL of front document
                 end tell
-                '''
+                """
             else:  # Chrome
-                script = '''
+                script = """
                 tell application "Google Chrome"
                     return URL of active tab of front window
                 end tell
-                '''
+                """
 
             result = await self._run_applescript(script)
             if result:
@@ -98,17 +101,17 @@ class BrowserController:
         """
         try:
             if self.browser == "Safari":
-                script = f'''
+                script = f"""
                 tell application "Safari"
                     do JavaScript "{self._escape_js(js_code)}" in front document
                 end tell
-                '''
+                """
             else:  # Chrome
-                script = f'''
+                script = f"""
                 tell application "Google Chrome"
                     execute active tab of front window javascript "{self._escape_js(js_code)}"
                 end tell
-                '''
+                """
 
             result = await self._run_applescript(script)
             return result
@@ -131,9 +134,11 @@ class BrowserController:
         try:
             # For Google Docs, we'll use JavaScript to insert text
             # This is more reliable than keystroke simulation
-            escaped_text = text.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
+            escaped_text = (
+                text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+            )
 
-            js_code = f'''
+            js_code = f"""
             (function() {{
                 // Try to insert text into Google Docs editor
                 var editor = document.querySelector('[contenteditable="true"]');
@@ -161,7 +166,7 @@ class BrowserController:
                 }}
                 return "no editor found";
             }})();
-            '''
+            """
 
             result = await self.execute_javascript(js_code)
 
@@ -189,7 +194,7 @@ class BrowserController:
         """
         try:
             # Split text into chunks
-            chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
+            chunks = [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
 
             for chunk in chunks:
                 success = await self.type_text(chunk, delay=0)
@@ -208,11 +213,11 @@ class BrowserController:
     async def focus_browser(self) -> bool:
         """Bring browser to front"""
         try:
-            script = f'''
+            script = f"""
             tell application "{self.browser}"
                 activate
             end tell
-            '''
+            """
 
             await self._run_applescript(script)
             return True
@@ -234,38 +239,38 @@ class BrowserController:
         try:
             if self.browser == "Safari":
                 if url:
-                    script = f'''
+                    script = f"""
                     tell application "Safari"
                         tell front window
                             set current tab to (make new tab with properties {{URL:"{url}"}})
                         end tell
                     end tell
-                    '''
+                    """
                 else:
-                    script = '''
+                    script = """
                     tell application "Safari"
                         tell front window
                             set current tab to (make new tab)
                         end tell
                     end tell
-                    '''
+                    """
             else:  # Chrome
                 if url:
-                    script = f'''
+                    script = f"""
                     tell application "Google Chrome"
                         tell front window
                             make new tab with properties {{URL:"{url}"}}
                         end tell
                     end tell
-                    '''
+                    """
                 else:
-                    script = '''
+                    script = """
                     tell application "Google Chrome"
                         tell front window
                             make new tab
                         end tell
                     end tell
-                    '''
+                    """
 
             await self._run_applescript(script)
             if url:
@@ -281,7 +286,7 @@ class BrowserController:
         """Build AppleScript for navigation"""
         if self.browser == "Chrome":
             # Chrome: Open in normal (non-incognito) window
-            return f'''
+            return f"""
             tell application "Google Chrome"
                 activate
 
@@ -311,9 +316,9 @@ class BrowserController:
                     end if
                 end if
             end tell
-            '''
+            """
         else:  # Safari
-            return f'''
+            return f"""
             tell application "Safari"
                 activate
                 if (count of windows) is 0 then
@@ -321,7 +326,7 @@ class BrowserController:
                 end if
                 set URL of front document to "{url}"
             end tell
-            '''
+            """
 
     async def _run_applescript(self, script: str) -> Optional[str]:
         """
@@ -335,17 +340,19 @@ class BrowserController:
         """
         try:
             process = await asyncio.create_subprocess_exec(
-                'osascript', '-e', script,
+                "osascript",
+                "-e",
+                script,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
 
             stdout, stderr = await process.communicate()
 
             if process.returncode == 0:
-                return stdout.decode('utf-8').strip()
+                return stdout.decode("utf-8").strip()
             else:
-                error_msg = stderr.decode('utf-8').strip()
+                error_msg = stderr.decode("utf-8").strip()
                 logger.error(f"AppleScript error: {error_msg}")
                 return None
 
@@ -356,7 +363,7 @@ class BrowserController:
     def _escape_js(self, js_code: str) -> str:
         """Escape JavaScript code for AppleScript"""
         # Escape quotes and backslashes for AppleScript string
-        escaped = js_code.replace('\\', '\\\\').replace('"', '\\"')
+        escaped = js_code.replace("\\", "\\\\").replace('"', '\\"')
         return escaped
 
     async def search_google(self, query: str) -> bool:
@@ -372,6 +379,7 @@ class BrowserController:
         try:
             # URL encode the query
             import urllib.parse
+
             encoded_query = urllib.parse.quote(query)
             search_url = f"https://www.google.com/search?q={encoded_query}"
 
@@ -404,10 +412,10 @@ class BrowserController:
         try:
             # Map common browser names
             browser_map = {
-                'safari': 'Safari',
-                'chrome': 'Google Chrome',
-                'firefox': 'Firefox',
-                'edge': 'Microsoft Edge'
+                "safari": "Safari",
+                "chrome": "Google Chrome",
+                "firefox": "Firefox",
+                "edge": "Microsoft Edge",
             }
 
             app_lower = app_name.lower()
@@ -421,8 +429,12 @@ class BrowserController:
             await asyncio.sleep(1.0)
 
             # Update browser preference if needed
-            if app_lower in ['safari', 'chrome', 'firefox', 'edge']:
-                self.browser = "Chrome" if app_lower == "chrome" else "Safari" if app_lower == "safari" else self.browser
+            if app_lower in ["safari", "chrome", "firefox", "edge"]:
+                self.browser = (
+                    "Chrome"
+                    if app_lower == "chrome"
+                    else "Safari" if app_lower == "safari" else self.browser
+                )
                 self._browser_app_name = actual_app_name
 
             # Perform the search
