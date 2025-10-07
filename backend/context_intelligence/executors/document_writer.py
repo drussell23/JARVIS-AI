@@ -276,10 +276,10 @@ class DocumentWriterExecutor:
             "total_words_target": 0
         }
         self._last_narration_time = 0
-        self._min_narration_interval = 8.0  # Minimum 8 seconds between narrations for better speech pacing
+        self._min_narration_interval = 3.5  # Minimum 3.5 seconds between narrations for smooth, natural pacing
         self._last_phase = None  # Track last phase to avoid repeating similar messages
         self._narration_count = 0  # Track total narrations to reduce frequency
-        self._skip_similar_phases = True  # Skip narration for similar phases
+        self._skip_similar_phases = False  # Allow more narrations for better user engagement
 
         # Initialize async pipeline for non-blocking document operations
         self.pipeline = get_async_pipeline()
@@ -698,7 +698,7 @@ Provide a clear, structured outline."""
         word_count = 0
         sentence_count = 0
         buffer = ""
-        progress_interval = 150  # Update every 150 words instead of 50 to reduce redundancy
+        progress_interval = 100  # Update every 100 words for smooth, engaging progress updates
         next_milestone = progress_interval
 
         # Track sections for progress updates
@@ -728,18 +728,17 @@ Provide a clear, structured outline."""
                         # Detect section changes (simple heuristic)
                         if current_section_index < len(sections) and not section_announced:
                             section_name = sections[current_section_index]['name']
-                            # Only announce major sections, not every small one
-                            if current_section_index % 2 == 0:  # Announce every other section
-                                await self._narrate(progress_callback, websocket, context={
-                                    "phase": "writing_section",
-                                    "current_section": section_name,
-                                    "word_count": word_count,
-                                    "progress": 55 + int((word_count / (request.word_count or 1000)) * 40)
-                                })
+                            # Announce every section for better engagement
+                            await self._narrate(progress_callback, websocket, context={
+                                "phase": "writing_section",
+                                "current_section": section_name,
+                                "word_count": word_count,
+                                "progress": 55 + int((word_count / (request.word_count or 1000)) * 40)
+                            })
                             section_announced = True
 
-                        # Move to next section periodically
-                        if word_count > (current_section_index + 1) * 150 and current_section_index < len(sections) - 1:
+                        # Move to next section periodically (every 100 words for smoother transitions)
+                        if word_count > (current_section_index + 1) * 100 and current_section_index < len(sections) - 1:
                             current_section_index += 1
                             section_announced = False
 
@@ -937,7 +936,17 @@ Narration:"""
                 "Connecting to Google Docs",
                 "Setting up document services",
                 "Initializing the writing system",
-                f"Preparing to write{sir_phrase}"
+                f"Preparing to write{sir_phrase}",
+                "Getting everything ready",
+                "Spinning up the document tools"
+            ])
+            
+        elif phase == 'services_ready':
+            return random.choice([
+                "Services connected",
+                "Ready to create the document",
+                "All systems go",
+                f"Tools initialized{sir_phrase}"
             ])
             
         elif phase == 'creating_document':
@@ -945,7 +954,30 @@ Narration:"""
                 "Creating your document in Google Docs",
                 "Setting up the document structure",
                 f"Opening a new {doc_type} for you",
-                "Establishing document framework"
+                "Establishing document framework",
+                "Building the document"
+            ])
+            
+        elif phase == 'document_created':
+            return random.choice([
+                "Document created successfully",
+                "Got your new document ready",
+                f"Fresh document set up{sir_phrase}",
+                "Document structure in place"
+            ])
+            
+        elif phase == 'opening_browser':
+            return random.choice([
+                "Opening in Chrome",
+                "Launching the browser",
+                "Bringing up Google Docs"
+            ])
+            
+        elif phase == 'browser_ready':
+            return random.choice([
+                "Browser's open and ready",
+                "Document visible on screen",
+                "Chrome has it loaded"
             ])
             
         elif phase == 'analyzing_topic':
@@ -953,7 +985,9 @@ Narration:"""
                 f"Analyzing key aspects of {topic}",
                 f"Researching {topic} for comprehensive coverage",
                 f"Identifying main themes about {topic}",
-                f"Structuring thoughts on {topic}"
+                f"Structuring thoughts on {topic}",
+                f"Planning the approach to {topic}",
+                f"Mapping out {topic} coverage"
             ]
             return random.choice(analyses)
             
@@ -962,15 +996,19 @@ Narration:"""
                 f"Outline ready - found several interesting angles",
                 "Structure mapped out, ready to write",
                 f"Framework complete{sir_phrase}",
-                "Got the blueprint, starting content"
+                "Got the blueprint, starting content",
+                "Outline looking solid",
+                "Plan's in place, let's write"
             ])
             
         elif phase == 'starting_writing':
             return random.choice([
                 f"Writing about {topic} now",
                 "Composing the content",
-                f"Let me craft this {doc_type} for you",
-                "Beginning the actual writing"
+                f"Let me craft this {doc_type} for you{sir_phrase}",
+                "Beginning the actual writing",
+                f"Starting with the introduction about {topic}",
+                f"Getting the words down now"
             ])
             
         elif phase == 'writing_section':
@@ -978,26 +1016,56 @@ Narration:"""
                 f"{random.choice(transitions)} {current_section}",
                 f"Writing {current_section}",
                 f"Developing {current_section} now",
-                f"Crafting {current_section}"
+                f"Crafting {current_section}",
+                f"Working on {current_section}",
+                f"{current_section} coming together nicely",
+                f"Building out {current_section}"
             ]
             return random.choice(section_updates)
             
         elif phase == 'progress_update':
-            # Vary progress announcements
-            if progress < 30:
-                stage = "Getting started"
+            # More varied progress announcements with specific milestones
+            if progress < 20:
+                stage_phrases = [
+                    "Just getting started",
+                    "Opening strong",
+                    "Building momentum",
+                    "Laying the groundwork"
+                ]
+            elif progress < 40:
+                stage_phrases = [
+                    "Making solid progress",
+                    "Coming along nicely",
+                    "Building the argument",
+                    "Developing the ideas"
+                ]
             elif progress < 60:
-                stage = "Making good progress"
-            elif progress < 90:
-                stage = "Nearly there"
+                stage_phrases = [
+                    "Halfway there",
+                    "Making great headway",
+                    "Rolling through this",
+                    "Really cooking now"
+                ]
+            elif progress < 80:
+                stage_phrases = [
+                    "Into the home stretch",
+                    "Getting close",
+                    "Nearly there",
+                    "Closing in on completion"
+                ]
             else:
-                stage = "Almost done"
+                stage_phrases = [
+                    "Almost finished",
+                    "Just about done",
+                    "Final stretch",
+                    "Wrapping it up"
+                ]
                 
             progress_msgs = [
-                f"{stage} - {word_count} words written",
-                f"{random.choice(progress_phrases)} {progress}% complete",
-                f"{word_count} words down, {stage.lower()}",
-                f"{stage}{sir_phrase}"
+                f"{random.choice(stage_phrases)} - {word_count} words",
+                f"{word_count} words written, {random.choice(stage_phrases).lower()}",
+                f"{random.choice(progress_phrases)} {progress}%{sir_phrase}",
+                f"{random.choice(stage_phrases)}"
             ]
             return random.choice(progress_msgs)
             
@@ -1046,27 +1114,16 @@ Narration:"""
         if context:
             current_phase = context.get('phase')
             
-            # Skip redundant progress updates if too frequent
+            # Allow all progress updates for better engagement
             if current_phase == 'progress_update':
                 self._narration_count += 1
-                # Only narrate every 3rd progress update
-                if self._narration_count % 3 != 0:
-                    logger.info(f"[DOCUMENT WRITER] Skipping redundant progress update")
-                    return
+                # Narrate all progress updates to keep user engaged
+                logger.info(f"[DOCUMENT WRITER] Progress update #{self._narration_count}")
             
-            # Skip similar consecutive phases
-            if self._skip_similar_phases and self._last_phase:
-                similar_phases = [
-                    ('initializing_services', 'services_ready'),
-                    ('creating_document', 'document_created'),
-                    ('opening_browser', 'browser_ready'),
-                    ('analyzing_topic', 'outline_complete')
-                ]
-                for phase_pair in similar_phases:
-                    if self._last_phase in phase_pair and current_phase in phase_pair:
-                        logger.info(f"[DOCUMENT WRITER] Skipping similar phase: {current_phase} (last was {self._last_phase})")
-                        self._last_phase = current_phase
-                        return
+            # Allow narrations for all phases to maintain engagement
+            # (Skip logic disabled for smoother communication)
+            if False:  # Disabled to provide continuous updates
+                pass
             
             self._last_phase = current_phase
             message = await self._generate_dynamic_narration(context)
