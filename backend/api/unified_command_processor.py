@@ -384,10 +384,15 @@ class UnifiedCommandProcessor:
         
             
         # Document creation detection (high priority - before vision)
-        document_keywords = ['write', 'create', 'draft', 'compose', 'generate']
+        # Use root words that will match variations (write/writing/writes, create/creating, etc.)
+        document_keywords = ['writ', 'creat', 'draft', 'compos', 'generat']  # Root forms
         document_types = ['essay', 'report', 'paper', 'article', 'document', 'blog', 'letter', 'story']
 
-        has_document_keyword = any(kw in words for kw in document_keywords)
+        # Check if any word starts with a document keyword (handles write/writing/writes, etc.)
+        has_document_keyword = any(
+            any(word.startswith(kw) for word in words)
+            for kw in document_keywords
+        )
         has_document_type = any(dtype in words for dtype in document_types)
 
         if has_document_keyword and has_document_type:
@@ -724,10 +729,18 @@ class UnifiedCommandProcessor:
                         # Get document writer
                         writer = get_document_writer()
 
-                        # Execute document creation
-                        result = await writer.create_document(request=doc_request, websocket=websocket)
+                        # Start document creation as a background task (non-blocking)
+                        # This allows us to return immediately with feedback
+                        logger.info(f"[DOCUMENT] Starting background document creation task")
+                        asyncio.create_task(writer.create_document(request=doc_request, websocket=websocket))
 
-                        return result
+                        # Return immediate feedback to user
+                        return {
+                            "success": True,
+                            "task_started": True,
+                            "topic": doc_request.topic,
+                            "message": f"I'm creating an essay about {doc_request.topic} for you, Sir."
+                        }
 
                     # Use context-aware handler to check screen lock FIRST
                     logger.info(f"[DOCUMENT] Checking context (including screen lock) before document creation...")

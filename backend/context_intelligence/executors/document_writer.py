@@ -1194,10 +1194,16 @@ def _extract_topic(command: str, doc_type: DocumentType) -> str:
     command_lower = command.lower()
 
     # Pattern list (ordered by specificity)
+    # Updated to handle -ing forms: write/writing, create/creating, etc.
     patterns = [
-        r'(?:write|create|draft|compose|generate)\s+(?:me\s+)?(?:an?\s+)?(?:\d+\s+(?:word|page)s?\s+)?(?:essay|report|paper|article|document|blog\s*post)?\s+(?:about|on|regarding)\s+(.+?)(?:\s+in\s+(?:google\s*)?docs?|\s+for\s+me|$)',
+        # Pattern 1: "write/writing [me] [an] essay [about/on] topic"
+        r'(?:writ(?:e|ing)|creat(?:e|ing)|draft(?:|ing)|compos(?:e|ing)|generat(?:e|ing))\s+(?:me\s+)?(?:an?\s+)?(?:\d+\s+(?:word|page)s?\s+)?(?:essay|report|paper|article|document|blog\s*post)?\s+(?:about|on|regarding)\s+(.+?)(?:\s+in\s+(?:google\s*)?docs?|\s+for\s+me|$)',
+        # Pattern 2: "essay [about/on] topic"
         r'(?:essay|report|paper|article|document)\s+(?:about|on|regarding)\s+(.+?)(?:\s+in\s+(?:google\s*)?docs?|$)',
-        r'(?:write|create|draft)\s+(?:me\s+)?(?:an?\s+)?(.+?)(?:\s+essay|\s+report|\s+paper|\s+article|$)',
+        # Pattern 3: "write/writing [me] [an] topic essay"
+        r'(?:writ(?:e|ing)|creat(?:e|ing)|draft(?:|ing))\s+(?:me\s+)?(?:an?\s+)?(.+?)(?:\s+essay|\s+report|\s+paper|\s+article|$)',
+        # Pattern 4: Simple "writing essay on topic" (no "about" connector)
+        r'(?:writ(?:e|ing)|creat(?:e|ing))\s+essay\s+on\s+(.+?)(?:\s+in\s+(?:google\s*)?docs?|$)',
     ]
 
     for pattern in patterns:
@@ -1209,8 +1215,11 @@ def _extract_topic(command: str, doc_type: DocumentType) -> str:
             topic = re.sub(r'\s+for\s+me$', '', topic)
             topic = re.sub(r'^\d+\s+(?:word|page)s?\s+', '', topic)
             if topic:
+                logger.info(f"Extracted topic '{topic}' from command using pattern: {pattern[:50]}...")
                 return topic
 
+    # Fallback: if no pattern matched, log and return default
+    logger.warning(f"Could not extract topic from command: '{command}'. Using default.")
     return "the requested topic"
 
 
