@@ -914,11 +914,16 @@ class AdvancedAsyncPipeline:
                 return
 
         # ENHANCED: Context-aware handling for ALL commands, not just document creation
+        context_handler = None
         try:
             from context_intelligence.handlers.context_aware_handler import get_context_aware_handler
             context_handler = get_context_aware_handler()
+            logger.warning(f"[PIPELINE] ✅ Context-aware handler LOADED successfully")
         except ImportError as e:
-            logger.warning(f"Context-aware handler not available: {e}, using fallback")
+            logger.error(f"[PIPELINE] ❌ Context-aware handler NOT available: {e}, using fallback")
+            context_handler = None
+        except Exception as e:
+            logger.error(f"[PIPELINE] ❌ Error loading context-aware handler: {e}")
             context_handler = None
 
         # Get comprehensive system context
@@ -961,16 +966,23 @@ class AdvancedAsyncPipeline:
             # Process through context-aware handler
             try:
                 if context_handler:
+                    logger.warning(f"[PIPELINE] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                    logger.warning(f"[PIPELINE] 🎯 Using CONTEXT-AWARE handler")
+                    logger.warning(f"[PIPELINE] 📝 Command: {context.text}")
+                    logger.warning(f"[PIPELINE] 🔒 Screen locked: {system_context.get('screen_locked')}")
+                    logger.warning(f"[PIPELINE] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                    
                     result = await context_handler.handle_command_with_context(
                         context.text,
                         execute_callback=create_document
                     )
-                    logger.info(f"[PIPELINE] Context-aware processing completed successfully")
+                    logger.warning(f"[PIPELINE] ✅ Context-aware processing completed successfully")
                 else:
-                    # Fallback: call create_document directly
-                    logger.info(f"[PIPELINE] Using fallback document creation (no context handler)")
+                    # Fallback: call create_document directly (BYPASSES screen lock check!)
+                    logger.error(f"[PIPELINE] ⚠️  Using fallback document creation (no context handler)")
+                    logger.error(f"[PIPELINE] ⚠️  SCREEN LOCK CHECK BYPASSED!")
                     result = await create_document(context.text, system_context)
-                    logger.info(f"[PIPELINE] Fallback document creation completed")
+                    logger.warning(f"[PIPELINE] Fallback document creation completed")
 
                 # Store detailed context information
                 context.metadata["context_steps"] = result.get("steps_taken", [])
@@ -1324,8 +1336,12 @@ class AdvancedAsyncPipeline:
                 from context_intelligence.detectors.screen_lock_detector import get_screen_lock_detector
                 screen_detector = get_screen_lock_detector()
                 is_locked = await screen_detector.is_screen_locked()
-            except ImportError:
-                logger.warning("Screen lock detector not available, assuming unlocked")
+                logger.warning(f"[PIPELINE] 🔍 Screen lock check: is_locked={is_locked}")
+            except ImportError as e:
+                logger.error(f"[PIPELINE] ❌ Screen lock detector NOT available: {e}, assuming unlocked")
+                is_locked = False
+            except Exception as e:
+                logger.error(f"[PIPELINE] ❌ Error checking screen lock: {e}, assuming unlocked")
                 is_locked = False
 
             # Get active applications

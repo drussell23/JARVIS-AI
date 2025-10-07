@@ -64,12 +64,19 @@ class ScreenLockContextDetector:
             Context dict with screen state and recommendations
         """
         is_locked = await self.is_screen_locked()
+        command_needs_screen = self._command_requires_screen(command)
+        
+        logger.warning(f"[SCREEN LOCK DETECTOR] ━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        logger.warning(f"[SCREEN LOCK DETECTOR] 🔍 Checking screen context")
+        logger.warning(f"[SCREEN LOCK DETECTOR] 📝 Command: {command}")
+        logger.warning(f"[SCREEN LOCK DETECTOR] 🔒 Screen locked: {is_locked}")
+        logger.warning(f"[SCREEN LOCK DETECTOR] 📺 Requires screen: {command_needs_screen}")
         
         context = {
             "screen_locked": is_locked,
             "requires_unlock": False,
             "unlock_message": None,
-            "command_requires_screen": self._command_requires_screen(command),
+            "command_requires_screen": command_needs_screen,
             "timestamp": datetime.now().isoformat()
         }
         
@@ -77,6 +84,16 @@ class ScreenLockContextDetector:
         if is_locked and context["command_requires_screen"]:
             context["requires_unlock"] = True
             context["unlock_message"] = self._generate_unlock_message(command)
+            logger.warning(f"[SCREEN LOCK DETECTOR] ✅ UNLOCK REQUIRED")
+            logger.warning(f"[SCREEN LOCK DETECTOR] 📢 Message: {context['unlock_message']}")
+        else:
+            logger.warning(f"[SCREEN LOCK DETECTOR] ❌ NO UNLOCK NEEDED")
+            if not is_locked:
+                logger.warning(f"[SCREEN LOCK DETECTOR]    Reason: Screen not locked")
+            if not command_needs_screen:
+                logger.warning(f"[SCREEN LOCK DETECTOR]    Reason: Command doesn't need screen")
+        
+        logger.warning(f"[SCREEN LOCK DETECTOR] ━━━━━━━━━━━━━━━━━━━━━━━━━━")
             
         return context
         
@@ -129,14 +146,19 @@ class ScreenLockContextDetector:
 
                 for action in actions:
                     if action.type in screen_requiring_types:
-                        logger.debug(f"Action {action.type.value} requires screen access")
+                        logger.warning(f"[SCREEN LOCK DETECTOR] ✅ Action '{action.type.value}' requires screen access")
                         return True
 
                 # Parser found actions but none require screen
+                logger.warning(f"[SCREEN LOCK DETECTOR] ❌ Parser found actions but none require screen: {[a.type.value for a in actions]}")
                 return False
+            else:
+                logger.warning(f"[SCREEN LOCK DETECTOR] ❌ Parser returned no actions for: {command}")
 
         except Exception as e:
-            logger.debug(f"Compound parser check failed, falling back to pattern matching: {e}")
+            logger.error(f"[SCREEN LOCK DETECTOR] ❌ Compound parser FAILED, falling back to pattern matching: {e}")
+            import traceback
+            logger.error(f"[SCREEN LOCK DETECTOR] Traceback: {traceback.format_exc()}")
 
         # Third check: Fallback to dynamic category matching
         for category, keywords in self.screen_required_actions.items():
