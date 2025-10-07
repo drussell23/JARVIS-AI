@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 class ActionType(Enum):
     """Types of atomic actions"""
     OPEN_APP = "open_app"
+    CLOSE_APP = "close_app"
     SEARCH_WEB = "search_web"
     NAVIGATE_URL = "navigate_url"
     EXECUTE_SCRIPT = "execute_script"
@@ -58,6 +59,11 @@ class CompoundActionParser:
             'launch': ActionType.OPEN_APP,
             'start': ActionType.OPEN_APP,
             'run': ActionType.OPEN_APP,
+            'close': ActionType.CLOSE_APP,
+            'quit': ActionType.CLOSE_APP,
+            'exit': ActionType.CLOSE_APP,
+            'terminate': ActionType.CLOSE_APP,
+            'kill': ActionType.CLOSE_APP,
             'search': ActionType.SEARCH_WEB,
             'google': ActionType.SEARCH_WEB,
             'look up': ActionType.SEARCH_WEB,
@@ -169,6 +175,8 @@ class CompoundActionParser:
                 # Parse based on action type
                 if action_type == ActionType.OPEN_APP:
                     return self._parse_open_app(target, order)
+                elif action_type == ActionType.CLOSE_APP:
+                    return self._parse_close_app(target, order)
                 elif action_type == ActionType.SEARCH_WEB:
                     return self._parse_search_web(target, phrase, order)
                 elif action_type == ActionType.NAVIGATE_URL:
@@ -179,6 +187,21 @@ class CompoundActionParser:
         # If no verb matched, might be a continuation of previous action
         # e.g., "search for dogs" where "search for" is the verb
         return await self._parse_implicit_action(phrase, order)
+
+    def _parse_close_app(self, target: str, order: int) -> AtomicAction:
+        """Parse a 'close app' action"""
+        # Clean up app name
+        app_name = target.strip()
+
+        # Remove common words
+        app_name = re.sub(r'\b(the|a|an)\b', '', app_name, flags=re.IGNORECASE).strip()
+
+        return AtomicAction(
+            type=ActionType.CLOSE_APP,
+            params={'app_name': app_name},
+            confidence=0.95,
+            order=order
+        )
 
     def _parse_open_app(self, target: str, order: int) -> AtomicAction:
         """Parse an 'open app' action"""
@@ -292,6 +315,8 @@ class CompoundActionParser:
         for action in sorted(actions, key=lambda a: a.order):
             if action.type == ActionType.OPEN_APP:
                 plan_parts.append(f"Open {action.params['app_name']}")
+            elif action.type == ActionType.CLOSE_APP:
+                plan_parts.append(f"Close {action.params['app_name']}")
             elif action.type == ActionType.SEARCH_WEB:
                 plan_parts.append(f"Search for '{action.params['query']}'")
             elif action.type == ActionType.NAVIGATE_URL:

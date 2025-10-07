@@ -163,6 +163,7 @@ class ScreenLockContextDetector:
             if actions:
                 screen_requiring_types = {
                     ActionType.OPEN_APP,
+                    ActionType.CLOSE_APP,  # Closing apps requires screen access!
                     ActionType.SEARCH_WEB,
                     ActionType.NAVIGATE_URL,
                     ActionType.EXECUTE_SCRIPT,

@@ -1356,6 +1356,24 @@ class AdvancedAsyncPipeline:
                     "message": message,
                 }
 
+            elif action.type == ActionType.CLOSE_APP:
+                # Close application using MacOS controller
+                from system_control.macos_controller import MacOSController
+
+                controller = MacOSController()
+
+                app_name = action.params.get("app_name", "")
+                success, message = await asyncio.to_thread(
+                    controller.close_application, app_name
+                )
+
+                return {
+                    "success": success,
+                    "action": "close_app",
+                    "app_name": app_name,
+                    "message": message,
+                }
+
             elif action.type == ActionType.SEARCH_WEB:
                 # Perform web search using BrowserController
                 from context_intelligence.automation.browser_controller import (
