@@ -162,13 +162,27 @@ class ScreenLockContextDetector:
         """
         # Extract the action using CompoundActionParser for accuracy
         action = self._extract_action_dynamic(command)
-
-        # Dynamic message templates
-        templates = [
-            f"Your screen is locked. I'll unlock it to {action}.",
-            f"Let me unlock your screen so I can {action}.",
-            f"Unlocking screen to {action}.",
-        ]
+        
+        # Make document creation messages more natural
+        command_lower = command.lower()
+        is_document_creation = any(word in command_lower for word in ['write', 'create', 'draft', 'compose', 'essay', 'document', 'paper'])
+        
+        if is_document_creation:
+            # Extract topic from command for more natural message
+            topic = self._extract_topic_from_command(command)
+            templates = [
+                f"Your screen is locked, Sir. Let me unlock it so I can create that {topic}.",
+                f"I notice your screen is locked. Unlocking it now to write your {topic}.",
+                f"Screen is locked. I'll unlock it to work on your {topic}.",
+                f"Let me unlock your screen to create that {topic} for you, Sir."
+            ]
+        else:
+            # Dynamic message templates for other commands
+            templates = [
+                f"Your screen is locked. I'll unlock it to {action}.",
+                f"Let me unlock your screen so I can {action}.",
+                f"Unlocking screen to {action}, Sir.",
+            ]
 
         # Use voice dynamic response generator if available
         try:
@@ -217,6 +231,40 @@ class ScreenLockContextDetector:
         # Fallback to simple extraction
         return self._extract_action_simple(command)
 
+    def _extract_topic_from_command(self, command: str) -> str:
+        """Extract the document topic from command for natural messaging"""
+        import re
+        
+        command_lower = command.lower()
+        
+        # Try to extract "essay/paper/document on/about TOPIC"
+        patterns = [
+            r'(?:essay|paper|document|article)\s+(?:on|about)\s+(.+?)(?:\s+in\s|$)',
+            r'(?:write|create|draft|compose)\s+(?:an?|the)?\s*(?:essay|paper|document|article)?\s+(?:on|about)\s+(.+?)(?:\s+in\s|$)',
+            r'(?:write|create|draft|compose)\s+(?:me\s+)?(?:an?|the)?\s*(essay|paper|document|article)\s+(?:on|about)\s+(.+?)(?:\s+in\s|$)',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, command_lower)
+            if match:
+                # Get the last group (the topic)
+                groups = match.groups()
+                topic = groups[-1].strip() if groups else None
+                if topic:
+                    # Clean up common trailing words
+                    topic = re.sub(r'\s+(for me|please)$', '', topic)
+                    return f"essay on {topic}"
+        
+        # Fallback: just say "document" or "essay"
+        if 'essay' in command_lower:
+            return "essay"
+        elif 'paper' in command_lower:
+            return "paper"
+        elif 'document' in command_lower:
+            return "document"
+        else:
+            return "document"
+    
     def _extract_action_simple(self, command: str) -> str:
         """Simple fallback action extraction"""
         command_lower = command.lower()

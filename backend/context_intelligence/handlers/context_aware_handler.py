@@ -71,15 +71,21 @@ class ContextAwareCommandHandler:
                     self._add_step("Screen unlock required", screen_context)
 
                     # Log prominently for debugging
-                    logger.warning(f"[CONTEXT AWARE] 🔓 UNLOCK REQUIRED - Notifying user")
-                    logger.warning(f"[CONTEXT AWARE] 📢 Speaking message: '{unlock_notification}'")
+                    logger.warning(f"[CONTEXT AWARE] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                    logger.warning(f"[CONTEXT AWARE] 🔓 SCREEN LOCKED - UNLOCK REQUIRED")
+                    logger.warning(f"[CONTEXT AWARE] 📝 Command: {command}")
+                    logger.warning(f"[CONTEXT AWARE] 📢 Unlock Message: '{unlock_notification}'")
+                    logger.warning(f"[CONTEXT AWARE] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
                     # Speak the unlock message immediately with emphasis
+                    logger.warning(f"[CONTEXT AWARE] 🎤 Speaking unlock notification NOW...")
                     await self._speak_message(unlock_notification, priority="high")
+                    logger.warning(f"[CONTEXT AWARE] ✅ Unlock notification spoken")
 
                     # Add a longer delay to ensure user hears the message before unlock happens
-                    logger.info(f"[CONTEXT AWARE] ⏱️  Waiting 2 seconds for user to hear notification...")
-                    await asyncio.sleep(2.0)
+                    logger.info(f"[CONTEXT AWARE] ⏱️  Waiting 3 seconds for user to hear notification...")
+                    await asyncio.sleep(3.0)
+                    logger.info(f"[CONTEXT AWARE] ⏱️  Wait complete, proceeding with unlock...")
 
                     # Now perform the actual unlock
                     logger.info(f"[CONTEXT AWARE] 🔓 Now unlocking screen...")
