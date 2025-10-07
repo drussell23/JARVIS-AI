@@ -914,8 +914,12 @@ class AdvancedAsyncPipeline:
                 return
 
         # ENHANCED: Context-aware handling for ALL commands, not just document creation
-        from context_intelligence.handlers.context_aware_handler import get_context_aware_handler
-        context_handler = get_context_aware_handler()
+        try:
+            from context_intelligence.handlers.context_aware_handler import get_context_aware_handler
+            context_handler = get_context_aware_handler()
+        except ImportError as e:
+            logger.warning(f"Context-aware handler not available: {e}, using fallback")
+            context_handler = None
 
         # Get comprehensive system context
         system_context = await self._get_enhanced_system_context()
@@ -953,11 +957,17 @@ class AdvancedAsyncPipeline:
 
             # Process through context-aware handler
             try:
-                result = await context_handler.handle_command_with_context(
-                    context.text,
-                    execute_callback=create_document
-                )
-                logger.info(f"[PIPELINE] Context-aware processing completed successfully")
+                if context_handler:
+                    result = await context_handler.handle_command_with_context(
+                        context.text,
+                        execute_callback=create_document
+                    )
+                    logger.info(f"[PIPELINE] Context-aware processing completed successfully")
+                else:
+                    # Fallback: call create_document directly
+                    logger.info(f"[PIPELINE] Using fallback document creation (no context handler)")
+                    result = await create_document(context.text, system_context)
+                    logger.info(f"[PIPELINE] Fallback document creation completed")
 
                 # Store detailed context information
                 context.metadata["context_steps"] = result.get("steps_taken", [])
@@ -1283,10 +1293,13 @@ class AdvancedAsyncPipeline:
     async def _get_enhanced_system_context(self) -> Dict[str, Any]:
         """Get comprehensive system context for intelligent processing"""
         try:
-            from context_intelligence.detectors.screen_lock_detector import get_screen_lock_detector
-
-            screen_detector = get_screen_lock_detector()
-            is_locked = await screen_detector.is_screen_locked()
+            try:
+                from context_intelligence.detectors.screen_lock_detector import get_screen_lock_detector
+                screen_detector = get_screen_lock_detector()
+                is_locked = await screen_detector.is_screen_locked()
+            except ImportError:
+                logger.warning("Screen lock detector not available, assuming unlocked")
+                is_locked = False
 
             # Get active applications
             active_apps = []

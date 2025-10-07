@@ -357,30 +357,28 @@ class UnifiedWebSocketManager:
     async def _handle_voice_command(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
         """Handle voice/JARVIS commands"""
         try:
-            # Import JARVIS API directly
-            from .jarvis_voice_api import jarvis_api
-            from pydantic import BaseModel
-            
-            # Create command object
-            class VoiceCommand(BaseModel):
-                text: str
-            
             command_text = message.get("command", message.get("text", ""))
-            command_obj = VoiceCommand(text=command_text)
-            
-            # Process through JARVIS
-            result = await jarvis_api.process_command(command_obj)
+
+            logger.info(f"[WS] Processing voice command: {command_text}")
+
+            # Use the async pipeline for full command processing (including document creation)
+            result = await self.pipeline.execute(command_text)
+
+            # Extract response from pipeline result
+            response_text = result.response or "Command processed, Sir."
+
+            logger.info(f"[WS] Pipeline result: {response_text[:100]}")
 
             return {
                 "type": "response",
-                "text": result.get("response", ""),
-                "status": result.get("status", "success"),
-                "command_type": result.get("command_type", "unknown"),
+                "text": response_text,
+                "status": "success" if result.success else "error",
+                "command_type": result.metadata.get("intent", "unknown"),
                 "speak": True
             }
-            
+
         except Exception as e:
-            logger.error(f"Error processing voice command: {e}")
+            logger.error(f"Error processing voice command: {e}", exc_info=True)
             return {
                 "type": "response",
                 "text": f"I encountered an error: {str(e)}",
@@ -552,6 +550,13 @@ class UnifiedWebSocketManager:
 
 # Create global manager instance
 ws_manager = UnifiedWebSocketManager()
+
+
+def set_jarvis_instance(jarvis_api):
+    """Set the JARVIS instance for the WebSocket pipeline"""
+    if ws_manager and ws_manager.pipeline:
+        ws_manager.pipeline.jarvis = jarvis_api
+        logger.info("✅ JARVIS instance set in unified WebSocket pipeline")
 
 
 @router.websocket("/ws")

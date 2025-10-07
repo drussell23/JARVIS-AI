@@ -1277,6 +1277,15 @@ def mount_routers():
         )
         logger.info("✅ JARVIS Voice API mounted")
 
+        # Set JARVIS instance in unified WebSocket pipeline
+        try:
+            from api.unified_websocket import set_jarvis_instance
+            jarvis_api = voice.get("jarvis_api")
+            if jarvis_api:
+                set_jarvis_instance(jarvis_api)
+        except Exception as e:
+            logger.warning(f"⚠️  Could not set JARVIS in WebSocket pipeline: {e}")
+
     if voice and voice.get("enhanced_available"):
         app.include_router(
             voice["enhanced_router"], prefix="/voice/enhanced", tags=["voice"]
