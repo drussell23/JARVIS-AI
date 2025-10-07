@@ -176,6 +176,16 @@ class VisionCommandHandler:
         logger.info(f"[VISION] Handling command: {command_text}")
         await ws_logger.log(f"Processing vision command: {command_text}")
         
+        # IMPORTANT: Check if this is a lock/unlock screen command - should NOT be handled by vision
+        command_lower = command_text.lower()
+        if ('lock' in command_lower and 'screen' in command_lower) or \
+           ('unlock' in command_lower and 'screen' in command_lower):
+            logger.info(f"[VISION] Lock/unlock screen command detected, not handling as vision")
+            return {
+                "handled": False,
+                "reason": "Lock/unlock screen commands are system commands, not vision"
+            }
+        
         # Check if this is a proactive monitoring command
         monitoring_handler = get_monitoring_handler(self)
         monitoring_result = await monitoring_handler.handle_monitoring_request(command_text)

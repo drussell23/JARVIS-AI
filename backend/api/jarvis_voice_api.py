@@ -1,6 +1,60 @@
 """
 JARVIS Voice API - Voice endpoints with Iron Man-style personality
 Integrates JARVIS personality with the web application
+
+CoreML Voice Engine Integration:
+================================
+This API integrates the ultra-fast CoreML Voice Engine for real-time voice detection.
+
+Hardware Acceleration:
+- Runs on Apple Neural Engine (hardware accelerated)
+- 232KB Silero VAD model (4-bit quantized)
+- <10ms inference latency per detection
+- ~5-10MB runtime memory usage
+
+Features:
+- Voice Activity Detection (VAD) - Detects if speech is present
+- Speaker Recognition - Identifies specific user's voice
+- Adaptive thresholds - Learns and adjusts over time
+- Circuit breaker protection - Graceful failure handling
+- Async task queue - Non-blocking voice processing
+
+API Endpoints:
+- POST /voice/detect-coreml - Full voice + speaker detection
+- POST /voice/detect-vad-coreml - Voice activity only (faster)
+- POST /voice/train-speaker-coreml - Train speaker recognition
+- GET /voice/coreml-metrics - Get performance metrics
+- GET /voice/coreml-status - Check availability
+
+Usage:
+    # Detect user voice with full speaker recognition
+    audio = np.random.randn(512).astype(np.float32)  # 512 samples at 16kHz
+    audio_b64 = base64.b64encode(audio.tobytes()).decode()
+    response = await client.post("/voice/detect-coreml", json={
+        "audio_data": audio_b64,
+        "priority": 1  # 0=normal, 1=high, 2=critical
+    })
+
+    # Returns:
+    # {
+    #   "is_user_voice": true,
+    #   "vad_confidence": 0.89,
+    #   "speaker_confidence": 0.75,
+    #   "metrics": {...}
+    # }
+
+Performance:
+- Inference: <10ms per chunk
+- Model size: 232KB (Neural Engine optimized)
+- Memory: ~5-10MB runtime
+- Sample rate: 16kHz mono
+- Chunk size: 512 samples (32ms at 16kHz)
+
+Technical Implementation:
+- C++ CoreML library: voice/coreml/libvoice_engine.dylib (78KB)
+- Python bridge: voice/coreml/voice_engine_bridge.py
+- Model: models/vad_model.mlmodelc (Silero VAD v6.0.0)
+- See COREML_SETUP_STATUS.md for full integration details
 """
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
@@ -27,6 +81,98 @@ if backend_dir not in sys.path:
 
 logger = logging.getLogger(__name__)
 
+# ============================================================================
+# ASYNC SUBPROCESS HELPERS - Non-blocking subprocess calls
+# ============================================================================
+
+async def async_subprocess_run(cmd, timeout: float = 10.0) -> tuple:
+    """
+    Non-blocking async subprocess execution.
+
+    Args:
+        cmd: Command and arguments as list or string
+        timeout: Maximum execution time in seconds
+
+    Returns:
+        (stdout, stderr, returncode)
+    """
+    # Handle both list and string inputs
+    if isinstance(cmd, str):
+        import shlex
+        cmd = shlex.split(cmd)
+
+    if not cmd or len(cmd) == 0:
+        logger.error("async_subprocess_run: Empty command list")
+        return b'', b'Empty command', -1
+
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        stdout, stderr = await asyncio.wait_for(
+            process.communicate(),
+            timeout=timeout
+        )
+
+        return stdout, stderr, process.returncode
+
+    except asyncio.TimeoutError:
+        logger.warning(f"Subprocess timeout after {timeout}s: {' '.join(cmd)}")
+        try:
+            process.kill()
+            await process.wait()
+        except:
+            pass
+        return b'', b'Timeout', -1
+
+    except Exception as e:
+        logger.error(f"Subprocess error: {e}")
+        return b'', str(e).encode(), -1
+
+
+async def async_open_app(app_name: str) -> bool:
+    """
+    Non-blocking app launch on macOS.
+
+    Args:
+        app_name: Name of the application to open
+
+    Returns:
+        True if successful, False otherwise
+    """
+    stdout, stderr, returncode = await async_subprocess_run(
+        ["open", "-a", app_name],
+        timeout=5.0
+    )
+
+    if returncode == 0:
+        logger.info(f"✅ Launched {app_name} (async)")
+        return True
+    else:
+        logger.warning(f"⚠️ Failed to launch {app_name}: {stderr.decode()}")
+        return False
+
+
+async def async_osascript(script: str, timeout: float = 10.0) -> tuple:
+    """
+    Non-blocking AppleScript execution.
+
+    Args:
+        script: AppleScript code to execute
+        timeout: Maximum execution time
+
+    Returns:
+        (stdout, stderr, returncode)
+    """
+    return await async_subprocess_run(
+        ["osascript", "-e", script],
+        timeout=timeout
+    )
+
+
 # Try to import graceful handler, but don't fail if it's not available
 try:
     from graceful_http_handler import graceful_endpoint
@@ -36,6 +182,22 @@ except ImportError:
     def graceful_endpoint(func):
         return func
 
+
+# Import CoreML Voice Engine with error handling
+try:
+    from backend.voice.coreml.voice_engine_bridge import (
+        create_coreml_engine,
+        is_coreml_available,
+        CoreMLVoiceEngineBridge
+    )
+    import numpy as np
+    COREML_AVAILABLE = is_coreml_available()
+    logger.info(f"[CoreML] CoreML Voice Engine available: {COREML_AVAILABLE}")
+except ImportError as e:
+    logger.warning(f"[CoreML] CoreML Voice Engine not available: {e}")
+    COREML_AVAILABLE = False
+    # Define placeholder for type annotation when CoreML is not available
+    CoreMLVoiceEngineBridge = None
 
 # Import JARVIS voice components with error handling
 try:
@@ -263,6 +425,9 @@ class JARVISVoiceAPI:
         self._jarvis = None
         self._jarvis_initialized = False
 
+        # Initialize async pipeline for all commands
+        self._pipeline = None
+
         # Check if we have API key
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
         # For now, enable basic JARVIS functionality even without full imports
@@ -278,6 +443,15 @@ class JARVISVoiceAPI:
             )
 
         self._register_routes()
+
+    @property
+    def pipeline(self):
+        """Get or create async pipeline instance"""
+        if self._pipeline is None:
+            from core.async_pipeline import get_async_pipeline
+            self._pipeline = get_async_pipeline(self.jarvis)
+            logger.info("[JARVIS API] Async pipeline initialized for voice commands")
+        return self._pipeline
 
     @property
     def jarvis(self):
@@ -531,6 +705,41 @@ class JARVISVoiceAPI:
     @graceful_endpoint
     async def process_command(self, command: JARVISCommand) -> Dict:
         """Process a JARVIS command"""
+
+        # DYNAMIC COMPONENT LOADING - Load required components based on command intent
+        try:
+            from api.jarvis_factory import get_app_state
+            app_state = get_app_state()
+
+            if app_state and hasattr(app_state, 'component_manager') and app_state.component_manager:
+                manager = app_state.component_manager
+                logger.info(f"[DYNAMIC] Analyzing command for required components: '{command.text}'")
+
+                # Analyze intent and load required components
+                required_components = await manager.intent_analyzer.analyze(command.text)
+
+                if required_components:
+                    logger.info(f"[DYNAMIC] Required components: {required_components}")
+
+                    # Load each required component
+                    for comp_name in required_components:
+                        if comp_name in manager.components:
+                            comp = manager.components[comp_name]
+                            if comp.state.value != 'loaded':
+                                logger.info(f"[DYNAMIC] Loading {comp_name}...")
+                                success = await manager.load_component(comp_name)
+                                if success:
+                                    logger.info(f"[DYNAMIC] ✅ {comp_name} loaded successfully")
+                                else:
+                                    logger.warning(f"[DYNAMIC] ⚠️ {comp_name} failed to load")
+                            else:
+                                logger.debug(f"[DYNAMIC] {comp_name} already loaded")
+                                comp.last_used = asyncio.get_event_loop().time()
+                else:
+                    logger.debug(f"[DYNAMIC] No specific components required for: '{command.text}'")
+        except Exception as e:
+            logger.debug(f"[DYNAMIC] Component loading skipped: {e}")
+
         # Check if this is a multi-command workflow
         try:
             from .workflow_command_processor import handle_workflow_command
@@ -544,72 +753,84 @@ class JARVISVoiceAPI:
         except Exception as e:
             logger.error(f"Workflow processor error: {e}")
 
-        # First check if this is a vision command
-        logger.info(f"[JARVIS API] Checking if '{command.text}' is a vision command...")
+        # IMPORTANT: Check for document commands BEFORE vision to avoid misclassification
+        document_keywords = ['write', 'create', 'draft', 'compose', 'generate']
+        document_types = ['essay', 'report', 'paper', 'article', 'document', 'blog', 'letter', 'story']
+        words = command.text.lower().split()
 
-        # Quick check for monitoring commands
-        is_monitoring_cmd = any(
-            phrase in command.text.lower()
-            for phrase in [
-                "start monitoring",
-                "enable monitoring",
-                "monitor my screen",
-                "enable screen monitoring",
-                "monitoring capabilities",
-                "turn on monitoring",
-                "activate monitoring",
-                "begin monitoring",
-                "stop monitoring",
-                "disable monitoring",
-            ]
-        )
+        has_document_keyword = any(kw in words for kw in document_keywords)
+        has_document_type = any(dtype in words for dtype in document_types)
 
-        if is_monitoring_cmd:
-            logger.info(
-                "[JARVIS API] Detected monitoring command - routing to vision handler"
+        if has_document_keyword and has_document_type:
+            logger.info(f"[JARVIS API] Document creation command detected - skipping vision handler: '{command.text}'")
+            # Skip vision handler entirely - will go to unified processor below
+        else:
+            # First check if this is a vision command
+            logger.info(f"[JARVIS API] Checking if '{command.text}' is a vision command...")
+
+            # Quick check for monitoring commands
+            is_monitoring_cmd = any(
+                phrase in command.text.lower()
+                for phrase in [
+                    "start monitoring",
+                    "enable monitoring",
+                    "monitor my screen",
+                    "enable screen monitoring",
+                    "monitoring capabilities",
+                    "turn on monitoring",
+                    "activate monitoring",
+                    "begin monitoring",
+                    "stop monitoring",
+                    "disable monitoring",
+                ]
             )
 
-        try:
-            from .vision_command_handler import vision_command_handler
+            if is_monitoring_cmd:
+                logger.info(
+                    "[JARVIS API] Detected monitoring command - routing to vision handler"
+                )
 
-            # Ensure vision handler is initialized
-            if not vision_command_handler.intelligence:
-                logger.info("[JARVIS API] Initializing vision command handler...")
-                # Try to get API key from environment or app state
-                api_key = None
-                try:
-                    from api.jarvis_factory import get_app_state
+            try:
+                from .vision_command_handler import vision_command_handler
 
-                    app_state = get_app_state()
-                    if (
-                        app_state
-                        and hasattr(app_state, "vision_analyzer")
-                        and app_state.vision_analyzer
-                    ):
-                        api_key = getattr(app_state.vision_analyzer, "api_key", None)
-                except:
-                    pass
+                # Ensure vision handler is initialized
+                if not vision_command_handler.intelligence:
+                    logger.info("[JARVIS API] Initializing vision command handler...")
+                    # Try to get API key from environment or app state
+                    api_key = None
+                    try:
+                        from api.jarvis_factory import get_app_state
 
-                if not api_key:
-                    api_key = os.getenv("ANTHROPIC_API_KEY")
+                        app_state = get_app_state()
+                        if (
+                            app_state
+                            and hasattr(app_state, "vision_analyzer")
+                            and app_state.vision_analyzer
+                        ):
+                            api_key = getattr(app_state.vision_analyzer, "api_key", None)
+                    except:
+                        pass
 
-                await vision_command_handler.initialize_intelligence(api_key)
+                    if not api_key:
+                        api_key = os.getenv("ANTHROPIC_API_KEY")
 
-            vision_result = await vision_command_handler.handle_command(command.text)
-            logger.info(
-                f"[JARVIS API] Vision handler result: handled={vision_result.get('handled')}"
-            )
+                    await vision_command_handler.initialize_intelligence(api_key)
 
-            if vision_result.get("handled"):
-                return {
-                    "response": vision_result["response"],
-                    "status": "success",
-                    "confidence": 1.0,
-                    "command_type": "vision",
-                    "monitoring_active": vision_result.get("monitoring_active"),
-                }
-        except Exception as e:
-            logger.error(f"Vision command handler error: {e}", exc_info=True)
+                vision_result = await vision_command_handler.handle_command(command.text)
+                logger.info(
+                    f"[JARVIS API] Vision handler result: handled={vision_result.get('handled')}"
+                )
+
+                if vision_result.get("handled"):
+                    return {
+                        "response": vision_result["response"],
+                        "status": "success",
+                        "confidence": 1.0,
+                        "command_type": "vision",
+                        "monitoring_active": vision_result.get("monitoring_active"),
+                    }
+            except Exception as e:
+                logger.error(f"Vision command handler error: {e}", exc_info=True)
 
         if not self.jarvis_available:
             # Check if this is a weather command - we can handle it even in limited mode
@@ -677,31 +898,27 @@ class JARVISVoiceAPI:
 
                     # LIMITED MODE - No vision
                     logger.info(
-                        "[JARVIS API] LIMITED MODE: Opening Weather app with navigation"
+                        "[JARVIS API] LIMITED MODE: Opening Weather app with navigation (async)"
                     )
-                    import subprocess
 
-                    subprocess.run(["open", "-a", "Weather"], check=False)
+                    # ✅ ASYNC FIX: Non-blocking app launch
+                    await async_open_app("Weather")
 
-                    # Navigate to My Location
+                    # ✅ ASYNC FIX: Non-blocking wait
                     await asyncio.sleep(1.5)
-                    subprocess.run(
-                        [
-                            "osascript",
-                            "-e",
-                            """
+
+                    # ✅ ASYNC FIX: Non-blocking AppleScript
+                    await async_osascript("""
                         tell application "System Events"
                             key code 126
                             delay 0.2
                             key code 126
-                            delay 0.2  
+                            delay 0.2
                             key code 125
                             delay 0.2
                             key code 36
                         end tell
-                    """,
-                        ]
-                    )
+                    """)
 
                     return {
                         "response": "I'm operating in limited mode without vision analysis. I've opened the Weather app and navigated to your location. For automatic weather reading, please ensure the vision system is initialized with your ANTHROPIC_API_KEY.",
@@ -746,16 +963,34 @@ class JARVISVoiceAPI:
                     self.jarvis.running = True
                     logger.info("Activating JARVIS for command processing")
 
-            # Process command through JARVIS agent (with system control)
-            logger.info(f"[JARVIS API] Processing command: '{command.text}'")
+            # Process command through async pipeline for better performance and alignment
+            logger.info(f"[JARVIS API] Processing command through async pipeline: '{command.text}'")
 
-            # Add timeout to prevent hanging
+            # Use async pipeline for all commands - ensures consistent handling
             try:
-                response = await asyncio.wait_for(
-                    self.jarvis.process_voice_input(command.text),
+                # Process through pipeline with proper metadata
+                pipeline_result = await asyncio.wait_for(
+                    self.pipeline.process_async(
+                        command.text,
+                        user_name=getattr(self.jarvis, "user_name", "Sir") if self.jarvis else "Sir",
+                        metadata={
+                            "source": "voice_api",
+                            "jarvis_instance": self.jarvis
+                        }
+                    ),
                     timeout=35.0,  # 35 second timeout for API calls (to accommodate weather)
                 )
-                logger.info(f"[JARVIS API] Response: '{response[:100]}...' (truncated)")
+
+                # Extract response from pipeline result
+                if isinstance(pipeline_result, dict):
+                    response = pipeline_result.get("response", "I processed your command, Sir.")
+                    # If we got a lock/unlock response, use it directly
+                    if pipeline_result.get("type") in ["voice_unlock", "screen_lock", "screen_unlock"]:
+                        response = pipeline_result.get("response", response)
+                else:
+                    response = str(pipeline_result)
+
+                logger.info(f"[JARVIS API] Pipeline response: '{response[:100]}...' (truncated)")
             except asyncio.TimeoutError:
                 logger.error(
                     f"[JARVIS API] Command processing timed out after 35s: '{command.text}'"
@@ -766,9 +1001,7 @@ class JARVISVoiceAPI:
                     for word in ["weather", "temperature", "forecast", "rain"]
                 ):
                     try:
-                        import subprocess
-
-                        subprocess.run(["open", "-a", "Weather"], check=False)
+                        success = await async_open_app("Weather")
                         response = "I'm having trouble reading the weather data. I've opened the Weather app for you to check directly, Sir."
                     except:
                         response = "I'm experiencing a delay accessing the weather information. Please check the Weather app directly, Sir."
@@ -850,22 +1083,20 @@ class JARVISVoiceAPI:
                 tmp_path = tmp.name
 
             # Use macOS say command to generate audio with British voice
-            # Run in executor to avoid blocking
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None,
-                lambda: subprocess.run(
-                    [
-                        "say",
-                        "-v",
-                        "Daniel",  # British voice for JARVIS
-                        "-o",
-                        tmp_path,
-                        audio_text,
-                    ],
-                    check=True,
-                )
+            stdout, stderr, returncode = await async_subprocess_run(
+                [
+                    "say",
+                    "-v",
+                    "Daniel",  # British voice for JARVIS
+                    "-r", "160",  # Much slower speech rate for natural delivery (words per minute)
+                    "-o",
+                    tmp_path,
+                    audio_text,
+                ],
+                timeout=30.0
             )
+            if returncode != 0:
+                raise subprocess.CalledProcessError(returncode, "say", stderr=stderr)
 
             # Convert to MP3 for browser compatibility
             mp3_path = tmp_path.replace(".aiff", ".mp3")
@@ -873,42 +1104,38 @@ class JARVISVoiceAPI:
 
             # Use ffmpeg if available, otherwise use the AIFF directly
             try:
-                await loop.run_in_executor(
-                    None,
-                    lambda: subprocess.run(
-                        [
-                            "ffmpeg",
-                            "-i",
-                            tmp_path,
-                            "-acodec",
-                            "mp3",
-                            "-ab",
-                            "96k",  # Lower bitrate for speech
-                            "-ar",
-                            "22050",  # Lower sample rate for speech
-                            mp3_path,
-                            "-y",
-                        ],
-                        check=True,
-                        capture_output=True,
-                    )
+                stdout, stderr, returncode = await async_subprocess_run(
+                    [
+                        "ffmpeg",
+                        "-i",
+                        tmp_path,
+                        "-acodec",
+                        "mp3",
+                        "-ab",
+                        "96k",  # Lower bitrate for speech
+                        "-ar",
+                        "22050",  # Lower sample rate for speech
+                        mp3_path,
+                        "-y",
+                    ],
+                    timeout=30.0
                 )
+                if returncode != 0:
+                    raise subprocess.CalledProcessError(returncode, "ffmpeg", stderr=stderr)
             except (subprocess.CalledProcessError, FileNotFoundError):
                 # If ffmpeg not available, use lame
                 try:
-                    await loop.run_in_executor(
-                        None,
-                        lambda: subprocess.run(
-                            ["lame", "-b", "96", "-m", "m", tmp_path, mp3_path],
-                            check=True,
-                            capture_output=True,
-                        )
+                    stdout, stderr, returncode = await async_subprocess_run(
+                        ["lame", "-b", "96", "-m", "m", tmp_path, mp3_path],
+                        timeout=30.0
                     )
+                    if returncode != 0:
+                        raise subprocess.CalledProcessError(returncode, "lame", stderr=stderr)
                 except (subprocess.CalledProcessError, FileNotFoundError):
                     # If neither work, use WAV format which browsers universally support
                     wav_path = tmp_path.replace(".aiff", ".wav")
                     try:
-                        subprocess.run(
+                        stdout, stderr, returncode = await async_subprocess_run(
                             [
                                 "afconvert",
                                 "-f",
@@ -918,10 +1145,15 @@ class JARVISVoiceAPI:
                                 tmp_path,
                                 wav_path,
                             ],
-                            check=True,
+                            timeout=30.0
                         )
-                        mp3_path = wav_path
-                        media_type = "audio/wav"
+                        if returncode == 0:
+                            mp3_path = wav_path
+                            media_type = "audio/wav"
+                        else:
+                            # Last resort: use AIFF
+                            mp3_path = tmp_path
+                            media_type = "audio/aiff"
                     except:
                         # Last resort: use AIFF
                         mp3_path = tmp_path
@@ -1170,10 +1402,19 @@ class JARVISVoiceAPI:
             ):
                 user_name = self.jarvis.personality.user_preferences.get("name", "Sir")
 
+            # Generate dynamic startup greeting
+            try:
+                from voice.dynamic_response_generator import get_response_generator
+                generator = get_response_generator(user_name)
+                startup_greeting = generator.generate_startup_greeting()
+            except:
+                # Fallback if generator not available
+                startup_greeting = f"JARVIS online. How may I assist you, {user_name}?"
+            
             await websocket.send_json(
                 {
                     "type": "connected",
-                    "message": f"JARVIS online. How may I assist you, {user_name}?",
+                    "message": startup_greeting,
                     "timestamp": datetime.now().isoformat(),
                 }
             )
@@ -1704,20 +1945,14 @@ class JARVISVoiceAPI:
                                     logger.info(
                                         "[JARVIS WS] LIMITED MODE: Weather system without vision"
                                     )
-                                    import subprocess
 
                                     # Open Weather app
-                                    subprocess.run(
-                                        ["open", "-a", "Weather"], check=False
-                                    )
+                                    await async_open_app("Weather")
 
                                     # Try to navigate to My Location
                                     await asyncio.sleep(1.5)  # Wait for app to open
-                                    subprocess.run(
-                                        [
-                                            "osascript",
-                                            "-e",
-                                            """
+                                    await async_osascript(
+                                        """
                                         tell application "System Events"
                                             key code 126
                                             delay 0.2
@@ -1727,8 +1962,7 @@ class JARVISVoiceAPI:
                                             delay 0.2
                                             key code 36
                                         end tell
-                                    """,
-                                        ]
+                                    """
                                     )
 
                                     response = "I'm operating in limited mode without vision capabilities. I've opened the Weather app and navigated to your location. To enable full weather analysis with automatic reading, please ensure all JARVIS components are loaded."
@@ -1738,11 +1972,8 @@ class JARVISVoiceAPI:
                                     logger.info(
                                         "[JARVIS WS] NO WEATHER SYSTEM: Basic fallback"
                                     )
-                                    import subprocess
 
-                                    subprocess.run(
-                                        ["open", "-a", "Weather"], check=False
-                                    )
+                                    await async_open_app("Weather")
                                     response = "I'm in basic mode. I've opened the Weather app for you. For automatic weather analysis, please ensure the weather system is properly initialized."
 
                             except Exception as e:
@@ -1751,11 +1982,7 @@ class JARVISVoiceAPI:
 
                                 traceback.print_exc()
                                 try:
-                                    import subprocess
-
-                                    subprocess.run(
-                                        ["open", "-a", "Weather"], check=False
-                                    )
+                                    await async_open_app("Weather")
                                     response = "I encountered an error accessing the weather system. I've opened the Weather app for manual viewing."
                                 except:
                                     response = "I'm having difficulty accessing weather data at the moment."
@@ -1852,3 +2079,231 @@ class JARVISVoiceAPI:
 # Create and export the router instance
 jarvis_api = JARVISVoiceAPI()
 router = jarvis_api.router
+
+# Initialize global CoreML engine (if available)
+coreml_engine: Optional[CoreMLVoiceEngineBridge] = None
+
+if COREML_AVAILABLE:
+    try:
+        # Check if CoreML models exist before initializing
+        vad_model_path = "models/vad_model.mlmodelc"
+        speaker_model_path = "models/speaker_model.mlmodelc"
+
+        # Initialize with adaptive thresholds
+        coreml_engine = create_coreml_engine(
+            vad_model_path=vad_model_path,
+            speaker_model_path=speaker_model_path,
+            config={
+                'vad_threshold': 0.5,           # Adapts 0.2-0.9
+                'speaker_threshold': 0.7,        # Adapts 0.4-0.95
+                'enable_adaptive': True,
+                'learning_rate': 0.01,
+                'adaptation_window': 100
+            }
+        )
+
+        # Start background queue worker
+        import asyncio
+        asyncio.create_task(coreml_engine.process_voice_queue_worker())
+
+        logger.info("[CoreML] CoreML Voice Engine initialized successfully")
+        logger.info(f"[CoreML] VAD model: {vad_model_path}")
+        logger.info(f"[CoreML] Speaker model: {speaker_model_path}")
+
+    except FileNotFoundError as e:
+        logger.warning(f"[CoreML] CoreML models not found: {e}")
+        logger.warning("[CoreML] CoreML voice detection disabled - models required")
+        coreml_engine = None
+    except Exception as e:
+        logger.error(f"[CoreML] Failed to initialize CoreML engine: {e}")
+        coreml_engine = None
+else:
+    logger.info("[CoreML] CoreML not available - using standard voice recognition")
+
+
+# ========================================
+# CoreML Voice Detection Endpoints
+# ========================================
+
+@router.post("/voice/detect-coreml")
+async def detect_voice_coreml(
+    audio_data: str,  # Base64-encoded float32 audio
+    priority: int = 0  # 0=normal, 1=high, 2=critical
+):
+    """
+    Async voice detection using CoreML with circuit breaker protection.
+
+    - **audio_data**: Base64-encoded float32 numpy array (16kHz, mono)
+    - **priority**: Task priority (0=normal, 1=high, 2=critical)
+
+    Returns:
+    - **is_user_voice**: True if user voice detected
+    - **vad_confidence**: Voice activity detection confidence (0-1)
+    - **speaker_confidence**: Speaker recognition confidence (0-1)
+    - **metrics**: Performance metrics (latency, success rate, thresholds)
+    """
+    if not coreml_engine:
+        raise HTTPException(
+            status_code=503,
+            detail="CoreML engine not available - models not loaded"
+        )
+
+    try:
+        # Decode base64 audio
+        import base64
+        audio_bytes = base64.b64decode(audio_data)
+        audio = np.frombuffer(audio_bytes, dtype=np.float32)
+
+        # Async detection with circuit breaker
+        is_user, vad_conf, speaker_conf = await coreml_engine.detect_user_voice_async(
+            audio,
+            priority=priority
+        )
+
+        return {
+            "is_user_voice": is_user,
+            "vad_confidence": float(vad_conf),
+            "speaker_confidence": float(speaker_conf),
+            "metrics": coreml_engine.get_metrics()
+        }
+
+    except Exception as e:
+        logger.error(f"[CoreML] Voice detection error: {e}")
+        raise HTTPException(status_code=500, detail=f"Voice detection failed: {str(e)}")
+
+
+@router.post("/voice/detect-vad-coreml")
+async def detect_vad_coreml(
+    audio_data: str,
+    priority: int = 0
+):
+    """
+    Voice Activity Detection only (faster, no speaker recognition).
+
+    - **audio_data**: Base64-encoded float32 audio
+    - **priority**: Task priority
+
+    Returns:
+    - **voice_detected**: True if voice activity detected
+    - **confidence**: VAD confidence (0-1)
+    """
+    if not coreml_engine:
+        raise HTTPException(
+            status_code=503,
+            detail="CoreML engine not available"
+        )
+
+    try:
+        import base64
+        audio_bytes = base64.b64decode(audio_data)
+        audio = np.frombuffer(audio_bytes, dtype=np.float32)
+
+        # Async VAD with circuit breaker
+        voice_detected, confidence = await coreml_engine.detect_voice_activity_async(
+            audio,
+            priority=priority
+        )
+
+        return {
+            "voice_detected": voice_detected,
+            "confidence": float(confidence)
+        }
+
+    except Exception as e:
+        logger.error(f"[CoreML] VAD error: {e}")
+        raise HTTPException(status_code=500, detail=f"VAD failed: {str(e)}")
+
+
+@router.post("/voice/train-speaker-coreml")
+async def train_speaker_coreml(
+    audio_data: str,
+    is_user: bool = True
+):
+    """
+    Train speaker recognition model with new audio samples.
+
+    - **audio_data**: Base64-encoded float32 audio
+    - **is_user**: True for user voice, False for non-user voice
+
+    Returns:
+    - **samples_collected**: Total samples collected (user/non-user)
+    """
+    if not coreml_engine:
+        raise HTTPException(
+            status_code=503,
+            detail="CoreML engine not available"
+        )
+
+    try:
+        import base64
+        audio_bytes = base64.b64decode(audio_data)
+        audio = np.frombuffer(audio_bytes, dtype=np.float32)
+
+        # Train speaker model
+        coreml_engine.train_speaker_model(audio, is_user=is_user)
+
+        metrics = coreml_engine.get_metrics()
+
+        return {
+            "success": True,
+            "is_user_sample": is_user,
+            "metrics": metrics
+        }
+
+    except Exception as e:
+        logger.error(f"[CoreML] Speaker training error: {e}")
+        raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}")
+
+
+@router.get("/voice/coreml-metrics")
+async def get_coreml_metrics():
+    """
+    Get CoreML voice engine performance metrics.
+
+    Returns:
+    - **avg_latency_ms**: Average inference latency
+    - **success_rate**: Detection success rate
+    - **vad_threshold**: Current adaptive VAD threshold
+    - **speaker_threshold**: Current adaptive speaker threshold
+    - **circuit_breaker_state**: Circuit breaker state (CLOSED/OPEN/HALF_OPEN)
+    - **circuit_breaker_success_rate**: Circuit breaker success rate
+    - **queue_size**: Current voice task queue size
+    """
+    if not coreml_engine:
+        raise HTTPException(
+            status_code=503,
+            detail="CoreML engine not available"
+        )
+
+    try:
+        metrics = coreml_engine.get_metrics()
+        return metrics
+
+    except Exception as e:
+        logger.error(f"[CoreML] Metrics retrieval error: {e}")
+        raise HTTPException(status_code=500, detail=f"Metrics failed: {str(e)}")
+
+
+@router.get("/voice/coreml-status")
+async def get_coreml_status():
+    """
+    Check CoreML engine availability and status.
+
+    Returns:
+    - **available**: True if CoreML engine is available
+    - **initialized**: True if engine is initialized
+    - **models_loaded**: True if CoreML models are loaded
+    """
+    return {
+        "available": COREML_AVAILABLE,
+        "initialized": coreml_engine is not None,
+        "models_loaded": coreml_engine is not None,
+        "version": "1.0.0",
+        "features": {
+            "vad": coreml_engine is not None,
+            "speaker_recognition": coreml_engine is not None,
+            "adaptive_thresholds": coreml_engine is not None,
+            "circuit_breaker": coreml_engine is not None,
+            "async_queue": coreml_engine is not None
+        }
+    }

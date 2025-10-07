@@ -3,6 +3,30 @@
 Unified ML Audio API for JARVIS
 Provides ML-enhanced audio error handling with automatic fallback
 when ML dependencies are not available
+
+CoreML Integration:
+===================
+This API works alongside the CoreML Voice Engine for hardware-accelerated
+voice detection on Apple Silicon:
+
+- CoreML VAD: Ultra-fast voice activity detection (232KB model, <10ms latency)
+- Apple Neural Engine: Hardware acceleration for minimal CPU usage
+- Adaptive Learning: ML models for audio quality and pattern recognition
+- Fallback Support: Graceful degradation when CoreML is unavailable
+
+The ML Audio API handles:
+- Audio quality analysis and enhancement
+- Pattern learning and anomaly detection
+- Error recovery and adaptive processing
+- System capability detection
+
+While CoreML handles:
+- Real-time voice activity detection (VAD)
+- Speaker recognition (optional)
+- Hardware-accelerated inference
+
+See: jarvis_voice_api.py for CoreML endpoint documentation
+See: COREML_SETUP_STATUS.md for CoreML integration details
 """
 
 import os
@@ -69,7 +93,7 @@ class MLAudioSystemState:
     def _detect_capabilities(self) -> Dict[str, bool]:
         """Dynamically detect system capabilities"""
         caps = {}
-        
+
         # Check for audio processing libraries
         try:
             import librosa
@@ -78,7 +102,7 @@ class MLAudioSystemState:
         except ImportError:
             caps["librosa_available"] = False
             caps["advanced_audio_analysis"] = False
-            
+
         # Check for ML frameworks
         try:
             import torch
@@ -87,16 +111,27 @@ class MLAudioSystemState:
         except ImportError:
             caps["pytorch_available"] = False
             caps["neural_audio_processing"] = False
-            
+
+        # Check for CoreML Voice Engine (Apple Silicon optimization)
+        try:
+            from voice.coreml.voice_engine_bridge import is_coreml_available
+            caps["coreml_available"] = is_coreml_available()
+            caps["coreml_neural_engine"] = caps["coreml_available"] and platform.system() == "Darwin"
+            caps["hardware_accelerated_vad"] = caps["coreml_available"]
+        except ImportError:
+            caps["coreml_available"] = False
+            caps["coreml_neural_engine"] = False
+            caps["hardware_accelerated_vad"] = False
+
         # Check system resources
         cpu_count = psutil.cpu_count()
         total_ram = psutil.virtual_memory().total / (1024**3)  # GB
-        
+
         caps["multi_stream_capable"] = cpu_count >= 4
         caps["high_performance_mode"] = total_ram >= 8
         caps["gpu_acceleration"] = self._check_gpu()
         caps["ml_available"] = ML_AVAILABLE
-        
+
         return caps
     
     def _check_gpu(self) -> bool:

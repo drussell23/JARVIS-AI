@@ -1,0 +1,206 @@
+.voice-stats-container {
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  background: rgba(0, 30, 60, 0.95);
+  border: 2px solid #00d4ff;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 212, 255, 0.3);
+  backdrop-filter: blur(10px);
+  z-index: 9999;
+  transition: all 0.3s ease;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.voice-stats-container.collapsed {
+  width: 280px;
+}
+
+.voice-stats-container.expanded {
+  width: 400px;
+}
+
+.voice-stats-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  cursor: pointer;
+  user-select: none;
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.1), rgba(0, 100, 255, 0.1));
+  border-radius: 10px 10px 0 0;
+  transition: background 0.2s ease;
+}
+
+.voice-stats-header:hover {
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(0, 100, 255, 0.2));
+}
+
+.voice-stats-icon {
+  font-size: 20px;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+.voice-stats-title {
+  flex: 1;
+  color: #00d4ff;
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.5px;
+}
+
+.voice-stats-toggle {
+  color: #00d4ff;
+  font-size: 12px;
+}
+
+.voice-stats-content {
+  padding: 16px;
+}
+
+.voice-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.voice-stat-item {
+  background: rgba(0, 212, 255, 0.05);
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 212, 255, 0.2);
+}
+
+.voice-stat-label {
+  font-size: 11px;
+  color: rgba(0, 212, 255, 0.7);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+
+.voice-stat-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: #00d4ff;
+  margin-bottom: 4px;
+}
+
+.voice-stat-value.success-rate {
+  color: #00ff88;
+}
+
+.voice-stat-value.threshold {
+  color: #ffaa00;
+}
+
+.voice-stat-value.bonus-positive {
+  color: #00ff88;
+}
+
+.voice-stat-value.bonus-negative {
+  color: #ff6600;
+}
+
+.voice-stat-bar {
+  height: 4px;
+  background: rgba(0, 212, 255, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.voice-stat-bar-fill {
+  height: 100%;
+  transition: width 0.5s ease;
+  border-radius: 2px;
+}
+
+.voice-stat-bar-fill.success {
+  background: linear-gradient(90deg, #00ff88, #00d4ff);
+}
+
+.voice-stat-bar-fill.confidence {
+  background: linear-gradient(90deg, #00d4ff, #0088ff);
+}
+
+.voice-stat-hint {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.6);
+  margin-top: 4px;
+}
+
+.voice-prediction {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: rgba(255, 170, 0, 0.1);
+  border: 1px solid rgba(255, 170, 0, 0.3);
+  border-radius: 8px;
+  margin-top: 12px;
+  animation: glow 2s ease-in-out infinite;
+}
+
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(255, 170, 0, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 15px rgba(255, 170, 0, 0.5);
+  }
+}
+
+.voice-prediction-icon {
+  font-size: 18px;
+}
+
+.voice-prediction-text {
+  flex: 1;
+  font-size: 12px;
+  color: #ffaa00;
+}
+
+.voice-prediction-text strong {
+  color: #ffd700;
+  font-weight: 700;
+}
+
+.voice-stats-footer {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0, 212, 255, 0.2);
+}
+
+.voice-stats-explanation {
+  font-size: 10px;
+  color: rgba(0, 212, 255, 0.7);
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* Animation for new stats */
+@keyframes statUpdate {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.voice-stat-value {
+  animation: statUpdate 0.3s ease;
+}

@@ -375,10 +375,10 @@ impl ImageProcessor {
                         
                         for c in 0..image.channels {
                             // Get the four neighboring pixels
-                            let p00 = image.get_pixel(x_floor, y_floor, c);
-                            let p10 = image.get_pixel(x_ceil, y_floor, c);
-                            let p01 = image.get_pixel(x_floor, y_ceil, c);
-                            let p11 = image.get_pixel(x_ceil, y_ceil, c);
+                            let p00 = Self::get_pixel_at(&image, x_floor, y_floor, c);
+                            let p10 = Self::get_pixel_at(&image, x_ceil, y_floor, c);
+                            let p01 = Self::get_pixel_at(&image, x_floor, y_ceil, c);
+                            let p11 = Self::get_pixel_at(&image, x_ceil, y_ceil, c);
                             
                             // Bilinear interpolation
                             let p0 = p00 as f32 * (1.0 - x_weight) + p10 as f32 * x_weight;
@@ -984,7 +984,7 @@ struct ImageStats {
 // Extension methods for ImageData
 impl ImageData {
     /// Get pixel value at specific location and channel
-    fn get_pixel(&self, x: u32, y: u32, channel: u8) -> u8 {
+    fn get_pixel_value(&self, x: u32, y: u32, channel: u8) -> u8 {
         let offset = ((y * self.width + x) * self.channels as u32 + channel as u32) as usize;
         self.data[offset]
     }

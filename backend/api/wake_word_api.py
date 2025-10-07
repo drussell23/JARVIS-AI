@@ -10,108 +10,160 @@ from typing import Dict, Any, Optional
 import logging
 import json
 
-from wake_word import WakeWordService, get_config
-from wake_word.services.wake_service import WakeWordAPI
-
 logger = logging.getLogger(__name__)
 
 # Create router
 router = APIRouter(prefix="/api/wake-word", tags=["wake_word"])
 
-# Global service instance (initialized from main app)
-wake_service: Optional[WakeWordService] = None
-wake_api: Optional[WakeWordAPI] = None
+# Try to import full wake word module, fallback to stub if dependencies missing
+wake_service: Optional[Any] = None
+wake_api: Optional[Any] = None
+wake_word_enabled = False
+using_stub = True
+
+try:
+    from wake_word import WakeWordService, get_config
+    from wake_word.services.wake_service import WakeWordAPI
+    WAKE_WORD_AVAILABLE = True
+    logger.info("Wake word module imported successfully")
+except ImportError as e:
+    logger.warning(f"Wake word module not available, using stub API: {e}")
+    WAKE_WORD_AVAILABLE = False
 
 
 def initialize_wake_word(activation_callback=None):
     """Initialize wake word service"""
-    global wake_service, wake_api
-    
+    global wake_service, wake_api, wake_word_enabled, using_stub
+
+    if not WAKE_WORD_AVAILABLE:
+        logger.info("Wake word detection not available - using stub API")
+        using_stub = True
+        wake_word_enabled = False
+        return False
+
     try:
         config = get_config()
-        
+
         if not config.enabled:
             logger.info("Wake word detection disabled in configuration")
+            using_stub = True
+            wake_word_enabled = False
             return False
-        
+
         wake_service = WakeWordService()
         wake_api = WakeWordAPI(wake_service)
-        
-        logger.info("Wake word API initialized")
+        using_stub = False
+        wake_word_enabled = True
+
+        logger.info("Wake word API initialized successfully")
         return True
-        
+
     except Exception as e:
         logger.error(f"Failed to initialize wake word API: {e}")
+        using_stub = True
+        wake_word_enabled = False
         return False
 
 
 @router.get("/status")
 async def get_status() -> Dict[str, Any]:
     """Get wake word service status"""
-    if not wake_api:
-        raise HTTPException(status_code=503, detail="Wake word service not available")
-    
+    if using_stub or not wake_api:
+        # Return stub status
+        return {
+            'enabled': False,
+            'available': False,
+            'state': 'not_available',
+            'is_listening': False,
+            'engines': {},
+            'activation_count': 0,
+            'last_activation': None,
+            'wake_words': ['hey jarvis'],
+            'sensitivity': 'medium',
+            'message': 'Wake word detection not available - missing dependencies'
+        }
+
     return await wake_api.get_status()
 
 
 @router.post("/enable")
 async def enable_wake_word() -> Dict[str, Any]:
     """Enable wake word detection"""
-    if not wake_api:
-        raise HTTPException(status_code=503, detail="Wake word service not available")
-    
+    if using_stub or not wake_api:
+        return {
+            'success': False,
+            'message': 'Wake word service not available - missing dependencies'
+        }
+
     return await wake_api.enable()
 
 
 @router.post("/disable")
 async def disable_wake_word() -> Dict[str, Any]:
     """Disable wake word detection"""
-    if not wake_api:
-        raise HTTPException(status_code=503, detail="Wake word service not available")
-    
+    if using_stub or not wake_api:
+        return {
+            'success': False,
+            'message': 'Wake word service not available'
+        }
+
     return await wake_api.disable()
 
 
 @router.post("/test")
 async def test_activation() -> Dict[str, Any]:
     """Test wake word activation response"""
-    if not wake_api:
-        raise HTTPException(status_code=503, detail="Wake word service not available")
-    
+    if using_stub or not wake_api:
+        return {
+            'success': False,
+            'message': 'Wake word service not available'
+        }
+
     return await wake_api.test_activation()
 
 
 @router.put("/settings")
 async def update_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
     """Update wake word settings"""
-    if not wake_api:
-        raise HTTPException(status_code=503, detail="Wake word service not available")
-    
+    if using_stub or not wake_api:
+        return {
+            'success': False,
+            'message': 'Wake word service not available'
+        }
+
     # Validate settings
     valid_settings = {}
-    
+
     if 'wake_words' in settings:
         if isinstance(settings['wake_words'], list):
             valid_settings['wake_words'] = settings['wake_words']
         else:
             raise HTTPException(status_code=400, detail="wake_words must be a list")
-    
+
     if 'sensitivity' in settings:
         if settings['sensitivity'] in ['very_low', 'low', 'medium', 'high', 'very_high']:
             valid_settings['sensitivity'] = settings['sensitivity']
         else:
             raise HTTPException(status_code=400, detail="Invalid sensitivity level")
-    
+
     if 'activation_responses' in settings:
         if isinstance(settings['activation_responses'], list):
             valid_settings['activation_responses'] = settings['activation_responses']
-    
+
     return await wake_api.update_settings(valid_settings)
 
 
 @router.get("/config")
 async def get_configuration() -> Dict[str, Any]:
     """Get current wake word configuration"""
+    if using_stub or not WAKE_WORD_AVAILABLE:
+        return {
+            'enabled': False,
+            'available': False,
+            'wake_words': ['hey jarvis'],
+            'sensitivity': 'medium'
+        }
+
     config = get_config()
     return config.to_dict()
 
@@ -119,9 +171,12 @@ async def get_configuration() -> Dict[str, Any]:
 @router.post("/feedback/false-positive")
 async def report_false_positive() -> Dict[str, Any]:
     """Report a false positive detection"""
-    if not wake_service:
-        raise HTTPException(status_code=503, detail="Wake word service not available")
-    
+    if using_stub or not wake_service:
+        return {
+            'success': False,
+            'message': 'Wake word service not available'
+        }
+
     wake_service.report_false_positive()
     return {
         'success': True,
@@ -133,8 +188,8 @@ async def report_false_positive() -> Dict[str, Any]:
 async def wake_word_websocket(websocket: WebSocket):
     """WebSocket for real-time wake word events"""
     await websocket.accept()
-    
-    if not wake_service:
+
+    if using_stub or not wake_service:
         await websocket.send_json({
             'type': 'error',
             'message': 'Wake word service not available'

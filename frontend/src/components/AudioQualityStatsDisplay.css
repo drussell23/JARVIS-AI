@@ -1,0 +1,212 @@
+.audio-quality-stats-container {
+  position: fixed;
+  bottom: 300px;
+  left: 20px;
+  background: rgba(30, 20, 50, 0.95);
+  border: 2px solid #9d4edd;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(157, 78, 221, 0.3);
+  backdrop-filter: blur(10px);
+  z-index: 9998;
+  transition: all 0.3s ease;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.audio-quality-stats-container.collapsed {
+  width: 280px;
+}
+
+.audio-quality-stats-container.expanded {
+  width: 420px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.audio-quality-stats-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  cursor: pointer;
+  user-select: none;
+  background: linear-gradient(135deg, rgba(157, 78, 221, 0.2), rgba(120, 50, 200, 0.2));
+  border-radius: 10px 10px 0 0;
+  transition: background 0.2s ease;
+}
+
+.audio-quality-stats-header:hover {
+  background: linear-gradient(135deg, rgba(157, 78, 221, 0.3), rgba(120, 50, 200, 0.3));
+}
+
+.audio-quality-stats-icon {
+  font-size: 20px;
+  animation: equalizerBounce 1.5s ease-in-out infinite;
+}
+
+@keyframes equalizerBounce {
+  0%, 100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(1.2);
+  }
+}
+
+.audio-quality-stats-title {
+  flex: 1;
+  color: #9d4edd;
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.5px;
+}
+
+.audio-quality-stats-toggle {
+  color: #9d4edd;
+  font-size: 12px;
+}
+
+.audio-quality-stats-content {
+  padding: 16px;
+}
+
+.audio-quality-section {
+  margin-bottom: 16px;
+}
+
+.audio-quality-section-title {
+  color: #9d4edd;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(157, 78, 221, 0.3);
+}
+
+.audio-quality-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.audio-quality-stat-item {
+  background: rgba(157, 78, 221, 0.05);
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(157, 78, 221, 0.2);
+}
+
+.audio-quality-stat-label {
+  font-size: 10px;
+  color: rgba(157, 78, 221, 0.7);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+
+.audio-quality-stat-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: #9d4edd;
+  margin-bottom: 4px;
+}
+
+.audio-quality-stat-value.calibrated {
+  color: #00ff88;
+}
+
+.audio-quality-stat-value.calibrating {
+  color: #ffaa00;
+}
+
+.audio-quality-stat-value.distance,
+.audio-quality-stat-value.snr,
+.audio-quality-stat-value.agc {
+  color: #c77dff;
+}
+
+.audio-quality-stat-bar {
+  height: 4px;
+  background: rgba(157, 78, 221, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.audio-quality-stat-bar-fill {
+  height: 100%;
+  transition: width 0.5s ease;
+  border-radius: 2px;
+}
+
+.audio-quality-stat-bar-fill.quality {
+  background: linear-gradient(90deg, #9d4edd, #c77dff);
+}
+
+.audio-quality-stat-bar-fill.intelligibility {
+  background: linear-gradient(90deg, #7209b7, #9d4edd);
+}
+
+.audio-quality-stat-bar-fill.clarity {
+  background: linear-gradient(90deg, #560bad, #7209b7);
+}
+
+/* Quality Issues */
+.audio-quality-issues-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.audio-quality-issue-badge {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-block;
+  background: rgba(255, 102, 0, 0.2);
+  color: #ff6600;
+  border: 1px solid rgba(255, 102, 0, 0.5);
+  animation: issueP ulse 2s ease-in-out infinite;
+}
+
+@keyframes issuePulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.audio-quality-stats-footer {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(157, 78, 221, 0.2);
+}
+
+.audio-quality-stats-explanation {
+  font-size: 10px;
+  color: rgba(157, 78, 221, 0.7);
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* Scrollbar styling */
+.audio-quality-stats-container.expanded::-webkit-scrollbar {
+  width: 6px;
+}
+
+.audio-quality-stats-container.expanded::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+}
+
+.audio-quality-stats-container.expanded::-webkit-scrollbar-thumb {
+  background: rgba(157, 78, 221, 0.5);
+  border-radius: 3px;
+}
+
+.audio-quality-stats-container.expanded::-webkit-scrollbar-thumb:hover {
+  background: rgba(157, 78, 221, 0.7);
+}

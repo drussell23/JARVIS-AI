@@ -36,7 +36,7 @@ class WakeWordService {
    */
   async initialize(apiUrl) {
     this.apiUrl = apiUrl;
-    
+
     // Check if wake word is enabled on backend
     try {
       const response = await fetch(`${apiUrl}/api/wake-word/status`);
@@ -44,15 +44,22 @@ class WakeWordService {
         const status = await response.json();
         this.config.enabled = status.enabled;
         this.statistics = status.statistics || this.statistics;
-        
+
         if (this.config.enabled) {
           await this.connect();
         }
-        
+
         return true;
+      } else {
+        // Wake word service not available, disable it
+        console.log('Wake word service not available, disabling');
+        this.config.enabled = false;
+        return false;
       }
     } catch (error) {
-      console.error('Failed to initialize wake word service:', error);
+      console.log('Wake word service not available:', error.message);
+      // Silently disable wake word if backend doesn't support it
+      this.config.enabled = false;
       return false;
     }
   }

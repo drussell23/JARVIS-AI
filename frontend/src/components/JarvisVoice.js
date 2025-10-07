@@ -8,6 +8,13 @@ import mlAudioHandler from '../utils/MLAudioHandler'; // ML-enhanced audio handl
 import { getNetworkRecoveryManager } from '../utils/NetworkRecoveryManager'; // Advanced network recovery
 import WakeWordService from './WakeWordService'; // Wake word detection service
 import configService from '../services/DynamicConfigService'; // Dynamic configuration service
+import adaptiveVoiceDetection from '../utils/AdaptiveVoiceDetection'; // Adaptive voice learning system
+import VoiceStatsDisplay from './VoiceStatsDisplay'; // Adaptive voice stats display
+import EnvironmentalStatsDisplay from './EnvironmentalStatsDisplay'; // Environmental stats display
+import AudioQualityStatsDisplay from './AudioQualityStatsDisplay'; // Audio quality stats display
+// DISABLED - Environmental and audio quality adaptation (causing echo/feedback)
+// import environmentalAdaptation from '../utils/EnvironmentalAdaptation'; // Environmental noise handling
+// import audioQualityAdaptation from '../utils/AudioQualityAdaptation'; // Audio quality enhancement
 
 // Inline styles to ensure button visibility
 const buttonVisibilityStyle = `
@@ -364,6 +371,101 @@ class VisionConnection {
   }
 }
 
+// Dynamic greeting generators
+const getStartupGreeting = () => {
+  const hour = new Date().getHours();
+  const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+  
+  // Determine time of day
+  let timeContext = 'evening';
+  if (hour >= 5 && hour < 12) timeContext = 'morning';
+  else if (hour >= 12 && hour < 17) timeContext = 'afternoon';
+  else if (hour >= 17 && hour < 22) timeContext = 'evening';
+  else timeContext = 'night';
+  
+  const greetings = {
+    morning: [
+      "Good morning, Sir. JARVIS systems initialized and ready for your command.",
+      "Morning, Sir. All systems operational. How may I assist you today?",
+      "Systems online, Sir. Another beautiful " + dayName + " morning to be of service.",
+      "Good morning. Neural networks calibrated. At your service.",
+      "Rise and shine, Sir. JARVIS fully operational.",
+      "Morning protocols complete. Ready to tackle today's challenges."
+    ],
+    afternoon: [
+      "Good afternoon, Sir. JARVIS at your disposal.",
+      "Welcome back. Systems online and ready to assist.",
+      "Afternoon, Sir. All systems functioning at peak efficiency.",
+      "System reactivation complete. How may I help you this " + dayName + " afternoon?",
+      "JARVIS systems restored. Ready to continue where we left off."
+    ],
+    evening: [
+      "Good evening, Sir. JARVIS at your service.",
+      "Welcome back. Systems online for your evening session.",
+      "Evening, Sir. All systems are operational.",
+      "System activation complete. How may I be of service tonight?",
+      "JARVIS online, Sir. I trust you've had a productive day?"
+    ],
+    night: [
+      "Good evening, Sir. Working late again, I see.",
+      "Welcome back. JARVIS systems online despite the late hour.",
+      "System activation complete. Ready for your late-night commands.",
+      "Late night session initiated. How may I assist you?",
+      "Systems operational, Sir. Burning the midnight oil?"
+    ]
+  };
+  
+  // Add some variety with status messages
+  const statusMessages = [
+    "JARVIS initialization complete. All systems operational.",
+    "System boot sequence finished. Ready to serve.",
+    "Welcome back, Sir. What can I do for you today?",
+    "JARVIS online. All systems nominal.",
+    "AI neural pathways synchronized. Ready to proceed.",
+    "Voice recognition calibrated. Standing by for your command."
+  ];
+  
+  // Mix time-based and status-based greetings
+  let greetingPool = [...greetings[timeContext]];
+  if (Math.random() < 0.3) {
+    greetingPool.push(...statusMessages);
+  }
+  
+  // Weekend special
+  if (dayName === 'Saturday' || dayName === 'Sunday') {
+    if (Math.random() < 0.3) {
+      greetingPool.push(
+        "Happy " + dayName + ", Sir. JARVIS ready for your weekend commands.",
+        "Weekend systems activated. How may I assist you this " + dayName + "?"
+      );
+    }
+  }
+  
+  return greetingPool[Math.floor(Math.random() * greetingPool.length)];
+};
+
+const getWakeWordResponse = () => {
+  const responses = [
+    "Yes, Sir. How may I assist you?",
+    "At your service, Sir.",
+    "Ready for your command, Sir.",
+    "Listening, Sir.",
+    "How can I help you?",
+    "Yes, Sir?",
+    "Standing by for instructions.",
+    "What do you need, Sir?",
+    "I'm here, Sir.",
+    "Go ahead, Sir.",
+    "Ready and waiting.",
+    "Your command, Sir?",
+    "How may I be of service?",
+    "JARVIS ready. What's on your mind?",
+    "Systems ready. What can I do for you?"
+  ];
+  
+  return responses[Math.floor(Math.random() * responses.length)];
+};
+
 const JarvisVoice = () => {
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -551,13 +653,13 @@ const JarvisVoice = () => {
 
           // Process workspace updates
           if (data.type === 'update' && data.workspace) {
-            // Check for important notifications
+            // Check for important notifications - NO AUDIO FEEDBACK (removed to prevent feedback loops)
             if (data.workspace.notifications && data.workspace.notifications.length > 0) {
               const notification = data.workspace.notifications[0];
-              speakResponse(`I've detected: ${notification}`);
+              console.log(`📢 Notification: ${notification}`);
             }
 
-            // Handle autonomous actions
+            // Handle autonomous actions - NO AUDIO FEEDBACK (removed to prevent feedback loops)
             if (data.autonomousActions && data.autonomousActions.length > 0 && autonomousMode) {
               const highPriorityActions = data.autonomousActions.filter(a =>
                 a.priority === 'HIGH' || a.priority === 'CRITICAL'
@@ -565,7 +667,7 @@ const JarvisVoice = () => {
 
               if (highPriorityActions.length > 0) {
                 const action = highPriorityActions[0];
-                speakResponse(`I'm going to ${action.type.replace(/_/g, ' ')} for ${action.target}`);
+                console.log(`🎯 Action: ${action.type.replace(/_/g, ' ')} for ${action.target}`);
               }
             }
 
@@ -575,11 +677,11 @@ const JarvisVoice = () => {
             }
           }
         },
-        // Action executed callback
+        // Action executed callback - NO AUDIO FEEDBACK (removed to prevent feedback loops)
         (result) => {
           console.log('Action executed:', result);
           if (!result.success) {
-            speakResponse(`I encountered an issue: ${result.message}`);
+            console.error(`❌ Issue encountered: ${result.message}`);
           }
         }
       );
@@ -695,9 +797,8 @@ const JarvisVoice = () => {
           console.log('    • Advanced tools enabled');
           console.log('  🚀 System running at full capacity!');
           
-          // Show success message to user
+          // Show success message to user - NO AUDIO FEEDBACK (removed to prevent feedback loops)
           setResponse('System upgraded! All features are now available.');
-          speakResponse('System upgraded. All features are now available, Sir.');
           
           // Show upgrade success banner
           setShowUpgradeSuccess(true);
@@ -787,8 +888,8 @@ const JarvisVoice = () => {
 
     try {
       const wsBaseUrl = WS_URL || configService.getWebSocketUrl() || 'ws://localhost:8010';
-      const wsUrl = `${wsBaseUrl}/voice/jarvis/stream`;
-      console.log('Connecting to WebSocket:', wsUrl);
+      const wsUrl = `${wsBaseUrl}/ws`;  // Use unified WebSocket endpoint
+      console.log('Connecting to unified WebSocket:', wsUrl);
       wsRef.current = new WebSocket(wsUrl);
 
       wsRef.current.onopen = () => {
@@ -840,10 +941,9 @@ const JarvisVoice = () => {
         setResponse(voiceUnlockText);
         setIsProcessing(false);
         
-        // Speak the response if speak flag is true
+        // NO AUDIO FEEDBACK for voice unlock (removed to prevent feedback loops)
         if ((data.message || data.text) && data.speak !== false) {
-          console.log('[JARVIS Audio] Speaking voice unlock response:', voiceUnlockText);
-          speakResponse(voiceUnlockText);
+          console.log('[JARVIS Audio] Voice unlock response (silent):', voiceUnlockText);
         }
         
         // Reset waiting state after voice unlock command
@@ -859,29 +959,68 @@ const JarvisVoice = () => {
           }, 1000);
         }
         break;
+      case 'command_response':
+        // Handle new async pipeline responses
+        console.log('WebSocket command_response received:', data);
+
+        if (data.response) {
+          // Update the UI with the response
+          setResponse(data.response);
+          setIsProcessing(false);
+
+          // If speak flag is set, trigger text-to-speech
+          if (data.speak && data.response) {
+            speakResponse(data.response);
+          }
+
+          // Log successful command execution
+          if (data.action) {
+            console.log(`✅ Command executed: ${data.action}`);
+          }
+        }
+        break;
+
       case 'response':
         console.log('WebSocket response received:', data);
-        
+
         // Check if this is an error response we should ignore
-        const errorText = (data.text || '').toLowerCase();
+        const errorText = (data.text || data.response || '').toLowerCase();
+        const isError = errorText.includes("don't have a handler") || errorText.includes("error") || errorText.includes("failed");
+
         if (errorText.includes("don't have a handler for query commands")) {
           console.log('Ignoring query handler error, continuing to listen...');
           setIsProcessing(false);
           // Don't reset waiting state - keep listening
           return;
         }
-        
-        setResponse(data.text || data.message || 'Response received');
+
+        // 🧠 Record command success/failure in adaptive system
+        const lastCommand = data.metadata?.originalCommand || transcript;
+        if (lastCommand && data.metadata) {
+          const executionTime = Date.now() - (data.metadata.startTime || Date.now());
+          adaptiveVoiceDetection.recordCommandExecution(lastCommand, {
+            success: !isError,
+            confidence: data.metadata.confidence || 0.85,
+            executionTime,
+            wasRetry: false,
+          });
+        }
+
+        // Use the EXACT same text for both display and speech
+        const responseText = data.text || data.message || 'Response received';
+        console.log('[JARVIS Audio] Setting display text:', responseText);
+        setResponse(responseText);
         setIsProcessing(false);
 
         // Use speech synthesis with Daniel voice
-        if (data.text && data.speak !== false) {
-          // Always speak the full response, regardless of length or type
-          speakResponse(data.text);
+        if (responseText && data.speak !== false) {
+          // Speak the EXACT same text that we just displayed
+          console.log('[JARVIS Audio] Speaking exact text:', responseText);
+          speakResponse(responseText, false);
         }
         
         // Reset waiting state after successful command
-        if (isWaitingForCommandRef.current && !data.text.toLowerCase().includes('error')) {
+        if (isWaitingForCommandRef.current && responseText && !responseText.toLowerCase().includes('error')) {
           setTimeout(() => {
             setIsWaitingForCommand(false);
             isWaitingForCommandRef.current = false;
@@ -894,11 +1033,11 @@ const JarvisVoice = () => {
         }
 
         // Check for autonomy activation commands in response
-        const responseText = data.text.toLowerCase();
+        const responseTextLower = responseText.toLowerCase();
         if (data.command_type === 'autonomy_activation' ||
-          responseText.includes('autonomous mode activated') ||
-          responseText.includes('full autonomy enabled') ||
-          responseText.includes('all systems online')) {
+          responseTextLower.includes('autonomous mode activated') ||
+          responseTextLower.includes('full autonomy enabled') ||
+          responseTextLower.includes('all systems online')) {
           // Activate autonomous mode
           if (!autonomousMode) {
             setAutonomousMode(true);
@@ -1038,6 +1177,33 @@ const JarvisVoice = () => {
         // Clear workflow progress after 10 seconds
         setTimeout(() => setWorkflowProgress(null), 10000);
         break;
+      case 'narration':
+        // Handle document writing narration (display only, no voice)
+        console.log('📝 Document narration:', data.message);
+        if (data.message) {
+          setResponse(data.message);
+          // Don't speak narration messages to prevent overlap
+        }
+        break;
+      case 'voice_narration':
+        // Handle voice narration from document writer
+        console.log('🎤 Voice narration received:', data.message);
+        console.log('🎤 Speak flag:', data.speak);
+        if (data.message && data.speak !== false) {
+          // Store the exact message
+          const narrationText = data.message;
+          console.log('[JARVIS Audio] Narration text:', narrationText);
+
+          // For narrations, WAIT to update display until voice actually starts
+          // This ensures perfect synchronization
+          speakResponseWithCallback(narrationText, () => {
+            // Update display when voice actually starts
+            setResponse(narrationText);
+          });
+        } else {
+          console.log('🎤 Skipping narration - speak flag is false or no message');
+        }
+        break;
       default:
         break;
     }
@@ -1072,6 +1238,13 @@ const JarvisVoice = () => {
       console.log('Speech recognition started');
       setError('');
       setMicStatus('ready');
+
+      // ENABLE CONTINUOUS LISTENING IMMEDIATELY for wake word detection
+      if (!continuousListeningRef.current) {
+        console.log('🎯 Auto-enabling continuous listening for wake word detection');
+        continuousListeningRef.current = true;
+        setContinuousListening(true);
+      }
     };
 
     return recognition;
@@ -1112,9 +1285,8 @@ const JarvisVoice = () => {
           setIsWaitingForCommand(true);
           setIsListening(true);
 
-          // Play the response
-          const responseText = data.response || "Ready for your command, sir";
-          speakResponse(responseText);
+          // NO AUDIO FEEDBACK for wake word (removed to prevent feedback loops)
+          console.log('🎯 Wake word detected - listening for command (silent)');
 
           // Start timeout for command (30 seconds - more time to speak)
           setTimeout(() => {
@@ -1150,10 +1322,21 @@ const JarvisVoice = () => {
     }
   };
 
-  const initializeSpeechRecognition = () => {
+  const initializeSpeechRecognition = async () => {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       recognitionRef.current = new SpeechRecognition();
+
+      // 🌍🎚️ DISABLED - Environmental adaptation and audio quality enhancement (causing echo/feedback)
+      // try {
+      //   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      //   await environmentalAdaptation.initializeAudioProcessing(stream);
+      //   await audioQualityAdaptation.initializeAudioProcessing(stream);
+      //   console.log('✅ Environmental adaptation and audio quality enhancement initialized');
+      // } catch (error) {
+      //   console.warn('⚠️ Could not initialize audio processing:', error);
+      // }
+      console.log('⚠️ Environmental audio processing DISABLED to prevent echo/feedback');
 
       // Track if JARVIS is speaking to avoid self-triggering
       let jarvisSpeaking = false;
@@ -1161,74 +1344,142 @@ const JarvisVoice = () => {
       recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = 'en-US';
-      recognitionRef.current.maxAlternatives = 1;
+      recognitionRef.current.maxAlternatives = 3; // Get multiple alternatives for better accuracy
 
-      // Increase timeouts to be more patient
+      // Optimize for faster, more responsive recognition
       // Note: These are non-standard but work in some browsers
       if ('speechTimeout' in recognitionRef.current) {
-        recognitionRef.current.speechTimeout = 999999999; // Effectively infinite
+        recognitionRef.current.speechTimeout = 5000; // Faster timeout for quicker response
       }
       if ('noSpeechTimeout' in recognitionRef.current) {
-        recognitionRef.current.noSpeechTimeout = 999999999; // Effectively infinite
+        recognitionRef.current.noSpeechTimeout = 3000; // Shorter silence timeout
+      }
+
+      // Enable faster recognition (non-standard but supported by Chrome)
+      if ('grammar' in recognitionRef.current) {
+        // Add grammar hints for common commands to improve recognition speed
+        const commandHints = [
+          'lock my screen', 'unlock my screen', 'lock screen', 'unlock screen',
+          'lock the screen', 'unlock the screen', 'hey jarvis', 'jarvis'
+        ];
+        recognitionRef.current.grammars = commandHints;
       }
 
       recognitionRef.current.onresult = (event) => {
         const last = event.results.length - 1;
-        const transcript = event.results[last][0].transcript.toLowerCase();
+        const result = event.results[last][0];
+        const transcript = result.transcript.toLowerCase();
         const isFinal = event.results[last].isFinal;
+        const confidence = result.confidence || 0;
 
-        // Debug logging
-        console.log(`🎙️ Speech detected: "${transcript}" (final: ${isFinal}) | Waiting: ${isWaitingForCommandRef.current} | Continuous: ${continuousListeningRef.current}`);
+        // IMMEDIATE DEBUG LOG - to see if we're even getting input
+        console.log('🎤 RAW SPEECH:', transcript, `(final: ${isFinal}, conf: ${confidence})`);
 
-        // Process both interim and final results when waiting for command
-        if (!isFinal && !isWaitingForCommandRef.current) return;
+        // 🧠 ADAPTIVE VOICE DETECTION - Analyze with learning system
+        const adaptiveDecision = adaptiveVoiceDetection.shouldProcessResult(result, {
+          transcript,
+          confidence,
+          isFinal,
+          isWaitingForCommand: isWaitingForCommandRef.current,
+          timestamp: Date.now(),
+        });
+
+        const enhancedConfidence = adaptiveDecision.enhancedConfidence;
+        const shouldProcess = adaptiveDecision.shouldProcess;
+
+        // Debug logging with adaptive confidence score
+        console.log(`🎙️ Speech detected: "${transcript}" (final: ${isFinal}, original: ${(confidence * 100).toFixed(1)}%, enhanced: ${(enhancedConfidence * 100).toFixed(1)}%) | Threshold: ${(adaptiveDecision.threshold * 100).toFixed(1)}% | Should Process: ${shouldProcess}`);
+        console.log(`📊 Reason: ${adaptiveDecision.reason}`);
+
+        // Legacy high confidence check (kept for fallback)
+        const isHighConfidence = enhancedConfidence >= 0.85;
+
+        // TEMPORARILY DISABLED - Check for typing BEFORE any processing to suppress feedback
+        // const typingDetected = environmentalAdaptation.processingState?.flags?.keyboardTypingDetected || false;
+        // console.log('🔍 Typing check:', {
+        //   typingDetected,
+        //   hasProcessingState: !!environmentalAdaptation.processingState,
+        //   hasFlags: !!environmentalAdaptation.processingState?.flags,
+        //   allFlags: environmentalAdaptation.processingState?.flags
+        // });
+
+        // if (typingDetected) {
+        //   console.log('⌨️ Keyboard typing detected - suppressing all audio feedback and processing');
+        //   return; // Exit early - no feedback, no processing
+        // }
+
+        // Process based on adaptive decision
+        if (!shouldProcess && !isWaitingForCommandRef.current) return;
 
         // Check for wake words when not waiting for command
         if (!isWaitingForCommandRef.current && continuousListeningRef.current) {
           const wakeWords = ['hey jarvis', 'jarvis', 'ok jarvis', 'hello jarvis'];
           const detectedWakeWord = wakeWords.find(word => transcript.includes(word));
 
+          console.log('🔍 Wake word check:', {
+            transcript,
+            isWaiting: isWaitingForCommandRef.current,
+            continuousListening: continuousListeningRef.current,
+            detectedWakeWord,
+            shouldProcess
+          });
+
           if (detectedWakeWord) {
-            console.log('🎯 Wake word detected:', detectedWakeWord, '| Current state:', {
+            console.log('🎯 Wake word detected:', detectedWakeWord, `(confidence: ${(confidence * 100).toFixed(1)}%)`, '| Current state:', {
               isWaitingForCommand: isWaitingForCommandRef.current,
               continuousListening: continuousListeningRef.current,
-              isListening
+              isListening,
+              isFinal,
+              isHighConfidence
             });
 
             // Check if there's a command after the wake word in the same sentence
-            const fullTranscript = event.results[last][0].transcript;
+            const fullTranscript = result.transcript;
             let commandAfterWakeWord = fullTranscript.toLowerCase();
-            
+
             // Remove the wake word to get just the command
             const wakeWordIndex = commandAfterWakeWord.indexOf(detectedWakeWord);
             if (wakeWordIndex !== -1) {
               commandAfterWakeWord = commandAfterWakeWord.substring(wakeWordIndex + detectedWakeWord.length).trim();
             }
 
-            // If there's a command after the wake word, process it directly
-            if (commandAfterWakeWord.length > 0) {
-              console.log('🎯 Command found after wake word:', commandAfterWakeWord);
-              // Process the command immediately
-              handleVoiceCommand(commandAfterWakeWord);
+            // If there's a command after the wake word, process it directly (for final or high-confidence results)
+            if (commandAfterWakeWord.length > 5 && (isFinal || isHighConfidence)) {
+              console.log('🎯 Command found after wake word:', commandAfterWakeWord, `(${isFinal ? 'final' : 'high-confidence'})`);
+              // Process the command immediately with confidence info
+              handleVoiceCommand(commandAfterWakeWord, {
+                confidence: enhancedConfidence,
+                originalConfidence: confidence,
+                isFinal,
+                wasWakeWordCombo: true,
+              });
               return;
             }
 
-            // Otherwise, just activate wake word mode
-            setTranscript('');
-            console.log('🚀 Triggering wake word handler for listening mode...');
-            handleWakeWordDetected();
-            return;
+            // For wake word only (no command after), require final result to avoid false positives
+            if (isFinal && commandAfterWakeWord.length <= 5) {
+              setTranscript('');
+              console.log('🚀 Triggering wake word handler for listening mode...');
+              handleWakeWordDetected();
+              return;
+            }
           }
         }
 
         // When waiting for command after wake word, process any speech
         if (isWaitingForCommandRef.current && transcript.length > 0) {
-          // Only process final results for commands
-          if (!isFinal) return;
-          
+          // Process final results OR high-confidence interim results for faster response
+          if (!isFinal && !isHighConfidence) return;
+
+          // For interim results, wait for a complete command (at least 5 chars)
+          if (!isFinal && transcript.length < 5) return;
+
+          // Log what we're processing
+          console.log(`🎯 Processing ${isFinal ? 'final' : 'high-confidence interim'} command result`);
+
           // Filter out wake words from commands
           const wakeWords = ['hey jarvis', 'jarvis', 'ok jarvis', 'hello jarvis'];
-          let commandText = event.results[last][0].transcript;
+          let commandText = result.transcript;
 
           // Remove wake word if it's at the beginning of the command
           wakeWords.forEach(word => {
@@ -1241,7 +1492,12 @@ const JarvisVoice = () => {
           if (commandText.length > 0) {
             console.log('📢 Processing command:', commandText);
             console.log('🚀 Sending command to backend via WebSocket');
-            handleVoiceCommand(commandText);
+            handleVoiceCommand(commandText, {
+              confidence: enhancedConfidence,
+              originalConfidence: confidence,
+              isFinal,
+              wasWaitingForCommand: true,
+            });
 
             // Reset waiting state
             setIsWaitingForCommand(false);
@@ -1250,6 +1506,19 @@ const JarvisVoice = () => {
             console.log('⚠️ No command text after removing wake word, continuing to listen...');
           }
         }
+      };
+
+      // Enhanced: Faster recognition start on speech
+      recognitionRef.current.onspeechstart = () => {
+        console.log('🎤 Speech start detected - ready for immediate processing');
+      };
+
+      recognitionRef.current.onspeechend = () => {
+        console.log('🎤 Speech end detected');
+      };
+
+      recognitionRef.current.onsoundstart = () => {
+        console.log('🔊 Sound detected');
       };
 
       recognitionRef.current.onerror = async (event) => {
@@ -1459,12 +1728,19 @@ const JarvisVoice = () => {
 
   const handleWakeWordDetected = () => {
     console.log('🎯 handleWakeWordDetected called!');
+
+    // TEMPORARILY DISABLED - Check for typing before any feedback
+    // const typingDetected = environmentalAdaptation.processingState?.flags?.keyboardTypingDetected || false;
+    // if (typingDetected) {
+    //   console.log('⌨️ Keyboard typing detected - suppressing wake word response');
+    //   return; // Exit early - no feedback
+    // }
+
     setIsWaitingForCommand(true);
     isWaitingForCommandRef.current = true;
     setIsListening(true);
-    
-    // Always speak response immediately
-    speakResponse("Yes, sir?");
+
+    // Wake word detected - NO AUDIO FEEDBACK (removed to prevent feedback loops)
 
     // Don't send anything to backend - we're handling the wake word response locally
     // Just ensure WebSocket is connected for subsequent commands
@@ -1487,10 +1763,13 @@ const JarvisVoice = () => {
     }, 30000);
   };
 
-  const handleVoiceCommand = (command) => {
+  const handleVoiceCommand = (command, confidenceInfo = {}) => {
     console.log('🎯 handleVoiceCommand called with:', command);
     console.log('📡 WebSocket state:', wsRef.current ? wsRef.current.readyState : 'No WebSocket');
     setTranscript(command);
+
+    // Track command start time for adaptive learning
+    const commandStartTime = Date.now();
 
     // Check for autonomy activation commands
     const lowerCommand = command.toLowerCase();
@@ -1501,6 +1780,15 @@ const JarvisVoice = () => {
       lowerCommand.includes('activate all systems')) {
       // Direct autonomy activation
       toggleAutonomousMode();
+
+      // Record successful command execution in adaptive system
+      adaptiveVoiceDetection.recordCommandExecution(command, {
+        success: true,
+        confidence: confidenceInfo.confidence || 0.9,
+        executionTime: Date.now() - commandStartTime,
+        wasRetry: false,
+      });
+
       return;
     }
 
@@ -1509,7 +1797,11 @@ const JarvisVoice = () => {
       wsRef.current.send(JSON.stringify({
         type: 'command',
         text: command,
-        mode: autonomousMode ? 'autonomous' : 'manual'
+        mode: autonomousMode ? 'autonomous' : 'manual',
+        metadata: {
+          ...confidenceInfo,
+          startTime: commandStartTime,
+        }
       }));
       setResponse('Processing...');
     } else {
@@ -1555,8 +1847,7 @@ const JarvisVoice = () => {
           await initializeWakeWordService();
         }
 
-        // Speak activation confirmation  
-        speakResponse("JARVIS online. Say 'Hey JARVIS' to begin.");
+        // NO STARTUP GREETING - removed to prevent feedback loops
 
         // Enable continuous listening for wake word detection
         console.log('🎙️ Enabling continuous listening for wake word...');
@@ -1573,8 +1864,7 @@ const JarvisVoice = () => {
     setAutonomousMode(newMode);
 
     if (newMode) {
-      // Enable autonomous mode
-      speakResponse("Initiating full autonomy. All systems coming online. Vision system activating. AI brain engaged. Sir, I am now fully autonomous.");
+      // Enable autonomous mode - NO AUDIO FEEDBACK (removed to prevent feedback loops)
 
       // Connect vision system
       if (visionConnectionRef.current) {
@@ -1597,8 +1887,7 @@ const JarvisVoice = () => {
         }));
       }
     } else {
-      // Disable autonomous mode
-      speakResponse("Disabling autonomous mode. Returning to manual control. Standing by for your commands, sir.");
+      // Disable autonomous mode - NO AUDIO FEEDBACK (removed to prevent feedback loops)
 
       // Stop vision monitoring
       if (visionConnectionRef.current && visionConnectionRef.current.isConnected) {
@@ -1739,6 +2028,11 @@ const JarvisVoice = () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
+      // 🌍🎚️ DISABLED - Environmental and audio quality adaptation (causing echo/feedback)
+      // await environmentalAdaptation.initializeAudioProcessing(stream);
+      // await audioQualityAdaptation.initializeAudioProcessing(stream);
+      console.log('⚠️ Environmental audio processing DISABLED to prevent echo/feedback');
+
       mediaRecorderRef.current = new MediaRecorder(stream);
       audioChunksRef.current = [];
 
@@ -1855,7 +2149,7 @@ const JarvisVoice = () => {
     }
   };
 
-  const playAudioUsingPost = async (text) => {
+  const playAudioUsingPost = async (text, onStartCallback = null) => {
     console.log('[JARVIS Audio] POST: Attempting to play audio via POST');
     try {
       const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8010';
@@ -1882,10 +2176,22 @@ const JarvisVoice = () => {
 
         setIsJarvisSpeaking(true);
 
+        audio2.onplay = () => {
+          console.log('[JARVIS Audio] POST: Playback started');
+          // Call the callback when audio ACTUALLY starts playing (perfect sync!)
+          if (onStartCallback && typeof onStartCallback === 'function') {
+            console.log('[JARVIS Audio] Calling start callback - text will appear NOW');
+            onStartCallback();
+          }
+        };
+
         audio2.onended = () => {
           console.log('[JARVIS Audio] POST: Playback completed');
           setIsJarvisSpeaking(false);
+          isSpeakingRef.current = false;
           URL.revokeObjectURL(audioUrl); // Clean up
+          // Process next in queue after a small delay
+          setTimeout(() => processNextInSpeechQueue(), 200);
         };
 
         audio2.onerror = (e) => {
@@ -1897,56 +2203,140 @@ const JarvisVoice = () => {
             });
           }
           setIsJarvisSpeaking(false);
+          isSpeakingRef.current = false;
           URL.revokeObjectURL(audioUrl); // Clean up
+          // Process next in queue even after error
+          setTimeout(() => processNextInSpeechQueue(), 200);
         };
 
         await audio2.play();
-        console.log('[JARVIS Audio] POST: Playing audio');
+        console.log('[JARVIS Audio] POST: Playing audio successfully');
       } else {
         throw new Error(`Audio generation failed: ${response.status}`);
       }
     } catch (postError) {
       console.error('[JARVIS Audio] POST: Failed:', postError);
       setIsJarvisSpeaking(false);
+      isSpeakingRef.current = false;
+      // Process next in queue even after error
+      setTimeout(() => processNextInSpeechQueue(), 200);
     }
   };
 
-  const speakResponse = async (text) => {
-    // Set the response in state for display
-    setResponse(text);
+
+
+  // Speech queue to prevent overlapping
+  const speechQueueRef = useRef([]);
+  const isSpeakingRef = useRef(false);
+  
+  const processNextInSpeechQueue = async () => {
+    if (speechQueueRef.current.length === 0 || isSpeakingRef.current) {
+      return;
+    }
+
+    const nextItem = speechQueueRef.current.shift();
+    // Handle both old format (string) and new format (object with text and callback)
+    const text = typeof nextItem === 'string' ? nextItem : nextItem.text;
+    const callback = typeof nextItem === 'object' ? nextItem.callback : null;
+
+    await speakResponseInternal(text, callback);
+  };
+  
+  const stopAllSpeech = () => {
+    console.log('[JARVIS Audio] Stopping all speech and clearing queue');
+    // Clear the queue
+    speechQueueRef.current = [];
+    // Stop browser synthesis if active
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    // Reset speaking states
+    setIsJarvisSpeaking(false);
+    isSpeakingRef.current = false;
+  };
+
+  const speakResponse = async (text, updateDisplay = true) => {
+    // Only set the response in state if explicitly requested (default true for backward compatibility)
+    if (updateDisplay) {
+      setResponse(text);
+    }
 
     console.log('[JARVIS Audio] Speaking response:', text.substring(0, 100) + '...');
+    console.log('[JARVIS Audio] Current speaking state:', isJarvisSpeaking);
+
+    // Add to speech queue instead of skipping
+    speechQueueRef.current.push({ text, callback: null });
+
+    // Process queue if not already speaking
+    if (!isSpeakingRef.current) {
+      await processNextInSpeechQueue();
+    }
+  };
+
+  const speakResponseWithCallback = async (text, onStartCallback) => {
+    console.log('[JARVIS Audio] Speaking response with callback:', text.substring(0, 100) + '...');
+
+    // Add to speech queue with callback
+    speechQueueRef.current.push({ text, callback: onStartCallback });
+
+    // Process queue if not already speaking
+    if (!isSpeakingRef.current) {
+      await processNextInSpeechQueue();
+    }
+  };
+  
+  const speakResponseInternal = async (text, onStartCallback = null) => {
+    // Prevent overlapping speech
+    if (isSpeakingRef.current) {
+      console.log('[JARVIS Audio] Already speaking, adding to queue');
+      return;
+    }
 
     try {
+      console.log('[JARVIS Audio] Setting speaking state to true');
+      console.log('[JARVIS Audio] Text to speak (exact):', text);
       setIsJarvisSpeaking(true);
+      isSpeakingRef.current = true;
 
       // Use backend TTS endpoint for consistent voice quality
-      const usePost = text.length > 500 || text.includes('\n');
+      // Use POST for any text with special characters or newlines to avoid URL encoding issues
+      const hasSpecialChars = /[^\w\s.,!?-]/.test(text);
+      const usePost = text.length > 500 || text.includes('\n') || hasSpecialChars;
+      console.log('[JARVIS Audio] Text length:', text.length);
+      console.log('[JARVIS Audio] Using POST method:', usePost);
 
       if (!usePost) {
         // Short text: Use GET method with URL
         const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8010';
         const audioUrl = `${apiUrl}/audio/speak/${encodeURIComponent(text)}`;
         console.log('[JARVIS Audio] Using GET method:', audioUrl);
-        
+
         const audio = new Audio();
-        
+
         // Set up all event handlers before setting src
         audio.onloadstart = () => {
           console.log('[JARVIS Audio] Loading started');
         };
-        
+
         audio.oncanplaythrough = () => {
           console.log('[JARVIS Audio] Can play through');
         };
-        
+
         audio.onplay = () => {
-          console.log('[JARVIS Audio] Playback started');
+          console.log('[JARVIS Audio] GET method playback started');
+          // Call the callback when audio ACTUALLY starts playing (perfect sync!)
+          if (onStartCallback && typeof onStartCallback === 'function') {
+            console.log('[JARVIS Audio] Calling start callback - text will appear NOW');
+            onStartCallback();
+          }
         };
 
         audio.onended = () => {
-          console.log('[JARVIS Audio] Playback completed');
+          console.log('[JARVIS Audio] GET method playback completed');
           setIsJarvisSpeaking(false);
+          isSpeakingRef.current = false;
+          // Process next in queue after a small delay
+          setTimeout(() => processNextInSpeechQueue(), 200);
         };
 
         audio.onerror = async (e) => {
@@ -1958,8 +2348,8 @@ const JarvisVoice = () => {
             });
           }
           console.log('[JARVIS Audio] Falling back to POST method');
-          // Fallback to POST method
-          await playAudioUsingPost(text);
+          // Fallback to POST method with callback
+          await playAudioUsingPost(text, onStartCallback);
         };
 
         // Set source and properties
@@ -1972,9 +2362,9 @@ const JarvisVoice = () => {
         await audio.play();
         console.log('[JARVIS Audio] Play promise resolved');
       } else {
-        // Long text: Use POST method directly
+        // Long text: Use POST method directly with callback
         console.log('[JARVIS Audio] Using POST method for long text');
-        await playAudioUsingPost(text);
+        await playAudioUsingPost(text, onStartCallback);
       }
     } catch (error) {
       console.error('[JARVIS Audio] Playback failed:', error);
@@ -1984,37 +2374,40 @@ const JarvisVoice = () => {
         stack: error.stack
       });
       setIsJarvisSpeaking(false);
+      isSpeakingRef.current = false;
+      // Process next in queue even after error
+      setTimeout(() => processNextInSpeechQueue(), 200);
 
       // Fallback to browser speech synthesis if backend TTS fails
       console.log('[JARVIS Audio] Falling back to browser speech synthesis...');
       if ('speechSynthesis' in window) {
         // Cancel any ongoing speech first
         window.speechSynthesis.cancel();
-        
+
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 1.0;
-        utterance.pitch = 0.9;
-        utterance.volume = 1.0;
+        utterance.rate = 0.7;   // Even slower rate for smooth, non-rushed speech
+        utterance.pitch = 0.95; // Slightly lower pitch for more authoritative tone
+        utterance.volume = 0.9; // Slightly lower volume for more natural sound
 
         // Try to find Daniel or other British male voice
         const voices = window.speechSynthesis.getVoices();
         console.log(`[JARVIS Audio] Available voices: ${voices.length}`);
-        
+
         // First try to find Daniel
         let selectedVoice = voices.find(voice => voice.name.includes('Daniel'));
-        
+
         if (!selectedVoice) {
           // Try other British male voices
-          selectedVoice = voices.find(voice => 
+          selectedVoice = voices.find(voice =>
             (voice.lang.includes('en-GB') || voice.lang.includes('en_GB')) &&
-            (voice.name.includes('Oliver') || voice.name.includes('James') || 
+            (voice.name.includes('Oliver') || voice.name.includes('James') ||
              voice.name.toLowerCase().includes('male'))
           );
         }
-        
+
         if (!selectedVoice) {
           // Try any British voice
-          selectedVoice = voices.find(voice => 
+          selectedVoice = voices.find(voice =>
             voice.lang.includes('en-GB') || voice.lang.includes('en_GB')
           );
         }
@@ -2026,14 +2419,28 @@ const JarvisVoice = () => {
           console.log('[JARVIS Audio] No British voice found, using default');
         }
 
-        utterance.onstart = () => setIsJarvisSpeaking(true);
+        utterance.onstart = () => {
+          console.log('[JARVIS Audio] Browser speech synthesis started');
+          setIsJarvisSpeaking(true);
+          // Call the callback when browser speech ACTUALLY starts playing (perfect sync!)
+          if (onStartCallback && typeof onStartCallback === 'function') {
+            console.log('[JARVIS Audio] Calling start callback - text will appear NOW');
+            onStartCallback();
+          }
+        };
         utterance.onend = () => {
           console.log('[JARVIS Audio] Browser speech completed');
           setIsJarvisSpeaking(false);
+          isSpeakingRef.current = false;
+          // Process next in queue after a small delay
+          setTimeout(() => processNextInSpeechQueue(), 200);
         };
         utterance.onerror = (e) => {
           console.error('[JARVIS Audio] Browser speech error:', e);
           setIsJarvisSpeaking(false);
+          isSpeakingRef.current = false;
+          // Process next in queue even after error
+          setTimeout(() => processNextInSpeechQueue(), 200);
         };
 
         window.speechSynthesis.speak(utterance);
@@ -2243,6 +2650,14 @@ const JarvisVoice = () => {
         </div>
       </div>
 
+      {/* Adaptive Voice Learning Stats Display */}
+      <VoiceStatsDisplay show={jarvisStatus === 'online' && continuousListening} />
+
+      {/* Environmental Adaptation Stats Display */}
+      <EnvironmentalStatsDisplay show={jarvisStatus === 'online' && continuousListening} />
+
+      {/* Audio Quality Stats Display */}
+      <AudioQualityStatsDisplay show={jarvisStatus === 'online' && continuousListening} />
 
     </div>
   );

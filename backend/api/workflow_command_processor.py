@@ -8,6 +8,8 @@ import re
 from typing import Dict, Any, Optional, List
 import logging
 from datetime import datetime
+import os
+import anthropic
 
 from .workflow_parser import WorkflowParser
 from .workflow_engine import WorkflowExecutionEngine
@@ -37,6 +39,16 @@ class WorkflowCommandProcessor:
         self.parser = WorkflowParser()
         self.engine = WorkflowExecutionEngine()
         self._compiled_patterns = [re.compile(p, re.IGNORECASE) for p in self.WORKFLOW_INDICATORS]
+
+        # Initialize Claude API for dynamic responses
+        self.claude_client = None
+        api_key = os.getenv('ANTHROPIC_API_KEY')
+        if api_key:
+            try:
+                self.claude_client = anthropic.Anthropic(api_key=api_key)
+                logger.info("✅ Claude API initialized for dynamic JARVIS responses")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not initialize Claude API: {e}")
         
     def is_workflow_command(self, command_text: str) -> bool:
         """Check if command contains multiple actions"""
@@ -100,9 +112,9 @@ class WorkflowCommandProcessor:
                 
             # Execute the workflow
             result = await self.engine.execute_workflow(workflow, user_id, websocket)
-            
-            # Generate response based on results
-            response = self._generate_response(workflow, result)
+
+            # Generate dynamic response using Claude API
+            response = await self._generate_response_with_claude(workflow, result)
             
             return {
                 'success': result.success_rate > 0.5,
@@ -129,56 +141,112 @@ class WorkflowCommandProcessor:
                 'error': str(e)
             }
             
-    def _generate_response(self, workflow, result) -> str:
-        """Generate natural language response for workflow result"""
+    async def _generate_response_with_claude(self, workflow, result) -> str:
+        """Generate dynamic, contextual JARVIS response using Claude API"""
+
+        if not self.claude_client:
+            # Fallback to basic response if Claude not available
+            return self._generate_basic_response(workflow, result)
+
+        # Build context for Claude
         completed = sum(1 for r in result.action_results if r.status.value == 'completed')
         failed = sum(1 for r in result.action_results if r.status.value == 'failed')
         total = len(result.action_results)
-        
+
+        # Collect action details
+        action_details = []
+        for i, action in enumerate(workflow.actions):
+            status = result.action_results[i].status.value if i < len(result.action_results) else 'unknown'
+            detail = {
+                'action': action.action_type.value,
+                'target': action.target,
+                'status': status,
+                'description': action.description
+            }
+            if status == 'failed' and i < len(result.action_results):
+                detail['error'] = result.action_results[i].error
+            action_details.append(detail)
+
+        # Create prompt for Claude
+        prompt = f"""You are JARVIS, Tony Stark's sophisticated AI assistant. Generate a response for the user's command.
+
+USER'S ORIGINAL COMMAND: "{workflow.original_command}"
+
+EXECUTION RESULTS:
+- Total Actions: {total}
+- Completed Successfully: {completed}
+- Failed: {failed}
+- Execution Time: {result.total_duration:.1f}s
+
+ACTION DETAILS:
+{chr(10).join(f"  {i+1}. {a['action']} '{a['target']}': {a['status']}" + (f" ({a.get('error', '')})" if a.get('error') else "") for i, a in enumerate(action_details))}
+
+GUIDELINES:
+1. Be sophisticated and witty like JARVIS from Iron Man
+2. Keep it concise (1-2 sentences max)
+3. Be specific about what was accomplished (use actual targets like "Safari" or "dogs")
+4. Use elegant British phrasing ("I've opened", "launched", "executed")
+5. If something failed, acknowledge it gracefully
+6. Add subtle wit or charm when appropriate
+7. NO generic phrases like "Mission accomplished" or "All done"
+8. Make it sound natural and conversational
+9. Reference the actual items involved (e.g., "Safari is now displaying search results for dogs")
+
+Generate ONLY the response text, nothing else."""
+
+        try:
+            # Call Claude API
+            message = self.claude_client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=150,
+                temperature=0.7,
+                messages=[{
+                    "role": "user",
+                    "content": prompt
+                }]
+            )
+
+            response = message.content[0].text.strip()
+            logger.info(f"✨ Generated dynamic JARVIS response: {response}")
+            return response
+
+        except Exception as e:
+            logger.error(f"Claude API error, falling back to basic response: {e}")
+            return self._generate_basic_response(workflow, result)
+
+    def _generate_basic_response(self, workflow, result) -> str:
+        """Fallback basic response if Claude API fails"""
+        completed = sum(1 for r in result.action_results if r.status.value == 'completed')
+        failed = sum(1 for r in result.action_results if r.status.value == 'failed')
+        total = len(result.action_results)
+
         if completed == total:
-            # All succeeded
-            responses = [
-                f"Sir, I've successfully completed all {total} tasks.",
-                f"All done! I've finished the {total} tasks you requested.",
-                f"Mission accomplished. All {total} actions have been completed successfully.",
-                f"I've executed your workflow perfectly. All {total} steps are complete."
-            ]
-            response = responses[hash(workflow.original_command) % len(responses)]
-            
-            # Add summary of what was done
-            if total <= 3:
-                actions = [a.description or f"{a.action_type.value} {a.target}" 
-                          for a in workflow.actions]
-                response += f" I've {', '.join(actions)}."
-                
+            actions = [a.target for a in workflow.actions[:3]]
+            if len(actions) == 2:
+                return f"I've successfully {workflow.actions[0].action_type.value} {actions[0]} and {workflow.actions[1].action_type.value} {actions[1]}."
+            elif len(actions) == 1:
+                return f"I've {workflow.actions[0].action_type.value} {actions[0]}."
+            else:
+                return f"All {total} tasks completed successfully."
         elif completed > 0:
-            # Partial success
-            response = f"I've completed {completed} out of {total} tasks."
-            if failed > 0:
-                response += f" {failed} task(s) encountered issues."
-                
-                # Mention which failed
-                failed_actions = [
-                    workflow.actions[r.action_index].description or 
-                    f"{workflow.actions[r.action_index].action_type.value} {workflow.actions[r.action_index].target}"
-                    for r in result.action_results if r.status.value == 'failed'
-                ]
-                if len(failed_actions) <= 2:
-                    response += f" I couldn't {' or '.join(failed_actions)}."
-                    
+            return f"Completed {completed} of {total} tasks. {failed} encountered issues."
         else:
-            # All failed
-            response = "I'm sorry, but I couldn't complete the workflow. "
-            if result.action_results:
-                first_error = result.action_results[0].error
-                if first_error:
-                    response += f"The issue was: {first_error}"
-                    
-        # Add timing info for longer workflows
-        if result.total_duration > 10:
-            response += f" The entire process took {result.total_duration:.1f} seconds."
-            
-        return response
+            return f"I couldn't complete the workflow. {result.action_results[0].error if result.action_results else ''}"
+
+    def _generate_response(self, workflow, result) -> str:
+        """DEPRECATED: Use _generate_response_with_claude instead"""
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If loop is running, create a task
+                future = asyncio.ensure_future(self._generate_response_with_claude(workflow, result))
+                return self._generate_basic_response(workflow, result)  # Return basic for now
+            else:
+                # If no loop, run sync
+                return loop.run_until_complete(self._generate_response_with_claude(workflow, result))
+        except:
+            return self._generate_basic_response(workflow, result)
         
     async def get_workflow_examples(self) -> List[Dict[str, Any]]:
         """Get example workflow commands for user guidance"""

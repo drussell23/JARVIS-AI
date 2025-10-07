@@ -27,10 +27,16 @@ This backend loads 7 critical components that power the JARVIS AI system:
    - Provides memory pressure alerts and automatic cleanup
    - Integration with Orchestrator for dynamic component allocation
 
-4. VOICE (JARVIS Voice Interface)
+4. VOICE (JARVIS Voice Interface with CoreML Acceleration)
    - Voice activation with "Hey JARVIS" wake word
+   - CoreML Voice Engine: Hardware-accelerated VAD on Apple Neural Engine
+     * 232KB model (4-bit quantized Silero VAD)
+     * <10ms inference latency
+     * ~5-10MB runtime memory
+     * Zero CPU usage (runs on Neural Engine)
    - Text-to-speech with multiple voice options
    - Real-time voice command processing
+   - Adaptive threshold learning for improved accuracy
 
 5. ML_MODELS (Machine Learning Models)
    - Sentiment analysis and NLP capabilities
@@ -142,17 +148,33 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-# Load environment variables
+# Load environment variables (force override of system env vars)
 try:
     from dotenv import load_dotenv
 
-    load_dotenv()
+    load_dotenv(override=True)  # Force .env to override existing environment variables
 except ImportError:
     pass
 
 # Global component storage
 components = {}
 import_times = {}
+
+# Dynamic Component Manager
+dynamic_component_manager = None
+DYNAMIC_LOADING_ENABLED = False
+
+try:
+    from core.dynamic_component_manager import get_component_manager
+    logger.info("✅ Dynamic Component Manager available")
+    DYNAMIC_LOADING_ENABLED = os.getenv("DYNAMIC_COMPONENT_LOADING", "true").lower() == "true"
+    if DYNAMIC_LOADING_ENABLED:
+        logger.info("🧩 Dynamic Component Loading: ENABLED")
+    else:
+        logger.info("⚠️ Dynamic Component Loading: DISABLED (set DYNAMIC_COMPONENT_LOADING=true to enable)")
+except ImportError:
+    logger.warning("⚠️ Dynamic Component Manager not available - using legacy loading")
+    DYNAMIC_LOADING_ENABLED = False
 
 
 async def parallel_import_components():
@@ -357,6 +379,9 @@ def import_monitoring():
 
 def import_voice_unlock():
     """Import voice unlock components"""
+    import logging
+    logger = logging.getLogger(__name__)
+
     voice_unlock = {}
 
     try:
@@ -439,6 +464,19 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting optimized JARVIS backend...")
     start_time = time.time()
 
+    # Initialize dynamic component manager if enabled
+    global dynamic_component_manager, DYNAMIC_LOADING_ENABLED
+    if DYNAMIC_LOADING_ENABLED and get_component_manager:
+        logger.info("🧩 Initializing Dynamic Component Management System...")
+        dynamic_component_manager = get_component_manager()
+        app.state.component_manager = dynamic_component_manager
+
+        # Start memory pressure monitoring
+        asyncio.create_task(dynamic_component_manager.start_monitoring())
+        logger.info(f"   Memory limit: {dynamic_component_manager.memory_limit_gb}GB")
+        logger.info(f"   ARM64 optimized: {dynamic_component_manager.arm64_optimizer.is_arm64}")
+        logger.info("✅ Dynamic component loading enabled")
+
     # CRITICAL: Check for code changes and clean up old instances FIRST
     try:
         from process_cleanup_manager import (
@@ -470,19 +508,51 @@ async def lifespan(app: FastAPI):
         # Continue startup anyway
 
     # Run parallel imports if enabled
-    if OPTIMIZE_STARTUP and PARALLEL_IMPORTS:
-        await parallel_import_components()
-    else:
-        # Sequential imports (legacy mode)
-        logger.info("Running sequential imports (legacy mode)")
-        components["chatbots"] = import_chatbots()
-        components["vision"] = import_vision_system()
-        components["memory"] = import_memory_system()
-        components["voice"] = import_voice_system()
-        components["ml_models"] = import_ml_models()
-        components["monitoring"] = import_monitoring()
-        components["voice_unlock"] = import_voice_unlock()
-        components["wake_word"] = import_wake_word()
+    if DYNAMIC_LOADING_ENABLED and dynamic_component_manager:
+        # Dynamic loading mode - load only CORE components at startup
+        logger.info("🧩 Loading CORE components dynamically...")
+        try:
+            from core.dynamic_component_manager import ComponentPriority
+
+            # Load only CORE priority components at startup
+            core_components = [
+                name for name, comp in dynamic_component_manager.components.items()
+                if comp.priority == ComponentPriority.CORE
+            ]
+
+            logger.info(f"   Loading {len(core_components)} CORE components: {core_components}")
+
+            for comp_name in core_components:
+                success = await dynamic_component_manager.load_component(comp_name)
+                if success:
+                    comp = dynamic_component_manager.components[comp_name]
+                    components[comp_name] = comp.instance
+                    logger.info(f"   ✅ {comp_name} loaded ({comp.memory_estimate_mb}MB)")
+                else:
+                    logger.warning(f"   ⚠️ {comp_name} failed to load")
+
+            logger.info(f"✅ Dynamic component loading active - {len(core_components)} CORE components loaded")
+            logger.info(f"   Other components will load on-demand based on user commands")
+
+        except Exception as e:
+            logger.error(f"Dynamic loading failed, falling back to legacy mode: {e}")
+            DYNAMIC_LOADING_ENABLED = False
+
+    if not DYNAMIC_LOADING_ENABLED:
+        # Legacy mode - load all components at startup
+        if OPTIMIZE_STARTUP and PARALLEL_IMPORTS:
+            await parallel_import_components()
+        else:
+            # Sequential imports (legacy mode)
+            logger.info("Running sequential imports (legacy mode)")
+            components["chatbots"] = import_chatbots()
+            components["vision"] = import_vision_system()
+            components["memory"] = import_memory_system()
+            components["voice"] = import_voice_system()
+            components["ml_models"] = import_ml_models()
+            components["monitoring"] = import_monitoring()
+            components["voice_unlock"] = import_voice_unlock()
+            components["wake_word"] = import_wake_word()
 
     # Initialize memory manager
     memory_class = components.get("memory", {}).get("manager_class")
@@ -786,10 +856,60 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Failed to start wake word service: {e}")
 
+    # Register with autonomous systems
+    try:
+        from core.autonomous_orchestrator import get_orchestrator
+        from core.zero_config_mesh import get_mesh
+
+        orchestrator = get_orchestrator()
+        mesh = get_mesh()
+
+        # Start autonomous systems
+        await orchestrator.start()
+        await mesh.start()
+
+        # Register backend service
+        backend_port = int(os.getenv("BACKEND_PORT", "8000"))
+        await orchestrator.register_service("jarvis_backend", backend_port, "http")
+        await mesh.join({
+            "name": "jarvis_backend",
+            "port": backend_port,
+            "protocol": "http",
+            "type": "backend",
+            "endpoints": {
+                "health": "/health",
+                "vision": "/vision",
+                "voice": "/voice",
+                "chat": "/chat"
+            }
+        })
+
+        app.state.orchestrator = orchestrator
+        app.state.mesh = mesh
+
+        logger.info("✅ Registered with autonomous orchestrator and mesh network")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not register with autonomous systems: {e}")
+
     yield
 
     # Cleanup
     logger.info("🛑 Shutting down JARVIS backend...")
+
+    # Stop autonomous systems
+    if hasattr(app.state, "orchestrator"):
+        try:
+            await app.state.orchestrator.stop()
+            logger.info("✅ Autonomous orchestrator stopped")
+        except Exception as e:
+            logger.error(f"Failed to stop orchestrator: {e}")
+
+    if hasattr(app.state, "mesh"):
+        try:
+            await app.state.mesh.stop()
+            logger.info("✅ Mesh network stopped")
+        except Exception as e:
+            logger.error(f"Failed to stop mesh: {e}")
 
     # Save current code state for next startup
     try:
@@ -1007,6 +1127,26 @@ async def health_check():
     else:
         voice_unlock_details = {"enabled": False, "initialized": False}
 
+    # Check dynamic component manager status
+    component_manager_details = {}
+    if hasattr(app.state, "component_manager"):
+        mgr = app.state.component_manager
+        component_manager_details = {
+            "enabled": True,
+            "total_components": len(mgr.components),
+            "memory_pressure": mgr.memory_monitor.current_pressure().value,
+            "arm64_optimized": mgr.arm64_optimizer.is_arm64,
+            "m1_detected": mgr.arm64_optimizer.is_m1,
+            "config_loaded": os.path.exists(mgr.config_path) if mgr.config_path else False,
+            "advanced_preloader": {
+                "predictor_active": mgr.advanced_predictor is not None,
+                "dependency_resolver_active": mgr.dependency_resolver is not None,
+                "smart_cache_active": mgr.smart_cache is not None,
+            }
+        }
+    else:
+        component_manager_details = {"enabled": False}
+
     return {
         "status": "healthy",
         "mode": "optimized" if OPTIMIZE_STARTUP else "legacy",
@@ -1021,7 +1161,98 @@ async def health_check():
         "rust_acceleration": rust_details,
         "self_healing": self_healing_details,
         "voice_unlock": voice_unlock_details,
+        "component_manager": component_manager_details,
     }
+
+
+@app.get("/autonomous/status")
+async def autonomous_status():
+    """Get autonomous orchestrator and mesh network status"""
+    orchestrator_status = None
+    mesh_status = None
+
+    if hasattr(app.state, "orchestrator"):
+        try:
+            orchestrator_status = app.state.orchestrator.get_status()
+        except Exception as e:
+            orchestrator_status = {"error": str(e)}
+
+    if hasattr(app.state, "mesh"):
+        try:
+            mesh_status = app.state.mesh.get_status()
+        except Exception as e:
+            mesh_status = {"error": str(e)}
+
+    return {
+        "autonomous_enabled": orchestrator_status is not None or mesh_status is not None,
+        "orchestrator": orchestrator_status,
+        "mesh": mesh_status
+    }
+
+
+@app.get("/components/status")
+async def component_status():
+    """Get dynamic component manager status with performance metrics"""
+    if not hasattr(app.state, "component_manager"):
+        return {"enabled": False, "message": "Dynamic component loading not enabled"}
+
+    mgr = app.state.component_manager
+    status = mgr.get_status()
+
+    return {
+        "enabled": True,
+        "config_path": mgr.config_path,
+        "memory_limit_gb": mgr.memory_limit_gb,
+        **status  # Unpack all status fields
+    }
+
+
+@app.get("/components/metrics")
+async def component_metrics():
+    """Get detailed performance metrics"""
+    if not hasattr(app.state, "component_manager"):
+        return {"enabled": False}
+
+    mgr = app.state.component_manager
+    status = mgr.get_status()
+
+    # Calculate efficiency score
+    total_loads = status['performance']['total_loads']
+    cache_hit_rate = status['performance']['cache_hit_rate']
+    memory_saved = status['memory']['saved_mb']
+
+    efficiency_score = 0
+    if total_loads > 0:
+        # Score based on cache hits, memory savings, and load count
+        efficiency_score = min(100, (cache_hit_rate * 0.4) + (min(memory_saved / 100, 50) * 0.6))
+
+    return {
+        "enabled": True,
+        "timestamp": datetime.now().isoformat(),
+        "efficiency_score": round(efficiency_score, 1),
+        "metrics": {
+            "component_utilization": {
+                "total": status['total_components'],
+                "loaded": status['loaded_components'],
+                "utilization_percent": round((status['loaded_components'] / status['total_components']) * 100, 1) if status['total_components'] > 0 else 0
+            },
+            "memory_metrics": status['memory'],
+            "performance_metrics": status['performance'],
+            "platform_info": status['platform']
+        }
+    }
+
+
+@app.get("/autonomous/services")
+async def autonomous_services():
+    """Get list of all discovered services"""
+    if not hasattr(app.state, "orchestrator"):
+        return {"error": "Orchestrator not available"}
+
+    try:
+        return app.state.orchestrator.get_frontend_config()
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # Mount routers based on available components
@@ -1045,6 +1276,15 @@ def mount_routers():
             voice["jarvis_router"], prefix="/voice/jarvis", tags=["jarvis"]
         )
         logger.info("✅ JARVIS Voice API mounted")
+
+        # Set JARVIS instance in unified WebSocket pipeline
+        try:
+            from api.unified_websocket import set_jarvis_instance
+            jarvis_api = voice.get("jarvis_api")
+            if jarvis_api:
+                set_jarvis_instance(jarvis_api)
+        except Exception as e:
+            logger.warning(f"⚠️  Could not set JARVIS in WebSocket pipeline: {e}")
 
     if voice and voice.get("enhanced_available"):
         app.include_router(
@@ -1075,16 +1315,22 @@ def mount_routers():
             app.state.voice_unlock = voice_unlock
             logger.info("✅ Voice Unlock service ready")
 
-    # Wake Word API
-    wake_word = components.get("wake_word", {})
-    if wake_word and wake_word.get("router"):
-        app.include_router(wake_word["router"], tags=["wake_word"])
-        logger.info("✅ Wake Word API mounted")
-        if wake_word.get("initialized"):
+    # Wake Word API - Always mount (has stub functionality)
+    try:
+        from api.wake_word_api import router as wake_word_router
+        # Router already has prefix="/api/wake-word", don't add it again
+        app.include_router(wake_word_router)
+        logger.info("✅ Wake Word API mounted at /api/wake-word")
+
+        # Check if the full service is available
+        wake_word = components.get("wake_word", {})
+        if wake_word and wake_word.get("initialized"):
             app.state.wake_word = wake_word
-            logger.info("✅ Wake Word detection ready")
+            logger.info("✅ Wake Word detection service available")
         else:
-            logger.warning("⚠️ Wake Word API mounted but not initialized")
+            logger.info("ℹ️  Wake Word API available (stub mode - service not initialized)")
+    except ImportError as e:
+        logger.warning(f"⚠️ Wake Word API not available: {e}")
 
     # Rust API (if Rust components are available)
     if hasattr(app.state, "rust_acceleration") and app.state.rust_acceleration.get(
@@ -1234,6 +1480,17 @@ def mount_routers():
 async def process_command(request: dict):
     """Simple command endpoint for testing"""
     command = request.get("command", "")
+
+    # Trigger intelligent preloading (Phase 2) if available
+    if hasattr(app.state, "component_manager") and app.state.component_manager:
+        mgr = app.state.component_manager
+        if mgr.advanced_predictor:
+            try:
+                # Predict and preload next 1-3 components in background
+                asyncio.create_task(mgr.predict_and_preload(command, steps_ahead=3))
+                logger.debug(f"🔮 Advanced preloading triggered for: '{command[:50]}'")
+            except Exception as e:
+                logger.debug(f"Advanced preloading failed: {e}")
 
     # Use unified command processor if available
     try:
@@ -1412,10 +1669,17 @@ if __name__ == "__main__":
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.getenv("BACKEND_PORT", "8000")),
+        default=int(os.getenv("BACKEND_PORT", "8010")),
         help="Port to run the server on",
     )
     args = parser.parse_args()
+
+    # Print startup information
+    print(f"\n🚀 Starting JARVIS Backend")
+    print(f"   HTTP:      http://localhost:{args.port}")
+    print(f"   WebSocket: ws://localhost:{args.port}/ws")
+    print(f"   API Docs:  http://localhost:{args.port}/docs")
+    print("=" * 60)
 
     # Use optimized settings if enabled
     if OPTIMIZE_STARTUP:

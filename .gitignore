@@ -167,27 +167,55 @@ coverage.xml
 *.perf
 *.trace
 
-# Core dumps
+# Core dumps (but allow backend/core/ directory)
+# Note: Negation must come AFTER to override
 core
 core.*
+# Exception: Allow backend/core directory and its contents
+!backend/core/
+!backend/core/*.py
 
 # Benchmark results
 benchmark_results/
 *.bench
 
-# Duplicate files prevention
+# Duplicate files prevention (macOS/editor duplicates)
 * 2.*
+* 3.*
+* 4.*
+* 5.*
 * 2
+* 3
+* 4
+* 5
 *\ 2.*
+*\ 3.*
+*\ 4.*
+*\ 5.*
 *\ 2
+*\ 3
+*\ 4
+*\ 5
 * copy.*
 * copy
 *-copy.*
 *-copy
 *(2).*
+*(3).*
+*(4).*
+*(5).*
 *(2)
+*(3)
+*(4)
+*(5)
 *\(2\).*
+*\(3\).*
+*\(4\).*
+*\(5\).*
 *\(2\)
+*\(3\)
+*\(4\)
+*\(5\)
 
 # Voice Unlock sensitive files
 backend/voice_unlock/test_*.py
@@ -216,3 +244,4 @@ backend/voice_unlock/proximity_voice_auth/**/*.pyc
 **/com.jarvis.voiceunlock
 **/*password*.txt
 **/*credentials*.txt
+backend/.jarvis_cache/

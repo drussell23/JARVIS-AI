@@ -1,35 +1,17 @@
 {
-  "API_BASE_URL": null,
-  "WS_BASE_URL": null,
-  "ENDPOINTS": {},
-  "SERVICES": {
-    "websocket_3000": {
-      "url": "ws://localhost:3000",
-      "health_score": 1.0,
-      "endpoints": {
-        "ws": "/ws"
-      }
-    },
-    "backend_8001": {
-      "url": "http://localhost:8001",
-      "health_score": 1.0,
-      "endpoints": {
-        "health": "/health"
-      }
-    },
-    "websocket_8001": {
-      "url": "http://localhost:8001",
-      "health_score": 1.0,
-      "endpoints": {
-        "health": "/health"
-      }
-    },
-    "backend_8010": {
-      "url": "http://localhost:8010",
-      "health_score": 1.0,
-      "endpoints": {
-        "health": "/health"
-      }
+  "backend": {
+    "url": "http://localhost:8000",
+    "wsUrl": "ws://localhost:8000",
+    "endpoints": {
+      "health": "/health",
+      "ml_audio_config": "/audio/ml/config",
+      "ml_audio_status": "/audio/ml/status",
+      "jarvis_status": "/voice/jarvis/status",
+      "jarvis_activate": "/voice/jarvis/activate",
+      "jarvis_speak": "/voice/jarvis/speak",
+      "wake_word_status": "/api/wake-word/status",
+      "command": "/api/command"
     }
-  }
+  },
+  "services": {}
 }

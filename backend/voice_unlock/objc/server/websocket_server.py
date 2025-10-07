@@ -271,20 +271,11 @@ class VoiceUnlockWebSocketServer:
     
     def escape_password_for_applescript(self, password: str) -> str:
         """Escape special characters in password for AppleScript"""
-        # Escape backslashes first, then quotes, then other special characters
+        # For AppleScript strings, we only need to escape quotes and backslashes
+        # The password will be typed character by character, not evaluated as a string
         escaped = password.replace('\\', '\\\\')  # Escape backslashes
         escaped = escaped.replace('"', '\\"')     # Escape double quotes  
-        escaped = escaped.replace("'", "\\'")     # Escape single quotes
-        escaped = escaped.replace('$', '\\$')     # Escape dollar signs
-        escaped = escaped.replace('`', '\\`')     # Escape backticks
-        # Add more special characters that might need escaping
-        escaped = escaped.replace('!', '\\!')     # Escape exclamation marks
-        escaped = escaped.replace('@', '\\@')     # Escape at symbols
-        escaped = escaped.replace('#', '\\#')     # Escape hash/pound symbols
-        escaped = escaped.replace('&', '\\&')     # Escape ampersands
-        escaped = escaped.replace('*', '\\*')     # Escape asterisks
-        escaped = escaped.replace('(', '\\(')     # Escape open parentheses
-        escaped = escaped.replace(')', '\\)')     # Escape close parentheses
+        # Don't escape other characters as they'll be typed literally
         return escaped
 
     async def perform_screen_unlock(self, password: str) -> bool:
@@ -369,15 +360,22 @@ class VoiceUnlockWebSocketServer:
                     # Use key code for special characters
                     info = special_char_map[char]
                     script = f'tell application "System Events" to key code {info["keycode"]} using {{{info["modifiers"]}}}'
-                    logger.info(f"Typing special char at position {i+1}: '{char}' using keycode {info['keycode']} with shift")
+                    logger.info(f"Typing special char at position {i+1}: [special] using keycode {info['keycode']} with shift")
                 else:
+                    # Escape the character for AppleScript
+                    if char == '"':
+                        escaped_char = '\\"'
+                    elif char == '\\':
+                        escaped_char = '\\\\'
+                    else:
+                        escaped_char = char
                     # Use keystroke for regular characters
-                    script = f'tell application "System Events" to keystroke "{char}"'
-                    logger.info(f"Typing regular char at position {i+1}: '{char}'")
+                    script = f'tell application "System Events" to keystroke "{escaped_char}"'
+                    logger.info(f"Typing regular char at position {i+1}")
                 
                 result = subprocess.run(['osascript', '-e', script], capture_output=True, text=True)
                 if result.returncode != 0:
-                    logger.error(f"Failed to type character '{char}': {result.stderr}")
+                    logger.error(f"Failed to type character at position {i+1}: {result.stderr}")
                 await asyncio.sleep(0.01)  # Faster typing - reduced from 0.05 to 0.01
             
             # Press return
@@ -441,13 +439,6 @@ class VoiceUnlockWebSocketServer:
             except Exception as e:
                 logger.debug(f"ScreenSaver method failed: {e}")
             
-            # Method 4: Fallback to sleep display
-            try:
-                subprocess.run(['pmset', 'displaysleepnow'])
-                logger.info("Put display to sleep")
-                return True
-            except Exception as e:
-                logger.debug(f"Display sleep method failed: {e}")
                 
             logger.error("All lock methods failed")
             return False

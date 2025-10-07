@@ -374,7 +374,7 @@ impl SlidingWindowCapture {
     fn get_available_memory_mb(&self) -> f32 {
         #[cfg(target_os = "macos")]
         {
-            use sysinfo::{System, SystemExt};
+            use sysinfo::System;
             let mut sys = System::new();
             sys.refresh_memory();
             (sys.available_memory() / 1024 / 1024) as f32
@@ -388,7 +388,7 @@ impl SlidingWindowCapture {
     }
 
     /// Analyze windows with caching
-    pub async fn analyze_windows<F>(&self, windows: Vec<WindowRegion>, analyzer: F) -> Result<Vec<AnalysisResult>>
+    pub async fn analyze_windows<F>(&mut self, windows: Vec<WindowRegion>, analyzer: F) -> Result<Vec<AnalysisResult>>
     where
         F: Fn(&WindowRegion) -> Result<String> + Send + Sync,
     {
@@ -502,7 +502,7 @@ impl MemoryMonitor {
         
         #[cfg(target_os = "macos")]
         {
-            use sysinfo::{System, SystemExt};
+            use sysinfo::System;
             let mut sys = System::new();
             sys.refresh_memory();
             let available_mb = (sys.available_memory() / 1024 / 1024) as f32;

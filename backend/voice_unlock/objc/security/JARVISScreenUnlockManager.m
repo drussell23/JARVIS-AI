@@ -153,6 +153,89 @@
     }
 }
 
+#pragma mark - Lock Operations
+
+- (BOOL)lockScreen {
+    NSError *error = nil;
+    BOOL result = [self lockScreenWithError:&error];
+    if (!result && error) {
+        os_log_error(self.logger, "Failed to lock screen: %@", error.localizedDescription);
+    }
+    return result;
+}
+
+- (BOOL)lockScreenWithError:(NSError **)error {
+    os_log_info(self.logger, "Attempting to lock screen");
+
+    // Method 1: Use CGSession (most reliable for macOS)
+    NSString *cgSessionPath = @"/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession";
+    if ([[NSFileManager defaultManager] fileExistsAtPath:cgSessionPath]) {
+        NSTask *task = [[NSTask alloc] init];
+        task.launchPath = cgSessionPath;
+        task.arguments = @[@"-suspend"];
+
+        @try {
+            [task launch];
+            [task waitUntilExit];
+
+            if (task.terminationStatus == 0) {
+                os_log_info(self.logger, "Screen locked successfully using CGSession");
+
+                // Update screen state
+                self.currentScreenState = JARVISScreenStateLocked;
+                if ([self.delegate respondsToSelector:@selector(screenStateDidChange:)]) {
+                    [self.delegate screenStateDidChange:JARVISScreenStateLocked];
+                }
+
+                return YES;
+            }
+        } @catch (NSException *exception) {
+            os_log_debug(self.logger, "CGSession method failed: %@", exception.reason);
+        }
+    }
+
+    // Method 2: Use AppleScript to trigger lock via System Events
+    NSString *script = @"tell application \"System Events\" to keystroke \"q\" using {command down, control down}";
+    NSAppleScript *appleScript = [[NSAppleScript alloc] initWithSource:script];
+    NSDictionary *errorInfo = nil;
+    NSAppleEventDescriptor *result = [appleScript executeAndReturnError:&errorInfo];
+
+    if (result && !errorInfo) {
+        os_log_info(self.logger, "Screen locked successfully using AppleScript");
+        self.currentScreenState = JARVISScreenStateLocked;
+        if ([self.delegate respondsToSelector:@selector(screenStateDidChange:)]) {
+            [self.delegate screenStateDidChange:JARVISScreenStateLocked];
+        }
+        return YES;
+    }
+
+    // Method 3: Start screensaver (will lock if password required)
+    BOOL screensaverStarted = NO;
+    @try {
+        [[NSWorkspace sharedWorkspace] launchApplication:@"ScreenSaverEngine"];
+        screensaverStarted = YES;
+        os_log_info(self.logger, "Started screensaver");
+    } @catch (NSException *exception) {
+        os_log_debug(self.logger, "Failed to start screensaver: %@", exception.reason);
+    }
+
+    if (screensaverStarted) {
+        self.currentScreenState = JARVISScreenStateScreensaver;
+        if ([self.delegate respondsToSelector:@selector(screenStateDidChange:)]) {
+            [self.delegate screenStateDidChange:JARVISScreenStateScreensaver];
+        }
+        return YES;
+    }
+
+    // All methods failed
+    if (error) {
+        *error = [NSError errorWithDomain:@"JARVISScreenUnlock"
+                                     code:500
+                                 userInfo:@{NSLocalizedDescriptionKey: @"Failed to lock screen using all available methods"}];
+    }
+    return NO;
+}
+
 #pragma mark - Unlock Operations
 
 - (BOOL)canUnlockScreen {

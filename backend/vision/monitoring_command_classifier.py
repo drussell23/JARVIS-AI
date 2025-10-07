@@ -17,6 +17,7 @@ class CommandType(Enum):
     VISION_QUERY = "vision_query"             # Questions about what's on screen
     MONITORING_STATUS = "monitoring_status"    # Queries about monitoring state
     AMBIGUOUS = "ambiguous"                    # Unclear intent
+    OTHER = "other"                            # Not vision/monitoring related
 
 
 class MonitoringAction(Enum):
@@ -83,6 +84,12 @@ class MonitoringCommandClassifier:
             Tuple of (CommandType, MonitoringAction, confidence_score)
         """
         command_lower = command.lower().strip()
+        
+        # IMPORTANT: Exclude lock/unlock screen commands - these are system commands
+        if 'lock' in command_lower and 'screen' in command_lower:
+            return CommandType.OTHER, MonitoringAction.NONE, 0.0
+        if 'unlock' in command_lower and 'screen' in command_lower:
+            return CommandType.OTHER, MonitoringAction.NONE, 0.0
         
         # Check for monitoring control commands first (highest priority)
         for pattern in self.monitoring_start_patterns:

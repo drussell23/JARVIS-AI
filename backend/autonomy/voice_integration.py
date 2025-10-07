@@ -649,9 +649,20 @@ class VoiceIntegrationSystem:
         logger.info("🎯 Voice Integration System deactivated")
         
     async def _deliver_startup_greeting(self):
-        """Deliver dynamic startup greeting"""
+        """Deliver dynamic JARVIS-style startup greeting"""
         try:
-            # Generate contextual greeting
+            # Try to use our dynamic response generator first
+            try:
+                from voice.dynamic_response_generator import get_response_generator
+                generator = get_response_generator()
+                greeting = generator.generate_startup_greeting()
+                await self.voice_engine.speak(greeting)
+                logger.info(f"Delivered startup greeting: {greeting}")
+                return
+            except ImportError:
+                pass  # Fall through to Claude generation
+            
+            # If dynamic generator not available, use Claude
             current_time = datetime.now()
             time_context = ""
             
@@ -662,34 +673,47 @@ class VoiceIntegrationSystem:
             else:
                 time_context = "evening"
                 
-            greeting_prompt = f"""Generate a brief JARVIS startup greeting for the {time_context}.
+            greeting_prompt = f"""Generate a sophisticated JARVIS-style startup greeting for the {time_context}.
 
 Requirements:
-1. Be natural and conversational
-2. Include voice system activation
-3. Be concise (1-2 sentences)
-4. Match the time of day
-5. Sound professional but warm
+1. Sound like JARVIS from Iron Man - professional, sophisticated, with subtle personality
+2. Include system status (e.g., "all systems operational", "neural networks calibrated")
+3. Be concise but impressive (1-2 sentences)
+4. Match the time of day naturally
+5. Vary between technical and warm approaches
 
-Example: "Good morning, sir. Voice integration system is now online and ready to assist."
+Examples:
+- "Good morning, sir. All primary systems are operational and standing by for your command."
+- "Welcome back, sir. JARVIS systems initialized. How may I be of service this evening?"
+- "System boot sequence complete. Ready to tackle whatever challenges the day brings."
 
-Generate greeting:"""
+Generate a unique greeting:"""
 
             message = await asyncio.to_thread(
                 self.claude.messages.create,
                 model="claude-3-haiku-20240307",
                 max_tokens=100,
-                temperature=0.5,
+                temperature=0.7,  # Increased for more variety
                 messages=[{"role": "user", "content": greeting_prompt}]
             )
             
             greeting = message.content[0].text.strip()
             await self.voice_engine.speak(greeting)
+            logger.info(f"Delivered Claude-generated greeting: {greeting}")
             
         except Exception as e:
             logger.error(f"Error generating startup greeting: {e}")
-            # Fallback greeting
-            await self.voice_engine.speak("Voice integration system online. How may I assist you, sir?")
+            # Enhanced fallback greetings with variety
+            import random
+            fallback_greetings = [
+                "JARVIS systems online. How may I assist you, sir?",
+                "System initialization complete. At your service, sir.",
+                "Welcome back, sir. All systems operational.",
+                "JARVIS ready. Standing by for your command.",
+                "Voice integration active. Ready to proceed, sir."
+            ]
+            greeting = random.choice(fallback_greetings)
+            await self.voice_engine.speak(greeting)
             
     async def _monitor_notifications(self):
         """Monitor for notifications to announce"""

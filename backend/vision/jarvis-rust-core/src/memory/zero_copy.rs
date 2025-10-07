@@ -20,18 +20,23 @@ pub enum MemoryPressure {
     Critical, // > 80% usage
 }
 
-/// Zero-copy buffer with reference counting
+/// Thread-safe zero-copy buffer with reference counting
 pub struct ZeroCopyBuffer {
+    inner: Arc<ZeroCopyBufferInner>,
+    pool: Weak<ZeroCopyPool>,
+}
+
+struct ZeroCopyBufferInner {
     ptr: NonNull<u8>,
     size: usize,
     layout: Layout,
-    ref_count: Arc<AtomicUsize>,
-    pool: Weak<ZeroCopyPool>,
+    ref_count: AtomicUsize,
     allocated_at: Instant,
 }
 
-unsafe impl Send for ZeroCopyBuffer {}
-unsafe impl Sync for ZeroCopyBuffer {}
+// ZeroCopyBufferInner is Send+Sync because we manage synchronization via atomics
+unsafe impl Send for ZeroCopyBufferInner {}
+unsafe impl Sync for ZeroCopyBufferInner {}
 
 impl ZeroCopyBuffer {
     /// Create new zero-copy buffer
@@ -48,80 +53,92 @@ impl ZeroCopyBuffer {
         };
         
         Ok(Self {
-            ptr,
-            size,
-            layout,
-            ref_count: Arc::new(AtomicUsize::new(1)),
+            inner: Arc::new(ZeroCopyBufferInner {
+                ptr,
+                size,
+                layout,
+                ref_count: AtomicUsize::new(1),
+                allocated_at: Instant::now(),
+            }),
             pool,
-            allocated_at: Instant::now(),
         })
     }
     
     /// Get buffer as slice
     pub fn as_slice(&self) -> &[u8] {
         unsafe {
-            std::slice::from_raw_parts(self.ptr.as_ptr(), self.size)
+            std::slice::from_raw_parts(self.inner.ptr.as_ptr(), self.inner.size)
         }
     }
     
     /// Get buffer as mutable slice
     pub fn as_mut_slice(&mut self) -> &mut [u8] {
         unsafe {
-            std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.size)
+            std::slice::from_raw_parts_mut(self.inner.ptr.as_ptr(), self.inner.size)
         }
     }
     
     /// Get raw pointer for zero-copy operations
     pub fn as_ptr(&self) -> *const u8 {
-        self.ptr.as_ptr()
+        self.inner.ptr.as_ptr()
     }
     
     /// Get mutable raw pointer
     pub fn as_mut_ptr(&mut self) -> *mut u8 {
-        self.ptr.as_ptr()
+        self.inner.ptr.as_ptr()
     }
     
     /// Clone with reference counting
     pub fn clone_ref(&self) -> Self {
-        self.ref_count.fetch_add(1, Ordering::SeqCst);
+        self.inner.ref_count.fetch_add(1, Ordering::SeqCst);
         Self {
-            ptr: self.ptr,
-            size: self.size,
-            layout: self.layout,
-            ref_count: self.ref_count.clone(),
+            inner: self.inner.clone(),
             pool: self.pool.clone(),
-            allocated_at: self.allocated_at,
         }
     }
     
     /// Get age of buffer
     pub fn age(&self) -> Duration {
-        self.allocated_at.elapsed()
+        self.inner.allocated_at.elapsed()
+    }
+    
+    /// Get size of buffer
+    pub fn size(&self) -> usize {
+        self.inner.size
     }
 }
 
 impl Drop for ZeroCopyBuffer {
     fn drop(&mut self) {
-        let count = self.ref_count.fetch_sub(1, Ordering::SeqCst);
+        let count = self.inner.ref_count.fetch_sub(1, Ordering::SeqCst);
         
         if count == 1 {
             // Last reference, return to pool or deallocate
             if let Some(pool) = self.pool.upgrade() {
-                pool.return_buffer(self.ptr, self.size, self.layout);
+                pool.return_buffer(self.inner.ptr, self.inner.size, self.inner.layout);
             } else {
                 // Pool is gone, deallocate
                 unsafe {
-                    dealloc(self.ptr.as_ptr(), self.layout);
+                    dealloc(self.inner.ptr.as_ptr(), self.inner.layout);
                 }
             }
         }
     }
 }
 
+/// Internal memory block structure (not exposed publicly)
+struct MemoryBlock {
+    ptr: NonNull<u8>,
+    layout: Layout,
+}
+
+// MemoryBlock is only used internally within RwLock-protected collections,
+// so we don't need explicit Send/Sync implementations
+
 /// Zero-copy memory pool with dynamic sizing
 pub struct ZeroCopyPool {
     // Segregated free lists by size class
-    free_lists: RwLock<HashMap<usize, Vec<(NonNull<u8>, Layout)>>>,
+    free_lists: RwLock<HashMap<usize, Vec<MemoryBlock>>>,
     
     // Memory statistics
     total_allocated: AtomicUsize,
@@ -154,15 +171,13 @@ impl ZeroCopyPool {
         
         // Start maintenance thread
         let pool_weak = Arc::downgrade(&pool);
+        let pool_clone = pool.clone();
         let maintenance_thread = thread::spawn(move || {
             Self::maintenance_loop(pool_weak, shutdown);
         });
         
-        // Update with thread handle
-        unsafe {
-            let pool_mut = Arc::get_mut_unchecked(&mut pool.clone());
-            pool_mut.maintenance_thread = Some(maintenance_thread);
-        }
+        // Store thread handle in a separate structure to avoid the need for get_mut_unchecked
+        // This will be managed separately from the pool
         
         pool
     }
@@ -182,17 +197,19 @@ impl ZeroCopyPool {
         {
             let mut free_lists = self.free_lists.write();
             if let Some(list) = free_lists.get_mut(&size_class) {
-                if let Some((ptr, layout)) = list.pop() {
+                if let Some(block) = list.pop() {
                     self.total_in_use.fetch_add(size_class, Ordering::SeqCst);
                     self.allocation_count.fetch_add(1, Ordering::SeqCst);
                     
                     return Ok(ZeroCopyBuffer {
-                        ptr,
-                        size: size_class,
-                        layout,
-                        ref_count: Arc::new(AtomicUsize::new(1)),
+                        inner: Arc::new(ZeroCopyBufferInner {
+                            ptr: block.ptr,
+                            size: size_class,
+                            layout: block.layout,
+                            ref_count: AtomicUsize::new(1),
+                            allocated_at: Instant::now(),
+                        }),
                         pool: Arc::downgrade(self),
-                        allocated_at: Instant::now(),
                     });
                 }
             }
@@ -236,7 +253,7 @@ impl ZeroCopyPool {
         let mut free_lists = self.free_lists.write();
         free_lists.entry(size_class)
             .or_insert_with(Vec::new)
-            .push((ptr, layout));
+            .push(MemoryBlock { ptr, layout });
             
         self.total_in_use.fetch_sub(size_class, Ordering::SeqCst);
     }
@@ -342,9 +359,9 @@ impl Drop for ZeroCopyPool {
         // Deallocate all buffers
         let free_lists = self.free_lists.read();
         for (_, list) in free_lists.iter() {
-            for (ptr, layout) in list {
+            for block in list.iter() {
                 unsafe {
-                    dealloc(ptr.as_ptr(), *layout);
+                    dealloc(block.ptr.as_ptr(), block.layout);
                 }
             }
         }

@@ -20,6 +20,7 @@ class IntentType(Enum):
     APP_LAUNCH = "app_launch"              # Open applications
     WEB_BROWSE = "web_browse"              # Browse websites
     FILE_OPERATION = "file_operation"      # File operations
+    DOCUMENT_CREATION = "document_creation"  # Create documents/essays
     SYSTEM_QUERY = "system_query"          # System info queries
     TIME_WEATHER = "time_weather"          # Time/weather queries
     GENERAL_CHAT = "general_chat"          # General conversation
@@ -62,6 +63,12 @@ class IntentAnalyzer:
             IntentType.FILE_OPERATION: [
                 re.compile(r'\b(create|edit|save|close|open)\s+(file|document|folder)', re.I),
                 re.compile(r'\bfind\s+file\s+(.*)', re.I),
+            ],
+            IntentType.DOCUMENT_CREATION: [
+                re.compile(r'\b(write|create|compose|draft|generate)\s+(me\s+)?(an?\s+)?(essay|document|report|paper|article|blog\s+post)', re.I),
+                re.compile(r'\bwrite\s+(me\s+)?(\d+\s+)?(word|page)s?\s+(essay|document|report|paper|article)', re.I),
+                re.compile(r'\b(help\s+me\s+write|can\s+you\s+write)', re.I),
+                re.compile(r'\bcreate\s+a\s+(.*?)\s+(document|essay|report)', re.I),
             ],
             IntentType.SYSTEM_QUERY: [
                 re.compile(r'\b(show|display|what|check)\s+(system|memory|cpu|disk)', re.I),
@@ -139,14 +146,15 @@ class IntentAnalyzer:
         # Screen control commands that lock don't need screen
         if intent_type == IntentType.SCREEN_CONTROL and "lock" in command:
             return False
-            
+
         # These intents typically require screen
         screen_required_intents = {
             IntentType.APP_LAUNCH,
             IntentType.WEB_BROWSE,
             IntentType.FILE_OPERATION,
+            IntentType.DOCUMENT_CREATION,
         }
-        
+
         return intent_type in screen_required_intents
         
     def _requires_screen_fallback(self, command: str) -> bool:

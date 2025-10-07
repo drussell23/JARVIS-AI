@@ -102,6 +102,7 @@ class CommandType(Enum):
     COMPOUND = "compound"
     META = "meta"
     VOICE_UNLOCK = "voice_unlock"
+    DOCUMENT = "document"
     UNKNOWN = "unknown"
 
 
@@ -224,17 +225,25 @@ class UnifiedCommandProcessor:
         }
         
     async def process_command(self, command_text: str, websocket=None) -> Dict[str, Any]:
-        """Process any command through unified pipeline with learning"""
-        logger.info(f"[UNIFIED] Processing: '{command_text}'")
-        
+        """Process any command through unified pipeline with FULL context awareness"""
+        logger.info(f"[UNIFIED] Processing with context awareness: '{command_text}'")
+
         # Track command frequency
         self.command_stats[command_text.lower()] += 1
-        
+
+        # NEW: Get context-aware handler for ALL commands
+        from context_intelligence.handlers.context_aware_handler import get_context_aware_handler
+        context_handler = get_context_aware_handler()
+
         # Step 1: Classify command intent
         command_type, confidence = await self._classify_command(command_text)
         logger.info(f"[UNIFIED] Classified as {command_type.value} (confidence: {confidence})")
-        
-        # Step 2: Resolve references if needed
+
+        # Step 2: Check system context FIRST (screen lock, active apps, etc.)
+        system_context = await self._get_full_system_context()
+        logger.info(f"[UNIFIED] System context: screen_locked={system_context.get('screen_locked')}, active_apps={len(system_context.get('active_apps', []))}")
+
+        # Step 3: Resolve references with context
         resolved_text = command_text
         reference, ref_confidence = self.context.resolve_reference(command_text)
         if reference and ref_confidence > 0.5:
@@ -244,41 +253,68 @@ class UnifiedCommandProcessor:
                     resolved_text = command_text.lower().replace(word, reference)
                     logger.info(f"[UNIFIED] Resolved '{word}' to '{reference}'")
                     break
-                    
-        # Step 3: Handle compound commands
-        if command_type == CommandType.COMPOUND:
-            result = await self._handle_compound_command(resolved_text)
+
+        # Step 4: Define command execution callback
+        async def execute_with_context(cmd: str, context: Dict[str, Any] = None):
+            """Execute command with full context awareness"""
+            if command_type == CommandType.COMPOUND:
+                return await self._handle_compound_command(cmd, context=context)
+            else:
+                return await self._execute_command(command_type, cmd, websocket, context=context)
+
+        # Step 5: Process through context-aware handler
+        logger.info(f"[UNIFIED] Processing through context-aware handler...")
+        result = await context_handler.handle_command_with_context(
+            resolved_text,
+            execute_callback=execute_with_context
+        )
+
+        # Step 6: Extract actual result from context handler response
+        if result.get('result'):
+            # Use the nested result from context handler
+            actual_result = result['result']
         else:
-            # Step 4: Route to appropriate handler
-            result = await self._execute_command(command_type, resolved_text, websocket)
-        
-        # Step 5: Learn from the result
-        if result.get('success', False):
+            # Fallback to the full result
+            actual_result = result
+
+        # Step 7: Learn from the result
+        if actual_result.get('success', False):
             self.pattern_learner.learn_pattern(command_text, command_type.value, True)
             self.success_patterns[command_type.value].append({
                 'command': command_text,
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat(),
+                'context': system_context  # Store context for learning
             })
             # Keep only recent patterns
             if len(self.success_patterns[command_type.value]) > 100:
                 self.success_patterns[command_type.value] = self.success_patterns[command_type.value][-100:]
-        
-        # Step 6: Update context
-        self.context.update_from_command(command_type, result)
-        
+
+        # Step 8: Update context with result
+        self.context.update_from_command(command_type, actual_result)
+        self.context.system_state = system_context  # Update system state
+
         # Save learned data periodically (every 10 commands)
         if sum(self.command_stats.values()) % 10 == 0:
             self._save_learned_data()
-        
-        return result
+
+        # Return the formatted result
+        return {
+            'success': actual_result.get('success', False),
+            'response': result.get('summary', actual_result.get('response', '')),
+            'command_type': command_type.value,
+            'context_aware': True,
+            'system_context': system_context,
+            **actual_result
+        }
         
     async def _classify_command(self, command_text: str) -> Tuple[CommandType, float]:
         """Dynamically classify command using learned patterns"""
-        command_lower = command_text.lower()
+        command_lower = command_text.lower().strip()
         words = command_lower.split()
-        
-                # Manual screen unlock detection (highest priority)
-        if command_lower.strip() in ['unlock my screen', 'unlock screen', 'unlock the screen', 'lock my screen', 'lock screen', 'lock the screen']:
+
+        # Manual screen lock/unlock detection (HIGHEST PRIORITY - check first!)
+        # Check for exact matches first
+        if command_lower in ['unlock my screen', 'unlock screen', 'unlock the screen', 'lock my screen', 'lock screen', 'lock the screen']:
             logger.info(f"[CLASSIFY] Manual screen lock/unlock command detected: '{command_lower}'")
             return CommandType.VOICE_UNLOCK, 0.99  # Route to voice unlock handler with high confidence
         
@@ -347,11 +383,27 @@ class UnifiedCommandProcessor:
                 return CommandType.SYSTEM, 0.9
         
             
+        # Document creation detection (high priority - before vision)
+        # Use root words that will match variations (write/writing/writes, create/creating, etc.)
+        document_keywords = ['writ', 'creat', 'draft', 'compos', 'generat']  # Root forms
+        document_types = ['essay', 'report', 'paper', 'article', 'document', 'blog', 'letter', 'story']
+
+        # Check if any word starts with a document keyword (handles write/writing/writes, etc.)
+        has_document_keyword = any(
+            any(word.startswith(kw) for word in words)
+            for kw in document_keywords
+        )
+        has_document_type = any(dtype in words for dtype in document_types)
+
+        if has_document_keyword and has_document_type:
+            logger.info(f"[CLASSIFY] Document creation command detected: '{command_text}'")
+            return CommandType.DOCUMENT, 0.95
+
         # Vision detection through semantic analysis
         vision_score = self._calculate_vision_score(words)
         if vision_score > 0.7:
             return CommandType.VISION, vision_score
-            
+
         # Weather detection - simple but effective
         if 'weather' in words:
             return CommandType.WEATHER, 0.95
@@ -433,19 +485,27 @@ class UnifiedCommandProcessor:
     def _calculate_vision_score(self, words: List[str]) -> float:
         """Calculate likelihood of vision command"""
         score = 0.0
-        
+
+        # EXCLUDE lock/unlock commands - they're system commands, not vision
+        if 'lock' in words or 'unlock' in words:
+            return 0.0
+
         # Vision verbs
         vision_verbs = {'see', 'look', 'watch', 'monitor', 'analyze', 'describe', 'show', 'read'}
         score += sum(0.2 for word in words if word in vision_verbs)
-        
-        # Vision nouns
-        vision_nouns = {'screen', 'display', 'window', 'image', 'visual', 'picture'}
+
+        # Vision nouns (but be careful with 'screen' - it could be system related)
+        vision_nouns = {'display', 'window', 'image', 'visual', 'picture'}
         score += sum(0.15 for word in words if word in vision_nouns)
-        
+
+        # 'screen' only counts as vision if paired with vision verbs
+        if 'screen' in words and any(word in vision_verbs for word in words):
+            score += 0.15
+
         # Questioning about visual
         if words and words[0] in {'what', 'what\'s', 'whats'} and any(word in words for word in {'screen', 'see', 'display'}):
             score += 0.3
-            
+
         return min(score, 0.95)
     
     def _detect_voice_unlock_patterns(self, text: str) -> int:
@@ -545,7 +605,43 @@ class UnifiedCommandProcessor:
                 
         return False
         
-    async def _execute_command(self, command_type: CommandType, command_text: str, websocket=None) -> Dict[str, Any]:
+    async def _get_full_system_context(self) -> Dict[str, Any]:
+        """Get comprehensive system context for intelligent command processing"""
+        try:
+            from context_intelligence.detectors.screen_lock_detector import get_screen_lock_detector
+
+            screen_detector = get_screen_lock_detector()
+            is_locked = await screen_detector.is_screen_locked()
+
+            # Get active applications (you can expand this)
+            active_apps = []
+            try:
+                import subprocess
+                result = subprocess.run(['osascript', '-e', 'tell application "System Events" to get name of (processes where background only is false)'],
+                                      capture_output=True, text=True, timeout=2)
+                if result.returncode == 0:
+                    active_apps = result.stdout.strip().split(', ')
+            except:
+                pass
+
+            return {
+                'screen_locked': is_locked,
+                'active_apps': active_apps,
+                'network_connected': True,  # You can expand this check
+                'timestamp': datetime.now().isoformat(),
+                'user_preferences': self.context.user_preferences,
+                'conversation_history': len(self.context.conversation_history)
+            }
+        except Exception as e:
+            logger.warning(f"Could not get full system context: {e}")
+            return {
+                'screen_locked': False,
+                'active_apps': [],
+                'network_connected': True,
+                'timestamp': datetime.now().isoformat()
+            }
+
+    async def _execute_command(self, command_type: CommandType, command_text: str, websocket=None, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Execute command using appropriate handler"""
         
         # Get or initialize handler
@@ -556,7 +652,7 @@ class UnifiedCommandProcessor:
                 
         handler = self.handlers.get(command_type)
         
-        if not handler and command_type not in [CommandType.SYSTEM, CommandType.META]:
+        if not handler and command_type not in [CommandType.SYSTEM, CommandType.META, CommandType.DOCUMENT]:
             return {
                 'success': False,
                 'response': f"I don't have a handler for {command_type.value} commands yet.",
@@ -612,6 +708,71 @@ class UnifiedCommandProcessor:
                         'success': True,
                         'response': 'Understood',
                         'command_type': 'meta'
+                    }
+            elif command_type == CommandType.DOCUMENT:
+                # Handle document creation commands WITH CONTEXT AWARENESS
+                logger.info(f"[DOCUMENT] Routing to context-aware document handler: '{command_text}'")
+                try:
+                    from context_intelligence.handlers.context_aware_handler import get_context_aware_handler
+                    from context_intelligence.executors import get_document_writer, parse_document_request
+
+                    # Get the context-aware handler
+                    context_handler = get_context_aware_handler()
+
+                    # Define the document creation callback
+                    async def create_document_callback(command: str, context: Dict[str, Any] = None):
+                        logger.info(f"[DOCUMENT] Creating document within context-aware flow")
+
+                        # Parse the document request
+                        doc_request = parse_document_request(command, {})
+
+                        # Get document writer
+                        writer = get_document_writer()
+
+                        # Start document creation as a background task (non-blocking)
+                        # This allows us to return immediately with feedback
+                        logger.info(f"[DOCUMENT] Starting background document creation task")
+                        asyncio.create_task(writer.create_document(request=doc_request, websocket=websocket))
+
+                        # Return immediate feedback to user
+                        return {
+                            "success": True,
+                            "task_started": True,
+                            "topic": doc_request.topic,
+                            "message": f"I'm creating an essay about {doc_request.topic} for you, Sir."
+                        }
+
+                    # Use context-aware handler to check screen lock FIRST
+                    logger.info(f"[DOCUMENT] Checking context (including screen lock) before document creation...")
+                    result = await context_handler.handle_command_with_context(
+                        command_text,
+                        execute_callback=create_document_callback
+                    )
+
+                    # The context handler will handle all messaging including screen lock notifications
+                    if result.get('success'):
+                        return {
+                            'success': True,
+                            'response': result.get('summary', result.get('messages', ['Document created'])[0]),
+                            'command_type': command_type.value,
+                            'speak': False,  # Context handler already spoke if needed
+                            **result
+                        }
+                    else:
+                        return {
+                            'success': False,
+                            'response': result.get('summary', result.get('messages', ['Failed to create document'])[0]),
+                            'command_type': command_type.value,
+                            **result
+                        }
+
+                except Exception as e:
+                    logger.error(f"[DOCUMENT] Error in context-aware document creation: {e}", exc_info=True)
+                    return {
+                        'success': False,
+                        'response': f"I encountered an error creating the document: {str(e)}",
+                        'command_type': command_type.value,
+                        'error': str(e)
                     }
             elif command_type == CommandType.VOICE_UNLOCK:
                 # Handle voice unlock commands with quick response
@@ -693,18 +854,24 @@ class UnifiedCommandProcessor:
             logger.error(f"Failed to import handler for {command_type.value}: {e}")
             return None
             
-    async def _handle_compound_command(self, command_text: str) -> Dict[str, Any]:
+    async def _handle_compound_command(self, command_text: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Handle commands with multiple parts and maintain context between them"""
+        logger.info(f"[COMPOUND] Handling compound command with context: {context is not None}")
+
         # Parse compound commands more intelligently
         parts = self._parse_compound_parts(command_text)
-        
+
         results = []
         all_success = True
         responses = []
-        
+
         # Track context for dependent commands
         active_app = None
         previous_result = None
+
+        # Use provided context if available
+        if context:
+            logger.info(f"[COMPOUND] Using provided system context")
         
         # Check if all parts are similar operations that can be parallelized
         can_parallelize = self._can_parallelize_commands(parts)
@@ -822,7 +989,9 @@ class UnifiedCommandProcessor:
             'command_type': CommandType.COMPOUND.value,
             'sub_results': results,
             'steps_completed': len([r for r in results if r.get('success', False)]),
-            'total_steps': len(parts)
+            'total_steps': len(parts),
+            'context': context or {},
+            'steps_taken': [f"Step {i+1}: {part}" for i, part in enumerate(parts)]
         }
     
     def _parse_compound_parts(self, command_text: str) -> List[str]:
@@ -1293,6 +1462,37 @@ class UnifiedCommandProcessor:
             
             macos_controller = MacOSController()
             dynamic_controller = get_dynamic_app_controller()
+            
+            # Check for lock/unlock screen commands first
+            # Use the existing voice unlock integration for proper daemon support
+            if ('lock' in command_lower or 'unlock' in command_lower) and 'screen' in command_lower:
+                logger.info(f"[SYSTEM] Screen lock/unlock command detected, using voice unlock handler")
+                try:
+                    from api.simple_unlock_handler import handle_unlock_command
+                    
+                    # Pass the command to the existing unlock handler which integrates with the daemon
+                    result = await handle_unlock_command(command_text)
+                    
+                    # Ensure we return a properly formatted result
+                    if isinstance(result, dict):
+                        # Add command_type if not present
+                        if 'command_type' not in result:
+                            result['command_type'] = 'screen_lock' if 'lock' in command_lower else 'screen_unlock'
+                        return result
+                    else:
+                        # Fallback to macos_controller if the unlock handler returns unexpected format
+                        logger.warning(f"[SYSTEM] Unexpected result from unlock handler, falling back")
+                        result = await macos_controller.handle_command(command_text)
+                        return result
+                        
+                except ImportError:
+                    logger.warning(f"[SYSTEM] Simple unlock handler not available, using macos_controller")
+                    result = await macos_controller.handle_command(command_text)
+                    return result
+                except Exception as e:
+                    logger.error(f"[SYSTEM] Error with unlock handler: {e}, falling back")
+                    result = await macos_controller.handle_command(command_text)
+                    return result
             
             # Parse command dynamically
             command_type, target, params = self._parse_system_command(command_text)

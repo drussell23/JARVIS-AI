@@ -25,6 +25,14 @@ class ProactiveMonitoringHandler:
         """Handle various monitoring requests"""
         command_lower = command.lower()
         
+        # IMPORTANT: Exclude lock/unlock screen commands - not monitoring
+        if ('lock' in command_lower and 'screen' in command_lower) or \
+           ('unlock' in command_lower and 'screen' in command_lower):
+            return {
+                "handled": False,
+                "reason": "Lock/unlock screen commands are not monitoring commands"
+            }
+        
         # Check for reporting activation
         if any(phrase in command_lower for phrase in [
             "report any changes",

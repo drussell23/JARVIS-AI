@@ -13,6 +13,14 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+# Import document writer
+try:
+    from .document_writer import get_document_writer, parse_document_request
+    DOCUMENT_WRITER_AVAILABLE = True
+except ImportError:
+    DOCUMENT_WRITER_AVAILABLE = False
+    logger.warning("Document writer not available")
+
 
 class UnifiedCommandExecutor:
     """
@@ -51,24 +59,29 @@ class UnifiedCommandExecutor:
                     logger.error(f"Failed alternative import: {e2}")
                     raise
                     
-    async def execute_command(self, command_text: str, 
+    async def execute_command(self, command_text: str,
                             intent: Dict[str, Any],
                             context: Dict[str, Any],
                             progress_callback: Optional[callable] = None,
                             websocket = None) -> Dict[str, Any]:
         """
         Execute a command using the unified processor
-        
+
         Args:
             command_text: The command to execute
             intent: Parsed intent information
             context: Current system context
             progress_callback: Optional callback for progress updates
             websocket: WebSocket connection for real-time updates
-            
+
         Returns:
             Execution result dictionary
         """
+        # Check if this is a document creation command
+        if self._is_document_creation_command(intent):
+            return await self._handle_document_creation(command_text, intent,
+                                                       progress_callback, websocket)
+
         # Check if this is a lock screen command we should handle directly
         if self._is_lock_screen_command(command_text, intent):
             return await self._handle_lock_screen(command_text, progress_callback)
@@ -157,17 +170,54 @@ class UnifiedCommandExecutor:
                     
         return command_text
     
+    def _is_document_creation_command(self, intent: Dict[str, Any]) -> bool:
+        """Check if this is a document creation command"""
+        return intent.get('type') == 'document_creation' or \
+               intent.get('intent_type', {}).get('value') == 'document_creation'
+
+    async def _handle_document_creation(self, command_text: str,
+                                       intent: Dict[str, Any],
+                                       progress_callback: Optional[callable],
+                                       websocket) -> Dict[str, Any]:
+        """Handle document creation workflow"""
+        if not DOCUMENT_WRITER_AVAILABLE:
+            return {
+                "success": False,
+                "error": "Document writer module not available"
+            }
+
+        try:
+            # Parse the request
+            document_writer = get_document_writer()
+            doc_request = parse_document_request(command_text, intent)
+
+            # Execute document creation
+            result = await document_writer.create_document(
+                doc_request,
+                progress_callback=progress_callback,
+                websocket=websocket
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error in document creation: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
     def _is_lock_screen_command(self, command_text: str, intent: Dict[str, Any]) -> bool:
         """Check if this is a lock screen command"""
         command_lower = command_text.lower()
-        
+
         # Check for explicit lock phrases
         lock_phrases = [
             "lock my screen", "lock screen", "lock the screen",
             "lock my mac", "lock mac", "lock the mac",
             "lock computer", "lock the computer", "lock my computer"
         ]
-        
+
         return any(phrase in command_lower for phrase in lock_phrases)
     
     async def _handle_lock_screen(self, command_text: str, 

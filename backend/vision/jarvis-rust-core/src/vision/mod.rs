@@ -1,7 +1,7 @@
 //! Enhanced vision processing module with dynamic configuration
 //! Zero-copy operations and comprehensive format support
 
-pub mod capture;
+pub mod capture;  // Thread-safe implementation
 pub mod compression;
 pub mod processing;
 pub mod sliding_window;
@@ -17,7 +17,7 @@ pub mod predictive_engine;
 pub mod bloom_filter_network;
 pub mod integration_pipeline;
 pub mod bloom_filter;
-pub mod metal_accelerator;
+pub mod metal_accelerator;  // Thread-safe implementation
 
 #[cfg(target_os = "macos")]
 pub mod macos_optimization;
@@ -31,11 +31,11 @@ use serde::{Deserialize, Serialize};
 use once_cell::sync::Lazy;
 use parking_lot::RwLock;
 
-// Re-export all public types for convenience
+// Re-export capture types  
 pub use capture::{
-    ScreenCapture, CaptureConfig, CaptureRegion, ColorSpace, 
+    ScreenCapture, CaptureConfig, CaptureRegion, ColorSpace,
     PixelFormat, CompressionHint, CaptureQuality, CaptureStats,
-    SharedMemoryHandle
+    SharedMemoryHandle, WindowInfo, AppInfo, TextDetection
 };
 pub use processing::{
     ImageProcessor, ProcessingPipeline, ProcessingConfig,

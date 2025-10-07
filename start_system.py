@@ -608,7 +608,7 @@ class AsyncSystemManager:
                     should_cleanup = input(
                         f"\n{Colors.CYAN}Clean up these processes? (y/n): {Colors.ENDC}"
                     ).lower() == "y"
-                
+
                 if should_cleanup:
                     if not self.auto_cleanup:
                         print(f"\n{Colors.BLUE}Cleaning up processes...{Colors.ENDC}")
@@ -652,17 +652,55 @@ class AsyncSystemManager:
             return True
 
     async def kill_process_on_port(self, port: int):
-        """Kill process using a specific port"""
+        """Kill process using a specific port, excluding IDEs"""
         if platform.system() == "Darwin":  # macOS
-            cmd = f"lsof -ti:{port} | xargs kill -9"
+            # Get PIDs on port, but exclude IDE processes
+            try:
+                result = subprocess.run(
+                    f"lsof -ti:{port}",
+                    shell=True,
+                    capture_output=True,
+                    text=True
+                )
+                pids = result.stdout.strip().split('\n')
+
+                for pid in pids:
+                    if not pid:
+                        continue
+
+                    # Check if this PID belongs to an IDE
+                    try:
+                        proc_info = subprocess.run(
+                            f"ps -p {pid} -o comm=",
+                            shell=True,
+                            capture_output=True,
+                            text=True
+                        )
+                        proc_name = proc_info.stdout.strip().lower()
+
+                        # Skip IDE processes
+                        ide_patterns = ['cursor', 'code', 'vscode', 'sublime', 'pycharm',
+                                       'intellij', 'webstorm', 'atom', 'vim', 'emacs']
+
+                        if any(pattern in proc_name for pattern in ide_patterns):
+                            print(f"{Colors.YELLOW}Skipping IDE process: {proc_name} (PID {pid}){Colors.ENDC}")
+                            continue
+
+                        # Kill non-IDE process
+                        subprocess.run(f"kill -9 {pid}", shell=True, capture_output=True)
+                    except:
+                        pass
+
+            except:
+                pass
         else:  # Linux
             cmd = f"fuser -k {port}/tcp"
+            try:
+                subprocess.run(cmd, shell=True, capture_output=True)
+            except:
+                pass
 
-        try:
-            subprocess.run(cmd, shell=True, capture_output=True)
-            await asyncio.sleep(1)
-        except:
-            pass
+        await asyncio.sleep(1)
 
     async def check_performance_fixes(self):
         """Check if performance fixes have been applied"""
@@ -840,10 +878,38 @@ class AsyncSystemManager:
                 )
 
     async def start_backend_optimized(self) -> asyncio.subprocess.Process:
-        """Start backend with performance optimizations"""
+        """Start backend with performance optimizations and auto-reload"""
         print(
-            f"\n{Colors.BLUE}Starting optimized backend with performance enhancements...{Colors.ENDC}"
+            f"\n{Colors.BLUE}Starting optimized backend with auto-reload capabilities...{Colors.ENDC}"
         )
+
+        # Check if reload manager is available
+        reload_manager_path = self.backend_dir / "jarvis_reload_manager.py"
+        if reload_manager_path.exists() and os.getenv("JARVIS_USE_RELOAD_MANAGER", "true").lower() == "true":
+            print(f"{Colors.CYAN}🔄 Using intelligent reload manager for auto-updates...{Colors.ENDC}")
+
+            # Import and use the reload manager
+            try:
+                from backend.jarvis_reload_manager import JARVISReloadManager
+
+                reload_manager = JARVISReloadManager()
+
+                # Check for code changes
+                has_changes, changed_files = reload_manager.detect_code_changes()
+                if has_changes:
+                    print(f"{Colors.YELLOW}📝 Detected {len(changed_files)} code changes{Colors.ENDC}")
+                    for file in changed_files[:3]:
+                        print(f"    - {file}")
+                    if len(changed_files) > 3:
+                        print(f"    ... and {len(changed_files) - 3} more")
+
+                # Kill any existing JARVIS process if code changed
+                if has_changes:
+                    await reload_manager.stop_jarvis(force=True)
+                    print(f"{Colors.GREEN}✅ Cleared old instances for fresh start{Colors.ENDC}")
+
+            except ImportError:
+                print(f"{Colors.YELLOW}Reload manager not available, using standard startup{Colors.ENDC}")
 
         # Kill any existing processes in parallel for faster cleanup
         kill_tasks = []
@@ -851,12 +917,12 @@ class AsyncSystemManager:
             ("event_ui", 8888),
             ("main_api", self.ports["main_api"]),
         ]
-        
+
         for port_name, port in ports_to_check:
             if not await self.check_port_available(port):
                 print(f"{Colors.WARNING}Killing process on port {port}...{Colors.ENDC}")
                 kill_tasks.append(self.kill_process_on_port(port))
-        
+
         if kill_tasks:
             await asyncio.gather(*kill_tasks)
             await asyncio.sleep(0.5)  # Reduced wait time
@@ -864,7 +930,7 @@ class AsyncSystemManager:
         # Use main.py which now has integrated parallel startup
         if (self.backend_dir / "main.py").exists():
             # Use main.py with parallel startup capabilities
-            print(f"{Colors.CYAN}Starting backend with main.py (parallel startup integrated)...{Colors.ENDC}")
+            print(f"{Colors.CYAN}Starting backend with main.py (auto-reload enabled)...{Colors.ENDC}")
             server_script = "main.py"
         else:
             print(f"{Colors.WARNING}Main backend not available, using fallback...{Colors.ENDC}")
@@ -881,6 +947,7 @@ class AsyncSystemManager:
         env["OPTIMIZE_STARTUP"] = "true"
         env["LAZY_LOAD_MODELS"] = "true"
         env["PARALLEL_INIT"] = "true"
+        env["JARVIS_AUTO_RELOAD"] = "true"  # Enable auto-reload for code changes
         env["FAST_STARTUP"] = "true"
         env["ML_LOGGING_ENABLED"] = "true"
         env["BACKEND_PARALLEL_IMPORTS"] = "true"
@@ -2022,13 +2089,44 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
             )
             await node_kill.wait()
             
-            # Kill python processes running our backend
-            python_kill = await asyncio.create_subprocess_shell(
-                "pkill -f 'python.*main.py|python.*jarvis' || true",
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            await python_kill.wait()
+            # Kill python processes running our backend (but not IDE-related processes)
+            # First get all matching PIDs
+            try:
+                result = subprocess.run(
+                    "pgrep -f 'python.*main.py|python.*jarvis'",
+                    shell=True,
+                    capture_output=True,
+                    text=True
+                )
+                pids = result.stdout.strip().split('\n')
+
+                for pid in pids:
+                    if not pid:
+                        continue
+
+                    # Check parent process to avoid killing IDE extensions
+                    try:
+                        parent_check = subprocess.run(
+                            f"ps -o ppid= -p {pid} | xargs ps -o comm= -p 2>/dev/null || echo ''",
+                            shell=True,
+                            capture_output=True,
+                            text=True
+                        )
+                        parent_name = parent_check.stdout.strip().lower()
+
+                        # Skip if parent is an IDE
+                        ide_patterns = ['cursor', 'code', 'vscode', 'sublime', 'pycharm',
+                                       'intellij', 'webstorm', 'atom']
+
+                        if any(pattern in parent_name for pattern in ide_patterns):
+                            continue
+
+                        # Kill the process
+                        subprocess.run(f"kill {pid}", shell=True, capture_output=True)
+                    except:
+                        pass
+            except:
+                pass
             
         except Exception:
             pass  # Ignore errors in cleanup
@@ -2222,7 +2320,7 @@ except Exception as e:
                     self.ports["main_api"] = service.port
                 elif "frontend" in name.lower():
                     self.ports["frontend"] = service.port
-
+        
         # Start pre-warming imports early
         prewarm_task = asyncio.create_task(self._prewarm_python_imports())
         

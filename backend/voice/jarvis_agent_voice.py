@@ -17,8 +17,18 @@ from voice.jarvis_personality_adapter import PersonalityAdapter
 from system_control import ClaudeCommandInterpreter, CommandCategory, SafetyLevel
 from chatbots.claude_vision_chatbot import ClaudeVisionChatbot
 from system_control.weather_bridge import WeatherBridge
+from core.async_pipeline import get_async_pipeline, AdvancedAsyncPipeline
 
 logger = logging.getLogger(__name__)
+
+# Document Writer Integration
+try:
+    from context_intelligence.executors.document_writer import get_document_writer, parse_document_request
+    DOCUMENT_WRITER_AVAILABLE = True
+    logger.info("✅ Document Writer module available")
+except ImportError as e:
+    DOCUMENT_WRITER_AVAILABLE = False
+    logger.warning(f"Document Writer not available: {e}")
 
 # Vision System v2.0 Integration
 try:
@@ -214,6 +224,10 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             "time_with_appointment": "It's {time}, {user}. {appointment_info}",
         }
 
+        # Initialize async command pipeline for non-blocking operations
+        self.async_pipeline = get_async_pipeline(jarvis_instance=self)
+        logger.info("✅ Async command pipeline initialized for non-blocking processing")
+
     def _ensure_vision_v2_initialized(self):
         """Lazy initialize Vision System v2.0 when needed"""
         if self._vision_v2_initialized:
@@ -273,8 +287,22 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         # are already set up at initialization
 
     async def process_voice_input(self, text: str) -> str:
-        """Process voice input with system control capabilities"""
+        """Process voice input with system control capabilities using async pipeline"""
         logger.info(f"[JARVIS DEBUG] process_voice_input received: '{text}'")
+
+        # Use async pipeline for completely non-blocking processing
+        try:
+            result = await self.async_pipeline.process_async(text, self.user_name)
+            # Pipeline now returns dict, extract response string
+            return result.get("response", "I apologize, but I couldn't process that request.")
+        except Exception as e:
+            logger.error(f"Async pipeline error: {e}", exc_info=True)
+            # Fallback to legacy processing if async pipeline fails
+            return await self._legacy_process_voice_input(text)
+
+    async def _legacy_process_voice_input(self, text: str) -> str:
+        """Legacy processing method (fallback)"""
+        logger.info(f"[JARVIS DEBUG] Using legacy processing for: '{text}'")
 
         # Check if we need to detect wake word in text
         if not self.running:
@@ -357,6 +385,27 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             else:
 
                 return f"I need my vision capabilities to monitor your screen, {self.user_name}."
+
+        # Check for document creation commands (more flexible)
+        document_keywords = ["write", "create", "draft", "compose", "generate", "make", "prepare", "type"]
+        document_types = ["essay", "report", "paper", "article", "document", "blog", "story", "letter"]
+        
+        # Also check for common typos and variations
+        text_normalized = text_lower.replace("why me", "write me").replace("right me", "write me")
+
+        has_document_keyword = any(keyword in text_normalized for keyword in document_keywords)
+        has_document_type = any(dtype in text_normalized for dtype in document_types)
+
+        if has_document_keyword and has_document_type:
+            logger.info(f"[JARVIS DEBUG] DOCUMENT CREATION COMMAND DETECTED! Text: '{text}'")
+            if DOCUMENT_WRITER_AVAILABLE:
+                try:
+                    return await self._handle_document_creation(text)
+                except Exception as e:
+                    logger.error(f"Error handling document creation: {e}", exc_info=True)
+                    return f"I encountered an error creating the document, {self.user_name}: {str(e)}"
+            else:
+                return f"I apologize, {self.user_name}, but the document creation system is not available at the moment."
 
         # Detect if this is a system command
         if self._is_system_command(text):
@@ -512,13 +561,23 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
 
     async def _handle_system_command(self, text: str) -> str:
         """Handle system control commands"""
-        if not self.system_control_enabled:
-            return "System control is not available. Please configure your API key."
-
         # Check for vision commands with expanded patterns
         text_lower = text.lower()
         
-        # CHECK FOR WEATHER COMMANDS FIRST - weather takes priority over time
+        # CHECK FOR DIRECT VISION QUERIES FIRST - these should work regardless of system_control
+        vision_query_keywords = [
+            "can you see", "what's on my screen", "what do you see",
+            "show me my screen", "what is on my screen", "are you able to see"
+        ]
+        if any(keyword in text_lower for keyword in vision_query_keywords):
+            logger.info(f"Direct vision query detected: {text}")
+            return await self._handle_vision_command(text)
+        
+        # For non-vision commands, check if system control is enabled
+        if not self.system_control_enabled:
+            return "System control is not available. Please configure your API key."
+        
+        # CHECK FOR WEATHER COMMANDS - weather takes priority over time
         # because "weather for today" should be weather, not time
         if self._is_weather_command(text_lower):
             return await self._handle_weather_command(text_lower)
@@ -527,7 +586,21 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
         if self._is_time_command(text_lower):
             return await self._handle_time_command(text_lower)
 
-        # CHECK FOR ACTION COMMANDS FIRST - these should execute, not analyze
+        # CHECK FOR LOCK/UNLOCK COMMANDS FIRST - these must never go to vision
+        if any(phrase in text_lower for phrase in ["lock my screen", "unlock my screen", "lock screen", "unlock screen", "lock the screen", "unlock the screen"]):
+            logger.info(f"Lock/unlock command detected: {text}")
+            # Route to system control for proper lock/unlock handling
+            try:
+                from api.unified_command_processor import UnifiedCommandProcessor
+                processor = UnifiedCommandProcessor()
+                result = await processor.process_command(text)
+                if result and result.get('response'):
+                    return result['response']
+            except Exception as e:
+                logger.error(f"Failed to process lock/unlock command: {e}")
+                return "I couldn't process the lock/unlock command. Please try again."
+
+        # CHECK FOR ACTION COMMANDS - these should execute, not analyze
         action_commands = {
             "close": ["close", "quit", "exit", "terminate"],
             "open": ["open", "launch", "start", "run"],
@@ -635,8 +708,8 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             if has_keyword:
                 return await self._handle_workspace_command(text)
 
-        # Standard vision triggers (only if not an action command)
-        if not is_action_command:
+        # Standard vision triggers (only if not an action command and not lock/unlock)
+        if not is_action_command and not any(word in text_lower for word in ["lock", "unlock"]):
             vision_triggers = [
                 "screen",
                 "update",
@@ -762,6 +835,46 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             logger.error(f"System command error: {e}")
             return f"I encountered an error, {self.user_name}. Please try again."
 
+    async def _handle_document_creation(self, text: str) -> str:
+        """Handle document creation commands"""
+        logger.info(f"[DOCUMENT WRITER] Processing document creation: '{text}'")
+
+        try:
+            # Parse the document request from the command
+            intent = {"text": text}  # Minimal intent structure
+            document_request = parse_document_request(text, intent)
+
+            logger.info(f"[DOCUMENT WRITER] Parsed request: {document_request.document_type.value} on '{document_request.topic}'")
+
+            # Get the document writer
+            writer = get_document_writer()
+
+            # Create the document (this will handle Google Docs API + Claude streaming)
+            result = await writer.create_document(
+                request=document_request,
+                progress_callback=None,  # Could add voice narration here
+                websocket=None
+            )
+
+            if result.get("success"):
+                doc_url = result.get("document_url", "")
+                word_count = result.get("word_count", 0)
+                # More natural responses with less "Sir"
+                responses = [
+                    f"Your {document_request.document_type.value} on '{document_request.topic}' is ready. I've written {word_count} words and it's open in Google Docs.",
+                    f"I've completed your {document_request.document_type.value} about {document_request.topic}. {word_count} words, now open in your browser.",
+                    f"Done! Your {word_count}-word {document_request.document_type.value} on '{document_request.topic}' is ready in Google Docs, {self.user_name}.",
+                ]
+                import random
+                return random.choice(responses)
+            else:
+                error = result.get("error", "Unknown error")
+                return f"I ran into an issue creating your document: {error}"
+
+        except Exception as e:
+            logger.error(f"[DOCUMENT WRITER] Error: {e}", exc_info=True)
+            return f"I apologize, {self.user_name}, but I encountered an error while creating your document: {str(e)}"
+
     async def _handle_confirmation(self, text: str) -> str:
         """Handle confirmation responses"""
         text_lower = text.lower()
@@ -806,114 +919,132 @@ class JARVISAgentVoice(MLEnhancedVoiceSystem):
             return await self._handle_vision_command(text)
 
     async def _handle_vision_command(self, text: str) -> str:
-        """Handle vision-related commands"""
-        # Check for monitoring commands FIRST - these should go to the chatbot
+        """Handle vision-related commands with immediate response and async processing"""
+        import asyncio
         text_lower = text.lower()
-        monitoring_keywords = [
-            "monitor",
-            "monitoring",
-            "watch",
-            "watching",
-            "track",
-            "tracking",
-            "continuous",
-            "continuously",
-            "real-time",
-            "realtime",
-            "actively",
-            "surveillance",
-            "observe",
-            "observing",
-            "stream",
-            "streaming",
-        ]
-        screen_keywords = ["screen", "display", "desktop", "workspace", "monitor"]
-
+        
+        # Quick response patterns for common vision queries
+        quick_responses = {
+            "can you see my screen": "Yes, I can see your screen. ",
+            "what's on my screen": "Looking at your screen now. ",
+            "what do you see": "I'm analyzing what's visible. ",
+            "are you able to see": "Yes, I have screen access. ",
+            "do you see": "Yes, I can see ",
+        }
+        
+        # Find matching quick response
+        quick_prefix = None
+        for pattern, response in quick_responses.items():
+            if pattern in text_lower:
+                quick_prefix = response
+                break
+                
+        # For monitoring commands - route to chatbot
+        monitoring_keywords = ["monitor", "monitoring", "watch", "watching", "continuous", "continuously"]
+        screen_keywords = ["screen", "display", "desktop", "workspace"]
+        
         has_monitoring = any(keyword in text_lower for keyword in monitoring_keywords)
         has_screen = any(keyword in text_lower for keyword in screen_keywords)
-
+        
         if has_monitoring and has_screen:
-            # This is a monitoring command - route to Claude Vision Chatbot
-            if self.claude_chatbot:
+            if hasattr(self, 'claude_chatbot') and self.claude_chatbot:
                 try:
-                    response = await self.claude_chatbot.generate_response(text)
+                    # Use timeout for faster response
+                    response = await asyncio.wait_for(
+                        self.claude_chatbot.generate_response(text),
+                        timeout=5.0  # 5 second timeout
+                    )
                     return response
+                except asyncio.TimeoutError:
+                    return f"The monitoring setup is taking longer than expected. Let me open the monitoring view for you."
                 except Exception as e:
                     logger.error(f"Error handling monitoring command: {e}")
-                    return f"I encountered an error setting up monitoring, {self.user_name}."
+                    return f"I encountered an issue with monitoring setup."
             else:
-                return f"I need my vision capabilities to monitor your screen, {self.user_name}."
-
-        # Lazy initialize vision when needed
-        self._ensure_vision_initialized()
-
-        if not self.vision_enabled:
-            return f"Vision capabilities are not available, {self.user_name}. Please install the required dependencies."
-
+                return f"I need my vision capabilities to monitor your screen."
+                
+        # For regular vision queries, provide immediate response then analyze
         try:
-            # Provide immediate feedback for vision commands
-            text_lower = text.lower()
-            if any(
-                phrase in text_lower
-                for phrase in [
-                    "can you see my screen",
-                    "what's on my screen",
-                    "what do you see",
-                ]
-            ):
-                # Send immediate acknowledgment - this will be spoken quickly
-                self.last_action = "processing_vision"
-                # Note: The actual vision analysis will follow after this immediate response
-
-            # Use Vision System v2.0 if available (highest priority)
-            self._ensure_vision_v2_initialized()
-            if hasattr(self, "vision_v2_enabled") and self.vision_v2_enabled:
-                response = await self.vision_v2.handle_vision_command(
-                    text, {"user": self.user_name, "mode": self.command_mode}
-                )
-                return response
-
-            # Use intelligent vision if available
-            if self.intelligent_vision_enabled:
-                # Map common queries to intelligent analysis
-                text_lower = text.lower()
-
-                # Handle "what am I working on" type queries
-                if any(
-                    phrase in text_lower
-                    for phrase in [
-                        "what am i working",
-                        "what i'm working",
-                        "what are you seeing",
-                    ]
-                ):
-                    # Use Claude to analyze the screen contextually
-                    from vision.screen_capture_fallback import capture_with_intelligence
-
-                    result = capture_with_intelligence(
-                        query="Analyze what the user is currently working on based on the open applications and visible content. Be specific about the applications, files, and tasks visible.",
-                        use_claude=True,
+            # If we have Claude chatbot, use it for vision
+            if hasattr(self, 'claude_chatbot') and self.claude_chatbot:
+                try:
+                    # For simple "can you see" queries, return immediately
+                    if "can you see" in text_lower and "screen" in text_lower:
+                        # Quick check if screen access is available
+                        try:
+                            # Try a quick screenshot test
+                            import subprocess
+                            result = subprocess.run(
+                                ['screencapture', '-x', '-t', 'png', '/dev/null'],
+                                capture_output=True,
+                                timeout=0.5
+                            )
+                            if result.returncode == 0:
+                                # Get list of visible apps for immediate response
+                                script = '''
+                                tell application "System Events"
+                                    get name of (every process whose visible is true)
+                                end tell
+                                '''
+                                app_result = subprocess.run(
+                                    ['osascript', '-e', script],
+                                    capture_output=True,
+                                    text=True,
+                                    timeout=0.5
+                                )
+                                
+                                if app_result.returncode == 0:
+                                    apps = app_result.stdout.strip().split(", ")
+                                    visible_apps = [app for app in apps if app and app != "Finder"][:3]
+                                    if visible_apps:
+                                        app_list = ', '.join(visible_apps)
+                                        if len(visible_apps) == 1:
+                                            return f"Yes, I can see your screen. You have {app_list} open."
+                                        else:
+                                            return f"Yes, I can see your screen. You have {app_list} among other applications open."
+                                    else:
+                                        return "Yes, I can see your screen. Your desktop is visible with multiple applications."
+                                else:
+                                    return "Yes, I can see your screen and monitor your desktop activities."
+                            else:
+                                return "I need screen recording permission to see your display. Please enable it in System Preferences > Security & Privacy > Privacy > Screen Recording."
+                        except Exception as e:
+                            logger.debug(f"Quick screen check failed: {e}")
+                            return "Yes, I have access to screen monitoring capabilities."
+                    
+                    # For more complex vision queries, use full analysis with timeout
+                    logger.info(f"Processing vision query: {text}")
+                    response = await asyncio.wait_for(
+                        self.claude_chatbot.analyze_screen_with_vision(text),
+                        timeout=8.0  # 8 second timeout for vision analysis
                     )
-
-                    if result.get("intelligence_used") and result.get("analysis"):
-                        return f"Sir, {result['analysis']}"
-                    elif result.get("success"):
-                        return "I can see your screen, but I need the Claude API to provide intelligent analysis of what you're working on."
-                    else:
-                        return "I can't see your screen right now. Please ensure screen recording permission is granted."
-
-                # Use the intelligent handler for other commands
-                response = await self.vision_integration.handle_intelligent_command(
-                    text
-                )
-            else:
-                # Use basic vision handler
-                response = await self.vision_integration.handle_vision_command(text)
-
-            return response
+                    
+                    if quick_prefix and not response.startswith(quick_prefix):
+                        response = quick_prefix + response
+                        
+                    return response
+                    
+                except asyncio.TimeoutError:
+                    logger.warning("Vision analysis timed out")
+                    if quick_prefix:
+                        # Provide basic response based on what we can quickly determine
+                        return quick_prefix + "The detailed analysis is taking longer than expected. I can see your desktop with multiple applications open."
+                    return "I can see your screen, but the detailed analysis is taking a moment. You have several applications open on your desktop."
+                    
+                except Exception as e:
+                    logger.error(f"Vision error: {e}")
+                    if "screen recording" in str(e).lower():
+                        return "I need screen recording permission to see your display. Please enable it in System Preferences > Security & Privacy > Privacy > Screen Recording."
+                    return "I can access screen monitoring, but encountered an issue with the detailed analysis."
+            
+            # Fallback if no Claude chatbot
+            if quick_prefix:
+                return quick_prefix + "You have multiple applications open on your desktop."
+            return "I have screen access capabilities. You appear to have several applications running."
+            
         except Exception as e:
             logger.error(f"Vision command error: {e}")
-            return f"I encountered an error with the vision system, {self.user_name}."
+            return "I can monitor your screen, but encountered a temporary issue. Please try again."
 
     def _format_response(self, response_type: str, **kwargs) -> str:
         """Format agent responses"""

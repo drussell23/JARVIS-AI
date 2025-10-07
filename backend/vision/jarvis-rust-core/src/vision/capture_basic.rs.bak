@@ -1,0 +1,408 @@
+//! Refactored screen capture using thread-safe message passing architecture
+//! 
+//! This module replaces direct Objective-C pointer usage with message passing
+//! to solve thread-safety issues.
+
+use crate::{Result, JarvisError};
+use crate::bridge::{ObjCBridge, ObjCCommand, ObjCResponse, CaptureQuality as BridgeCaptureQuality, CaptureRegion};
+use crate::memory::MemoryManager;
+use super::{ImageData, ImageFormat};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
+
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+
+/// Thread-safe capture configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CaptureConfig {
+    pub target_fps: u32,
+    pub capture_mouse: bool,
+    pub capture_region: Option<CaptureRegion>,
+    pub use_hardware_acceleration: bool,
+    pub memory_pool_size_mb: usize,
+    pub capture_quality: CaptureQuality,
+    pub buffer_count: usize,
+    pub enable_hdr: bool,
+}
+
+impl Default for CaptureConfig {
+    fn default() -> Self {
+        Self {
+            target_fps: 30,
+            capture_mouse: false,
+            capture_region: None,
+            use_hardware_acceleration: true,
+            memory_pool_size_mb: 100,
+            capture_quality: CaptureQuality::High,
+            buffer_count: 3,
+            enable_hdr: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum CaptureQuality {
+    Low,
+    Medium,
+    High,
+    Ultra,
+}
+
+impl CaptureQuality {
+    fn to_bridge_quality(&self) -> BridgeCaptureQuality {
+        match self {
+            CaptureQuality::Low => BridgeCaptureQuality::low(),
+            CaptureQuality::Medium => BridgeCaptureQuality::medium(),
+            CaptureQuality::High => BridgeCaptureQuality::high(),
+            CaptureQuality::Ultra => BridgeCaptureQuality::ultra(),
+        }
+    }
+}
+
+// ============================================================================
+// REFACTORED SCREEN CAPTURE
+// ============================================================================
+
+/// Thread-safe screen capture using message passing
+pub struct ScreenCapture {
+    /// Configuration
+    config: Arc<RwLock<CaptureConfig>>,
+    
+    /// Bridge to Objective-C actor
+    bridge: Arc<ObjCBridge>,
+    
+    /// Memory manager for buffers
+    memory_manager: Arc<MemoryManager>,
+    
+    /// Frame timing
+    last_capture_time: Arc<RwLock<Option<Instant>>>,
+    frame_interval: Duration,
+    
+    /// Capture statistics
+    stats: Arc<RwLock<CaptureStats>>,
+}
+
+// Mark as thread-safe (no raw pointers!)
+unsafe impl Send for ScreenCapture {}
+unsafe impl Sync for ScreenCapture {}
+
+impl ScreenCapture {
+    /// Create new thread-safe screen capture
+    pub fn new(config: CaptureConfig) -> Result<Self> {
+        let frame_interval = Duration::from_millis(1000 / config.target_fps as u64);
+        
+        // Create bridge with bounded channel (backpressure)
+        let bridge = Arc::new(ObjCBridge::new(config.buffer_count)?);
+        
+        // Pre-allocate shared buffers in the bridge
+        let buffer_size = Self::estimate_buffer_size(&config)?;
+        for _ in 0..config.buffer_count {
+            bridge.allocate_buffer(buffer_size)?;
+        }
+        
+        Ok(Self {
+            config: Arc::new(RwLock::new(config)),
+            bridge,
+            memory_manager: MemoryManager::global(),
+            last_capture_time: Arc::new(RwLock::new(None)),
+            frame_interval,
+            stats: Arc::new(RwLock::new(CaptureStats::default())),
+        })
+    }
+    
+    /// Capture screen asynchronously
+    pub async fn capture_async(&self) -> Result<ImageData> {
+        // Rate limiting
+        self.apply_rate_limiting().await;
+        
+        let start_time = Instant::now();
+        let config = self.config.read();
+        
+        // Send capture command through bridge
+        let command = ObjCCommand::CaptureScreen {
+            quality: config.capture_quality.to_bridge_quality(),
+            region: config.capture_region,
+        };
+        
+        // Call and wait for response
+        let response = self.bridge.call(command).await?;
+        
+        // Process response
+        match response {
+            ObjCResponse::FrameCaptured { buffer_id, width, height, bytes_per_row, .. } => {
+                // Get shared buffer (zero-copy)
+                let buffer = self.bridge.get_buffer(buffer_id)
+                    .ok_or_else(|| JarvisError::VisionError("Buffer not found".to_string()))?;
+                
+                // Create ImageData from shared buffer
+                let image_data = unsafe {
+                    ImageData::from_raw(
+                        width,
+                        height,
+                        buffer.as_slice().to_vec(), // TODO: Make this zero-copy
+                        ImageFormat::Bgra8,
+                    )?
+                };
+                
+                // Update stats
+                self.update_stats(start_time);
+                
+                Ok(image_data)
+            }
+            ObjCResponse::Error(msg) => {
+                Err(JarvisError::VisionError(format!("Capture failed: {}", msg)))
+            }
+            _ => {
+                Err(JarvisError::VisionError("Unexpected response type".to_string()))
+            }
+        }
+    }
+    
+    /// Apply rate limiting
+    async fn apply_rate_limiting(&self) {
+        let mut last_time_guard = self.last_capture_time.write();
+        
+        if let Some(last_time) = *last_time_guard {
+            let elapsed = last_time.elapsed();
+            if elapsed < self.frame_interval {
+                tokio::time::sleep(self.frame_interval - elapsed).await;
+            }
+        }
+        
+        *last_time_guard = Some(Instant::now());
+    }
+    
+    /// Update capture statistics
+    fn update_stats(&self, start_time: Instant) {
+        let mut stats = self.stats.write();
+        stats.frame_count += 1;
+        stats.total_capture_time += start_time.elapsed();
+        
+        if stats.frame_count > 0 {
+            stats.actual_fps = stats.frame_count as f32 / stats.total_capture_time.as_secs_f32();
+            stats.avg_capture_time_ms = stats.total_capture_time.as_millis() as f32 / stats.frame_count as f32;
+        }
+    }
+    
+    /// Get window list (thread-safe)
+    pub async fn get_window_list(&self, use_cache: bool) -> Result<Vec<WindowInfo>> {
+        let command = ObjCCommand::GetWindowList { use_cache };
+        let response = self.bridge.call(command).await?;
+        
+        match response {
+            ObjCResponse::WindowList(windows) => {
+                Ok(windows.into_iter().map(|w| WindowInfo {
+                    window_id: w.window_id,
+                    app_name: w.app_name,
+                    title: w.title,
+                    bounds: w.bounds,
+                    layer: w.layer,
+                    alpha: w.alpha,
+                }).collect())
+            }
+            ObjCResponse::Error(msg) => {
+                Err(JarvisError::VisionError(format!("Failed to get window list: {}", msg)))
+            }
+            _ => {
+                Err(JarvisError::VisionError("Unexpected response type".to_string()))
+            }
+        }
+    }
+    
+    /// Get running applications (thread-safe)
+    pub async fn get_running_apps(&self) -> Result<Vec<AppInfo>> {
+        let response = self.bridge.call(ObjCCommand::GetRunningApps).await?;
+        
+        match response {
+            ObjCResponse::RunningApps(apps) => {
+                Ok(apps.into_iter().map(|a| AppInfo {
+                    bundle_id: a.bundle_id,
+                    name: a.name,
+                    pid: a.pid,
+                    is_active: a.is_active,
+                    is_hidden: a.is_hidden,
+                }).collect())
+            }
+            ObjCResponse::Error(msg) => {
+                Err(JarvisError::VisionError(format!("Failed to get running apps: {}", msg)))
+            }
+            _ => {
+                Err(JarvisError::VisionError("Unexpected response type".to_string()))
+            }
+        }
+    }
+    
+    /// Detect text in region using Vision framework (thread-safe)
+    pub async fn detect_text_in_region(&self, region: CaptureRegion) -> Result<Vec<TextDetection>> {
+        // First capture the region
+        let mut config = self.config.write();
+        let old_region = config.capture_region;
+        config.capture_region = Some(region);
+        drop(config);
+        
+        let image = self.capture_async().await?;
+        
+        // Restore original region
+        self.config.write().capture_region = old_region;
+        
+        // TODO: Allocate buffer and copy image data
+        let buffer_id = 1; // Placeholder
+        
+        let command = ObjCCommand::DetectText { buffer_id, region };
+        let response = self.bridge.call(command).await?;
+        
+        match response {
+            ObjCResponse::TextDetected(detections) => {
+                Ok(detections.into_iter().map(|d| TextDetection {
+                    text: d.text,
+                    confidence: d.confidence,
+                    bounds: d.bounds,
+                }).collect())
+            }
+            ObjCResponse::Error(msg) => {
+                Err(JarvisError::VisionError(format!("Text detection failed: {}", msg)))
+            }
+            _ => {
+                Err(JarvisError::VisionError("Unexpected response type".to_string()))
+            }
+        }
+    }
+    
+    /// Monitor system notifications (thread-safe)
+    pub async fn monitor_notification(&self, name: String) -> Result<()> {
+        let command = ObjCCommand::MonitorNotification { name };
+        let response = self.bridge.call(command).await?;
+        
+        match response {
+            ObjCResponse::Ok => Ok(()),
+            ObjCResponse::Error(msg) => {
+                Err(JarvisError::VisionError(format!("Failed to monitor notification: {}", msg)))
+            }
+            _ => {
+                Err(JarvisError::VisionError("Unexpected response type".to_string()))
+            }
+        }
+    }
+    
+    /// Update configuration dynamically
+    pub fn update_config<F>(&self, f: F) -> Result<()> 
+    where
+        F: FnOnce(&mut CaptureConfig)
+    {
+        let mut config = self.config.write();
+        f(&mut *config);
+        Ok(())
+    }
+    
+    /// Get capture statistics
+    pub fn stats(&self) -> CaptureStats {
+        self.stats.read().clone()
+    }
+    
+    /// Get bridge metrics
+    pub fn bridge_metrics(&self) -> String {
+        let metrics = self.bridge.metrics();
+        format!(
+            "Commands sent: {}, Responses received: {}, Errors: {}, Frames dropped: {}, Avg latency: {} µs",
+            metrics.commands_sent.load(std::sync::atomic::Ordering::Relaxed),
+            metrics.responses_received.load(std::sync::atomic::Ordering::Relaxed),
+            metrics.errors.load(std::sync::atomic::Ordering::Relaxed),
+            metrics.frames_dropped.load(std::sync::atomic::Ordering::Relaxed),
+            metrics.avg_latency_us.load(std::sync::atomic::Ordering::Relaxed),
+        )
+    }
+    
+    /// Estimate buffer size based on configuration
+    fn estimate_buffer_size(config: &CaptureConfig) -> Result<usize> {
+        // Estimate based on 4K resolution as max
+        let (width, height) = (3840u32, 2160u32);
+        let bytes_per_pixel = 4; // BGRA8
+        Ok((width * height * bytes_per_pixel) as usize)
+    }
+}
+
+// ============================================================================
+// DATA STRUCTURES
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindowInfo {
+    pub window_id: u32,
+    pub app_name: String,
+    pub title: String,
+    pub bounds: CaptureRegion,
+    pub layer: i32,
+    pub alpha: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppInfo {
+    pub bundle_id: String,
+    pub name: String,
+    pub pid: i32,
+    pub is_active: bool,
+    pub is_hidden: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextDetection {
+    pub text: String,
+    pub confidence: f32,
+    pub bounds: CaptureRegion,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CaptureStats {
+    pub frame_count: u64,
+    pub total_capture_time: Duration,
+    pub actual_fps: f32,
+    pub avg_capture_time_ms: f32,
+}
+
+// ============================================================================
+// TESTS
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[tokio::test]
+    async fn test_thread_safe_capture() {
+        let config = CaptureConfig::default();
+        let capture = ScreenCapture::new(config).unwrap();
+        
+        // Spawn multiple tasks to test thread safety
+        let handles: Vec<_> = (0..5)
+            .map(|_| {
+                let capture_clone = capture.clone();
+                tokio::spawn(async move {
+                    capture_clone.get_running_apps().await
+                })
+            })
+            .collect();
+        
+        // All should complete without panic
+        for handle in handles {
+            assert!(handle.await.is_ok());
+        }
+    }
+    
+    #[test]
+    fn test_config_update() {
+        let config = CaptureConfig::default();
+        let capture = ScreenCapture::new(config).unwrap();
+        
+        capture.update_config(|c| {
+            c.target_fps = 60;
+            c.capture_quality = CaptureQuality::Ultra;
+        }).unwrap();
+        
+        let config = capture.config.read();
+        assert_eq!(config.target_fps, 60);
+    }
+}

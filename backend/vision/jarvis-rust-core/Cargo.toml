@@ -31,6 +31,7 @@ num-traits = "0.2"
 half = "2.3"  # For FP16 support
 nalgebra = "0.32"  # Advanced linear algebra
 ndarray-stats = "0.5"
+nalgebra-sparse = "0.9"  # Sparse matrix operations
 
 # Memory management
 crossbeam = "0.8"
@@ -48,6 +49,7 @@ simdeez = "1.0"  # SIMD abstraction layer
 pyo3 = { version = "0.20", features = ["extension-module", "abi3-py37", "multiple-pymethods"] }
 numpy = { version = "0.20", optional = true }
 pythonize = "0.20"  # Better Python serialization
+pyo3-asyncio = { version = "0.20", features = ["tokio-runtime"] }  # Async Python bindings
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -77,7 +79,10 @@ brotli = "3.4"
 metrics = "0.21"
 metrics-exporter-prometheus = "0.12"
 sysinfo = "0.30"
-nix = "0.27"  # For Unix shared memory
+nix = { version = "0.27", features = ["fs", "mman"] }  # For Unix shared memory
+ordered-float = "4.2"  # For ordered floating point numbers
+fnv = "1.0"  # FNV hasher
+uuid = { version = "1.6", features = ["v4"] }  # UUID generation
 
 # Concurrency utilities
 dashmap = "5.5"  # Concurrent hashmap
