@@ -679,7 +679,7 @@ class AdvancedAsyncPipeline:
         intent_rules = {
             "monitoring": ["monitor", "watch", "track", "observe", "surveillance"],
             "system_control": ["open", "launch", "start", "close", "quit", "kill", "terminate", "run", "execute"],
-            "document_creation": ["write", "create document", "write essay", "write paper", "draft", "compose", "author"],
+            "document_creation": ["write", "writing", "create document", "creating document", "write essay", "writing essay", "write paper", "writing paper", "draft", "drafting", "compose", "composing", "author", "authoring"],
             "web_search": ["search", "google", "look up", "find online", "browse", "surf"],
             "navigation": ["navigate", "go to", "visit", "head to"],
             "weather": ["weather", "temperature", "forecast", "rain", "snow", "climate"],
@@ -930,28 +930,31 @@ class AdvancedAsyncPipeline:
         if context.intent == "document_creation":
             logger.info(f"[PIPELINE] Document creation with enhanced context awareness")
 
+            # Store pipeline context for use in callback
+            pipeline_ctx = context
+
             # Define intelligent document creation callback
-            async def create_document(command: str, ctx: Dict[str, Any] = None):
+            async def create_document(command: str, context: Dict[str, Any] = None):
                 """Create document with full context awareness"""
-                logger.info(f"[PIPELINE] Creating document with context: screen_locked={ctx.get('screen_locked') if ctx else 'unknown'}")
+                logger.info(f"[PIPELINE] Creating document with context: screen_locked={context.get('screen_locked') if context else 'unknown'}")
 
                 # Intelligent document type detection
                 doc_type = self._detect_document_type(command)
                 logger.info(f"[PIPELINE] Detected document type: {doc_type}")
 
                 # Check if screen is locked and document needs visual confirmation
-                if ctx and ctx.get('screen_locked') and doc_type in ['presentation', 'visual_document']:
+                if context and context.get('screen_locked') and doc_type in ['presentation', 'visual_document']:
                     logger.info(f"[PIPELINE] Visual document requested but screen is locked - will notify user")
 
                 # Smart API selection based on context
                 if "google doc" in command.lower() or "google docs" in command.lower():
                     result = await self._create_google_doc(command)
-                elif ctx and 'Google Chrome' in ctx.get('active_apps', []):
+                elif context and 'Google Chrome' in context.get('active_apps', []):
                     # If Chrome is open, prefer Google Docs
                     logger.info(f"[PIPELINE] Chrome is active, suggesting Google Docs")
                     result = await self._create_google_doc(command)
                 else:
-                    result = await self._create_local_document(command, context)
+                    result = await self._create_local_document(command, pipeline_ctx)
 
                 return result
 
