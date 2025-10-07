@@ -979,26 +979,30 @@ class AdvancedAsyncPipeline:
                     "success": False,
                     "messages": [f"Context processing error: {str(handler_error)}"]
                 }
-
-                # Set response
-                if result.get("messages"):
-                    # Use the messages from the context-aware handler (including unlock notifications)
-                    context.response = " ".join(result["messages"])
-                elif result.get("success"):
-                    # If successful but no specific message, provide a default
-                    topic = self._extract_document_topic(context.text)
-                    context.response = f"I'm creating an essay about {topic} for you. Opening Google Docs now..."
-                else:
-                    context.response = "I encountered an issue with that request, Sir."
-
                 context.metadata["document_creation"] = True
-                context.metadata["steps_taken"] = result.get("steps_taken", [])
+                context.metadata["steps_taken"] = []
+                context.response = f"I encountered an error with document creation: {str(handler_error)}"
                 return
 
             except Exception as e:
                 logger.error(f"Error in document creation: {e}")
                 context.response = f"I couldn't create the document: {str(e)}"
                 return
+
+            # Set response based on result (this runs AFTER successful execution)
+            if result.get("messages"):
+                # Use the messages from the context-aware handler (including unlock notifications)
+                context.response = " ".join(result["messages"])
+            elif result.get("success"):
+                # If successful but no specific message, provide a default
+                topic = self._extract_document_topic(context.text)
+                context.response = f"I'm creating an essay about {topic} for you, Sir."
+            else:
+                context.response = "I encountered an issue with that request, Sir."
+
+            context.metadata["document_creation"] = True
+            context.metadata["steps_taken"] = result.get("steps_taken", [])
+            return
 
         # For other commands, check if JARVIS is available
         if not self.jarvis:
