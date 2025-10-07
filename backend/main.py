@@ -1306,17 +1306,22 @@ def mount_routers():
             app.state.voice_unlock = voice_unlock
             logger.info("✅ Voice Unlock service ready")
 
-    # Wake Word API
-    wake_word = components.get("wake_word", {})
-    if wake_word and wake_word.get("router"):
+    # Wake Word API - Always mount (has stub functionality)
+    try:
+        from api.wake_word_api import router as wake_word_router
         # Router already has prefix="/api/wake-word", don't add it again
-        app.include_router(wake_word["router"])
+        app.include_router(wake_word_router)
         logger.info("✅ Wake Word API mounted at /api/wake-word")
-        if wake_word.get("initialized"):
+
+        # Check if the full service is available
+        wake_word = components.get("wake_word", {})
+        if wake_word and wake_word.get("initialized"):
             app.state.wake_word = wake_word
-            logger.info("✅ Wake Word detection ready")
+            logger.info("✅ Wake Word detection service available")
         else:
-            logger.warning("⚠️ Wake Word API mounted but not initialized")
+            logger.info("ℹ️  Wake Word API available (stub mode - service not initialized)")
+    except ImportError as e:
+        logger.warning(f"⚠️ Wake Word API not available: {e}")
 
     # Rust API (if Rust components are available)
     if hasattr(app.state, "rust_acceleration") and app.state.rust_acceleration.get(
