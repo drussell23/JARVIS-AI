@@ -267,6 +267,14 @@ class DocumentWriterExecutor:
         self._google_docs = None
         self._claude = None
         self._browser = None
+        self._intelligent_narrator = None  # Will be initialized with Claude
+        
+        # Speech queue management to prevent overlapping
+        self._speech_in_progress = False
+        self._speech_queue = []
+        self._last_speech_end_time = 0
+        
+        # Fallback context for non-intelligent mode
         self._narration_context = {
             "phase": "initializing",
             "topic": "",
@@ -276,10 +284,6 @@ class DocumentWriterExecutor:
             "total_words_target": 0
         }
         self._last_narration_time = 0
-        self._min_narration_interval = 3.5  # Minimum 3.5 seconds between narrations for smooth, natural pacing
-        self._last_phase = None  # Track last phase to avoid repeating similar messages
-        self._narration_count = 0  # Track total narrations to reduce frequency
-        self._skip_similar_phases = False  # Allow more narrations for better user engagement
 
         # Initialize async pipeline for non-blocking document operations
         self.pipeline = get_async_pipeline()
@@ -620,6 +624,18 @@ class DocumentWriterExecutor:
             from ..automation.claude_streamer import get_claude_streamer
             self._claude = get_claude_streamer()
 
+            # Initialize Intelligent Narrator with Claude
+            from .intelligent_narrator import get_intelligent_narrator
+            self._intelligent_narrator = get_intelligent_narrator(self._claude)
+            await self._intelligent_narrator.initialize(
+                topic=request.topic,
+                doc_type=request.document_type.value,
+                format_style=request.formatting.value,
+                target_words=request.word_count or 1000,
+                claude_client=self._claude
+            )
+            logger.info("[DOCUMENT WRITER] ✅ Intelligent Narrator initialized")
+
             # Initialize browser
             from ..automation.browser_controller import get_browser_controller
             self._browser = get_browser_controller(request.browser)
@@ -693,13 +709,17 @@ Provide a clear, structured outline."""
                             progress_callback: Optional[Callable],
                             websocket) -> int:
         """Stream content to Google Doc via API with detailed real-time updates"""
+        import time
         content_prompt = self._build_content_prompt(request, outline)
 
         word_count = 0
         sentence_count = 0
         buffer = ""
-        progress_interval = 100  # Update every 100 words for smooth, engaging progress updates
+        progress_interval = 200  # Update every 200 words to avoid over-narration
         next_milestone = progress_interval
+        
+        # Track time for velocity calculation
+        last_write_time = time.time()
 
         # Track sections for progress updates
         sections = outline.get('sections', [])
@@ -723,7 +743,16 @@ Provide a clear, structured outline."""
 
                     if success:
                         current_words = len(buffer.split())
+                        current_time = time.time()
+                        time_delta = current_time - last_write_time
                         word_count += current_words
+                        
+                        # Update intelligent narrator metrics
+                        if self._intelligent_narrator:
+                            self._intelligent_narrator.update_writing_metrics(word_count, time_delta)
+                            self._intelligent_narrator.update_content_analysis(buffer)
+                        
+                        last_write_time = current_time
 
                         # Detect section changes (simple heuristic)
                         if current_section_index < len(sections) and not section_announced:
@@ -733,12 +762,13 @@ Provide a clear, structured outline."""
                                 "phase": "writing_section",
                                 "current_section": section_name,
                                 "word_count": word_count,
-                                "progress": 55 + int((word_count / (request.word_count or 1000)) * 40)
+                                "progress": 55 + int((word_count / (request.word_count or 1000)) * 40),
+                                "recent_content": buffer[:200]  # Pass snippet for context
                             })
                             section_announced = True
 
-                        # Move to next section periodically (every 100 words for smoother transitions)
-                        if word_count > (current_section_index + 1) * 100 and current_section_index < len(sections) - 1:
+                        # Move to next section periodically (every 200 words to match progress updates)
+                        if word_count > (current_section_index + 1) * 200 and current_section_index < len(sections) - 1:
                             current_section_index += 1
                             section_announced = False
 
@@ -749,7 +779,8 @@ Provide a clear, structured outline."""
                                 "phase": "progress_update",
                                 "word_count": word_count,
                                 "progress": 55 + int(percentage * 0.4),
-                                "current_section": sections[current_section_index]['name'] if current_section_index < len(sections) else "conclusion"
+                                "current_section": sections[current_section_index]['name'] if current_section_index < len(sections) else "conclusion",
+                                "recent_content": buffer[:200]  # Pass snippet for context
                             })
                             next_milestone += progress_interval
 
@@ -1017,9 +1048,9 @@ Narration:"""
                 f"Writing {current_section}",
                 f"Developing {current_section} now",
                 f"Crafting {current_section}",
-                f"Working on {current_section}",
                 f"{current_section} coming together nicely",
-                f"Building out {current_section}"
+                f"Building out {current_section}",
+                f"Now covering {current_section}"
             ]
             return random.choice(section_updates)
             
@@ -1098,67 +1129,100 @@ Narration:"""
         else:
             # Default fallback with variation
             return random.choice([
-                f"Working on {current_section}",
-                f"Processing {current_section}",
+                f"Making progress on {current_section}",
                 f"Continuing with {current_section}",
-                f"Still writing{sir_phrase}"
+                f"Still writing{sir_phrase}",
+                f"Moving through {current_section}"
             ])
 
     async def _narrate(self, progress_callback: Optional[Callable],
                       websocket, message: str = None, context: Dict[str, Any] = None):
-        """Send narration update with voice feedback - fully dynamic with pacing"""
+        """
+        Intelligent narration with AI-powered decision making and speech queue management
+        Uses IntelligentNarrator for dynamic, context-aware updates
+        """
         import time
         import asyncio
 
-        # Check if we should skip this narration to reduce redundancy
-        if context:
-            current_phase = context.get('phase')
-            
-            # Allow all progress updates for better engagement
-            if current_phase == 'progress_update':
-                self._narration_count += 1
-                # Narrate all progress updates to keep user engaged
-                logger.info(f"[DOCUMENT WRITER] Progress update #{self._narration_count}")
-            
-            # Allow narrations for all phases to maintain engagement
-            # (Skip logic disabled for smoother communication)
-            if False:  # Disabled to provide continuous updates
-                pass
-            
-            self._last_phase = current_phase
-            message = await self._generate_dynamic_narration(context)
+        # CRITICAL: Wait if speech is currently in progress to prevent overlap
+        if self._speech_in_progress:
+            logger.info(f"[DOCUMENT WRITER] ⏸️  Speech in progress, skipping to prevent overlap")
+            return
+        
+        # Wait for minimum gap after last speech completed
+        time_since_last_speech = time.time() - self._last_speech_end_time
+        if time_since_last_speech < 2.0 and self._last_speech_end_time > 0:
+            logger.info(f"[DOCUMENT WRITER] ⏸️  Too soon after last speech ({time_since_last_speech:.1f}s), skipping")
+            return
 
-        logger.info(f"[DOCUMENT WRITER] {message}")
+        # If intelligent narrator is available, use it
+        if self._intelligent_narrator and context:
+            phase = context.get('phase', 'unknown')
+            
+            # Update narrator context
+            self._intelligent_narrator._context.current_phase = phase
+            self._intelligent_narrator._context.current_section = context.get('current_section', '')
+            self._intelligent_narrator._context.word_count = context.get('word_count', 0)
+            
+            # Intelligently decide if we should narrate
+            should_narrate, reason = await self._intelligent_narrator.should_narrate(
+                phase, 
+                content_update=context.get('recent_content')
+            )
+            
+            if not should_narrate:
+                logger.info(f"[INTELLIGENT NARRATOR] ⏭️  Skipping: {reason}")
+                return
+            
+            logger.info(f"[INTELLIGENT NARRATOR] 🎯 Narrating: {reason}")
+            
+            # Generate intelligent, context-aware message
+            try:
+                message = await self._intelligent_narrator.generate_narration(phase, context)
+            except Exception as e:
+                logger.error(f"[INTELLIGENT NARRATOR] Error, using fallback: {e}")
+                message = await self._generate_dynamic_narration(context)
+        
+        # Fallback to old system if no intelligent narrator
+        elif context and not message:
+            message = await self._generate_dynamic_narration(context)
+        
+        if not message:
+            return
+
+        # Mark speech as in progress
+        self._speech_in_progress = True
+        logger.info(f"[DOCUMENT WRITER] 🎤 Speaking: {message}")
 
         if progress_callback:
             await progress_callback(message)
 
         if websocket:
             try:
-                # Implement throttling for smooth speech pacing
-                current_time = time.time()
-                time_since_last = current_time - self._last_narration_time
-
-                # If not enough time has passed, add a delay
-                if time_since_last < self._min_narration_interval and self._last_narration_time > 0:
-                    delay_needed = self._min_narration_interval - time_since_last
-                    logger.info(f"[DOCUMENT WRITER] Pacing speech - waiting {delay_needed:.1f}s")
-                    await asyncio.sleep(delay_needed)
-
                 # Send narration message with voice output
-                logger.info(f"[DOCUMENT WRITER] Sending narration: {message[:100]}...")
                 await websocket.send_json({
                     "type": "voice_narration",
                     "message": message,
                     "speak": True
                 })
-
-                # Update last narration time
+                
+                # Estimate speech duration (rough: ~3 words per second + 1s buffer)
+                word_count = len(message.split())
+                estimated_duration = (word_count / 3.0) + 1.0
+                
+                # Wait for speech to complete
+                await asyncio.sleep(estimated_duration)
+                
+                # Mark speech as complete
+                self._speech_in_progress = False
+                self._last_speech_end_time = time.time()
                 self._last_narration_time = time.time()
-                logger.info(f"[DOCUMENT WRITER] Narration sent at natural pace")
+                
+                logger.info(f"[DOCUMENT WRITER] ✅ Speech completed ({estimated_duration:.1f}s)")
 
             except Exception as e:
                 logger.error(f"Could not send narration to websocket: {e}")
+                self._speech_in_progress = False
 
 
 def parse_document_request(command: str, intent: Dict[str, Any]) -> DocumentRequest:
