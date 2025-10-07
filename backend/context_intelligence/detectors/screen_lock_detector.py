@@ -256,7 +256,13 @@ class ScreenLockContextDetector:
                 f"Unlocking screen to {action}, Sir.",
             ]
 
-        # Use voice dynamic response generator if available
+        # For document creation, use the specific templates directly (don't override with generic responses)
+        if is_document_creation:
+            import random
+
+            return random.choice(templates)
+
+        # Use voice dynamic response generator for other commands
         try:
             from voice.dynamic_response_generator import get_response_generator
 
