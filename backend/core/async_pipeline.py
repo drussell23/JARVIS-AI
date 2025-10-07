@@ -7,6 +7,7 @@ Ultra-robust, adaptive, zero-hardcoding async processing system
 import asyncio
 import re
 import logging
+import os
 from typing import Dict, Any, Optional, Callable, List, Union, Type
 from dataclasses import dataclass, field
 from enum import Enum
@@ -1326,20 +1327,27 @@ class AdvancedAsyncPipeline:
 
                 # Initialize if needed
                 if not vision_command_handler.intelligence:
-                    await vision_command_handler.initialize_intelligence()
+                    api_key = os.getenv("ANTHROPIC_API_KEY")
+                    await vision_command_handler.initialize_intelligence(api_key)
 
                 # Handle the vision command
                 result = await vision_command_handler.handle_command(context.text)
 
                 if result.get("handled"):
-                    context.response = result.get("response", "I can see your screen, Sir.")
+                    context.response = result.get(
+                        "response", "I can see your screen, Sir."
+                    )
                     context.metadata["vision_response"] = result.get("response")
                     context.metadata["vision_handled"] = True
-                    logger.info(f"[PIPELINE] Vision response: {context.response[:100]}...")
+                    logger.info(
+                        f"[PIPELINE] Vision response: {context.response[:100]}..."
+                    )
                 else:
                     # Vision handler didn't handle it
                     context.response = "I processed your command: '{context.text}', {context.user_name}."
-                    logger.warning(f"[PIPELINE] Vision command not handled by vision_command_handler")
+                    logger.warning(
+                        f"[PIPELINE] Vision command not handled by vision_command_handler"
+                    )
 
             except Exception as e:
                 logger.error(f"Error in vision command: {e}")
@@ -1355,9 +1363,7 @@ class AdvancedAsyncPipeline:
             return
 
         # Handle conversation and system commands (require JARVIS)
-        if context.intent == "conversation" and hasattr(
-            self.jarvis, "claude_chatbot"
-        ):
+        if context.intent == "conversation" and hasattr(self.jarvis, "claude_chatbot"):
             try:
                 response = await self.jarvis.claude_chatbot.generate_response(
                     context.text
