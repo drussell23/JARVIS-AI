@@ -1316,29 +1316,46 @@ class AdvancedAsyncPipeline:
             context.metadata["steps_taken"] = result.get("steps_taken", [])
             return
 
-        # For other commands, check if JARVIS is available
-        if not self.jarvis:
-            context.metadata["warning"] = "No JARVIS instance available"
-            return
-
         # Route to appropriate handler based on intent
-        if context.intent == "vision" and hasattr(
-            self.jarvis, "_handle_vision_command"
-        ):
+        if context.intent == "vision":
             try:
                 logger.info(f"[PIPELINE] Processing vision command: {context.text}")
-                response = await self.jarvis._handle_vision_command(context.text)
-                context.response = response
-                context.metadata["vision_response"] = response
-                logger.info(f"[PIPELINE] Vision response: {response[:100]}...")
+
+                # Import and use the VisionCommandHandler
+                from api.vision_command_handler import vision_command_handler
+
+                # Initialize if needed
+                if not vision_command_handler.intelligence:
+                    await vision_command_handler.initialize_intelligence()
+
+                # Handle the vision command
+                result = await vision_command_handler.handle_command(context.text)
+
+                if result.get("handled"):
+                    context.response = result.get("response", "I can see your screen, Sir.")
+                    context.metadata["vision_response"] = result.get("response")
+                    context.metadata["vision_handled"] = True
+                    logger.info(f"[PIPELINE] Vision response: {context.response[:100]}...")
+                else:
+                    # Vision handler didn't handle it
+                    context.response = "I processed your command: '{context.text}', {context.user_name}."
+                    logger.warning(f"[PIPELINE] Vision command not handled by vision_command_handler")
+
             except Exception as e:
                 logger.error(f"Error in vision command: {e}")
                 context.metadata["vision_error"] = str(e)
                 context.response = (
                     f"I encountered an error analyzing your screen: {str(e)}"
                 )
+            return
 
-        elif context.intent == "conversation" and hasattr(
+        # For other commands, check if JARVIS is available
+        if not self.jarvis:
+            context.metadata["warning"] = "No JARVIS instance available"
+            return
+
+        # Handle conversation and system commands (require JARVIS)
+        if context.intent == "conversation" and hasattr(
             self.jarvis, "claude_chatbot"
         ):
             try:
