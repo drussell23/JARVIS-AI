@@ -60,6 +60,7 @@ class ContextAwareCommandHandler:
             
             if is_locked:
                 self._add_step("Detected locked screen", {"screen_locked": True})
+                logger.warning(f"[CONTEXT AWARE] ⚠️  SCREEN IS LOCKED - Command requires unlocked screen")
                 
                 # Check if command requires unlocked screen
                 screen_context = await self.screen_lock_detector.check_screen_context(command)
@@ -69,20 +70,28 @@ class ContextAwareCommandHandler:
                     unlock_notification = screen_context["unlock_message"]
                     self._add_step("Screen unlock required", screen_context)
 
-                    # Speak the unlock message immediately
-                    await self._speak_message(unlock_notification)
+                    # Log prominently for debugging
+                    logger.warning(f"[CONTEXT AWARE] 🔓 UNLOCK REQUIRED - Notifying user")
+                    logger.warning(f"[CONTEXT AWARE] 📢 Speaking message: '{unlock_notification}'")
 
-                    # Add a small delay so user hears the message before unlock happens
-                    await asyncio.sleep(1.5)
+                    # Speak the unlock message immediately with emphasis
+                    await self._speak_message(unlock_notification, priority="high")
+
+                    # Add a longer delay to ensure user hears the message before unlock happens
+                    logger.info(f"[CONTEXT AWARE] ⏱️  Waiting 2 seconds for user to hear notification...")
+                    await asyncio.sleep(2.0)
 
                     # Now perform the actual unlock
+                    logger.info(f"[CONTEXT AWARE] 🔓 Now unlocking screen...")
                     unlock_success, unlock_message = await self.screen_lock_detector.handle_screen_lock_context(command)
                     
                     if unlock_success:
                         self._add_step("Screen unlocked successfully", {"unlocked": True})
+                        logger.info(f"[CONTEXT AWARE] ✅ Screen unlocked successfully")
                         # Don't add unlock message to response since we already spoke it
                     else:
                         self._add_step("Screen unlock failed", {"error": unlock_message})
+                        logger.error(f"[CONTEXT AWARE] ❌ Screen unlock failed: {unlock_message}")
                         response["success"] = False
                         response["messages"].append(unlock_message or "Failed to unlock screen")
                         return self._finalize_response(response)
@@ -167,38 +176,52 @@ class ContextAwareCommandHandler:
         
         return context
         
-    async def _speak_message(self, message: str):
-        """Speak a message immediately using JARVIS voice through WebSocket"""
+    async def _speak_message(self, message: str, priority: str = "normal"):
+        """Speak a message immediately using JARVIS voice through WebSocket and macOS say"""
         try:
-            # Send message through WebSocket to trigger TTS
-            from api.unified_websocket import broadcast_message
+            logger.info(f"[CONTEXT AWARE] 📢 Speaking message (priority={priority}): {message}")
 
-            logger.info(f"[CONTEXT AWARE] Speaking unlock notification: {message}")
-
-            # Broadcast the unlock notification
-            await broadcast_message({
-                "type": "speak",
-                "text": message,
-                "priority": "high"
-            })
-
-            # Also use macOS say as backup
+            # Use macOS say command FIRST (more reliable, especially when screen is locked)
+            # This ensures the user hears the message even if WebSocket fails
+            say_success = False
             try:
                 import subprocess
-                import asyncio
-                # Run say command asynchronously
+                # Run say command synchronously for immediate feedback
+                # Use Daniel voice at slightly faster rate for more natural sound
                 process = await asyncio.create_subprocess_exec(
-                    "say", "-v", "Daniel", "-r", "180", message,
+                    "say", "-v", "Daniel", "-r", "190", message,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )
-                await process.wait()
-                logger.info(f"[CONTEXT AWARE] Spoke via say command: {message[:50]}...")
+                returncode = await process.wait()
+                say_success = (returncode == 0)
+                if say_success:
+                    logger.info(f"[CONTEXT AWARE] ✅ Spoke via macOS say command successfully")
+                else:
+                    logger.warning(f"[CONTEXT AWARE] ⚠️  Say command returned non-zero: {returncode}")
             except Exception as e:
-                logger.debug(f"Say command failed: {e}")
+                logger.error(f"[CONTEXT AWARE] ❌ Say command failed: {e}")
+
+            # Also try WebSocket broadcast as secondary method
+            try:
+                from api.unified_websocket import broadcast_message
+
+                # Broadcast the notification via WebSocket
+                await broadcast_message({
+                    "type": "speak",
+                    "text": message,
+                    "priority": priority
+                })
+                logger.info(f"[CONTEXT AWARE] 📡 Broadcasted via WebSocket")
+            except Exception as e:
+                logger.debug(f"[CONTEXT AWARE] WebSocket broadcast failed (this is OK if no clients): {e}")
+
+            # If both methods failed, log an error
+            if not say_success:
+                logger.error(f"[CONTEXT AWARE] ⚠️  WARNING: Could not speak message reliably!")
 
         except Exception as e:
-            logger.error(f"[CONTEXT AWARE] Failed to speak message: {e}")
+            logger.error(f"[CONTEXT AWARE] ❌ Failed to speak message: {e}")
 
     def _add_step(self, description: str, details: Dict[str, Any]):
         """Add an execution step for tracking"""

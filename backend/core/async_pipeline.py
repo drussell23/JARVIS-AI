@@ -951,7 +951,7 @@ class AdvancedAsyncPipeline:
                     logger.info(f"[PIPELINE] Chrome is active, suggesting Google Docs")
                     result = await self._create_google_doc(command)
                 else:
-                    result = await self._create_local_document(command)
+                    result = await self._create_local_document(command, context)
 
                 return result
 
@@ -1134,6 +1134,18 @@ class AdvancedAsyncPipeline:
             await self._synthesize_voice(context)
             return
 
+        # Check if document creation task was started (from _create_local_document)
+        if context.metadata.get("document_task_result"):
+            doc_result = context.metadata["document_task_result"]
+            if doc_result.get("success") and doc_result.get("task_started"):
+                # Document creation task started successfully
+                context.response = doc_result.get("message", f"I'm creating the document for you, Sir.")
+                logger.info(f"Document creation task started: {context.response}")
+                # Mark that TTS should be triggered
+                context.metadata["speak_response"] = True
+                await self._synthesize_voice(context)
+                return
+
         # Prioritize responses from metadata
         if "claude_response" in context.metadata:
             context.response = context.metadata["claude_response"]
@@ -1252,7 +1264,7 @@ class AdvancedAsyncPipeline:
                 "message": f"I encountered an error: {str(e)}"
             }
 
-    async def _create_local_document(self, command: str) -> Dict[str, Any]:
+    async def _create_local_document(self, command: str, context: PipelineContext = None) -> Dict[str, Any]:
         """Create a local document with content generation"""
         try:
             topic = self._extract_document_topic(command)
@@ -1273,15 +1285,23 @@ class AdvancedAsyncPipeline:
             # NOTE: We start the task but don't await it - it runs asynchronously
             # IMPORTANT: This task will only start AFTER the context-aware handler
             # has finished checking screen lock and unlocking if necessary
-            asyncio.create_task(writer.create_document(request))
+            websocket = context.metadata.get("websocket") if context else None
+            asyncio.create_task(writer.create_document(request, websocket=websocket))
 
-            return {
+            result = {
                 "success": True,
                 # Return a message that will be used by context-aware handler
                 "message": f"I'm creating an essay about {topic} for you, Sir.",
                 "topic": topic,
                 "task_started": True
             }
+
+            # Store result in context metadata for proper response generation
+            if context:
+                context.metadata["document_task_result"] = result
+                logger.info(f"Stored document task result in metadata: {result}")
+
+            return result
 
         except Exception as e:
             logger.error(f"Error creating local document: {e}")
