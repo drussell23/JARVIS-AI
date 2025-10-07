@@ -572,18 +572,25 @@ class DocumentWriterExecutor:
                 progress_callback, websocket
             )
 
-            # Phase 7: Completion with summary
+            # Phase 7: Completion with summary - CRITICAL announcements
             await self._narrate(progress_callback, websocket, context={
                 "phase": "writing_complete",
                 "progress": 95,
-                "word_count": word_count
+                "word_count": word_count,
+                "topic": request.topic,
+                "document_type": request.document_type.value
             })
+
+            # Small delay for natural pacing between completion messages
+            await asyncio.sleep(1.5)
 
             await self._narrate(progress_callback, websocket, context={
                 "phase": "document_ready",
                 "progress": 100,
                 "word_count": word_count,
-                "section_count": section_count
+                "section_count": section_count,
+                "topic": request.topic,
+                "document_type": request.document_type.value
             })
 
             return {
@@ -923,24 +930,27 @@ Narration:"""
 
                 # Clean up the response
                 narration = response.strip().strip('"').strip()
-                return narration if narration else self._get_fallback_narration()
+                return narration if narration else self._get_fallback_narration(context_update)
             else:
                 # Fallback if Claude not available
-                return self._get_fallback_narration()
+                return self._get_fallback_narration(context_update)
         except Exception as e:
             logger.error(f"Error generating dynamic narration: {e}")
-            return self._get_fallback_narration()
+            return self._get_fallback_narration(context_update)
 
-    def _get_fallback_narration(self) -> str:
+    def _get_fallback_narration(self, context_override: Dict[str, Any] = None) -> str:
         """Generate intelligent, dynamic fallback narration when Claude is not available"""
         import random
         
-        phase = self._narration_context.get('phase', 'working')
-        topic = self._narration_context.get('topic', 'your document')
-        progress = self._narration_context.get('progress', 0)
-        current_section = self._narration_context.get('current_section', 'the document')
-        word_count = self._narration_context.get('word_count', 0)
-        doc_type = self._narration_context.get('document_type', 'document')
+        # Use override context if provided, otherwise use stored context
+        ctx = context_override if context_override else self._narration_context
+        
+        phase = ctx.get('phase', 'working')
+        topic = ctx.get('topic', 'your document')
+        progress = ctx.get('progress', 0)
+        current_section = ctx.get('current_section', 'the document')
+        word_count = ctx.get('word_count', 0)
+        doc_type = ctx.get('document_type', 'document')
         
         # Dynamic phrase components for natural variation
         acknowledgments = ["Got it", "Understood", "Absolutely", "Right away", "On it", "Let's begin", "Starting now"]
@@ -1110,19 +1120,21 @@ Narration:"""
             
         elif phase == 'writing_complete':
             completions = [
-                f"{random.choice(completion_phrases)}! {word_count} words on {topic}",
-                f"Your {doc_type} is ready - {word_count} words",
-                f"Finished writing{sir_phrase}. {word_count} words total",
-                f"All {word_count} words complete"
+                f"All done{sir_phrase}! {word_count} words on {topic}",
+                f"Finished! Your {doc_type} about {topic} is complete - {word_count} words",
+                f"Writing complete{sir_phrase}. {word_count} words on {topic}",
+                f"That's {word_count} words finished on {topic}",
+                f"Complete! Your essay on {topic} is ready - {word_count} words total"
             ]
             return random.choice(completions)
             
         elif phase == 'document_ready':
             ready_msgs = [
-                f"Your {doc_type} is open in Google Docs{sir_phrase}",
-                "Ready for your review in the browser",
-                f"All set - document's on your screen",
-                f"There you go{sir_phrase}, it's ready"
+                f"Your {doc_type} about {topic} is open in Google Docs{sir_phrase}",
+                f"It's ready for you in the browser - all {word_count} words",
+                f"Document's on your screen now{sir_phrase}",
+                f"There you go{sir_phrase} - {topic} essay ready to review",
+                f"All set - your {doc_type} on {topic} is open and ready"
             ]
             return random.choice(ready_msgs)
             
@@ -1144,19 +1156,36 @@ Narration:"""
         import time
         import asyncio
 
-        # CRITICAL: Wait if speech is currently in progress to prevent overlap
-        if self._speech_in_progress:
-            logger.info(f"[DOCUMENT WRITER] ⏸️  Speech in progress, skipping to prevent overlap")
-            return
+        # CRITICAL PHASES: Completion messages MUST always be heard
+        critical_phases = ['writing_complete', 'document_ready', 'acknowledging_request']
+        is_critical = context and context.get('phase') in critical_phases
         
-        # Wait for minimum gap after last speech completed
-        time_since_last_speech = time.time() - self._last_speech_end_time
-        if time_since_last_speech < 2.0 and self._last_speech_end_time > 0:
-            logger.info(f"[DOCUMENT WRITER] ⏸️  Too soon after last speech ({time_since_last_speech:.1f}s), skipping")
-            return
+        if is_critical:
+            logger.info(f"[DOCUMENT WRITER] 🎯 CRITICAL PHASE: {context.get('phase')} - Will announce regardless")
+            # Wait for any in-progress speech to finish for critical messages
+            if self._speech_in_progress:
+                logger.info(f"[DOCUMENT WRITER] ⏳ Waiting for speech to complete before critical announcement...")
+                max_wait = 10  # Wait up to 10 seconds
+                waited = 0
+                while self._speech_in_progress and waited < max_wait:
+                    await asyncio.sleep(0.5)
+                    waited += 0.5
+                logger.info(f"[DOCUMENT WRITER] ✅ Speech clear, proceeding with critical announcement")
+        else:
+            # REGULAR PHASES: Wait if speech is currently in progress to prevent overlap
+            if self._speech_in_progress:
+                logger.info(f"[DOCUMENT WRITER] ⏸️  Speech in progress, skipping to prevent overlap")
+                return
+            
+            # Wait for minimum gap after last speech completed
+            time_since_last_speech = time.time() - self._last_speech_end_time
+            if time_since_last_speech < 2.0 and self._last_speech_end_time > 0:
+                logger.info(f"[DOCUMENT WRITER] ⏸️  Too soon after last speech ({time_since_last_speech:.1f}s), skipping")
+                return
 
         # If intelligent narrator is available, use it
-        if self._intelligent_narrator and context:
+        if self._intelligent_narrator and context and not is_critical:
+            # Regular phases use intelligent narrator with significance checks
             phase = context.get('phase', 'unknown')
             
             # Update narrator context
@@ -1182,6 +1211,11 @@ Narration:"""
             except Exception as e:
                 logger.error(f"[INTELLIGENT NARRATOR] Error, using fallback: {e}")
                 message = await self._generate_dynamic_narration(context)
+        
+        # CRITICAL phases bypass intelligent narrator and use guaranteed messages
+        elif is_critical and context:
+            logger.info(f"[DOCUMENT WRITER] 🔥 Generating CRITICAL message for {context.get('phase')}")
+            message = await self._generate_dynamic_narration(context)
         
         # Fallback to old system if no intelligent narrator
         elif context and not message:
