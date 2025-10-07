@@ -833,6 +833,23 @@ class AdvancedAsyncPipeline:
         # Extensible through configuration
         intent_rules = {
             "monitoring": ["monitor", "watch", "track", "observe", "surveillance"],
+            "vision": [
+                "can you see",
+                "what do you see",
+                "what's on my screen",
+                "what is on my screen",
+                "show me my screen",
+                "are you able to see",
+                "do you see",
+                "describe my screen",
+                "analyze my screen",
+                "what can you see",
+                "look at my screen",
+                "tell me what you see",
+                "screen analysis",
+                "vision analysis",
+                "visual analysis",
+            ],
             "system_control": [
                 "open",
                 "launch",
@@ -1305,7 +1322,25 @@ class AdvancedAsyncPipeline:
             return
 
         # Route to appropriate handler based on intent
-        if context.intent == "conversation" and hasattr(self.jarvis, "claude_chatbot"):
+        if context.intent == "vision" and hasattr(
+            self.jarvis, "_handle_vision_command"
+        ):
+            try:
+                logger.info(f"[PIPELINE] Processing vision command: {context.text}")
+                response = await self.jarvis._handle_vision_command(context.text)
+                context.response = response
+                context.metadata["vision_response"] = response
+                logger.info(f"[PIPELINE] Vision response: {response[:100]}...")
+            except Exception as e:
+                logger.error(f"Error in vision command: {e}")
+                context.metadata["vision_error"] = str(e)
+                context.response = (
+                    f"I encountered an error analyzing your screen: {str(e)}"
+                )
+
+        elif context.intent == "conversation" and hasattr(
+            self.jarvis, "claude_chatbot"
+        ):
             try:
                 response = await self.jarvis.claude_chatbot.generate_response(
                     context.text
