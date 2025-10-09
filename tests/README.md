@@ -1,90 +1,246 @@
-# 🧪 JARVIS Test Suite
+# 🧪 JARVIS AI Agent Test Suite
 
-This directory contains all test files for the JARVIS AI Agent system, organized by component.
+Comprehensive test suite for the JARVIS AI Agent system, organized by test type and component.
 
 ## 📁 Test Organization
 
-### 🔧 `/backend/`
-Core backend functionality tests:
+### 🔬 `/unit/` - Unit Tests
+Fast, isolated tests for individual components.
+
+#### `/unit/backend/`
+Core backend functionality:
 - `test_imports.py` - Import verification
-- `test_jarvis_agent.py` - JARVIS agent tests
-- `test_jarvis_commands.py` - Command processing tests
-- `test_jarvis_fixed.py` - Bug fix verification
-- `test_jarvis_import.py` - Import system tests
-- `test_ml_enhanced_jarvis.py` - ML enhancement tests
-- `test_close_apps.py` - App closing functionality
-- `test_jarvis_close_apps.py` - JARVIS app control
+- `test_jarvis_agent.py` - JARVIS agent core
+- `test_jarvis_commands.py` - Command processing
+- `test_jarvis_import.py` - Import system
 - `test_microphone.py` - Microphone functionality
-- `verify_api_key.py` - API key verification utility
+- `test_close_apps.py` - App closing
+- `test_jarvis_close_apps.py` - JARVIS app control
+- `test_jarvis_fixed.py` - Bug fixes
+- `test_ml_enhanced_jarvis.py` - ML enhancements
 
-### 👁️ `/vision/`
-Vision system tests:
-- `test_vision_system.py` - Core vision functionality
-- `test_jarvis_vision_commands.py` - Vision command processing
-- `test_jarvis_vision_integration.py` - Vision integration tests
-- `test_enhanced_vision_commands.py` - Enhanced vision features
-- `test_claude_vision_debug.py` - Claude vision debugging
-- `test_enhanced_vision.py` - Enhanced vision system
-- `test_jarvis_vision_response.py` - Vision response testing
-- `demo_enhanced_vision.py` - Vision demonstration
+#### `/unit/vision/`
+Vision system components:
+- `test_vision_system.py` - Core vision
+- `test_jarvis_vision_commands.py` - Vision commands
+- `test_enhanced_vision_commands.py` - Enhanced features
+- `test_enhanced_vision.py` - Enhanced system
+- `test_jarvis_vision_response.py` - Vision responses
+- `test_claude_vision_debug.py` - Debug utilities
 
-### 🎤 `/voice/`
-Voice system tests (to be added)
+#### `/unit/voice/`
+Voice system components (to be added)
 
-### 🖥️ `/system_control/`
-System control tests (to be added)
+### 🔗 `/integration/` - Integration Tests
+Tests for component interactions and integrations.
 
-### 🔗 `/integration/`
-Full system integration tests:
-- `test_claude_math.py` - Claude math capabilities
+- `test_jarvis.py` - Full JARVIS system integration
 - `test_jarvis_voice.py` - Voice integration
-- `test_jarvis.py` - Full JARVIS system
-- `test_memory_api.py` - Memory API testing
+- `test_claude_math.py` - Claude math capabilities
+- `test_memory_api.py` - Memory API integration
+- `test_jarvis_vision_integration.py` - Vision integration
+- `test_vision_websocket.py` - Vision WebSocket integration
+- `test_jarvis_websocket.py` - JARVIS WebSocket integration
+- `test_vision_integration.py` - Vision system integration
 
-### 🎨 `/frontend/`
-Frontend tests (to be added)
+### ⚙️ `/functional/` - Functional Tests
+Feature-level tests validating complete workflows.
+
+#### `/functional/vision/`
+- `test_jarvis_vision.py` - Vision feature testing
+- `test_jarvis_vision_debug.py` - Vision debugging
+- `test_screen_lock.py` - Screen lock functionality
+- `test_screen_lock_complete.py` - Complete lock system
+- `test_vision_capture.py` - Vision capture
+- `test_advanced_vision_intelligence.py` - Advanced intelligence
+- `test_vision_edge_cases.py` - Edge case handling
+- `test_multi_window_phase1.py` - Multi-window capture
+- `test_f1_2_multi_window_capture.py` - Advanced multi-window
+- `test_phase2_intelligence.py` - Phase 2 features
+- `test_phase3_advanced.py` - Phase 3 features
+- `test_prd_complete.py` - PRD compliance
+- `test_concise_responses.py` - Response formatting
+
+#### `/functional/voice/`
+- `test_lock_unlock.py` - Voice lock/unlock
+- `test_jarvis_activation.py` - Voice activation
+
+#### `/functional/automation/`
+- `test_autonomy_activation.py` - Autonomous activation
+
+### 📊 `/performance/` - Performance Tests
+Performance, load, and resource tests.
+
+- `test_resource_management.py` - Resource management
+- `/performance/vision/test_performance.py` - Vision performance
+
+### 🎯 `/e2e/` - End-to-End Tests
+Complete system workflow tests.
+
+- `test_startup.py` - System startup
+- `test_full_system.py` - Full system workflow
+- `test_vision_functional.py` - Vision functional flow
+
+### 🛠️ `/utilities/` - Test Utilities
+Shared test utilities and helpers.
+
+- `safe_test_runner.py` - Safe test execution
+- `quick_test_runner.py` - Quick test runner
+- `test_utils.py` - Test utilities
+- `run_all_tests.py` - Test suite runner
+- `debug_test.py` - Debugging utilities
+- `verify_api_key.py` - API key verification
+- `demo_enhanced_vision.py` - Vision demo
+- `test_advanced_launcher.py` - Advanced launcher
+
+### 📦 `/fixtures/` - Test Fixtures
+Shared test data and fixtures.
 
 ## 🚀 Running Tests
 
 ### Run all tests:
 ```bash
-cd tests
-python -m pytest
+pytest
 ```
 
-### Run specific category:
+### Run by test type:
 ```bash
-python -m pytest backend/
-python -m pytest vision/
-python -m pytest integration/
+pytest tests/unit/              # Unit tests only
+pytest tests/integration/        # Integration tests only
+pytest tests/functional/         # Functional tests only
+pytest tests/performance/        # Performance tests only
+pytest tests/e2e/                # E2E tests only
 ```
 
-### Run individual test:
+### Run by component:
 ```bash
-python backend/test_jarvis_agent.py
-python vision/test_vision_system.py
+pytest -m vision                 # All vision tests
+pytest -m voice                  # All voice tests
+pytest -m backend                # All backend tests
 ```
 
-## 📝 Test Guidelines
+### Run by marker:
+```bash
+pytest -m unit                   # All unit tests
+pytest -m "not slow"             # Exclude slow tests
+pytest -m "api"                  # Tests requiring API keys
+pytest -m "permissions"          # Tests requiring permissions
+```
 
-When adding new tests:
-1. Place in the appropriate subdirectory
-2. Follow naming convention: `test_*.py`
-3. Include docstrings explaining test purpose
-4. Update import paths if needed
-5. Add to this README
+### Run specific test file:
+```bash
+pytest tests/unit/backend/test_jarvis_agent.py
+pytest tests/integration/test_jarvis.py
+```
+
+### Run with verbose output:
+```bash
+pytest -v                        # Verbose
+pytest -vv                       # Extra verbose
+pytest -s                        # Show print statements
+```
+
+## 🏷️ Test Markers
+
+Tests are automatically marked based on their location:
+
+- `@pytest.mark.unit` - Unit tests
+- `@pytest.mark.integration` - Integration tests
+- `@pytest.mark.functional` - Functional tests
+- `@pytest.mark.performance` - Performance tests
+- `@pytest.mark.e2e` - End-to-end tests
+- `@pytest.mark.vision` - Vision system tests
+- `@pytest.mark.voice` - Voice system tests
+- `@pytest.mark.backend` - Backend tests
+- `@pytest.mark.slow` - Slow-running tests
+- `@pytest.mark.api` - Tests requiring API keys
+- `@pytest.mark.permissions` - Tests requiring system permissions
+
+## 📝 Writing Tests
+
+### Test Guidelines
+
+1. **Location**: Place tests in the appropriate directory:
+   - Unit tests → `/unit/`
+   - Integration tests → `/integration/`
+   - Functional tests → `/functional/`
+   - Performance tests → `/performance/`
+   - E2E tests → `/e2e/`
+
+2. **Naming**: Follow naming conventions:
+   - Files: `test_*.py` or `*_test.py`
+   - Classes: `Test*` or `*Tests`
+   - Functions: `test_*`
+
+3. **Documentation**: Include clear docstrings:
+   ```python
+   def test_jarvis_activation():
+       """Test JARVIS voice activation workflow."""
+       # Test implementation
+   ```
+
+4. **Markers**: Add markers for special requirements:
+   ```python
+   @pytest.mark.api
+   @pytest.mark.slow
+   def test_api_integration():
+       """Test requiring API key and longer runtime."""
+       pass
+   ```
+
+5. **Fixtures**: Use shared fixtures from `conftest.py`:
+   ```python
+   def test_with_fixture(project_root_path, mock_env_vars):
+       """Test using shared fixtures."""
+       pass
+   ```
+
+## ⚙️ Configuration
+
+Test configuration is in `pytest.ini` at the project root.
+
+Shared fixtures and hooks are in `tests/conftest.py`.
 
 ## ⚠️ Important Notes
 
-- Some tests require API keys (check `.env` configuration)
-- Vision tests require screen recording permissions on macOS
-- Voice tests require microphone access
-- Integration tests may take longer to run
+- **API Keys**: Some tests require `ANTHROPIC_API_KEY` in `.env`
+- **Permissions**: Vision tests need screen recording permission on macOS
+- **Microphone**: Voice tests need microphone access
+- **Performance**: Performance/E2E tests may take longer to run
+- **CI**: Some tests are marked `skip_ci` for CI environments
 
-## 🔍 Debugging
+## 🔍 Debugging Failed Tests
 
-For test failures:
-1. Check required permissions (screen, microphone)
-2. Verify API keys are set
-3. Ensure dependencies are installed
-4. Run individual tests for detailed output
+1. **Run with verbose output**: `pytest -vv`
+2. **Show print statements**: `pytest -s`
+3. **Run specific test**: `pytest path/to/test_file.py::test_name`
+4. **Check permissions**: Verify screen/microphone access
+5. **Verify API keys**: Ensure `.env` is configured
+6. **Check dependencies**: Run `pip install -r requirements.txt`
+7. **Review logs**: Check test output for error details
+
+## 📊 Test Coverage
+
+To run tests with coverage reporting:
+
+```bash
+pytest --cov=backend --cov-report=html
+```
+
+View coverage report: `open htmlcov/index.html`
+
+## 🤝 Contributing Tests
+
+When adding new tests:
+
+1. Follow the organization structure
+2. Add appropriate markers
+3. Update this README
+4. Ensure tests are isolated and repeatable
+5. Add fixtures for shared test data
+6. Document test requirements
+
+---
+
+**Last Updated**: 2025-10-08
+**Test Framework**: pytest 6.0+
