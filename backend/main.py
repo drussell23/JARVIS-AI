@@ -662,6 +662,64 @@ async def lifespan(app: FastAPI):
                     await vision_command_handler.initialize_intelligence(api_key)
                     logger.info("✅ Pure vision intelligence initialized")
 
+                # ========================================================================
+                # Initialize Unified Context Bridge (Follow-Up + Context Intelligence)
+                # ========================================================================
+                try:
+                    from backend.core.unified_context_bridge import (
+                        initialize_context_bridge,
+                        ContextBridgeConfig,
+                    )
+
+                    logger.info("🌉 Initializing Unified Context Bridge...")
+
+                    # Initialize bridge with dynamic configuration from environment
+                    bridge = await initialize_context_bridge()
+                    app.state.context_bridge = bridge
+
+                    # Integrate with PureVisionIntelligence
+                    if hasattr(vision_command_handler, 'vision_intelligence'):
+                        bridge.integrate_vision_intelligence(
+                            vision_command_handler.vision_intelligence
+                        )
+                        logger.info("   ✅ Vision Intelligence integrated with bridge")
+
+                    # Integrate with AsyncPipeline (if available)
+                    jarvis_api = voice.get("jarvis_api")
+                    if jarvis_api and hasattr(jarvis_api, 'async_pipeline'):
+                        bridge.integrate_async_pipeline(jarvis_api.async_pipeline)
+                        logger.info("   ✅ AsyncPipeline integrated with bridge")
+
+                    # Integrate with ContextAwareHandler (if available)
+                    try:
+                        from backend.context_intelligence.handlers.context_aware_handler import (
+                            ContextAwareCommandHandler
+                        )
+                        # Get or create context aware handler
+                        if not hasattr(app.state, 'context_aware_handler'):
+                            app.state.context_aware_handler = ContextAwareCommandHandler(
+                                jarvis_instance=jarvis_api
+                            )
+
+                        bridge.integrate_context_aware_handler(app.state.context_aware_handler)
+                        logger.info("   ✅ Context-Aware Handler integrated with bridge")
+                    except ImportError:
+                        logger.debug("   Context-aware handler not available")
+
+                    # Log bridge configuration
+                    bridge_stats = bridge.get_stats()
+                    logger.info("✅ Unified Context Bridge initialized:")
+                    logger.info(f"   - Backend: {bridge_stats['backend']}")
+                    logger.info(f"   - Max contexts: {bridge_stats['max_contexts']}")
+                    logger.info(f"   - Follow-up enabled: {bridge_stats['follow_up_enabled']}")
+                    logger.info(f"   - Context-aware enabled: {bridge_stats['context_aware_enabled']}")
+                    logger.info("   - Shared context store active across all systems")
+
+                except ImportError as e:
+                    logger.warning(f"   ⚠️ Context bridge not available: {e}")
+                except Exception as e:
+                    logger.error(f"   ❌ Context bridge initialization failed: {e}", exc_info=True)
+
                 # Log proactive monitoring configuration
                 proactive_config = app.state.vision_analyzer.get_proactive_config()
                 if proactive_config["proactive_enabled"]:
@@ -920,6 +978,15 @@ async def lifespan(app: FastAPI):
         logger.info("✅ Code state saved for next startup")
     except Exception as e:
         logger.error(f"Failed to save code state: {e}")
+
+    # Shutdown Unified Context Bridge
+    if hasattr(app.state, "context_bridge"):
+        try:
+            from backend.core.unified_context_bridge import shutdown_context_bridge
+            await shutdown_context_bridge()
+            logger.info("✅ Unified Context Bridge stopped")
+        except Exception as e:
+            logger.error(f"Failed to stop Context Bridge: {e}")
 
     # Stop Voice Unlock system
     if hasattr(app.state, "voice_unlock_system") and voice_unlock.get(

@@ -171,10 +171,23 @@ class PureVisionIntelligence:
     Now with optional multi-space awareness for workspace-wide intelligence.
     """
 
-    def __init__(self, claude_client, enable_multi_space: bool = True):
+    def __init__(self, claude_client, enable_multi_space: bool = True, context_store=None):
         self.claude = claude_client
         self.context = ConversationContext()
         self.screen_cache = {}  # Hash -> understanding
+
+        # ═══════════════════════════════════════════════════════════════
+        # Follow-Up Context Tracking
+        # ═══════════════════════════════════════════════════════════════
+        self.context_store = context_store
+        if self.context_store is None:
+            try:
+                from backend.core.context.memory_store import InMemoryContextStore
+                self.context_store = InMemoryContextStore(max_size=50)
+                logger.info("Initialized in-memory context store for follow-up tracking")
+            except Exception as e:
+                logger.warning(f"Could not initialize context store: {e}")
+                self.context_store = None
 
         # Multi-space components (if available and enabled)
         self.multi_space_enabled = enable_multi_space and MULTI_SPACE_AVAILABLE
@@ -240,6 +253,119 @@ class PureVisionIntelligence:
                 self.multi_space_enabled = False
         else:
             logger.info("Multi-space awareness disabled or unavailable")
+
+    # ═══════════════════════════════════════════════════════════════
+    # Follow-Up Context Tracking Methods
+    # ═══════════════════════════════════════════════════════════════
+
+    async def track_pending_question(
+        self,
+        question_text: str,
+        window_type: str,
+        window_id: str,
+        space_id: str,
+        snapshot_id: str,
+        summary: str,
+        ocr_text: str | None = None,
+        ttl_seconds: int = 120,
+    ) -> str | None:
+        """
+        Track a pending question after JARVIS asks the user something.
+        Returns context ID if successful, None if store unavailable.
+        """
+        if not self.context_store:
+            logger.warning("Cannot track pending question: context store not available")
+            return None
+
+        try:
+            from backend.core.models.context_envelope import (
+                ContextEnvelope,
+                ContextMetadata,
+                ContextCategory,
+                ContextPriority,
+                VisionContextPayload,
+            )
+
+            # Create vision context envelope
+            metadata = ContextMetadata(
+                category=ContextCategory.VISION,
+                priority=ContextPriority.HIGH,
+                source="pure_vision_intelligence",
+                tags=(window_type, "pending_question"),
+            )
+
+            payload = VisionContextPayload(
+                window_type=window_type,
+                window_id=window_id,
+                space_id=space_id,
+                snapshot_id=snapshot_id,
+                summary=summary,
+                ocr_text=ocr_text,
+            )
+
+            envelope = ContextEnvelope(
+                metadata=metadata,
+                payload=payload,
+                ttl_seconds=ttl_seconds,
+                decay_rate=0.01,  # 1% per second
+            )
+
+            context_id = await self.context_store.add(envelope)
+            logger.info(
+                f"[FOLLOW-UP] Tracked pending question: '{question_text}' "
+                f"(context_id={context_id}, window={window_type})"
+            )
+
+            # Telemetry: Track pending context creation
+            try:
+                from backend.core.telemetry.events import get_telemetry
+                telemetry = get_telemetry()
+                await telemetry.track_event(
+                    "follow_up.pending_created",
+                    {
+                        "context_id": context_id,
+                        "window_type": window_type,
+                        "question_text": question_text[:100],
+                        "ttl_seconds": ttl_seconds,
+                        "has_ocr_text": ocr_text is not None,
+                    }
+                )
+            except:
+                pass  # Telemetry is optional
+
+            return context_id
+
+        except Exception as e:
+            logger.error(f"Failed to track pending question: {e}", exc_info=True)
+            return None
+
+    async def get_active_pending(self):
+        """Retrieve the most recent valid pending context."""
+        if not self.context_store:
+            return None
+
+        try:
+            # Clear expired contexts first
+            await self.context_store.clear_expired()
+
+            # Get most relevant
+            contexts = await self.context_store.get_most_relevant(limit=1)
+            return contexts[0] if contexts else None
+
+        except Exception as e:
+            logger.error(f"Failed to get active pending context: {e}", exc_info=True)
+            return None
+
+    async def clear_all_pending(self):
+        """Clear all pending contexts."""
+        if self.context_store:
+            try:
+                await self.context_store.clear_all()
+                logger.info("[FOLLOW-UP] Cleared all pending contexts")
+            except Exception as e:
+                logger.error(f"Failed to clear pending contexts: {e}", exc_info=True)
+
+    # ═══════════════════════════════════════════════════════════════
 
     async def understand_and_respond(self, screenshot: Any, user_query: str) -> str:
         """

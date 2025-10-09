@@ -173,7 +173,18 @@ core
 core.*
 # Exception: Allow backend/core directory and its contents
 !backend/core/
-!backend/core/*.py
+!backend/core/**
+!backend/core/**/*
+# But still ignore build artifacts, cache, and model files in backend/core/
+backend/core/__pycache__/
+backend/core/**/__pycache__/
+backend/core/build/
+backend/core/**/*.so
+backend/core/**/*.dylib
+backend/core/**/*.pyc
+backend/core/models/*.pth
+backend/core/models/*.bin
+backend/core/models/*.mlpackage/
 
 # Benchmark results
 benchmark_results/
