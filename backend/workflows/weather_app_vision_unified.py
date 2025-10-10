@@ -6,7 +6,7 @@ Simplified integration with the unified weather system
 import logging
 from typing import Dict, Any
 
-from system_control.unified_vision_weather import get_unified_weather_system
+from backend.system_control.unified_vision_weather import get_unified_weather_system
 
 logger = logging.getLogger(__name__)
 

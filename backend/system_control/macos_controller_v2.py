@@ -18,8 +18,8 @@ from enum import Enum
 import re
 
 # EVENT BUS INTEGRATION
-from core.event_bus import Event, EventPriority, get_event_bus
-from core.event_types import (
+from backend.core.event_bus import Event, EventPriority, get_event_bus
+from backend.core.event_types import (
     EventTypes, EventBuilder, ControlEvents, SystemEvents,
     subscribe_to, subscribe_to_pattern
 )

@@ -159,16 +159,24 @@ async def handle_terminal_follow_up(
     extras: dict[str, Any],
 ) -> str:
     """
-    Handle terminal window follow-up with deep analysis.
+    Handle terminal window follow-up with deep analysis and command intelligence.
 
     This is called when user asks follow-up questions like:
     - "what does it say?"
     - "are there any errors?"
     - "tell me more"
     - "yes" (in response to JARVIS offering to analyze)
+
+    Now enhanced with:
+    - Command safety classification
+    - Intelligent fix suggestions
+    - Safety warnings for destructive commands
     """
-    from backend.vision.adapters import ocr_text_from_snapshot, extract_errors, suggest_fix
+    from backend.vision.handlers.terminal_command_intelligence import get_terminal_intelligence
     import asyncio
+
+    # Get terminal intelligence
+    terminal_intel = get_terminal_intelligence()
 
     # Get OCR text (cached or fresh)
     ocr_text = payload.ocr_text
@@ -213,19 +221,27 @@ async def handle_terminal_follow_up(
     if not ocr_text:
         return "I couldn't read your Terminal text. The window might be obscured or the text might be too small. Could you bring it to the foreground?"
 
-    # Analyze for errors
-    errors = extract_errors(ocr_text)
+    # Analyze terminal context with new intelligence
+    context = await terminal_intel.analyze_terminal_context(ocr_text)
 
-    if errors:
-        # Format error report with actionable details
-        error_report = "\n".join(f"• {err}" for err in errors[:3])  # Top 3 errors
-        suggestions = [suggest_fix(err) for err in errors[:3]]
-        suggestion_text = "\n".join(f"  → {s}" for s in suggestions if s)
+    if context.errors:
+        # Get intelligent fix suggestions with safety classification
+        suggestions = await terminal_intel.suggest_fix_commands(context)
+
+        # Format error report
+        error_report = "\n".join(f"• {err}" for err in context.errors[:3])  # Top 3 errors
 
         response = f"**Terminal Analysis:**\n\nI found these issues:\n{error_report}"
 
-        if suggestion_text:
-            response += f"\n\n**Recommended fixes:**\n{suggestion_text}"
+        if suggestions:
+            response += "\n\n**Recommended fixes:**\n\n"
+
+            for i, suggestion in enumerate(suggestions[:3], 1):  # Top 3 suggestions
+                formatted = await terminal_intel.format_suggestion_for_user(
+                    suggestion,
+                    include_safety_warning=True,
+                )
+                response += f"\n{i}. {formatted}\n"
 
         response += "\n\nWould you like me to help you resolve any of these?"
         return response

@@ -19,7 +19,7 @@ from .macos_controller import MacOSController, CommandCategory, SafetyLevel
 from .dynamic_app_controller import get_dynamic_app_controller
 from .fast_app_launcher import get_fast_app_launcher
 from .vision_action_handler import get_vision_action_handler
-from workflows.weather_app_vision_unified import execute_weather_app_workflow
+from backend.workflows.weather_app_vision_unified import execute_weather_app_workflow
 
 logger = logging.getLogger(__name__)
 

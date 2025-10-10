@@ -16,7 +16,7 @@ from enum import Enum
 import re
 
 # Import async pipeline for non-blocking operations
-from core.async_pipeline import get_async_pipeline, AdvancedAsyncPipeline
+from backend.core.async_pipeline import get_async_pipeline, AdvancedAsyncPipeline
 
 logger = logging.getLogger(__name__)
 
