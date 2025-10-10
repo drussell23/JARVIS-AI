@@ -435,16 +435,35 @@ class ContextIntegrationBridge:
             logger.debug(f"[CONTEXT-BRIDGE] Normalized query: '{query}' → '{query_lower}'")
 
         # Check for follow-up queries requesting more detail
+        # This includes affirmative responses to "Would you like me to help/explain?"
         detail_keywords = [
             "explain in detail", "more detail", "tell me more", "what's happening",
             "explain what's happening", "what is happening", "explain that",
-            "give me details", "explain it", "what's going on", "what is going on"
+            "give me details", "explain it", "what's going on", "what is going on",
+            # Affirmative continuations
+            "yes", "yeah", "yep", "sure", "please", "go ahead",
+            # Natural continuations that reference previous context
+            "explain", "what's in", "what is in", "what about", "help me with"
         ]
-        if any(kw in query_lower for kw in detail_keywords):
-            # Check if we have recent conversational context (within last 2 minutes)
-            if self._conversation_timestamp:
-                time_since = datetime.now() - self._conversation_timestamp
-                if time_since.total_seconds() < 120:  # 2 minutes
+
+        # Check if we have recent conversational context (within last 2 minutes)
+        if self._conversation_timestamp:
+            time_since = datetime.now() - self._conversation_timestamp
+            if time_since.total_seconds() < 120:  # 2 minutes
+                # Check for follow-up patterns
+                is_followup = False
+
+                # Direct match on keywords
+                if any(kw in query_lower for kw in detail_keywords):
+                    is_followup = True
+
+                # Detect affirmative + context reference
+                # E.g., "yes, explain what's happening" or "yes jarvis, can you explain"
+                if any(affirm in query_lower for affirm in ["yes", "yeah", "sure", "please"]):
+                    if any(ctx in query_lower for ctx in ["explain", "tell me", "what", "help"]):
+                        is_followup = True
+
+                if is_followup:
                     logger.info(f"[CONTEXT-BRIDGE] Detected follow-up query: '{query_lower}'")
                     return await self._handle_detail_followup(query_lower, current_space_id)
 

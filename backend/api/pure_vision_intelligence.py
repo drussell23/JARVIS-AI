@@ -518,7 +518,7 @@ class PureVisionIntelligence:
         # Feed understanding back to Context Intelligence Bridge
         # This updates the context graph with what Claude observed
         # ═══════════════════════════════════════════════════════════════
-        await self._update_context_bridge(understanding, user_query)
+        await self._update_context_bridge(understanding, user_query, natural_response)
 
         # ═══════════════════════════════════════════════════════════════
         # Track pending follow-up questions when JARVIS mentions seeing
@@ -530,16 +530,31 @@ class PureVisionIntelligence:
 
         return natural_response
 
-    async def _update_context_bridge(self, understanding: Dict[str, Any], user_query: str):
+    async def _update_context_bridge(self, understanding: Dict[str, Any], user_query: str, response: str = ""):
         """
         Feed Claude's understanding back to Context Intelligence Bridge.
         This creates a feedback loop: Vision sees → Context stores → Vision uses context.
+        Also saves conversational context for multi-turn conversations.
         """
         if not self.context_bridge:
             return
 
         try:
-            # Extract what Claude observed
+            # ═══════════════════════════════════════════════════════════════
+            # Save conversational context for follow-up queries
+            # ═══════════════════════════════════════════════════════════════
+            if response and ("would you like" in response.lower() or "can i help" in response.lower()):
+                # JARVIS asked a follow-up question, save context for continuation
+                self.context_bridge._save_conversation_context(
+                    query=user_query,
+                    response=response,
+                    current_space_id=understanding.get("current_space_id")
+                )
+                logger.info("[VISION→CONTEXT] Saved conversational context for follow-up")
+
+            # ═══════════════════════════════════════════════════════════════
+            # Extract what Claude observed and update context graph
+            # ═══════════════════════════════════════════════════════════════
             observed_apps = understanding.get("observed_applications", [])
             screen_text = understanding.get("screen_text", "")
             detected_errors = understanding.get("detected_errors", [])
