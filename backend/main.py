@@ -663,62 +663,49 @@ async def lifespan(app: FastAPI):
                     logger.info("✅ Pure vision intelligence initialized")
 
                 # ========================================================================
-                # Initialize Unified Context Bridge (Follow-Up + Context Intelligence)
+                # Initialize Context Integration Bridge (Priority 1-3 Features)
+                # Multi-Space Context Tracking + Implicit Reference + Cross-Space Intelligence
                 # ========================================================================
                 try:
-                    from backend.core.unified_context_bridge import (
-                        initialize_context_bridge,
-                        ContextBridgeConfig,
-                    )
+                    from backend.core.context.context_integration_bridge import initialize_integration_bridge
 
-                    logger.info("🌉 Initializing Unified Context Bridge...")
+                    logger.info("🧠 Initializing Context Intelligence System...")
+                    logger.info("   Priority 1: Multi-Space Context Tracking")
+                    logger.info("   Priority 2: 'What Does It Say?' Understanding")
+                    logger.info("   Priority 3: Cross-Space Intelligence")
 
-                    # Initialize bridge with dynamic configuration from environment
-                    bridge = await initialize_context_bridge()
+                    # Initialize bridge with auto-start
+                    bridge = await initialize_integration_bridge(auto_start=True)
                     app.state.context_bridge = bridge
 
-                    # Integrate with PureVisionIntelligence
+                    # Integrate with PureVisionIntelligence for vision updates
                     if hasattr(vision_command_handler, 'vision_intelligence'):
-                        bridge.integrate_vision_intelligence(
-                            vision_command_handler.vision_intelligence
-                        )
-                        logger.info("   ✅ Vision Intelligence integrated with bridge")
+                        logger.info("   🔗 Connecting Vision Intelligence to Context Bridge...")
+                        # Store bridge reference in vision intelligence so it can feed updates
+                        vision_command_handler.vision_intelligence.context_bridge = bridge
+                        logger.info("   ✅ Vision Intelligence connected to Context Bridge")
 
-                    # Integrate with AsyncPipeline (if available)
+                    # Integrate with AsyncPipeline for command processing
                     jarvis_api = voice.get("jarvis_api")
                     if jarvis_api and hasattr(jarvis_api, 'async_pipeline'):
-                        bridge.integrate_async_pipeline(jarvis_api.async_pipeline)
-                        logger.info("   ✅ AsyncPipeline integrated with bridge")
+                        jarvis_api.async_pipeline.context_bridge = bridge
+                        logger.info("   ✅ AsyncPipeline connected to Context Bridge")
 
-                    # Integrate with ContextAwareHandler (if available)
-                    try:
-                        from backend.context_intelligence.handlers.context_aware_handler import (
-                            ContextAwareCommandHandler
-                        )
-                        # Get or create context aware handler
-                        if not hasattr(app.state, 'context_aware_handler'):
-                            app.state.context_aware_handler = ContextAwareCommandHandler(
-                                jarvis_instance=jarvis_api
-                            )
-
-                        bridge.integrate_context_aware_handler(app.state.context_aware_handler)
-                        logger.info("   ✅ Context-Aware Handler integrated with bridge")
-                    except ImportError:
-                        logger.debug("   Context-aware handler not available")
-
-                    # Log bridge configuration
-                    bridge_stats = bridge.get_stats()
-                    logger.info("✅ Unified Context Bridge initialized:")
-                    logger.info(f"   - Backend: {bridge_stats['backend']}")
-                    logger.info(f"   - Max contexts: {bridge_stats['max_contexts']}")
-                    logger.info(f"   - Follow-up enabled: {bridge_stats['follow_up_enabled']}")
-                    logger.info(f"   - Context-aware enabled: {bridge_stats['context_aware_enabled']}")
-                    logger.info("   - Shared context store active across all systems")
+                    # Get intelligence summary
+                    summary = bridge.get_workspace_intelligence_summary()
+                    logger.info("✅ Context Intelligence System initialized:")
+                    logger.info(f"   • Multi-Space Context Tracking: Active ({summary.get('total_spaces', 0)} spaces)")
+                    logger.info(f"   • Implicit Reference Resolution: Enabled")
+                    logger.info(f"   • Cross-Space Intelligence: Enabled")
+                    logger.info(f"   • Natural Language Queries: 'what does it say?', 'what am I working on?'")
+                    logger.info(f"   • Workspace Synthesis: Combining context from all spaces")
 
                 except ImportError as e:
-                    logger.warning(f"   ⚠️ Context bridge not available: {e}")
+                    logger.warning(f"   ⚠️ Context Intelligence System not available: {e}")
+                    app.state.context_bridge = None
                 except Exception as e:
-                    logger.error(f"   ❌ Context bridge initialization failed: {e}", exc_info=True)
+                    logger.error(f"   ❌ Context Intelligence initialization failed: {e}", exc_info=True)
+                    app.state.context_bridge = None
 
                 # Log proactive monitoring configuration
                 proactive_config = app.state.vision_analyzer.get_proactive_config()
@@ -1421,6 +1408,71 @@ def mount_routers():
         logger.info("✅ Self-healing API mounted")
     except ImportError:
         logger.debug("Self-healing API not available")
+
+    # Context Intelligence API (Priority 1-3 features)
+    if hasattr(app.state, 'context_bridge') and app.state.context_bridge:
+        from fastapi import Request
+        from pydantic import BaseModel
+
+        class ContextQueryRequest(BaseModel):
+            query: str
+            current_space_id: Optional[int] = None
+
+        @app.post("/context/query", tags=["context"])
+        async def query_context(request: ContextQueryRequest):
+            """
+            Natural language query interface for workspace context.
+
+            Examples:
+            - "what does it say?" → Find and explain most recent error
+            - "what's the error?" → Find most recent error
+            - "what am I working on?" → Synthesize workspace activity
+            - "what's related?" → Show cross-space relationships
+            """
+            try:
+                response = await app.state.context_bridge.handle_user_query(
+                    request.query,
+                    request.current_space_id
+                )
+                return {"success": True, "response": response}
+            except Exception as e:
+                logger.error(f"Context query failed: {e}")
+                return {"success": False, "error": str(e)}
+
+        @app.get("/context/summary", tags=["context"])
+        async def get_context_summary():
+            """Get comprehensive workspace intelligence summary"""
+            try:
+                summary = app.state.context_bridge.get_workspace_intelligence_summary()
+                return {"success": True, "summary": summary}
+            except Exception as e:
+                logger.error(f"Context summary failed: {e}")
+                return {"success": False, "error": str(e)}
+
+        @app.post("/context/ocr_update", tags=["context"])
+        async def process_ocr_update(
+            space_id: int,
+            app_name: str,
+            ocr_text: str,
+            screenshot_path: Optional[str] = None
+        ):
+            """Process OCR update from vision system"""
+            try:
+                await app.state.context_bridge.process_ocr_update(
+                    space_id=space_id,
+                    app_name=app_name,
+                    ocr_text=ocr_text,
+                    screenshot_path=screenshot_path
+                )
+                return {"success": True}
+            except Exception as e:
+                logger.error(f"OCR update failed: {e}")
+                return {"success": False, "error": str(e)}
+
+        logger.info("✅ Context Intelligence API mounted at /context")
+        logger.info("   • POST /context/query - Natural language queries")
+        logger.info("   • GET  /context/summary - Workspace intelligence summary")
+        logger.info("   • POST /context/ocr_update - Vision system integration")
 
     # Unified WebSocket API - replaces individual WebSocket endpoints
     try:

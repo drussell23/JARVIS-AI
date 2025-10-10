@@ -416,6 +416,11 @@ class AdvancedAsyncPipeline:
         self.router = None
         self._follow_up_enabled = self.config.get("follow_up_enabled", True)
 
+        # ═══════════════════════════════════════════════════════════════
+        # Context Intelligence System (Priority 1-3)
+        # ═══════════════════════════════════════════════════════════════
+        self.context_bridge = None  # Will be set by main.py if available
+
         if self._follow_up_enabled:
             try:
                 self._init_followup_system()
@@ -1228,8 +1233,53 @@ class AdvancedAsyncPipeline:
             logger.error(f"[FOLLOW-UP] Error in follow-up detection: {e}", exc_info=True)
             # Fall through to normal processing
 
-        # Check for lock/unlock commands first - these can work without JARVIS
+        # ═══════════════════════════════════════════════════════════════
+        # CONTEXT INTELLIGENCE QUERIES (Priority 1-3)
+        # Handle natural language queries: "what does it say?", "what am I working on?"
+        # ═══════════════════════════════════════════════════════════════
         text_lower = context.text.lower()
+        context_query_patterns = [
+            "what does it say", "what's the error", "what is the error",
+            "explain that", "explain this", "what's that", "what is that",
+            "what am i working on", "what's happening", "what is happening",
+            "what's related", "what is related", "what's connected",
+            "can you see", "do you see", "are you seeing", "what do you see"
+        ]
+
+        if any(pattern in text_lower for pattern in context_query_patterns):
+            try:
+                # Get context bridge - it's set directly on self by main.py
+                context_bridge = self.context_bridge
+
+                # Fallback: try to get from jarvis instance
+                if not context_bridge and hasattr(self, 'jarvis') and self.jarvis:
+                    if hasattr(self.jarvis, 'context_bridge'):
+                        context_bridge = self.jarvis.context_bridge
+                    elif hasattr(self.jarvis, 'state') and hasattr(self.jarvis.state, 'context_bridge'):
+                        context_bridge = self.jarvis.state.context_bridge
+
+                if context_bridge:
+                    logger.info(f"[CONTEXT-INTEL] Processing workspace query: {context.text}")
+
+                    # Query the context intelligence system
+                    response = await context_bridge.handle_user_query(
+                        context.text,
+                        current_space_id=context.metadata.get('current_space_id')
+                    )
+
+                    if response:
+                        context.response = response
+                        context.metadata["handled_by"] = "context_intelligence"
+                        logger.info(f"[CONTEXT-INTEL] Query resolved: {response[:100]}...")
+                        return
+                else:
+                    logger.debug("[CONTEXT-INTEL] Context bridge not available")
+
+            except Exception as e:
+                logger.error(f"[CONTEXT-INTEL] Error processing context query: {e}", exc_info=True)
+                # Fall through to normal processing
+
+        # Check for lock/unlock commands first - these can work without JARVIS
         if any(
             phrase in text_lower
             for phrase in [
