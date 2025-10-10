@@ -515,6 +515,12 @@ class PureVisionIntelligence:
         self.context.workflow_state = self.context.detect_workflow(understanding)
 
         # ═══════════════════════════════════════════════════════════════
+        # Feed understanding back to Context Intelligence Bridge
+        # This updates the context graph with what Claude observed
+        # ═══════════════════════════════════════════════════════════════
+        await self._update_context_bridge(understanding, user_query)
+
+        # ═══════════════════════════════════════════════════════════════
         # Track pending follow-up questions when JARVIS mentions seeing
         # a terminal/window but hasn't provided detailed analysis yet
         # ═══════════════════════════════════════════════════════════════
@@ -523,6 +529,64 @@ class PureVisionIntelligence:
         )
 
         return natural_response
+
+    async def _update_context_bridge(self, understanding: Dict[str, Any], user_query: str):
+        """
+        Feed Claude's understanding back to Context Intelligence Bridge.
+        This creates a feedback loop: Vision sees → Context stores → Vision uses context.
+        """
+        if not self.context_bridge:
+            return
+
+        try:
+            # Extract what Claude observed
+            observed_apps = understanding.get("observed_applications", [])
+            screen_text = understanding.get("screen_text", "")
+            detected_errors = understanding.get("detected_errors", [])
+            current_space = understanding.get("current_space_id", 1)
+
+            # If Claude saw a terminal, extract terminal-specific data
+            for app in observed_apps:
+                app_name = app.get("name", "")
+                app_type = app.get("type", "").lower()
+
+                if "terminal" in app_name.lower() or app_type == "terminal":
+                    # Extract terminal context from what Claude saw
+                    terminal_text = app.get("content", screen_text)
+
+                    # Use TerminalCommandIntelligence to analyze the text
+                    if self.context_bridge.terminal_intelligence:
+                        term_ctx = await self.context_bridge.terminal_intelligence.analyze_terminal_context(terminal_text)
+
+                        # Update the context graph with terminal data
+                        space_id = app.get("space_id", current_space)
+                        self.context_bridge.context_graph.update_terminal_context(
+                            space_id=space_id,
+                            app_name=app_name,
+                            command=term_ctx.last_command,
+                            output=term_ctx.command_output,
+                            errors=term_ctx.errors,
+                            working_dir=term_ctx.current_directory
+                        )
+
+                        logger.info(f"[VISION→CONTEXT] Updated terminal context for {app_name} in Space {space_id}")
+
+            # Update based on detected errors (even if not from terminal)
+            if detected_errors:
+                for error in detected_errors:
+                    error_text = error if isinstance(error, str) else error.get("text", "")
+                    app_name = error.get("app", "Unknown") if isinstance(error, dict) else "Unknown"
+
+                    # Try to update terminal context if error looks terminal-related
+                    if any(keyword in error_text.lower() for keyword in ["error:", "exception:", "traceback", "failed"]):
+                        self.context_bridge.context_graph.update_terminal_context(
+                            space_id=current_space,
+                            app_name=app_name,
+                            errors=[error_text]
+                        )
+
+        except Exception as e:
+            logger.error(f"[VISION→CONTEXT] Error updating context bridge: {e}", exc_info=True)
 
     async def _get_structured_context(self, user_query: str) -> Optional[Dict[str, Any]]:
         """
@@ -652,20 +716,25 @@ Current Workflow: {self.context.workflow_state or 'unknown'}
 Instructions for Natural Response:
 1. Look at the screen and understand what you see
 2. COMBINE visual analysis with the structured workspace context above
-3. If errors are detected in context, mention them proactively
-4. Answer ONLY what was asked - be concise and direct
-5. Use exact values when visible but keep context minimal
-6. Address the user as "Sir" naturally
-7. {emotional_guidance}
-8. Keep response to 1-2 sentences unless more detail specifically requested
-9. Optionally add ONE brief, helpful insight if truly relevant
-10. Never describe the entire screen unless asked
+3. **If you see a Terminal window, READ what's on the screen:**
+   - Look for error messages (lines starting with "Error:", "Traceback", etc.)
+   - Note the last command that was run (look for $ or % prompts)
+   - Identify the working directory if visible
+   - Be SPECIFIC about what you see - quote the exact error text
+4. If errors are detected (in structured context OR visible on screen), mention them proactively
+5. Answer ONLY what was asked - be concise and direct
+6. Use exact values when visible but keep context minimal
+7. Address the user as "Sir" naturally
+8. {emotional_guidance}
+9. Keep response to 1-2 sentences unless more detail specifically requested
+10. Optionally add ONE brief, helpful insight if truly relevant
+11. Never describe the entire screen unless asked
 
 IMPORTANT: Be conversational but CONCISE. Focus on answering the specific question.
-Example: "I can see Terminal in Space 2 with an error: ModuleNotFoundError, Sir. Would you like me to explain?"
-NOT: Long descriptions of everything on screen.
+Example Good Response: "Yes, I can see Terminal in Space 2, Sir. I notice there's a ModuleNotFoundError when running `python app.py`. Would you like me to explain?"
+Example Bad Response: "Yes, I can see your terminal is open on Desktop 2."
 
-Remember: Natural, brief, and directly answering what was asked - enhanced with workspace intelligence.
+Remember: Natural, brief, directly answering what was asked, and SPECIFIC about errors/commands you see.
 """
         return prompt
 
