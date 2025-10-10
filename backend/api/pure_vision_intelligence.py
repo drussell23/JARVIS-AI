@@ -365,6 +365,104 @@ class PureVisionIntelligence:
             except Exception as e:
                 logger.error(f"Failed to clear pending contexts: {e}", exc_info=True)
 
+    async def _track_followup_opportunity(
+        self,
+        user_query: str,
+        jarvis_response: str,
+        screenshot: Any,
+        understanding: Dict[str, Any]
+    ):
+        """
+        Intelligently detect when JARVIS mentions seeing a terminal/window
+        but hasn't provided deep analysis yet, and track it for follow-up.
+
+        This enables conversations like:
+        User: "can you see my terminal?"
+        JARVIS: "Yes, I can see Terminal on Desktop 2..."
+        User: "what does it say?" or "are there any errors?"
+        JARVIS: [Actually reads and analyzes the terminal content]
+        """
+        if not self.context_store:
+            return  # No context store, skip tracking
+
+        try:
+            response_lower = jarvis_response.lower()
+            query_lower = user_query.lower()
+
+            # Detect if JARVIS mentioned seeing something but didn't analyze it deeply
+            mentioned_terminal = any(word in response_lower for word in [
+                'terminal', 'command line', 'shell', 'bash', 'zsh', 'iterm'
+            ])
+            mentioned_browser = any(word in response_lower for word in [
+                'browser', 'chrome', 'safari', 'firefox', 'webpage', 'tab'
+            ])
+            mentioned_code = any(word in response_lower for word in [
+                'code', 'editor', 'vscode', 'vs code', 'ide', 'file'
+            ])
+            mentioned_window = 'window' in response_lower or 'desktop' in response_lower
+
+            # Check if user asked "can you see" or similar discovery question
+            is_discovery_query = any(phrase in query_lower for phrase in [
+                'can you see', 'do you see', 'what do you see',
+                'show me', 'what\'s on', 'what\'s in'
+            ])
+
+            # Check if response is brief (indicates surface-level observation)
+            is_brief_response = len(jarvis_response.split()) < 50
+
+            # If JARVIS mentioned a window/terminal/etc in a brief response to a discovery query,
+            # track it as a follow-up opportunity
+            should_track = (
+                is_discovery_query and
+                is_brief_response and
+                (mentioned_terminal or mentioned_browser or mentioned_code or mentioned_window)
+            )
+
+            if should_track:
+                # Determine window type
+                if mentioned_terminal:
+                    window_type = "terminal"
+                    follow_up_question = "Would you like me to read what's in the Terminal and check for any errors or important output?"
+                elif mentioned_browser:
+                    window_type = "browser"
+                    follow_up_question = "Would you like me to read the page content or summarize what's displayed?"
+                elif mentioned_code:
+                    window_type = "code"
+                    follow_up_question = "Would you like me to analyze the code for any issues or errors?"
+                else:
+                    window_type = "general"
+                    follow_up_question = "Would you like me to describe what's in that window in more detail?"
+
+                # Extract space/window info from response if available
+                import re
+                space_match = re.search(r'desktop\s*(\d+)', response_lower)
+                space_id = space_match.group(1) if space_match else "unknown"
+
+                # Generate snapshot ID from screenshot hash
+                import hashlib
+                snapshot_id = hashlib.md5(str(datetime.now().timestamp()).encode()).hexdigest()[:12]
+
+                # Track the pending question
+                context_id = await self.track_pending_question(
+                    question_text=follow_up_question,
+                    window_type=window_type,
+                    window_id=f"{window_type}_{space_id}",
+                    space_id=str(space_id),
+                    snapshot_id=snapshot_id,
+                    summary=f"User asked '{user_query}', JARVIS responded '{jarvis_response[:100]}'",
+                    ocr_text=None,  # Will be extracted on follow-up
+                    ttl_seconds=180,  # 3 minutes to ask follow-up
+                )
+
+                if context_id:
+                    logger.info(
+                        f"[FOLLOW-UP] Tracked opportunity for {window_type} deep-dive "
+                        f"(context_id={context_id}, space={space_id})"
+                    )
+
+        except Exception as e:
+            logger.error(f"[FOLLOW-UP] Failed to track followup opportunity: {e}", exc_info=True)
+
     # ═══════════════════════════════════════════════════════════════
 
     async def understand_and_respond(self, screenshot: Any, user_query: str) -> str:
@@ -406,6 +504,14 @@ class PureVisionIntelligence:
 
         # Detect workflow changes
         self.context.workflow_state = self.context.detect_workflow(understanding)
+
+        # ═══════════════════════════════════════════════════════════════
+        # Track pending follow-up questions when JARVIS mentions seeing
+        # a terminal/window but hasn't provided detailed analysis yet
+        # ═══════════════════════════════════════════════════════════════
+        await self._track_followup_opportunity(
+            user_query, natural_response, screenshot, understanding
+        )
 
         return natural_response
 

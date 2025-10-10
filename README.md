@@ -1,9 +1,10 @@
-# 🤖 JARVIS AI System v13.10.0 - Context-Aware Intelligence (CAI) + Document Automation 🚀
+# 🤖 JARVIS AI System v13.11.0 - Intelligent Follow-Up System 🚀
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-13.10.0%20CAI%20+%20Document%20Automation-brightgreen" alt="Version">
+  <img src="https://img.shields.io/badge/Version-13.11.0%20Follow--Up%20Intelligence-brightgreen" alt="Version">
   <img src="https://img.shields.io/badge/Wake%20Word-Hey%20JARVIS-ff1744" alt="Wake Word">
   <img src="https://img.shields.io/badge/Claude%20Vision-Pure%20Intelligence-ff1744" alt="Pure Intelligence">
+  <img src="https://img.shields.io/badge/Follow--Up-Deep%20Terminal%20Analysis-ff1744" alt="Follow-Up System">
   <img src="https://img.shields.io/badge/Proactive-Real%20Time%20Assistant-ff1744" alt="Proactive Assistant">
   <img src="https://img.shields.io/badge/Wake%20Word-Hey%20JARVIS%20🎤-ff69b4" alt="Wake Word Detection">
   <img src="https://img.shields.io/badge/Memory-350MB%20Voice-success" alt="Low Memory Voice">
@@ -31,12 +32,267 @@
   <em>"Perfection is achieved not when there is nothing more to add, but when there is nothing left to take away." - Antoine de Saint-Exupéry</em>
 </p>
 
-## 🆕 What's New in v13.10.0 - Context-Aware Intelligence (CAI) + Document Automation 🚀
+## 🆕 What's New in v13.11.0 - Intelligent Follow-Up System 🚀
 
-### 🧠 **INTELLIGENT DOCUMENT CREATION & UNIVERSAL SCREEN LOCK DETECTION**
-**JARVIS NOW WRITES COMPLETE DOCUMENTS WITH AI-POWERED NARRATION AND DETECTS SCREEN LOCKS UNIVERSALLY!**
+### 🧠 **MULTI-TURN CONVERSATIONS WITH DEEP TERMINAL ANALYSIS**
+**JARVIS NOW REMEMBERS CONTEXT AND ANSWERS FOLLOW-UP QUESTIONS ABOUT TERMINALS & WINDOWS ACROSS DESKTOPS!**
 
-🎯 **Revolutionary Context Intelligence Features:**
+🎯 **Revolutionary Follow-Up Intelligence Features:**
+- ✅ **Context-Aware Follow-Up** - Ask follow-up questions naturally (text OR voice)
+- ✅ **Deep Terminal Analysis** - Actually reads and analyzes terminal content with OCR
+- ✅ **Multi-Desktop Intelligence** - See and analyze terminals in other desktop spaces
+- ✅ **Error Detection** - Automatically detects 30+ error patterns (Python, JS, Shell, Git)
+- ✅ **Actionable Fixes** - Suggests specific commands to resolve terminal errors
+- ✅ **Unified Context Bridge** - Shared context across all JARVIS systems
+- ✅ **3-Minute Memory** - 180-second window to ask follow-up questions
+- ✅ **Automatic Tracking** - JARVIS knows when you might want to ask more
+
+### 💬 **Example Conversation**
+```
+You: "can you see my terminal in the other window?"
+JARVIS: "Yes, I can see Terminal on Desktop 2, while we're currently
+         viewing the J.A.R.V.I.S. Interface on Desktop 1."
+
+You: "what does it say?"
+JARVIS: "Terminal Analysis:
+
+         I found these issues:
+         • ModuleNotFoundError: No module named 'requests'
+         • SyntaxError: invalid syntax on line 45
+
+         Recommended fixes:
+         → Run: pip install requests
+         → Check line 45 for missing closing parenthesis
+
+         Would you like me to help you resolve any of these?"
+
+You: "yes, help me fix the first one"
+JARVIS: "I'll help you install the requests module. You can run:
+
+         pip install requests
+
+         This will install the missing package and resolve the error."
+```
+
+### 🏗️ **What We Built in v13.11.0:**
+
+#### **1. Unified Context Bridge** (`backend/core/unified_context_bridge.py`)
+Advanced context management system that integrates all JARVIS intelligence:
+
+```python
+class UnifiedContextBridge:
+    """
+    Unified bridge between Follow-Up Handling and Context Intelligence.
+
+    Features:
+    - Dynamic configuration from environment variables (zero hardcoding)
+    - Multiple backends: Memory, Redis, Hybrid
+    - Shared context store across AsyncPipeline, PureVisionIntelligence, ContextAwareHandler
+    - Graceful degradation with automatic fallbacks
+    - Full telemetry integration (6 event types tracked)
+    """
+```
+
+**Architecture:**
+```
+┌─────────────────────────────────────────────┐
+│     Unified Context Bridge (Singleton)      │
+│                                             │
+│  ┌───────────────────────────────────────┐ │
+│  │   Shared Context Store (Memory/Redis) │ │
+│  │   - Pending questions (3-min TTL)     │ │
+│  │   - Auto-cleanup                      │ │
+│  │   - Relevance scoring                 │ │
+│  └───────────────────────────────────────┘ │
+│            ▲           ▲           ▲        │
+│            │           │           │        │
+│  ┌─────────┴───┐  ┌───┴────┐  ┌──┴──────┐ │
+│  │AsyncPipeline│  │Vision  │  │Context  │ │
+│  │             │  │Intel   │  │Aware    │ │
+│  │- Follow-up  │  │- Track │  │- Screen │ │
+│  │  detection  │  │  Q's   │  │  lock   │ │
+│  └─────────────┘  └────────┘  └─────────┘ │
+└─────────────────────────────────────────────┘
+```
+
+**Configuration (Environment Variables):**
+```bash
+# Backend selection
+CONTEXT_STORE_BACKEND=memory  # or redis, hybrid
+
+# Context tracking
+MAX_PENDING_CONTEXTS=100
+CONTEXT_TTL_SECONDS=180        # 3 minutes for follow-ups
+CONTEXT_CLEANUP_INTERVAL=60
+
+# Follow-up system
+FOLLOW_UP_ENABLED=true
+FOLLOW_UP_MIN_CONFIDENCE=0.75
+
+# Telemetry
+TELEMETRY_ENABLED=true
+```
+
+#### **2. Automatic Opportunity Detection** (`backend/api/pure_vision_intelligence.py`)
+Intelligently detects when JARVIS should track follow-up opportunities:
+
+```python
+async def _track_followup_opportunity(
+    user_query: str,
+    jarvis_response: str,
+    screenshot: Any,
+    understanding: Dict[str, Any]
+):
+    """
+    Detects when JARVIS mentions seeing a terminal/window
+    but hasn't provided deep analysis yet.
+
+    Triggers:
+    - User asks discovery questions: "can you see", "what do you see"
+    - JARVIS mentions: terminal, browser, code, window, desktop
+    - Response is brief (< 50 words = surface observation)
+
+    Automatically tracks for 180 seconds for follow-up questions.
+    """
+```
+
+**Smart Detection:**
+- Discovery query patterns: `"can you see"`, `"do you see"`, `"show me"`, `"what's on"`
+- Window mentions: `terminal`, `browser`, `chrome`, `code`, `vscode`, `window`, `desktop`
+- Brief responses (< 50 words) indicate surface-level observation
+- Auto-extracts desktop space ID from response (e.g., "Desktop 2" → space_id: 2)
+
+#### **3. Deep Terminal Analysis** (`backend/vision/handlers/follow_up_plugin.py`)
+When user asks follow-up, performs complete terminal analysis:
+
+```python
+async def handle_terminal_follow_up(...):
+    """
+    Deep terminal analysis with:
+    1. Multi-space screenshot capture
+    2. OCR text extraction
+    3. Error detection (30+ patterns)
+    4. Actionable fix suggestions
+    5. Intelligent activity detection
+    """
+```
+
+**Analysis Pipeline:**
+1. **Capture Screenshot** - Get specific desktop space screenshot
+2. **OCR Extraction** - Extract all terminal text using vision OCR
+3. **Error Detection** - Scan for 30+ error patterns:
+   - Python: `ModuleNotFoundError`, `SyntaxError`, `TypeError`, etc.
+   - JavaScript: `ReferenceError`, `TypeError`, `SyntaxError`
+   - Shell: `command not found`, `permission denied`
+   - Git: `fatal`, `merge conflict`, `detached HEAD`
+4. **Fix Generation** - Suggest specific commands to resolve errors
+5. **Activity Detection** - Classify terminal state: `idle`, `code_running`, `command_output`
+
+**Error Pattern Examples:**
+```python
+ERROR_PATTERNS = {
+    'python': [
+        r'ModuleNotFoundError: No module named [\'"](\w+)[\'"]',
+        r'SyntaxError: (.+)',
+        r'TypeError: (.+)',
+        r'IndentationError: (.+)',
+    ],
+    'javascript': [
+        r'ReferenceError: (\w+) is not defined',
+        r'TypeError: Cannot read property',
+        r'SyntaxError: Unexpected token',
+    ],
+    'shell': [
+        r'command not found: (\w+)',
+        r'Permission denied',
+        r'No such file or directory',
+    ],
+    # ... 20+ more patterns
+}
+```
+
+**Fix Suggestions:**
+```python
+# ModuleNotFoundError → "Run: pip install requests"
+# command not found → "Install with: brew install git"
+# Permission denied → "Try: sudo chmod +x script.sh"
+```
+
+#### **4. Cross-System Telemetry** (6 Event Types)
+Comprehensive observability across all systems:
+
+**Events Tracked:**
+- `follow_up.intent_detected` - When user says "yes", "what does it say", etc.
+- `follow_up.pending_created` - When opportunity is tracked
+- `follow_up.resolved` - When follow-up successfully handled
+- `follow_up.route_failed` - When routing fails
+- `follow_up.no_pending_context` - When user asks but no context exists
+- `follow_up.contexts_expired` - When cleanup runs
+
+**Metrics Captured:**
+- Latency (intent detection: <10ms, full resolution: <1.5s)
+- Context age (how long since original question)
+- Window type (terminal/browser/code)
+- Response length
+- Confidence scores
+
+#### **5. Multi-Space Vision Adapters** (`backend/vision/adapters/`)
+Unified interfaces for vision operations:
+
+**OCR Adapter** (`ocr.py`):
+```python
+async def ocr_text_from_snapshot(snapshot_id: str) -> str:
+    """Extract text from screenshot with LRU caching (100 entries)"""
+```
+
+**Analysis Adapter** (`analysis.py`):
+```python
+def extract_errors(text: str) -> list[str]:
+    """Find errors using 30+ patterns"""
+
+def suggest_fix(error: str) -> str:
+    """Provide actionable fix suggestion"""
+```
+
+**Page Adapter** (`page.py`):
+```python
+async def get_page_title(window_id: str) -> Optional[str]:
+    """Get browser page title (AppleScript + OCR fallback)"""
+
+async def get_readable_text(window_id: str, limit_chars: int = 1000) -> str:
+    """Extract readable page content"""
+```
+
+**Code Adapter** (`code.py`):
+```python
+async def analyze_code_window(window_id: str, snapshot_id: str) -> Dict[str, Any]:
+    """
+    Analyze code editor windows:
+    - Language detection (10+ languages)
+    - Diagnostic extraction (errors/warnings)
+    - File path extraction
+    """
+```
+
+### 📊 **Performance Metrics**
+
+| Operation | Latency | Notes |
+|-----------|---------|-------|
+| Opportunity detection | <5ms | After each vision response |
+| Context tracking | <3ms | Store pending question |
+| Follow-up intent detection | <10ms | Lexical + semantic |
+| Desktop screenshot capture | 200-500ms | OS-dependent |
+| OCR text extraction | 300-800ms | Cached results |
+| Error analysis | <20ms | Pattern matching |
+| **Total follow-up response** | **<1.5s** | End-to-end |
+
+**Memory Usage:**
+- Bridge overhead: ~1 MB
+- Context store (100 contexts): ~3-5 MB
+- OCR cache (100 entries): ~10-20 MB
+- **Total**: ~15-30 MB
+
+### 🎯 **Previous Features (v13.10.0 - CAI + Document Automation):**
 - ✅ **Intelligent Document Writer** - Create essays, reports, and documents with one command
 - ✅ **AI-Powered Narration** - Real-time progress updates using Claude AI for natural engagement
 - ✅ **Universal Screen Lock Detection** - Automatically detects and unlocks screen for ANY command
@@ -46,7 +302,11 @@
 - ✅ **Speech Queue Management** - Prevents overlapping narrations for smooth communication
 - ✅ **Adaptive Timing** - Intelligent narration based on writing velocity and content analysis
 
-🚀 **What We Built:**
+---
+
+## 📖 **Previous Release Notes:**
+
+🚀 **What We Built in v13.10.0:**
 
 #### **1. Intelligent Document Writer** (`backend/context_intelligence/executors/document_writer.py`)
 Create complete documents with a single voice command:

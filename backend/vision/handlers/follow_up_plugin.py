@@ -158,38 +158,118 @@ async def handle_terminal_follow_up(
     payload: VisionContextPayload,
     extras: dict[str, Any],
 ) -> str:
-    """Handle terminal window follow-up."""
+    """
+    Handle terminal window follow-up with deep analysis.
+
+    This is called when user asks follow-up questions like:
+    - "what does it say?"
+    - "are there any errors?"
+    - "tell me more"
+    - "yes" (in response to JARVIS offering to analyze)
+    """
     from backend.vision.adapters import ocr_text_from_snapshot, extract_errors, suggest_fix
+    import asyncio
 
     # Get OCR text (cached or fresh)
     ocr_text = payload.ocr_text
+
+    # If we don't have OCR text yet, we need to capture the terminal from the specified space
     if not ocr_text:
-        ocr_text = await ocr_text_from_snapshot(payload.snapshot_id)
+        logger.info(f"[TERMINAL-FOLLOWUP] No cached OCR, capturing terminal from space {payload.space_id}")
+
+        try:
+            # Import multi-space capture if available
+            from vision.multi_space_window_detector import MultiSpaceWindowDetector
+            from vision.space_screenshot_cache import SpaceScreenshotCache
+
+            # Get screenshot of the specific space
+            cache = SpaceScreenshotCache()
+            detector = MultiSpaceWindowDetector()
+
+            # Try to get cached screenshot first
+            space_id = int(payload.space_id) if payload.space_id.isdigit() else 1
+            cached_screenshot = await cache.get_cached_screenshot(space_id)
+
+            if not cached_screenshot:
+                # Capture fresh screenshot of that space
+                logger.info(f"[TERMINAL-FOLLOWUP] Capturing fresh screenshot of space {space_id}")
+                screenshot = await detector.capture_specific_space(space_id)
+                if screenshot:
+                    # Perform OCR on the screenshot
+                    from vision.ocr_processor import OCRProcessor
+                    ocr_processor = OCRProcessor()
+                    ocr_text = await ocr_processor.extract_text(screenshot)
+                    logger.info(f"[TERMINAL-FOLLOWUP] Extracted {len(ocr_text)} chars of text")
+            else:
+                # Use cached screenshot
+                from vision.ocr_processor import OCRProcessor
+                ocr_processor = OCRProcessor()
+                ocr_text = await ocr_processor.extract_text(cached_screenshot)
+
+        except Exception as e:
+            logger.error(f"[TERMINAL-FOLLOWUP] Failed to capture terminal: {e}", exc_info=True)
+            return "I'm having trouble accessing that Terminal window. Could you make sure it's still visible and try asking again?"
 
     if not ocr_text:
-        return "I couldn't read your Terminal text. Let me take a fresh snapshot and try again."
+        return "I couldn't read your Terminal text. The window might be obscured or the text might be too small. Could you bring it to the foreground?"
 
     # Analyze for errors
     errors = extract_errors(ocr_text)
 
     if errors:
-        # Format error report
+        # Format error report with actionable details
         error_report = "\n".join(f"• {err}" for err in errors[:3])  # Top 3 errors
         suggestions = [suggest_fix(err) for err in errors[:3]]
         suggestion_text = "\n".join(f"  → {s}" for s in suggestions if s)
 
-        response = f"**Terminal Analysis:**\n\n{error_report}"
-        if suggestion_text:
-            response += f"\n\n**Suggestions:**\n{suggestion_text}"
+        response = f"**Terminal Analysis:**\n\nI found these issues:\n{error_report}"
 
-        response += "\n\nWould you like me to help fix any of these?"
+        if suggestion_text:
+            response += f"\n\n**Recommended fixes:**\n{suggestion_text}"
+
+        response += "\n\nWould you like me to help you resolve any of these?"
         return response
 
-    # No errors - provide summary
+    # No errors - provide intelligent summary based on what's visible
     lines = ocr_text.strip().split("\n")
-    summary = "\n".join(lines[-10:])  # Last 10 lines
+    recent_lines = lines[-15:]  # Last 15 lines for context
 
-    return f"**Terminal Output (last 10 lines):**\n\n```\n{summary}\n```\n\nEverything looks good! What would you like to do next?"
+    # Detect what kind of terminal activity this is
+    activity_type = _detect_terminal_activity(ocr_text)
+
+    if activity_type == "command_output":
+        summary = "\n".join(recent_lines[-10:])
+        return f"Your Terminal shows recent command output:\n\n```\n{summary}\n```\n\nEverything looks clean! No errors detected."
+
+    elif activity_type == "code_running":
+        return f"I can see code execution in progress. The output looks normal with no errors. The last few lines show:\n\n```\n{chr(10).join(recent_lines[-5:])}\n```"
+
+    elif activity_type == "idle":
+        return "Your Terminal appears to be at a command prompt, ready for input. No active processes or errors visible."
+
+    else:
+        # Generic summary
+        summary = "\n".join(recent_lines[-10:])
+        return f"**Terminal Status:**\n\n```\n{summary}\n```\n\nEverything looks good! Let me know if you need help with anything specific."
+
+
+def _detect_terminal_activity(ocr_text: str) -> str:
+    """Detect what kind of activity is happening in the terminal."""
+    text_lower = ocr_text.lower()
+
+    # Check for prompts
+    if any(prompt in ocr_text for prompt in ['$', '%', '>', '#']):
+        # Check if waiting for input
+        lines = ocr_text.strip().split('\n')
+        if lines and any(p in lines[-1] for p in ['$', '%', '>']):
+            return "idle"
+
+    # Check for code execution
+    if any(word in text_lower for word in ['running', 'executing', 'loading', 'processing']):
+        return "code_running"
+
+    # Default to command output
+    return "command_output"
 
 
 async def handle_browser_follow_up(
