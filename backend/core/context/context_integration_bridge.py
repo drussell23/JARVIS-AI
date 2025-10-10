@@ -24,7 +24,7 @@ import asyncio
 import logging
 from typing import Dict, List, Optional, Any, Callable
 from datetime import datetime, timedelta
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -67,6 +67,12 @@ class ContextIntegrationBridge:
         # Configuration
         self.ocr_analysis_enabled = True
         self.auto_detect_app_types = True
+
+        # Conversational context tracking for follow-up queries
+        self._last_query = None
+        self._last_response = None
+        self._last_context = {}  # Store what we talked about (apps, spaces, errors)
+        self._conversation_timestamp = None
 
         logger.info("[INTEGRATION-BRIDGE] Initialized")
 
@@ -412,6 +418,7 @@ class ContextIntegrationBridge:
             - "explain that" → Explain the thing we just discussed
             - "what am I working on?" → Synthesize workspace-wide context
             - "can you see my terminal?" → Proactively offer to explain what's there
+            - "explain in detail" → Follow-up query for detailed explanation
 
         Args:
             query: Natural language query
@@ -427,10 +434,27 @@ class ContextIntegrationBridge:
         if query_lower != query.lower():
             logger.debug(f"[CONTEXT-BRIDGE] Normalized query: '{query}' → '{query_lower}'")
 
+        # Check for follow-up queries requesting more detail
+        detail_keywords = [
+            "explain in detail", "more detail", "tell me more", "what's happening",
+            "explain what's happening", "what is happening", "explain that",
+            "give me details", "explain it", "what's going on", "what is going on"
+        ]
+        if any(kw in query_lower for kw in detail_keywords):
+            # Check if we have recent conversational context (within last 2 minutes)
+            if self._conversation_timestamp:
+                time_since = datetime.now() - self._conversation_timestamp
+                if time_since.total_seconds() < 120:  # 2 minutes
+                    logger.info(f"[CONTEXT-BRIDGE] Detected follow-up query: '{query_lower}'")
+                    return await self._handle_detail_followup(query_lower, current_space_id)
+
         # Handle "can you see" queries - be proactive about explaining
         visibility_keywords = ["can you see", "do you see", "are you seeing", "what do you see"]
         if any(kw in query_lower for kw in visibility_keywords):
-            return await self._handle_visibility_query(query_lower, current_space_id)
+            response = await self._handle_visibility_query(query_lower, current_space_id)
+            # Save conversational context for follow-up
+            self._save_conversation_context(query, response, current_space_id)
+            return response
 
         # Use cross-space intelligence for workspace-wide queries
         if self.cross_space_intelligence:
@@ -647,6 +671,340 @@ class ContextIntegrationBridge:
             response_parts.append("Everything looks normal. Would you like me to explain what's happening?")
 
         return "\n".join(response_parts)
+
+    async def _handle_detail_followup(self, query: str, current_space_id: Optional[int]) -> str:
+        """
+        Handle follow-up queries asking for more detail about what was just discussed.
+
+        This provides dynamic, detailed explanations based on actual terminal/app context.
+        NO HARDCODED RESPONSES - everything is generated from real context data.
+
+        Examples:
+        - User: "can you see my terminal in the other window?"
+        - JARVIS: "Yes, I can see Terminal in Space 2..."
+        - User: "explain what's happening in detail"
+        - JARVIS: [Dynamic explanation based on terminal context]
+
+        Args:
+            query: Follow-up query (already normalized)
+            current_space_id: Current space ID
+
+        Returns:
+            Detailed natural language explanation
+        """
+        logger.info("[CONTEXT-BRIDGE] Handling follow-up detail query")
+
+        # Get the context from the last query (what apps/spaces we discussed)
+        last_context = self._last_context
+
+        if not last_context:
+            return "I'm not sure what you'd like me to explain. Could you ask about something specific?"
+
+        # Get the apps we were discussing
+        discussed_apps = last_context.get("apps", [])
+
+        if not discussed_apps:
+            return "I don't have enough context to provide details. What would you like to know about?"
+
+        # Build comprehensive explanation by analyzing each app
+        response_parts = []
+
+        for app_info in discussed_apps:
+            space_id = app_info["space_id"]
+            app_name = app_info["app_name"]
+            app_data = app_info["app_data"]
+            context_type = app_data.get("context_type", "").lower()
+
+            # Terminal apps - use TerminalCommandIntelligence for rich analysis
+            if context_type == "terminal" and self.terminal_intelligence:
+                terminal_ctx = app_data.get("terminal_context", {})
+
+                # Generate dynamic explanation based on terminal state
+                explanation = await self._explain_terminal_context(
+                    app_name, space_id, terminal_ctx
+                )
+                response_parts.append(explanation)
+
+            # Browser apps - explain what they're viewing/researching
+            elif context_type == "browser":
+                browser_ctx = app_data.get("browser_context", {})
+                explanation = self._explain_browser_context(
+                    app_name, space_id, browser_ctx
+                )
+                response_parts.append(explanation)
+
+            # IDE/Editor apps - explain code context
+            elif context_type in ["ide", "editor"]:
+                ide_ctx = app_data.get("ide_context", {})
+                explanation = self._explain_ide_context(
+                    app_name, space_id, ide_ctx
+                )
+                response_parts.append(explanation)
+
+            # Generic apps - basic context
+            else:
+                response_parts.append(
+                    f"**{app_name} (Space {space_id})**\n"
+                    f"Last activity: {app_data.get('last_activity', 'Unknown')}"
+                )
+
+        # Use cross-space intelligence to find relationships
+        if self.cross_space_intelligence and len(discussed_apps) > 1:
+            try:
+                relationships = await self._find_cross_space_relationships(discussed_apps)
+                if relationships:
+                    response_parts.append("\n**Cross-Space Analysis:**")
+                    response_parts.append(relationships)
+            except Exception as e:
+                logger.error(f"[CONTEXT-BRIDGE] Error finding relationships: {e}")
+
+        if not response_parts:
+            return "I don't have detailed information available for what we were discussing."
+
+        return "\n\n".join(response_parts)
+
+    async def _explain_terminal_context(
+        self, app_name: str, space_id: int, terminal_ctx: Dict[str, Any]
+    ) -> str:
+        """
+        Generate dynamic explanation of terminal context.
+        Uses TerminalCommandIntelligence for rich analysis.
+        """
+        parts = [f"**{app_name} (Space {space_id})**"]
+
+        # Extract terminal context
+        last_command = terminal_ctx.get("last_command")
+        last_output = terminal_ctx.get("last_output")
+        errors = terminal_ctx.get("errors", [])
+        working_dir = terminal_ctx.get("working_directory")
+        recent_commands = terminal_ctx.get("recent_commands", [])
+
+        # Working directory
+        if working_dir:
+            parts.append(f"Working directory: `{working_dir}`")
+
+        # Recent commands context
+        if recent_commands and len(recent_commands) > 0:
+            parts.append(f"\nRecent commands:")
+            for cmd_tuple in list(recent_commands)[-3:]:  # Last 3 commands
+                # Handle both string and tuple formats
+                if isinstance(cmd_tuple, tuple):
+                    cmd = cmd_tuple[0]
+                else:
+                    cmd = cmd_tuple
+                parts.append(f"  • `{cmd}`")
+
+        # Last command executed
+        if last_command:
+            parts.append(f"\nLast command: `{last_command}`")
+
+        # Errors - provide detailed analysis
+        if errors:
+            parts.append(f"\n**Error Analysis:**")
+
+            for error in errors[:2]:  # Show up to 2 errors
+                parts.append(f"\n{error}")
+
+                # Use TerminalCommandIntelligence to suggest fixes
+                if self.terminal_intelligence:
+                    try:
+                        # Create minimal OCR text for analysis
+                        ocr_text = f"{last_command}\n{error}"
+                        term_ctx = await self.terminal_intelligence.analyze_terminal_context(ocr_text)
+                        suggestions = await self.terminal_intelligence.suggest_fix_commands(term_ctx)
+
+                        if suggestions:
+                            parts.append("\n**Suggested Fix:**")
+                            for i, suggestion in enumerate(suggestions[:2], 1):
+                                parts.append(
+                                    f"{i}. `{suggestion.command}`\n"
+                                    f"   Purpose: {suggestion.purpose}\n"
+                                    f"   Safety: {suggestion.safety_tier.upper()}\n"
+                                    f"   Impact: {suggestion.estimated_impact}"
+                                )
+                    except Exception as e:
+                        logger.error(f"[CONTEXT-BRIDGE] Error getting command suggestions: {e}")
+
+        # Command output (if no errors, show what happened)
+        elif last_output:
+            parts.append(f"\nOutput:")
+            # Truncate long output
+            output_preview = last_output[:300]
+            if len(last_output) > 300:
+                output_preview += "..."
+            parts.append(f"```\n{output_preview}\n```")
+
+        # Activity summary
+        if not errors and not last_output:
+            parts.append("\nNo recent activity detected.")
+
+        return "\n".join(parts)
+
+    def _explain_browser_context(
+        self, app_name: str, space_id: int, browser_ctx: Dict[str, Any]
+    ) -> str:
+        """Generate explanation of browser context."""
+        parts = [f"**{app_name} (Space {space_id})**"]
+
+        active_url = browser_ctx.get("active_url")
+        page_title = browser_ctx.get("page_title")
+        search_query = browser_ctx.get("search_query")
+        is_researching = browser_ctx.get("is_researching", False)
+        research_topic = browser_ctx.get("research_topic")
+
+        if active_url:
+            parts.append(f"Current page: {page_title or active_url}")
+
+        if search_query:
+            parts.append(f"Recent search: \"{search_query}\"")
+
+        if is_researching and research_topic:
+            parts.append(f"Research topic: {research_topic}")
+
+        if not active_url and not search_query:
+            parts.append("No active browsing detected.")
+
+        return "\n".join(parts)
+
+    def _explain_ide_context(
+        self, app_name: str, space_id: int, ide_ctx: Dict[str, Any]
+    ) -> str:
+        """Generate explanation of IDE/editor context."""
+        parts = [f"**{app_name} (Space {space_id})**"]
+
+        active_file = ide_ctx.get("active_file")
+        open_files = ide_ctx.get("open_files", [])
+        project_name = ide_ctx.get("project_name")
+
+        if project_name:
+            parts.append(f"Project: {project_name}")
+
+        if active_file:
+            parts.append(f"Editing: `{active_file}`")
+
+        if open_files and len(open_files) > 1:
+            parts.append(f"Open files: {len(open_files)}")
+            for file in open_files[:3]:
+                parts.append(f"  • {file}")
+
+        if not active_file and not open_files:
+            parts.append("No files currently open.")
+
+        return "\n".join(parts)
+
+    async def _find_cross_space_relationships(self, apps: List[Dict[str, Any]]) -> str:
+        """
+        Find relationships between apps across different spaces.
+        Uses CrossSpaceIntelligence for semantic correlation.
+        """
+        if not self.cross_space_intelligence or len(apps) < 2:
+            return ""
+
+        # Extract activity contexts for correlation
+        contexts = []
+        for app in apps:
+            contexts.append({
+                "space_id": app["space_id"],
+                "app_name": app["app_name"],
+                "content": self._extract_app_content(app["app_data"])
+            })
+
+        # Find correlations
+        try:
+            correlations = await self.cross_space_intelligence.find_correlations(contexts)
+
+            if correlations:
+                parts = []
+                for corr in correlations[:3]:  # Top 3 correlations
+                    parts.append(
+                        f"• {corr.get('description', 'Related activity detected')} "
+                        f"(confidence: {corr.get('confidence', 0):.0%})"
+                    )
+                return "\n".join(parts)
+        except Exception as e:
+            logger.error(f"[CONTEXT-BRIDGE] Error in cross-space correlation: {e}")
+
+        return ""
+
+    def _extract_app_content(self, app_data: Dict[str, Any]) -> str:
+        """Extract relevant text content from app data for correlation."""
+        content_parts = []
+
+        # Terminal content
+        if "terminal_context" in app_data:
+            term_ctx = app_data["terminal_context"]
+            if term_ctx.get("last_command"):
+                content_parts.append(term_ctx["last_command"])
+            if term_ctx.get("errors"):
+                content_parts.extend(term_ctx["errors"])
+
+        # Browser content
+        if "browser_context" in app_data:
+            browser_ctx = app_data["browser_context"]
+            if browser_ctx.get("page_title"):
+                content_parts.append(browser_ctx["page_title"])
+            if browser_ctx.get("search_query"):
+                content_parts.append(browser_ctx["search_query"])
+
+        # IDE content
+        if "ide_context" in app_data:
+            ide_ctx = app_data["ide_context"]
+            if ide_ctx.get("active_file"):
+                content_parts.append(ide_ctx["active_file"])
+
+        return " ".join(content_parts)
+
+    def _save_conversation_context(
+        self, query: str, response: str, current_space_id: Optional[int]
+    ):
+        """
+        Save conversational context for follow-up queries.
+        Stores what apps/spaces we discussed for intelligent follow-ups.
+        """
+        self._last_query = query
+        self._last_response = response
+        self._conversation_timestamp = datetime.now()
+
+        # Extract which apps we talked about from the current workspace
+        # Access the actual context objects, not the serialized dict
+        discussed_apps = []
+        for space_id, space in self.context_graph.spaces.items():
+            for app_name, app_ctx in space.applications.items():
+                # Include apps with recent activity
+                if app_ctx.activity_count > 0:
+                    # Build app_data dict with the actual context objects
+                    app_data = {
+                        "app_name": app_ctx.app_name,
+                        "context_type": app_ctx.context_type.value,
+                        "last_activity": app_ctx.last_activity.isoformat(),
+                        "activity_count": app_ctx.activity_count,
+                        "significance": app_ctx.significance.value
+                    }
+
+                    # Add the actual context objects
+                    if app_ctx.terminal_context:
+                        app_data["terminal_context"] = asdict(app_ctx.terminal_context)
+                    if app_ctx.browser_context:
+                        app_data["browser_context"] = asdict(app_ctx.browser_context)
+                    if app_ctx.ide_context:
+                        app_data["ide_context"] = asdict(app_ctx.ide_context)
+
+                    discussed_apps.append({
+                        "space_id": space_id,
+                        "app_name": app_name,
+                        "app_data": app_data
+                    })
+
+        self._last_context = {
+            "apps": discussed_apps,
+            "current_space_id": current_space_id,
+            "timestamp": datetime.now()
+        }
+
+        logger.debug(
+            f"[CONTEXT-BRIDGE] Saved conversation context: "
+            f"{len(discussed_apps)} apps across {len(self.context_graph.spaces)} spaces"
+        )
 
     def _format_error_response(self, context: Dict[str, Any]) -> str:
         """Format error context into natural language"""

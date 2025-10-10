@@ -171,10 +171,15 @@ class PureVisionIntelligence:
     Now with optional multi-space awareness for workspace-wide intelligence.
     """
 
-    def __init__(self, claude_client, enable_multi_space: bool = True, context_store=None):
+    def __init__(self, claude_client, enable_multi_space: bool = True, context_store=None, context_bridge=None):
         self.claude = claude_client
         self.context = ConversationContext()
         self.screen_cache = {}  # Hash -> understanding
+
+        # ═══════════════════════════════════════════════════════════════
+        # Context Intelligence Bridge Integration
+        # ═══════════════════════════════════════════════════════════════
+        self.context_bridge = context_bridge  # Access to Context Intelligence (Priority 1-3)
 
         # ═══════════════════════════════════════════════════════════════
         # Follow-Up Context Tracking
@@ -470,6 +475,7 @@ class PureVisionIntelligence:
         Core method: Claude sees, understands, and responds naturally.
         No templates. No hardcoding. Pure intelligence.
         Now with optional multi-space awareness for workspace-wide queries.
+        ENHANCED: Integrates with Context Intelligence Bridge for structured context.
 
         Args:
             screenshot: Can be a single image OR Dict[int, image] for multi-space
@@ -487,8 +493,11 @@ class PureVisionIntelligence:
             )
 
         # Original single-space logic
+        # ENHANCED: Get structured context from Context Intelligence Bridge
+        structured_context = await self._get_structured_context(user_query)
+
         # Generate rich context for Claude
-        context_prompt = self._build_pure_intelligence_prompt(user_query)
+        context_prompt = self._build_pure_intelligence_prompt(user_query, structured_context)
 
         # Let Claude see and respond naturally
         claude_response = await self._get_claude_vision_response(
@@ -515,10 +524,73 @@ class PureVisionIntelligence:
 
         return natural_response
 
-    def _build_pure_intelligence_prompt(self, user_query: str) -> str:
+    async def _get_structured_context(self, user_query: str) -> Optional[Dict[str, Any]]:
+        """
+        Get structured context from Context Intelligence Bridge.
+        Combines multi-space tracking, terminal intelligence, and cross-space correlation.
+        """
+        if not self.context_bridge:
+            return None
+
+        try:
+            # Get comprehensive workspace summary
+            summary = self.context_bridge.context_graph.get_summary()
+
+            # Extract relevant context
+            structured = {
+                "total_spaces": summary.get("total_spaces", 0),
+                "active_spaces": summary.get("active_spaces", []),
+                "applications": {},
+                "errors": [],
+                "recent_commands": []
+            }
+
+            # Gather context from all spaces
+            for space_id, space_data in summary.get("spaces", {}).items():
+                apps = space_data.get("applications", {})
+                for app_name, app_data in apps.items():
+                    if app_data.get("activity_count", 0) > 0:
+                        structured["applications"][f"{app_name} (Space {space_id})"] = {
+                            "type": app_data.get("context_type"),
+                            "last_activity": app_data.get("last_activity"),
+                            "significance": app_data.get("significance")
+                        }
+
+                        # Extract terminal errors and commands
+                        if app_data.get("context_type") == "terminal":
+                            # Try to get actual terminal context
+                            space = self.context_bridge.context_graph.spaces.get(space_id)
+                            if space:
+                                app_ctx = space.applications.get(app_name)
+                                if app_ctx and app_ctx.terminal_context:
+                                    term_ctx = app_ctx.terminal_context
+                                    if term_ctx.errors:
+                                        for error in term_ctx.errors:
+                                            structured["errors"].append({
+                                                "space": space_id,
+                                                "app": app_name,
+                                                "error": error,
+                                                "command": term_ctx.last_command
+                                            })
+                                    if term_ctx.last_command:
+                                        structured["recent_commands"].append({
+                                            "space": space_id,
+                                            "app": app_name,
+                                            "command": term_ctx.last_command,
+                                            "directory": term_ctx.working_directory
+                                        })
+
+            return structured if (structured["applications"] or structured["errors"]) else None
+
+        except Exception as e:
+            logger.error(f"[VISION-INTEL] Error getting structured context: {e}")
+            return None
+
+    def _build_pure_intelligence_prompt(self, user_query: str, structured_context: Optional[Dict[str, Any]] = None) -> str:
         """
         Build a rich, contextual prompt for Claude that enables natural responses.
         This is the ONLY place we guide Claude - no response templates!
+        ENHANCED: Now includes structured context from Context Intelligence Bridge.
         """
         temporal_context = self.context.get_temporal_context()
 
@@ -538,6 +610,33 @@ class PureVisionIntelligence:
             user_query, temporal_context
         )
 
+        # Build structured context section if available
+        structured_section = ""
+        if structured_context:
+            structured_section = "\n\n═══ WORKSPACE INTELLIGENCE (from Context System) ═══\n"
+
+            if structured_context.get("errors"):
+                structured_section += "\n🔴 DETECTED ERRORS:\n"
+                for err in structured_context["errors"]:
+                    structured_section += f"  • {err['app']} (Space {err['space']}): {err['error']}\n"
+                    if err.get('command'):
+                        structured_section += f"    Command: {err['command']}\n"
+
+            if structured_context.get("recent_commands"):
+                structured_section += "\n💻 RECENT TERMINAL ACTIVITY:\n"
+                for cmd in structured_context["recent_commands"][-3:]:
+                    structured_section += f"  • Space {cmd['space']}: `{cmd['command']}`"
+                    if cmd.get('directory'):
+                        structured_section += f" in {cmd['directory']}"
+                    structured_section += "\n"
+
+            if structured_context.get("applications"):
+                structured_section += f"\n📱 ACTIVE APPLICATIONS ({len(structured_context['applications'])} windows):\n"
+                for app_name, app_info in list(structured_context["applications"].items())[:5]:
+                    structured_section += f"  • {app_name}: {app_info['type']}\n"
+
+            structured_section += "\nUse this context to enhance your visual analysis!\n═══════════════════════════════════════════════════\n"
+
         # Build the prompt that enables natural intelligence
         prompt = f"""You are JARVIS, Tony Stark's AI assistant. You're looking at the user's screen.
 
@@ -549,22 +648,24 @@ Temporal Context: {temporal_context['temporal_state']}
 {f"Previous query was: '{temporal_context['previous_query']}'" if temporal_context.get('previous_query') else ""}
 
 Current Workflow: {self.context.workflow_state or 'unknown'}
-
+{structured_section}
 Instructions for Natural Response:
 1. Look at the screen and understand what you see
-2. Answer ONLY what was asked - be concise and direct
-3. Use exact values when visible but keep context minimal
-4. Address the user as "Sir" naturally
-5. {emotional_guidance}
-6. Keep response to 1-2 sentences unless more detail specifically requested
-7. Optionally add ONE brief, helpful insight if truly relevant
-8. Never describe the entire screen unless asked
+2. COMBINE visual analysis with the structured workspace context above
+3. If errors are detected in context, mention them proactively
+4. Answer ONLY what was asked - be concise and direct
+5. Use exact values when visible but keep context minimal
+6. Address the user as "Sir" naturally
+7. {emotional_guidance}
+8. Keep response to 1-2 sentences unless more detail specifically requested
+9. Optionally add ONE brief, helpful insight if truly relevant
+10. Never describe the entire screen unless asked
 
 IMPORTANT: Be conversational but CONCISE. Focus on answering the specific question.
-Example: "I can see Chrome with your JARVIS interface open, Sir."
+Example: "I can see Terminal in Space 2 with an error: ModuleNotFoundError, Sir. Would you like me to explain?"
 NOT: Long descriptions of everything on screen.
 
-Remember: Natural, brief, and directly answering what was asked.
+Remember: Natural, brief, and directly answering what was asked - enhanced with workspace intelligence.
 """
         return prompt
 
