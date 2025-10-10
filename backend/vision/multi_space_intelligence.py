@@ -42,7 +42,7 @@ class MultiSpaceQueryDetector:
     
     def __init__(self):
         # Dynamic pattern components
-        self._space_terms = {'desktop', 'space', 'screen', 'workspace', 'monitor', 'display', 'area', 'environment'}
+        self._space_terms = {'desktop', 'space', 'screen', 'workspace', 'monitor', 'display', 'area', 'environment', 'window'}
         self._location_verbs = {'where', 'which', 'find', 'locate', 'search', 'look', 'check'}
         self._presence_verbs = {'is', 'are', 'have', 'has', 'got', 'running', 'open', 'active', 'visible', 'showing'}
         self._other_terms = {'other', 'another', 'different', 'alternate', 'secondary', 'next', 'previous', 'adjacent'}
