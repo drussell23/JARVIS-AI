@@ -366,14 +366,19 @@ class MultiSpaceCaptureEngine:
             cg_screenshot = await self._capture_with_cg_windows(space_id, request)
             if cg_screenshot is not None:
                 logger.info(f"[SUCCESS] Captured space {space_id} using CG Windows API without switching!")
-                return True, cg_screenshot, SpaceCaptureMetadata(
+                # Create proper metadata with correct field names
+                metadata = SpaceCaptureMetadata(
                     space_id=space_id,
-                    timestamp=datetime.now(),
-                    capture_method="cg_windows",
+                    capture_time=datetime.now(),
+                    capture_method=CaptureMethod.SPACE_SWITCH,  # Using SPACE_SWITCH as CG falls under it
                     quality=request.quality,
+                    resolution=(cg_screenshot.shape[1], cg_screenshot.shape[0]),
+                    file_size=cg_screenshot.nbytes,
+                    capture_duration=0.0,
                     window_count=1,
                     content_hash=""
-                ), None
+                )
+                return True, cg_screenshot, metadata, None
 
             # If CG fails, try space switch as fallback
             methods_to_try = [CaptureMethod.SPACE_SWITCH]
@@ -541,9 +546,14 @@ class MultiSpaceCaptureEngine:
             window_data = detector.get_all_windows_across_spaces()
 
             # Find windows in the target space
+            # Windows are EnhancedWindowInfo objects, not dicts
             target_windows = []
             for window in window_data.get('windows', []):
-                if window.get('space') == space_id:
+                # Check if it's an object with attributes or a dict
+                if hasattr(window, 'space_id'):
+                    if window.space_id == space_id:
+                        target_windows.append(window)
+                elif isinstance(window, dict) and window.get('space') == space_id:
                     target_windows.append(window)
 
             if not target_windows:
@@ -563,8 +573,13 @@ class MultiSpaceCaptureEngine:
             # Try to capture the most relevant window
             for priority_app in priority_order:
                 for window in target_windows:
-                    app_name = window.get('app', '')
-                    window_title = window.get('title', '')
+                    # Handle both object attributes and dict keys
+                    if hasattr(window, 'app_name'):
+                        app_name = window.app_name
+                        window_title = window.window_title
+                    else:
+                        app_name = window.get('app', '')
+                        window_title = window.get('title', '')
 
                     if priority_app in app_name.lower():
                         logger.info(f"[CG_CAPTURE] Found {app_name} '{window_title}' in space {space_id}, capturing...")
