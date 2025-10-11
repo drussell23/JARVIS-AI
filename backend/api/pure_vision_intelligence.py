@@ -481,6 +481,22 @@ class PureVisionIntelligence:
             screenshot: Can be a single image OR Dict[int, image] for multi-space
             user_query: The user's question
         """
+        # ═══════════════════════════════════════════════════════════════
+        # PRIORITY 1: Check if this is a follow-up query
+        # If so, use Context Bridge's detailed follow-up handler instead of visual analysis
+        # ═══════════════════════════════════════════════════════════════
+        if self.context_bridge:
+            try:
+                # Check if this is a follow-up to previous conversation
+                followup_response = await self.context_bridge.check_followup_query(user_query)
+
+                if followup_response:
+                    logger.info("[VISION] Follow-up detected - using Context Bridge's detailed response")
+                    return followup_response
+            except Exception as e:
+                logger.warning(f"[VISION] Error checking for follow-up: {e}")
+                # Continue with normal vision analysis if follow-up check fails
+
         # Check if we already have multi-space screenshots
         if isinstance(screenshot, dict) and len(screenshot) > 1:
             # We already have multi-space screenshots from vision_command_handler

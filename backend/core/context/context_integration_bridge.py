@@ -405,6 +405,49 @@ class ContextIntegrationBridge:
     # NATURAL LANGUAGE QUERY INTERFACE
     # ========================================================================
 
+    async def check_followup_query(self, query: str, current_space_id: Optional[int] = None) -> Optional[str]:
+        """
+        Check if query is a follow-up to previous conversation.
+        Returns detailed response if it's a follow-up, None otherwise.
+
+        This allows Vision Intelligence to check for follow-ups before doing visual analysis.
+        """
+        query_lower = self._normalize_speech_query(query.lower())
+
+        # Check for follow-up queries requesting more detail
+        detail_keywords = [
+            "explain in detail", "more detail", "tell me more", "what's happening",
+            "explain what's happening", "what is happening", "explain that",
+            "give me details", "explain it", "what's going on", "what is going on",
+            # Affirmative continuations
+            "yes", "yeah", "yep", "sure", "please", "go ahead",
+            # Natural continuations that reference previous context
+            "explain", "what's in", "what is in", "what about", "help me with"
+        ]
+
+        # Check if we have recent conversational context (within last 2 minutes)
+        if self._conversation_timestamp:
+            time_since = datetime.now() - self._conversation_timestamp
+            if time_since.total_seconds() < 120:  # 2 minutes
+                # Check for follow-up patterns
+                is_followup = False
+
+                # Direct match on keywords
+                if any(kw in query_lower for kw in detail_keywords):
+                    is_followup = True
+
+                # Detect affirmative + context reference
+                if any(affirm in query_lower for affirm in ["yes", "yeah", "sure", "please"]):
+                    if any(ctx in query_lower for ctx in ["explain", "tell me", "what", "help"]):
+                        is_followup = True
+
+                if is_followup:
+                    logger.info(f"[CONTEXT-BRIDGE] Detected follow-up query: '{query_lower}'")
+                    return await self._handle_detail_followup(query_lower, current_space_id)
+
+        # Not a follow-up
+        return None
+
     async def answer_query(self, query: str, current_space_id: Optional[int] = None) -> str:
         """
         Answer natural language queries about workspace context.
