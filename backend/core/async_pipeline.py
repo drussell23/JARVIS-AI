@@ -945,6 +945,15 @@ class AdvancedAsyncPipeline:
                 "screen analysis",
                 "vision analysis",
                 "visual analysis",
+                # Multi-space and workspace queries
+                "desktop spaces",
+                "desktop space",
+                "across my desktop",
+                "happening across",
+                "what's happening across",
+                "what is happening across",
+                "my workspace",
+                "what am i working on",
                 # Follow-up queries that should use vision/context
                 "explain what is happening",
                 "explain what's happening",

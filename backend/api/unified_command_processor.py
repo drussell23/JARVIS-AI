@@ -670,7 +670,10 @@ class UnifiedCommandProcessor:
             "different space",
             "what am i working",
             "what is happening",
+            "what's happening",
             "what is going on",
+            "happening across",
+            "across my desktop spaces",
         ]
         for phrase in workspace_phrases:
             if phrase in command_lower:

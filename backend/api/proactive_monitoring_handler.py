@@ -44,14 +44,28 @@ class ProactiveMonitoringHandler:
         ]):
             return await self.enable_change_reporting()
             
-        # Check for workspace insights
+        # IMPORTANT: Skip desktop space queries - they should be handled by vision pipeline
+        if any(phrase in command_lower for phrase in [
+            "desktop space",
+            "desktop spaces",
+            "across my desktop",
+            "across desktop"
+        ]):
+            return {
+                "handled": False,
+                "reason": "Desktop space queries should be handled by vision pipeline"
+            }
+
+        # Check for workspace insights (but NOT desktop space queries)
         if any(phrase in command_lower for phrase in [
             "workspace insights",
             "what's happening",
             "workspace activity",
             "show me changes"
         ]):
-            return await self.get_workspace_insights()
+            # Double-check it's not a desktop space query
+            if not any(phrase in command_lower for phrase in ["desktop space", "desktop spaces", "across my desktop"]):
+                return await self.get_workspace_insights()
             
         return {
             "handled": False,
