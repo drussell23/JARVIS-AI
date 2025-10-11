@@ -2382,13 +2382,11 @@ except Exception as e:
             # Advanced parallel startup with intelligent sequencing
             start_time = time.time()
             
-            # Phase 1: Start WebSocket router first (required dependency)
-            print(f"\n{Colors.CYAN}Phase 1/3: Starting WebSocket Router...{Colors.ENDC}")
+            # Phase 1: Start WebSocket router first (optional - for advanced features)
+            print(f"\n{Colors.CYAN}Phase 1/3: Starting WebSocket Router (optional)...{Colors.ENDC}")
             websocket_router_process = await self.start_websocket_router()
             if not websocket_router_process:
-                print(f"{Colors.FAIL}✗ WebSocket router failed to start. Aborting.{Colors.ENDC}")
-                await self.cleanup()
-                return False
+                print(f"{Colors.WARNING}⚠ WebSocket router not available (optional feature). Continuing...{Colors.ENDC}")
             
             # Phase 2: Start backend and frontend in parallel
             print(f"\n{Colors.CYAN}Phase 2/3: Starting Backend & Frontend in parallel...{Colors.ENDC}")
