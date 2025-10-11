@@ -304,6 +304,11 @@ class VisionCommandHandler:
                         f"[ENHANCED VISION] Multi-space analysis needed: {needs_multi_space}"
                     )
 
+                # Debug logging for screenshot type
+                logger.info(f"[ENHANCED VISION] Screenshot type: {type(screenshot)}, needs_multi_space: {needs_multi_space}")
+                if isinstance(screenshot, dict):
+                    logger.info(f"[ENHANCED VISION] Screenshot is dict with {len(screenshot)} keys: {list(screenshot.keys())}")
+
                 if needs_multi_space and isinstance(screenshot, dict):
                     # Multi-space query with multiple screenshots - use enhanced analysis
                     logger.info(
