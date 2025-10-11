@@ -412,11 +412,24 @@ class MultiSpaceQueryDetector:
     def _analyze_unmatched_query(self, query: str) -> SpaceQueryIntent:
         """Analyze queries that don't match patterns"""
         query_lower = query.lower()
-        
+
         # Check for space-related keywords
         has_space_term = any(term in query_lower for term in self._space_terms)
         has_other_term = any(term in query_lower for term in self._other_terms)
-        
+
+        # Check for specific app mentions that should trigger multi-space capture
+        app_keywords = ['terminal', 'chrome', 'browser', 'vscode', 'code', 'safari', 'firefox']
+        mentions_app = any(app in query_lower for app in app_keywords)
+
+        # If query mentions specific apps, treat as location query to capture all spaces
+        if mentions_app:
+            return SpaceQueryIntent(
+                query_type=SpaceQueryType.LOCATION_QUERY,
+                confidence=0.6,
+                metadata_sufficient=True,
+                context_hints=['app_mention']
+            )
+
         if has_space_term and has_other_term:
             return SpaceQueryIntent(
                 query_type=SpaceQueryType.LOCATION_QUERY,
@@ -424,7 +437,7 @@ class MultiSpaceQueryDetector:
                 metadata_sufficient=True,
                 context_hints=['unmatched_but_spatial']
             )
-            
+
         return SpaceQueryIntent(
             query_type=SpaceQueryType.SIMPLE_PRESENCE,
             confidence=0.3,

@@ -945,6 +945,17 @@ class AdvancedAsyncPipeline:
                 "screen analysis",
                 "vision analysis",
                 "visual analysis",
+                # Follow-up queries that should use vision/context
+                "explain what is happening",
+                "explain what's happening",
+                "what is happening",
+                "what's happening",
+                "explain in detail",
+                "tell me more",
+                "give me details",
+                "what about the terminal",
+                "what about the",
+                "in the terminal",
             ],
             "system_control": [
                 "open",
