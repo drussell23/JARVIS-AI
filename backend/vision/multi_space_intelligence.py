@@ -2934,6 +2934,7 @@ class MultiSpaceIntelligenceExtension:
         self.content_analyzer = DynamicContentAnalyzer()
         self.response_generator = AdaptiveResponseGenerator()
         self.adaptation_engine = WorkspaceAdaptationEngine()
+        self.response_builder = MultiSpaceResponseBuilder()
 
     def analyze_comprehensive_workspace(
         self,
