@@ -1761,6 +1761,7 @@ class AdaptiveResponseGenerator:
     def __init__(self):
         self.content_analyzer = DynamicContentAnalyzer()
         self.response_templates = self._init_response_templates()
+        self.response_builder = MultiSpaceResponseBuilder()
 
     def _init_response_templates(self) -> Dict[str, Any]:
         """Initialize adaptive response templates"""
@@ -1905,7 +1906,9 @@ class AdaptiveResponseGenerator:
                 "space_id": space_id,
                 "is_current": is_current,
                 "app_count": len(applications),
-                "primary_activity": self._determine_space_activity(applications),
+                "primary_activity": self.response_builder._determine_space_activity(
+                    applications
+                ),
                 "applications": list(applications.keys()),
             }
 
@@ -2870,7 +2873,7 @@ class MultiSpaceIntelligenceExtension:
         """Main entry point for comprehensive multi-space analysis"""
 
         # Step 1: Detect query intent
-        intent = self.query_detector.detect_query_intent(query)
+        intent = self.query_detector.detect_intent(query)
 
         # Step 2: Adapt to workspace configuration
         adaptation = self.adaptation_engine.adapt_to_workspace(
@@ -2886,6 +2889,36 @@ class MultiSpaceIntelligenceExtension:
         response = self._apply_adaptation_rules(response, adaptation)
 
         return response
+
+    def generate_enhanced_workspace_response(
+        self,
+        query: str,
+        workspace_data: Dict[str, Any],
+        screenshots: Dict[int, Any] = None,
+    ) -> str:
+        """Generate enhanced response with screenshots if available"""
+
+        # If we have screenshots, use them for content analysis
+        if screenshots:
+            # Add screenshot data to workspace data for analysis
+            enhanced_workspace_data = workspace_data.copy()
+            enhanced_workspace_data["screenshots"] = screenshots
+
+            # Re-run analysis with screenshots
+            intent = self.query_detector.detect_intent(query)
+            adaptation = self.adaptation_engine.adapt_to_workspace(
+                enhanced_workspace_data, query
+            )
+
+            # Generate response with visual context
+            response = self.response_generator.generate_response(
+                query, enhanced_workspace_data, intent
+            )
+            response = self._apply_adaptation_rules(response, adaptation)
+            return response
+        else:
+            # No screenshots, use workspace data only
+            return self.analyze_comprehensive_workspace(query, workspace_data)
 
     def _apply_adaptation_rules(self, response: str, adaptation: Dict[str, Any]) -> str:
         """Apply dynamic adaptation rules to the response"""
