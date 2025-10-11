@@ -359,9 +359,25 @@ class MultiSpaceCaptureEngine:
             # Current space - use fast screencapture
             methods_to_try = [CaptureMethod.SCREENCAPTURE_API, CaptureMethod.SWIFT_CAPTURE]
         else:
-            # Other space - MUST use space switch, screencapture won't work
-            methods_to_try = [CaptureMethod.SPACE_SWITCH, CaptureMethod.SWIFT_CAPTURE]
-            logger.info(f"Capturing space {space_id} (current: {current_space_id}) - using SPACE_SWITCH method")
+            # Other space - Try CG capture first (no switching!), then fall back
+            logger.info(f"Capturing space {space_id} (current: {current_space_id}) - attempting CG capture without switching")
+
+            # Try CG capture directly first
+            cg_screenshot = await self._capture_with_cg_windows(space_id, request)
+            if cg_screenshot is not None:
+                logger.info(f"[SUCCESS] Captured space {space_id} using CG Windows API without switching!")
+                return True, cg_screenshot, SpaceCaptureMetadata(
+                    space_id=space_id,
+                    timestamp=datetime.now(),
+                    capture_method="cg_windows",
+                    quality=request.quality,
+                    window_count=1,
+                    content_hash=""
+                ), None
+
+            # If CG fails, try space switch as fallback
+            methods_to_try = [CaptureMethod.SPACE_SWITCH]
+            logger.warning(f"CG capture failed for space {space_id}, falling back to space switching")
 
         for method in methods_to_try:
 
@@ -534,23 +550,33 @@ class MultiSpaceCaptureEngine:
                 logger.warning(f"[CG_CAPTURE] No windows found in space {space_id}")
                 return None
 
-            # For now, capture the first significant window (Terminal, Chrome, etc.)
-            for window in target_windows:
-                app_name = window.get('app', '')
-                window_title = window.get('title', '')
+            # Look specifically for Terminal first if that's what was requested
+            query_wants_terminal = any(term in str(request.reason).lower() for term in ['terminal', 'shell', 'command'])
 
-                # Priority apps to capture
-                if any(app in app_name.lower() for app in ['terminal', 'iterm', 'chrome', 'safari', 'firefox', 'code']):
-                    logger.info(f"[CG_CAPTURE] Found {app_name} in space {space_id}, capturing...")
+            # Priority: Terminal > Other apps
+            priority_order = []
+            if query_wants_terminal:
+                priority_order = ['terminal', 'iterm', 'chrome', 'safari', 'firefox', 'code']
+            else:
+                priority_order = ['chrome', 'safari', 'firefox', 'terminal', 'iterm', 'code']
 
-                    # Find window ID
-                    window_id = CGWindowCapture.find_window_by_name(app_name, window_title)
-                    if window_id:
-                        # Capture it!
-                        screenshot = CGWindowCapture.capture_window_by_id(window_id)
-                        if screenshot is not None:
-                            logger.info(f"[CG_CAPTURE] Successfully captured {app_name} (ID: {window_id}) from space {space_id} WITHOUT switching!")
-                            return screenshot
+            # Try to capture the most relevant window
+            for priority_app in priority_order:
+                for window in target_windows:
+                    app_name = window.get('app', '')
+                    window_title = window.get('title', '')
+
+                    if priority_app in app_name.lower():
+                        logger.info(f"[CG_CAPTURE] Found {app_name} '{window_title}' in space {space_id}, capturing...")
+
+                        # Find window ID
+                        window_id = CGWindowCapture.find_window_by_name(app_name, window_title)
+                        if window_id:
+                            # Capture it!
+                            screenshot = CGWindowCapture.capture_window_by_id(window_id)
+                            if screenshot is not None:
+                                logger.info(f"[CG_CAPTURE] Successfully captured {app_name} (ID: {window_id}) from space {space_id} WITHOUT switching!")
+                                return screenshot
 
             logger.warning(f"[CG_CAPTURE] Could not capture any windows from space {space_id}")
             return None

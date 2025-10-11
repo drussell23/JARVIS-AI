@@ -1708,11 +1708,15 @@ Remember: Natural, helpful, and space-aware responses.
 
             if 'terminal' in target_apps:
                 visual_context += f"For TERMINAL windows specifically:\n"
+                visual_context += f"  ⚠️ IMPORTANT: Terminal.app is NOT the browser console/developer tools!\n"
+                visual_context += f"  • Look for the actual Terminal application window\n"
+                visual_context += f"  • Terminal has a dark background with command line interface\n"
                 visual_context += f"  • Read visible commands (look for $ or % prompts)\n"
                 visual_context += f"  • Quote exact error messages if present\n"
-                visual_context += f"  • Note working directory if visible\n"
-                visual_context += f"  • Mention what process is running\n"
-                visual_context += f"  • Be SPECIFIC about actual content, not just 'a terminal is open'\n\n"
+                visual_context += f"  • Note working directory (usually shown after ~)\n"
+                visual_context += f"  • Mention what process/script is running\n"
+                visual_context += f"  • DO NOT describe browser console as Terminal\n"
+                visual_context += f"  • Be SPECIFIC about actual Terminal content\n\n"
 
             visual_context += f"{'─'*60}\n"
         else:
