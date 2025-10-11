@@ -441,29 +441,60 @@ class ContextIntegrationBridge:
         if is_affirmative and len(query.split()) <= 5:  # Short affirmative
             signals.append(0.6)
 
-        # Signal 5: Entity overlap (same apps/spaces mentioned in previous conversation)
-        if self._last_context and self._last_context.get("apps"):
-            mentioned_apps = set()
-            for app_info in self._last_context["apps"]:
-                app_name = app_info.get("name", "").lower()
-                if app_name and app_name in query_lower:
-                    mentioned_apps.add(app_name)
+        # Signal 5: Entity overlap (same apps/spaces/topics mentioned in previous conversation)
+        # Check multiple sources for entity matching
+        entity_overlap = False
+        if self._last_context:
+            # Check apps mentioned in last context
+            if self._last_context.get("apps"):
+                for app_info in self._last_context["apps"]:
+                    # Try different key variations
+                    app_name = (app_info.get("name") or app_info.get("app_name") or "").lower()
+                    if app_name and app_name in query_lower:
+                        entity_overlap = True
+                        break
 
-            if mentioned_apps:
-                signals.append(0.4)  # References same apps
+            # Also check if query mentions "terminal", "browser", etc. that were discussed
+            common_entities = ['terminal', 'chrome', 'browser', 'vscode', 'code', 'editor']
+            for entity in common_entities:
+                if entity in self._last_query.lower() and entity in query_lower:
+                    entity_overlap = True
+                    break
 
-        # Signal 6: Query brevity (follow-ups tend to be shorter)
-        word_count = len(query.split())
-        if word_count <= 8:
-            signals.append(0.2)
+        if entity_overlap:
+            signals.append(0.5)  # Strong signal - references same entities
 
-        # Signal 7: No new question structure (lacks independent context)
-        # If query doesn't introduce new topics/apps, likely a follow-up
-        has_new_topic_words = any(word in query_lower for word in [
-            'can you see', 'what do you see', 'show me', 'open', 'close', 'launch',
-            'start', 'run', 'execute', 'search for', 'find'
+        # Signal 6: Topic continuity (mentions same subject as previous query)
+        # Extract key nouns from last query and check if current query references them
+        if self._last_query:
+            # Simple noun extraction - words that aren't common question words
+            exclude_words = {'can', 'you', 'see', 'my', 'the', 'a', 'an', 'in', 'on', 'at', 'to', 'for', 'is', 'are', 'other', 'window'}
+            last_query_words = set(self._last_query.lower().split()) - exclude_words
+            current_query_words = set(query_lower.split()) - exclude_words
+
+            # Check for word overlap
+            overlap_words = last_query_words & current_query_words
+            if overlap_words:
+                # More overlap = stronger signal
+                overlap_ratio = len(overlap_words) / max(len(last_query_words), 1)
+                signals.append(min(0.4, overlap_ratio * 0.8))
+
+        # Signal 7: Lacks new topic introduction
+        # New topics usually start with "can you see", "show me", system commands
+        new_topic_patterns = [
+            'can you see', 'what do you see', 'show me my',
+            'open ', 'close ', 'launch ', 'start ',
+            'run ', 'execute ', 'search for', 'find me'
+        ]
+        has_new_topic = any(pattern in query_lower for pattern in new_topic_patterns)
+
+        # Exception: "can you explain" is NOT a new topic, it's elaboration
+        is_elaboration_request = any(verb in query_lower for verb in [
+            'can you explain', 'can you tell', 'can you describe',
+            'could you explain', 'could you tell'
         ])
-        if not has_new_topic_words:
+
+        if not has_new_topic or is_elaboration_request:
             signals.append(0.3)
 
         # Combine signals with weighted average
@@ -504,7 +535,7 @@ class ContextIntegrationBridge:
         # Adaptive threshold based on time since last interaction
         # Recent queries need lower threshold (more likely to be follow-ups)
         time_factor = max(0.0, 1.0 - (time_since.total_seconds() / 120))
-        adaptive_threshold = 0.5 - (time_factor * 0.2)  # Range: 0.3-0.5
+        adaptive_threshold = 0.45 - (time_factor * 0.25)  # Range: 0.2-0.45 (more lenient)
 
         if followup_score >= adaptive_threshold:
             logger.info(

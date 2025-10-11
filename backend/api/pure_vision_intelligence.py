@@ -1662,21 +1662,61 @@ Remember: Natural, helpful, and space-aware responses.
         window_data: Dict[str, Any],
         screenshots: Dict[int, Any],
     ) -> str:
-        """Build prompt that includes visual context from multiple spaces"""
+        """
+        Build prompt that includes visual context from multiple spaces.
+        ENHANCED: Intelligently directs Claude's focus based on query.
+        """
         base_prompt = self._build_multi_space_prompt(query, intent, window_data)
 
-        # Add visual context information
-        visual_context = f"\n\nVISUAL CONTEXT AVAILABLE:\n"
-        visual_context += (
-            f"I have provided screenshots from {len(screenshots)} desktop spaces:\n"
-        )
+        # Intelligently detect what app/window user is asking about
+        query_lower = query.lower()
+        target_apps = []
+
+        # Extract app mentions from query
+        app_keywords = {
+            'terminal': ['terminal', 'term', 'shell', 'bash', 'zsh'],
+            'chrome': ['chrome', 'browser'],
+            'safari': ['safari'],
+            'firefox': ['firefox'],
+            'vscode': ['vscode', 'code', 'visual studio'],
+            'editor': ['editor', 'text editor']
+        }
+
+        for app_type, keywords in app_keywords.items():
+            if any(kw in query_lower for kw in keywords):
+                target_apps.append(app_type)
+
+        # Build visual context with smart focus
+        visual_context = f"\n\n{'═'*60}\nVISUAL CONTEXT AVAILABLE\n{'═'*60}\n"
+        visual_context += f"I have provided screenshots from {len(screenshots)} desktop spaces:\n\n"
 
         for space_id in sorted(screenshots.keys()):
             is_current = space_id == window_data.get("current_space", {}).get("id", 1)
-            status = " (current)" if is_current else ""
-            visual_context += f"- Desktop {space_id}{status}: Full visual access\n"
+            status = " (current screen)" if is_current else " (other space)"
+            visual_context += f"  📸 Desktop {space_id}{status}: Full visual access\n"
 
-        visual_context += "\nAnalyze ALL provided screenshots to give a complete answer about the user's workspace."
+        # Add intelligent focus instructions
+        if target_apps:
+            visual_context += f"\n{'─'*60}\n"
+            visual_context += f"⚠️  CRITICAL FOCUS INSTRUCTION:\n"
+            visual_context += f"The user is asking about: {', '.join(target_apps).upper()}\n\n"
+            visual_context += f"YOU MUST:\n"
+            visual_context += f"1. Find the {target_apps[0].upper()} window across ALL screenshots\n"
+            visual_context += f"2. READ the actual content visible in that {target_apps[0].upper()} window\n"
+            visual_context += f"3. Describe what you see IN THAT SPECIFIC WINDOW\n"
+            visual_context += f"4. Do NOT describe other windows unless specifically asked\n\n"
+
+            if 'terminal' in target_apps:
+                visual_context += f"For TERMINAL windows specifically:\n"
+                visual_context += f"  • Read visible commands (look for $ or % prompts)\n"
+                visual_context += f"  • Quote exact error messages if present\n"
+                visual_context += f"  • Note working directory if visible\n"
+                visual_context += f"  • Mention what process is running\n"
+                visual_context += f"  • Be SPECIFIC about actual content, not just 'a terminal is open'\n\n"
+
+            visual_context += f"{'─'*60}\n"
+        else:
+            visual_context += "\nAnalyze ALL provided screenshots to give a complete answer.\n"
 
         return base_prompt + visual_context
 
