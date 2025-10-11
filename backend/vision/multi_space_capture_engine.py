@@ -410,13 +410,13 @@ class MultiSpaceCaptureEngine:
         
     async def _capture_with_method(self, space_id: int, method: CaptureMethod, request: SpaceCaptureRequest) -> Optional[np.ndarray]:
         """Execute capture using specific method"""
-        
+
         # If monitoring is active and we're using Swift, leverage the purple indicator session
         if method == CaptureMethod.SWIFT_CAPTURE and self.monitoring_active and is_direct_capturing():
             logger.info(f"Using active purple indicator session for space {space_id} capture")
             # The Swift capture can leverage the existing session
             return await self._capture_with_swift_monitoring(space_id, request.quality)
-        
+
         if method == CaptureMethod.SCREENCAPTURE_API:
             return await self._capture_with_screencapture(space_id, request.quality)
         elif method == CaptureMethod.SWIFT_CAPTURE:
@@ -424,6 +424,11 @@ class MultiSpaceCaptureEngine:
         elif method == CaptureMethod.APPLESCRIPT_CAPTURE:
             return await self._capture_with_applescript(space_id, request.quality)
         elif method == CaptureMethod.SPACE_SWITCH:
+            # Try CG Window capture FIRST (no switching needed!)
+            cg_result = await self._capture_with_cg_windows(space_id, request)
+            if cg_result is not None:
+                return cg_result
+            # Fall back to space switching if CG fails
             return await self._capture_with_space_switch(space_id, request)
         else:
             return None
@@ -503,6 +508,57 @@ class MultiSpaceCaptureEngine:
         # For now, return None as placeholder
         return None
         
+    async def _capture_with_cg_windows(self, space_id: int, request: SpaceCaptureRequest) -> Optional[np.ndarray]:
+        """
+        Capture windows from a specific space using Core Graphics API.
+        This can capture windows from ANY space without switching!
+        """
+        try:
+            logger.info(f"[CG_CAPTURE] Attempting to capture windows from space {space_id} without switching")
+
+            # Import our CG capture module
+            from .cg_window_capture import CGWindowCapture
+
+            # Get window info to find what's in the target space
+            from .multi_space_window_detector import MultiSpaceWindowDetector
+            detector = MultiSpaceWindowDetector()
+            window_data = detector.get_all_windows_across_spaces()
+
+            # Find windows in the target space
+            target_windows = []
+            for window in window_data.get('windows', []):
+                if window.get('space') == space_id:
+                    target_windows.append(window)
+
+            if not target_windows:
+                logger.warning(f"[CG_CAPTURE] No windows found in space {space_id}")
+                return None
+
+            # For now, capture the first significant window (Terminal, Chrome, etc.)
+            for window in target_windows:
+                app_name = window.get('app', '')
+                window_title = window.get('title', '')
+
+                # Priority apps to capture
+                if any(app in app_name.lower() for app in ['terminal', 'iterm', 'chrome', 'safari', 'firefox', 'code']):
+                    logger.info(f"[CG_CAPTURE] Found {app_name} in space {space_id}, capturing...")
+
+                    # Find window ID
+                    window_id = CGWindowCapture.find_window_by_name(app_name, window_title)
+                    if window_id:
+                        # Capture it!
+                        screenshot = CGWindowCapture.capture_window_by_id(window_id)
+                        if screenshot is not None:
+                            logger.info(f"[CG_CAPTURE] Successfully captured {app_name} (ID: {window_id}) from space {space_id} WITHOUT switching!")
+                            return screenshot
+
+            logger.warning(f"[CG_CAPTURE] Could not capture any windows from space {space_id}")
+            return None
+
+        except Exception as e:
+            logger.error(f"[CG_CAPTURE] Error during CG window capture: {e}", exc_info=True)
+            return None
+
     async def _capture_with_space_switch(self, space_id: int, request: SpaceCaptureRequest) -> Optional[np.ndarray]:
         """Use space switching as last resort"""
         logger.info(f"[SPACE_SWITCH] Attempting to capture space {space_id} via space switching")
