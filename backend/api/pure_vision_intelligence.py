@@ -543,8 +543,27 @@ class PureVisionIntelligence:
             # ═══════════════════════════════════════════════════════════════
             # Save conversational context for follow-up queries
             # ═══════════════════════════════════════════════════════════════
-            if response and ("would you like" in response.lower() or "can i help" in response.lower()):
-                # JARVIS asked a follow-up question, save context for continuation
+            # Detect if we should save context for follow-up
+            should_save_context = False
+            query_lower = user_query.lower()
+            response_lower = response.lower() if response else ""
+
+            # Trigger 1: JARVIS asks a question (existing behavior)
+            if response and ("would you like" in response_lower or "can i help" in response_lower):
+                should_save_context = True
+
+            # Trigger 2: User asks visibility queries
+            visibility_keywords = ["can you see", "do you see", "what do you see", "where is", "show me", "what's in"]
+            if any(keyword in query_lower for keyword in visibility_keywords):
+                should_save_context = True
+
+            # Trigger 3: Response mentions specific apps/terminals/windows
+            app_mentions = ["terminal", "chrome", "browser", "vscode", "code", "desktop", "window", "space"]
+            if response and any(mention in response_lower for mention in app_mentions):
+                should_save_context = True
+
+            if should_save_context:
+                # Save context for continuation
                 self.context_bridge._save_conversation_context(
                     query=user_query,
                     response=response,
