@@ -505,11 +505,14 @@ class MultiSpaceCaptureEngine:
         
     async def _capture_with_space_switch(self, space_id: int, request: SpaceCaptureRequest) -> Optional[np.ndarray]:
         """Use space switching as last resort"""
+        logger.info(f"[SPACE_SWITCH] Attempting to capture space {space_id} via space switching")
+
         if not self.space_switcher:
             # Initialize space switcher
+            logger.info("[SPACE_SWITCH] Initializing MinimalSpaceSwitcher")
             from .minimal_space_switcher import MinimalSpaceSwitcher
             self.space_switcher = MinimalSpaceSwitcher()
-        
+
         # Import SwitchRequest here to avoid circular imports
         from .minimal_space_switcher import SwitchRequest
             
@@ -528,11 +531,20 @@ class MultiSpaceCaptureEngine:
             return await self._capture_with_screencapture(space_id, request.quality)
             
         # Quick switch and capture
-        screenshot = await self.space_switcher.quick_capture_and_return(
-            space_id,
-            capture_callback
-        )
-        
+        logger.info(f"[SPACE_SWITCH] Calling quick_capture_and_return for space {space_id}")
+        try:
+            screenshot = await self.space_switcher.quick_capture_and_return(
+                space_id,
+                capture_callback
+            )
+            if screenshot is not None:
+                logger.info(f"[SPACE_SWITCH] Successfully captured space {space_id} via switching")
+            else:
+                logger.warning(f"[SPACE_SWITCH] Failed to capture space {space_id} - screenshot is None")
+        except Exception as e:
+            logger.error(f"[SPACE_SWITCH] Error during space switch capture: {e}", exc_info=True)
+            screenshot = None
+
         return screenshot
         
     async def enumerate_spaces(self) -> List[int]:
