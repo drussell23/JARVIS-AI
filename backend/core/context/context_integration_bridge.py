@@ -405,47 +405,118 @@ class ContextIntegrationBridge:
     # NATURAL LANGUAGE QUERY INTERFACE
     # ========================================================================
 
+    def _compute_followup_score(self, query: str, last_query: str, last_response: str) -> float:
+        """
+        Compute semantic similarity score to determine if query is a follow-up.
+        Uses lightweight NLP techniques - no heavy ML models.
+
+        Returns: 0.0-1.0 confidence score
+        """
+        query_lower = query.lower()
+
+        # Calculate multiple signals and combine them
+        signals = []
+
+        # Signal 1: Pronoun/Anaphora detection (references to "it", "that", "there")
+        anaphora_words = ['it', 'that', 'this', 'there', 'them', 'those', 'these']
+        has_anaphora = any(f" {word} " in f" {query_lower} " for word in anaphora_words)
+        if has_anaphora:
+            signals.append(0.4)  # Strong signal
+
+        # Signal 2: Interrogative continuations (what, why, how about previous topic)
+        interrogatives = ['what', 'why', 'how', 'when', 'where', 'which', 'who']
+        starts_with_interrogative = any(query_lower.startswith(word) for word in interrogatives)
+        if starts_with_interrogative and has_anaphora:
+            signals.append(0.5)  # Very strong
+
+        # Signal 3: Request verbs indicating elaboration
+        elaboration_verbs = ['explain', 'tell', 'show', 'describe', 'detail', 'elaborate', 'clarify']
+        has_elaboration = any(verb in query_lower for verb in elaboration_verbs)
+        if has_elaboration:
+            signals.append(0.3)
+
+        # Signal 4: Affirmative responses
+        affirmatives = ['yes', 'yeah', 'yep', 'sure', 'okay', 'ok', 'please', 'go ahead', 'proceed']
+        is_affirmative = any(f" {word} " in f" {query_lower} " or query_lower.startswith(word) for word in affirmatives)
+        if is_affirmative and len(query.split()) <= 5:  # Short affirmative
+            signals.append(0.6)
+
+        # Signal 5: Entity overlap (same apps/spaces mentioned in previous conversation)
+        if self._last_context and self._last_context.get("apps"):
+            mentioned_apps = set()
+            for app_info in self._last_context["apps"]:
+                app_name = app_info.get("name", "").lower()
+                if app_name and app_name in query_lower:
+                    mentioned_apps.add(app_name)
+
+            if mentioned_apps:
+                signals.append(0.4)  # References same apps
+
+        # Signal 6: Query brevity (follow-ups tend to be shorter)
+        word_count = len(query.split())
+        if word_count <= 8:
+            signals.append(0.2)
+
+        # Signal 7: No new question structure (lacks independent context)
+        # If query doesn't introduce new topics/apps, likely a follow-up
+        has_new_topic_words = any(word in query_lower for word in [
+            'can you see', 'what do you see', 'show me', 'open', 'close', 'launch',
+            'start', 'run', 'execute', 'search for', 'find'
+        ])
+        if not has_new_topic_words:
+            signals.append(0.3)
+
+        # Combine signals with weighted average
+        if not signals:
+            return 0.0
+
+        # Boost score if multiple signals present
+        base_score = sum(signals) / len(signals)
+        signal_diversity_bonus = min(0.2, len(signals) * 0.03)
+
+        return min(1.0, base_score + signal_diversity_bonus)
+
     async def check_followup_query(self, query: str, current_space_id: Optional[int] = None) -> Optional[str]:
         """
         Check if query is a follow-up to previous conversation.
         Returns detailed response if it's a follow-up, None otherwise.
 
-        This allows Vision Intelligence to check for follow-ups before doing visual analysis.
+        Uses semantic analysis instead of hardcoded keywords.
+        Lightweight NLP - optimized for M1 Mac (no heavy ML models).
         """
-        query_lower = self._normalize_speech_query(query.lower())
-
-        # Check for follow-up queries requesting more detail
-        detail_keywords = [
-            "explain in detail", "more detail", "tell me more", "what's happening",
-            "explain what's happening", "what is happening", "explain that",
-            "give me details", "explain it", "what's going on", "what is going on",
-            # Affirmative continuations
-            "yes", "yeah", "yep", "sure", "please", "go ahead",
-            # Natural continuations that reference previous context
-            "explain", "what's in", "what is in", "what about", "help me with"
-        ]
+        query_normalized = self._normalize_speech_query(query.lower())
 
         # Check if we have recent conversational context (within last 2 minutes)
-        if self._conversation_timestamp:
-            time_since = datetime.now() - self._conversation_timestamp
-            if time_since.total_seconds() < 120:  # 2 minutes
-                # Check for follow-up patterns
-                is_followup = False
+        if not self._conversation_timestamp:
+            return None
 
-                # Direct match on keywords
-                if any(kw in query_lower for kw in detail_keywords):
-                    is_followup = True
+        time_since = datetime.now() - self._conversation_timestamp
+        if time_since.total_seconds() >= 120:  # 2 minutes
+            return None
 
-                # Detect affirmative + context reference
-                if any(affirm in query_lower for affirm in ["yes", "yeah", "sure", "please"]):
-                    if any(ctx in query_lower for ctx in ["explain", "tell me", "what", "help"]):
-                        is_followup = True
+        # Compute semantic followup score
+        followup_score = self._compute_followup_score(
+            query_normalized,
+            self._last_query or "",
+            self._last_response or ""
+        )
 
-                if is_followup:
-                    logger.info(f"[CONTEXT-BRIDGE] Detected follow-up query: '{query_lower}'")
-                    return await self._handle_detail_followup(query_lower, current_space_id)
+        # Adaptive threshold based on time since last interaction
+        # Recent queries need lower threshold (more likely to be follow-ups)
+        time_factor = max(0.0, 1.0 - (time_since.total_seconds() / 120))
+        adaptive_threshold = 0.5 - (time_factor * 0.2)  # Range: 0.3-0.5
 
-        # Not a follow-up
+        if followup_score >= adaptive_threshold:
+            logger.info(
+                f"[CONTEXT-BRIDGE] Follow-up detected (score: {followup_score:.2f}, "
+                f"threshold: {adaptive_threshold:.2f}): '{query_normalized}'"
+            )
+            return await self._handle_detail_followup(query_normalized, current_space_id)
+
+        logger.debug(
+            f"[CONTEXT-BRIDGE] Not a follow-up (score: {followup_score:.2f}, "
+            f"threshold: {adaptive_threshold:.2f})"
+        )
         return None
 
     async def answer_query(self, query: str, current_space_id: Optional[int] = None) -> str:

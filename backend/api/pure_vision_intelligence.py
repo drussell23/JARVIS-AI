@@ -470,50 +470,133 @@ class PureVisionIntelligence:
 
     # ═══════════════════════════════════════════════════════════════
 
+    def _compute_query_intent_score(self, query: str) -> Dict[str, float]:
+        """
+        Dynamically compute intent scores for query routing.
+        Uses linguistic analysis instead of hardcoded rules.
+        Optimized for M1 Mac - lightweight, no ML models.
+
+        Returns: Dict of intent names to confidence scores
+        """
+        query_lower = query.lower()
+        scores = {}
+
+        # Analyze query structure
+        words = query_lower.split()
+        first_word = words[0] if words else ""
+        word_count = len(words)
+
+        # Intent: Multi-space awareness
+        multi_space_signals = 0
+        # Location indicators
+        if any(loc in query_lower for loc in ['other', 'another', 'different', 'all', 'every', 'across']):
+            multi_space_signals += 1
+        # Space/window references
+        if any(space in query_lower for space in ['space', 'desktop', 'window', 'screen', 'workspace']):
+            multi_space_signals += 1
+        # Plural app references
+        if any(plural in query_lower for plural in ['terminals', 'windows', 'apps', 'applications']):
+            multi_space_signals += 1
+        scores['multi_space'] = min(1.0, multi_space_signals * 0.35)
+
+        # Intent: Detailed explanation
+        explanation_signals = 0
+        if any(verb in query_lower for verb in ['explain', 'describe', 'tell', 'show', 'detail']):
+            explanation_signals += 1
+        if any(q in query_lower for q in ['what is', 'what\'s', 'how does', 'why is']):
+            explanation_signals += 1
+        if word_count > 8:  # Detailed questions tend to be longer
+            explanation_signals += 0.5
+        scores['detailed_explanation'] = min(1.0, explanation_signals * 0.4)
+
+        # Intent: Quick visibility check
+        visibility_signals = 0
+        if first_word in ['can', 'do', 'is', 'are']:
+            visibility_signals += 1
+        if any(vis in query_lower for vis in ['see', 'visible', 'showing', 'displayed']):
+            visibility_signals += 1
+        if word_count <= 8:  # Quick checks tend to be short
+            visibility_signals += 0.5
+        scores['quick_visibility'] = min(1.0, visibility_signals * 0.4)
+
+        # Intent: Context-dependent (references previous state)
+        context_signals = 0
+        if self.context_bridge and self.context_bridge._last_context:
+            # Check if query references entities from last context
+            last_apps = {app.get('name', '').lower() for app in self.context_bridge._last_context.get('apps', [])}
+            if any(app in query_lower for app in last_apps):
+                context_signals += 1
+        scores['context_dependent'] = min(1.0, context_signals * 0.6)
+
+        return scores
+
     async def understand_and_respond(self, screenshot: Any, user_query: str) -> str:
         """
         Core method: Claude sees, understands, and responds naturally.
-        No templates. No hardcoding. Pure intelligence.
-        Now with optional multi-space awareness for workspace-wide queries.
-        ENHANCED: Integrates with Context Intelligence Bridge for structured context.
+        ENHANCED: Dynamic, adaptive routing with semantic analysis.
+        - No hardcoded patterns
+        - Lightweight NLP (optimized for M1 Mac)
+        - Integrates with Context Intelligence Bridge
 
         Args:
             screenshot: Can be a single image OR Dict[int, image] for multi-space
             user_query: The user's question
         """
         # ═══════════════════════════════════════════════════════════════
-        # PRIORITY 1: Check if this is a follow-up query
-        # If so, use Context Bridge's detailed follow-up handler instead of visual analysis
+        # STAGE 1: Semantic Intent Analysis
+        # Compute intent scores to dynamically route the query
+        # ═══════════════════════════════════════════════════════════════
+        intent_scores = self._compute_query_intent_score(user_query)
+        logger.debug(f"[VISION] Intent scores: {intent_scores}")
+
+        # ═══════════════════════════════════════════════════════════════
+        # STAGE 2: Follow-up Detection (Highest Priority)
+        # If this is a conversational continuation, use Context Bridge
         # ═══════════════════════════════════════════════════════════════
         if self.context_bridge:
             try:
-                # Check if this is a follow-up to previous conversation
                 followup_response = await self.context_bridge.check_followup_query(user_query)
-
                 if followup_response:
                     logger.info("[VISION] Follow-up detected - using Context Bridge's detailed response")
                     return followup_response
             except Exception as e:
                 logger.warning(f"[VISION] Error checking for follow-up: {e}")
-                # Continue with normal vision analysis if follow-up check fails
 
-        # Check if we already have multi-space screenshots
+        # ═══════════════════════════════════════════════════════════════
+        # STAGE 3: Multi-Space Analysis Decision
+        # Use intent scores + multi-space detector for smart routing
+        # ═══════════════════════════════════════════════════════════════
+
+        # Already have multi-space screenshots from handler
         if isinstance(screenshot, dict) and len(screenshot) > 1:
-            # We already have multi-space screenshots from vision_command_handler
             return await self._analyze_multi_space_screenshots(screenshot, user_query)
 
-        # Check if query needs multi-space handling (but we don't have screenshots yet)
-        if self.multi_space_enabled and self._should_use_multi_space(user_query):
-            return await self._multi_space_understand_and_respond(
-                screenshot, user_query
-            )
+        # Adaptive multi-space decision
+        should_use_multispace = False
+        if self.multi_space_enabled:
+            # Combine intent score with multi-space detector
+            multispace_score = intent_scores.get('multi_space', 0.0)
+            detector_result = self._should_use_multi_space(user_query) if hasattr(self, '_should_use_multi_space') else False
 
-        # Original single-space logic
-        # ENHANCED: Get structured context from Context Intelligence Bridge
+            # Use multi-space if either score is high or detector says yes
+            should_use_multispace = multispace_score >= 0.5 or detector_result
+
+            if should_use_multispace:
+                logger.info(f"[VISION] Multi-space analysis triggered (score: {multispace_score:.2f})")
+                return await self._multi_space_understand_and_respond(screenshot, user_query)
+
+        # ═══════════════════════════════════════════════════════════════
+        # STAGE 4: Single-Space Analysis with Adaptive Context
+        # Build context based on query intent for optimal Claude performance
+        # ═══════════════════════════════════════════════════════════════
         structured_context = await self._get_structured_context(user_query)
 
-        # Generate rich context for Claude
-        context_prompt = self._build_pure_intelligence_prompt(user_query, structured_context)
+        # Adaptive prompt building based on intent
+        context_prompt = self._build_pure_intelligence_prompt(
+            user_query,
+            structured_context,
+            intent_scores=intent_scores  # Pass intent scores for adaptive prompting
+        )
 
         # Let Claude see and respond naturally
         claude_response = await self._get_claude_vision_response(
@@ -700,12 +783,20 @@ class PureVisionIntelligence:
             logger.error(f"[VISION-INTEL] Error getting structured context: {e}")
             return None
 
-    def _build_pure_intelligence_prompt(self, user_query: str, structured_context: Optional[Dict[str, Any]] = None) -> str:
+    def _build_pure_intelligence_prompt(
+        self,
+        user_query: str,
+        structured_context: Optional[Dict[str, Any]] = None,
+        intent_scores: Optional[Dict[str, float]] = None
+    ) -> str:
         """
         Build a rich, contextual prompt for Claude that enables natural responses.
-        This is the ONLY place we guide Claude - no response templates!
-        ENHANCED: Now includes structured context from Context Intelligence Bridge.
+        ENHANCED: Adaptive prompting based on query intent scores.
+        - Adjusts detail level based on intent
+        - Prioritizes relevant information
+        - Optimized for M1 Mac performance
         """
+        intent_scores = intent_scores or {}
         temporal_context = self.context.get_temporal_context()
 
         # Build conversation history context
@@ -751,7 +842,27 @@ class PureVisionIntelligence:
 
             structured_section += "\nUse this context to enhance your visual analysis!\n═══════════════════════════════════════════════════\n"
 
-        # Build the prompt that enables natural intelligence
+        # ═══════════════════════════════════════════════════════════════
+        # Adaptive Instructions based on Intent Scores
+        # ═══════════════════════════════════════════════════════════════
+        detail_level = "concise"
+        terminal_focus = "mention if visible"
+        response_length = "1-2 sentences"
+
+        # Adjust based on intent scores
+        if intent_scores.get('detailed_explanation', 0) >= 0.6:
+            detail_level = "detailed"
+            response_length = "2-4 sentences with specific details"
+
+        if intent_scores.get('quick_visibility', 0) >= 0.6:
+            detail_level = "minimal"
+            response_length = "1 sentence maximum"
+
+        # Emphasize terminal reading if query mentions terminal/errors
+        if any(term in user_query.lower() for term in ['terminal', 'error', 'command', 'happening']):
+            terminal_focus = "READ carefully and quote exact content"
+
+        # Build the adaptive prompt
         prompt = f"""You are JARVIS, Tony Stark's AI assistant. You're looking at the user's screen.
 
 User's Current Question: "{user_query}"
@@ -764,27 +875,30 @@ Temporal Context: {temporal_context['temporal_state']}
 Current Workflow: {self.context.workflow_state or 'unknown'}
 {structured_section}
 Instructions for Natural Response:
+
+RESPONSE STYLE: {detail_level.upper()} ({response_length})
+
+Core Guidelines:
 1. Look at the screen and understand what you see
 2. COMBINE visual analysis with the structured workspace context above
-3. **If you see a Terminal window, READ what's on the screen:**
-   - Look for error messages (lines starting with "Error:", "Traceback", etc.)
-   - Note the last command that was run (look for $ or % prompts)
-   - Identify the working directory if visible
-   - Be SPECIFIC about what you see - quote the exact error text
-4. If errors are detected (in structured context OR visible on screen), mention them proactively
-5. Answer ONLY what was asked - be concise and direct
-6. Use exact values when visible but keep context minimal
+3. **Terminal Windows - {terminal_focus}:**
+   - Error messages (lines with "Error:", "Traceback", exception names)
+   - Last executed command (look for shell prompts: $, %, >)
+   - Working directory if visible
+   - Be SPECIFIC - quote exact error text when present
+4. Proactively mention errors from EITHER structured context OR visual screen content
+5. Answer ONLY what was asked - stay focused on the user's question
+6. Use exact values/paths/commands when visible
 7. Address the user as "Sir" naturally
 8. {emotional_guidance}
-9. Keep response to 1-2 sentences unless more detail specifically requested
-10. Optionally add ONE brief, helpful insight if truly relevant
-11. Never describe the entire screen unless asked
+9. Prioritize accuracy over completeness - better to be precise than verbose
 
-IMPORTANT: Be conversational but CONCISE. Focus on answering the specific question.
-Example Good Response: "Yes, I can see Terminal in Space 2, Sir. I notice there's a ModuleNotFoundError when running `python app.py`. Would you like me to explain?"
-Example Bad Response: "Yes, I can see your terminal is open on Desktop 2."
+EXAMPLES:
+✓ Good (Detailed): "Yes, I can see Terminal in Space 2, Sir. I notice there's a ModuleNotFoundError when running `python app.py`. The error indicates the 'requests' module isn't installed. Would you like me to suggest a fix?"
+✓ Good (Quick): "Yes, Terminal is visible in Space 2, Sir."
+✗ Bad: "Yes, I can see your terminal is open on Desktop 2." (Too vague, no specific content)
 
-Remember: Natural, brief, directly answering what was asked, and SPECIFIC about errors/commands you see.
+Remember: Natural, {detail_level}, directly answering what was asked, and SPECIFIC about errors/commands you see.
 """
         return prompt
 
