@@ -20,6 +20,8 @@ from .pure_vision_intelligence import (
 from .proactive_monitoring_handler import get_monitoring_handler
 from .activity_reporting_commands import is_activity_reporting_command
 
+logger = logging.getLogger(__name__)
+
 # Import new monitoring system components
 try:
     from vision.monitoring_command_classifier import (
@@ -39,7 +41,13 @@ except ImportError as e:
     logger.warning(f"Monitoring system components not available: {e}")
     monitoring_system_available = False
 
-logger = logging.getLogger(__name__)
+# Import enhanced multi-space system
+try:
+    from vision.enhanced_multi_space_integration import EnhancedMultiSpaceSystem
+    enhanced_system_available = True
+except ImportError as e:
+    logger.warning(f"Enhanced multi-space system not available: {e}")
+    enhanced_system_available = False
 
 
 class WebSocketLogger:
@@ -91,6 +99,15 @@ class VisionCommandHandler:
         self.workflow = None
         self.monitoring_active = False
         self.jarvis_api = None  # For voice integration
+
+        # Initialize enhanced multi-space system if available
+        self.enhanced_system = None
+        if enhanced_system_available:
+            try:
+                self.enhanced_system = EnhancedMultiSpaceSystem()
+                logger.info("[VISION] Enhanced multi-space system initialized")
+            except Exception as e:
+                logger.warning(f"[VISION] Could not initialize enhanced system: {e}")
 
     async def initialize_intelligence(self, api_key: str = None):
         """Initialize pure vision intelligence system"""
@@ -209,6 +226,11 @@ class VisionCommandHandler:
             self.proactive = ProactiveIntelligence(self.intelligence)
             self.workflow = WorkflowIntelligence(self.intelligence)
 
+            # Update enhanced system with intelligence if available
+            if self.enhanced_system:
+                self.enhanced_system.vision_intelligence = self.intelligence
+                logger.info("[ENHANCED] Updated enhanced system with vision intelligence")
+
             logger.info("[PURE VISION] Intelligence systems initialized")
 
     async def handle_command(self, command_text: str) -> Dict[str, Any]:
@@ -239,6 +261,22 @@ class VisionCommandHandler:
         )
         if monitoring_result.get("handled"):
             return monitoring_result
+
+        # Try enhanced system first if available
+        if self.enhanced_system:
+            try:
+                enhanced_result = await self.enhanced_system.handle_vision_command(command_text)
+                if enhanced_result.get('handled') != False:
+                    # Enhanced system handled the command
+                    response = enhanced_result.get('response', '')
+                    logger.info(f"[ENHANCED] Successfully handled query with enhanced system")
+                    return {
+                        'handled': True,
+                        'response': response,
+                        'metadata': enhanced_result
+                    }
+            except Exception as e:
+                logger.warning(f"[ENHANCED] Enhanced system error, falling back: {e}")
 
         # Ensure intelligence is initialized
         if not self.intelligence:
