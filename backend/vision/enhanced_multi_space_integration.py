@@ -257,6 +257,8 @@ class EnhancedMultiSpaceSystem:
 
         prompt = f"""You are analyzing a macOS desktop with multiple spaces.
 
+IMPORTANT: Use the actual workspace names provided below, NOT generic "Desktop 1", "Desktop 2" labels.
+
 User Query: {query}
 
 Workspace Context:
@@ -264,6 +266,8 @@ Workspace Context:
 
 Current Workflow Type: {workflow.get('workflow_type', 'general')}
 Primary Task: {workflow.get('primary_task', 'General work')}
+
+When describing the spaces, use the actual workspace names from the context above (like "J.A.R.V.I.S. interface", "Cursor", "Code", "Terminal", "Google Chrome", etc.) instead of generic desktop numbers.
 
 Please provide a detailed, intelligent analysis of what's happening across the desktop spaces.
 Focus on:

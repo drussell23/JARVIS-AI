@@ -49,6 +49,16 @@ except ImportError as e:
     logger.warning(f"Enhanced multi-space system not available: {e}")
     enhanced_system_available = False
 
+# Import workspace name processor
+try:
+    from vision.workspace_name_processor import process_jarvis_response, update_workspace_names
+    workspace_processor_available = True
+except ImportError as e:
+    logger.warning(f"Workspace name processor not available: {e}")
+    workspace_processor_available = False
+    process_jarvis_response = lambda x, y=None: x  # Fallback to identity function
+    update_workspace_names = lambda x: None
+
 
 class WebSocketLogger:
     """Logger that sends logs to WebSocket for browser console"""
@@ -375,6 +385,11 @@ class VisionCommandHandler:
                             response = await self.intelligence.understand_and_respond(
                                 screenshot, command_text
                             )
+
+                            # Process response to replace generic desktop names with actual workspace names
+                            if workspace_processor_available and window_data:
+                                response = process_jarvis_response(response, window_data)
+
                             return {
                                 "handled": True,
                                 "response": response,
@@ -405,12 +420,25 @@ class VisionCommandHandler:
                         response = await self.intelligence.understand_and_respond(
                             screenshot, command_text
                         )
+
+                        # Process response for multi-space queries
+                        if workspace_processor_available and window_data:
+                            response = process_jarvis_response(response, window_data)
                 else:
                     # Single space or basic query - use standard Claude analysis
                     logger.info("[ENHANCED VISION] Single space analysis")
                     response = await self.intelligence.understand_and_respond(
                         screenshot, command_text
                     )
+
+                    # Even single space responses might contain Desktop references
+                    if workspace_processor_available and hasattr(self.intelligence, "_gather_multi_space_data"):
+                        try:
+                            window_data = await self.intelligence._gather_multi_space_data()
+                            if window_data:
+                                response = process_jarvis_response(response, window_data)
+                        except:
+                            pass  # Fallback silently if can't get window data
 
                 return {
                     "handled": True,
