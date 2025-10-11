@@ -214,8 +214,10 @@ class EnhancedMultiSpaceSystem:
             context = space_contexts.get(space_id)
 
             if context:
-                status = "CURRENT" if space.is_current else ""
-                lines.append(f"\n**Desktop {space_id} {status}**")
+                status = "(CURRENT)" if space.is_current else ""
+                # Use the actual workspace name instead of generic "Desktop N"
+                space_name = space.space_name if hasattr(space, 'space_name') else f"Desktop {space_id}"
+                lines.append(f"\n**{space_name} {status}**")
                 lines.append(f"  Purpose: {context.purpose}")
                 lines.append(f"  Task: {context.active_task}")
                 lines.append(f"  Apps: {', '.join(space.applications[:5])}")
