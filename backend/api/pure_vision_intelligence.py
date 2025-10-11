@@ -1298,16 +1298,26 @@ Be specific and natural. Never say "I previously saw" - instead say things like 
 
             # 5. Generate enhanced response using our intelligent system
             if query_analysis.get("analysis_type") == "enhanced":
-                # Use enhanced comprehensive workspace analysis with screenshots
+                # Try enhanced comprehensive workspace analysis with screenshots
                 enhanced_response = (
                     self.multi_space_extension.generate_enhanced_workspace_response(
                         user_query, window_data, multi_screenshots
                     )
                 )
-                logger.info(
-                    f"[ENHANCED MULTI-SPACE] Generated intelligent response: {len(enhanced_response)} chars"
-                )
-                return enhanced_response
+                # If enhanced response returns None, fall through to use Claude API
+                if enhanced_response is not None:
+                    logger.info(
+                        f"[ENHANCED MULTI-SPACE] Using template response: {len(enhanced_response)} chars"
+                    )
+                    return enhanced_response
+                else:
+                    logger.info(
+                        "[ENHANCED MULTI-SPACE] Using Claude API for intelligent analysis with screenshots"
+                    )
+                    # Build prompt for Claude API
+                    enhanced_prompt = self._build_comprehensive_multi_space_prompt(
+                        user_query, query_analysis["intent"], window_data, multi_screenshots
+                    )
             else:
                 # Fallback to old prompt-based system
                 enhanced_prompt = self._build_comprehensive_multi_space_prompt(

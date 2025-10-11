@@ -2967,28 +2967,20 @@ class MultiSpaceIntelligenceExtension:
         workspace_data: Dict[str, Any],
         screenshots: Dict[int, Any] = None,
     ) -> str:
-        """Generate enhanced response with screenshots if available"""
+        """Generate enhanced response with screenshots if available
 
-        # If we have screenshots, use them for content analysis
+        NOTE: This method now returns None to signal that Claude API should be used
+        when screenshots are available, allowing for intelligent vision analysis
+        instead of template-based responses.
+        """
+
+        # If we have screenshots, return None to signal Claude API should be used
         if screenshots:
-            # Add screenshot data to workspace data for analysis
-            enhanced_workspace_data = workspace_data.copy()
-            enhanced_workspace_data["screenshots"] = screenshots
-
-            # Re-run analysis with screenshots
-            intent = self.query_detector.detect_intent(query)
-            adaptation = self.adaptation_engine.adapt_to_workspace(
-                enhanced_workspace_data, query
-            )
-
-            # Generate response with visual context
-            response = self.response_generator.generate_response(
-                query, enhanced_workspace_data, intent
-            )
-            response = self._apply_adaptation_rules(response, adaptation)
-            return response
+            # Return None to indicate that the caller should use Claude API
+            # with the screenshots for intelligent analysis
+            return None
         else:
-            # No screenshots, use workspace data only
+            # No screenshots, use workspace data only for basic response
             return self.analyze_comprehensive_workspace(query, workspace_data)
 
     def _apply_adaptation_rules(self, response: str, adaptation: Dict[str, Any]) -> str:

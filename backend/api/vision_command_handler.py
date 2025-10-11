@@ -322,19 +322,38 @@ class VisionCommandHandler:
                         enhanced_response = self.intelligence.multi_space_extension.generate_enhanced_workspace_response(
                             command_text, window_data, screenshot
                         )
-                        logger.info(
-                            f"[ENHANCED VISION] Generated enhanced response: {len(enhanced_response)} chars"
-                        )
 
-                        return {
-                            "handled": True,
-                            "response": enhanced_response,
-                            "enhanced_analysis": True,
-                            "multi_space": True,
-                            "spaces_analyzed": len(screenshot),
-                            "monitoring_active": self.monitoring_active,
-                            "context": self.intelligence.context.get_temporal_context(),
-                        }
+                        # Check if enhanced response returned None (signals to use Claude API)
+                        if enhanced_response is None:
+                            logger.info(
+                                "[ENHANCED VISION] Enhanced system returned None, falling back to Claude API for intelligent analysis"
+                            )
+                            # Use Claude API for intelligent analysis
+                            response = await self.intelligence.understand_and_respond(
+                                screenshot, command_text
+                            )
+                            return {
+                                "handled": True,
+                                "response": response,
+                                "claude_api": True,
+                                "multi_space": True,
+                                "spaces_analyzed": len(screenshot),
+                                "monitoring_active": self.monitoring_active,
+                                "context": self.intelligence.context.get_temporal_context(),
+                            }
+                        else:
+                            logger.info(
+                                f"[ENHANCED VISION] Generated enhanced response: {len(enhanced_response)} chars"
+                            )
+                            return {
+                                "handled": True,
+                                "response": enhanced_response,
+                                "enhanced_analysis": True,
+                                "multi_space": True,
+                                "spaces_analyzed": len(screenshot),
+                                "monitoring_active": self.monitoring_active,
+                                "context": self.intelligence.context.get_temporal_context(),
+                            }
                     else:
                         # Fallback to Claude analysis with multi-space prompt
                         logger.info(
