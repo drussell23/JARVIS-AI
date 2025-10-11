@@ -344,12 +344,32 @@ class MultiSpaceCaptureEngine:
         capture_start = time.time()
         
         # Try methods in order of preference
-        for method in [CaptureMethod.SCREENCAPTURE_API, CaptureMethod.SWIFT_CAPTURE, 
-                      CaptureMethod.APPLESCRIPT_CAPTURE, CaptureMethod.SPACE_SWITCH]:
-            
+        # Determine current space to optimize method selection
+        current_space_id = 1  # Default
+        try:
+            from .multi_space_window_detector import MultiSpaceWindowDetector
+            detector = MultiSpaceWindowDetector()
+            window_data = detector.get_all_windows_across_spaces()
+            current_space_id = window_data.get("current_space", {}).get("id", 1)
+        except:
+            pass
+
+        # Smart method selection based on whether we're capturing current or other space
+        if space_id == current_space_id:
+            # Current space - use fast screencapture
+            methods_to_try = [CaptureMethod.SCREENCAPTURE_API, CaptureMethod.SWIFT_CAPTURE]
+        else:
+            # Other space - MUST use space switch, screencapture won't work
+            methods_to_try = [CaptureMethod.SPACE_SWITCH, CaptureMethod.SWIFT_CAPTURE]
+            logger.info(f"Capturing space {space_id} (current: {current_space_id}) - using SPACE_SWITCH method")
+
+        for method in methods_to_try:
+
             if not self.capture_methods.get(method, False):
-                continue
-                
+                # SPACE_SWITCH might not be in self.capture_methods, allow it anyway
+                if method != CaptureMethod.SPACE_SWITCH:
+                    continue
+
             try:
                 screenshot = await self._capture_with_method(space_id, method, request)
                 if screenshot is not None:
