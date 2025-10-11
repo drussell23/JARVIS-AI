@@ -111,37 +111,125 @@ class MultiSpaceWindowDetector:
         """Get comprehensive window information across all spaces"""
         # Get current space info first
         self._update_current_space()
-        
+
         # Get all windows with enhanced metadata
         windows = self._get_enhanced_windows()
-        
+
         # Get space information
         spaces = self._get_space_info()
-        
+
         # Map windows to spaces
         self._map_windows_to_spaces(windows, spaces)
-        
-        # Build comprehensive result
+
+        # Enhance spaces with workspace names and application info
+        enhanced_spaces = []
+        spaces_dict = {}  # Also keep dict format for compatibility
+
+        for space in spaces:
+            space_id = space.space_id
+
+            # Get windows for this space
+            space_window_ids = self.space_windows_map.get(space_id, set())
+            space_windows = [w for w in windows if w.window_id in space_window_ids]
+
+            # Get applications on this space
+            applications = list(set(w.app_name for w in space_windows if w.app_name and w.app_name != 'Unknown'))
+
+            # Determine primary app (most windows or first)
+            app_counts = {}
+            for w in space_windows:
+                if w.app_name:
+                    app_counts[w.app_name] = app_counts.get(w.app_name, 0) + 1
+            primary_app = max(app_counts.keys(), key=app_counts.get) if app_counts else None
+
+            # Determine workspace name based on applications
+            workspace_name = self._determine_workspace_name(primary_app, applications, space_windows)
+
+            # Create enhanced space info dict
+            space_info = {
+                'space_id': space_id,
+                'space_name': workspace_name,
+                'primary_app': primary_app,
+                'applications': applications,
+                'window_count': len(space_window_ids),
+                'is_current': space.is_current,
+                'windows': [self._window_to_dict(w) for w in space_windows]
+            }
+
+            # Add to both list and dict
+            enhanced_spaces.append(space_info)
+            spaces_dict[space_id] = space_info
+
+            logger.info(f"[MULTI-SPACE] Space {space_id}: '{workspace_name}' with apps {applications[:3] if applications else []}")
+
+        # Build comprehensive result with both list (for compatibility) and dict
         result = {
             'current_space': {
                 'id': self.current_space_id,
                 'uuid': self.current_space_uuid,
                 'window_count': len(self.space_windows_map.get(self.current_space_id, set()))
             },
-            'spaces': spaces,
+            'spaces': spaces_dict,  # Dict format for workspace name processing
+            'spaces_list': enhanced_spaces,  # List format for compatibility
             'windows': windows,
             'space_window_map': {
-                space_id: list(window_ids) 
+                space_id: list(window_ids)
                 for space_id, window_ids in self.space_windows_map.items()
             },
             'timestamp': datetime.now().isoformat()
         }
-        
+
         # Update caches
         self.windows_cache = {w.window_id: w for w in windows}
         self.last_update = time.time()
-        
+
         return result
+
+    def _determine_workspace_name(self, primary_app: str, applications: List[str], windows: List) -> str:
+        """Determine workspace name from applications and windows"""
+        # Check for JARVIS first
+        for w in windows:
+            if 'jarvis' in w.window_title.lower() or 'j.a.r.v.i.s' in w.window_title.lower():
+                return 'J.A.R.V.I.S. interface'
+
+        # If Chrome is primary, it might be JARVIS
+        if primary_app and 'chrome' in primary_app.lower():
+            return 'J.A.R.V.I.S. interface'
+
+        # Use primary app as workspace name if meaningful
+        if primary_app:
+            app_mappings = {
+                'cursor': 'Cursor',
+                'code': 'Code',
+                'visual studio code': 'Code',
+                'terminal': 'Terminal',
+                'iterm': 'Terminal',
+                'messages': 'Messages',
+                'slack': 'Slack',
+                'discord': 'Discord',
+                'safari': 'Safari',
+                'finder': 'Finder'
+            }
+
+            for key, value in app_mappings.items():
+                if key in primary_app.lower():
+                    return value
+
+            return primary_app
+
+        # Default fallback
+        return f"Desktop {windows[0].space_id if windows and hasattr(windows[0], 'space_id') else ''}"
+
+    def _window_to_dict(self, window: EnhancedWindowInfo) -> Dict:
+        """Convert window object to dictionary"""
+        return {
+            'kCGWindowNumber': window.window_id,
+            'kCGWindowOwnerName': window.app_name,
+            'kCGWindowName': window.window_title,
+            'kCGWindowOwnerPID': window.process_id,
+            'kCGWindowLayer': window.layer,
+            'kCGWindowAlpha': window.alpha
+        }
         
     def _get_enhanced_windows(self) -> List[EnhancedWindowInfo]:
         """Get all windows with enhanced metadata"""

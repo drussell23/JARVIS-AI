@@ -59,6 +59,16 @@ except ImportError as e:
     process_jarvis_response = lambda x, y=None: x  # Fallback to identity function
     update_workspace_names = lambda x: None
 
+# Import workspace name detector for better name detection
+try:
+    from vision.workspace_name_detector import process_response_with_workspace_names, get_current_workspace_names
+    workspace_detector_available = True
+except ImportError as e:
+    logger.warning(f"Workspace name detector not available: {e}")
+    workspace_detector_available = False
+    process_response_with_workspace_names = lambda x, y=None: x
+    get_current_workspace_names = lambda: {}
+
 
 class WebSocketLogger:
     """Logger that sends logs to WebSocket for browser console"""
@@ -366,6 +376,17 @@ class VisionCommandHandler:
                     # Get comprehensive workspace data
                     window_data = await self.intelligence._gather_multi_space_data()
 
+                    # Debug log the window data
+                    logger.info(f"[WORKSPACE DEBUG] Window data keys: {window_data.keys() if window_data else 'None'}")
+                    if window_data and 'spaces' in window_data:
+                        logger.info(f"[WORKSPACE DEBUG] Number of spaces: {len(window_data['spaces'])}")
+                        for space_id, space_info in window_data['spaces'].items():
+                            if isinstance(space_info, dict):
+                                apps = space_info.get('applications', [])
+                                primary = space_info.get('primary_app', 'None')
+                                space_name = space_info.get('space_name', f'Desktop {space_id}')
+                                logger.info(f"[WORKSPACE DEBUG] Space {space_id}: name='{space_name}', primary='{primary}', apps={apps[:2] if apps else []}")
+
                     # Use enhanced system if available
                     if hasattr(self.intelligence, "multi_space_extension") and hasattr(
                         self.intelligence.multi_space_extension,
@@ -386,9 +407,23 @@ class VisionCommandHandler:
                                 screenshot, command_text
                             )
 
+                            logger.info(f"[WORKSPACE DEBUG] Original response has 'Desktop': {'Desktop' in response if response else 'N/A'}")
+                            if response and 'Desktop' in response:
+                                logger.info(f"[WORKSPACE DEBUG] Sample of original: {response[:300]}")
+
                             # Process response to replace generic desktop names with actual workspace names
-                            if workspace_processor_available and window_data:
-                                response = process_jarvis_response(response, window_data)
+                            if workspace_detector_available:
+                                logger.info("[WORKSPACE DEBUG] Using workspace_detector to process response")
+                                processed_response = process_response_with_workspace_names(response, window_data)
+                                logger.info(f"[WORKSPACE DEBUG] After detector - has 'Desktop': {'Desktop' in processed_response if processed_response else 'N/A'}")
+                                response = processed_response
+                            elif workspace_processor_available and window_data:
+                                logger.info("[WORKSPACE DEBUG] Using workspace_processor to process response")
+                                processed_response = process_jarvis_response(response, window_data)
+                                logger.info(f"[WORKSPACE DEBUG] After processor - has 'Desktop': {'Desktop' in processed_response if processed_response else 'N/A'}")
+                                response = processed_response
+
+                            logger.info(f"[ENHANCED VISION] Response processed with workspace names")
 
                             return {
                                 "handled": True,
@@ -422,7 +457,9 @@ class VisionCommandHandler:
                         )
 
                         # Process response for multi-space queries
-                        if workspace_processor_available and window_data:
+                        if workspace_detector_available:
+                            response = process_response_with_workspace_names(response, window_data)
+                        elif workspace_processor_available and window_data:
                             response = process_jarvis_response(response, window_data)
                 else:
                     # Single space or basic query - use standard Claude analysis
@@ -432,7 +469,18 @@ class VisionCommandHandler:
                     )
 
                     # Even single space responses might contain Desktop references
-                    if workspace_processor_available and hasattr(self.intelligence, "_gather_multi_space_data"):
+                    if workspace_detector_available:
+                        # Always try to process with workspace detector for any Desktop references
+                        try:
+                            if hasattr(self.intelligence, "_gather_multi_space_data"):
+                                window_data = await self.intelligence._gather_multi_space_data()
+                                response = process_response_with_workspace_names(response, window_data)
+                            else:
+                                # Use detector without window data
+                                response = process_response_with_workspace_names(response, None)
+                        except:
+                            pass  # Fallback silently if can't process
+                    elif workspace_processor_available and hasattr(self.intelligence, "_gather_multi_space_data"):
                         try:
                             window_data = await self.intelligence._gather_multi_space_data()
                             if window_data:

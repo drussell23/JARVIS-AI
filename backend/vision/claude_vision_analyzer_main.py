@@ -5552,7 +5552,7 @@ Focus on what's visible in this specific region. Be concise but thorough."""
             result["metadata"] = {
                 "analysis_method": "multi_space",
                 "multi_space_context": {
-                    "total_spaces": len(window_data.get("spaces", [])),
+                    "total_spaces": len(window_data.get("spaces_list", window_data.get("spaces", {}))),
                     "total_windows": len(window_data.get("windows", [])),
                     "current_space": window_data.get("current_space", {}).get("id", 1),
                     "query_intent": (
@@ -5624,7 +5624,18 @@ Focus on what's visible in this specific region. Be concise but thorough."""
 
         # Build window summary
         window_summary = []
-        for space in window_data.get("spaces", []):
+
+        # Handle both list and dict formats for spaces
+        spaces_data = window_data.get("spaces_list", [])  # Try list format first
+        if not spaces_data:
+            # Fall back to dict format
+            spaces_dict = window_data.get("spaces", {})
+            if isinstance(spaces_dict, dict):
+                spaces_data = list(spaces_dict.values())
+            else:
+                spaces_data = spaces_dict  # It might already be a list
+
+        for space in spaces_data:
             space_id = (
                 space.space_id
                 if hasattr(space, "space_id")
@@ -5641,6 +5652,13 @@ Focus on what's visible in this specific region. Be concise but thorough."""
                 else space.get("is_current", False)
             )
 
+            # Get workspace name if available
+            space_name = (
+                space.space_name
+                if hasattr(space, "space_name")
+                else space.get("space_name", f"Desktop {space_id}")
+            )
+
             space_windows = [
                 w
                 for w in window_data.get("windows", [])
@@ -5652,8 +5670,9 @@ Focus on what's visible in this specific region. Be concise but thorough."""
 
             status = "(current)" if is_current else ""
             apps = f" - {', '.join(app_names)}" if app_names else ""
+            # Use actual workspace name instead of "Desktop N"
             window_summary.append(
-                f"Desktop {space_id} {status}: {window_count} windows{apps}"
+                f"{space_name} {status}: {window_count} windows{apps}"
             )
 
         # Build the enhanced prompt
@@ -5662,7 +5681,7 @@ Focus on what's visible in this specific region. Be concise but thorough."""
 USER QUERY: "{query}"
 
 MULTI-SPACE CONTEXT:
-You have visibility across {len(window_data.get('spaces', []))} desktop spaces.
+You have visibility across {len(spaces_data)} desktop spaces.
 {chr(10).join(window_summary)}
 
 Total windows across all spaces: {len(window_data.get('windows', []))}
@@ -6144,11 +6163,20 @@ For this query, provide a helpful response that leverages the multi-space inform
             detector = MultiSpaceWindowDetector()
             window_data = detector.get_all_windows_across_spaces()
 
-            # Find the specific space
-            for space in window_data.get("spaces", []):
+            # Find the specific space - handle both list and dict formats
+            spaces_data = window_data.get("spaces_list", [])
+            if not spaces_data:
+                spaces_dict = window_data.get("spaces", {})
+                if isinstance(spaces_dict, dict):
+                    spaces_data = list(spaces_dict.values())
+                else:
+                    spaces_data = spaces_dict
+
+            for space in spaces_data:
                 if hasattr(space, "space_id") and space.space_id == space_id:
                     return {
                         "space_id": space_id,
+                        "space_name": getattr(space, "space_name", f"Desktop {space_id}"),
                         "window_count": getattr(space, "window_count", 0),
                         "is_current": getattr(space, "is_current", False),
                         "applications": list(getattr(space, "applications", {}).keys()),
@@ -6156,9 +6184,10 @@ For this query, provide a helpful response that leverages the multi-space inform
                 elif isinstance(space, dict) and space.get("space_id") == space_id:
                     return {
                         "space_id": space_id,
+                        "space_name": space.get("space_name", f"Desktop {space_id}"),
                         "window_count": space.get("window_count", 0),
                         "is_current": space.get("is_current", False),
-                        "applications": list(space.get("applications", {}).keys()),
+                        "applications": space.get("applications", []),
                     }
 
             return {"space_id": space_id, "error": "Space not found"}
