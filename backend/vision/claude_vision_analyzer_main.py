@@ -6068,8 +6068,27 @@ For this query, provide a helpful response that leverages the multi-space inform
 
             if not result.success:
                 logger.error(f"[MULTI-SPACE] Capture failed: {result.errors}")
-                # Fall back to single current space capture
-                return await self._capture_macos_screencapture()
+                # Check if we have any partial results
+                if result.screenshots:
+                    logger.info(f"[MULTI-SPACE] Using partial results: {len(result.screenshots)}/{len(space_ids)} spaces captured")
+                    # Return partial results instead of falling back
+                    screenshots = {}
+                    for space_id, screenshot_array in result.screenshots.items():
+                        if isinstance(screenshot_array, np.ndarray):
+                            screenshots[space_id] = Image.fromarray(screenshot_array)
+                        else:
+                            screenshots[space_id] = screenshot_array
+
+                    # Return appropriate format
+                    if capture_all or len(screenshots) > 1:
+                        return screenshots
+                    else:
+                        # Single space - return just the image
+                        return screenshots.get(space_ids[0]) if screenshots else None
+                else:
+                    # No results at all - fall back to single current space capture
+                    logger.warning("[MULTI-SPACE] No screenshots captured at all, falling back to single space")
+                    return await self._capture_macos_screencapture()
 
             # Log performance metrics
             logger.info(

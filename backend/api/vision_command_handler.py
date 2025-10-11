@@ -287,10 +287,69 @@ class VisionCommandHandler:
                     command_text, command_context, screenshot
                 )
             elif command_context["type"] == CommandType.VISION_QUERY:
-                # Pure vision query - let Claude see and respond
-                response = await self.intelligence.understand_and_respond(
-                    screenshot, command_text
+                # Enhanced vision query - use multi-space intelligence for comprehensive analysis
+                logger.info(
+                    f"[ENHANCED VISION] Processing vision query with multi-space intelligence: {command_text}"
                 )
+
+                # Check if this needs multi-space analysis
+                needs_multi_space = False
+                if self.intelligence and hasattr(
+                    self.intelligence, "_should_use_multi_space"
+                ):
+                    needs_multi_space = self.intelligence._should_use_multi_space(
+                        command_text
+                    )
+                    logger.info(
+                        f"[ENHANCED VISION] Multi-space analysis needed: {needs_multi_space}"
+                    )
+
+                if needs_multi_space and isinstance(screenshot, dict):
+                    # Multi-space query with multiple screenshots - use enhanced analysis
+                    logger.info(
+                        f"[ENHANCED VISION] Using enhanced multi-space analysis for {len(screenshot)} spaces"
+                    )
+
+                    # Get comprehensive workspace data
+                    window_data = await self.intelligence._gather_multi_space_data()
+
+                    # Use enhanced system if available
+                    if hasattr(self.intelligence, "multi_space_extension") and hasattr(
+                        self.intelligence.multi_space_extension,
+                        "generate_enhanced_workspace_response",
+                    ):
+
+                        enhanced_response = self.intelligence.multi_space_extension.generate_enhanced_workspace_response(
+                            command_text, window_data, screenshot
+                        )
+                        logger.info(
+                            f"[ENHANCED VISION] Generated enhanced response: {len(enhanced_response)} chars"
+                        )
+
+                        return {
+                            "handled": True,
+                            "response": enhanced_response,
+                            "enhanced_analysis": True,
+                            "multi_space": True,
+                            "spaces_analyzed": len(screenshot),
+                            "monitoring_active": self.monitoring_active,
+                            "context": self.intelligence.context.get_temporal_context(),
+                        }
+                    else:
+                        # Fallback to Claude analysis with multi-space prompt
+                        logger.info(
+                            "[ENHANCED VISION] Enhanced system not available, using Claude multi-space analysis"
+                        )
+                        response = await self.intelligence.understand_and_respond(
+                            screenshot, command_text
+                        )
+                else:
+                    # Single space or basic query - use standard Claude analysis
+                    logger.info("[ENHANCED VISION] Single space analysis")
+                    response = await self.intelligence.understand_and_respond(
+                        screenshot, command_text
+                    )
+
                 return {
                     "handled": True,
                     "response": response,
@@ -308,7 +367,53 @@ class VisionCommandHandler:
                         command_text, screenshot
                     )
                 else:
-                    # Pure vision query
+                    # Enhanced vision query - check for multi-space needs
+                    logger.info(
+                        f"[ENHANCED VISION FALLBACK] Processing vision query: {command_text}"
+                    )
+
+                    # Check if this needs multi-space analysis
+                    needs_multi_space = False
+                    if self.intelligence and hasattr(
+                        self.intelligence, "_should_use_multi_space"
+                    ):
+                        needs_multi_space = self.intelligence._should_use_multi_space(
+                            command_text
+                        )
+
+                    if needs_multi_space and isinstance(screenshot, dict):
+                        # Multi-space query - use enhanced analysis
+                        logger.info(
+                            f"[ENHANCED VISION FALLBACK] Using enhanced multi-space analysis for {len(screenshot)} spaces"
+                        )
+
+                        window_data = await self.intelligence._gather_multi_space_data()
+
+                        if hasattr(
+                            self.intelligence, "multi_space_extension"
+                        ) and hasattr(
+                            self.intelligence.multi_space_extension,
+                            "generate_enhanced_workspace_response",
+                        ):
+
+                            enhanced_response = self.intelligence.multi_space_extension.generate_enhanced_workspace_response(
+                                command_text, window_data, screenshot
+                            )
+                            logger.info(
+                                f"[ENHANCED VISION FALLBACK] Generated enhanced response: {len(enhanced_response)} chars"
+                            )
+
+                            return {
+                                "handled": True,
+                                "response": enhanced_response,
+                                "enhanced_analysis": True,
+                                "multi_space": True,
+                                "spaces_analyzed": len(screenshot),
+                                "monitoring_active": self.monitoring_active,
+                                "context": self.intelligence.context.get_temporal_context(),
+                            }
+
+                    # Pure vision query - use standard Claude analysis
                     response = await self.intelligence.understand_and_respond(
                         screenshot, command_text
                     )
