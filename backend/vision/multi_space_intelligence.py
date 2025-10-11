@@ -257,9 +257,30 @@ class MultiSpaceQueryDetector:
         
     def _extract_by_known_apps(self, query: str, query_lower: str) -> Optional[Dict[str, Any]]:
         """Extract using known application database"""
+        # Check for common apps directly in query - return info
+        common_apps = {
+            'terminal': ['terminal', 'term', 'shell', 'bash', 'zsh', 'command line'], # Common terminal keywords for detection 
+            'chrome': ['chrome', 'google chrome'], # Common chrome keywords for detection 
+            'safari': ['safari'], # Common safari keywords for detection
+            'firefox': ['firefox'], # Common firefox keywords for detection 
+            'vscode': ['vscode', 'vs code', 'visual studio code', 'code editor'], # Common vscode keywords for detection
+        }
+
+        # Check for common app keywords in query - return info
+        for app_name, keywords in common_apps.items(): 
+            for keyword in keywords: # Check each keyword in the list of keywords for the app 
+                if keyword in query_lower: # Match found in query lower case - return info
+                    # Build app info and return immediately with confidence 0.95
+                    app_info = {
+                        'name': app_name.capitalize(), # Capitalize app name for consistency with other app info 
+                        'hints': ['common_app_detected'], # Add hint for common app detection 
+                        'confidence': 0.95 # Set confidence to 0.95 for common app detection 
+                    }
+                    return app_info # Return app info with confidence 0.95 immediately upon match 
+
         # Dynamic app discovery from query
         words = query_lower.split()
-        
+
         # Build potential app names from word combinations
         candidates = []
         for i in range(len(words)):
@@ -271,13 +292,13 @@ class MultiSpaceQueryDetector:
             # Three words
             if i < len(words) - 2:
                 candidates.append(f"{words[i]} {words[i+1]} {words[i+2]}")
-        
+
         # Check against known patterns
         for candidate in candidates:
             # Direct match in aliases
             if candidate in self._app_name_cache:
                 return self._app_name_cache[candidate]
-                
+
             # Check common patterns
             if self._looks_like_app_name(candidate):
                 app_info = {

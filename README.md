@@ -41,6 +41,8 @@
 - ✅ **Context-Aware Follow-Up** - Ask follow-up questions naturally (text OR voice)
 - ✅ **Deep Terminal Analysis** - Actually reads and analyzes terminal content with OCR
 - ✅ **Multi-Desktop Intelligence** - See and analyze terminals in other desktop spaces
+- ✅ **Smart Space Selection** - Only captures relevant spaces (no confusion between browser console & Terminal!)
+- ✅ **Enhanced App Detection** - Recognizes Terminal, Chrome, Safari, VSCode, and more
 - ✅ **Error Detection** - Automatically detects 30+ error patterns (Python, JS, Shell, Git)
 - ✅ **Actionable Fixes** - Suggests specific commands to resolve terminal errors
 - ✅ **Unified Context Bridge** - Shared context across all JARVIS systems
@@ -273,6 +275,64 @@ async def analyze_code_window(window_id: str, snapshot_id: str) -> Dict[str, Any
     - File path extraction
     """
 ```
+
+#### **6. Enhanced Multi-Space Capture** (v13.11.0 Improvements)
+**NEW: Smart Space Selection & Terminal Detection** 🎯
+
+JARVIS now intelligently captures ONLY the relevant desktop spaces when you ask about "other" windows:
+
+**The Problem We Solved:**
+- Previously, JARVIS would capture BOTH current space AND other spaces
+- This caused confusion between browser console and actual Terminal application
+- Claude would sometimes describe the wrong window
+
+**The Solution:**
+```python
+# Smart space selection in pure_vision_intelligence.py
+def _determine_spaces_to_capture(query, window_data):
+    """
+    Intelligently determines which spaces to capture:
+
+    1. Detects "other space" queries: "other window", "another space"
+    2. Finds target app (Terminal, Chrome, etc.) in specific spaces
+    3. ONLY captures target spaces when asking about "other" windows
+    4. Excludes current space to prevent confusion
+    """
+```
+
+**Enhanced App Detection:**
+- Terminal detection: `terminal`, `shell`, `bash`, `zsh`, `command line`
+- Browser detection: `chrome`, `safari`, `firefox`
+- Editor detection: `vscode`, `code editor`, `visual studio code`
+
+**Example - What Changed:**
+
+*Before v13.11.0:*
+```
+You: "Can you see my terminal in the other window space?"
+JARVIS captures: [Space 1 (current with browser), Space 2 (with Terminal)]
+Result: ❌ Describes browser console instead of Terminal
+```
+
+*After v13.11.0:*
+```
+You: "Can you see my terminal in the other window space?"
+JARVIS detects: Query asks about "other" space + Terminal
+JARVIS captures: [Space 2 ONLY (with Terminal)]
+Result: ✅ Correctly describes Terminal content
+```
+
+**Technical Features:**
+- ✅ **Core Graphics Window Capture** - Captures windows from ANY space without switching
+- ✅ **Smart Query Parsing** - Detects "other", "another", "different" space references
+- ✅ **Intelligent App Matching** - Finds Terminal/apps across all desktop spaces
+- ✅ **Single-Space Focus** - Only captures target space when explicitly asked
+- ✅ **Comprehensive Logging** - Debug logs for troubleshooting multi-space issues
+
+**Files Updated:**
+- `backend/vision/multi_space_intelligence.py` - Enhanced app detection
+- `backend/api/pure_vision_intelligence.py` - Smart space selection logic
+- `backend/vision/multi_space_capture_engine.py` - Detailed capture logging
 
 ### 📊 **Performance Metrics**
 

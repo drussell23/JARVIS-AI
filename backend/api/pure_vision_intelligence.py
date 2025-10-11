@@ -1199,8 +1199,13 @@ Be specific and natural. Never say "I previously saw" - instead say things like 
             # Store for debugging
             self._last_multi_space_context = context
 
-            # 6. Analyze with full multi-space visual context
-            if multi_screenshots:
+            # 6. Analyze with full multi-space visual context and Claude response handling logic (FRD-3) 
+            if multi_screenshots: # FRD-3 
+                logger.info(f"[MULTI-SPACE] Sending {len(multi_screenshots)} screenshots to Claude")
+                # Log screenshot shapes for debugging purposes 
+                for space_id, screenshot in multi_screenshots.items(): 
+                    logger.info(f"  Space {space_id}: screenshot shape {screenshot.shape if hasattr(screenshot, 'shape') else 'unknown'}")
+                # Analyze with Claude Vision 
                 claude_response = await self._get_multi_space_claude_response(
                     multi_screenshots, enhanced_prompt
                 )
@@ -1609,7 +1614,24 @@ Remember: Natural, helpful, and space-aware responses.
         result = await self.capture_engine.capture_all_spaces(request)
 
         if result.success:
-            return result.screenshots
+            logger.info(f"[CAPTURE] Success! Captured spaces: {list(result.screenshots.keys())}")
+            # Log screenshot shapes for debugging purposes (only for first 5 spaces) for now to reduce noise in logs for users 
+            for space_id, screenshot in result.screenshots.items():
+                # Check if screenshot is a numpy array 
+                if isinstance(screenshot, np.ndarray): 
+                    logger.info(f"[CAPTURE] Space {space_id}: Screenshot shape {screenshot.shape}")
+                    # Get apps for space for debugging purposes (only for first 5 apps) for now to reduce noise in logs for users
+                    space_apps = [
+                        # Get app name from window object or dict 
+                        w.app_name if hasattr(w, 'app_name') else w.get('app_name', 'Unknown') 
+                        # Filter windows by space id 
+                        for w in window_data.get('windows', [])
+                        # Check if window is in space 
+                        if (hasattr(w, 'space_id') and w.space_id == space_id) or
+                           (isinstance(w, dict) and w.get('space_id') == space_id) 
+                    ]
+                    logger.info(f"[CAPTURE] Space {space_id} apps: {list(set(space_apps))[:5]}")
+            return result.screenshots # Return full results 
         else:
             logger.warning(f"Multi-space capture had errors: {result.errors}")
             return result.screenshots  # Return partial results
@@ -1620,10 +1642,14 @@ Remember: Natural, helpful, and space-aware responses.
         """Determine which spaces need to be captured based on query"""
         intent = query_analysis.get("intent")
         spaces = set()
-
-        # Always include current space
         current_space = window_data.get("current_space", {}).get("id", 1)
-        spaces.add(current_space)
+
+        # Check if query is specifically asking about "other" spaces
+        query = query_analysis.get("query", "").lower()
+        is_other_space_query = any(phrase in query for phrase in [
+            "other window", "other space", "another window", "another space",
+            "different window", "different space"
+        ])
 
         # Add target space if specified
         if intent and hasattr(intent, "target_space") and intent.target_space:
@@ -1638,6 +1664,33 @@ Remember: Natural, helpful, and space-aware responses.
                     and hasattr(window, "space_id")
                 ):
                     spaces.add(window.space_id)
+                    logger.info(f"[SPACES] Found {intent.target_app} in space {window.space_id}")
+
+        # Only include current space if:
+        # 1. No other spaces were found (fallback)
+        # 2. Query is not specifically about "other" spaces
+        # 3. The target app is in the current space
+        if not spaces:
+            # No specific spaces found, include current as fallback
+            spaces.add(current_space)
+            logger.info(f"[SPACES] No specific spaces found, using current space {current_space}")
+        elif not is_other_space_query:
+            # Not asking about "other" spaces, might want current too
+            if intent and hasattr(intent, "target_app") and intent.target_app:
+                # Check if target app is also in current space
+                for window in window_data.get("windows", []):
+                    if (hasattr(window, "app_name") and
+                        intent.target_app.lower() in window.app_name.lower() and
+                        hasattr(window, "space_id") and
+                        window.space_id == current_space):
+                        spaces.add(current_space)
+                        logger.info(f"[SPACES] {intent.target_app} also found in current space {current_space}")
+                        break
+            else:
+                # No specific app mentioned, include current
+                spaces.add(current_space)
+        else:
+            logger.info(f"[SPACES] Query is about OTHER spaces, excluding current space {current_space}")
 
         # For overview queries, capture all spaces
         if intent and hasattr(intent, "query_type"):
@@ -1688,11 +1741,19 @@ Remember: Natural, helpful, and space-aware responses.
 
         # Build visual context with smart focus
         visual_context = f"\n\n{'═'*60}\nVISUAL CONTEXT AVAILABLE\n{'═'*60}\n"
-        visual_context += f"I have provided screenshots from {len(screenshots)} desktop spaces:\n\n"
+
+        current_space_id = window_data.get("current_space", {}).get("id", 1)
+
+        # Special handling when only showing other spaces
+        if current_space_id not in screenshots and len(screenshots) > 0:
+            visual_context += f"⚠️ NOTE: Showing ONLY the OTHER desktop space(s), NOT the current screen\n"
+            visual_context += f"The user is specifically asking about windows in OTHER spaces\n\n"
+
+        visual_context += f"I have provided screenshots from {len(screenshots)} desktop space(s):\n\n"
 
         for space_id in sorted(screenshots.keys()):
-            is_current = space_id == window_data.get("current_space", {}).get("id", 1)
-            status = " (current screen)" if is_current else " (other space)"
+            is_current = space_id == current_space_id
+            status = " (current screen)" if is_current else " (OTHER SPACE - NOT CURRENT)"
             visual_context += f"  📸 Desktop {space_id}{status}: Full visual access\n"
 
         # Add intelligent focus instructions
@@ -1732,25 +1793,37 @@ Remember: Natural, helpful, and space-aware responses.
         if not screenshots:
             raise ValueError("No screenshots provided for multi-space analysis")
 
+        logger.info(f"[CLAUDE_MULTI] Preparing {len(screenshots)} screenshots for Claude")
+        for space_id, screenshot in screenshots.items():
+            if isinstance(screenshot, np.ndarray):
+                logger.info(f"[CLAUDE_MULTI] Space {space_id}: numpy array shape {screenshot.shape}")
+            else:
+                logger.info(f"[CLAUDE_MULTI] Space {space_id}: type {type(screenshot)}")
+
         if self.claude:
             try:
                 # Prepare images for Claude
                 images = []
                 for space_id in sorted(screenshots.keys()):
                     screenshot = screenshots[space_id]
+                    logger.info(f"[CLAUDE_MULTI] Processing screenshot for space {space_id}")
 
                     # Convert numpy array to PIL Image if needed
                     if isinstance(screenshot, np.ndarray):
                         from PIL import Image
 
                         screenshot = Image.fromarray(screenshot)
+                        logger.info(f"[CLAUDE_MULTI] Converted space {space_id} numpy array to PIL Image")
 
                     images.append({"image": screenshot, "label": f"Desktop {space_id}"})
 
                 # Call Claude with multiple images
+                logger.info(f"[CLAUDE_MULTI] Sending {len(images)} images to Claude with labels: {[img['label'] for img in images]}")
+                logger.info(f"[CLAUDE_MULTI] Prompt (first 500 chars): {prompt[:500]}")
                 response = await self.claude.analyze_multiple_images_with_prompt(
                     images=images, prompt=prompt, max_tokens=1000
                 )
+                logger.info(f"[CLAUDE_MULTI] Claude response received (length: {len(response.get('content', ''))})")
 
                 return {
                     "response": response.get("content", ""),

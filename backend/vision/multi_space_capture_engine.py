@@ -357,6 +357,7 @@ class MultiSpaceCaptureEngine:
         # Smart method selection based on whether we're capturing current or other space
         if space_id == current_space_id:
             # Current space - use fast screencapture
+            logger.info(f"[CAPTURE] Space {space_id} is current space - using screencapture")
             methods_to_try = [CaptureMethod.SCREENCAPTURE_API, CaptureMethod.SWIFT_CAPTURE]
         else:
             # Other space - Try CG capture first (no switching!), then fall back
@@ -562,6 +563,7 @@ class MultiSpaceCaptureEngine:
 
             # Look specifically for Terminal first if that's what was requested
             query_wants_terminal = any(term in str(request.reason).lower() for term in ['terminal', 'shell', 'command'])
+            logger.info(f"[CG_CAPTURE] Query wants terminal: {query_wants_terminal}, reason: {request.reason}")
 
             # Priority: Terminal > Other apps
             priority_order = []
@@ -569,6 +571,16 @@ class MultiSpaceCaptureEngine:
                 priority_order = ['terminal', 'iterm', 'chrome', 'safari', 'firefox', 'code']
             else:
                 priority_order = ['chrome', 'safari', 'firefox', 'terminal', 'iterm', 'code']
+
+            # Log all windows in target space
+            logger.info(f"[CG_CAPTURE] Windows in space {space_id}:")
+            # Handle both object attributes and dict keys for logging purposes here
+            for window in target_windows: 
+                # Handle both object attributes and dict keys here for logging purposes
+                if hasattr(window, 'app_name'):
+                    logger.info(f"  - {window.app_name}: {window.window_title}")
+                else:
+                    logger.info(f"  - {window.get('app', 'Unknown')}: {window.get('title', 'Unknown')}")
 
             # Try to capture the most relevant window
             for priority_app in priority_order:
