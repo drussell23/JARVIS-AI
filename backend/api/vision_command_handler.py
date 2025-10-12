@@ -69,6 +69,17 @@ except ImportError as e:
     process_response_with_workspace_names = lambda x, y=None: x
     get_current_workspace_names = lambda: {}
 
+# Import Yabai-based multi-space intelligence system
+try:
+    from vision.yabai_space_detector import YabaiSpaceDetector, YabaiStatus
+    from vision.workspace_analyzer import WorkspaceAnalyzer
+    from vision.space_response_generator import SpaceResponseGenerator
+    yabai_system_available = True
+    logger.info("[VISION] ✅ Yabai multi-space intelligence system loaded")
+except ImportError as e:
+    logger.warning(f"Yabai multi-space system not available: {e}")
+    yabai_system_available = False
+
 
 class WebSocketLogger:
     """Logger that sends logs to WebSocket for browser console"""
@@ -128,6 +139,23 @@ class VisionCommandHandler:
                 logger.info("[VISION] Enhanced multi-space system initialized")
             except Exception as e:
                 logger.warning(f"[VISION] Could not initialize enhanced system: {e}")
+
+        # Initialize Yabai-based multi-space intelligence system
+        self.yabai_detector = None
+        self.workspace_analyzer = None
+        self.space_response_generator = None
+        if yabai_system_available:
+            try:
+                self.yabai_detector = YabaiSpaceDetector(
+                    cache_ttl=5,
+                    query_timeout=5,
+                    enable_cache=True
+                )
+                self.workspace_analyzer = WorkspaceAnalyzer()
+                self.space_response_generator = SpaceResponseGenerator(use_sir_prefix=True)
+                logger.info("[VISION] ✅ Yabai multi-space intelligence initialized")
+            except Exception as e:
+                logger.warning(f"[VISION] Could not initialize Yabai system: {e}")
 
     async def initialize_intelligence(self, api_key: str = None):
         """Initialize pure vision intelligence system"""
@@ -644,7 +672,65 @@ class VisionCommandHandler:
                 # Even error messages come from Claude
                 return await self._get_error_response("screenshot_failed", command_text)
 
-            # Use enhanced multi-space intelligence if available
+            # Try Yabai multi-space intelligence first
+            if needs_multi_space and self.yabai_detector and self.workspace_analyzer and self.space_response_generator:
+                try:
+                    logger.info("[YABAI] Using Yabai-based multi-space intelligence")
+
+                    # Check Yabai availability
+                    status = await self.yabai_detector.check_availability()
+
+                    if status == YabaiStatus.AVAILABLE:
+                        # Get workspace data from Yabai
+                        workspace_data = await self.yabai_detector.get_workspace_data()
+                        spaces = workspace_data['spaces']
+                        windows = workspace_data['windows']
+
+                        # Analyze workspace activity
+                        analysis = self.workspace_analyzer.analyze(spaces, windows)
+
+                        # Generate natural language response
+                        response = self.space_response_generator.generate_overview_response(
+                            analysis, include_details=True
+                        )
+
+                        # Get performance stats
+                        perf_stats = self.yabai_detector.get_performance_stats()
+                        logger.info(f"[YABAI] Performance: {perf_stats}")
+
+                        return {
+                            "handled": True,
+                            "response": response,
+                            "pure_intelligence": True,
+                            "yabai_powered": True,
+                            "monitoring_active": self.monitoring_active,
+                            "context": self.intelligence.context.get_temporal_context() if self.intelligence else {},
+                            "analysis_metadata": {
+                                "total_spaces": analysis.total_spaces,
+                                "active_spaces": analysis.active_spaces,
+                                "unique_applications": analysis.unique_applications,
+                                "detected_project": analysis.detected_project,
+                                "yabai_status": status.value,
+                                "performance": perf_stats
+                            }
+                        }
+                    else:
+                        # Yabai not available - provide installation guidance
+                        logger.warning(f"[YABAI] Not available (status: {status.value})")
+                        response = self.space_response_generator.generate_yabai_installation_response(status)
+
+                        return {
+                            "handled": True,
+                            "response": response,
+                            "yabai_status": status.value,
+                            "monitoring_active": self.monitoring_active,
+                        }
+
+                except Exception as e:
+                    logger.error(f"[YABAI] Error using Yabai system: {e}", exc_info=True)
+                    # Fall through to Claude-based analysis
+
+            # Use enhanced multi-space intelligence if available (fallback)
             if (
                 self.intelligence
                 and hasattr(self.intelligence, "multi_space_extension")
