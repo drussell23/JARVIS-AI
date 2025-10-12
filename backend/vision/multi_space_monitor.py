@@ -182,8 +182,17 @@ class MultiSpaceMonitor:
             current_windows = defaultdict(set)
             
             # Extract space and window information
-            for space_info in window_data.get('spaces', []):
-                space_id = (space_info.space_id if hasattr(space_info, 'space_id') 
+            # Handle both list and dict formats
+            spaces_data = window_data.get('spaces_list', [])
+            if not spaces_data:
+                spaces_dict = window_data.get('spaces', {})
+                if isinstance(spaces_dict, dict):
+                    spaces_data = list(spaces_dict.values())
+                else:
+                    spaces_data = spaces_dict
+
+            for space_info in spaces_data:
+                space_id = (space_info.space_id if hasattr(space_info, 'space_id')
                            else space_info.get('space_id'))
                 if space_id:
                     current_spaces.add(space_id)

@@ -3417,9 +3417,19 @@ class MultiSpaceIntelligenceExtension:
             else:
                 # Query about "other desktop" without specific app
                 current_space_id = window_data.get("current_space", {}).get("id", 1)
+
+                # Handle both list and dict formats
+                spaces_data = window_data.get('spaces_list', [])
+                if not spaces_data:
+                    spaces_dict = window_data.get('spaces', {})
+                    if isinstance(spaces_dict, dict):
+                        spaces_data = list(spaces_dict.values())
+                    else:
+                        spaces_data = spaces_dict
+
                 other_spaces = [
                     space
-                    for space in window_data.get("spaces", [])
+                    for space in spaces_data
                     if (
                         hasattr(space, "space_id")
                         and space.space_id != current_space_id
@@ -3454,8 +3464,17 @@ class MultiSpaceIntelligenceExtension:
                     return "You only have one desktop active."
                 
         elif intent.query_type == SpaceQueryType.ALL_SPACES:
+            # Handle both list and dict formats
+            spaces_data = window_data.get('spaces_list', [])
+            if not spaces_data:
+                spaces_dict = window_data.get('spaces', {})
+                if isinstance(spaces_dict, dict):
+                    spaces_data = list(spaces_dict.values())
+                else:
+                    spaces_data = spaces_dict
+
             spaces_summary = []
-            for space in window_data.get("spaces", []):
+            for space in spaces_data:
                 if hasattr(space, "space_id"):
                     # It's a SpaceInfo object
                     space_id = space.space_id
