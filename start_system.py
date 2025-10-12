@@ -95,6 +95,18 @@ import aiohttp
 import time
 from datetime import datetime
 import subprocess
+import multiprocessing
+
+# Set fork safety for macOS to prevent segmentation faults
+if platform.system() == 'Darwin':
+    # Set environment variable for fork safety
+    os.environ['OBJC_DISABLE_INITIALIZE_FORK_SAFETY'] = 'YES'
+    # Try to set multiprocessing start method if not already set
+    try:
+        multiprocessing.set_start_method('spawn', force=False)
+    except RuntimeError:
+        # Already set, that's fine
+        pass
 
 # Set up logging
 import logging

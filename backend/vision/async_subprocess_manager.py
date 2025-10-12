@@ -297,6 +297,10 @@ class AsyncSubprocessManager:
                     info.end_time = time.time()
                     self._stats["total_completed"] += 1
 
+                    # Wait for process to fully terminate
+                    if info.process.returncode is None:
+                        await info.process.wait()
+
                     logger.debug(f"Subprocess {process_id} completed with code {info.return_code}")
 
                 except asyncio.TimeoutError:
@@ -322,9 +326,21 @@ class AsyncSubprocessManager:
                 # Clean up
                 self._active_processes.discard(process_id)
 
-                # Ensure process is terminated
-                if info.process and info.process.returncode is None:
-                    await self._terminate_process(info)
+                # Ensure process is terminated and pipes are closed
+                if info.process:
+                    if info.process.returncode is None:
+                        await self._terminate_process(info)
+
+                    # Always close pipes to prevent semaphore leaks
+                    try:
+                        if info.process.stdout and not info.process.stdout.is_closing():
+                            info.process.stdout.close()
+                        if info.process.stderr and not info.process.stderr.is_closing():
+                            info.process.stderr.close()
+                        if info.process.stdin and not info.process.stdin.is_closing():
+                            info.process.stdin.close()
+                    except Exception as e:
+                        logger.debug(f"Error closing pipes for {process_id}: {e}")
 
     async def _terminate_process(self, info: ProcessInfo):
         """Terminate a process gracefully, then forcefully if needed"""
@@ -346,6 +362,17 @@ class AsyncSubprocessManager:
                     logger.warning(f"Process {info.process_id} force killed")
                 except ProcessLookupError:
                     pass  # Process already dead
+
+            # Close all pipes after termination
+            try:
+                if info.process.stdout and not info.process.stdout.is_closing():
+                    info.process.stdout.close()
+                if info.process.stderr and not info.process.stderr.is_closing():
+                    info.process.stderr.close()
+                if info.process.stdin and not info.process.stdin.is_closing():
+                    info.process.stdin.close()
+            except Exception as e:
+                logger.debug(f"Error closing pipes during termination: {e}")
 
             info.state = ProcessState.TERMINATED
             info.end_time = time.time()
