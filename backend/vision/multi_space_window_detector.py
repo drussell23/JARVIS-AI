@@ -53,12 +53,12 @@ class EnhancedWindowInfo:
     app_name: str
     window_title: str
     process_id: int
-
+    
     # Space info
     space_id: Optional[int] = None
     space_uuid: Optional[str] = None
     visibility: SpaceWindowVisibility = SpaceWindowVisibility.HIDDEN
-
+    
     # Position and state
     bounds: Dict[str, int] = field(default_factory=dict)  # x, y, width, height
     is_minimized: bool = False
@@ -66,54 +66,54 @@ class EnhancedWindowInfo:
     is_focused: bool = False
     layer: int = 0
     alpha: float = 1.0
-
+    
     # Enhanced metadata
     document_path: Optional[str] = None
     document_modified: Optional[datetime] = None
     last_activated: Optional[datetime] = None
-
+    
     # Workspace context
     related_windows: List[int] = field(default_factory=list)
     workspace_role: Optional[str] = None  # "main", "reference", "tool", etc.
-
+    
     def to_context_string(self) -> str:
         """Generate natural language context about the window"""
         context_parts = [f"{self.app_name}"]
-
+        
         if self.window_title:
             context_parts.append(f'"{self.window_title}"')
-
+            
         if self.document_path:
             context_parts.append(f"editing {self.document_path}")
-
+            
         if self.is_fullscreen:
             context_parts.append("in fullscreen")
         elif self.is_minimized:
             context_parts.append("minimized")
-
+            
         return " ".join(context_parts)
 
 
 class MultiSpaceWindowDetector:
     """Enhanced window detector with full multi-space awareness"""
-
+    
     def __init__(self):
         self.last_update = 0
         self.update_interval = 0.5
-
+        
         # Caches
         self.windows_cache: Dict[int, EnhancedWindowInfo] = {}
         self.spaces_cache: Dict[int, SpaceInfo] = {}
         self.space_windows_map: Dict[int, Set[int]] = defaultdict(set)
-
+        
         # State tracking
         self.current_space_id: Optional[int] = None
         self.current_space_uuid: Optional[str] = None
-
+        
         # Screenshot cache
         self.screenshot_cache: Dict[int, Tuple[Any, datetime]] = {}
         self.cache_ttl = timedelta(minutes=5)
-
+        
     def get_all_windows_across_spaces(self) -> Dict[str, Any]:
         """Get comprehensive window information across all spaces"""
         # Get current space info first
@@ -256,26 +256,26 @@ class MultiSpaceWindowDetector:
             "kCGWindowLayer": window.layer,
             "kCGWindowAlpha": window.alpha,
         }
-
+        
     def _get_enhanced_windows(self) -> List[EnhancedWindowInfo]:
         """Get all windows with enhanced metadata"""
         windows = []
-
+        
         # Get window list with all options for maximum info
         window_list = Quartz.CGWindowListCopyWindowInfo(
             Quartz.kCGWindowListOptionAll | Quartz.kCGWindowListExcludeDesktopElements,
             Quartz.kCGNullWindowID,
         )
-
+        
         if not window_list:
             logger.warning("No windows found")
             return windows
-
+            
         # Get the frontmost application for focus detection
         workspace = AppKit.NSWorkspace.sharedWorkspace()
         frontmost_app = workspace.frontmostApplication()
         frontmost_pid = frontmost_app.processIdentifier() if frontmost_app else None
-
+        
         # Process each window
         for window_dict in window_list:
             window = self._process_window_dict(window_dict, frontmost_pid)
@@ -283,9 +283,9 @@ class MultiSpaceWindowDetector:
                 # Try to get additional metadata
                 self._enhance_window_metadata(window)
                 windows.append(window)
-
+                
         return windows
-
+        
     def _process_window_dict(
         self, window_dict: Dict, frontmost_pid: int
     ) -> Optional[EnhancedWindowInfo]:
@@ -297,7 +297,7 @@ class MultiSpaceWindowDetector:
         process_id = window_dict.get("kCGWindowOwnerPID", 0)
         layer = window_dict.get("kCGWindowLayer", 0)
         alpha = window_dict.get("kCGWindowAlpha", 0)
-
+        
         # Skip system UI elements
         if app_name in [
             "Window Server",
@@ -308,11 +308,11 @@ class MultiSpaceWindowDetector:
             "Wallpaper",
         ]:
             return None
-
+            
         # Skip invisible windows
         if alpha == 0:
             return None
-
+            
         # Get window bounds
         bounds_dict = window_dict.get("kCGWindowBounds", {})
         bounds = {
@@ -321,15 +321,15 @@ class MultiSpaceWindowDetector:
             "width": int(bounds_dict.get("Width", 0)),
             "height": int(bounds_dict.get("Height", 0)),
         }
-
+        
         # Skip tiny windows
         if bounds["width"] < 100 or bounds["height"] < 100:
             return None
-
+            
         # Determine visibility and state
         is_minimized = window_dict.get("kCGWindowIsOnscreen", True) == False
         is_focused = process_id == frontmost_pid and layer == 0
-
+        
         # Check if fullscreen (heuristic based on screen size)
         screen_height = AppKit.NSScreen.mainScreen().frame().size.height
         screen_width = AppKit.NSScreen.mainScreen().frame().size.width
@@ -337,7 +337,7 @@ class MultiSpaceWindowDetector:
             bounds["width"] >= screen_width * 0.95
             and bounds["height"] >= screen_height * 0.95
         )
-
+        
         # Determine visibility
         if is_minimized:
             visibility = SpaceWindowVisibility.MINIMIZED
@@ -347,7 +347,7 @@ class MultiSpaceWindowDetector:
             visibility = SpaceWindowVisibility.VISIBLE_CURRENT_SPACE
         else:
             visibility = SpaceWindowVisibility.VISIBLE_OTHER_SPACE
-
+            
         return EnhancedWindowInfo(
             window_id=window_id,
             app_name=app_name,
@@ -361,7 +361,7 @@ class MultiSpaceWindowDetector:
             alpha=alpha,
             visibility=visibility,
         )
-
+        
     def _enhance_window_metadata(self, window: EnhancedWindowInfo):
         """Enhance window with additional metadata"""
         # Try to extract document path from window title
@@ -369,11 +369,11 @@ class MultiSpaceWindowDetector:
             # Common pattern: "filename — application"
             parts = window.window_title.split("—")
             potential_path = parts[0].strip()
-
+            
             # Check if it looks like a file path
             if "/" in potential_path or "." in potential_path:
                 window.document_path = potential_path
-
+                
         # Determine workspace role based on app and position
         if window.app_name in ["Visual Studio Code", "Xcode", "IntelliJ IDEA"]:
             window.workspace_role = "main"
@@ -381,7 +381,7 @@ class MultiSpaceWindowDetector:
             window.workspace_role = "tool"
         elif window.app_name in ["Safari", "Chrome", "Firefox"]:
             window.workspace_role = "reference"
-
+            
     def _update_current_space(self):
         """Update current space information"""
         # Try to get current space using various methods
@@ -389,27 +389,27 @@ class MultiSpaceWindowDetector:
             # Method 1: Use accessibility API to get space info
             # This is a simplified version - in production you'd use more robust methods
             workspace = AppKit.NSWorkspace.sharedWorkspace()
-
+            
             # Try to determine current space (this is a placeholder)
             # In reality, you'd need to use private APIs or other methods
             if not self.current_space_id:
                 self.current_space_id = 1  # Default to space 1
-
+                
         except Exception as e:
             logger.error(f"Failed to update current space: {e}")
             self.current_space_id = 1
-
+            
     def _get_space_info(self) -> List[SpaceInfo]:
         """Get information about all spaces"""
         spaces = []
-
+        
         # This is a simplified implementation
         # In production, you'd use more sophisticated methods to detect spaces
-
+        
         # For now, infer spaces from window positions and visibility
         # Windows off-screen or not visible are likely on other spaces
         estimated_spaces = self._estimate_spaces_from_windows()
-
+        
         for space_id in estimated_spaces:
             space = SpaceInfo(
                 space_id=space_id,
@@ -418,24 +418,47 @@ class MultiSpaceWindowDetector:
                 is_current=(space_id == self.current_space_id),
                 window_count=len(self.space_windows_map.get(space_id, set())),
             )
-
+            
             # Check cache for screenshot
             if space_id in self.screenshot_cache:
                 screenshot, timestamp = self.screenshot_cache[space_id]
                 if datetime.now() - timestamp < self.cache_ttl:
                     space.cached_screenshot = screenshot
                     space.screenshot_timestamp = timestamp
-
+                    
             spaces.append(space)
-
+            
         return spaces
-
+        
     def _estimate_spaces_from_windows(self) -> Set[int]:
         """Estimate number of spaces from window visibility"""
         # Start with current space
         spaces = {self.current_space_id}
+        
+        # Try Objective-C space detection first
+        try:
+            from .objc_space_detector import get_objc_space_detector
 
-        # Use Core Graphics API to get all windows (including off-screen)
+            objc_detector = get_objc_space_detector()
+            if objc_detector.is_available():
+                objc_spaces = objc_detector.enumerate_all_spaces()
+
+                if objc_spaces:
+                    detected_spaces = set()
+                    for space_info in objc_spaces:
+                        space_id = space_info.get("space_id", 1)
+                        detected_spaces.add(space_id)
+
+                    spaces.update(detected_spaces)
+                    logger.info(
+                        f"[SPACE_DETECTION] Detected {len(detected_spaces)} spaces via Objective-C: {sorted(detected_spaces)}"
+                    )
+                    return spaces
+
+        except Exception as e:
+            logger.warning(f"[SPACE_DETECTION] Objective-C detection failed: {e}")
+
+        # Fallback: Use Core Graphics API to get all windows (including off-screen)
         try:
             import Quartz
 
@@ -561,19 +584,19 @@ class MultiSpaceWindowDetector:
         """Map windows to their respective spaces"""
         # Clear existing mapping
         self.space_windows_map.clear()
-
+        
         for window in windows:
             # Determine space based on visibility
             if window.visibility == SpaceWindowVisibility.VISIBLE_CURRENT_SPACE:
                 window.space_id = self.current_space_id
                 self.space_windows_map[self.current_space_id].add(window.window_id)
-
+                
             elif window.visibility == SpaceWindowVisibility.VISIBLE_OTHER_SPACE:
                 # Try to determine which other space
                 # This is a heuristic - in production you'd use actual detection
                 window.space_id = self._estimate_window_space(window)
                 self.space_windows_map[window.space_id].add(window.window_id)
-
+                
     def _estimate_window_space(self, window: EnhancedWindowInfo) -> int:
         """Estimate which space a window is on"""
         # Try to use AppleScript to get the actual space for this window
@@ -639,16 +662,16 @@ class MultiSpaceWindowDetector:
             return 1  # Default space
         else:
             return 2  # Default to space 2 for unknown apps
-
+            
     def find_window(self, query: str) -> List[EnhancedWindowInfo]:
         """Find windows matching a query"""
         query_lower = query.lower()
         matches = []
-
+        
         # Update if cache is stale
         if time.time() - self.last_update > self.update_interval:
             self.get_all_windows_across_spaces()
-
+            
         for window in self.windows_cache.values():
             if (
                 query_lower in window.app_name.lower()
@@ -658,26 +681,26 @@ class MultiSpaceWindowDetector:
                 )
             ):
                 matches.append(window)
-
+                
         return matches
-
+        
     def get_space_summary(self, space_id: int) -> Dict[str, Any]:
         """Get a summary of what's on a specific space"""
         # Update cache if needed
         if time.time() - self.last_update > self.update_interval:
             self.get_all_windows_across_spaces()
-
+            
         windows_on_space = [
-            self.windows_cache[wid]
+            self.windows_cache[wid] 
             for wid in self.space_windows_map.get(space_id, set())
             if wid in self.windows_cache
         ]
-
+        
         # Group by application
         apps = defaultdict(list)
         for window in windows_on_space:
             apps[window.app_name].append(window)
-
+            
         # Build summary
         summary = {
             "space_id": space_id,
@@ -689,9 +712,9 @@ class MultiSpaceWindowDetector:
             },
             "has_cached_screenshot": space_id in self.screenshot_cache,
         }
-
+        
         return summary
-
+        
     async def capture_space_with_switch(self, space_id: int) -> Optional[Any]:
         """Capture a space by switching to it (requires user permission)"""
         if space_id == self.current_space_id:
@@ -701,34 +724,34 @@ class MultiSpaceWindowDetector:
             screenshot = ImageGrab.grab()
             self.screenshot_cache[space_id] = (screenshot, datetime.now())
             return screenshot
-
+            
         # Switch to space using AppleScript
         script = f"""
         tell application "System Events"
             key code 18 using {{control down}}
         end tell
         """
-
+        
         try:
             # Execute space switch
             subprocess.run(["osascript", "-e", script], check=True)
-
+            
             # Wait for switch animation
             await asyncio.sleep(0.5)
-
+            
             # Capture screenshot
             from PIL import ImageGrab
 
             screenshot = ImageGrab.grab()
-
+            
             # Cache it
             self.screenshot_cache[space_id] = (screenshot, datetime.now())
-
+            
             # Switch back
             subprocess.run(["osascript", "-e", script.replace("18", "19")], check=True)
-
+            
             return screenshot
-
+            
         except Exception as e:
             logger.error(f"Failed to capture space {space_id}: {e}")
             return None
