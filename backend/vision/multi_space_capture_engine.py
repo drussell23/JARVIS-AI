@@ -92,7 +92,7 @@ class SpaceCaptureRequest:
     require_permission: bool = True
     callback: Optional[Callable] = None
     reason: str = "multi_space_analysis"
-    parallel: bool = True
+    parallel: bool = False  # Changed to False to prevent subprocess crashes
     max_workers: int = 3
 
 
@@ -222,6 +222,8 @@ class MultiSpaceCaptureEngine:
         self.capture_methods = self._initialize_capture_methods()
         self.current_space_id = 1
         self._capture_lock = asyncio.Lock()
+        # Limit parallel subprocess captures to prevent resource exhaustion
+        self._subprocess_semaphore = asyncio.Semaphore(2)  # Max 2 subprocess at a time
         self.optimizer = None  # Will be set by vision intelligence
         self.monitoring_active = False  # Track if monitoring is active
         self.direct_capture = get_direct_capture() if get_direct_capture else None
@@ -551,7 +553,10 @@ class MultiSpaceCaptureEngine:
     async def _capture_with_screencapture(
         self, space_id: int, quality: CaptureQuality
     ) -> Optional[np.ndarray]:
-        """Use macOS screencapture command"""
+        """Use macOS screencapture command with synchronous subprocess to avoid semaphore leaks"""
+        import subprocess
+
+        temp_path = None
         try:
             # Create temporary file
             temp_path = f"/tmp/jarvis_space_{space_id}_{int(time.time())}.png"
@@ -567,14 +572,29 @@ class MultiSpaceCaptureEngine:
 
             cmd.append(temp_path)
 
-            # Execute
-            result = await asyncio.create_subprocess_exec(
-                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
+            # Use synchronous subprocess to avoid async semaphore issues
+            try:
+                # Run with timeout to prevent hanging (5 seconds)
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    timeout=5.0,
+                    text=False
+                )
 
-            await result.wait()
+                if result.returncode != 0:
+                    logger.error(f"Screencapture failed with code {result.returncode}")
+                    return None
 
-            if result.returncode == 0 and Path(temp_path).exists():
+            except subprocess.TimeoutExpired:
+                logger.error(f"Screencapture timeout for space {space_id}")
+                return None
+            except Exception as e:
+                logger.error(f"Screencapture subprocess error: {e}")
+                return None
+
+            # Check if capture succeeded
+            if Path(temp_path).exists():
                 # Load image
                 image = Image.open(temp_path)
                 screenshot = np.array(image)
@@ -585,13 +605,23 @@ class MultiSpaceCaptureEngine:
                     image.thumbnail((400, 300), Image.Resampling.LANCZOS)
                     screenshot = np.array(image)
 
-                # Clean up
-                Path(temp_path).unlink()
+                # Clean up temp file
+                try:
+                    Path(temp_path).unlink()
+                except:
+                    pass
 
                 return screenshot
 
         except Exception as e:
             logger.error(f"Screencapture failed: {e}")
+        finally:
+            # Clean up temp file if it exists
+            if temp_path and Path(temp_path).exists():
+                try:
+                    Path(temp_path).unlink()
+                except:
+                    pass
 
         return None
 

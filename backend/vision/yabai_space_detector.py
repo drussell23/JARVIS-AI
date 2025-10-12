@@ -144,24 +144,21 @@ class YabaiSpaceDetector:
 
             self._yabai_path = yabai_path
 
-            # Try a simple query to verify it works
-            process = await asyncio.create_subprocess_exec(
-                yabai_path, '-m', 'query', '--spaces',
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-
+            # Try a simple query to verify it works (using synchronous subprocess)
+            import subprocess
             try:
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(),
-                    timeout=self.query_timeout
+                result = subprocess.run(
+                    [yabai_path, '-m', 'query', '--spaces'],
+                    capture_output=True,
+                    timeout=self.query_timeout,
+                    text=False
                 )
 
-                if process.returncode == 0:
+                if result.returncode == 0:
                     logger.info("[YABAI] ✅ Yabai is available and functional")
                     self._yabai_status = YabaiStatus.AVAILABLE
                 else:
-                    error_msg = stderr.decode('utf-8', errors='ignore')
+                    error_msg = result.stderr.decode('utf-8', errors='ignore') if result.stderr else ""
                     if 'accessibility' in error_msg.lower():
                         logger.warning("[YABAI] ⚠️ Yabai requires Accessibility permissions")
                         self._yabai_status = YabaiStatus.NO_PERMISSIONS
@@ -169,7 +166,7 @@ class YabaiSpaceDetector:
                         logger.error(f"[YABAI] ❌ Yabai query failed: {error_msg}")
                         self._yabai_status = YabaiStatus.ERROR
 
-            except asyncio.TimeoutError:
+            except subprocess.TimeoutExpired:
                 logger.error(f"[YABAI] ❌ Yabai query timed out after {self.query_timeout}s")
                 self._yabai_status = YabaiStatus.ERROR
 
@@ -206,24 +203,21 @@ class YabaiSpaceDetector:
         start_time = datetime.now()
 
         try:
-            process = await asyncio.create_subprocess_exec(
-                self._yabai_path, '-m', 'query', '--spaces',
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+            import subprocess
+            result = subprocess.run(
+                [self._yabai_path, '-m', 'query', '--spaces'],
+                capture_output=True,
+                timeout=self.query_timeout,
+                text=False
             )
 
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(),
-                timeout=self.query_timeout
-            )
-
-            if process.returncode != 0:
-                error_msg = stderr.decode('utf-8', errors='ignore')
+            if result.returncode != 0:
+                error_msg = result.stderr.decode('utf-8', errors='ignore') if result.stderr else ""
                 logger.error(f"[YABAI] Query failed: {error_msg}")
                 return await self._fallback_space_detection()
 
             # Parse JSON response
-            spaces_data = json.loads(stdout.decode('utf-8'))
+            spaces_data = json.loads(result.stdout.decode('utf-8'))
             spaces = [
                 SpaceInfo(
                     index=s['index'],
@@ -255,7 +249,7 @@ class YabaiSpaceDetector:
 
             return spaces
 
-        except asyncio.TimeoutError:
+        except subprocess.TimeoutExpired:
             logger.error(f"[YABAI] ❌ Spaces query timed out after {self.query_timeout}s")
             return await self._fallback_space_detection()
         except json.JSONDecodeError as e:
@@ -290,23 +284,20 @@ class YabaiSpaceDetector:
     async def _query_windows_internal(self) -> List[WindowInfo]:
         """Internal method to query windows"""
         try:
-            process = await asyncio.create_subprocess_exec(
-                self._yabai_path, '-m', 'query', '--windows',
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+            import subprocess
+            result = subprocess.run(
+                [self._yabai_path, '-m', 'query', '--windows'],
+                capture_output=True,
+                timeout=self.query_timeout,
+                text=False
             )
 
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(),
-                timeout=self.query_timeout
-            )
-
-            if process.returncode != 0:
+            if result.returncode != 0:
                 logger.error(f"[YABAI] Windows query failed")
                 return []
 
             # Parse JSON response
-            windows_data = json.loads(stdout.decode('utf-8'))
+            windows_data = json.loads(result.stdout.decode('utf-8'))
             windows = [
                 WindowInfo(
                     window_id=w['id'],
