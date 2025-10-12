@@ -92,7 +92,7 @@ class SpaceCaptureRequest:
     require_permission: bool = True
     callback: Optional[Callable] = None
     reason: str = "multi_space_analysis"
-    parallel: bool = False  # Changed to False to prevent subprocess crashes
+    parallel: bool = True  # Enabled with robust subprocess management
     max_workers: int = 3
 
 
@@ -222,8 +222,7 @@ class MultiSpaceCaptureEngine:
         self.capture_methods = self._initialize_capture_methods()
         self.current_space_id = 1
         self._capture_lock = asyncio.Lock()
-        # Limit parallel subprocess captures to prevent resource exhaustion
-        self._subprocess_semaphore = asyncio.Semaphore(2)  # Max 2 subprocess at a time
+        # Subprocess management is now handled by AsyncSubprocessManager
         self.optimizer = None  # Will be set by vision intelligence
         self.monitoring_active = False  # Track if monitoring is active
         self.direct_capture = get_direct_capture() if get_direct_capture else None
@@ -553,8 +552,8 @@ class MultiSpaceCaptureEngine:
     async def _capture_with_screencapture(
         self, space_id: int, quality: CaptureQuality
     ) -> Optional[np.ndarray]:
-        """Use macOS screencapture command with synchronous subprocess to avoid semaphore leaks"""
-        import subprocess
+        """Use macOS screencapture command with robust async subprocess management"""
+        from .async_subprocess_manager import get_subprocess_manager
 
         temp_path = None
         try:
@@ -572,25 +571,17 @@ class MultiSpaceCaptureEngine:
 
             cmd.append(temp_path)
 
-            # Use synchronous subprocess to avoid async semaphore issues
-            try:
-                # Run with timeout to prevent hanging (5 seconds)
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    timeout=5.0,
-                    text=False
-                )
+            # Use robust async subprocess manager
+            manager = get_subprocess_manager()
+            return_code, stdout, stderr = await manager.run_command(
+                cmd,
+                timeout=5.0,
+                capture_output=True
+            )
 
-                if result.returncode != 0:
-                    logger.error(f"Screencapture failed with code {result.returncode}")
-                    return None
-
-            except subprocess.TimeoutExpired:
-                logger.error(f"Screencapture timeout for space {space_id}")
-                return None
-            except Exception as e:
-                logger.error(f"Screencapture subprocess error: {e}")
+            if return_code != 0:
+                error_msg = stderr.decode('utf-8', errors='ignore') if stderr else ""
+                logger.error(f"Screencapture failed with code {return_code}: {error_msg}")
                 return None
 
             # Check if capture succeeded

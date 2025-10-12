@@ -144,21 +144,22 @@ class YabaiSpaceDetector:
 
             self._yabai_path = yabai_path
 
-            # Try a simple query to verify it works (using synchronous subprocess)
-            import subprocess
+            # Try a simple query to verify it works (using robust async subprocess)
+            from .async_subprocess_manager import get_subprocess_manager
+
             try:
-                result = subprocess.run(
+                manager = get_subprocess_manager()
+                return_code, stdout, stderr = await manager.run_command(
                     [yabai_path, '-m', 'query', '--spaces'],
-                    capture_output=True,
                     timeout=self.query_timeout,
-                    text=False
+                    capture_output=True
                 )
 
-                if result.returncode == 0:
+                if return_code == 0:
                     logger.info("[YABAI] ✅ Yabai is available and functional")
                     self._yabai_status = YabaiStatus.AVAILABLE
                 else:
-                    error_msg = result.stderr.decode('utf-8', errors='ignore') if result.stderr else ""
+                    error_msg = stderr.decode('utf-8', errors='ignore') if stderr else ""
                     if 'accessibility' in error_msg.lower():
                         logger.warning("[YABAI] ⚠️ Yabai requires Accessibility permissions")
                         self._yabai_status = YabaiStatus.NO_PERMISSIONS
@@ -166,7 +167,7 @@ class YabaiSpaceDetector:
                         logger.error(f"[YABAI] ❌ Yabai query failed: {error_msg}")
                         self._yabai_status = YabaiStatus.ERROR
 
-            except subprocess.TimeoutExpired:
+            except asyncio.TimeoutError:
                 logger.error(f"[YABAI] ❌ Yabai query timed out after {self.query_timeout}s")
                 self._yabai_status = YabaiStatus.ERROR
 
@@ -203,21 +204,22 @@ class YabaiSpaceDetector:
         start_time = datetime.now()
 
         try:
-            import subprocess
-            result = subprocess.run(
+            from .async_subprocess_manager import get_subprocess_manager
+
+            manager = get_subprocess_manager()
+            return_code, stdout, stderr = await manager.run_command(
                 [self._yabai_path, '-m', 'query', '--spaces'],
-                capture_output=True,
                 timeout=self.query_timeout,
-                text=False
+                capture_output=True
             )
 
-            if result.returncode != 0:
-                error_msg = result.stderr.decode('utf-8', errors='ignore') if result.stderr else ""
+            if return_code != 0:
+                error_msg = stderr.decode('utf-8', errors='ignore') if stderr else ""
                 logger.error(f"[YABAI] Query failed: {error_msg}")
                 return await self._fallback_space_detection()
 
             # Parse JSON response
-            spaces_data = json.loads(result.stdout.decode('utf-8'))
+            spaces_data = json.loads(stdout.decode('utf-8'))
             spaces = [
                 SpaceInfo(
                     index=s['index'],
@@ -284,20 +286,22 @@ class YabaiSpaceDetector:
     async def _query_windows_internal(self) -> List[WindowInfo]:
         """Internal method to query windows"""
         try:
-            import subprocess
-            result = subprocess.run(
+            from .async_subprocess_manager import get_subprocess_manager
+
+            manager = get_subprocess_manager()
+            return_code, stdout, stderr = await manager.run_command(
                 [self._yabai_path, '-m', 'query', '--windows'],
-                capture_output=True,
                 timeout=self.query_timeout,
-                text=False
+                capture_output=True
             )
 
-            if result.returncode != 0:
-                logger.error(f"[YABAI] Windows query failed")
+            if return_code != 0:
+                error_msg = stderr.decode('utf-8', errors='ignore') if stderr else ""
+                logger.error(f"[YABAI] Windows query failed: {error_msg}")
                 return []
 
             # Parse JSON response
-            windows_data = json.loads(result.stdout.decode('utf-8'))
+            windows_data = json.loads(stdout.decode('utf-8'))
             windows = [
                 WindowInfo(
                     window_id=w['id'],
