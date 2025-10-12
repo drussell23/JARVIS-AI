@@ -1070,6 +1070,20 @@ Remember: Natural, {detail_level}, directly answering what was asked, and SPECIF
                     image=screenshot, prompt=prompt, max_tokens=500
                 )
 
+                # Debug: Check response type
+                logger.debug(f"[CLAUDE_SINGLE] Response type: {type(response)}")
+
+                # Ensure response is a dictionary
+                if not isinstance(response, dict):
+                    logger.error(
+                        f"[CLAUDE_SINGLE] Invalid response type: {type(response)}, converting to dict"
+                    )
+                    response = {
+                        "content": f"I encountered an error analyzing the screen. Response type was {type(response)}.",
+                        "success": False,
+                        "error": f"Invalid response type: {type(response)}",
+                    }
+
                 # Parse Claude's response to extract the natural language and understanding
                 # Claude returns text, we need to structure it
                 response_text = response.get("content", "")
@@ -1316,7 +1330,10 @@ Be specific and natural. Never say "I previously saw" - instead say things like 
                     )
                     # Build prompt for Claude API
                     enhanced_prompt = self._build_comprehensive_multi_space_prompt(
-                        user_query, query_analysis["intent"], window_data, multi_screenshots
+                        user_query,
+                        query_analysis["intent"],
+                        window_data,
+                        multi_screenshots,
                     )
             else:
                 # Fallback to old prompt-based system
@@ -1337,11 +1354,19 @@ Be specific and natural. Never say "I previously saw" - instead say things like 
 
             # Populate space summaries
             for space_info in window_data.get("spaces", []):
-                space_id = (
-                    space_info.space_id
-                    if hasattr(space_info, "space_id")
-                    else space_info.get("space_id")
-                )
+                if isinstance(space_info, int):
+                    # Handle case where spaces is a list of integers
+                    space_id = space_info
+                elif hasattr(space_info, "space_id"):
+                    space_id = space_info.space_id
+                elif isinstance(space_info, dict):
+                    space_id = space_info.get("space_id")
+                else:
+                    # Fallback for unknown types
+                    logger.warning(
+                        f"Unknown space_info type: {type(space_info)}, value: {space_info}"
+                    )
+                    space_id = 1
                 if space_id:
                     space_windows = [
                         w
@@ -1534,15 +1559,28 @@ Remember: Natural, helpful, and space-aware responses.
 
         # Per-space summaries
         for space in spaces:
-            # Handle both SpaceInfo objects and dictionaries
-            if hasattr(space, "space_id"):
+            # Handle integers, SpaceInfo objects, and dictionaries
+            if isinstance(space, int):
+                # Handle case where spaces is a list of integers
+                space_id = space
+                window_count = 0
+                is_current = space == 1  # Assume space 1 is current
+            elif hasattr(space, "space_id"):
                 space_id = space.space_id
                 window_count = space.window_count
                 is_current = space.is_current
-            else:
+            elif isinstance(space, dict):
                 space_id = space["space_id"]
                 window_count = space["window_count"]
                 is_current = space["is_current"]
+            else:
+                # Fallback for unknown types
+                logger.warning(
+                    f"Unknown space type in context: {type(space)}, value: {space}"
+                )
+                space_id = 1
+                window_count = 0
+                is_current = True
 
             # Get primary apps on this space
             space_windows = [
@@ -1662,13 +1700,24 @@ Remember: Natural, helpful, and space-aware responses.
 
         # Update space summaries
         for space in window_data.get("spaces", []):
-            # Handle both SpaceInfo objects and dictionaries
-            if hasattr(space, "space_id"):
+            # Handle integers, SpaceInfo objects, and dictionaries
+            if isinstance(space, int):
+                # Handle case where spaces is a list of integers
+                space_id = space
+                window_count = 0
+            elif hasattr(space, "space_id"):
                 space_id = space.space_id
                 window_count = space.window_count
-            else:
+            elif isinstance(space, dict):
                 space_id = space["space_id"]
                 window_count = space["window_count"]
+            else:
+                # Fallback for unknown types
+                logger.warning(
+                    f"Unknown space type in context update: {type(space)}, value: {space}"
+                )
+                space_id = 1
+                window_count = 0
 
             self.multi_space_context.space_summaries[space_id] = {
                 "window_count": window_count,
@@ -1899,10 +1948,21 @@ Remember: Natural, helpful, and space-aware responses.
                 SpaceQueryType.ALL_SPACES,
                 SpaceQueryType.WORKSPACE_OVERVIEW,
             ]:
-                all_spaces = [
-                    s.space_id if hasattr(s, "space_id") else s.get("space_id", 1)
-                    for s in window_data.get("spaces", [])
-                ]
+                all_spaces = []
+                for s in window_data.get("spaces", []):
+                    if isinstance(s, int):
+                        # Handle case where spaces is a list of integers
+                        all_spaces.append(s)
+                    elif hasattr(s, "space_id"):
+                        # Handle case where s is an object with space_id attribute
+                        all_spaces.append(s.space_id)
+                    elif isinstance(s, dict):
+                        # Handle case where s is a dictionary
+                        all_spaces.append(s.get("space_id", 1))
+                    else:
+                        # Fallback for unknown types
+                        logger.warning(f"Unknown space type: {type(s)}, value: {s}")
+                        all_spaces.append(1)
                 spaces.update(all_spaces)
 
         return sorted(list(spaces))
@@ -2054,6 +2114,23 @@ Remember: Natural, helpful, and space-aware responses.
                 response = await self.claude.analyze_multiple_images_with_prompt(
                     images=images, prompt=prompt, max_tokens=1000
                 )
+
+                # Debug: Check response type
+                logger.info(
+                    f"[CLAUDE_MULTI] Response type: {type(response)}, value: {response}"
+                )
+
+                # Ensure response is a dictionary
+                if not isinstance(response, dict):
+                    logger.error(
+                        f"[CLAUDE_MULTI] Invalid response type: {type(response)}, converting to dict"
+                    )
+                    response = {
+                        "content": f"I encountered an error analyzing multiple spaces. Response type was {type(response)}.",
+                        "success": False,
+                        "error": f"Invalid response type: {type(response)}",
+                    }
+
                 logger.info(
                     f"[CLAUDE_MULTI] Claude response received (length: {len(response.get('content', ''))})"
                 )
@@ -2116,10 +2193,19 @@ Remember: Natural, helpful, and space-aware responses.
         # Enable capture engine prefetching
         if hasattr(self, "capture_engine"):
             # Get all space IDs
-            space_ids = [
-                s.space_id if hasattr(s, "space_id") else s.get("space_id", 1)
-                for s in window_data.get("spaces", [])
-            ]
+            space_ids = []
+            for s in window_data.get("spaces", []):
+                if isinstance(s, int):
+                    space_ids.append(s)
+                elif hasattr(s, "space_id"):
+                    space_ids.append(s.space_id)
+                elif isinstance(s, dict):
+                    space_ids.append(s.get("space_id", 1))
+                else:
+                    logger.warning(
+                        f"Unknown space type in monitoring: {type(s)}, value: {s}"
+                    )
+                    space_ids.append(1)
 
             # Start prefetching for all spaces
             await self.capture_engine.prefetch_spaces(space_ids)

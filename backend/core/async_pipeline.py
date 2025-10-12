@@ -1019,9 +1019,15 @@ class AdvancedAsyncPipeline:
 
         # Check for compound commands (multiple intents)
         detected_intents = []
+
+        # Log when checking vision patterns specifically for debugging
+        if "desktop space" in text_lower or "across my desktop" in text_lower:
+            logger.info(f"[INTENT DEBUG] Checking vision patterns for: {text_lower[:100]}")
+
         for intent, keywords in intent_rules.items():
             if any(kw in text_lower for kw in keywords):
                 detected_intents.append(intent)
+                logger.info(f"[INTENT DEBUG] Detected intent '{intent}' for text: {text_lower[:50]}")
 
         # Intelligently handle multiple intents
         if len(detected_intents) > 1:
@@ -1040,8 +1046,12 @@ class AdvancedAsyncPipeline:
         elif detected_intents:
             context.intent = detected_intents[0]
             logger.info(
-                f"Intent detected: {context.intent} for command: {context.text}"
+                f"[INTENT FINAL] Intent detected: {context.intent} for command: {context.text}"
             )
+
+            # Extra logging for vision commands
+            if context.intent == "vision":
+                logger.info(f"[VISION DETECTED] Command will be routed to vision handler: {context.text[:50]}")
         else:
             # Use ML-based intent detection as fallback
             context.intent = await self._ml_intent_detection(text_lower)
@@ -1261,55 +1271,59 @@ class AdvancedAsyncPipeline:
         # ═══════════════════════════════════════════════════════════════
         text_lower = context.text.lower()
 
-        # IMPORTANT: Skip if this is a desktop space query
+        # IMPORTANT: Check if this is a desktop space query FIRST
         is_desktop_space_query = any(phrase in text_lower for phrase in [
             "desktop space", "desktop spaces",
-            "across my desktop", "across desktop"
+            "across my desktop", "across desktop",
+            "happening across", "across my",  # Add more specific patterns
+            "what's happening across", "what is happening across"
         ])
 
         if is_desktop_space_query:
             logger.info(f"[PIPELINE] Detected desktop space query, skipping context intelligence handler: {text_lower[:50]}")
+            # Don't process as context query - let it go to vision handler
+        else:
+            # Only check context patterns if NOT a desktop space query
+            context_query_patterns = [
+                "what does it say", "what's the error", "what is the error",
+                "explain that", "explain this", "what's that", "what is that",
+                "what am i working on", "what's happening", "what is happening",
+                "what's related", "what is related", "what's connected",
+                "can you see", "do you see", "are you seeing", "what do you see"
+            ]
 
-        context_query_patterns = [
-            "what does it say", "what's the error", "what is the error",
-            "explain that", "explain this", "what's that", "what is that",
-            "what am i working on", "what's happening", "what is happening",
-            "what's related", "what is related", "what's connected",
-            "can you see", "do you see", "are you seeing", "what do you see"
-        ]
+            if any(pattern in text_lower for pattern in context_query_patterns):
+                try:
+                    # Get context bridge - it's set directly on self by main.py
+                    context_bridge = self.context_bridge
 
-        if any(pattern in text_lower for pattern in context_query_patterns) and not is_desktop_space_query:
-            try:
-                # Get context bridge - it's set directly on self by main.py
-                context_bridge = self.context_bridge
+                    # Fallback: try to get from jarvis instance
+                    if not context_bridge and hasattr(self, 'jarvis') and self.jarvis:
+                        if hasattr(self.jarvis, 'context_bridge'):
+                            context_bridge = self.jarvis.context_bridge
+                        elif hasattr(self.jarvis, 'state') and hasattr(self.jarvis.state, 'context_bridge'):
+                            context_bridge = self.jarvis.state.context_bridge
 
-                # Fallback: try to get from jarvis instance
-                if not context_bridge and hasattr(self, 'jarvis') and self.jarvis:
-                    if hasattr(self.jarvis, 'context_bridge'):
-                        context_bridge = self.jarvis.context_bridge
-                    elif hasattr(self.jarvis, 'state') and hasattr(self.jarvis.state, 'context_bridge'):
-                        context_bridge = self.jarvis.state.context_bridge
+                    if context_bridge:
+                        logger.info(f"[CONTEXT-INTEL] Processing workspace query: {context.text}")
 
-                if context_bridge:
-                    logger.info(f"[CONTEXT-INTEL] Processing workspace query: {context.text}")
+                        # Query the context intelligence system
+                        response = await context_bridge.handle_user_query(
+                            context.text,
+                            current_space_id=context.metadata.get('current_space_id')
+                        )
 
-                    # Query the context intelligence system
-                    response = await context_bridge.handle_user_query(
-                        context.text,
-                        current_space_id=context.metadata.get('current_space_id')
-                    )
+                        if response:
+                            context.response = response
+                            context.metadata["handled_by"] = "context_intelligence"
+                            logger.info(f"[CONTEXT-INTEL] Query resolved: {response[:100]}...")
+                            return
+                    else:
+                        logger.debug("[CONTEXT-INTEL] Context bridge not available")
 
-                    if response:
-                        context.response = response
-                        context.metadata["handled_by"] = "context_intelligence"
-                        logger.info(f"[CONTEXT-INTEL] Query resolved: {response[:100]}...")
-                        return
-                else:
-                    logger.debug("[CONTEXT-INTEL] Context bridge not available")
-
-            except Exception as e:
-                logger.error(f"[CONTEXT-INTEL] Error processing context query: {e}", exc_info=True)
-                # Fall through to normal processing
+                except Exception as e:
+                    logger.error(f"[CONTEXT-INTEL] Error processing context query: {e}", exc_info=True)
+                    # Fall through to normal processing
 
         # Check for lock/unlock commands first - these can work without JARVIS
         if any(

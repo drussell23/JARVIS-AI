@@ -605,6 +605,14 @@ class VisionCommandHandler:
                     "context": self.intelligence.context.get_temporal_context(),
                 }
 
+
+        # Fallback: If we reach here, something went wrong
+        logger.warning(f"[VISION] No handler processed the command: {command_text}")
+        return {
+            "handled": True,
+            "response": "Let me analyze your desktop spaces for you, Sir.",
+            "fallback": True
+        }
     async def analyze_screen(self, command_text: str) -> Dict[str, Any]:
         """Analyze screen with enhanced multi-space intelligence"""
         logger.info(f"[VISION] analyze_screen called with: {command_text}")
