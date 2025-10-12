@@ -53,7 +53,7 @@ class DynamicComponentLoader:
     def __init__(self, check_interval: int = 60):
         """
         Initialize the dynamic loader.
-        
+
         Args:
             check_interval: Seconds between Rust availability checks
         """
@@ -65,7 +65,13 @@ class DynamicComponentLoader:
         self._lock = asyncio.Lock()
         self._component_callbacks: Dict[ComponentType, list] = {}
         self.self_healer: Optional[Any] = None  # Will be set during start()
-        
+
+        # Track self-healing attempts to prevent infinite loops
+        self._self_heal_attempts = 0
+        self._max_self_heal_attempts = 3
+        self._last_self_heal_time: Optional[datetime] = None
+        self._self_heal_cooldown = timedelta(minutes=5)  # Don't retry for 5 minutes
+
         # Register all known components
         self._register_components()
         
@@ -245,14 +251,35 @@ class DynamicComponentLoader:
                 rust_unavailable = True
                 break
         
-        # If Rust is unavailable, try self-healing
+        # If Rust is unavailable, try self-healing (with safeguards against infinite loops)
         if rust_unavailable and self.self_healer:
-            logger.info("Rust components unavailable, attempting self-healing...")
-            healed = await self.self_healer.diagnose_and_fix()
-            if healed:
-                logger.info("✅ Self-healing successful, rechecking components...")
-                # Give a moment for the system to stabilize
-                await asyncio.sleep(1)
+            # Check if we've exceeded max attempts
+            if self._self_heal_attempts >= self._max_self_heal_attempts:
+                if self._last_self_heal_time is None or \
+                   (datetime.now() - self._last_self_heal_time) > self._self_heal_cooldown:
+                    # Reset after cooldown period
+                    logger.info(f"Self-heal cooldown expired, resetting attempt counter")
+                    self._self_heal_attempts = 0
+                else:
+                    # Still in cooldown, skip self-healing
+                    cooldown_remaining = self._self_heal_cooldown - (datetime.now() - self._last_self_heal_time)
+                    logger.debug(f"Skipping self-heal (max attempts reached, cooldown: {cooldown_remaining.seconds}s remaining)")
+                    rust_unavailable = False  # Prevent further attempts
+
+            if rust_unavailable and self._self_heal_attempts < self._max_self_heal_attempts:
+                self._self_heal_attempts += 1
+                self._last_self_heal_time = datetime.now()
+                logger.info(f"Rust components unavailable, attempting self-healing (attempt {self._self_heal_attempts}/{self._max_self_heal_attempts})...")
+
+                healed = await self.self_healer.diagnose_and_fix()
+                if healed:
+                    logger.info("✅ Self-healing successful, rechecking components...")
+                    # Give a moment for the system to stabilize
+                    await asyncio.sleep(1)
+                    # Reset counter on success
+                    self._self_heal_attempts = 0
+                else:
+                    logger.warning(f"Self-healing attempt {self._self_heal_attempts} did not resolve issues")
         
         for comp_type, implementations in self.components.items():
             for impl_type, impl in implementations.items():
