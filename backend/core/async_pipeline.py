@@ -945,7 +945,9 @@ class AdvancedAsyncPipeline:
                 "screen analysis",
                 "vision analysis",
                 "visual analysis",
-                # Multi-space and workspace queries
+                # Multi-space and workspace queries - PRIORITIZE THESE
+                "across my desktop spaces",
+                "happening across my desktop",
                 "desktop spaces",
                 "desktop space",
                 "across my desktop",
@@ -1258,6 +1260,16 @@ class AdvancedAsyncPipeline:
         # Handle natural language queries: "what does it say?", "what am I working on?"
         # ═══════════════════════════════════════════════════════════════
         text_lower = context.text.lower()
+
+        # IMPORTANT: Skip if this is a desktop space query
+        is_desktop_space_query = any(phrase in text_lower for phrase in [
+            "desktop space", "desktop spaces",
+            "across my desktop", "across desktop"
+        ])
+
+        if is_desktop_space_query:
+            logger.info(f"[PIPELINE] Detected desktop space query, skipping context intelligence handler: {text_lower[:50]}")
+
         context_query_patterns = [
             "what does it say", "what's the error", "what is the error",
             "explain that", "explain this", "what's that", "what is that",
@@ -1266,7 +1278,7 @@ class AdvancedAsyncPipeline:
             "can you see", "do you see", "are you seeing", "what do you see"
         ]
 
-        if any(pattern in text_lower for pattern in context_query_patterns):
+        if any(pattern in text_lower for pattern in context_query_patterns) and not is_desktop_space_query:
             try:
                 # Get context bridge - it's set directly on self by main.py
                 context_bridge = self.context_bridge
@@ -1626,10 +1638,13 @@ class AdvancedAsyncPipeline:
                         f"[PIPELINE] Vision response: {context.response[:100]}..."
                     )
                 else:
-                    # Vision handler didn't handle it
-                    context.response = "I processed your command: '{context.text}', {context.user_name}."
+                    # Vision handler didn't handle it - log details for debugging
                     logger.warning(
-                        f"[PIPELINE] Vision command not handled by vision_command_handler"
+                        f"[PIPELINE] Vision command not handled. Result: {result}"
+                    )
+                    context.response = f"Let me analyze your desktop spaces, {context.user_name}."
+                    logger.warning(
+                        f"[PIPELINE] Vision handler returned: handled={result.get('handled')}, reason={result.get('reason', 'unknown')}"
                     )
 
             except Exception as e:
