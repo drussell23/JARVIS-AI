@@ -92,8 +92,8 @@ class SpaceCaptureRequest:
     require_permission: bool = True
     callback: Optional[Callable] = None
     reason: str = "multi_space_analysis"
-    parallel: bool = True  # Enabled with robust subprocess management
-    max_workers: int = 3
+    parallel: bool = False  # Disabled to prevent segfaults on macOS
+    max_workers: int = 2  # Reduced for safety
 
 
 @dataclass

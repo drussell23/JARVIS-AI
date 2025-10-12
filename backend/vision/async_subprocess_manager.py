@@ -12,6 +12,7 @@ This module provides a production-ready async subprocess management system with:
 import asyncio
 import logging
 import os
+import platform
 import signal
 import sys
 import time
@@ -24,6 +25,18 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from collections import deque
 import atexit
 import psutil
+import multiprocessing
+
+# Set fork safety for macOS to prevent segmentation faults
+if platform.system() == 'Darwin':
+    # Set environment variable for fork safety
+    os.environ['OBJC_DISABLE_INITIALIZE_FORK_SAFETY'] = 'YES'
+    # Try to set multiprocessing start method if not already set
+    try:
+        multiprocessing.set_start_method('spawn', force=False)
+    except RuntimeError:
+        # Already set, that's fine
+        pass
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +109,11 @@ class AsyncSubprocessManager:
         """
         if self._initialized:
             return
+
+        # Reduce concurrent subprocesses on macOS for safety
+        if platform.system() == 'Darwin':
+            max_concurrent = min(max_concurrent, 3)
+            logger.info(f"macOS detected - limiting concurrent subprocesses to {max_concurrent}")
 
         self.max_concurrent = max_concurrent
         self.max_queue_size = max_queue_size
@@ -246,10 +264,12 @@ class AsyncSubprocessManager:
                     'stdout': asyncio.subprocess.PIPE if capture_output else None,
                     'stderr': asyncio.subprocess.PIPE if capture_output else None,
                     'cwd': cwd,
-                    'env': env or os.environ.copy(),
-                    # Ensure process gets its own process group for clean termination
-                    'start_new_session': True
+                    'env': env or os.environ.copy()
                 })
+
+                # Only use start_new_session on non-macOS systems to avoid segfaults
+                if platform.system() != 'Darwin':
+                    kwargs['start_new_session'] = True
 
                 # Create subprocess
                 info.process = await asyncio.create_subprocess_exec(
