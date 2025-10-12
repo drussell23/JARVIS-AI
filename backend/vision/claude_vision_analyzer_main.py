@@ -5972,6 +5972,7 @@ For this query, provide a helpful response that leverages the multi-space inform
                 tmp_path = tmp.name
 
             # Run screencapture with timeout
+            # Note: screencapture writes to file, no need for pipes (prevents semaphore leaks)
             result = await asyncio.wait_for(
                 asyncio.create_subprocess_exec(
                     "screencapture",
@@ -5980,13 +5981,11 @@ For this query, provide a helpful response that leverages the multi-space inform
                     "-t",
                     "png",
                     tmp_path,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
                 ),
                 timeout=5.0,
             )
 
-            stdout, stderr = await result.communicate()
+            await result.wait()
 
             if (
                 result.returncode == 0
@@ -5996,8 +5995,7 @@ For this query, provide a helpful response that leverages the multi-space inform
                 image = Image.open(tmp_path)
                 return image
             else:
-                if stderr:
-                    logger.error(f"screencapture stderr: {stderr.decode()}")
+                logger.error(f"screencapture failed with return code: {result.returncode}")
                 return None
 
         except asyncio.TimeoutError:

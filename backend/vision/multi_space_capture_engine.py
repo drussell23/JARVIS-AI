@@ -572,11 +572,13 @@ class MultiSpaceCaptureEngine:
             cmd.append(temp_path)
 
             # Use robust async subprocess manager
+            # Note: screencapture writes to file, no need to capture stdout/stderr
+            # Setting capture_output=False prevents semaphore leaks
             manager = get_subprocess_manager()
             return_code, stdout, stderr = await manager.run_command(
                 cmd,
                 timeout=5.0,
-                capture_output=True
+                capture_output=False
             )
 
             if return_code != 0:
