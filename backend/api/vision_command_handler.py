@@ -80,6 +80,32 @@ except ImportError as e:
     logger.warning(f"Yabai multi-space system not available: {e}")
     yabai_system_available = False
 
+# Import Intelligent Query Classification System
+try:
+    from vision.intelligent_query_classifier import (
+        QueryIntent,
+        ClassificationResult,
+        get_query_classifier
+    )
+    from vision.smart_query_router import get_smart_router
+    from vision.query_context_manager import get_context_manager
+    from vision.adaptive_learning_system import get_learning_system
+    from vision.performance_monitor import get_performance_monitor
+    intelligent_system_available = True
+    logger.info("[VISION] ✅ Intelligent query classification system loaded")
+except ImportError as e:
+    logger.warning(f"Intelligent classification system not available: {e}")
+    intelligent_system_available = False
+
+# Import Proactive Suggestions System
+try:
+    from vision.proactive_suggestions import get_proactive_system, ProactiveSuggestion
+    proactive_suggestions_available = True
+    logger.info("[VISION] ✅ Proactive suggestions system loaded")
+except ImportError as e:
+    logger.warning(f"Proactive suggestions system not available: {e}")
+    proactive_suggestions_available = False
+
 
 class WebSocketLogger:
     """Logger that sends logs to WebSocket for browser console"""
@@ -146,16 +172,39 @@ class VisionCommandHandler:
         self.space_response_generator = None
         if yabai_system_available:
             try:
-                self.yabai_detector = YabaiSpaceDetector(
-                    cache_ttl=5,
-                    query_timeout=5,
-                    enable_cache=True
-                )
+                self.yabai_detector = YabaiSpaceDetector()
                 self.workspace_analyzer = WorkspaceAnalyzer()
                 self.space_response_generator = SpaceResponseGenerator(use_sir_prefix=True)
                 logger.info("[VISION] ✅ Yabai multi-space intelligence initialized")
             except Exception as e:
                 logger.warning(f"[VISION] Could not initialize Yabai system: {e}")
+
+        # Initialize Intelligent Query Classification System
+        self.classifier = None
+        self.smart_router = None
+        self.context_manager = None
+        self.learning_system = None
+        self.performance_monitor = None
+
+        if intelligent_system_available:
+            try:
+                # Get singleton instances
+                self.context_manager = get_context_manager()
+                self.learning_system = get_learning_system()
+                self.performance_monitor = get_performance_monitor(report_interval_minutes=60)
+
+                logger.info("[VISION] ✅ Intelligent query classification system initialized")
+            except Exception as e:
+                logger.warning(f"[VISION] Could not initialize intelligent system: {e}")
+
+        # Initialize Proactive Suggestions System
+        self.proactive_system = None
+        if proactive_suggestions_available:
+            try:
+                self.proactive_system = get_proactive_system()
+                logger.info("[VISION] ✅ Proactive suggestions system initialized")
+            except Exception as e:
+                logger.warning(f"[VISION] Could not initialize proactive system: {e}")
 
     async def initialize_intelligence(self, api_key: str = None):
         """Initialize pure vision intelligence system"""
@@ -279,6 +328,23 @@ class VisionCommandHandler:
                 self.enhanced_system.vision_intelligence = self.intelligence
                 logger.info("[ENHANCED] Updated enhanced system with vision intelligence")
 
+            # Initialize intelligent classification system with Claude client
+            if intelligent_system_available and claude_client:
+                try:
+                    self.classifier = get_query_classifier(claude_client)
+
+                    # Initialize smart router with handlers
+                    self.smart_router = get_smart_router(
+                        yabai_handler=self._handle_yabai_query,
+                        vision_handler=self._handle_vision_query,
+                        multi_space_handler=self._handle_multi_space_query,
+                        claude_client=claude_client
+                    )
+
+                    logger.info("[INTELLIGENT] Classifier and router initialized with Claude client")
+                except Exception as e:
+                    logger.warning(f"[INTELLIGENT] Could not initialize classifier/router: {e}")
+
             logger.info("[PURE VISION] Intelligence systems initialized")
 
     async def handle_command(self, command_text: str) -> Dict[str, Any]:
@@ -309,6 +375,66 @@ class VisionCommandHandler:
         )
         if monitoring_result.get("handled"):
             return monitoring_result
+
+        # ==============================================================================
+        # INTELLIGENT CLASSIFICATION SYSTEM
+        # Use smart router to classify and route query to optimal pipeline
+        # ==============================================================================
+        if intelligent_system_available and self.smart_router and self.context_manager:
+            try:
+                logger.info("[INTELLIGENT] Using smart router for query classification")
+
+                # Get context for classification
+                context = self.context_manager.get_context_for_query(command_text)
+
+                # Add current Yabai state to context if available
+                if self.yabai_detector:
+                    try:
+                        active_space = await self.yabai_detector.get_focused_space()
+                        all_spaces = await self.yabai_detector.get_all_spaces()
+                        context['active_space'] = active_space.get('index') if active_space else None
+                        context['total_spaces'] = len(all_spaces) if all_spaces else 0
+                    except Exception:
+                        pass  # Continue without Yabai context
+
+                # Route the query through intelligent system
+                routing_result = await self.smart_router.route_query(
+                    query=command_text,
+                    context=context
+                )
+
+                # Record query in context manager
+                self.context_manager.record_query(
+                    query=command_text,
+                    intent=routing_result.intent.value,
+                    active_space=context.get('active_space'),
+                    total_spaces=context.get('total_spaces', 0),
+                    response_latency_ms=routing_result.latency_ms
+                )
+
+                # Collect performance metrics periodically
+                if self.performance_monitor and self.performance_monitor.should_generate_report():
+                    await self.performance_monitor.collect_metrics()
+                    self.performance_monitor.mark_report_generated()
+                    logger.info("[INTELLIGENT] Performance metrics collected")
+
+                # Return routed response
+                return {
+                    "handled": True,
+                    "response": routing_result.response,
+                    "intelligent_routing": True,
+                    "intent": routing_result.intent.value,
+                    "latency_ms": routing_result.latency_ms,
+                    "metadata": routing_result.metadata,
+                    "monitoring_active": self.monitoring_active,
+                }
+
+            except Exception as e:
+                logger.error(f"[INTELLIGENT] Smart routing failed, falling back to legacy: {e}", exc_info=True)
+                # Fall through to legacy handling
+        # ==============================================================================
+        # END INTELLIGENT CLASSIFICATION SYSTEM
+        # ==============================================================================
 
         # Try enhanced system first if available
         if self.enhanced_system:
@@ -1113,6 +1239,143 @@ BE CONCISE. No technical details.
             "state_info": state_info,
         }
 
+    async def _handle_yabai_query(
+        self,
+        query: str,
+        context: Optional[Dict[str, Any]]
+    ) -> str:
+        """
+        Handle metadata-only query using Yabai (no screenshots)
+        Fast path for workspace overview queries
+        """
+        try:
+            if not self.yabai_detector or not self.workspace_analyzer:
+                raise ValueError("Yabai system not available")
+
+            logger.info("[INTELLIGENT] Handling metadata-only query with Yabai")
+
+            # Get workspace data from Yabai
+            workspace_data = await self.yabai_detector.get_all_spaces()
+            windows_data = await self.yabai_detector.get_all_windows()
+
+            # Analyze workspace
+            if self.workspace_analyzer:
+                analysis = self.workspace_analyzer.analyze(workspace_data, windows_data)
+
+                # Generate natural response
+                if self.space_response_generator:
+                    response = self.space_response_generator.generate_overview_response(
+                        analysis,
+                        include_details=True
+                    )
+                else:
+                    # Fallback to basic response
+                    response = f"You have {analysis.total_spaces} desktop spaces with {analysis.active_spaces} active workspaces."
+            else:
+                # Basic fallback response
+                response = f"You have {len(workspace_data)} desktop spaces visible."
+
+            return response
+
+        except Exception as e:
+            logger.error(f"[INTELLIGENT] Yabai query handler error: {e}")
+            raise
+
+    async def _handle_vision_query(
+        self,
+        query: str,
+        context: Optional[Dict[str, Any]],
+        multi_space: bool = False
+    ) -> str:
+        """
+        Handle visual analysis query with current screen capture
+        """
+        try:
+            logger.info(f"[INTELLIGENT] Handling vision query (multi_space: {multi_space})")
+
+            # Capture screen
+            screenshot = await self._capture_screen(multi_space=multi_space)
+
+            if not screenshot:
+                return "I couldn't capture your screen, Sir. Please check screen recording permissions."
+
+            # Use Claude vision intelligence to analyze
+            if self.intelligence:
+                response = await self.intelligence.understand_and_respond(
+                    screenshot, query
+                )
+                return response
+            else:
+                return "Vision intelligence not initialized yet, Sir."
+
+        except Exception as e:
+            logger.error(f"[INTELLIGENT] Vision query handler error: {e}")
+            raise
+
+    async def _handle_multi_space_query(
+        self,
+        query: str,
+        context: Optional[Dict[str, Any]]
+    ) -> str:
+        """
+        Handle deep analysis query with multi-space capture + Yabai metadata
+        """
+        try:
+            logger.info("[INTELLIGENT] Handling multi-space deep analysis query")
+
+            # Capture all desktop spaces
+            screenshots = await self._capture_screen(multi_space=True)
+
+            if not screenshots:
+                return "I couldn't capture your desktop spaces, Sir."
+
+            # Get Yabai metadata for context
+            window_data = None
+            if self.intelligence and hasattr(self.intelligence, "_gather_multi_space_data"):
+                window_data = await self.intelligence._gather_multi_space_data()
+
+            # Use enhanced multi-space analysis if available
+            if (
+                hasattr(self.intelligence, "multi_space_extension")
+                and hasattr(
+                    self.intelligence.multi_space_extension,
+                    "generate_enhanced_workspace_response"
+                )
+            ):
+                response = self.intelligence.multi_space_extension.generate_enhanced_workspace_response(
+                    query, window_data, screenshots
+                )
+
+                # If enhanced system returns None, use Claude API
+                if response is None and self.intelligence:
+                    response = await self.intelligence.understand_and_respond(
+                        screenshots, query
+                    )
+
+                    # Process with workspace names
+                    if workspace_detector_available and window_data:
+                        response = process_response_with_workspace_names(response, window_data)
+
+                return response or "I analyzed your workspaces, Sir."
+
+            # Fallback to standard Claude analysis
+            elif self.intelligence:
+                response = await self.intelligence.understand_and_respond(
+                    screenshots, query
+                )
+
+                # Process with workspace names
+                if workspace_detector_available and window_data:
+                    response = process_response_with_workspace_names(response, window_data)
+
+                return response
+
+            return "Multi-space analysis not available, Sir."
+
+        except Exception as e:
+            logger.error(f"[INTELLIGENT] Multi-space query handler error: {e}")
+            raise
+
     async def _proactive_monitoring_loop(self):
         """Proactive monitoring with pure intelligence"""
         logger.info("[VISION] Starting proactive monitoring loop")
@@ -1306,23 +1569,263 @@ Never use generic error messages or technical jargon.
 
     def get_session_stats(self) -> Dict[str, Any]:
         """Get session statistics"""
+        stats = {
+            "conversation_length": 0,
+            "monitoring_active": self.monitoring_active,
+            "workflow_state": "unknown",
+            "emotional_state": "neutral",
+        }
+
+        # Legacy intelligence stats
         if self.intelligence and self.intelligence.context:
-            return {
+            stats.update({
                 "conversation_length": len(self.intelligence.context.history),
-                "monitoring_active": self.monitoring_active,
                 "workflow_state": self.intelligence.context.workflow_state,
                 "emotional_state": (
                     self.intelligence.context.emotional_context.value
                     if self.intelligence.context.emotional_context
                     else "neutral"
                 ),
+            })
+
+        # Add intelligent system stats if available
+        if intelligent_system_available and self.context_manager:
+            try:
+                intelligent_stats = self.context_manager.get_session_stats()
+                stats['intelligent_system'] = intelligent_stats
+            except Exception as e:
+                logger.warning(f"Could not get intelligent system stats: {e}")
+
+        return stats
+
+    async def get_performance_report(self) -> Dict[str, Any]:
+        """
+        Get comprehensive performance report from intelligent system
+
+        Returns:
+            Performance report with metrics and insights
+        """
+        if not intelligent_system_available or not self.performance_monitor:
+            return {
+                "available": False,
+                "message": "Intelligent system not available"
             }
-        return {
-            "conversation_length": 0,
-            "monitoring_active": False,
-            "workflow_state": "unknown",
-            "emotional_state": "neutral",
-        }
+
+        try:
+            # Collect latest metrics
+            await self.performance_monitor.collect_metrics()
+
+            # Generate report
+            report = self.performance_monitor.generate_report()
+
+            # Add insights
+            report['insights'] = self.performance_monitor.get_performance_insights()
+
+            # Add real-time stats
+            report['real_time'] = self.performance_monitor.get_real_time_stats()
+
+            return {
+                "available": True,
+                "report": report
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to generate performance report: {e}")
+            return {
+                "available": False,
+                "error": str(e)
+            }
+
+    async def get_classification_stats(self) -> Dict[str, Any]:
+        """
+        Get classification statistics
+
+        Returns:
+            Classification accuracy and routing stats
+        """
+        if not intelligent_system_available:
+            return {"available": False}
+
+        try:
+            stats = {}
+
+            # Classifier stats
+            if self.classifier:
+                stats['classifier'] = self.classifier.get_performance_stats()
+
+            # Router stats
+            if self.smart_router:
+                stats['router'] = self.smart_router.get_routing_stats()
+
+            # Learning stats
+            if self.learning_system:
+                stats['learning'] = self.learning_system.get_accuracy_report()
+
+            # Context stats
+            if self.context_manager:
+                stats['context'] = self.context_manager.get_session_stats()
+                stats['user_preferences'] = self.context_manager.get_user_preferences()
+
+            # Proactive suggestions stats
+            if self.proactive_system:
+                stats['proactive_suggestions'] = self.proactive_system.get_statistics()
+
+            # A/B testing stats
+            if self.smart_router and hasattr(self.smart_router, 'ab_test') and self.smart_router.ab_test:
+                stats['ab_testing'] = self.smart_router.get_ab_test_report()
+
+            return {
+                "available": True,
+                "stats": stats
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get classification stats: {e}")
+            return {
+                "available": False,
+                "error": str(e)
+            }
+
+    async def get_proactive_suggestions(self) -> Dict[str, Any]:
+        """
+        Get proactive suggestions based on current state
+
+        Returns:
+            Dict with suggestions if available
+        """
+        if not proactive_suggestions_available or not self.proactive_system:
+            return {"available": False}
+
+        try:
+            # Get current context
+            context = {}
+            if self.context_manager:
+                context = self.context_manager.get_context_for_query("")
+
+            # Get Yabai data if available
+            yabai_data = None
+            if self.yabai_detector:
+                try:
+                    yabai_data = {
+                        'spaces': await self.yabai_detector.get_all_spaces() if hasattr(self.yabai_detector, 'get_all_spaces') else {},
+                        'active_space': context.get('active_space')
+                    }
+                except Exception:
+                    pass  # Continue without Yabai data
+
+            # Analyze and get suggestion
+            suggestion = await self.proactive_system.analyze_and_suggest(context, yabai_data)
+
+            if suggestion:
+                return {
+                    "available": True,
+                    "has_suggestion": True,
+                    "suggestion": {
+                        "id": suggestion.suggestion_id,
+                        "type": suggestion.type.value,
+                        "priority": suggestion.priority.value,
+                        "message": suggestion.message,
+                        "action": suggestion.action
+                    }
+                }
+            else:
+                return {
+                    "available": True,
+                    "has_suggestion": False
+                }
+
+        except Exception as e:
+            logger.error(f"Failed to get proactive suggestions: {e}")
+            return {
+                "available": False,
+                "error": str(e)
+            }
+
+    async def respond_to_suggestion(
+        self,
+        suggestion_id: str,
+        accepted: bool
+    ) -> Dict[str, Any]:
+        """
+        Handle user's response to a proactive suggestion
+
+        Args:
+            suggestion_id: ID of the suggestion
+            accepted: Whether user accepted or dismissed
+
+        Returns:
+            Dict with response or action result
+        """
+        if not proactive_suggestions_available or not self.proactive_system:
+            return {"available": False}
+
+        try:
+            # Record user response
+            await self.proactive_system.record_user_response(suggestion_id, accepted)
+
+            if accepted:
+                # Find the suggestion and execute its action
+                suggestions = self.proactive_system.get_active_suggestions()
+                suggestion = next(
+                    (s for s in suggestions if s.suggestion_id == suggestion_id),
+                    None
+                )
+
+                if suggestion:
+                    # Execute the suggested action
+                    action = suggestion.action
+
+                    if action.startswith("analyze_space_"):
+                        space_id = action.split("_")[-1]
+                        # Analyze the specific space
+                        return {
+                            "accepted": True,
+                            "action": "analyze_space",
+                            "space_id": space_id,
+                            "message": f"Analyzing Space {space_id}..."
+                        }
+
+                    elif action == "workspace_summary":
+                        # Generate workspace summary
+                        return {
+                            "accepted": True,
+                            "action": "workspace_summary",
+                            "message": "Generating workspace summary..."
+                        }
+
+                    elif action == "workspace_overview":
+                        # Generate workspace overview
+                        return {
+                            "accepted": True,
+                            "action": "workspace_overview",
+                            "message": "Here's your workspace overview..."
+                        }
+
+                    elif action == "analyze_workflow":
+                        # Analyze workflow
+                        return {
+                            "accepted": True,
+                            "action": "analyze_workflow",
+                            "message": "Analyzing your workflow patterns..."
+                        }
+
+                    else:
+                        return {
+                            "accepted": True,
+                            "action": action,
+                            "message": "Processing your request..."
+                        }
+
+            return {
+                "accepted": accepted,
+                "message": "Dismissed" if not accepted else "Accepted"
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to respond to suggestion: {e}")
+            return {
+                "error": str(e)
+            }
 
 
 # Singleton instance
