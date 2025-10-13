@@ -1,0 +1,14 @@
+[tool.black]
+line-length = 88
+target-version = ['py310']
+force-exclude = '''
+.*/backend/vision/yabai_space_detector\.py
+'''
+
+[tool.isort]
+profile = "black"
+skip = ["backend/vision/yabai_space_detector.py"]
+
+[tool.autopep8]
+max_line_length = 88
+exclude = "backend/vision/yabai_space_detector.py"
