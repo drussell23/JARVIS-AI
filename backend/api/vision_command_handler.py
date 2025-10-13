@@ -384,7 +384,7 @@ class VisionCommandHandler:
             return monitoring_result
 
         # ==============================================================================
-        # INTELLIGENT CLASSIFICATION SYSTEM
+        # INTELLIGENT CLASSIFICATION SYSTEM (RUNS FIRST - HIGHEST PRIORITY)
         # Use smart router to classify and route query to optimal pipeline
         # ==============================================================================
         if intelligent_system_available and self.smart_router and self.context_manager:
@@ -437,13 +437,13 @@ class VisionCommandHandler:
                 }
 
             except Exception as e:
-                logger.error(f"[INTELLIGENT] Smart routing failed, falling back to legacy: {e}", exc_info=True)
-                # Fall through to legacy handling
+                logger.error(f"[INTELLIGENT] Smart routing failed, falling back to enhanced/legacy: {e}", exc_info=True)
+                # Fall through to enhanced system
         # ==============================================================================
         # END INTELLIGENT CLASSIFICATION SYSTEM
         # ==============================================================================
 
-        # Try enhanced system first if available
+        # Try enhanced system as fallback (only if intelligent routing didn't handle it)
         if self.enhanced_system:
             try:
                 enhanced_result = await self.enhanced_system.handle_vision_command(command_text)
