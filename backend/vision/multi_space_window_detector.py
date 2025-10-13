@@ -178,6 +178,11 @@ class MultiSpaceWindowDetector:
                         f"[MULTI-SPACE] Using Yabai data: {len(enhanced_spaces)} spaces, {len(windows)} windows"
                     )
 
+                    # Calculate totals for response generation
+                    all_applications = set()
+                    for space in enhanced_spaces:
+                        all_applications.update(space.get("applications", []))
+
                     return {
                         "current_space": {
                             "id": self.current_space_id,
@@ -192,6 +197,7 @@ class MultiSpaceWindowDetector:
                         },
                         "spaces": spaces_dict,
                         "spaces_list": enhanced_spaces,
+                        "space_details": enhanced_spaces,  # Alias for response generator
                         "windows": windows,
                         "space_window_map": {
                             space_id: [
@@ -199,6 +205,11 @@ class MultiSpaceWindowDetector:
                             ]
                             for space_id in spaces_dict.keys()
                         },
+                        # Add totals for response generation
+                        "total_spaces": len(enhanced_spaces),
+                        "total_windows": len(windows),
+                        "total_applications": len(all_applications),
+                        "total_apps": len(all_applications),  # Alias
                         "timestamp": datetime.now().isoformat(),
                     }
 
@@ -271,6 +282,11 @@ class MultiSpaceWindowDetector:
                 f"[MULTI-SPACE] Space {space_id}: '{workspace_name}' with apps {applications[:3] if applications else []}"
             )
 
+        # Calculate totals for response generation
+        all_applications = set()
+        for space in enhanced_spaces:
+            all_applications.update(space.get("applications", []))
+        
         # Build comprehensive result with both list (for compatibility) and dict
         result = {
             "current_space": {
@@ -282,11 +298,17 @@ class MultiSpaceWindowDetector:
             },
             "spaces": spaces_dict,  # Dict format for workspace name processing
             "spaces_list": enhanced_spaces,  # List format for compatibility
+            "space_details": enhanced_spaces,  # Alias for response generator
             "windows": windows,
             "space_window_map": {
                 space_id: list(window_ids)
                 for space_id, window_ids in self.space_windows_map.items()
             },
+            # Add totals for response generation
+            "total_spaces": len(enhanced_spaces),
+            "total_windows": len(windows),
+            "total_applications": len(all_applications),
+            "total_apps": len(all_applications),  # Alias
             "timestamp": datetime.now().isoformat(),
         }
 
