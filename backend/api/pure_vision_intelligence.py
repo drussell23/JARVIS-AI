@@ -1289,11 +1289,27 @@ Be specific and natural. Never say "I previously saw" - instead say things like 
             )
 
         # 3. Determine if we need additional visual data
-        if query_analysis.get("analysis_type") == "enhanced":
-            # Enhanced system handles capture internally
-            needs_multi_capture = True
+        # For overview queries, NEVER capture screenshots (prevents Mission Control trigger)
+        query_intent = query_analysis.get("intent")
+        if hasattr(query_intent, "query_type"):
+            from vision.multi_space_intelligence import SpaceQueryType
+            
+            # Overview queries should ONLY use Yabai data (no visual capture)
+            if query_intent.query_type == SpaceQueryType.WORKSPACE_OVERVIEW:
+                logger.info("[SILENT MODE] Workspace overview - using Yabai data only (no Mission Control)")
+                needs_multi_capture = False
+            elif query_analysis.get("analysis_type") == "enhanced":
+                # Other enhanced queries may need screenshots
+                needs_multi_capture = self._needs_multi_space_capture(
+                    query_analysis, window_data
+                )
+            else:
+                # Fallback logic
+                needs_multi_capture = self._needs_multi_space_capture(
+                    query_analysis, window_data
+                )
         else:
-            # Use old logic for fallback
+            # Fallback for old system
             needs_multi_capture = self._needs_multi_space_capture(
                 query_analysis, window_data
             )

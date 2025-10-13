@@ -197,13 +197,16 @@ class MultiSpaceQueryDetector:
         ]
         
     def _generate_overview_patterns(self):
-        """Generate workspace overview patterns"""
+        """Generate workspace overview patterns - these should NOT trigger Mission Control"""
         return [
             r"\bwhat\s+am\s+I\s+(?:working|doing|focused)\s+on",
             r"\b(?:my|current)\s+(?:work|tasks?|projects?|activities)",
             r"\b(?:workspace|desktop|screen)\s+(?:status|state|overview)",
             r"\b(?:active|current|ongoing)\s+(?:work|projects?|tasks?)",
             r"\b(?:show|display|list)\s+(?:my\s+)?(?:current\s+)?(?:work|activity)",
+            # Add pattern for "happening across desktop spaces" - should use Yabai data only
+            r"\bwhat(?:\'s|s| is)\s+happening\s+across\s+(?:my\s+)?(?:desktop\s+)?(?:spaces?|desktops?)",
+            r"\b(?:show|tell)\s+me\s+(?:what(?:\'s|s| is)\s+)?(?:on|across)\s+(?:all\s+)?(?:my\s+)?(?:spaces?|desktops?)",
         ]
         
     def _build_common_app_words(self):
