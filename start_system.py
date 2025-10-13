@@ -600,18 +600,35 @@ class AsyncSystemManager:
         return True
 
     async def cleanup_stuck_processes(self):
-        """Clean up stuck processes before starting"""
+        """Clean up stuck processes before starting with enhanced recovery"""
         try:
             # Add backend to path if needed
             backend_dir = Path(__file__).parent / "backend"
             if str(backend_dir) not in sys.path:
                 sys.path.insert(0, str(backend_dir))
 
-            from process_cleanup_manager import ProcessCleanupManager
+            from process_cleanup_manager import (
+                ProcessCleanupManager,
+                emergency_cleanup,
+                ensure_fresh_jarvis_instance
+            )
 
             print(f"\n{Colors.BLUE}Checking for stuck processes...{Colors.ENDC}")
 
             manager = ProcessCleanupManager()
+
+            # Step 1: Check for segfault/crash recovery first
+            if manager.check_for_segfault_recovery():
+                print(f"{Colors.YELLOW}🔧 Performed crash recovery cleanup!{Colors.ENDC}")
+                print(f"{Colors.GREEN}  System cleaned from previous crash{Colors.ENDC}")
+                await asyncio.sleep(2)  # Give system time to stabilize
+                
+            # Step 2: Check for code changes and clean up old instances
+            code_cleanup = manager.cleanup_old_instances_on_code_change()
+            if code_cleanup:
+                print(f"{Colors.YELLOW}Code changes detected!{Colors.ENDC}")
+                print(f"{Colors.GREEN}  Cleaned {len(code_cleanup)} old JARVIS instances{Colors.ENDC}")
+                await asyncio.sleep(1)
 
             # --- Parallelize the checks ---
             async def get_recommendations():
@@ -631,17 +648,41 @@ class AsyncSystemManager:
                 for rec in recommendations:
                     print(f"  • {rec}")
 
-            # Check if cleanup is needed
+            # Check if cleanup is needed (more aggressive thresholds)
             needs_cleanup = (
                 len(state.get("stuck_processes", [])) > 0
                 or len(state.get("zombie_processes", [])) > 0
                 or state.get("cpu_percent", 0) > 70
+                or state.get("memory_percent", 0) > 70  # Added memory check
                 or any(
                     p["age_seconds"] > 300 for p in state.get("jarvis_processes", [])
                 )
             )
+            
+            # Check for critical conditions that need emergency cleanup
+            needs_emergency = (
+                state.get("memory_percent", 0) > 80
+                or len(state.get("zombie_processes", [])) > 2
+                or len(state.get("jarvis_processes", [])) > 3
+            )
 
-            if needs_cleanup:
+            if needs_emergency:
+                print(
+                    f"\n{Colors.FAIL}⚠️ Critical system state detected!{Colors.ENDC}"
+                )
+                print(f"{Colors.YELLOW}Performing emergency cleanup...{Colors.ENDC}")
+                
+                # Perform emergency cleanup
+                results = emergency_cleanup(force=True)
+                print(f"{Colors.GREEN}✓ Emergency cleanup complete:{Colors.ENDC}")
+                print(f"  • Killed {len(results['processes_killed'])} processes")
+                print(f"  • Freed {len(results['ports_freed'])} ports")
+                if results.get("ipc_cleaned"):
+                    print(f"  • Cleaned {sum(results['ipc_cleaned'].values())} IPC resources")
+                
+                await asyncio.sleep(3)  # Give system time to recover
+                
+            elif needs_cleanup:
                 print(
                     f"\n{Colors.YELLOW}Found processes that need cleanup:{Colors.ENDC}"
                 )
@@ -700,11 +741,29 @@ class AsyncSystemManager:
                     print(f"{Colors.YELLOW}Skipping cleanup{Colors.ENDC}")
             else:
                 print(f"{Colors.GREEN}✓ No stuck processes found{Colors.ENDC}")
+            
+            # Step 3: Final check - ensure we can start fresh
+            if ensure_fresh_jarvis_instance():
+                print(f"{Colors.GREEN}✓ Ready to start fresh JARVIS instance{Colors.ENDC}")
+            else:
+                print(f"{Colors.WARNING}⚠️ Another JARVIS instance may be running{Colors.ENDC}")
+                if self.auto_cleanup:
+                    print(f"{Colors.YELLOW}Forcing cleanup for fresh start...{Colors.ENDC}")
+                    emergency_cleanup(force=True)
+                    await asyncio.sleep(2)
 
         except ImportError:
             print(f"{Colors.WARNING}Process cleanup manager not available{Colors.ENDC}")
+            print(f"{Colors.YELLOW}Tip: Make sure backend/process_cleanup_manager.py exists{Colors.ENDC}")
         except Exception as e:
             print(f"{Colors.WARNING}Cleanup check failed: {e}{Colors.ENDC}")
+            # In case of failure, try basic emergency cleanup
+            try:
+                from process_cleanup_manager import emergency_cleanup
+                print(f"{Colors.YELLOW}Attempting emergency cleanup...{Colors.ENDC}")
+                emergency_cleanup(force=True)
+            except:
+                pass
 
     async def check_port_available(self, port: int) -> bool:
         """Check if a port is available"""
@@ -2873,6 +2932,16 @@ async def main():
         action="store_true",
         help="Disable autonomous mode and use traditional startup",
     )
+    parser.add_argument(
+        "--emergency-cleanup",
+        action="store_true",
+        help="Perform emergency cleanup of all JARVIS processes and exit",
+    )
+    parser.add_argument(
+        "--cleanup-only",
+        action="store_true",
+        help="Run normal cleanup process and exit (less aggressive than emergency)",
+    )
 
     args = parser.parse_args()
 
@@ -2885,6 +2954,98 @@ async def main():
             logging.FileHandler("jarvis_startup.log"),
         ],
     )
+    
+    # Handle emergency cleanup first (before creating manager)
+    if args.emergency_cleanup:
+        print(f"\n{Colors.FAIL}🚨 EMERGENCY CLEANUP MODE{Colors.ENDC}")
+        print("This will forcefully kill ALL JARVIS-related processes.\n")
+        
+        try:
+            # Add backend to path
+            backend_dir = Path(__file__).parent / "backend"
+            if str(backend_dir) not in sys.path:
+                sys.path.insert(0, str(backend_dir))
+            
+            from process_cleanup_manager import emergency_cleanup
+            
+            print(f"{Colors.YELLOW}Performing emergency cleanup...{Colors.ENDC}")
+            results = emergency_cleanup(force=True)
+            
+            print(f"\n{Colors.GREEN}✅ Emergency cleanup complete:{Colors.ENDC}")
+            print(f"  • Processes killed: {len(results['processes_killed'])}")
+            print(f"  • Ports freed: {len(results['ports_freed'])}")
+            if results.get("ipc_cleaned"):
+                print(f"  • IPC resources cleaned: {sum(results['ipc_cleaned'].values())}")
+            if results.get("errors"):
+                print(f"  • ⚠️ Errors: {len(results['errors'])}")
+            
+            print(f"\n{Colors.GREEN}System is now clean. You can start JARVIS normally.{Colors.ENDC}")
+            return 0
+            
+        except ImportError:
+            print(f"{Colors.FAIL}Error: process_cleanup_manager.py not found!{Colors.ENDC}")
+            print("Make sure you're running from the JARVIS-AI-Agent directory.")
+            return 1
+        except Exception as e:
+            print(f"{Colors.FAIL}Emergency cleanup failed: {e}{Colors.ENDC}")
+            return 1
+    
+    # Handle regular cleanup
+    if args.cleanup_only:
+        print(f"\n{Colors.BLUE}🧹 CLEANUP MODE{Colors.ENDC}")
+        print("Running system cleanup and analysis...\n")
+        
+        try:
+            backend_dir = Path(__file__).parent / "backend"
+            if str(backend_dir) not in sys.path:
+                sys.path.insert(0, str(backend_dir))
+            
+            from process_cleanup_manager import ProcessCleanupManager
+            
+            manager = ProcessCleanupManager()
+            
+            # Check for crash recovery
+            if manager.check_for_segfault_recovery():
+                print(f"{Colors.YELLOW}🔧 Performed crash recovery cleanup{Colors.ENDC}")
+            
+            # Check for code changes
+            code_cleanup = manager.cleanup_old_instances_on_code_change()
+            if code_cleanup:
+                print(f"{Colors.YELLOW}Cleaned {len(code_cleanup)} old instances due to code changes{Colors.ENDC}")
+            
+            # Run analysis
+            state = manager.analyze_system_state()
+            print(f"\n{Colors.CYAN}System State:{Colors.ENDC}")
+            print(f"  • CPU: {state['cpu_percent']:.1f}%")
+            print(f"  • Memory: {state['memory_percent']:.1f}%") 
+            print(f"  • JARVIS processes: {len(state['jarvis_processes'])}")
+            print(f"  • Stuck processes: {len(state['stuck_processes'])}")
+            print(f"  • Zombie processes: {len(state['zombie_processes'])}")
+            
+            # Get recommendations
+            recommendations = manager.get_cleanup_recommendations()
+            if recommendations:
+                print(f"\n{Colors.YELLOW}Recommendations:{Colors.ENDC}")
+                for rec in recommendations:
+                    print(f"  • {rec}")
+            
+            # Run smart cleanup
+            print(f"\n{Colors.BLUE}Running smart cleanup...{Colors.ENDC}")
+            report = await manager.smart_cleanup(dry_run=False)
+            
+            cleaned_count = len([a for a in report["actions"] if a.get("success", False)])
+            if cleaned_count > 0:
+                print(f"{Colors.GREEN}✓ Cleaned up {cleaned_count} processes{Colors.ENDC}")
+                print(f"  Freed ~{report['freed_resources']['cpu_percent']:.1f}% CPU, {report['freed_resources']['memory_mb']}MB memory")
+            else:
+                print(f"{Colors.GREEN}✓ No cleanup needed{Colors.ENDC}")
+            
+            print(f"\n{Colors.GREEN}Cleanup complete. System is ready.{Colors.ENDC}")
+            return 0
+            
+        except Exception as e:
+            print(f"{Colors.FAIL}Cleanup failed: {e}{Colors.ENDC}")
+            return 1
 
     # Create manager
     _manager = AsyncSystemManager()
