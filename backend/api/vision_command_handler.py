@@ -1178,17 +1178,29 @@ BE CONCISE. No technical details.
 
                 context_summary = [f"You have {total_spaces} desktop spaces total."]
 
-                # Summarize each space
+                # Summarize each space with detailed window information
                 for space in spaces:
                     space_idx = space.get('index', 'unknown')
                     windows = space.get('windows', [])
                     is_active = space.get('has-focus', False)
 
                     if windows:
-                        apps = [w.get('app', 'Unknown') for w in windows[:5]]  # First 5
-                        app_list = ', '.join(apps)
+                        # Build detailed window list with titles
+                        window_details = []
+                        for w in windows[:5]:  # Show first 5 windows with details
+                            app = w.get('app', 'Unknown')
+                            title = w.get('title', '')
+                            if title and len(title) > 50:
+                                title = title[:50] + '...'
+                            if title:
+                                window_details.append(f"{app} ({title})")
+                            else:
+                                window_details.append(app)
+
+                        detail_list = ', '.join(window_details)
+                        suffix = f' + {len(windows)-5} more' if len(windows) > 5 else ''
                         context_summary.append(
-                            f"Space {space_idx}{'(current)' if is_active else ''}: {len(windows)} windows - {app_list}{'...' if len(windows) > 5 else ''}"
+                            f"Space {space_idx}{' (current)' if is_active else ''}: {detail_list}{suffix}"
                         )
                     else:
                         context_summary.append(f"Space {space_idx}: Empty")
@@ -1196,15 +1208,25 @@ BE CONCISE. No technical details.
                 # Build enhanced prompt
                 enhanced_prompt = f"""{query}
 
-**Desktop Space Overview (from window manager):**
+**Complete Desktop Space Overview:**
 {chr(10).join(context_summary)}
 
-The screenshot shows your current active space. Please provide a detailed analysis that:
-1. Describes what's visible in the current space screenshot
-2. Summarizes the activities across all {total_spaces} spaces based on the window data above
-3. Identifies any patterns or workflow themes
+**Current Space Screenshot:**
+The attached screenshot shows your currently active space (Space {window_data.get('current_space', {}).get('id', '?')}).
 
-Be specific and detailed about what you observe."""
+**Instructions for Analysis:**
+Based on the window titles and applications listed above for ALL spaces, plus the visual screenshot of your current space:
+
+1. **Current Space Details**: Describe what's visible in the screenshot - what you're actively working on right now.
+
+2. **Other Space Activities**: For each of the other {total_spaces-1} spaces, analyze the window titles to identify:
+   - What task or project you're working on in that space
+   - The primary activity (coding, communication, browsing, etc.)
+   - Any specific files, documents, or content being worked with
+
+3. **Overall Workflow**: Identify patterns, themes, or how these spaces relate to each other in your overall workflow.
+
+Be SPECIFIC and DETAILED. Use the actual window titles to infer what work is being done. Don't just list apps - explain what you're doing in each space based on the window titles."""
 
                 logger.info("[INTELLIGENT] Sending enhanced prompt to Claude with current space + Yabai context")
 

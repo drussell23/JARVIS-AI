@@ -102,8 +102,12 @@ class IntelligentQueryClassifier:
 
         # Get classification from Claude
         try:
+            logger.info(f"[CLASSIFIER] Attempting Claude classification for: {query[:60]}...")
+            logger.info(f"[CLASSIFIER] Claude client available: {self.claude is not None}")
+
             # Handle our ClaudeVisionWrapper, which provides vision-specific methods
             if hasattr(self.claude, "analyze_image_with_prompt"):
+                logger.info("[CLASSIFIER] Using ClaudeVisionWrapper")
                 # Use the vision analyzer by providing a dummy image payload
                 response = await self.claude.analyze_image_with_prompt(
                     image=None,
@@ -111,8 +115,10 @@ class IntelligentQueryClassifier:
                     max_tokens=500,
                 )
                 result = self._parse_claude_classification(response, features)
+                logger.info(f"[CLASSIFIER] Claude classified as: {result.intent.value} (confidence: {result.confidence:.2f})")
             # If the Claude client exposes the Anthropic messages API
             elif hasattr(self.claude, "messages"):
+                logger.info("[CLASSIFIER] Using Anthropic messages API")
                 response = await self.claude.messages.create(
                     model="claude-3-5-sonnet-20241022",
                     max_tokens=500,
@@ -122,13 +128,17 @@ class IntelligentQueryClassifier:
                 result = self._parse_claude_classification(
                     {"response": content}, features
                 )
+                logger.info(f"[CLASSIFIER] Claude classified as: {result.intent.value} (confidence: {result.confidence:.2f})")
             else:
+                logger.warning("[CLASSIFIER] Claude client missing expected interfaces, using fallback")
                 raise ValueError("Claude classifier client missing expected interfaces")
 
         except Exception as e:
             logger.error(f"[CLASSIFIER] Classification error: {e}", exc_info=True)
+            logger.warning(f"[CLASSIFIER] Using fallback classification for: {query[:60]}...")
             # Fallback on error
             result = self._fallback_classification(query, features)
+            logger.info(f"[CLASSIFIER] Fallback classified as: {result.intent.value} (confidence: {result.confidence:.2f})")
 
         # Track latency
         latency_ms = (time.time() - start_time) * 1000
