@@ -44,6 +44,7 @@ except ImportError as e:
 # Import enhanced multi-space system
 try:
     from vision.enhanced_multi_space_integration import EnhancedMultiSpaceSystem
+
     enhanced_system_available = True
 except ImportError as e:
     logger.warning(f"Enhanced multi-space system not available: {e}")
@@ -51,7 +52,11 @@ except ImportError as e:
 
 # Import workspace name processor
 try:
-    from vision.workspace_name_processor import process_jarvis_response, update_workspace_names
+    from vision.workspace_name_processor import (
+        process_jarvis_response,
+        update_workspace_names,
+    )
+
     workspace_processor_available = True
 except ImportError as e:
     logger.warning(f"Workspace name processor not available: {e}")
@@ -61,7 +66,11 @@ except ImportError as e:
 
 # Import workspace name detector for better name detection
 try:
-    from vision.workspace_name_detector import process_response_with_workspace_names, get_current_workspace_names
+    from vision.workspace_name_detector import (
+        process_response_with_workspace_names,
+        get_current_workspace_names,
+    )
+
     workspace_detector_available = True
 except ImportError as e:
     logger.warning(f"Workspace name detector not available: {e}")
@@ -74,6 +83,7 @@ try:
     from vision.yabai_space_detector import YabaiSpaceDetector, YabaiStatus
     from vision.workspace_analyzer import WorkspaceAnalyzer
     from vision.space_response_generator import SpaceResponseGenerator
+
     yabai_system_available = True
     logger.info("[VISION] ✅ Yabai multi-space intelligence system loaded")
 except ImportError as e:
@@ -85,12 +95,13 @@ try:
     from vision.intelligent_query_classifier import (
         QueryIntent,
         ClassificationResult,
-        get_query_classifier
+        get_query_classifier,
     )
     from vision.smart_query_router import get_smart_router
     from vision.query_context_manager import get_context_manager
     from vision.adaptive_learning_system import get_learning_system
     from vision.performance_monitor import get_performance_monitor
+
     intelligent_system_available = True
     logger.info("[VISION] ✅ Intelligent query classification system loaded")
 except ImportError as e:
@@ -100,6 +111,7 @@ except ImportError as e:
 # Import Proactive Suggestions System
 try:
     from vision.proactive_suggestions import get_proactive_system, ProactiveSuggestion
+
     proactive_suggestions_available = True
     logger.info("[VISION] ✅ Proactive suggestions system loaded")
 except ImportError as e:
@@ -174,7 +186,9 @@ class VisionCommandHandler:
             try:
                 self.yabai_detector = YabaiSpaceDetector()
                 self.workspace_analyzer = WorkspaceAnalyzer()
-                self.space_response_generator = SpaceResponseGenerator(use_sir_prefix=True)
+                self.space_response_generator = SpaceResponseGenerator(
+                    use_sir_prefix=True
+                )
                 logger.info("[VISION] ✅ Yabai multi-space intelligence initialized")
             except Exception as e:
                 logger.warning(f"[VISION] Could not initialize Yabai system: {e}")
@@ -191,7 +205,9 @@ class VisionCommandHandler:
                 # Get singleton instances
                 self.context_manager = get_context_manager()
                 self.learning_system = get_learning_system()
-                self.performance_monitor = get_performance_monitor(report_interval_minutes=60)
+                self.performance_monitor = get_performance_monitor(
+                    report_interval_minutes=60
+                )
 
                 # Initialize classifier and router without Claude client (can be added later)
                 self.classifier = get_query_classifier(claude_client=None)
@@ -199,10 +215,12 @@ class VisionCommandHandler:
                     yabai_handler=self._handle_yabai_query,
                     vision_handler=self._handle_vision_query,
                     multi_space_handler=self._handle_multi_space_query,
-                    claude_client=None
+                    claude_client=None,
                 )
 
-                logger.info("[VISION] ✅ Intelligent query classification system initialized")
+                logger.info(
+                    "[VISION] ✅ Intelligent query classification system initialized"
+                )
             except Exception as e:
                 logger.warning(f"[VISION] Could not initialize intelligent system: {e}")
 
@@ -335,7 +353,9 @@ class VisionCommandHandler:
             # Update enhanced system with intelligence if available
             if self.enhanced_system:
                 self.enhanced_system.vision_intelligence = self.intelligence
-                logger.info("[ENHANCED] Updated enhanced system with vision intelligence")
+                logger.info(
+                    "[ENHANCED] Updated enhanced system with vision intelligence"
+                )
 
             # Update intelligent classification system with Claude client
             if intelligent_system_available and claude_client:
@@ -343,14 +363,25 @@ class VisionCommandHandler:
                     # Update existing classifier with Claude client
                     if self.classifier:
                         self.classifier.claude = claude_client
-                        logger.info("[INTELLIGENT] Updated classifier with Claude client")
+                        logger.info(
+                            "[INTELLIGENT] Updated classifier with Claude client"
+                        )
 
                     # Update existing smart router with Claude client
                     if self.smart_router:
-                        self.smart_router.classifier.claude = claude_client if hasattr(self.smart_router, 'classifier') and self.smart_router.classifier else None
-                        logger.info("[INTELLIGENT] Updated smart router with Claude client")
+                        self.smart_router.classifier.claude = (
+                            claude_client
+                            if hasattr(self.smart_router, "classifier")
+                            and self.smart_router.classifier
+                            else None
+                        )
+                        logger.info(
+                            "[INTELLIGENT] Updated smart router with Claude client"
+                        )
                 except Exception as e:
-                    logger.warning(f"[INTELLIGENT] Could not update classifier/router with Claude client: {e}")
+                    logger.warning(
+                        f"[INTELLIGENT] Could not update classifier/router with Claude client: {e}"
+                    )
 
             logger.info("[PURE VISION] Intelligence systems initialized")
 
@@ -399,28 +430,32 @@ class VisionCommandHandler:
                     try:
                         active_space = self.yabai_detector.get_current_space()
                         all_spaces = self.yabai_detector.enumerate_all_spaces()
-                        context['active_space'] = active_space.get('index') if active_space else None
-                        context['total_spaces'] = len(all_spaces) if all_spaces else 0
+                        context["active_space"] = (
+                            active_space.get("index") if active_space else None
+                        )
+                        context["total_spaces"] = len(all_spaces) if all_spaces else 0
                     except Exception:
                         pass  # Continue without Yabai context
 
                 # Route the query through intelligent system
                 routing_result = await self.smart_router.route_query(
-                    query=command_text,
-                    context=context
+                    query=command_text, context=context
                 )
 
                 # Record query in context manager
                 self.context_manager.record_query(
                     query=command_text,
                     intent=routing_result.intent.value,
-                    active_space=context.get('active_space'),
-                    total_spaces=context.get('total_spaces', 0),
-                    response_latency_ms=routing_result.latency_ms
+                    active_space=context.get("active_space"),
+                    total_spaces=context.get("total_spaces", 0),
+                    response_latency_ms=routing_result.latency_ms,
                 )
 
                 # Collect performance metrics periodically
-                if self.performance_monitor and self.performance_monitor.should_generate_report():
+                if (
+                    self.performance_monitor
+                    and self.performance_monitor.should_generate_report()
+                ):
                     await self.performance_monitor.collect_metrics()
                     self.performance_monitor.mark_report_generated()
                     logger.info("[INTELLIGENT] Performance metrics collected")
@@ -437,27 +472,37 @@ class VisionCommandHandler:
                 }
 
             except Exception as e:
-                logger.error(f"[INTELLIGENT] Smart routing failed, falling back to enhanced/legacy: {e}", exc_info=True)
+                logger.error(
+                    f"[INTELLIGENT] Smart routing failed, falling back to enhanced/legacy: {e}",
+                    exc_info=True,
+                )
                 # Fall through to enhanced system
         # ==============================================================================
         # END INTELLIGENT CLASSIFICATION SYSTEM
         # ==============================================================================
 
         # Try enhanced system as fallback (only if intelligent routing didn't handle it)
-        if self.enhanced_system:
-            try:
-                enhanced_result = await self.enhanced_system.handle_vision_command(command_text)
-                if enhanced_result.get('handled') != False:
-                    # Enhanced system handled the command
-                    response = enhanced_result.get('response', '')
-                    logger.info(f"[ENHANCED] Successfully handled query with enhanced system")
-                    return {
-                        'handled': True,
-                        'response': response,
-                        'metadata': enhanced_result
-                    }
-            except Exception as e:
-                logger.warning(f"[ENHANCED] Enhanced system error, falling back: {e}")
+        #
+        # DISABLED: This legacy 'enhanced_system' was overriding the new intelligent router.
+        # It has its own intent classification that conflicts with the new ML-based
+        # classifier, leading to generic responses instead of the detailed Yabai output.
+        # By disabling this, we force all vision queries to go through the new
+        # `smart_router`, which correctly handles different intents.
+        #
+        # if self.enhanced_system:
+        #     try:
+        #         enhanced_result = await self.enhanced_system.handle_vision_command(command_text)
+        #         if enhanced_result.get('handled') != False:
+        #             # Enhanced system handled the command
+        #             response = enhanced_result.get('response', '')
+        #             logger.info(f"[ENHANCED] Successfully handled query with enhanced system")
+        #             return {
+        #                 'handled': True,
+        #                 'response': response,
+        #                 'metadata': enhanced_result
+        #             }
+        #     except Exception as e:
+        #         logger.warning(f"[ENHANCED] Enhanced system error, falling back: {e}")
 
         # Ensure intelligence is initialized
         if not self.intelligence:
@@ -524,9 +569,13 @@ class VisionCommandHandler:
                     )
 
                 # Debug logging for screenshot type
-                logger.info(f"[ENHANCED VISION] Screenshot type: {type(screenshot)}, needs_multi_space: {needs_multi_space}")
+                logger.info(
+                    f"[ENHANCED VISION] Screenshot type: {type(screenshot)}, needs_multi_space: {needs_multi_space}"
+                )
                 if isinstance(screenshot, dict):
-                    logger.info(f"[ENHANCED VISION] Screenshot is dict with {len(screenshot)} keys: {list(screenshot.keys())}")
+                    logger.info(
+                        f"[ENHANCED VISION] Screenshot is dict with {len(screenshot)} keys: {list(screenshot.keys())}"
+                    )
 
                 if needs_multi_space and isinstance(screenshot, dict):
                     # Multi-space query with multiple screenshots - use enhanced analysis
@@ -538,15 +587,23 @@ class VisionCommandHandler:
                     window_data = await self.intelligence._gather_multi_space_data()
 
                     # Debug log the window data
-                    logger.info(f"[WORKSPACE DEBUG] Window data keys: {window_data.keys() if window_data else 'None'}")
-                    if window_data and 'spaces' in window_data:
-                        logger.info(f"[WORKSPACE DEBUG] Number of spaces: {len(window_data['spaces'])}")
-                        for space_id, space_info in window_data['spaces'].items():
+                    logger.info(
+                        f"[WORKSPACE DEBUG] Window data keys: {window_data.keys() if window_data else 'None'}"
+                    )
+                    if window_data and "spaces" in window_data:
+                        logger.info(
+                            f"[WORKSPACE DEBUG] Number of spaces: {len(window_data['spaces'])}"
+                        )
+                        for space_id, space_info in window_data["spaces"].items():
                             if isinstance(space_info, dict):
-                                apps = space_info.get('applications', [])
-                                primary = space_info.get('primary_app', 'None')
-                                space_name = space_info.get('space_name', f'Desktop {space_id}')
-                                logger.info(f"[WORKSPACE DEBUG] Space {space_id}: name='{space_name}', primary='{primary}', apps={apps[:2] if apps else []}")
+                                apps = space_info.get("applications", [])
+                                primary = space_info.get("primary_app", "None")
+                                space_name = space_info.get(
+                                    "space_name", f"Desktop {space_id}"
+                                )
+                                logger.info(
+                                    f"[WORKSPACE DEBUG] Space {space_id}: name='{space_name}', primary='{primary}', apps={apps[:2] if apps else []}"
+                                )
 
                     # Use enhanced system if available
                     if hasattr(self.intelligence, "multi_space_extension") and hasattr(
@@ -568,23 +625,43 @@ class VisionCommandHandler:
                                 screenshot, command_text
                             )
 
-                            logger.info(f"[WORKSPACE DEBUG] Original response has 'Desktop': {'Desktop' in response if response else 'N/A'}")
-                            if response and 'Desktop' in response:
-                                logger.info(f"[WORKSPACE DEBUG] Sample of original: {response[:300]}")
+                            logger.info(
+                                f"[WORKSPACE DEBUG] Original response has 'Desktop': {'Desktop' in response if response else 'N/A'}"
+                            )
+                            if response and "Desktop" in response:
+                                logger.info(
+                                    f"[WORKSPACE DEBUG] Sample of original: {response[:300]}"
+                                )
 
                             # Process response to replace generic desktop names with actual workspace names
                             if workspace_detector_available:
-                                logger.info("[WORKSPACE DEBUG] Using workspace_detector to process response")
-                                processed_response = process_response_with_workspace_names(response, window_data)
-                                logger.info(f"[WORKSPACE DEBUG] After detector - has 'Desktop': {'Desktop' in processed_response if processed_response else 'N/A'}")
+                                logger.info(
+                                    "[WORKSPACE DEBUG] Using workspace_detector to process response"
+                                )
+                                processed_response = (
+                                    process_response_with_workspace_names(
+                                        response, window_data
+                                    )
+                                )
+                                logger.info(
+                                    f"[WORKSPACE DEBUG] After detector - has 'Desktop': {'Desktop' in processed_response if processed_response else 'N/A'}"
+                                )
                                 response = processed_response
                             elif workspace_processor_available and window_data:
-                                logger.info("[WORKSPACE DEBUG] Using workspace_processor to process response")
-                                processed_response = process_jarvis_response(response, window_data)
-                                logger.info(f"[WORKSPACE DEBUG] After processor - has 'Desktop': {'Desktop' in processed_response if processed_response else 'N/A'}")
+                                logger.info(
+                                    "[WORKSPACE DEBUG] Using workspace_processor to process response"
+                                )
+                                processed_response = process_jarvis_response(
+                                    response, window_data
+                                )
+                                logger.info(
+                                    f"[WORKSPACE DEBUG] After processor - has 'Desktop': {'Desktop' in processed_response if processed_response else 'N/A'}"
+                                )
                                 response = processed_response
 
-                            logger.info(f"[ENHANCED VISION] Response processed with workspace names")
+                            logger.info(
+                                f"[ENHANCED VISION] Response processed with workspace names"
+                            )
 
                             return {
                                 "handled": True,
@@ -619,7 +696,9 @@ class VisionCommandHandler:
 
                         # Process response for multi-space queries
                         if workspace_detector_available:
-                            response = process_response_with_workspace_names(response, window_data)
+                            response = process_response_with_workspace_names(
+                                response, window_data
+                            )
                         elif workspace_processor_available and window_data:
                             response = process_jarvis_response(response, window_data)
                 else:
@@ -634,18 +713,30 @@ class VisionCommandHandler:
                         # Always try to process with workspace detector for any Desktop references
                         try:
                             if hasattr(self.intelligence, "_gather_multi_space_data"):
-                                window_data = await self.intelligence._gather_multi_space_data()
-                                response = process_response_with_workspace_names(response, window_data)
+                                window_data = (
+                                    await self.intelligence._gather_multi_space_data()
+                                )
+                                response = process_response_with_workspace_names(
+                                    response, window_data
+                                )
                             else:
                                 # Use detector without window data
-                                response = process_response_with_workspace_names(response, None)
+                                response = process_response_with_workspace_names(
+                                    response, None
+                                )
                         except:
                             pass  # Fallback silently if can't process
-                    elif workspace_processor_available and hasattr(self.intelligence, "_gather_multi_space_data"):
+                    elif workspace_processor_available and hasattr(
+                        self.intelligence, "_gather_multi_space_data"
+                    ):
                         try:
-                            window_data = await self.intelligence._gather_multi_space_data()
+                            window_data = (
+                                await self.intelligence._gather_multi_space_data()
+                            )
                             if window_data:
-                                response = process_jarvis_response(response, window_data)
+                                response = process_jarvis_response(
+                                    response, window_data
+                                )
                         except:
                             pass  # Fallback silently if can't get window data
 
@@ -766,14 +857,14 @@ class VisionCommandHandler:
                     "context": self.intelligence.context.get_temporal_context(),
                 }
 
-
         # Fallback: If we reach here, something went wrong
         logger.warning(f"[VISION] No handler processed the command: {command_text}")
         return {
             "handled": True,
             "response": "Let me analyze your desktop spaces for you, Sir.",
-            "fallback": True
+            "fallback": True,
         }
+
     async def analyze_screen(self, command_text: str) -> Dict[str, Any]:
         """Analyze screen with enhanced multi-space intelligence"""
         logger.info(f"[VISION] analyze_screen called with: {command_text}")
@@ -806,7 +897,12 @@ class VisionCommandHandler:
                 return await self._get_error_response("screenshot_failed", command_text)
 
             # Try Yabai multi-space intelligence first
-            if needs_multi_space and self.yabai_detector and self.workspace_analyzer and self.space_response_generator:
+            if (
+                needs_multi_space
+                and self.yabai_detector
+                and self.workspace_analyzer
+                and self.space_response_generator
+            ):
                 try:
                     logger.info("[YABAI] Using Yabai-based multi-space intelligence")
 
@@ -816,26 +912,32 @@ class VisionCommandHandler:
                     if status == YabaiStatus.AVAILABLE:
                         # Get workspace data from Yabai
                         workspace_data = self.yabai_detector.get_workspace_summary()
-                        spaces = workspace_data['spaces']
+                        spaces = workspace_data["spaces"]
 
                         # Collect all windows from all spaces
                         windows = []
                         for space in spaces:
-                            space_id = space.get('index', space.get('id'))
+                            space_id = space.get("index", space.get("id"))
                             if space_id:
-                                space_windows = self.yabai_detector.get_windows_for_space(space_id)
+                                space_windows = (
+                                    self.yabai_detector.get_windows_for_space(space_id)
+                                )
                                 windows.extend(space_windows)
 
                         # Analyze workspace activity
                         analysis = self.workspace_analyzer.analyze(spaces, windows)
 
                         # Generate natural language response
-                        response = self.space_response_generator.generate_overview_response(
-                            analysis, include_details=True
+                        response = (
+                            self.space_response_generator.generate_overview_response(
+                                analysis, include_details=True
+                            )
                         )
 
                         # Log performance info
-                        logger.info(f"[YABAI] Successfully generated workspace overview with {len(spaces)} spaces")
+                        logger.info(
+                            f"[YABAI] Successfully generated workspace overview with {len(spaces)} spaces"
+                        )
 
                         return {
                             "handled": True,
@@ -843,20 +945,28 @@ class VisionCommandHandler:
                             "pure_intelligence": True,
                             "yabai_powered": True,
                             "monitoring_active": self.monitoring_active,
-                            "context": self.intelligence.context.get_temporal_context() if self.intelligence else {},
+                            "context": (
+                                self.intelligence.context.get_temporal_context()
+                                if self.intelligence
+                                else {}
+                            ),
                             "analysis_metadata": {
                                 "total_spaces": analysis.total_spaces,
                                 "active_spaces": analysis.active_spaces,
                                 "unique_applications": analysis.unique_applications,
                                 "detected_project": analysis.detected_project,
                                 "yabai_status": status.value,
-                                "total_windows": len(windows)
-                            }
+                                "total_windows": len(windows),
+                            },
                         }
                     else:
                         # Yabai not available - provide installation guidance
-                        logger.warning(f"[YABAI] Not available (status: {status.value})")
-                        response = self.space_response_generator.generate_yabai_installation_response(status)
+                        logger.warning(
+                            f"[YABAI] Not available (status: {status.value})"
+                        )
+                        response = self.space_response_generator.generate_yabai_installation_response(
+                            status
+                        )
 
                         return {
                             "handled": True,
@@ -866,7 +976,9 @@ class VisionCommandHandler:
                         }
 
                 except Exception as e:
-                    logger.error(f"[YABAI] Error using Yabai system: {e}", exc_info=True)
+                    logger.error(
+                        f"[YABAI] Error using Yabai system: {e}", exc_info=True
+                    )
                     # Fall through to Claude-based analysis
 
             # Use enhanced multi-space intelligence if available (fallback)
@@ -1253,9 +1365,7 @@ BE CONCISE. No technical details.
         }
 
     async def _handle_yabai_query(
-        self,
-        query: str,
-        context: Optional[Dict[str, Any]]
+        self, query: str, context: Optional[Dict[str, Any]]
     ) -> str:
         """
         Handle metadata-only query using Yabai (no screenshots)
@@ -1268,7 +1378,7 @@ BE CONCISE. No technical details.
             logger.info("[INTELLIGENT] Handling metadata-only query with Yabai")
 
             # Use Yabai's built-in describe_workspace method for natural language response
-            if hasattr(self.yabai_detector, 'describe_workspace'):
+            if hasattr(self.yabai_detector, "describe_workspace"):
                 response = self.yabai_detector.describe_workspace()
                 return response
 
@@ -1280,20 +1390,27 @@ BE CONCISE. No technical details.
             # Build detailed response
             space_descriptions = []
             for space in workspace_data:
-                space_num = space.get('index', '?')
-                apps = space.get('applications', [])
-                window_count = space.get('window_count', 0)
+                space_num = space.get("index", "?")
+                apps = space.get("applications", [])
+                window_count = space.get("window_count", 0)
 
                 if window_count == 0:
                     space_descriptions.append(f"Space {space_num}: Empty")
                 else:
                     primary_app = apps[0] if apps else "Unknown"
                     if len(apps) > 1:
-                        space_descriptions.append(f"Space {space_num}: {primary_app} (+{len(apps)-1} more apps, {window_count} windows)")
+                        space_descriptions.append(
+                            f"Space {space_num}: {primary_app} (+{len(apps)-1} more apps, {window_count} windows)"
+                        )
                     else:
-                        space_descriptions.append(f"Space {space_num}: {primary_app} ({window_count} window{'s' if window_count != 1 else ''})")
+                        space_descriptions.append(
+                            f"Space {space_num}: {primary_app} ({window_count} window{'s' if window_count != 1 else ''})"
+                        )
 
-            response = f"Sir, you have {len(workspace_data)} desktop spaces:\n\n" + "\n".join(space_descriptions)
+            response = (
+                f"Sir, you have {len(workspace_data)} desktop spaces:\n\n"
+                + "\n".join(space_descriptions)
+            )
             return response
 
         except Exception as e:
@@ -1301,16 +1418,15 @@ BE CONCISE. No technical details.
             raise
 
     async def _handle_vision_query(
-        self,
-        query: str,
-        context: Optional[Dict[str, Any]],
-        multi_space: bool = False
+        self, query: str, context: Optional[Dict[str, Any]], multi_space: bool = False
     ) -> str:
         """
         Handle visual analysis query with current screen capture
         """
         try:
-            logger.info(f"[INTELLIGENT] Handling vision query (multi_space: {multi_space})")
+            logger.info(
+                f"[INTELLIGENT] Handling vision query (multi_space: {multi_space})"
+            )
 
             # Capture screen
             screenshot = await self._capture_screen(multi_space=multi_space)
@@ -1332,9 +1448,7 @@ BE CONCISE. No technical details.
             raise
 
     async def _handle_multi_space_query(
-        self,
-        query: str,
-        context: Optional[Dict[str, Any]]
+        self, query: str, context: Optional[Dict[str, Any]]
     ) -> str:
         """
         Handle deep analysis query with multi-space capture + Yabai metadata
@@ -1350,16 +1464,15 @@ BE CONCISE. No technical details.
 
             # Get Yabai metadata for context
             window_data = None
-            if self.intelligence and hasattr(self.intelligence, "_gather_multi_space_data"):
+            if self.intelligence and hasattr(
+                self.intelligence, "_gather_multi_space_data"
+            ):
                 window_data = await self.intelligence._gather_multi_space_data()
 
             # Use enhanced multi-space analysis if available
-            if (
-                hasattr(self.intelligence, "multi_space_extension")
-                and hasattr(
-                    self.intelligence.multi_space_extension,
-                    "generate_enhanced_workspace_response"
-                )
+            if hasattr(self.intelligence, "multi_space_extension") and hasattr(
+                self.intelligence.multi_space_extension,
+                "generate_enhanced_workspace_response",
             ):
                 response = self.intelligence.multi_space_extension.generate_enhanced_workspace_response(
                     query, window_data, screenshots
@@ -1373,7 +1486,9 @@ BE CONCISE. No technical details.
 
                     # Process with workspace names
                     if workspace_detector_available and window_data:
-                        response = process_response_with_workspace_names(response, window_data)
+                        response = process_response_with_workspace_names(
+                            response, window_data
+                        )
 
                 return response or "I analyzed your workspaces, Sir."
 
@@ -1385,12 +1500,16 @@ BE CONCISE. No technical details.
 
                 # Process with workspace names
                 if workspace_detector_available and window_data:
-                    response = process_response_with_workspace_names(response, window_data)
+                    response = process_response_with_workspace_names(
+                        response, window_data
+                    )
 
                 return response
 
             # Fallback to Yabai metadata-only analysis when Claude is not available
-            logger.info("[INTELLIGENT] Intelligence not available, falling back to Yabai metadata analysis")
+            logger.info(
+                "[INTELLIGENT] Intelligence not available, falling back to Yabai metadata analysis"
+            )
             if self.yabai_detector and self.workspace_analyzer:
                 return await self._handle_yabai_query(query, context)
 
@@ -1602,21 +1721,23 @@ Never use generic error messages or technical jargon.
 
         # Legacy intelligence stats
         if self.intelligence and self.intelligence.context:
-            stats.update({
-                "conversation_length": len(self.intelligence.context.history),
-                "workflow_state": self.intelligence.context.workflow_state,
-                "emotional_state": (
-                    self.intelligence.context.emotional_context.value
-                    if self.intelligence.context.emotional_context
-                    else "neutral"
-                ),
-            })
+            stats.update(
+                {
+                    "conversation_length": len(self.intelligence.context.history),
+                    "workflow_state": self.intelligence.context.workflow_state,
+                    "emotional_state": (
+                        self.intelligence.context.emotional_context.value
+                        if self.intelligence.context.emotional_context
+                        else "neutral"
+                    ),
+                }
+            )
 
         # Add intelligent system stats if available
         if intelligent_system_available and self.context_manager:
             try:
                 intelligent_stats = self.context_manager.get_session_stats()
-                stats['intelligent_system'] = intelligent_stats
+                stats["intelligent_system"] = intelligent_stats
             except Exception as e:
                 logger.warning(f"Could not get intelligent system stats: {e}")
 
@@ -1630,10 +1751,7 @@ Never use generic error messages or technical jargon.
             Performance report with metrics and insights
         """
         if not intelligent_system_available or not self.performance_monitor:
-            return {
-                "available": False,
-                "message": "Intelligent system not available"
-            }
+            return {"available": False, "message": "Intelligent system not available"}
 
         try:
             # Collect latest metrics
@@ -1643,22 +1761,16 @@ Never use generic error messages or technical jargon.
             report = self.performance_monitor.generate_report()
 
             # Add insights
-            report['insights'] = self.performance_monitor.get_performance_insights()
+            report["insights"] = self.performance_monitor.get_performance_insights()
 
             # Add real-time stats
-            report['real_time'] = self.performance_monitor.get_real_time_stats()
+            report["real_time"] = self.performance_monitor.get_real_time_stats()
 
-            return {
-                "available": True,
-                "report": report
-            }
+            return {"available": True, "report": report}
 
         except Exception as e:
             logger.error(f"Failed to generate performance report: {e}")
-            return {
-                "available": False,
-                "error": str(e)
-            }
+            return {"available": False, "error": str(e)}
 
     async def get_classification_stats(self) -> Dict[str, Any]:
         """
@@ -1675,40 +1787,38 @@ Never use generic error messages or technical jargon.
 
             # Classifier stats
             if self.classifier:
-                stats['classifier'] = self.classifier.get_performance_stats()
+                stats["classifier"] = self.classifier.get_performance_stats()
 
             # Router stats
             if self.smart_router:
-                stats['router'] = self.smart_router.get_routing_stats()
+                stats["router"] = self.smart_router.get_routing_stats()
 
             # Learning stats
             if self.learning_system:
-                stats['learning'] = self.learning_system.get_accuracy_report()
+                stats["learning"] = self.learning_system.get_accuracy_report()
 
             # Context stats
             if self.context_manager:
-                stats['context'] = self.context_manager.get_session_stats()
-                stats['user_preferences'] = self.context_manager.get_user_preferences()
+                stats["context"] = self.context_manager.get_session_stats()
+                stats["user_preferences"] = self.context_manager.get_user_preferences()
 
             # Proactive suggestions stats
             if self.proactive_system:
-                stats['proactive_suggestions'] = self.proactive_system.get_statistics()
+                stats["proactive_suggestions"] = self.proactive_system.get_statistics()
 
             # A/B testing stats
-            if self.smart_router and hasattr(self.smart_router, 'ab_test') and self.smart_router.ab_test:
-                stats['ab_testing'] = self.smart_router.get_ab_test_report()
+            if (
+                self.smart_router
+                and hasattr(self.smart_router, "ab_test")
+                and self.smart_router.ab_test
+            ):
+                stats["ab_testing"] = self.smart_router.get_ab_test_report()
 
-            return {
-                "available": True,
-                "stats": stats
-            }
+            return {"available": True, "stats": stats}
 
         except Exception as e:
             logger.error(f"Failed to get classification stats: {e}")
-            return {
-                "available": False,
-                "error": str(e)
-            }
+            return {"available": False, "error": str(e)}
 
     async def get_proactive_suggestions(self) -> Dict[str, Any]:
         """
@@ -1731,14 +1841,16 @@ Never use generic error messages or technical jargon.
             if self.yabai_detector:
                 try:
                     yabai_data = {
-                        'spaces': self.yabai_detector.enumerate_all_spaces(),
-                        'active_space': context.get('active_space')
+                        "spaces": self.yabai_detector.enumerate_all_spaces(),
+                        "active_space": context.get("active_space"),
                     }
                 except Exception:
                     pass  # Continue without Yabai data
 
             # Analyze and get suggestion
-            suggestion = await self.proactive_system.analyze_and_suggest(context, yabai_data)
+            suggestion = await self.proactive_system.analyze_and_suggest(
+                context, yabai_data
+            )
 
             if suggestion:
                 return {
@@ -1749,26 +1861,18 @@ Never use generic error messages or technical jargon.
                         "type": suggestion.type.value,
                         "priority": suggestion.priority.value,
                         "message": suggestion.message,
-                        "action": suggestion.action
-                    }
+                        "action": suggestion.action,
+                    },
                 }
             else:
-                return {
-                    "available": True,
-                    "has_suggestion": False
-                }
+                return {"available": True, "has_suggestion": False}
 
         except Exception as e:
             logger.error(f"Failed to get proactive suggestions: {e}")
-            return {
-                "available": False,
-                "error": str(e)
-            }
+            return {"available": False, "error": str(e)}
 
     async def respond_to_suggestion(
-        self,
-        suggestion_id: str,
-        accepted: bool
+        self, suggestion_id: str, accepted: bool
     ) -> Dict[str, Any]:
         """
         Handle user's response to a proactive suggestion
@@ -1791,8 +1895,7 @@ Never use generic error messages or technical jargon.
                 # Find the suggestion and execute its action
                 suggestions = self.proactive_system.get_active_suggestions()
                 suggestion = next(
-                    (s for s in suggestions if s.suggestion_id == suggestion_id),
-                    None
+                    (s for s in suggestions if s.suggestion_id == suggestion_id), None
                 )
 
                 if suggestion:
@@ -1806,7 +1909,7 @@ Never use generic error messages or technical jargon.
                             "accepted": True,
                             "action": "analyze_space",
                             "space_id": space_id,
-                            "message": f"Analyzing Space {space_id}..."
+                            "message": f"Analyzing Space {space_id}...",
                         }
 
                     elif action == "workspace_summary":
@@ -1814,7 +1917,7 @@ Never use generic error messages or technical jargon.
                         return {
                             "accepted": True,
                             "action": "workspace_summary",
-                            "message": "Generating workspace summary..."
+                            "message": "Generating workspace summary...",
                         }
 
                     elif action == "workspace_overview":
@@ -1822,7 +1925,7 @@ Never use generic error messages or technical jargon.
                         return {
                             "accepted": True,
                             "action": "workspace_overview",
-                            "message": "Here's your workspace overview..."
+                            "message": "Here's your workspace overview...",
                         }
 
                     elif action == "analyze_workflow":
@@ -1830,26 +1933,24 @@ Never use generic error messages or technical jargon.
                         return {
                             "accepted": True,
                             "action": "analyze_workflow",
-                            "message": "Analyzing your workflow patterns..."
+                            "message": "Analyzing your workflow patterns...",
                         }
 
                     else:
                         return {
                             "accepted": True,
                             "action": action,
-                            "message": "Processing your request..."
+                            "message": "Processing your request...",
                         }
 
             return {
                 "accepted": accepted,
-                "message": "Dismissed" if not accepted else "Accepted"
+                "message": "Dismissed" if not accepted else "Accepted",
             }
 
         except Exception as e:
             logger.error(f"Failed to respond to suggestion: {e}")
-            return {
-                "error": str(e)
-            }
+            return {"error": str(e)}
 
 
 # Singleton instance
