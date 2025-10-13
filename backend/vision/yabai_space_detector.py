@@ -140,7 +140,7 @@ class YabaiSpaceDetector:
             return []
         except subprocess.TimeoutExpired:
             logger.error("[YABAI] Yabai query timed out")
-                return []
+            return []
         except Exception as e:
             logger.error(f"[YABAI] Error enumerating spaces: {e}")
             return []
