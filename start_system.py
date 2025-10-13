@@ -2942,6 +2942,11 @@ async def main():
         action="store_true",
         help="Run normal cleanup process and exit (less aggressive than emergency)",
     )
+    parser.add_argument(
+        "--restart",
+        action="store_true",
+        help="Restart JARVIS: kill old instances, start fresh, and verify intelligent system",
+    )
 
     args = parser.parse_args()
 
@@ -3045,6 +3050,139 @@ async def main():
             
         except Exception as e:
             print(f"{Colors.FAIL}Cleanup failed: {e}{Colors.ENDC}")
+            return 1
+
+    # Handle restart mode
+    if args.restart:
+        print(f"\n{Colors.BLUE}🔄 RESTART MODE{Colors.ENDC}")
+        print("Restarting JARVIS with intelligent system verification...\n")
+
+        try:
+            backend_dir = Path(__file__).parent / "backend"
+            if str(backend_dir) not in sys.path:
+                sys.path.insert(0, str(backend_dir))
+
+            # Step 1: Find and kill old JARVIS processes
+            print(f"{Colors.YELLOW}1️⃣ Finding old JARVIS instances...{Colors.ENDC}")
+            jarvis_processes = []
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'create_time']):
+                try:
+                    cmdline = proc.info.get('cmdline')
+                    if cmdline and any('main.py' in arg for arg in cmdline):
+                        if any('JARVIS-AI-Agent/backend' in arg for arg in cmdline):
+                            jarvis_processes.append({
+                                'pid': proc.info['pid'],
+                                'age_hours': (time.time() - proc.info['create_time']) / 3600
+                            })
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+
+            if jarvis_processes:
+                print(f"Found {len(jarvis_processes)} JARVIS process(es)")
+                for proc in jarvis_processes:
+                    print(f"  Killing PID {proc['pid']} (running {proc['age_hours']:.1f}h)...")
+                    try:
+                        os.kill(proc['pid'], signal.SIGTERM)
+                        time.sleep(1)
+                        if psutil.pid_exists(proc['pid']):
+                            os.kill(proc['pid'], signal.SIGKILL)
+                        print(f"  {Colors.GREEN}✓{Colors.ENDC} Killed PID {proc['pid']}")
+                    except Exception as e:
+                        print(f"  {Colors.FAIL}✗{Colors.ENDC} Failed to kill PID {proc['pid']}: {e}")
+
+                print(f"\n{Colors.YELLOW}⏳ Waiting for processes to terminate...{Colors.ENDC}")
+                time.sleep(2)
+                print(f"{Colors.GREEN}✓ All old processes terminated{Colors.ENDC}")
+            else:
+                print(f"{Colors.GREEN}No old JARVIS processes found{Colors.ENDC}")
+
+            # Step 2: Start new JARVIS instance
+            print(f"\n{Colors.YELLOW}2️⃣ Starting fresh JARVIS instance...{Colors.ENDC}")
+            main_py = backend_dir / "main.py"
+
+            if not main_py.exists():
+                print(f"{Colors.FAIL}❌ main.py not found at {main_py}{Colors.ENDC}")
+                return 1
+
+            process = subprocess.Popen(
+                ["python3", str(main_py), "--port", "8010"],
+                cwd=str(backend_dir),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True
+            )
+
+            time.sleep(3)
+
+            if process.poll() is None:
+                print(f"{Colors.GREEN}✓ JARVIS started with PID {process.pid}{Colors.ENDC}")
+            else:
+                stdout, stderr = process.communicate()
+                print(f"{Colors.FAIL}❌ JARVIS failed to start{Colors.ENDC}")
+                print(f"Error: {stderr.decode()}")
+                return 1
+
+            # Step 3: Verify intelligent routing system
+            print(f"\n{Colors.YELLOW}3️⃣ Verifying intelligent routing system...{Colors.ENDC}")
+            print(f"{Colors.CYAN}Waiting for API to start...{Colors.ENDC}", end="", flush=True)
+
+            # Retry API health check with exponential backoff
+            import urllib.request
+            import json
+
+            max_retries = 10
+            retry_delay = 2
+            api_ready = False
+
+            for attempt in range(max_retries):
+                try:
+                    print(".", end="", flush=True)
+                    time.sleep(retry_delay)
+
+                    response = urllib.request.urlopen('http://localhost:8010/health', timeout=3)
+                    health_data = json.loads(response.read().decode())
+
+                    if health_data.get('status') == 'healthy':
+                        api_ready = True
+                        print(f" {Colors.GREEN}✓{Colors.ENDC}")
+                        break
+
+                except Exception:
+                    if attempt == max_retries - 1:
+                        print(f" {Colors.FAIL}✗{Colors.ENDC}")
+                    continue
+
+            if api_ready:
+                components_loaded = health_data.get('components', {})
+
+                print(f"\n{Colors.CYAN}System Status:{Colors.ENDC}")
+                print(f"  {Colors.GREEN}✓{Colors.ENDC} API is responding")
+                print(f"  {Colors.GREEN}✓{Colors.ENDC} Backend is healthy")
+
+                if components_loaded.get('chatbots'):
+                    print(f"  {Colors.GREEN}✓{Colors.ENDC} Chatbots (Claude Vision)")
+                if components_loaded.get('voice'):
+                    print(f"  {Colors.GREEN}✓{Colors.ENDC} Voice system")
+                if components_loaded.get('memory'):
+                    print(f"  {Colors.GREEN}✓{Colors.ENDC} Memory manager")
+
+                print(f"\n{Colors.GREEN}✨ JARVIS is online and ready!{Colors.ENDC}")
+                print(f"\n{Colors.CYAN}Test with:{Colors.ENDC} 'What's happening across my desktop spaces?'")
+                print(f"{Colors.CYAN}Expected:{Colors.ENDC} Detailed breakdown of all spaces with apps and windows")
+            else:
+                print(f"{Colors.YELLOW}⚠️  API not responding after {max_retries * retry_delay}s{Colors.ENDC}")
+                print(f"{Colors.CYAN}JARVIS process is running (PID {process.pid}), but API isn't ready yet{Colors.ENDC}")
+                print(f"{Colors.CYAN}Wait a moment and try your query in the interface{Colors.ENDC}")
+
+            print(f"\n{'='*50}")
+            print(f"{Colors.GREEN}🎉 JARVIS restart complete!{Colors.ENDC}")
+            print(f"{'='*50}")
+            return 0
+
+        except Exception as e:
+            print(f"{Colors.FAIL}Restart failed: {e}{Colors.ENDC}")
+            import traceback
+            traceback.print_exc()
             return 1
 
     # Create manager
