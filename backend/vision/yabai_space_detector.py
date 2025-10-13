@@ -67,7 +67,7 @@ class YabaiSpaceDetector:
             if result.returncode == 0:
                 # Yabai is installed but not responding - likely permissions issue
                 return YabaiStatus.NO_PERMISSIONS
-                else:
+            else:
                 # Yabai not installed
                 return YabaiStatus.NOT_INSTALLED
         except:
@@ -166,7 +166,7 @@ class YabaiSpaceDetector:
             return []
         except subprocess.TimeoutExpired:
             logger.error("[YABAI] Yabai query timed out")
-                return []
+            return []
         except Exception as e:
             logger.error(f"[YABAI] Error enumerating spaces: {e}")
             return []
@@ -204,7 +204,7 @@ class YabaiSpaceDetector:
         spaces = self.enumerate_all_spaces()
 
         if not spaces:
-        return {
+            return {
                 "total_spaces": 0,
                 "total_windows": 0,
                 "total_applications": 0,
