@@ -1446,7 +1446,26 @@ Be specific and natural. Never say "I previously saw" - instead say things like 
                         "Please try asking again in a moment."
                     )
         else:
-            # Use standard single-space analysis
+            # No multi-space capture needed - use window data only (FAST PATH)
+            logger.info("[FAST PATH] Multi-space query without screenshot capture - using window data")
+            
+            # Generate response directly from window data
+            if query_analysis.get("analysis_type") == "enhanced":
+                enhanced_response = self.multi_space_extension.analyze_comprehensive_workspace(
+                    user_query, window_data
+                )
+                if enhanced_response:
+                    logger.info(f"[FAST RESPONSE] Generated from window data: {len(enhanced_response)} chars")
+                    # Update context
+                    self.context.add_interaction(user_query, enhanced_response, {
+                        "method": "window_data_only",
+                        "spaces": window_data.get("total_spaces", 0),
+                        "apps": window_data.get("total_apps", 0)
+                    })
+                    return enhanced_response
+            
+            # Fallback: Use standard single-space analysis if no enhanced system
+            logger.warning("[FALLBACK] Using single-space analysis for multi-space query")
             enhanced_prompt = self._build_multi_space_prompt(
                 user_query, query_analysis["intent"], window_data
             )
@@ -1777,15 +1796,19 @@ Remember: Natural, helpful, and space-aware responses.
         if hasattr(intent, "query_type"):
             from vision.multi_space_intelligence import SpaceQueryType
 
-            # These query types require visual data from multiple spaces
+            # Only SPECIFIC_DETAIL queries need screenshots
+            # WORKSPACE_OVERVIEW can use window data for faster responses
             visual_query_types = {
-                SpaceQueryType.SPECIFIC_DETAIL,
-                SpaceQueryType.ALL_SPACES,
-                SpaceQueryType.WORKSPACE_OVERVIEW,
+                SpaceQueryType.SPECIFIC_DETAIL,  # "What's in that window on Desktop 2?"
             }
 
             if intent.query_type in visual_query_types:
                 return True
+            
+            # For overview queries, window data is sufficient
+            if intent.query_type == SpaceQueryType.WORKSPACE_OVERVIEW:
+                logger.info("[OPTIMIZATION] Using window data for workspace overview (no screenshots needed)")
+                return False
 
         # Check if query explicitly asks for visual details
         visual_keywords = [
