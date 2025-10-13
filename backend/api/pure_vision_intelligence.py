@@ -1299,16 +1299,36 @@ Be specific and natural. Never say "I previously saw" - instead say things like 
             )
 
         if needs_multi_capture:
-            # 4. Capture screenshots from relevant spaces
+            # 4. Try to capture screenshots from relevant spaces (with timeout)
             logger.info(
                 f"Attempting to capture multi-space screenshots for query: {user_query}"
             )
-            multi_screenshots = await self._capture_multi_space_screenshots(
-                query_analysis, window_data
-            )
-            logger.info(
-                f"Captured {len(multi_screenshots)} screenshots from spaces: {list(multi_screenshots.keys())}"
-            )
+            
+            try:
+                # Add timeout to screenshot capture to prevent hanging
+                multi_screenshots = await asyncio.wait_for(
+                    self._capture_multi_space_screenshots(query_analysis, window_data),
+                    timeout=15.0  # 15 second timeout for screenshot capture
+                )
+                logger.info(
+                    f"Captured {len(multi_screenshots)} screenshots from spaces: {list(multi_screenshots.keys())}"
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Screenshot capture timed out - using window data only")
+                multi_screenshots = {}
+            except Exception as e:
+                logger.warning(f"Screenshot capture failed: {e} - using window data only")
+                multi_screenshots = {}
+            
+            # If no screenshots were captured, generate response from window data immediately
+            if not multi_screenshots and query_analysis.get("analysis_type") == "enhanced":
+                logger.info("[FAST PATH] No screenshots available - generating response from window data")
+                enhanced_response = self.multi_space_extension.analyze_comprehensive_workspace(
+                    user_query, window_data
+                )
+                if enhanced_response:
+                    logger.info(f"[ENHANCED MULTI-SPACE] Generated response from window data: {len(enhanced_response)} chars")
+                    return enhanced_response
 
             # 5. Generate enhanced response using our intelligent system
             if query_analysis.get("analysis_type") == "enhanced":
