@@ -98,12 +98,16 @@ import subprocess
 import multiprocessing
 
 # Set fork safety for macOS to prevent segmentation faults
-if platform.system() == 'Darwin':
+if platform.system() == "Darwin":
     # Set environment variable for fork safety
-    os.environ['OBJC_DISABLE_INITIALIZE_FORK_SAFETY'] = 'YES'
+    os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
+    # Additional Node.js fork safety
+    os.environ["NODE_OPTIONS"] = "--max-old-space-size=4096"
+    # Disable React's development mode checks that can cause issues
+    os.environ["SKIP_PREFLIGHT_CHECK"] = "true"
     # Try to set multiprocessing start method if not already set
     try:
-        multiprocessing.set_start_method('spawn', force=False)
+        multiprocessing.set_start_method("spawn", force=False)
     except RuntimeError:
         # Already set, that's fine
         pass
@@ -131,11 +135,13 @@ sys.path.insert(0, str(Path(__file__).parent / "backend"))
 
 # Import autonomous systems - with fallback implementation
 try:
-    from backend.core.autonomous_orchestrator import AutonomousOrchestrator as _AutonomousOrchestrator
+    from backend.core.autonomous_orchestrator import (
+        AutonomousOrchestrator as _AutonomousOrchestrator,
+    )
     from backend.core.autonomous_orchestrator import get_orchestrator
     from backend.core.zero_config_mesh import ZeroConfigMesh as _ZeroConfigMesh
     from backend.core.zero_config_mesh import get_mesh
-    
+
     # Use the imported classes
     AutonomousOrchestrator = _AutonomousOrchestrator
     ZeroConfigMesh = _ZeroConfigMesh
@@ -143,43 +149,43 @@ try:
 except ImportError:
     # Create minimal fallback implementations to ensure autonomous mode is always available
     logger.info("Creating fallback autonomous components...")
-    
+
     # Import typing to avoid redefining imported types
     from typing import Any, Dict, List
     import socket
     import json
     from datetime import datetime
     from collections import defaultdict
-    
+
     class MockServiceInfo:
         def __init__(self, name, port, protocol="http"):
             self.name = name
             self.port = port
             self.protocol = protocol
             self.health_score = 1.0
-    
+
     class AutonomousOrchestrator:
         def __init__(self):
             self.services = {}
             self._running = False
-            
+
         async def start(self):
             self._running = True
             logger.info("Mock orchestrator started")
-            
+
         async def stop(self):
             self._running = False
-            
+
         async def discover_service(self, name, port, check_health=True):
             return {"protocol": "http", "port": port}
-            
+
         async def register_service(self, name, port, protocol="http"):
             self.services[name] = MockServiceInfo(name, port, protocol)
             return True
-            
+
         def get_service(self, name):
             return self.services.get(name)
-            
+
         def get_frontend_config(self):
             """Get configuration for frontend"""
             return {
@@ -193,64 +199,67 @@ except ImportError:
                         "jarvis_status": "/voice/jarvis/status",
                         "jarvis_activate": "/voice/jarvis/activate",
                         "wake_word_status": "/api/wake-word/status",
-                        "vision_websocket": "/vision/ws/vision"
-                    }
+                        "vision_websocket": "/vision/ws/vision",
+                    },
                 },
-                "services": {name: {"url": f"http://localhost:{info.port}"} for name, info in self.services.items()}
+                "services": {
+                    name: {"url": f"http://localhost:{info.port}"}
+                    for name, info in self.services.items()
+                },
             }
-    
+
     class ZeroConfigMesh:
         def __init__(self):
             self.nodes = {}
-            
+
         async def start(self):
             """Start the mesh network"""
             logger.info("Mock mesh network started")
-            
+
         async def join(self, service_info):
             self.nodes[service_info["name"]] = service_info
-            
+
         async def find_service(self, name):
             node = self.nodes.get(name)
             if node:
                 return {"endpoints": [f"http://localhost:{node['port']}"]}
             return None
-            
+
         async def broadcast_event(self, event, data):
             pass
-            
+
         async def get_mesh_config(self):
             return {
                 "stats": {
                     "total_nodes": len(self.nodes),
                     "total_connections": len(self.nodes),
-                    "healthy_nodes": len(self.nodes)
+                    "healthy_nodes": len(self.nodes),
                 }
             }
-            
+
         async def register_node(self, node_id: str, node_type: str, endpoints: dict):
             """Register a node in the mesh"""
             self.nodes[node_id] = {
                 "node_id": node_id,
                 "node_type": node_type,
-                "endpoints": endpoints
+                "endpoints": endpoints,
             }
-    
+
     _orchestrator = None
     _mesh = None
-    
+
     def get_orchestrator():
         global _orchestrator
         if _orchestrator is None:
             _orchestrator = AutonomousOrchestrator()
         return _orchestrator
-        
+
     def get_mesh():
         global _mesh
         if _mesh is None:
             _mesh = ZeroConfigMesh()
         return _mesh
-    
+
     AUTONOMOUS_AVAILABLE = True
 
 
@@ -297,13 +306,13 @@ class AsyncSystemManager:
         self.resource_coordinator = None
         self.jarvis_coordinator = None
         self._shutting_down = False  # Flag to suppress exit warnings during shutdown
-        
+
         # Self-healing mechanism
         self.healing_attempts = {}
         self.max_healing_attempts = 3
         self.healing_log = []
         self.auto_heal_enabled = True
-        
+
         # Autonomous mode
         self.autonomous_mode = False
         self.orchestrator = None
@@ -351,7 +360,7 @@ class AsyncSystemManager:
         print(
             f"   • {Colors.GREEN}✓ Recovery:{Colors.ENDC} Circuit breakers, emergency cleanup, graceful degradation"
         )
-        
+
         if self.autonomous_mode:
             print(f"\n{Colors.BOLD}🤖 AUTONOMOUS FEATURES:{Colors.ENDC}")
             print(
@@ -372,12 +381,13 @@ class AsyncSystemManager:
             print(
                 f"   • {Colors.PURPLE}✓ Dynamic Routing:{Colors.ENDC} Optimal paths calculated in real-time"
             )
-        
+
         # Check for Rust acceleration
         try:
             from backend.vision.rust_startup_integration import get_rust_status
+
             rust_status = get_rust_status()
-            if rust_status.get('rust_available'):
+            if rust_status.get("rust_available"):
                 print(
                     f"   • {Colors.CYAN}✓ Rust:{Colors.ENDC} 🦀 Acceleration active (5-10x performance boost)"
                 )
@@ -406,7 +416,7 @@ class AsyncSystemManager:
         print(
             f"   • {Colors.PURPLE}✓ Works:{Colors.ENDC} Say 'Hey JARVIS' - instant response!"
         )
-        
+
         # Proximity + Voice Unlock
         print(f"\n{Colors.BOLD}🔐 PROXIMITY + VOICE UNLOCK (Option 3):{Colors.ENDC}")
         print(
@@ -415,38 +425,78 @@ class AsyncSystemManager:
         print(
             f"   • {Colors.CYAN}✓ Dual-Factor:{Colors.ENDC} Watch proximity + voice authentication"
         )
-        print(f"   • {Colors.YELLOW}✓ Memory:{Colors.ENDC} 300MB ML models with 30s auto-unload")
+        print(
+            f"   • {Colors.YELLOW}✓ Memory:{Colors.ENDC} 300MB ML models with 30s auto-unload"
+        )
         print(
             f"   • {Colors.PURPLE}✓ Command:{Colors.ENDC} 'Hey JARVIS, unlock my Mac' (Watch must be near)"
         )
 
         # Vision System Enhancement
-        print(f"\n{Colors.BOLD}👁️ ENHANCED VISION SYSTEM (Integration Architecture v12.9.2):{Colors.ENDC}")
+        print(
+            f"\n{Colors.BOLD}👁️ ENHANCED VISION SYSTEM (Integration Architecture v12.9.2):{Colors.ENDC}"
+        )
         print(f"\n   {Colors.BOLD}🎯 Integration Orchestrator:{Colors.ENDC}")
-        print(f"   • {Colors.GREEN}✓ 9-Stage Pipeline:{Colors.ENDC} Visual Input → Spatial → State → Intelligence → Cache → Prediction → API → Integration → Proactive")
-        print(f"   • {Colors.CYAN}✓ Memory Budget:{Colors.ENDC} 1.2GB dynamically allocated (within 30% system target)")
-        print(f"   • {Colors.YELLOW}✓ Operating Modes:{Colors.ENDC} Normal (<25%) → Pressure (25-28%) → Critical (28-30%) → Emergency (>30%)")
-        print(f"   • {Colors.PURPLE}✓ Cross-Language:{Colors.ENDC} Python orchestrator + Rust SIMD + Swift native")
-        
+        print(
+            f"   • {Colors.GREEN}✓ 9-Stage Pipeline:{Colors.ENDC} Visual Input → Spatial → State → Intelligence → Cache → Prediction → API → Integration → Proactive"
+        )
+        print(
+            f"   • {Colors.CYAN}✓ Memory Budget:{Colors.ENDC} 1.2GB dynamically allocated (within 30% system target)"
+        )
+        print(
+            f"   • {Colors.YELLOW}✓ Operating Modes:{Colors.ENDC} Normal (<25%) → Pressure (25-28%) → Critical (28-30%) → Emergency (>30%)"
+        )
+        print(
+            f"   • {Colors.PURPLE}✓ Cross-Language:{Colors.ENDC} Python orchestrator + Rust SIMD + Swift native"
+        )
+
         print(f"\n   {Colors.BOLD}Intelligence Components (600MB):{Colors.ENDC}")
-        print(f"   1. {Colors.CYAN}VSMS Core:{Colors.ENDC} Visual State Management (150MB)")
-        print(f"   2. {Colors.GREEN}Scene Graph:{Colors.ENDC} Spatial understanding (100MB)")
-        print(f"   3. {Colors.YELLOW}Temporal Context:{Colors.ENDC} Time-based analysis (200MB)")
-        print(f"   4. {Colors.PURPLE}Activity Recognition:{Colors.ENDC} User action detection (100MB)")
-        print(f"   5. {Colors.MAGENTA}Goal Inference:{Colors.ENDC} Intent prediction (80MB)")
-        
+        print(
+            f"   1. {Colors.CYAN}VSMS Core:{Colors.ENDC} Visual State Management (150MB)"
+        )
+        print(
+            f"   2. {Colors.GREEN}Scene Graph:{Colors.ENDC} Spatial understanding (100MB)"
+        )
+        print(
+            f"   3. {Colors.YELLOW}Temporal Context:{Colors.ENDC} Time-based analysis (200MB)"
+        )
+        print(
+            f"   4. {Colors.PURPLE}Activity Recognition:{Colors.ENDC} User action detection (100MB)"
+        )
+        print(
+            f"   5. {Colors.MAGENTA}Goal Inference:{Colors.ENDC} Intent prediction (80MB)"
+        )
+
         print(f"\n   {Colors.BOLD}Optimization Components (460MB):{Colors.ENDC}")
-        print(f"   6. {Colors.CYAN}Bloom Filter Network:{Colors.ENDC} Hierarchical duplicate detection (10MB)")
-        print(f"   7. {Colors.GREEN}Semantic Cache LSH:{Colors.ENDC} Intelligent result caching (250MB)")
-        print(f"   8. {Colors.YELLOW}Predictive Engine:{Colors.ENDC} Markov chain predictions (150MB)")
-        print(f"   9. {Colors.PURPLE}Quadtree Spatial:{Colors.ENDC} Region-based processing (50MB)")
-        
+        print(
+            f"   6. {Colors.CYAN}Bloom Filter Network:{Colors.ENDC} Hierarchical duplicate detection (10MB)"
+        )
+        print(
+            f"   7. {Colors.GREEN}Semantic Cache LSH:{Colors.ENDC} Intelligent result caching (250MB)"
+        )
+        print(
+            f"   8. {Colors.YELLOW}Predictive Engine:{Colors.ENDC} Markov chain predictions (150MB)"
+        )
+        print(
+            f"   9. {Colors.PURPLE}Quadtree Spatial:{Colors.ENDC} Region-based processing (50MB)"
+        )
+
         print(f"\n   {Colors.BOLD}Additional Features:{Colors.ENDC}")
-        print(f"   • {Colors.GREEN}✓ Claude Vision:{Colors.ENDC} Integrated with all components")
-        print(f"   • {Colors.CYAN}✓ Swift Video:{Colors.ENDC} 30 FPS capture with purple indicator")
-        print(f"   • {Colors.YELLOW}✓ Dynamic Quality:{Colors.ENDC} Adapts based on memory pressure")
-        print(f"   • {Colors.PURPLE}✓ Component Priority:{Colors.ENDC} 1-10 scale for resource allocation")
-        print(f"\n   {Colors.BOLD}All components coordinate through Integration Orchestrator!{Colors.ENDC}")
+        print(
+            f"   • {Colors.GREEN}✓ Claude Vision:{Colors.ENDC} Integrated with all components"
+        )
+        print(
+            f"   • {Colors.CYAN}✓ Swift Video:{Colors.ENDC} 30 FPS capture with purple indicator"
+        )
+        print(
+            f"   • {Colors.YELLOW}✓ Dynamic Quality:{Colors.ENDC} Adapts based on memory pressure"
+        )
+        print(
+            f"   • {Colors.PURPLE}✓ Component Priority:{Colors.ENDC} 1-10 scale for resource allocation"
+        )
+        print(
+            f"\n   {Colors.BOLD}All components coordinate through Integration Orchestrator!{Colors.ENDC}"
+        )
 
     async def check_python_version(self):
         """Check Python version"""
@@ -516,7 +566,7 @@ class AsyncSystemManager:
         # Check for Swift availability
         swift_lib = Path("backend/swift_bridge/.build/release/libPerformanceCore.dylib")
         swift_video = Path("backend/vision/SwiftVideoCapture")
-        
+
         if swift_lib.exists():
             print(f"\n{Colors.GREEN}✓ Swift performance layer available{Colors.ENDC}")
             print(f"  • AudioProcessor: Voice processing (50x faster)")
@@ -527,7 +577,7 @@ class AsyncSystemManager:
                 f"\n{Colors.YELLOW}⚠ Swift performance library not built{Colors.ENDC}"
             )
             print(f"  Build with: cd backend/swift_bridge && ./build_performance.sh")
-            
+
         # Check for Swift video capture
         if swift_video.exists():
             print(f"\n{Colors.GREEN}✓ Swift video capture available{Colors.ENDC}")
@@ -535,9 +585,7 @@ class AsyncSystemManager:
             print(f"  • Native macOS integration")
             print(f"  • Purple recording indicator support")
         else:
-            print(
-                f"\n{Colors.YELLOW}⚠ Swift video capture not compiled{Colors.ENDC}"
-            )
+            print(f"\n{Colors.YELLOW}⚠ Swift video capture not compiled{Colors.ENDC}")
             print(f"  • Will be compiled automatically on first use")
 
         # Check for Rust availability (legacy)
@@ -614,12 +662,17 @@ class AsyncSystemManager:
 
                 # Clean up automatically or ask for confirmation
                 if self.auto_cleanup:
-                    print(f"\n{Colors.BLUE}Automatically cleaning up processes...{Colors.ENDC}")
+                    print(
+                        f"\n{Colors.BLUE}Automatically cleaning up processes...{Colors.ENDC}"
+                    )
                     should_cleanup = True
                 else:
-                    should_cleanup = input(
-                        f"\n{Colors.CYAN}Clean up these processes? (y/n): {Colors.ENDC}"
-                    ).lower() == "y"
+                    should_cleanup = (
+                        input(
+                            f"\n{Colors.CYAN}Clean up these processes? (y/n): {Colors.ENDC}"
+                        ).lower()
+                        == "y"
+                    )
 
                 if should_cleanup:
                     if not self.auto_cleanup:
@@ -669,12 +722,9 @@ class AsyncSystemManager:
             # Get PIDs on port, but exclude IDE processes
             try:
                 result = subprocess.run(
-                    f"lsof -ti:{port}",
-                    shell=True,
-                    capture_output=True,
-                    text=True
+                    f"lsof -ti:{port}", shell=True, capture_output=True, text=True
                 )
-                pids = result.stdout.strip().split('\n')
+                pids = result.stdout.strip().split("\n")
 
                 for pid in pids:
                     if not pid:
@@ -686,20 +736,34 @@ class AsyncSystemManager:
                             f"ps -p {pid} -o comm=",
                             shell=True,
                             capture_output=True,
-                            text=True
+                            text=True,
                         )
                         proc_name = proc_info.stdout.strip().lower()
 
                         # Skip IDE processes
-                        ide_patterns = ['cursor', 'code', 'vscode', 'sublime', 'pycharm',
-                                       'intellij', 'webstorm', 'atom', 'vim', 'emacs']
+                        ide_patterns = [
+                            "cursor",
+                            "code",
+                            "vscode",
+                            "sublime",
+                            "pycharm",
+                            "intellij",
+                            "webstorm",
+                            "atom",
+                            "vim",
+                            "emacs",
+                        ]
 
                         if any(pattern in proc_name for pattern in ide_patterns):
-                            print(f"{Colors.YELLOW}Skipping IDE process: {proc_name} (PID {pid}){Colors.ENDC}")
+                            print(
+                                f"{Colors.YELLOW}Skipping IDE process: {proc_name} (PID {pid}){Colors.ENDC}"
+                            )
                             continue
 
                         # Kill non-IDE process
-                        subprocess.run(f"kill -9 {pid}", shell=True, capture_output=True)
+                        subprocess.run(
+                            f"kill -9 {pid}", shell=True, capture_output=True
+                        )
                     except:
                         pass
 
@@ -861,10 +925,14 @@ class AsyncSystemManager:
         print(f"\n{Colors.BLUE}Checking vision capabilities...{Colors.ENDC}")
 
         if platform.system() == "Darwin":
-            print(f"{Colors.CYAN}Enhanced vision system available with Claude API{Colors.ENDC}")
+            print(
+                f"{Colors.CYAN}Enhanced vision system available with Claude API{Colors.ENDC}"
+            )
             if self.claude_configured:
                 print(f"{Colors.GREEN}✓ Claude Vision integration ready{Colors.ENDC}")
-                print(f"{Colors.GREEN}✓ Integration Architecture active (v12.9.2):{Colors.ENDC}")
+                print(
+                    f"{Colors.GREEN}✓ Integration Architecture active (v12.9.2):{Colors.ENDC}"
+                )
                 print(f"  • Integration Orchestrator (9-stage pipeline)")
                 print(f"  • VSMS Core (Visual State Management)")
                 print(f"  • Bloom Filter Network (hierarchical deduplication)")
@@ -874,14 +942,21 @@ class AsyncSystemManager:
                 print(f"  • 🎥 Video Streaming (30 FPS with purple indicator)")
                 print(f"  • Dynamic memory allocation (1.2GB budget)")
                 print(f"  • Cross-language optimization (Python/Rust/Swift)")
-                
+
                 # Check for native video capture
                 try:
-                    from backend.vision.video_stream_capture import MACOS_CAPTURE_AVAILABLE
+                    from backend.vision.video_stream_capture import (
+                        MACOS_CAPTURE_AVAILABLE,
+                    )
+
                     if MACOS_CAPTURE_AVAILABLE:
-                        print(f"{Colors.GREEN}✓ Native macOS video capture available (🟣 purple indicator){Colors.ENDC}")
+                        print(
+                            f"{Colors.GREEN}✓ Native macOS video capture available (🟣 purple indicator){Colors.ENDC}"
+                        )
                     else:
-                        print(f"{Colors.YELLOW}⚠ Video streaming using fallback mode{Colors.ENDC}")
+                        print(
+                            f"{Colors.YELLOW}⚠ Video streaming using fallback mode{Colors.ENDC}"
+                        )
                 except ImportError:
                     pass
             else:
@@ -897,8 +972,13 @@ class AsyncSystemManager:
 
         # Check if reload manager is available
         reload_manager_path = self.backend_dir / "jarvis_reload_manager.py"
-        if reload_manager_path.exists() and os.getenv("JARVIS_USE_RELOAD_MANAGER", "true").lower() == "true":
-            print(f"{Colors.CYAN}🔄 Using intelligent reload manager for auto-updates...{Colors.ENDC}")
+        if (
+            reload_manager_path.exists()
+            and os.getenv("JARVIS_USE_RELOAD_MANAGER", "true").lower() == "true"
+        ):
+            print(
+                f"{Colors.CYAN}🔄 Using intelligent reload manager for auto-updates...{Colors.ENDC}"
+            )
 
             # Import and use the reload manager
             try:
@@ -909,7 +989,9 @@ class AsyncSystemManager:
                 # Check for code changes
                 has_changes, changed_files = reload_manager.detect_code_changes()
                 if has_changes:
-                    print(f"{Colors.YELLOW}📝 Detected {len(changed_files)} code changes{Colors.ENDC}")
+                    print(
+                        f"{Colors.YELLOW}📝 Detected {len(changed_files)} code changes{Colors.ENDC}"
+                    )
                     for file in changed_files[:3]:
                         print(f"    - {file}")
                     if len(changed_files) > 3:
@@ -918,10 +1000,14 @@ class AsyncSystemManager:
                 # Kill any existing JARVIS process if code changed
                 if has_changes:
                     await reload_manager.stop_jarvis(force=True)
-                    print(f"{Colors.GREEN}✅ Cleared old instances for fresh start{Colors.ENDC}")
+                    print(
+                        f"{Colors.GREEN}✅ Cleared old instances for fresh start{Colors.ENDC}"
+                    )
 
             except ImportError:
-                print(f"{Colors.YELLOW}Reload manager not available, using standard startup{Colors.ENDC}")
+                print(
+                    f"{Colors.YELLOW}Reload manager not available, using standard startup{Colors.ENDC}"
+                )
 
         # Kill any existing processes in parallel for faster cleanup
         kill_tasks = []
@@ -942,19 +1028,23 @@ class AsyncSystemManager:
         # Use main.py which now has integrated parallel startup
         if (self.backend_dir / "main.py").exists():
             # Use main.py with parallel startup capabilities
-            print(f"{Colors.CYAN}Starting backend with main.py (auto-reload enabled)...{Colors.ENDC}")
+            print(
+                f"{Colors.CYAN}Starting backend with main.py (auto-reload enabled)...{Colors.ENDC}"
+            )
             server_script = "main.py"
         else:
-            print(f"{Colors.WARNING}Main backend not available, using fallback...{Colors.ENDC}")
+            print(
+                f"{Colors.WARNING}Main backend not available, using fallback...{Colors.ENDC}"
+            )
             return await self.start_backend_standard()
 
         env = os.environ.copy()
         env["PYTHONPATH"] = str(self.backend_dir)
         env["JARVIS_USER"] = os.getenv("JARVIS_USER", "Sir")
-        
+
         # Set the backend port explicitly
         env["BACKEND_PORT"] = str(self.ports["main_api"])
-        
+
         # Enable all performance optimizations
         env["OPTIMIZE_STARTUP"] = "true"
         env["LAZY_LOAD_MODELS"] = "true"
@@ -966,9 +1056,7 @@ class AsyncSystemManager:
         env["BACKEND_LAZY_LOAD_MODELS"] = "true"
 
         # Set Swift library path
-        swift_lib_path = str(
-            self.backend_dir / "swift_bridge" / ".build" / "release"
-        )
+        swift_lib_path = str(self.backend_dir / "swift_bridge" / ".build" / "release")
         if platform.system() == "Darwin":
             env["DYLD_LIBRARY_PATH"] = swift_lib_path
         else:
@@ -982,8 +1070,7 @@ class AsyncSystemManager:
         log_dir = self.backend_dir / "logs"
         log_dir.mkdir(exist_ok=True)
         log_file = (
-            log_dir
-            / f"jarvis_optimized_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+            log_dir / f"jarvis_optimized_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
         )
 
         print(f"{Colors.CYAN}Log file: {log_file}{Colors.ENDC}")
@@ -992,7 +1079,7 @@ class AsyncSystemManager:
         # Open log file without 'with' statement to keep it open for subprocess
         log = open(log_file, "w")
         self.open_files.append(log)  # Track for cleanup
-        
+
         process = await asyncio.create_subprocess_exec(
             sys.executable,
             server_script,
@@ -1007,8 +1094,10 @@ class AsyncSystemManager:
         self.processes.append(process)
 
         # Use dynamic health checking instead of fixed wait
-        print(f"{Colors.YELLOW}Waiting for backend to initialize (parallel startup enabled)...{Colors.ENDC}")
-        
+        print(
+            f"{Colors.YELLOW}Waiting for backend to initialize (parallel startup enabled)...{Colors.ENDC}"
+        )
+
         # Quick initial wait for process to start
         await asyncio.sleep(2)
 
@@ -1019,12 +1108,14 @@ class AsyncSystemManager:
         backend_ready = await self.wait_for_service(backend_url, timeout=180)
 
         if not backend_ready:
-            print(f"{Colors.WARNING}Backend did not respond at {backend_url} after 180 seconds{Colors.ENDC}")
+            print(
+                f"{Colors.WARNING}Backend did not respond at {backend_url} after 180 seconds{Colors.ENDC}"
+            )
             print(f"{Colors.WARNING}Check log file: {log_file}{Colors.ENDC}")
-            
+
             # Show last few lines of log for debugging
             try:
-                with open(log_file, 'r') as f:
+                with open(log_file, "r") as f:
                     lines = f.readlines()
                     if lines:
                         print(f"{Colors.YELLOW}Last log entries:{Colors.ENDC}")
@@ -1032,20 +1123,30 @@ class AsyncSystemManager:
                             print(f"  {line.strip()}")
             except Exception:
                 pass
-            
+
             # main.py failed, try fallback to minimal
             print(f"\n{Colors.YELLOW}{'=' * 60}{Colors.ENDC}")
             print(f"{Colors.YELLOW}⚠️  Main backend initialization delayed{Colors.ENDC}")
             print(f"{Colors.YELLOW}{'=' * 60}{Colors.ENDC}")
-            print(f"{Colors.CYAN}📌 Starting MINIMAL MODE for immediate availability{Colors.ENDC}")
-            print(f"{Colors.CYAN}  ✅ Basic voice commands will work immediately{Colors.ENDC}")
-            print(f"{Colors.CYAN}  ⏳ Full features will activate automatically when ready{Colors.ENDC}")
-            print(f"{Colors.CYAN}  🔄 No action needed - system will auto-upgrade{Colors.ENDC}")
+            print(
+                f"{Colors.CYAN}📌 Starting MINIMAL MODE for immediate availability{Colors.ENDC}"
+            )
+            print(
+                f"{Colors.CYAN}  ✅ Basic voice commands will work immediately{Colors.ENDC}"
+            )
+            print(
+                f"{Colors.CYAN}  ⏳ Full features will activate automatically when ready{Colors.ENDC}"
+            )
+            print(
+                f"{Colors.CYAN}  🔄 No action needed - system will auto-upgrade{Colors.ENDC}"
+            )
             print(f"{Colors.YELLOW}{'=' * 60}{Colors.ENDC}\n")
-            
+
             # Check if process is still running before killing
             if process.returncode is None:
-                print(f"{Colors.YELLOW}Cleaning up initialization process...{Colors.ENDC}")
+                print(
+                    f"{Colors.YELLOW}Cleaning up initialization process...{Colors.ENDC}"
+                )
                 try:
                     process.terminate()
                     await asyncio.sleep(2)
@@ -1054,18 +1155,18 @@ class AsyncSystemManager:
                 except:
                     pass
             else:
-                print(f"{Colors.WARNING}Backend process already exited with code: {process.returncode}{Colors.ENDC}")
+                print(
+                    f"{Colors.WARNING}Backend process already exited with code: {process.returncode}{Colors.ENDC}"
+                )
             self.processes.remove(process)
 
             minimal_path = self.backend_dir / "main_minimal.py"
             if minimal_path.exists():
-                print(
-                    f"{Colors.CYAN}Starting minimal backend...{Colors.ENDC}"
-                )
+                print(f"{Colors.CYAN}Starting minimal backend...{Colors.ENDC}")
                 # Re-open log file for fallback process
                 log = open(log_file, "a")  # Append mode for fallback
                 self.open_files.append(log)
-                
+
                 process = await asyncio.create_subprocess_exec(
                     sys.executable,
                     "main_minimal.py",
@@ -1083,7 +1184,9 @@ class AsyncSystemManager:
                 print(
                     f"{Colors.WARNING}⚠️  Running in minimal mode - some features limited{Colors.ENDC}"
                 )
-                print(f"{Colors.CYAN}🔄 Auto-upgrade monitor active - will transition to full mode when ready{Colors.ENDC}")
+                print(
+                    f"{Colors.CYAN}🔄 Auto-upgrade monitor active - will transition to full mode when ready{Colors.ENDC}"
+                )
             else:
                 print(
                     f"{Colors.FAIL}✗ No fallback minimal backend available{Colors.ENDC}"
@@ -1095,34 +1198,50 @@ class AsyncSystemManager:
             )
             print(f"{Colors.GREEN}✓ Swift performance bridges loaded{Colors.ENDC}")
             print(f"{Colors.GREEN}✓ Smart startup manager integrated{Colors.ENDC}")
-            print(
-                f"{Colors.GREEN}✓ CPU usage: 0% idle (Swift monitoring){Colors.ENDC}"
-            )
-            print(
-                f"{Colors.GREEN}✓ Memory quantizer active (4GB target){Colors.ENDC}"
-            )
-            
+            print(f"{Colors.GREEN}✓ CPU usage: 0% idle (Swift monitoring){Colors.ENDC}")
+            print(f"{Colors.GREEN}✓ Memory quantizer active (4GB target){Colors.ENDC}")
+
             # Check component status
             print(f"\n{Colors.CYAN}Checking loaded components...{Colors.ENDC}")
             try:
                 async with aiohttp.ClientSession() as session:
                     # Check memory status for component info
-                    async with session.get(f"http://localhost:{self.ports['main_api']}/memory/status") as resp:
+                    async with session.get(
+                        f"http://localhost:{self.ports['main_api']}/memory/status"
+                    ) as resp:
                         if resp.status == 200:
                             # Log shows all 8 components loaded
-                            print(f"{Colors.GREEN}✓ All 8/8 components loaded successfully:{Colors.ENDC}")
-                            print(f"  {Colors.GREEN}✅ CHATBOTS{Colors.ENDC}    - Claude Vision AI ready")
-                            print(f"  {Colors.GREEN}✅ VISION{Colors.ENDC}      - Screen capture active (purple indicator)")
-                            print(f"  {Colors.GREEN}✅ MEMORY{Colors.ENDC}      - M1-optimized manager (30% target: 4.8GB)")
-                            print(f"  {Colors.GREEN}✅ VOICE{Colors.ENDC}       - Voice interface ready")
-                            print(f"  {Colors.GREEN}✅ ML_MODELS{Colors.ENDC}   - NLP models available (300MB limit)")
-                            print(f"  {Colors.GREEN}✅ MONITORING{Colors.ENDC}  - Health tracking active")
-                            print(f"  {Colors.GREEN}✅ VOICE_UNLOCK{Colors.ENDC} - Manual & context-aware screen unlock")
-                            print(f"  {Colors.GREEN}✅ WAKE_WORD{Colors.ENDC}   - 'Hey JARVIS' detection active")
+                            print(
+                                f"{Colors.GREEN}✓ All 8/8 components loaded successfully:{Colors.ENDC}"
+                            )
+                            print(
+                                f"  {Colors.GREEN}✅ CHATBOTS{Colors.ENDC}    - Claude Vision AI ready"
+                            )
+                            print(
+                                f"  {Colors.GREEN}✅ VISION{Colors.ENDC}      - Screen capture active (purple indicator)"
+                            )
+                            print(
+                                f"  {Colors.GREEN}✅ MEMORY{Colors.ENDC}      - M1-optimized manager (30% target: 4.8GB)"
+                            )
+                            print(
+                                f"  {Colors.GREEN}✅ VOICE{Colors.ENDC}       - Voice interface ready"
+                            )
+                            print(
+                                f"  {Colors.GREEN}✅ ML_MODELS{Colors.ENDC}   - NLP models available (300MB limit)"
+                            )
+                            print(
+                                f"  {Colors.GREEN}✅ MONITORING{Colors.ENDC}  - Health tracking active"
+                            )
+                            print(
+                                f"  {Colors.GREEN}✅ VOICE_UNLOCK{Colors.ENDC} - Manual & context-aware screen unlock"
+                            )
+                            print(
+                                f"  {Colors.GREEN}✅ WAKE_WORD{Colors.ENDC}   - 'Hey JARVIS' detection active"
+                            )
             except:
                 # Fallback if we can't check
                 print(f"{Colors.GREEN}✓ Backend components loading...{Colors.ENDC}")
-            
+
             print(
                 f"\n{Colors.GREEN}✓ Server running on port {self.ports['main_api']}{Colors.ENDC}"
             )
@@ -1141,7 +1260,7 @@ class AsyncSystemManager:
         # Set up environment
         env = os.environ.copy()
         env["PYTHONPATH"] = str(self.backend_dir)
-        
+
         # Set the backend port explicitly
         env["BACKEND_PORT"] = str(self.ports["main_api"])
 
@@ -1216,7 +1335,7 @@ class AsyncSystemManager:
                 f"{Colors.YELLOW}Frontend directory not found, skipping...{Colors.ENDC}"
             )
             return None
-        
+
         # Clear any stale configuration cache before starting frontend
         await self.clear_frontend_cache()
 
@@ -1240,19 +1359,53 @@ class AsyncSystemManager:
             await self.kill_process_on_port(self.ports["frontend"])
             await asyncio.sleep(2)
 
-        # Start frontend with browser disabled
+        # Start frontend with browser disabled and safety measures
         env = os.environ.copy()
         env["PORT"] = str(self.ports["frontend"])
         env["BROWSER"] = "none"  # Disable React's auto-opening of browser
-        
+        env["SKIP_PREFLIGHT_CHECK"] = "true"  # Skip CRA preflight checks
+        env["NODE_OPTIONS"] = "--max-old-space-size=4096"  # Increase Node memory
+        env["GENERATE_SOURCEMAP"] = "false"  # Disable source maps to reduce memory
+
+        # Create a log file for frontend to help debug issues
+        log_file = (
+            self.backend_dir
+            / "logs"
+            / f"frontend_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        )
+        log_file.parent.mkdir(exist_ok=True)
+
+        # Open log file without 'with' statement to keep it open for subprocess
+        log = open(log_file, "w")
+        self.open_files.append(log)  # Track for cleanup
+
         process = await asyncio.create_subprocess_exec(
             "npm",
             "start",
             cwd=str(self.frontend_dir),
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
+            stdout=log,
+            stderr=asyncio.subprocess.STDOUT,
             env=env,
         )
+
+        # Give frontend a moment to start and check if it crashes immediately
+        await asyncio.sleep(2)
+        if process.returncode is not None:
+            print(
+                f"{Colors.WARNING}Frontend process exited immediately with code {process.returncode}{Colors.ENDC}"
+            )
+            print(f"{Colors.YELLOW}Check log file: {log_file}{Colors.ENDC}")
+            # Try to show last few lines of log
+            try:
+                with open(log_file, "r") as f:
+                    lines = f.readlines()
+                    if lines:
+                        print(f"{Colors.YELLOW}Last log entries:{Colors.ENDC}")
+                        for line in lines[-5:]:
+                            print(f"  {line.strip()}")
+            except Exception:
+                pass
+            return None
 
         self.processes.append(process)
         print(
@@ -1265,52 +1418,64 @@ class AsyncSystemManager:
         """Run parallel health checks on all services"""
         print(f"\n{Colors.YELLOW}Verifying all services are ready...{Colors.ENDC}")
         start_time = time.time()
-        
+
         # Define health check endpoints
         health_checks = [
             ("Backend API", f"http://localhost:{self.ports['main_api']}/health"),
             ("WebSocket Router", f"http://localhost:8001/health"),
-            ("Frontend", f"http://localhost:3000", False),  # Frontend may not have health endpoint
+            (
+                "Frontend",
+                f"http://localhost:3000",
+                False,
+            ),  # Frontend may not have health endpoint
         ]
-        
+
         async def check_service_health(name: str, url: str, expect_json: bool = True):
             service_start = time.time()
             while time.time() - service_start < timeout:
                 try:
                     async with aiohttp.ClientSession() as session:
-                        async with session.get(url, timeout=aiohttp.ClientTimeout(total=2)) as resp:
+                        async with session.get(
+                            url, timeout=aiohttp.ClientTimeout(total=2)
+                        ) as resp:
                             if resp.status in [200, 404]:  # 404 ok for some endpoints
                                 return True, name, time.time() - service_start
                 except:
                     pass
                 await asyncio.sleep(0.5)
             return False, name, timeout
-        
+
         # Run all health checks in parallel
         tasks = [
-            check_service_health(name, url, expect_json=bool(json[0]) if json else False) 
+            check_service_health(
+                name, url, expect_json=bool(json[0]) if json else False
+            )
             for name, url, *json in health_checks
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         all_healthy = True
         for result in results:
             if isinstance(result, tuple):
                 success, name, duration = result
                 if success:
-                    print(f"{Colors.GREEN}✓ {name} ready ({duration:.1f}s){Colors.ENDC}")
+                    print(
+                        f"{Colors.GREEN}✓ {name} ready ({duration:.1f}s){Colors.ENDC}"
+                    )
                 else:
                     print(f"{Colors.WARNING}⚠ {name} not responding{Colors.ENDC}")
                     if name == "Backend API":
                         all_healthy = False
             else:
                 print(f"{Colors.WARNING}⚠ Health check error: {result}{Colors.ENDC}")
-        
+
         elapsed = time.time() - start_time
         print(f"{Colors.CYAN}Health checks completed in {elapsed:.1f}s{Colors.ENDC}")
-        
+
         if not all_healthy:
-            print(f"{Colors.WARNING}Some services may not be fully ready yet{Colors.ENDC}")
+            print(
+                f"{Colors.WARNING}Some services may not be fully ready yet{Colors.ENDC}"
+            )
 
     async def wait_for_service(self, url: str, timeout: int = 30) -> bool:
         """Wait for a service to be ready"""
@@ -1326,7 +1491,10 @@ class AsyncSystemManager:
                     # Log the error for debugging but continue trying
                     remaining = timeout - (time.time() - start_time)
                     if remaining > 0:
-                        print(f"{Colors.YELLOW}Waiting for service... ({int(remaining)}s remaining){Colors.ENDC}", end='\r')
+                        print(
+                            f"{Colors.YELLOW}Waiting for service... ({int(remaining)}s remaining){Colors.ENDC}",
+                            end="\r",
+                        )
                 await asyncio.sleep(1)  # Check more frequently
 
         return False
@@ -1444,7 +1612,7 @@ class AsyncSystemManager:
             print(
                 f"  • Event UI: {Colors.GREEN}http://localhost:{self.ports['event_ui']}/{Colors.ENDC}"
             )
-            
+
         if self.autonomous_mode and AUTONOMOUS_AVAILABLE:
             print(
                 f"  • Service Discovery: {Colors.GREEN}http://localhost:{self.ports['main_api']}/services/discovery{Colors.ENDC}"
@@ -1461,14 +1629,22 @@ class AsyncSystemManager:
         print(f"  • '{Colors.GREEN}What can you do?{Colors.ENDC}' - List capabilities")
         print(f"  • '{Colors.GREEN}Can you see my screen?{Colors.ENDC}' - Vision test")
         print(f"\n{Colors.CYAN}🌐 Browser Automation Commands (NEW!):{Colors.ENDC}")
-        print(f"  • '{Colors.GREEN}Open Safari and go to Google{Colors.ENDC}' - Browser control")
+        print(
+            f"  • '{Colors.GREEN}Open Safari and go to Google{Colors.ENDC}' - Browser control"
+        )
         print(f"  • '{Colors.GREEN}Search for AI news{Colors.ENDC}' - Web search")
         print(f"  • '{Colors.GREEN}Open a new tab{Colors.ENDC}' - Tab management")
-        print(f"  • '{Colors.GREEN}Type python tutorials and press enter{Colors.ENDC}' - Type & search")
+        print(
+            f"  • '{Colors.GREEN}Type python tutorials and press enter{Colors.ENDC}' - Type & search"
+        )
         print(f"\n{Colors.CYAN}🎥 Screen Monitoring Commands:{Colors.ENDC}")
-        print(f"  • '{Colors.GREEN}Start monitoring my screen{Colors.ENDC}' - Begin 30 FPS capture")
+        print(
+            f"  • '{Colors.GREEN}Start monitoring my screen{Colors.ENDC}' - Begin 30 FPS capture"
+        )
         print(f"  • '{Colors.GREEN}Stop monitoring{Colors.ENDC}' - End video streaming")
-        print(f"  • macOS: {Colors.PURPLE}Purple indicator{Colors.ENDC} appears when active")
+        print(
+            f"  • macOS: {Colors.PURPLE}Purple indicator{Colors.ENDC} appears when active"
+        )
 
         if self.use_optimized:
             print(f"\n{Colors.CYAN}Performance Management:{Colors.ENDC}")
@@ -1478,11 +1654,11 @@ class AsyncSystemManager:
             print(f"  • Emergency cleanup: Automatic")
 
         print(f"\n{Colors.YELLOW}Press Ctrl+C to stop{Colors.ENDC}")
-        
+
     def identify_service_type(self, name: str) -> str:
         """Identify the type of service"""
         name_lower = name.lower()
-        
+
         if "frontend" in name_lower:
             return "frontend"
         elif "backend" in name_lower or "jarvis" in name_lower:
@@ -1491,23 +1667,29 @@ class AsyncSystemManager:
             return "websocket"
         else:
             return "service"
-            
+
     async def print_autonomous_status(self):
         """Print autonomous system status"""
         print(f"\n{Colors.HEADER}{'='*60}")
         print(f"{Colors.BOLD}Autonomous System Status{Colors.ENDC}")
         print(f"{Colors.HEADER}{'='*60}{Colors.ENDC}")
-        
+
         # Service discovery status
         if self.orchestrator:
             discovered = self.orchestrator.services
             print(f"\n{Colors.CYAN}Discovered Services:{Colors.ENDC}")
             for name, service in discovered.items():
-                health_color = Colors.GREEN if service.health_score > 0.7 else Colors.YELLOW if service.health_score > 0.3 else Colors.RED
-                print(f"  • {name}: {service.protocol}://localhost:{service.port} {health_color}[Health: {service.health_score:.0%}]{Colors.ENDC}")
+                health_color = (
+                    Colors.GREEN
+                    if service.health_score > 0.7
+                    else Colors.YELLOW if service.health_score > 0.3 else Colors.RED
+                )
+                print(
+                    f"  • {name}: {service.protocol}://localhost:{service.port} {health_color}[Health: {service.health_score:.0%}]{Colors.ENDC}"
+                )
         else:
             print(f"\n{Colors.YELLOW}Service discovery not available{Colors.ENDC}")
-            
+
         # Service mesh status
         if self.mesh:
             mesh_config = await self.mesh.get_mesh_config()
@@ -1517,8 +1699,10 @@ class AsyncSystemManager:
             print(f"  • Healthy nodes: {mesh_config['stats']['healthy_nodes']}")
         else:
             print(f"\n{Colors.YELLOW}Service mesh not available{Colors.ENDC}")
-        
-        print(f"\n{Colors.GREEN}✨ Autonomous systems active and self-healing{Colors.ENDC}")
+
+        print(
+            f"\n{Colors.GREEN}✨ Autonomous systems active and self-healing{Colors.ENDC}"
+        )
 
     async def monitor_services(self):
         """Monitor services with health checks"""
@@ -1566,17 +1750,29 @@ class AsyncSystemManager:
                                     # Check for Rust acceleration and self-healing
                                     try:
                                         data = await resp.json()
-                                        rust_status = data.get('rust_acceleration', {})
-                                        self_healing_status = data.get('self_healing', {})
-                                        
-                                        if rust_status.get('enabled') and not hasattr(self, '_rust_logged'):
-                                            print(f"\n{Colors.GREEN}🦀 Rust acceleration active{Colors.ENDC}")
+                                        rust_status = data.get("rust_acceleration", {})
+                                        self_healing_status = data.get(
+                                            "self_healing", {}
+                                        )
+
+                                        if rust_status.get("enabled") and not hasattr(
+                                            self, "_rust_logged"
+                                        ):
+                                            print(
+                                                f"\n{Colors.GREEN}🦀 Rust acceleration active{Colors.ENDC}"
+                                            )
                                             self._rust_logged = True
-                                            
-                                        if self_healing_status.get('enabled') and not hasattr(self, '_healing_logged'):
-                                            success_rate = self_healing_status.get('success_rate', 0.0)
+
+                                        if self_healing_status.get(
+                                            "enabled"
+                                        ) and not hasattr(self, "_healing_logged"):
+                                            success_rate = self_healing_status.get(
+                                                "success_rate", 0.0
+                                            )
                                             if success_rate > 0:
-                                                print(f"{Colors.GREEN}🔧 Self-healing: {success_rate:.0%} success rate{Colors.ENDC}")
+                                                print(
+                                                    f"{Colors.GREEN}🔧 Self-healing: {success_rate:.0%} success rate{Colors.ENDC}"
+                                                )
                                             self._healing_logged = True
                                     except:
                                         pass
@@ -1620,13 +1816,13 @@ if (typeof localStorage !== 'undefined') {
     }
 }
 """
-            
+
             # Write to public folder if it exists
             public_dir = self.frontend_dir / "public"
             if public_dir.exists():
                 cache_clear_file = public_dir / "clear-stale-cache.js"
                 cache_clear_file.write_text(clear_cache_js)
-                
+
                 # Also ensure it's loaded in index.html if needed
                 index_html = public_dir / "index.html"
                 if index_html.exists():
@@ -1635,11 +1831,13 @@ if (typeof localStorage !== 'undefined') {
                         # Add script tag before closing body
                         content = content.replace(
                             "</body>",
-                            '  <script src="/clear-stale-cache.js"></script>\n  </body>'
+                            '  <script src="/clear-stale-cache.js"></script>\n  </body>',
                         )
                         index_html.write_text(content)
-                
-                print(f"{Colors.GREEN}✓ Added frontend cache clearing logic{Colors.ENDC}")
+
+                print(
+                    f"{Colors.GREEN}✓ Added frontend cache clearing logic{Colors.ENDC}"
+                )
         except Exception as e:
             # Non-critical, don't fail startup
             logger.debug(f"Could not add cache clearing: {e}")
@@ -1650,11 +1848,11 @@ if (typeof localStorage !== 'undefined') {
             url = f"http://localhost:{self.ports['frontend']}/"
         else:
             url = f"http://localhost:{self.ports['main_api']}/docs"
-        
+
         # Try to reuse existing tab on macOS using AppleScript
         if platform.system() == "Darwin":
             # AppleScript to open URL in existing tab or new tab if not found
-            applescript = f'''
+            applescript = f"""
             tell application "System Events"
                 set browserList to {{}}
                 if exists process "Google Chrome" then set end of browserList to "Google Chrome"
@@ -1682,106 +1880,124 @@ if (typeof localStorage !== 'undefined') {
             
             -- If no existing tab found, open new one
             open location "{url}"
-            '''
-            
+            """
+
             try:
                 # Run AppleScript silently
                 process = await asyncio.create_subprocess_exec(
-                    "osascript", "-e", applescript,
+                    "osascript",
+                    "-e",
+                    applescript,
                     stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL
+                    stderr=asyncio.subprocess.DEVNULL,
                 )
                 await process.wait()
                 return
             except Exception:
                 # Fall back to webbrowser if AppleScript fails
                 pass
-        
+
         # Fallback for other platforms or if AppleScript fails
         webbrowser.open(url)
 
     # ==================== SELF-HEALING METHODS ====================
-    
+
     async def _diagnose_and_heal(self, error_context: str, error: Exception) -> bool:
         """Intelligently diagnose and fix common startup issues"""
-        
+
         if not self.auto_heal_enabled:
             return False
-            
+
         error_type = type(error).__name__
         error_msg = str(error).lower()
-        
+
         # Track healing attempts
         heal_key = f"{error_context}_{error_type}"
         if heal_key not in self.healing_attempts:
             self.healing_attempts[heal_key] = 0
-        
+
         if self.healing_attempts[heal_key] >= self.max_healing_attempts:
-            print(f"{Colors.FAIL}❌ Max healing attempts reached for {error_context}{Colors.ENDC}")
+            print(
+                f"{Colors.FAIL}❌ Max healing attempts reached for {error_context}{Colors.ENDC}"
+            )
             return False
-            
+
         self.healing_attempts[heal_key] += 1
         attempt = self.healing_attempts[heal_key]
-        
-        print(f"\n{Colors.CYAN}🔧 Self-Healing: Analyzing {error_context} error (attempt {attempt}/{self.max_healing_attempts})...{Colors.ENDC}")
-        
+
+        print(
+            f"\n{Colors.CYAN}🔧 Self-Healing: Analyzing {error_context} error (attempt {attempt}/{self.max_healing_attempts})...{Colors.ENDC}"
+        )
+
         # Analyze error and attempt healing
         healed = False
-        
+
         # Port in use errors
-        if "address already in use" in error_msg or "port" in error_msg or "bind" in error_msg:
+        if (
+            "address already in use" in error_msg
+            or "port" in error_msg
+            or "bind" in error_msg
+        ):
             port = self._extract_port_from_error(error_msg)
             if port:
                 healed = await self._heal_port_conflict(port)
-            
-        # Missing module/import errors  
-        elif "modulenotfounderror" in error_type.lower() or ("module" in error_msg and "not found" in error_msg):
+
+        # Missing module/import errors
+        elif "modulenotfounderror" in error_type.lower() or (
+            "module" in error_msg and "not found" in error_msg
+        ):
             module = self._extract_module_from_error(str(error))
             if module:
                 healed = await self._heal_missing_module(module)
-        
+
         # NameError for missing imports
         elif "nameerror" in error_type.lower():
             if "List" in str(error):
                 healed = await self._heal_typing_import()
-                
+
         # Permission errors
         elif "permission" in error_msg or "access denied" in error_msg:
             healed = await self._heal_permission_issue(error_context)
-            
+
         # API key errors
         elif "api" in error_msg and "key" in error_msg:
             healed = await self._heal_missing_api_key()
-            
+
         # Memory errors
         elif "memory" in error_msg:
             healed = await self._heal_memory_pressure()
-            
+
         # Process exit codes
-        elif hasattr(error, 'returncode') or "returncode" in str(error):
+        elif hasattr(error, "returncode") or "returncode" in str(error):
             healed = await self._heal_process_crash(error_context, error)
-                
+
         # Log healing result
-        self.healing_log.append({
-            "timestamp": datetime.now(),
-            "context": error_context,
-            "error": str(error),
-            "attempt": attempt,
-            "healed": healed
-        })
-        
+        self.healing_log.append(
+            {
+                "timestamp": datetime.now(),
+                "context": error_context,
+                "error": str(error),
+                "attempt": attempt,
+                "healed": healed,
+            }
+        )
+
         if healed:
             print(f"{Colors.GREEN}✅ Self-healing successful! Retrying...{Colors.ENDC}")
             await asyncio.sleep(2)  # Brief pause before retry
         else:
-            print(f"{Colors.WARNING}⚠️  Self-healing could not fix this issue automatically{Colors.ENDC}")
-            
+            print(
+                f"{Colors.WARNING}⚠️  Self-healing could not fix this issue automatically{Colors.ENDC}"
+            )
+
         return healed
-    
+
     async def _heal_port_conflict(self, port: int) -> bool:
         """Fix port already in use errors"""
-        print(f"{Colors.YELLOW}🔧 Port {port} is in use, attempting to free it...{Colors.ENDC}")
-        
+        print(
+            f"{Colors.YELLOW}🔧 Port {port} is in use, attempting to free it...{Colors.ENDC}"
+        )
+
         # Kill process on port
         success = await self.kill_process_on_port(port)
         if success:
@@ -1789,7 +2005,7 @@ if (typeof localStorage !== 'undefined') {
             if await self.check_port_available(port):
                 print(f"{Colors.GREEN}✅ Port {port} is now available{Colors.ENDC}")
                 return True
-        
+
         # Try alternative port
         alt_ports = {8010: 8011, 8001: 8002, 3000: 3001, 8888: 8889}
         if port in alt_ports:
@@ -1798,92 +2014,105 @@ if (typeof localStorage !== 'undefined') {
                 for key, p in self.ports.items():
                     if p == port:
                         self.ports[key] = new_port
-                        print(f"{Colors.GREEN}✅ Switched to alternative port {new_port}{Colors.ENDC}")
+                        print(
+                            f"{Colors.GREEN}✅ Switched to alternative port {new_port}{Colors.ENDC}"
+                        )
                         return True
-                        
+
         return False
-    
+
     async def _heal_missing_module(self, module: str) -> bool:
         """Auto-install missing Python modules"""
         print(f"{Colors.YELLOW}🔧 Installing missing module: {module}...{Colors.ENDC}")
-        
+
         # Map common module names to packages
         module_map = {
             "dotenv": "python-dotenv",
             "aiohttp": "aiohttp",
-            "psutil": "psutil", 
+            "psutil": "psutil",
             "colorama": "colorama",
             "anthropic": "anthropic",
             "ml_logging_config": None,  # Local module
             "enable_ml_logging": None,  # Local module
         }
-        
+
         # Skip local modules
         if module in module_map and module_map[module] is None:
-            print(f"{Colors.WARNING}Local module {module} missing - may need to check file paths{Colors.ENDC}")
+            print(
+                f"{Colors.WARNING}Local module {module} missing - may need to check file paths{Colors.ENDC}"
+            )
             return False
-            
+
         package = module_map.get(module, module)
-        
+
         try:
             proc = await asyncio.create_subprocess_exec(
-                sys.executable, "-m", "pip", "install", package,
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                package,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await proc.communicate()
-            
+
             if proc.returncode == 0:
                 print(f"{Colors.GREEN}✅ Successfully installed {package}{Colors.ENDC}")
                 return True
-                
+
         except Exception as e:
             print(f"{Colors.WARNING}Failed to install {package}: {e}{Colors.ENDC}")
-            
+
         return False
-    
+
     async def _heal_typing_import(self) -> bool:
         """Fix missing typing imports like List"""
         print(f"{Colors.YELLOW}🔧 Fixing typing import error...{Colors.ENDC}")
-        
+
         # Find the file with the error
         files_to_check = [
             "backend/ml_logging_config.py",
             "backend/ml_memory_manager.py",
             "backend/context_aware_loader.py",
         ]
-        
+
         for file_path in files_to_check:
             if Path(file_path).exists():
                 try:
                     content = Path(file_path).read_text()
                     # Check if List is used but not imported
-                    if "List[" in content and "from typing import" in content and "List" not in content:
+                    if (
+                        "List[" in content
+                        and "from typing import" in content
+                        and "List" not in content
+                    ):
                         # Add List to imports
                         content = content.replace(
-                            "from typing import",
-                            "from typing import List,"
+                            "from typing import", "from typing import List,"
                         )
                         Path(file_path).write_text(content)
-                        print(f"{Colors.GREEN}✅ Fixed typing import in {file_path}{Colors.ENDC}")
+                        print(
+                            f"{Colors.GREEN}✅ Fixed typing import in {file_path}{Colors.ENDC}"
+                        )
                         return True
                 except:
                     pass
-                    
+
         return False
-    
+
     async def _heal_permission_issue(self, context: str) -> bool:
         """Fix file permission issues"""
         print(f"{Colors.YELLOW}🔧 Fixing permission issues...{Colors.ENDC}")
-        
+
         # Make scripts executable
         scripts = [
             "start_system.py",
-            "backend/main.py", 
+            "backend/main.py",
             "backend/main_minimal.py",
             "backend/start_backend.py",
         ]
-        
+
         fixed = False
         for script in scripts:
             if Path(script).exists():
@@ -1893,29 +2122,32 @@ if (typeof localStorage !== 'undefined') {
                     fixed = True
                 except Exception:
                     pass
-                    
+
         return fixed
-    
+
     async def _heal_missing_api_key(self) -> bool:
         """Handle missing API keys"""
         print(f"{Colors.YELLOW}🔧 Checking for API key configuration...{Colors.ENDC}")
-        
+
         # Check multiple .env locations
         env_paths = [".env", "backend/.env", "../.env"]
-        
+
         for env_path in env_paths:
             if Path(env_path).exists():
                 try:
                     # Force reload of environment
                     from dotenv import load_dotenv
+
                     load_dotenv(env_path, override=True)
-                    
+
                     if os.getenv("ANTHROPIC_API_KEY"):
-                        print(f"{Colors.GREEN}✅ Found API key in {env_path}{Colors.ENDC}")
+                        print(
+                            f"{Colors.GREEN}✅ Found API key in {env_path}{Colors.ENDC}"
+                        )
                         return True
                 except:
                     pass
-        
+
         # Create .env template
         print(f"{Colors.WARNING}Creating .env template...{Colors.ENDC}")
         env_content = """# JARVIS Environment Configuration
@@ -1927,99 +2159,120 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
         env_path = Path("backend/.env")
         env_path.parent.mkdir(exist_ok=True)
         env_path.write_text(env_content)
-        print(f"{Colors.YELLOW}📝 Please add your ANTHROPIC_API_KEY to {env_path}{Colors.ENDC}")
-        
+        print(
+            f"{Colors.YELLOW}📝 Please add your ANTHROPIC_API_KEY to {env_path}{Colors.ENDC}"
+        )
+
         return False
-    
+
     async def _heal_memory_pressure(self) -> bool:
         """Fix high memory usage"""
         memory = psutil.virtual_memory()
-        print(f"{Colors.YELLOW}🔧 Memory at {memory.percent:.1f}%, attempting cleanup...{Colors.ENDC}")
-        
+        print(
+            f"{Colors.YELLOW}🔧 Memory at {memory.percent:.1f}%, attempting cleanup...{Colors.ENDC}"
+        )
+
         # Kill common memory hogs
-        memory_hogs = ["Chrome Helper", "Chrome Helper (GPU)", "Chrome Helper (Renderer)"]
-        
+        memory_hogs = [
+            "Chrome Helper",
+            "Chrome Helper (GPU)",
+            "Chrome Helper (Renderer)",
+        ]
+
         for process_name in memory_hogs:
             try:
                 proc = await asyncio.create_subprocess_exec(
-                    "pkill", "-f", process_name,
+                    "pkill",
+                    "-f",
+                    process_name,
                     stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL
+                    stderr=asyncio.subprocess.DEVNULL,
                 )
                 await proc.wait()
             except:
                 pass
-        
+
         # Force Python garbage collection
         import gc
+
         gc.collect()
-        
+
         # Wait and check
         await asyncio.sleep(3)
-        
+
         new_memory = psutil.virtual_memory()
         if new_memory.percent < memory.percent - 5:
-            print(f"{Colors.GREEN}✅ Memory reduced to {new_memory.percent:.1f}%{Colors.ENDC}")
+            print(
+                f"{Colors.GREEN}✅ Memory reduced to {new_memory.percent:.1f}%{Colors.ENDC}"
+            )
             return True
-        
+
         return False
-    
+
     async def _heal_process_crash(self, context: str, error: Exception) -> bool:
         """Handle process crashes with intelligent recovery"""
-        print(f"{Colors.YELLOW}🔧 Process crashed in {context}, attempting recovery...{Colors.ENDC}")
-        
+        print(
+            f"{Colors.YELLOW}🔧 Process crashed in {context}, attempting recovery...{Colors.ENDC}"
+        )
+
         # Get return code if available
-        returncode = getattr(error, 'returncode', -1)
-        
+        returncode = getattr(error, "returncode", -1)
+
         if "backend" in context:
             if returncode == 1:
                 # Python error - check logs
                 print(f"{Colors.CYAN}Checking error logs...{Colors.ENDC}")
                 # The error will be caught and we'll try minimal backend
                 return True
-            
+
         elif "websocket" in context:
             # Try rebuilding
             websocket_dir = self.backend_dir / "websocket"
             if websocket_dir.exists():
-                print(f"{Colors.CYAN}Attempting to rebuild WebSocket router...{Colors.ENDC}")
+                print(
+                    f"{Colors.CYAN}Attempting to rebuild WebSocket router...{Colors.ENDC}"
+                )
                 try:
                     # Clean and rebuild
                     proc = await asyncio.create_subprocess_exec(
-                        "npm", "run", "build",
+                        "npm",
+                        "run",
+                        "build",
                         cwd=str(websocket_dir),
                         stdout=asyncio.subprocess.DEVNULL,
-                        stderr=asyncio.subprocess.PIPE
+                        stderr=asyncio.subprocess.PIPE,
                     )
                     _, stderr = await proc.communicate()
-                    
+
                     if proc.returncode == 0:
                         print(f"{Colors.GREEN}✅ WebSocket router rebuilt{Colors.ENDC}")
                         return True
                 except:
                     pass
-                    
+
         return False
-    
+
     def _extract_port_from_error(self, error_msg: str) -> Optional[int]:
         """Extract port number from error message"""
         import re
+
         # Look for port numbers in various formats
         patterns = [
-            r':(\d{4,5})',  # :8010
-            r'port\s+(\d{4,5})',  # port 8010
-            r'Port\s+(\d{4,5})',  # Port 8010
+            r":(\d{4,5})",  # :8010
+            r"port\s+(\d{4,5})",  # port 8010
+            r"Port\s+(\d{4,5})",  # Port 8010
         ]
-        
+
         for pattern in patterns:
             match = re.search(pattern, error_msg)
             if match:
                 return int(match.group(1))
         return None
-        
+
     def _extract_module_from_error(self, error_str: str) -> Optional[str]:
         """Extract module name from error message"""
         import re
+
         # Match patterns like: No module named 'X'
         match = re.search(r"No module named ['\"](\w+)['\"]", error_str)
         if match:
@@ -2065,7 +2318,9 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
                     asyncio.gather(*tasks, return_exceptions=True), timeout=3.0
                 )
             except asyncio.TimeoutError:
-                print(f"{Colors.YELLOW}Some processes not responding, force killing...{Colors.ENDC}")
+                print(
+                    f"{Colors.YELLOW}Some processes not responding, force killing...{Colors.ENDC}"
+                )
                 # Force kill any remaining processes
                 for proc in self.processes:
                     if proc and proc.returncode is None:
@@ -2079,10 +2334,10 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
         cleanup_tasks = []
         for service_name, port in self.ports.items():
             cleanup_tasks.append(self.kill_process_on_port(port))
-        
+
         if cleanup_tasks:
             await asyncio.gather(*cleanup_tasks, return_exceptions=True)
-        
+
         # Clean up any lingering Node.js processes
         try:
             # Kill npm processes
@@ -2092,7 +2347,7 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
                 stderr=asyncio.subprocess.DEVNULL,
             )
             await npm_kill.wait()
-            
+
             # Kill node processes running our apps
             node_kill = await asyncio.create_subprocess_shell(
                 "pkill -f 'node.*websocket|node.*3000' || true",
@@ -2100,7 +2355,7 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
                 stderr=asyncio.subprocess.DEVNULL,
             )
             await node_kill.wait()
-            
+
             # Kill python processes running our backend (but not IDE-related processes)
             # First get all matching PIDs
             try:
@@ -2108,9 +2363,9 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
                     "pgrep -f 'python.*main.py|python.*jarvis'",
                     shell=True,
                     capture_output=True,
-                    text=True
+                    text=True,
                 )
-                pids = result.stdout.strip().split('\n')
+                pids = result.stdout.strip().split("\n")
 
                 for pid in pids:
                     if not pid:
@@ -2122,13 +2377,21 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
                             f"ps -o ppid= -p {pid} | xargs ps -o comm= -p 2>/dev/null || echo ''",
                             shell=True,
                             capture_output=True,
-                            text=True
+                            text=True,
                         )
                         parent_name = parent_check.stdout.strip().lower()
 
                         # Skip if parent is an IDE
-                        ide_patterns = ['cursor', 'code', 'vscode', 'sublime', 'pycharm',
-                                       'intellij', 'webstorm', 'atom']
+                        ide_patterns = [
+                            "cursor",
+                            "code",
+                            "vscode",
+                            "sublime",
+                            "pycharm",
+                            "intellij",
+                            "webstorm",
+                            "atom",
+                        ]
 
                         if any(pattern in parent_name for pattern in ide_patterns):
                             continue
@@ -2139,15 +2402,15 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
                         pass
             except:
                 pass
-            
+
         except Exception:
             pass  # Ignore errors in cleanup
-        
+
         # Give a moment for processes to die
         await asyncio.sleep(0.5)
-        
+
         print(f"{Colors.GREEN}✓ All services stopped{Colors.ENDC}")
-        
+
         # Flush output to ensure all messages are printed
         sys.stdout.flush()
         sys.stderr.flush()
@@ -2177,17 +2440,17 @@ try:
 except Exception as e:
     print(f"Pre-warm warning: {e}")
 """
-        
+
         # Run in background
         proc = await asyncio.create_subprocess_exec(
             sys.executable,
             "-c",
             prewarm_script,
             stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL
+            stderr=asyncio.subprocess.DEVNULL,
         )
         # Don't wait - let it run in background
-    
+
     async def start_websocket_router(self) -> Optional[asyncio.subprocess.Process]:
         """Start TypeScript WebSocket Router"""
         websocket_dir = self.backend_dir / "websocket"
@@ -2295,8 +2558,12 @@ except Exception as e:
                 result = await func(*args, **kwargs)
                 return result
             except Exception as e:
-                if attempt < max_retries - 1 and await self._diagnose_and_heal(context, e):
-                    print(f"{Colors.CYAN}Retrying {context} after self-healing...{Colors.ENDC}")
+                if attempt < max_retries - 1 and await self._diagnose_and_heal(
+                    context, e
+                ):
+                    print(
+                        f"{Colors.CYAN}Retrying {context} after self-healing...{Colors.ENDC}"
+                    )
                     continue
                 else:
                     raise
@@ -2305,37 +2572,39 @@ except Exception as e:
     async def run(self):
         """Main run method with self-healing"""
         self.print_header()
-        
+
         # Start autonomous systems if enabled
         if self.autonomous_mode and AUTONOMOUS_AVAILABLE:
             print(f"\n{Colors.CYAN}🤖 Starting Autonomous Systems...{Colors.ENDC}")
-            
+
             # Start orchestrator
             if self.orchestrator is not None:
                 orchestrator_task = asyncio.create_task(self.orchestrator.start())
-            
+
             # Start service mesh
             if self.mesh is not None:
                 mesh_task = asyncio.create_task(self.mesh.start())
-            
+
             # Wait for initial discovery
             await asyncio.sleep(3)
-            
+
             # Check for already running services
             print(f"\n{Colors.CYAN}🔍 Discovering existing services...{Colors.ENDC}")
             discovered = self.orchestrator.services if self.orchestrator else {}
             for name, service in discovered.items():
-                print(f"  • Found {name}: {service.protocol}://localhost:{service.port}")
-                
+                print(
+                    f"  • Found {name}: {service.protocol}://localhost:{service.port}"
+                )
+
                 # Update our ports if services found on different ports
                 if "backend" in name.lower():
                     self.ports["main_api"] = service.port
                 elif "frontend" in name.lower():
                     self.ports["frontend"] = service.port
-        
+
         # Start pre-warming imports early
         prewarm_task = asyncio.create_task(self._prewarm_python_imports())
-        
+
         # Run initial checks in parallel
         check_tasks = [
             self.check_python_version(),
@@ -2365,7 +2634,10 @@ except Exception as e:
 
         # Auto-install critical packages if requested or in autonomous mode
         if critical_missing:
-            if self.autonomous_mode or input("\nInstall missing packages? (y/n): ").lower() == "y":
+            if (
+                self.autonomous_mode
+                or input("\nInstall missing packages? (y/n): ").lower() == "y"
+            ):
                 for package in critical_missing:
                     print(f"Installing {package}...")
                     proc = await asyncio.create_subprocess_exec(
@@ -2380,7 +2652,9 @@ except Exception as e:
                     await proc.wait()
 
         # Start services with advanced parallel initialization
-        print(f"\n{Colors.CYAN}🚀 Starting services with parallel initialization...{Colors.ENDC}")
+        print(
+            f"\n{Colors.CYAN}🚀 Starting services with parallel initialization...{Colors.ENDC}"
+        )
 
         if self.backend_only:
             print(f"{Colors.CYAN}Starting backend only...{Colors.ENDC}")
@@ -2393,51 +2667,63 @@ except Exception as e:
         else:
             # Advanced parallel startup with intelligent sequencing
             start_time = time.time()
-            
+
             # Phase 1: Start WebSocket router first (optional - for advanced features)
-            print(f"\n{Colors.CYAN}Phase 1/3: Starting WebSocket Router (optional)...{Colors.ENDC}")
+            print(
+                f"\n{Colors.CYAN}Phase 1/3: Starting WebSocket Router (optional)...{Colors.ENDC}"
+            )
             websocket_router_process = await self.start_websocket_router()
             if not websocket_router_process:
-                print(f"{Colors.WARNING}⚠ WebSocket router not available (optional feature). Continuing...{Colors.ENDC}")
-            
+                print(
+                    f"{Colors.WARNING}⚠ WebSocket router not available (optional feature). Continuing...{Colors.ENDC}"
+                )
+
             # Phase 2: Start backend and frontend in parallel
-            print(f"\n{Colors.CYAN}Phase 2/3: Starting Backend & Frontend in parallel...{Colors.ENDC}")
-            
+            print(
+                f"\n{Colors.CYAN}Phase 2/3: Starting Backend & Frontend in parallel...{Colors.ENDC}"
+            )
+
             # Small delay to ensure router is ready
             await asyncio.sleep(1)
-            
+
             # Start both services in parallel
             backend_task = asyncio.create_task(self.start_backend())
             frontend_task = asyncio.create_task(self.start_frontend())
-            
+
             # Wait for both with proper error handling
             backend_result, frontend_result = await asyncio.gather(
-                backend_task, 
-                frontend_task,
-                return_exceptions=True
+                backend_task, frontend_task, return_exceptions=True
             )
-            
+
             # Check backend result (critical)
             if isinstance(backend_result, Exception):
-                print(f"{Colors.FAIL}✗ Backend failed with error: {backend_result}{Colors.ENDC}")
+                print(
+                    f"{Colors.FAIL}✗ Backend failed with error: {backend_result}{Colors.ENDC}"
+                )
                 await self.cleanup()
                 return False
             elif not backend_result:
                 print(f"{Colors.FAIL}✗ Backend failed to start{Colors.ENDC}")
                 await self.cleanup()
                 return False
-            
+
             # Check frontend result (non-critical)
             if isinstance(frontend_result, Exception):
-                print(f"{Colors.WARNING}⚠ Frontend failed: {frontend_result}{Colors.ENDC}")
+                print(
+                    f"{Colors.WARNING}⚠ Frontend failed: {frontend_result}{Colors.ENDC}"
+                )
             elif not frontend_result:
                 print(f"{Colors.WARNING}⚠ Frontend failed to start{Colors.ENDC}")
-            
+
             # Phase 3: Quick health checks
-            print(f"\n{Colors.CYAN}Phase 3/3: Running parallel health checks...{Colors.ENDC}")
-            
+            print(
+                f"\n{Colors.CYAN}Phase 3/3: Running parallel health checks...{Colors.ENDC}"
+            )
+
             elapsed = time.time() - start_time
-            print(f"\n{Colors.GREEN}✨ Services started in {elapsed:.1f}s (was ~13-18s){Colors.ENDC}")
+            print(
+                f"\n{Colors.GREEN}✨ Services started in {elapsed:.1f}s (was ~13-18s){Colors.ENDC}"
+            )
 
         # Run parallel health checks instead of fixed wait
         await self._run_parallel_health_checks()
@@ -2451,60 +2737,69 @@ except Exception as e:
 
         # Print access info
         self.print_access_info()
-        
+
         # Configure frontend for autonomous mode
         if self.autonomous_mode and AUTONOMOUS_AVAILABLE:
-            print(f"\n{Colors.CYAN}Configuring frontend for autonomous mode...{Colors.ENDC}")
-            
+            print(
+                f"\n{Colors.CYAN}Configuring frontend for autonomous mode...{Colors.ENDC}"
+            )
+
             # Generate frontend configuration
             if self.orchestrator:
                 frontend_config = self.orchestrator.get_frontend_config()
-            
+
             # Save configuration
             config_path = Path("frontend/public/dynamic-config.json")
             if config_path.parent.exists():
                 config_path.parent.mkdir(exist_ok=True)
                 import json
-                with open(config_path, 'w') as f:
+
+                with open(config_path, "w") as f:
                     json.dump(frontend_config, f, indent=2)
                 print(f"{Colors.GREEN}✓ Frontend configuration generated{Colors.ENDC}")
-                
+
             # Register services with mesh
             if self.orchestrator and self.mesh:
                 for name, service in self.orchestrator.services.items():
                     # Build full endpoint URLs
                     full_endpoints = {}
-                    if hasattr(service, 'endpoints'):
+                    if hasattr(service, "endpoints"):
                         for ep_name, ep_path in service.endpoints.items():
-                            full_endpoints[ep_name] = f"{service.protocol}://localhost:{service.port}{ep_path}"
-                    
+                            full_endpoints[ep_name] = (
+                                f"{service.protocol}://localhost:{service.port}{ep_path}"
+                            )
+
                     # Add default health endpoint if not present
-                    if 'health' not in full_endpoints:
-                        full_endpoints['health'] = f"{service.protocol}://localhost:{service.port}/health"
-                    
+                    if "health" not in full_endpoints:
+                        full_endpoints["health"] = (
+                            f"{service.protocol}://localhost:{service.port}/health"
+                        )
+
                     await self.mesh.register_node(
                         node_id=name,
                         node_type=self.identify_service_type(name),
-                        endpoints=full_endpoints
+                        endpoints=full_endpoints,
                     )
-                
+
         # Print autonomous status
         if self.autonomous_mode:
             await self.print_autonomous_status()
-        
+
         # Print self-healing summary if any healing occurred
         if self.healing_log:
             print(f"\n{Colors.CYAN}🔧 Self-Healing Summary:{Colors.ENDC}")
-            successful_heals = sum(1 for h in self.healing_log if h['healed'])
+            successful_heals = sum(1 for h in self.healing_log if h["healed"])
             total_heals = len(self.healing_log)
             print(f"  • Total healing attempts: {total_heals}")
             print(f"  • Successful heals: {successful_heals}")
             if successful_heals > 0:
-                print(f"  • {Colors.GREEN}✅ Self-healing helped JARVIS start successfully!{Colors.ENDC}")
-            
+                print(
+                    f"  • {Colors.GREEN}✅ Self-healing helped JARVIS start successfully!{Colors.ENDC}"
+                )
+
             # Show what was healed
             for heal in self.healing_log:
-                if heal['healed']:
+                if heal["healed"]:
                     print(f"    - Fixed: {heal['context']} ({heal['error'][:50]}...)")
 
         # Open browser intelligently
@@ -2516,16 +2811,18 @@ except Exception as e:
         try:
             await self.monitor_services()
         except KeyboardInterrupt:
-            print(f"\n{Colors.YELLOW}Interrupt received, shutting down gracefully...{Colors.ENDC}")
+            print(
+                f"\n{Colors.YELLOW}Interrupt received, shutting down gracefully...{Colors.ENDC}"
+            )
         except Exception as e:
             print(f"\n{Colors.FAIL}Monitor error: {e}{Colors.ENDC}")
 
         # Cleanup
         await self.cleanup()
-        
+
         # Ensure clean exit
         print(f"\n{Colors.BLUE}Goodbye! 👋{Colors.ENDC}\n")
-        
+
         return True
 
 
@@ -2596,11 +2893,13 @@ async def main():
     _manager.frontend_only = args.frontend_only
     _manager.use_optimized = not args.standard
     _manager.auto_cleanup = not args.no_auto_cleanup
-    
+
     # Always use autonomous mode unless explicitly disabled
     if args.no_autonomous:
         _manager.autonomous_mode = False
-        print(f"{Colors.BLUE}✓ Starting in traditional mode (--no-autonomous flag set)...{Colors.ENDC}\n")
+        print(
+            f"{Colors.BLUE}✓ Starting in traditional mode (--no-autonomous flag set)...{Colors.ENDC}\n"
+        )
     else:
         # Always default to autonomous mode since it's always available now
         _manager.autonomous_mode = True
