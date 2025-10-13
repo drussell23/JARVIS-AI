@@ -42,7 +42,7 @@ class ProcessCleanupManager:
         self.config = {
             'check_interval': 5.0,  # seconds
             'process_timeout': 30.0,  # seconds
-            'stuck_process_time': 3600.0,  # 1 hour - consider process stuck (reduced from 2 hours)
+            'stuck_process_time': 600.0,  # 10 minutes - consider process stuck (much more aggressive)
             'memory_threshold': 0.35,  # 35% memory usage target
             'memory_threshold_warning': 0.50,  # 50% warning threshold
             'memory_threshold_critical': 0.65,  # 65% critical threshold (reduced from 70%)
@@ -54,20 +54,22 @@ class ProcessCleanupManager:
             'enable_cleanup': True,
             'aggressive_cleanup': True,  # Enable aggressive memory management
             'enable_ipc_cleanup': True,  # Enable semaphore and shared memory cleanup
-            'ipc_cleanup_age_threshold': 300,  # 5 minutes - minimum age for IPC resource cleanup
+            'ipc_cleanup_age_threshold': 60,  # 1 minute - more aggressive IPC cleanup
             # JARVIS-specific patterns (improved detection)
             'jarvis_patterns': [
                 'jarvis', 'main.py', 'jarvis_backend', 'jarvis_voice',
                 'voice_unlock', 'websocket_server', 'jarvis-ai-agent',
                 'unified_command_processor', 'resource_manager',
-                'wake_word_api', 'document_writer', 'neural_trinity'
+                'wake_word_api', 'document_writer', 'neural_trinity',
+                'jarvis_optimized', 'backend.main', 'jarvis_reload_manager',
+                'vision_intelligence', 'vision_websocket', 'vision_manager'
             ],
             'jarvis_excluded_patterns': [
                 # Exclude IDE/editor processes that may contain "jarvis" in path
                 'vscode', 'code helper', 'cursor', 'sublime', 'pycharm',
                 'codeium', 'copilot', 'node_modules', '.vscode'
             ],
-            'jarvis_port_patterns': [8000, 8001, 8010, 8080, 8765, 5000],  # Common JARVIS ports
+            'jarvis_port_patterns': [3000, 8000, 8001, 8010, 8080, 8765, 5000],  # Common JARVIS ports including frontend
             'system_critical': [
                 'kernel_task', 'WindowServer', 'loginwindow', 'launchd',
                 'systemd', 'init', 'Finder', 'Dock', 'SystemUIServer',
@@ -1122,12 +1124,240 @@ class ProcessCleanupManager:
             except:
                 continue
         return None
+    
+    def emergency_cleanup_all_jarvis(self, force_kill: bool = False) -> Dict[str, Any]:
+        """
+        Emergency cleanup - kill ALL JARVIS-related processes and clean up resources.
+        Use this when JARVIS has segfaulted or is in a bad state.
+        
+        Args:
+            force_kill: If True, skip graceful termination and go straight to SIGKILL
+            
+        Returns:
+            Dictionary with cleanup results
+        """
+        logger.warning("🚨 EMERGENCY CLEANUP: Killing all JARVIS processes...")
+        
+        results = {
+            "processes_killed": [],
+            "ports_freed": [],
+            "ipc_cleaned": {},
+            "errors": []
+        }
+        
+        # Step 1: Find and kill all JARVIS processes
+        for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
+            try:
+                # Check if it's any kind of JARVIS-related process
+                cmdline = " ".join(proc.cmdline()).lower()
+                proc_name = proc.name().lower()
+                
+                # Look for any JARVIS patterns in command line or process name
+                is_jarvis_related = False
+                for pattern in self.config['jarvis_patterns']:
+                    if pattern.lower() in cmdline or pattern.lower() in proc_name:
+                        # Check it's not an excluded process (IDE, etc)
+                        is_excluded = any(excl.lower() in cmdline or excl.lower() in proc_name 
+                                        for excl in self.config['jarvis_excluded_patterns'])
+                        if not is_excluded:
+                            is_jarvis_related = True
+                            break
+                
+                # Also check if it's a Python process running in JARVIS directory
+                if 'python' in proc_name and 'jarvis-ai-agent' in cmdline:
+                    is_jarvis_related = True
+                
+                # Check if it's a Node process for JARVIS frontend
+                if ('node' in proc_name or 'npm' in proc_name) and ('jarvis' in cmdline or 'localhost:3000' in cmdline):
+                    is_jarvis_related = True
+                    
+                if is_jarvis_related:
+                    logger.info(f"Killing JARVIS process: {proc.name()} (PID: {proc.pid})")
+                    try:
+                        if force_kill:
+                            proc.kill()  # SIGKILL immediately
+                        else:
+                            proc.terminate()  # Try SIGTERM first
+                            try:
+                                proc.wait(timeout=2)
+                            except psutil.TimeoutExpired:
+                                proc.kill()  # Then SIGKILL if needed
+                        
+                        results["processes_killed"].append({
+                            "pid": proc.pid,
+                            "name": proc.name(),
+                            "cmdline": cmdline[:100]
+                        })
+                    except psutil.NoSuchProcess:
+                        # Process already gone, that's fine
+                        pass
+                    except Exception as e:
+                        results["errors"].append(f"Failed to kill PID {proc.pid}: {e}")
+                        
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        
+        # Step 2: Force-free all JARVIS ports
+        for port in self.config['jarvis_port_patterns']:
+            try:
+                # Find any process using this port
+                result = subprocess.run(
+                    ["lsof", "-ti", f":{port}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                if result.stdout.strip():
+                    pids = result.stdout.strip().split('\n')
+                    for pid_str in pids:
+                        if pid_str:
+                            try:
+                                pid = int(pid_str)
+                                os.kill(pid, signal.SIGKILL)
+                                results["ports_freed"].append(port)
+                                logger.info(f"Freed port {port} by killing PID {pid}")
+                            except (ValueError, ProcessLookupError):
+                                pass
+            except Exception as e:
+                logger.debug(f"Could not check/free port {port}: {e}")
+        
+        # Step 3: Clean up ALL IPC resources (semaphores, shared memory)
+        try:
+            # More aggressive IPC cleanup - remove ALL semaphores and shared memory for current user
+            current_user = os.getenv("USER", "")
+            if current_user:
+                # Clean all semaphores
+                result = subprocess.run(
+                    ["ipcs", "-s"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                if result.returncode == 0:
+                    for line in result.stdout.split('\n'):
+                        if current_user in line:
+                            parts = line.split()
+                            if len(parts) >= 2:
+                                sem_id = parts[1]
+                                try:
+                                    subprocess.run(["ipcrm", "-s", sem_id], timeout=1)
+                                    results["ipc_cleaned"]["semaphores"] = results["ipc_cleaned"].get("semaphores", 0) + 1
+                                except:
+                                    pass
+                
+                # Clean all shared memory
+                result = subprocess.run(
+                    ["ipcs", "-m"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2
+                )
+                if result.returncode == 0:
+                    for line in result.stdout.split('\n'):
+                        if current_user in line:
+                            parts = line.split()
+                            if len(parts) >= 2:
+                                shm_id = parts[1]
+                                try:
+                                    subprocess.run(["ipcrm", "-m", shm_id], timeout=1)
+                                    results["ipc_cleaned"]["shared_memory"] = results["ipc_cleaned"].get("shared_memory", 0) + 1
+                                except:
+                                    pass
+                                    
+        except Exception as e:
+            logger.error(f"Failed to clean IPC resources: {e}")
+        
+        # Step 4: Clean up any leftover Python multiprocessing resources
+        try:
+            # Clean up resource tracker warnings
+            import multiprocessing
+            multiprocessing.set_start_method('spawn', force=True)
+        except:
+            pass
+        
+        # Step 5: Remove code state file to force fresh start
+        if self.code_state_file.exists():
+            try:
+                self.code_state_file.unlink()
+                logger.info("Removed code state file for fresh start")
+            except:
+                pass
+        
+        # Log summary
+        logger.info(f"🧹 Emergency cleanup complete:")
+        logger.info(f"  • Killed {len(results['processes_killed'])} processes")
+        logger.info(f"  • Freed {len(results['ports_freed'])} ports")
+        if results["ipc_cleaned"]:
+            logger.info(f"  • Cleaned {sum(results['ipc_cleaned'].values())} IPC resources")
+        if results["errors"]:
+            logger.warning(f"  • {len(results['errors'])} errors occurred")
+            
+        return results
+    
+    def check_for_segfault_recovery(self) -> bool:
+        """
+        Check if we need to recover from a segfault or crash.
+        Returns True if recovery actions were taken.
+        """
+        recovery_needed = False
+        
+        # Check for leaked semaphores (sign of ungraceful shutdown)
+        try:
+            result = subprocess.run(
+                ["ipcs", "-s"],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            if "leaked semaphore" in result.stdout.lower() or result.returncode != 0:
+                recovery_needed = True
+                logger.warning("Detected leaked semaphores - likely segfault or crash")
+        except:
+            pass
+        
+        # Check for zombie Python processes
+        for proc in psutil.process_iter(["pid", "name", "status"]):
+            try:
+                if proc.status() == psutil.STATUS_ZOMBIE and 'python' in proc.name().lower():
+                    recovery_needed = True
+                    logger.warning(f"Found zombie Python process: PID {proc.pid}")
+                    break
+            except:
+                continue
+        
+        # Check for stale lock files or PIDs
+        jarvis_home = Path.home() / ".jarvis"
+        if jarvis_home.exists():
+            # Look for PID files older than 5 minutes
+            for pid_file in jarvis_home.glob("*.pid"):
+                try:
+                    if (time.time() - pid_file.stat().st_mtime) > 300:  # 5 minutes
+                        with open(pid_file, 'r') as f:
+                            old_pid = int(f.read().strip())
+                        # Check if that PID is still running
+                        if not psutil.pid_exists(old_pid):
+                            recovery_needed = True
+                            logger.warning(f"Found stale PID file: {pid_file}")
+                            pid_file.unlink()  # Remove stale PID file
+                except:
+                    pass
+        
+        if recovery_needed:
+            logger.warning("🔧 Initiating crash recovery...")
+            # Perform emergency cleanup
+            self.emergency_cleanup_all_jarvis()
+            
+        return recovery_needed
 
 
 # Convenience functions for integration
 async def cleanup_system_for_jarvis(dry_run: bool = False) -> Dict[str, any]:
     """Main entry point for cleaning up system before JARVIS starts"""
     manager = ProcessCleanupManager()
+    
+    # Check for crash recovery first
+    if manager.check_for_segfault_recovery():
+        logger.info("Performed crash recovery cleanup")
     
     # Always check for code changes and clean up old instances
     manager.cleanup_old_instances_on_code_change()
@@ -1148,6 +1378,11 @@ def ensure_fresh_jarvis_instance():
     """
     manager = ProcessCleanupManager()
     
+    # Check for crash recovery first
+    if manager.check_for_segfault_recovery():
+        logger.info("Performed crash recovery - safe to start fresh")
+        return True
+    
     # Clean up old instances if code has changed
     cleaned = manager.cleanup_old_instances_on_code_change()
     if cleaned:
@@ -1157,14 +1392,48 @@ def ensure_fresh_jarvis_instance():
     return manager.ensure_single_instance()
 
 
+def emergency_cleanup(force: bool = False):
+    """
+    Perform emergency cleanup of all JARVIS processes.
+    Use this when JARVIS is stuck or has segfaulted.
+    
+    Args:
+        force: If True, use SIGKILL immediately instead of trying graceful shutdown
+    
+    Returns:
+        Cleanup results dictionary
+    """
+    manager = ProcessCleanupManager()
+    results = manager.emergency_cleanup_all_jarvis(force_kill=force)
+    
+    # Print summary to console
+    print("\n🚨 Emergency Cleanup Results:")
+    print(f"  • Processes killed: {len(results['processes_killed'])}")
+    print(f"  • Ports freed: {len(results['ports_freed'])}")
+    if results["ipc_cleaned"]:
+        print(f"  • IPC resources cleaned: {sum(results['ipc_cleaned'].values())}")
+    if results["errors"]:
+        print(f"  • ⚠️ Errors: {len(results['errors'])}")
+        for error in results["errors"][:3]:  # Show first 3 errors
+            print(f"    - {error}")
+    
+    return results
+
+
 if __name__ == "__main__":
     # Test the cleanup manager
     import asyncio
+    import sys
 
     async def test():
         print("🔍 Analyzing system state...")
 
         manager = ProcessCleanupManager()
+        
+        # Check for segfault recovery
+        if manager.check_for_segfault_recovery():
+            print("\n🔧 Performed crash recovery cleanup!")
+            print("System should be clean for fresh start.\n")
         
         # Check for code changes
         if manager._detect_code_changes():
@@ -1198,5 +1467,13 @@ if __name__ == "__main__":
             
         if report.get("code_changes_cleanup"):
             print(f"\nCode change cleanup: {len(report['code_changes_cleanup'])} old instances")
+        
+        # Ask if user wants to perform emergency cleanup
+        if len(sys.argv) > 1 and sys.argv[1] == '--emergency':
+            print("\n⚠️  EMERGENCY CLEANUP MODE")
+            response = input("Perform emergency cleanup? (y/N): ")
+            if response.lower() == 'y':
+                results = emergency_cleanup(force=True)
+                print("\n✅ Emergency cleanup completed!")
 
     asyncio.run(test())
