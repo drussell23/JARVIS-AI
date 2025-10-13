@@ -1142,62 +1142,94 @@ BE CONCISE. No technical details.
         self, query: str, context: Optional[Dict[str, Any]]
     ) -> str:
         """
-        Handle deep analysis query with multi-space capture + Yabai metadata
+        Handle deep analysis query with Yabai metadata + current space screenshot
+
+        Uses NON-DISRUPTIVE approach:
+        - Yabai metadata for ALL spaces (apps, windows, titles)
+        - Screenshot of CURRENT space only (no switching)
+        - Claude combines both for intelligent analysis
         """
         try:
-            logger.info("[INTELLIGENT] Handling multi-space deep analysis query")
+            logger.info("[INTELLIGENT] Handling multi-space query with Yabai + current space")
 
-            # Capture all desktop spaces
-            screenshots = await self._capture_screen(multi_space=True)
-
-            if not screenshots:
-                return "I couldn't capture your desktop spaces, Sir."
-
-            # Get Yabai metadata for context
+            # Get Yabai metadata for ALL spaces (non-disruptive)
             window_data = None
             if self.intelligence and hasattr(
                 self.intelligence, "_gather_multi_space_data"
             ):
                 window_data = await self.intelligence._gather_multi_space_data()
+                logger.info(f"[INTELLIGENT] Retrieved Yabai data for {len(window_data.get('spaces', []))} spaces")
 
-            # Use enhanced multi-space analysis if available
-            if hasattr(self.intelligence, "multi_space_extension") and hasattr(
-                self.intelligence.multi_space_extension,
-                "generate_enhanced_workspace_response",
-            ):
-                response = self.intelligence.multi_space_extension.generate_enhanced_workspace_response(
-                    query, window_data, screenshots
-                )
+            # Capture ONLY current space screenshot (non-disruptive)
+            current_screenshot = await self._capture_screen(multi_space=False)
 
-                # If enhanced system returns None, use Claude API
-                if response is None and self.intelligence:
-                    response = await self.intelligence.understand_and_respond(
-                        screenshots, query
-                    )
+            if not current_screenshot:
+                logger.warning("[INTELLIGENT] Could not capture current space, using Yabai only")
+                # Fall back to Yabai-only analysis
+                if self.yabai_detector and self.workspace_analyzer:
+                    return await self._handle_yabai_query(query, context)
+                return "I couldn't analyze your desktop spaces, Sir."
 
-                    # Process with workspace names
-                    if workspace_detector_available and window_data:
-                        response = process_response_with_workspace_names(
-                            response, window_data
+            # Build enhanced prompt with Yabai context
+            if self.intelligence and window_data:
+                # Extract Yabai metadata summary
+                spaces = window_data.get('spaces', [])
+                total_spaces = len(spaces)
+
+                context_summary = [f"You have {total_spaces} desktop spaces total."]
+
+                # Summarize each space
+                for space in spaces:
+                    space_idx = space.get('index', 'unknown')
+                    windows = space.get('windows', [])
+                    is_active = space.get('has-focus', False)
+
+                    if windows:
+                        apps = [w.get('app', 'Unknown') for w in windows[:5]]  # First 5
+                        app_list = ', '.join(apps)
+                        context_summary.append(
+                            f"Space {space_idx}{'(current)' if is_active else ''}: {len(windows)} windows - {app_list}{'...' if len(windows) > 5 else ''}"
                         )
+                    else:
+                        context_summary.append(f"Space {space_idx}: Empty")
 
-                return response or "I analyzed your workspaces, Sir."
+                # Build enhanced prompt
+                enhanced_prompt = f"""{query}
 
-            # Fallback to standard Claude analysis
-            elif self.intelligence:
+**Desktop Space Overview (from window manager):**
+{chr(10).join(context_summary)}
+
+The screenshot shows your current active space. Please provide a detailed analysis that:
+1. Describes what's visible in the current space screenshot
+2. Summarizes the activities across all {total_spaces} spaces based on the window data above
+3. Identifies any patterns or workflow themes
+
+Be specific and detailed about what you observe."""
+
+                logger.info("[INTELLIGENT] Sending enhanced prompt to Claude with current space + Yabai context")
+
+                # Call Claude with current screenshot + enhanced prompt
                 response = await self.intelligence.understand_and_respond(
-                    screenshots, query
+                    current_screenshot, enhanced_prompt
                 )
 
-                # Process with workspace names
-                if workspace_detector_available and window_data:
+                # Process with workspace names if available
+                if workspace_processor_available and window_data:
                     response = process_response_with_workspace_names(
                         response, window_data
                     )
 
+                return response or "I analyzed your desktop spaces, Sir."
+
+            # Fallback: Claude with screenshot only (no Yabai context)
+            elif self.intelligence:
+                logger.info("[INTELLIGENT] Using Claude with current screenshot only")
+                response = await self.intelligence.understand_and_respond(
+                    current_screenshot, query
+                )
                 return response
 
-            # Fallback to Yabai metadata-only analysis when Claude is not available
+            # Fallback: Yabai metadata-only analysis
             logger.info(
                 "[INTELLIGENT] Intelligence not available, falling back to Yabai metadata analysis"
             )
@@ -1207,7 +1239,7 @@ BE CONCISE. No technical details.
             return "Multi-space analysis not available, Sir."
 
         except Exception as e:
-            logger.error(f"[INTELLIGENT] Multi-space query handler error: {e}")
+            logger.error(f"[INTELLIGENT] Multi-space query handler error: {e}", exc_info=True)
             raise
 
     async def _proactive_monitoring_loop(self):
