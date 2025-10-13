@@ -193,6 +193,15 @@ class VisionCommandHandler:
                 self.learning_system = get_learning_system()
                 self.performance_monitor = get_performance_monitor(report_interval_minutes=60)
 
+                # Initialize classifier and router without Claude client (can be added later)
+                self.classifier = get_query_classifier(claude_client=None)
+                self.smart_router = get_smart_router(
+                    yabai_handler=self._handle_yabai_query,
+                    vision_handler=self._handle_vision_query,
+                    multi_space_handler=self._handle_multi_space_query,
+                    claude_client=None
+                )
+
                 logger.info("[VISION] ✅ Intelligent query classification system initialized")
             except Exception as e:
                 logger.warning(f"[VISION] Could not initialize intelligent system: {e}")
@@ -328,22 +337,20 @@ class VisionCommandHandler:
                 self.enhanced_system.vision_intelligence = self.intelligence
                 logger.info("[ENHANCED] Updated enhanced system with vision intelligence")
 
-            # Initialize intelligent classification system with Claude client
+            # Update intelligent classification system with Claude client
             if intelligent_system_available and claude_client:
                 try:
-                    self.classifier = get_query_classifier(claude_client)
+                    # Update existing classifier with Claude client
+                    if self.classifier:
+                        self.classifier.claude = claude_client
+                        logger.info("[INTELLIGENT] Updated classifier with Claude client")
 
-                    # Initialize smart router with handlers
-                    self.smart_router = get_smart_router(
-                        yabai_handler=self._handle_yabai_query,
-                        vision_handler=self._handle_vision_query,
-                        multi_space_handler=self._handle_multi_space_query,
-                        claude_client=claude_client
-                    )
-
-                    logger.info("[INTELLIGENT] Classifier and router initialized with Claude client")
+                    # Update existing smart router with Claude client
+                    if self.smart_router:
+                        self.smart_router.classifier.claude = claude_client if hasattr(self.smart_router, 'classifier') and self.smart_router.classifier else None
+                        logger.info("[INTELLIGENT] Updated smart router with Claude client")
                 except Exception as e:
-                    logger.warning(f"[INTELLIGENT] Could not initialize classifier/router: {e}")
+                    logger.warning(f"[INTELLIGENT] Could not update classifier/router with Claude client: {e}")
 
             logger.info("[PURE VISION] Intelligence systems initialized")
 
@@ -390,8 +397,8 @@ class VisionCommandHandler:
                 # Add current Yabai state to context if available
                 if self.yabai_detector:
                     try:
-                        active_space = await self.yabai_detector.get_focused_space()
-                        all_spaces = await self.yabai_detector.get_all_spaces()
+                        active_space = self.yabai_detector.get_current_space()
+                        all_spaces = self.yabai_detector.enumerate_all_spaces()
                         context['active_space'] = active_space.get('index') if active_space else None
                         context['total_spaces'] = len(all_spaces) if all_spaces else 0
                     except Exception:
@@ -804,13 +811,20 @@ class VisionCommandHandler:
                     logger.info("[YABAI] Using Yabai-based multi-space intelligence")
 
                     # Check Yabai availability
-                    status = await self.yabai_detector.check_availability()
+                    status = self.yabai_detector.get_status()
 
                     if status == YabaiStatus.AVAILABLE:
                         # Get workspace data from Yabai
-                        workspace_data = await self.yabai_detector.get_workspace_data()
+                        workspace_data = self.yabai_detector.get_workspace_summary()
                         spaces = workspace_data['spaces']
-                        windows = workspace_data['windows']
+
+                        # Collect all windows from all spaces
+                        windows = []
+                        for space in spaces:
+                            space_id = space.get('index', space.get('id'))
+                            if space_id:
+                                space_windows = self.yabai_detector.get_windows_for_space(space_id)
+                                windows.extend(space_windows)
 
                         # Analyze workspace activity
                         analysis = self.workspace_analyzer.analyze(spaces, windows)
@@ -820,9 +834,8 @@ class VisionCommandHandler:
                             analysis, include_details=True
                         )
 
-                        # Get performance stats
-                        perf_stats = self.yabai_detector.get_performance_stats()
-                        logger.info(f"[YABAI] Performance: {perf_stats}")
+                        # Log performance info
+                        logger.info(f"[YABAI] Successfully generated workspace overview with {len(spaces)} spaces")
 
                         return {
                             "handled": True,
@@ -837,7 +850,7 @@ class VisionCommandHandler:
                                 "unique_applications": analysis.unique_applications,
                                 "detected_project": analysis.detected_project,
                                 "yabai_status": status.value,
-                                "performance": perf_stats
+                                "total_windows": len(windows)
                             }
                         }
                     else:
@@ -1249,32 +1262,38 @@ BE CONCISE. No technical details.
         Fast path for workspace overview queries
         """
         try:
-            if not self.yabai_detector or not self.workspace_analyzer:
+            if not self.yabai_detector:
                 raise ValueError("Yabai system not available")
 
             logger.info("[INTELLIGENT] Handling metadata-only query with Yabai")
 
-            # Get workspace data from Yabai
-            workspace_data = await self.yabai_detector.get_all_spaces()
-            windows_data = await self.yabai_detector.get_all_windows()
+            # Use Yabai's built-in describe_workspace method for natural language response
+            if hasattr(self.yabai_detector, 'describe_workspace'):
+                response = self.yabai_detector.describe_workspace()
+                return response
 
-            # Analyze workspace
-            if self.workspace_analyzer:
-                analysis = self.workspace_analyzer.analyze(workspace_data, windows_data)
+            # Fallback: Get workspace data and build response manually
+            workspace_data = self.yabai_detector.enumerate_all_spaces()
+            if not workspace_data:
+                return "No desktop spaces detected, Sir."
 
-                # Generate natural response
-                if self.space_response_generator:
-                    response = self.space_response_generator.generate_overview_response(
-                        analysis,
-                        include_details=True
-                    )
+            # Build detailed response
+            space_descriptions = []
+            for space in workspace_data:
+                space_num = space.get('index', '?')
+                apps = space.get('applications', [])
+                window_count = space.get('window_count', 0)
+
+                if window_count == 0:
+                    space_descriptions.append(f"Space {space_num}: Empty")
                 else:
-                    # Fallback to basic response
-                    response = f"You have {analysis.total_spaces} desktop spaces with {analysis.active_spaces} active workspaces."
-            else:
-                # Basic fallback response
-                response = f"You have {len(workspace_data)} desktop spaces visible."
+                    primary_app = apps[0] if apps else "Unknown"
+                    if len(apps) > 1:
+                        space_descriptions.append(f"Space {space_num}: {primary_app} (+{len(apps)-1} more apps, {window_count} windows)")
+                    else:
+                        space_descriptions.append(f"Space {space_num}: {primary_app} ({window_count} window{'s' if window_count != 1 else ''})")
 
+            response = f"Sir, you have {len(workspace_data)} desktop spaces:\n\n" + "\n".join(space_descriptions)
             return response
 
         except Exception as e:
@@ -1369,6 +1388,11 @@ BE CONCISE. No technical details.
                     response = process_response_with_workspace_names(response, window_data)
 
                 return response
+
+            # Fallback to Yabai metadata-only analysis when Claude is not available
+            logger.info("[INTELLIGENT] Intelligence not available, falling back to Yabai metadata analysis")
+            if self.yabai_detector and self.workspace_analyzer:
+                return await self._handle_yabai_query(query, context)
 
             return "Multi-space analysis not available, Sir."
 
@@ -1707,7 +1731,7 @@ Never use generic error messages or technical jargon.
             if self.yabai_detector:
                 try:
                     yabai_data = {
-                        'spaces': await self.yabai_detector.get_all_spaces() if hasattr(self.yabai_detector, 'get_all_spaces') else {},
+                        'spaces': self.yabai_detector.enumerate_all_spaces(),
                         'active_space': context.get('active_space')
                     }
                 except Exception:

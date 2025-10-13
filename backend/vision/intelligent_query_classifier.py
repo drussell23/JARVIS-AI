@@ -364,11 +364,14 @@ Respond with ONLY the JSON, no other text.
         # Deep analysis signals
         deep_score = 0
         if "across" in query_lower or "all" in query_lower:
-            deep_score += 0.4
+            deep_score += 0.5  # Increased from 0.4
         if features.get("has_space_reference", False) and features.get("has_visual_keywords", False):
-            deep_score += 0.4
+            deep_score += 0.3
         if "analyze" in query_lower or "comprehensive" in query_lower:
             deep_score += 0.2
+        # Strong signal: "what's happening" + space reference
+        if ("happening" in query_lower or "working on" in query_lower) and features.get("has_space_reference", False):
+            deep_score += 0.3
 
         # Determine intent
         scores = [
@@ -379,7 +382,9 @@ Respond with ONLY the JSON, no other text.
         scores.sort(key=lambda x: x[1], reverse=True)
 
         intent = scores[0][0]
-        confidence = min(0.85, scores[0][1])  # Cap at 0.85 for fallback
+        # Use a confidence boost formula: base_score + (base_score * 0.3) to get above 0.60 threshold
+        base_confidence = scores[0][1]
+        confidence = min(0.85, base_confidence + (base_confidence * 0.3))  # Boost confidence for fallback
         second_best = (scores[1][0], scores[1][1]) if len(scores) > 1 else None
 
         return ClassificationResult(
