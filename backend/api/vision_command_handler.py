@@ -414,10 +414,10 @@ class VisionCommandHandler:
         if monitoring_result.get("handled"):
             return monitoring_result
 
-        # ==============================================================================
         # INTELLIGENT CLASSIFICATION SYSTEM (RUNS FIRST - HIGHEST PRIORITY)
         # Use smart router to classify and route query to optimal pipeline
         # ==============================================================================
+
         if intelligent_system_available and self.smart_router and self.context_manager:
             try:
                 logger.info("[INTELLIGENT] Using smart router for query classification")
@@ -481,29 +481,6 @@ class VisionCommandHandler:
         # END INTELLIGENT CLASSIFICATION SYSTEM
         # ==============================================================================
 
-        # Try enhanced system as fallback (only if intelligent routing didn't handle it)
-        #
-        # DISABLED: This legacy 'enhanced_system' was overriding the new intelligent router.
-        # It has its own intent classification that conflicts with the new ML-based
-        # classifier, leading to generic responses instead of the detailed Yabai output.
-        # By disabling this, we force all vision queries to go through the new
-        # `smart_router`, which correctly handles different intents.
-        #
-        # if self.enhanced_system:
-        #     try:
-        #         enhanced_result = await self.enhanced_system.handle_vision_command(command_text)
-        #         if enhanced_result.get('handled') != False:
-        #             # Enhanced system handled the command
-        #             response = enhanced_result.get('response', '')
-        #             logger.info(f"[ENHANCED] Successfully handled query with enhanced system")
-        #             return {
-        #                 'handled': True,
-        #                 'response': response,
-        #                 'metadata': enhanced_result
-        #             }
-        #     except Exception as e:
-        #         logger.warning(f"[ENHANCED] Enhanced system error, falling back: {e}")
-
         # Ensure intelligence is initialized
         if not self.intelligence:
             await self.initialize_intelligence()
@@ -529,333 +506,47 @@ class VisionCommandHandler:
             # Even error messages come from Claude
             return await self._get_error_response("screenshot_failed", command_text)
 
-        # Use new classification system if available
-        if monitoring_system_available:
-            # Get current monitoring state
-            state_manager = get_state_manager()
-            current_state = state_manager.is_monitoring_active()
-
-            # Classify the command
-            command_context = classify_monitoring_command(command_text, current_state)
-            logger.info(
-                f"[VISION] Command classified as: {command_context['type'].value} with confidence {command_context['confidence']:.2f}"
+        # Fallback to old logic
+        # First check if it's an activity reporting command (faster than Claude)
+        if is_activity_reporting_command(command_text):
+            is_monitoring_command = True
+        # Quick check for common monitoring phrases
+        elif any(
+            phrase in command_text.lower()
+            for phrase in [
+                "start monitoring",
+                "enable monitoring",
+                "monitor my screen",
+                "enable screen monitoring",
+                "monitoring capabilities",
+                "turn on monitoring",
+                "activate monitoring",
+                "begin monitoring",
+            ]
+        ):
+            is_monitoring_command = True
+            logger.info(f"Quick match: '{command_text}' is a monitoring command")
+        else:
+            # Determine if this is a monitoring command through Claude
+            is_monitoring_command = await self._is_monitoring_command(
+                command_text, screenshot
             )
 
-            # Route based on command type
-            if command_context["type"] == CommandType.MONITORING_CONTROL:
-                return await self._handle_monitoring_control(
-                    command_text, command_context, screenshot
-                )
-            elif command_context["type"] == CommandType.MONITORING_STATUS:
-                return await self._handle_monitoring_status(
-                    command_text, command_context, screenshot
-                )
-            elif command_context["type"] == CommandType.VISION_QUERY:
-                # Enhanced vision query - use multi-space intelligence for comprehensive analysis
-                logger.info(
-                    f"[ENHANCED VISION] Processing vision query with multi-space intelligence: {command_text}"
-                )
-
-                # Check if this needs multi-space analysis
-                needs_multi_space = False
-                if self.intelligence and hasattr(
-                    self.intelligence, "_should_use_multi_space"
-                ):
-                    needs_multi_space = self.intelligence._should_use_multi_space(
-                        command_text
-                    )
-                    logger.info(
-                        f"[ENHANCED VISION] Multi-space analysis needed: {needs_multi_space}"
-                    )
-
-                # Debug logging for screenshot type
-                logger.info(
-                    f"[ENHANCED VISION] Screenshot type: {type(screenshot)}, needs_multi_space: {needs_multi_space}"
-                )
-                if isinstance(screenshot, dict):
-                    logger.info(
-                        f"[ENHANCED VISION] Screenshot is dict with {len(screenshot)} keys: {list(screenshot.keys())}"
-                    )
-
-                if needs_multi_space and isinstance(screenshot, dict):
-                    # Multi-space query with multiple screenshots - use enhanced analysis
-                    logger.info(
-                        f"[ENHANCED VISION] Using enhanced multi-space analysis for {len(screenshot)} spaces"
-                    )
-
-                    # Get comprehensive workspace data
-                    window_data = await self.intelligence._gather_multi_space_data()
-
-                    # Debug log the window data
-                    logger.info(
-                        f"[WORKSPACE DEBUG] Window data keys: {window_data.keys() if window_data else 'None'}"
-                    )
-                    if window_data and "spaces" in window_data:
-                        logger.info(
-                            f"[WORKSPACE DEBUG] Number of spaces: {len(window_data['spaces'])}"
-                        )
-                        for space_id, space_info in window_data["spaces"].items():
-                            if isinstance(space_info, dict):
-                                apps = space_info.get("applications", [])
-                                primary = space_info.get("primary_app", "None")
-                                space_name = space_info.get(
-                                    "space_name", f"Desktop {space_id}"
-                                )
-                                logger.info(
-                                    f"[WORKSPACE DEBUG] Space {space_id}: name='{space_name}', primary='{primary}', apps={apps[:2] if apps else []}"
-                                )
-
-                    # Use enhanced system if available
-                    if hasattr(self.intelligence, "multi_space_extension") and hasattr(
-                        self.intelligence.multi_space_extension,
-                        "generate_enhanced_workspace_response",
-                    ):
-
-                        enhanced_response = self.intelligence.multi_space_extension.generate_enhanced_workspace_response(
-                            command_text, window_data, screenshot
-                        )
-
-                        # Check if enhanced response returned None (signals to use Claude API)
-                        if enhanced_response is None:
-                            logger.info(
-                                "[ENHANCED VISION] Enhanced system returned None, falling back to Claude API for intelligent analysis"
-                            )
-                            # Use Claude API for intelligent analysis
-                            response = await self.intelligence.understand_and_respond(
-                                screenshot, command_text
-                            )
-
-                            logger.info(
-                                f"[WORKSPACE DEBUG] Original response has 'Desktop': {'Desktop' in response if response else 'N/A'}"
-                            )
-                            if response and "Desktop" in response:
-                                logger.info(
-                                    f"[WORKSPACE DEBUG] Sample of original: {response[:300]}"
-                                )
-
-                            # Process response to replace generic desktop names with actual workspace names
-                            if workspace_detector_available:
-                                logger.info(
-                                    "[WORKSPACE DEBUG] Using workspace_detector to process response"
-                                )
-                                processed_response = (
-                                    process_response_with_workspace_names(
-                                        response, window_data
-                                    )
-                                )
-                                logger.info(
-                                    f"[WORKSPACE DEBUG] After detector - has 'Desktop': {'Desktop' in processed_response if processed_response else 'N/A'}"
-                                )
-                                response = processed_response
-                            elif workspace_processor_available and window_data:
-                                logger.info(
-                                    "[WORKSPACE DEBUG] Using workspace_processor to process response"
-                                )
-                                processed_response = process_jarvis_response(
-                                    response, window_data
-                                )
-                                logger.info(
-                                    f"[WORKSPACE DEBUG] After processor - has 'Desktop': {'Desktop' in processed_response if processed_response else 'N/A'}"
-                                )
-                                response = processed_response
-
-                            logger.info(
-                                f"[ENHANCED VISION] Response processed with workspace names"
-                            )
-
-                            return {
-                                "handled": True,
-                                "response": response,
-                                "claude_api": True,
-                                "multi_space": True,
-                                "spaces_analyzed": len(screenshot),
-                                "monitoring_active": self.monitoring_active,
-                                "context": self.intelligence.context.get_temporal_context(),
-                            }
-                        else:
-                            logger.info(
-                                f"[ENHANCED VISION] Generated enhanced response: {len(enhanced_response)} chars"
-                            )
-                            return {
-                                "handled": True,
-                                "response": enhanced_response,
-                                "enhanced_analysis": True,
-                                "multi_space": True,
-                                "spaces_analyzed": len(screenshot),
-                                "monitoring_active": self.monitoring_active,
-                                "context": self.intelligence.context.get_temporal_context(),
-                            }
-                    else:
-                        # Fallback to Claude analysis with multi-space prompt
-                        logger.info(
-                            "[ENHANCED VISION] Enhanced system not available, using Claude multi-space analysis"
-                        )
-                        response = await self.intelligence.understand_and_respond(
-                            screenshot, command_text
-                        )
-
-                        # Process response for multi-space queries
-                        if workspace_detector_available:
-                            response = process_response_with_workspace_names(
-                                response, window_data
-                            )
-                        elif workspace_processor_available and window_data:
-                            response = process_jarvis_response(response, window_data)
-                else:
-                    # Single space or basic query - use standard Claude analysis
-                    logger.info("[ENHANCED VISION] Single space analysis")
-                    response = await self.intelligence.understand_and_respond(
-                        screenshot, command_text
-                    )
-
-                    # Even single space responses might contain Desktop references
-                    if workspace_detector_available:
-                        # Always try to process with workspace detector for any Desktop references
-                        try:
-                            if hasattr(self.intelligence, "_gather_multi_space_data"):
-                                window_data = (
-                                    await self.intelligence._gather_multi_space_data()
-                                )
-                                response = process_response_with_workspace_names(
-                                    response, window_data
-                                )
-                            else:
-                                # Use detector without window data
-                                response = process_response_with_workspace_names(
-                                    response, None
-                                )
-                        except:
-                            pass  # Fallback silently if can't process
-                    elif workspace_processor_available and hasattr(
-                        self.intelligence, "_gather_multi_space_data"
-                    ):
-                        try:
-                            window_data = (
-                                await self.intelligence._gather_multi_space_data()
-                            )
-                            if window_data:
-                                response = process_jarvis_response(
-                                    response, window_data
-                                )
-                        except:
-                            pass  # Fallback silently if can't get window data
-
-                return {
-                    "handled": True,
-                    "response": response,
-                    "pure_intelligence": True,
-                    "monitoring_active": self.monitoring_active,
-                    "context": self.intelligence.context.get_temporal_context(),
-                }
-            else:
-                # Ambiguous command - use Claude to determine intent
-                is_monitoring_command = await self._is_monitoring_command(
-                    command_text, screenshot
-                )
-                if is_monitoring_command:
-                    return await self._handle_monitoring_command(
-                        command_text, screenshot
-                    )
-                else:
-                    # Enhanced vision query - check for multi-space needs
-                    logger.info(
-                        f"[ENHANCED VISION FALLBACK] Processing vision query: {command_text}"
-                    )
-
-                    # Check if this needs multi-space analysis
-                    needs_multi_space = False
-                    if self.intelligence and hasattr(
-                        self.intelligence, "_should_use_multi_space"
-                    ):
-                        needs_multi_space = self.intelligence._should_use_multi_space(
-                            command_text
-                        )
-
-                    if needs_multi_space and isinstance(screenshot, dict):
-                        # Multi-space query - use enhanced analysis
-                        logger.info(
-                            f"[ENHANCED VISION FALLBACK] Using enhanced multi-space analysis for {len(screenshot)} spaces"
-                        )
-
-                        window_data = await self.intelligence._gather_multi_space_data()
-
-                        if hasattr(
-                            self.intelligence, "multi_space_extension"
-                        ) and hasattr(
-                            self.intelligence.multi_space_extension,
-                            "generate_enhanced_workspace_response",
-                        ):
-
-                            enhanced_response = self.intelligence.multi_space_extension.generate_enhanced_workspace_response(
-                                command_text, window_data, screenshot
-                            )
-                            logger.info(
-                                f"[ENHANCED VISION FALLBACK] Generated enhanced response: {len(enhanced_response)} chars"
-                            )
-
-                            return {
-                                "handled": True,
-                                "response": enhanced_response,
-                                "enhanced_analysis": True,
-                                "multi_space": True,
-                                "spaces_analyzed": len(screenshot),
-                                "monitoring_active": self.monitoring_active,
-                                "context": self.intelligence.context.get_temporal_context(),
-                            }
-
-                    # Pure vision query - use standard Claude analysis
-                    response = await self.intelligence.understand_and_respond(
-                        screenshot, command_text
-                    )
-                    return {
-                        "handled": True,
-                        "response": response,
-                        "pure_intelligence": True,
-                        "monitoring_active": self.monitoring_active,
-                        "context": self.intelligence.context.get_temporal_context(),
-                    }
+        if is_monitoring_command:
+            return await self._handle_monitoring_command(command_text, screenshot)
         else:
-            # Fallback to old logic
-            # First check if it's an activity reporting command (faster than Claude)
-            if is_activity_reporting_command(command_text):
-                is_monitoring_command = True
-            # Quick check for common monitoring phrases
-            elif any(
-                phrase in command_text.lower()
-                for phrase in [
-                    "start monitoring",
-                    "enable monitoring",
-                    "monitor my screen",
-                    "enable screen monitoring",
-                    "monitoring capabilities",
-                    "turn on monitoring",
-                    "activate monitoring",
-                    "begin monitoring",
-                ]
-            ):
-                is_monitoring_command = True
-                logger.info(f"Quick match: '{command_text}' is a monitoring command")
-            else:
-                # Determine if this is a monitoring command through Claude
-                is_monitoring_command = await self._is_monitoring_command(
-                    command_text, screenshot
-                )
+            # Pure vision query - let Claude see and respond
+            response = await self.intelligence.understand_and_respond(
+                screenshot, command_text
+            )
 
-            if is_monitoring_command:
-                return await self._handle_monitoring_command(command_text, screenshot)
-            else:
-                # Pure vision query - let Claude see and respond
-                response = await self.intelligence.understand_and_respond(
-                    screenshot, command_text
-                )
-
-                return {
-                    "handled": True,
-                    "response": response,
-                    "pure_intelligence": True,
-                    "monitoring_active": self.monitoring_active,
-                    "context": self.intelligence.context.get_temporal_context(),
-                }
+            return {
+                "handled": True,
+                "response": response,
+                "pure_intelligence": True,
+                "monitoring_active": self.monitoring_active,
+                "context": self.intelligence.context.get_temporal_context(),
+            }
 
         # Fallback: If we reach here, something went wrong
         logger.warning(f"[VISION] No handler processed the command: {command_text}")
