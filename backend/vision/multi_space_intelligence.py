@@ -226,6 +226,21 @@ class MultiSpaceQueryDetector:
         """Detect the intent of a space-related query with confidence scoring"""
         query_lower = query.lower()
         
+        # PRIORITY CHECK: Overview queries should NEVER trigger Mission Control
+        # Check workspace_overview patterns FIRST to prevent mission control trigger
+        overview_keywords = ['what am i', 'working on', 'happening across', 'show me what', 'tell me what']
+        if any(keyword in query_lower for keyword in overview_keywords):
+            for pattern in self.patterns.get('workspace_overview', []):
+                match = re.search(pattern, query_lower)
+                if match:
+                    # Force workspace_overview classification for these queries
+                    return self._build_intent(
+                        "workspace_overview",
+                        match,
+                        query,
+                        confidence=0.95,  # High confidence
+                    )
+        
         # Track all matches with confidence scores
         matches = []
         
