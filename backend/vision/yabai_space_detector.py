@@ -178,7 +178,7 @@ class YabaiSpaceDetector:
         spaces = self.enumerate_all_spaces()
 
         if not spaces:
-        return {
+            return {
                 "total_spaces": 0,
                 "total_windows": 0,
                 "total_applications": 0,
