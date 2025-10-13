@@ -1,6 +1,13 @@
 """
 Yabai integration for accurate Mission Control space detection
 Provides real-time space and window information using Yabai CLI
+
+NOTE: This file has had repeated indentation issues with auto-formatters.
+If using black, autopep8, or other formatters, please exclude this file
+or manually review changes before committing. Known problematic lines:
+- Line 70: else statement indentation
+- Line 169: return statement indentation
+- Line 207: return block indentation
 """
 
 import subprocess
