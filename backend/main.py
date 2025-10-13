@@ -96,34 +96,42 @@ Browser Automation Features (v13.4.0):
 import multiprocessing
 import sys
 import subprocess
+import os
 
+# Set critical environment variables FIRST
+if sys.platform == "darwin":  # macOS specific
+    os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
+    os.environ["PYTHONUNBUFFERED"] = "1"
+    
 # Clean up leaked semaphores from previous runs FIRST
 if sys.platform == "darwin":  # macOS specific
     try:
         # Get current user
-        import os
         user = os.getenv("USER", "")
         if user:
-            # Clean up semaphores
+            # Clean up semaphores (macOS xargs doesn't have -r flag)
             result = subprocess.run(
-                f"ipcs -s 2>/dev/null | grep {user} | awk '{{print $2}}' | xargs -r ipcrm -s 2>/dev/null",
+                f"ipcs -s 2>/dev/null | grep {user} | awk '{{print $2}}' | while read id; do ipcrm -s $id 2>/dev/null; done",
                 shell=True,
                 capture_output=True,
                 timeout=5
             )
-            print(f"[STARTUP] Cleaned up leaked semaphores")
+            if result.returncode == 0:
+                print(f"[STARTUP] Cleaned up leaked semaphores")
     except Exception as e:
         print(f"[STARTUP] Semaphore cleanup warning: {e}")
 
-    # Set spawn mode
+    # Set spawn mode - MUST be before any other multiprocessing usage
     try:
         multiprocessing.set_start_method('spawn', force=True)
         print("[STARTUP] Set multiprocessing to spawn mode")
-    except RuntimeError:
+    except RuntimeError as e:
         # Already set, that's fine
+        if "context has already been set" not in str(e):
+            print(f"[STARTUP] Multiprocessing warning: {e}")
         pass
 
-import os
+# Now continue with other imports
 import asyncio
 import time
 import logging
