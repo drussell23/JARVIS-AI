@@ -76,6 +76,71 @@ JARVIS: "I'll help you install the requests module. You can run:
          This will install the missing package and resolve the error."
 ```
 
+### 🪟 **YABAI MISSION CONTROL INTEGRATION** (NEW!)
+**JARVIS NOW HAS ACCURATE MISSION CONTROL SPACE DETECTION!**
+
+🎯 **Yabai Integration Features:**
+- ✅ **Accurate Space Detection** - Real Mission Control space count (not hardcoded!)
+- ✅ **Window-to-Space Mapping** - Knows exactly which windows are in which spaces
+- ✅ **Fullscreen Detection** - Identifies fullscreen apps correctly
+- ✅ **Current Space Awareness** - Always knows your active space
+- ✅ **Rich Window Context** - Window titles, app names, positions
+- ✅ **Zero Visual Switching** - All detection happens invisibly
+- ✅ **Fallback Support** - Works with or without Yabai
+
+### 💬 **Example: Multi-Space Awareness**
+```
+You: "What's happening across my desktop spaces?"
+
+JARVIS: "I can see activity across 8 Mission Control spaces:
+
+📍 Current Space (Space 2):
+   • Cursor - jarvis_space_detector.py (Fullscreen, Development)
+
+🌐 Other Active Spaces:
+   Space 1: Finder, WhatsApp, System Settings (3 windows)
+   Space 3: Google Chrome - Claude (Browsing)
+   Space 4: J.A.R.V.I.S. Interface (AI Assistant)
+   Space 5: VS Code - Python project (Development)
+   Space 6: YouTube - Google Chrome (Media)
+   Space 7: Terminal - build logs (Development)
+   Space 8: Google Chrome - Mission control APIs (Research)
+
+📊 Activity Summary:
+   • Development: Spaces 2, 5, 7 (coding, terminal work)
+   • Browsing: Spaces 3, 4, 6, 8 (research, media)
+   • Communication: Space 1 (messages, settings)
+
+   Total: 12 windows across 7 applications"
+```
+
+### 🔧 **Setting Up Yabai (Optional)**
+
+**1. Install Yabai:**
+```bash
+brew install koekeishiya/formulae/yabai
+```
+
+**2. Start Yabai Service:**
+```bash
+yabai --start-service
+```
+
+**3. Grant Accessibility Permissions:**
+- System Settings → Privacy & Security → Accessibility
+- Add and enable Yabai
+
+**4. Test Integration:**
+```bash
+# Should show your Mission Control spaces
+yabai -m query --spaces
+
+# Should show all windows
+yabai -m query --windows
+```
+
+**Note:** JARVIS works without Yabai, but with reduced space detection accuracy. Yabai enables perfect Mission Control integration!
+
 ### 🏗️ **What We Built in v13.11.0:**
 
 #### **1. Unified Context Bridge** (`backend/core/unified_context_bridge.py`)
@@ -264,6 +329,29 @@ async def get_page_title(window_id: str) -> Optional[str]:
 async def get_readable_text(window_id: str, limit_chars: int = 1000) -> str:
     """Extract readable page content"""
 ```
+
+**Yabai Space Detector** (`yabai_space_detector.py`):
+```python
+async def get_all_spaces() -> List[Dict]:
+    """
+    Query Mission Control spaces via Yabai
+    Returns accurate space count and window mapping
+    """
+
+async def get_current_space_id() -> Optional[int]:
+    """Get the active Mission Control space ID"""
+
+async def get_windows_in_space(space_id: int) -> List[Dict]:
+    """Get all windows in a specific space with full context"""
+```
+
+**Features:**
+- ✅ Real Mission Control integration via Yabai CLI
+- ✅ Accurate space count (not hardcoded)
+- ✅ Window-to-space mapping with rich context
+- ✅ Fullscreen detection and current space awareness
+- ✅ Graceful fallback if Yabai unavailable
+- ✅ Async subprocess management with proper error handling
 
 **Code Adapter** (`code.py`):
 ```python

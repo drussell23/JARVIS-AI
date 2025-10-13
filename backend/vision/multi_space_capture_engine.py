@@ -576,14 +576,14 @@ class MultiSpaceCaptureEngine:
             # Setting capture_output=False prevents semaphore leaks
             manager = get_subprocess_manager()
             return_code, stdout, stderr = await manager.run_command(
-                cmd,
-                timeout=5.0,
-                capture_output=False
+                cmd, timeout=5.0, capture_output=False
             )
 
             if return_code != 0:
-                error_msg = stderr.decode('utf-8', errors='ignore') if stderr else ""
-                logger.error(f"Screencapture failed with code {return_code}: {error_msg}")
+                error_msg = stderr.decode("utf-8", errors="ignore") if stderr else ""
+                logger.error(
+                    f"Screencapture failed with code {return_code}: {error_msg}"
+                )
                 return None
 
             # Check if capture succeeded
