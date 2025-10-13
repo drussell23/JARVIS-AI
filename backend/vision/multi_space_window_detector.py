@@ -547,28 +547,9 @@ class MultiSpaceWindowDetector:
         except Exception as e:
             logger.warning(f"[SPACE_DETECTION] Yabai detection failed: {e}")
 
-        # Try Objective-C space detection as fallback
-        try:
-            from .objc_space_detector import get_objc_space_detector
-
-            objc_detector = get_objc_space_detector()
-            if objc_detector.is_available():
-                objc_spaces = objc_detector.enumerate_all_spaces()
-
-                if objc_spaces:
-                    detected_spaces = set()
-                    for space_info in objc_spaces:
-                        space_id = space_info.get("space_id", 1)
-                        detected_spaces.add(space_id)
-
-                    spaces.update(detected_spaces)
-                    logger.info(
-                        f"[SPACE_DETECTION] Detected {len(detected_spaces)} spaces via Objective-C: {sorted(detected_spaces)}"
-                    )
-                    return spaces
-
-        except Exception as e:
-            logger.warning(f"[SPACE_DETECTION] Objective-C detection failed: {e}")
+        # NOTE: Objective-C space detection removed due to segfault issues
+        # The compiled libspace_detection.dylib had memory management problems
+        # causing crashes. Using Yabai or Core Graphics fallback instead.
 
         # Fallback: Use Core Graphics API to get all windows (including off-screen)
         try:
