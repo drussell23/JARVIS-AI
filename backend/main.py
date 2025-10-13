@@ -95,11 +95,30 @@ Browser Automation Features (v13.4.0):
 # This prevents segmentation faults from semaphore leaks on macOS
 import multiprocessing
 import sys
+import subprocess
 
-# Only set if not already set (allows testing different methods)
+# Clean up leaked semaphores from previous runs FIRST
 if sys.platform == "darwin":  # macOS specific
     try:
+        # Get current user
+        import os
+        user = os.getenv("USER", "")
+        if user:
+            # Clean up semaphores
+            result = subprocess.run(
+                f"ipcs -s 2>/dev/null | grep {user} | awk '{{print $2}}' | xargs -r ipcrm -s 2>/dev/null",
+                shell=True,
+                capture_output=True,
+                timeout=5
+            )
+            print(f"[STARTUP] Cleaned up leaked semaphores")
+    except Exception as e:
+        print(f"[STARTUP] Semaphore cleanup warning: {e}")
+
+    # Set spawn mode
+    try:
         multiprocessing.set_start_method('spawn', force=True)
+        print("[STARTUP] Set multiprocessing to spawn mode")
     except RuntimeError:
         # Already set, that's fine
         pass
