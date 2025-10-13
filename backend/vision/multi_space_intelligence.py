@@ -1895,17 +1895,20 @@ class AdaptiveResponseGenerator:
     def _summarize_workspace(self, workspace_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a summary of the entire workspace"""
 
-        spaces = workspace_data.get("spaces", [])
+        # Get space data - prioritize space_details or spaces_list (which are lists)
+        # over spaces (which is a dict)
+        spaces = workspace_data.get("space_details") or workspace_data.get("spaces_list") or []
+        
+        # Fallback to dict values if we got a dict
+        if isinstance(spaces, dict):
+            spaces = list(spaces.values())
+            
         current_space = workspace_data.get("current_space", {})
 
         summary = {
-            "total_spaces": len(spaces),
+            "total_spaces": workspace_data.get("total_spaces", len(spaces)),
             "current_space_id": current_space.get("id", 1),
-            "total_apps": sum(
-                len(getattr(space, 'applications', {})) if hasattr(space, 'applications')
-                else (len(space.get("applications", {})) if isinstance(space, dict) else 0)
-                for space in spaces
-            ),
+            "total_apps": workspace_data.get("total_apps", workspace_data.get("total_applications", 0)),
             "space_details": [],
         }
 
@@ -1914,28 +1917,35 @@ class AdaptiveResponseGenerator:
             if hasattr(space, 'space_id'):
                 # SpaceInfo object
                 space_id = space.space_id
-                applications = getattr(space, 'applications', {})
+                applications = getattr(space, 'applications', [])
                 is_current = space_id == summary["current_space_id"]
             elif isinstance(space, dict):
                 # Dict format
                 space_id = space.get("space_id", 1)
-                applications = space.get("applications", {})
+                applications = space.get("applications", [])
                 is_current = space_id == summary["current_space_id"]
             else:
                 # Skip unknown format
                 continue
 
-            # Get app names safely
-            if hasattr(applications, 'keys'):
+            # Applications should be a list of app names
+            if isinstance(applications, dict):
                 app_names = list(applications.keys())
+            elif isinstance(applications, list):
+                app_names = applications
             else:
                 app_names = []
+
+            # Get primary app from the space data if available
+            primary_app = space.get("primary_app") if isinstance(space, dict) else None
+            if not primary_app and app_names:
+                primary_app = app_names[0]
 
             space_summary = {
                 "space_id": space_id,
                 "is_current": is_current,
-                "app_count": len(applications),
-                "primary_activity": self.response_builder._determine_space_activity(applications),
+                "app_count": len(app_names),
+                "primary_activity": primary_app or "Empty",
                 "applications": app_names,
             }
 
@@ -2154,18 +2164,25 @@ class AdaptiveResponseGenerator:
         # Add space details
         for space_detail in workspace["space_details"]:
             space_id = space_detail["space_id"]
-            is_current = space_detail["is_current"]
-            activity = space_detail["primary_activity"]
-            apps = space_detail["applications"]
+            is_current = space_detail.get("is_current", False)
+            # Handle both primary_activity and primary_app field names
+            activity = space_detail.get("primary_activity") or space_detail.get("primary_app") or "Empty"
+            apps = space_detail.get("applications", [])
 
             if is_current:
-                overview_parts.append(
-                    f"**Desktop {space_id} (current)**: {activity} - {', '.join(apps[:3])}"
-                )
+                if apps:
+                    overview_parts.append(
+                        f"**Desktop {space_id} (current)**: {activity} - {', '.join(apps[:3])}"
+                    )
+                else:
+                    overview_parts.append(f"**Desktop {space_id} (current)**: {activity}")
             else:
-                overview_parts.append(
-                    f"Desktop {space_id}: {activity} - {', '.join(apps[:2])}"
-                )
+                if apps:
+                    overview_parts.append(
+                        f"Desktop {space_id}: {activity} - {', '.join(apps[:2])}"
+                    )
+                else:
+                    overview_parts.append(f"Desktop {space_id}: {activity}")
 
         # Add correlations if found
         if correlations:
