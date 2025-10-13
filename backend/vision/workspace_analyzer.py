@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Set, Optional, Any
 from enum import Enum
 
-from .yabai_space_detector import SpaceInfo, WindowInfo
+from .multi_space_window_detector import SpaceInfo, EnhancedWindowInfo as WindowInfo
 
 logger = logging.getLogger(__name__)
 

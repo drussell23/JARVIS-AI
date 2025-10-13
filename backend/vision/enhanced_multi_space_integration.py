@@ -18,7 +18,7 @@ from .adaptive_detection_learning import AdaptiveDetectionLearning
 # Import existing components
 from .multi_space_window_detector import MultiSpaceWindowDetector
 from .multi_space_capture_engine import MultiSpaceCaptureEngine
-from .multi_space_intelligence import MultiSpaceIntelligence
+from .multi_space_intelligence import MultiSpaceIntelligenceExtension
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class EnhancedMultiSpaceSystem:
         # Keep existing components for compatibility
         self.window_detector = MultiSpaceWindowDetector()
         self.capture_engine = MultiSpaceCaptureEngine()
-        self.intelligence = MultiSpaceIntelligence()
+        self.intelligence = MultiSpaceIntelligenceExtension()
 
         logger.info("Enhanced Multi-Space System initialized with all improvements")
 
