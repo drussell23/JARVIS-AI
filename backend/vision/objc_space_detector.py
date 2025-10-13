@@ -21,6 +21,17 @@ class ObjCSpaceDetector:
 
     def _load_library(self):
         """Load the Objective-C dynamic library"""
+        # DISABLED: This library causes segfaults (exit code -11)
+        # The library has memory management issues that cause crashes
+        # when processing desktop space queries
+        logger.warning(
+            "[OBJC_SPACE_DETECTOR] Objective-C library disabled due to segfault issues. "
+            "Using Python fallback for space detection."
+        )
+        self.lib = None
+        return
+        
+        # Original code kept for reference but not executed
         try:
             # Get the path to the compiled library
             lib_path = Path(__file__).parent / "libspace_detection.dylib"
