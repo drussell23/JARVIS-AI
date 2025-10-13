@@ -3052,7 +3052,46 @@ async def main():
             print(f"{Colors.FAIL}Cleanup failed: {e}{Colors.ENDC}")
             return 1
 
-    # Handle restart mode
+    # Auto-detect and restart existing JARVIS instances (unless specific flags used)
+    skip_auto_restart = args.cleanup_only or args.emergency_cleanup or args.check_only
+
+    if not skip_auto_restart:
+        # Check for existing JARVIS processes
+        jarvis_processes = []
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'create_time']):
+            try:
+                cmdline = proc.info.get('cmdline')
+                if cmdline and any('main.py' in arg for arg in cmdline):
+                    if any('JARVIS-AI-Agent/backend' in arg for arg in cmdline):
+                        jarvis_processes.append({
+                            'pid': proc.info['pid'],
+                            'age_hours': (time.time() - proc.info['create_time']) / 3600
+                        })
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+        # If existing instances found, automatically restart
+        if jarvis_processes:
+            print(f"\n{Colors.YELLOW}⚡ Existing JARVIS instance(s) detected{Colors.ENDC}")
+            print(f"Found {len(jarvis_processes)} process(es) - will restart automatically\n")
+
+            # Kill old processes
+            for proc in jarvis_processes:
+                print(f"  Stopping PID {proc['pid']} (running {proc['age_hours']:.1f}h)...", end="", flush=True)
+                try:
+                    os.kill(proc['pid'], signal.SIGTERM)
+                    time.sleep(1)
+                    if psutil.pid_exists(proc['pid']):
+                        os.kill(proc['pid'], signal.SIGKILL)
+                    print(f" {Colors.GREEN}✓{Colors.ENDC}")
+                except Exception as e:
+                    print(f" {Colors.FAIL}✗{Colors.ENDC} ({e})")
+
+            print(f"\n{Colors.CYAN}Waiting for processes to terminate...{Colors.ENDC}")
+            time.sleep(2)
+            print(f"{Colors.GREEN}✓ Ready to start fresh instance{Colors.ENDC}\n")
+
+    # Handle restart mode (explicit --restart flag)
     if args.restart:
         print(f"\n{Colors.BLUE}🔄 RESTART MODE{Colors.ENDC}")
         print("Restarting JARVIS with intelligent system verification...\n")
