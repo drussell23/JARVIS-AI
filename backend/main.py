@@ -91,8 +91,20 @@ Browser Automation Features (v13.4.0):
 - AppleScript Integration: Native macOS browser control
 """
 
-import os
+# CRITICAL: Set multiprocessing start method to 'spawn' BEFORE any other imports
+# This prevents segmentation faults from semaphore leaks on macOS
+import multiprocessing
 import sys
+
+# Only set if not already set (allows testing different methods)
+if sys.platform == "darwin":  # macOS specific
+    try:
+        multiprocessing.set_start_method('spawn', force=True)
+    except RuntimeError:
+        # Already set, that's fine
+        pass
+
+import os
 import asyncio
 import time
 import logging

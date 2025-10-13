@@ -37,7 +37,7 @@ class ProcessCleanupManager:
     def __init__(self):
         """Initialize the cleanup manager"""
         self.swift_monitor = None  # Initialize as None
-        
+
         # Default configuration - Aggressive memory target of 35%
         self.config = {
             'check_interval': 5.0,  # seconds
@@ -53,6 +53,8 @@ class ProcessCleanupManager:
             'cpu_threshold_single': 40.0,  # 40% CPU for single process (reduced from 50%)
             'enable_cleanup': True,
             'aggressive_cleanup': True,  # Enable aggressive memory management
+            'enable_ipc_cleanup': True,  # Enable semaphore and shared memory cleanup
+            'ipc_cleanup_age_threshold': 300,  # 5 minutes - minimum age for IPC resource cleanup
             # JARVIS-specific patterns (improved detection)
             'jarvis_patterns': [
                 'jarvis', 'main.py', 'jarvis_backend', 'jarvis_voice',
@@ -260,7 +262,12 @@ class ProcessCleanupManager:
         # Clean up orphaned ports after killing processes
         time.sleep(1)  # Give processes time to release ports
         self._cleanup_orphaned_ports()
-        
+
+        # Clean up IPC resources (semaphores, shared memory) after killing processes
+        ipc_cleaned = self._cleanup_ipc_resources()
+        if sum(ipc_cleaned.values()) > 0:
+            logger.info(f"Cleaned up IPC resources during code change cleanup")
+
         # Save new code state after cleanup
         self._save_code_state()
         
@@ -742,6 +749,10 @@ class ProcessCleanupManager:
         if not dry_run:
             self._cleanup_orphaned_ports()
 
+            # Clean up IPC resources (semaphores, shared memory, message queues)
+            ipc_cleaned = self._cleanup_ipc_resources()
+            cleanup_report["ipc_resources_cleaned"] = ipc_cleaned
+
         # Save cleanup history for learning
         self.cleanup_history.append(cleanup_report)
         self._save_cleanup_history()
@@ -779,6 +790,174 @@ class ProcessCleanupManager:
                             pass
             except:
                 pass
+
+    def _get_ipc_resources(self) -> Dict[str, List[Dict]]:
+        """
+        Get all IPC resources (semaphores, shared memory) for current user.
+        Uses ipcs command to detect orphaned resources.
+        """
+        if not self.config.get('enable_ipc_cleanup', True):
+            return {"semaphores": [], "shared_memory": [], "message_queues": []}
+
+        resources = {
+            "semaphores": [],
+            "shared_memory": [],
+            "message_queues": []
+        }
+
+        try:
+            # Get current user
+            current_user = os.getenv("USER", "")
+            if not current_user:
+                return resources
+
+            # Query semaphores
+            result = subprocess.run(
+                ["ipcs", "-s"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    if current_user in line:
+                        parts = line.split()
+                        if len(parts) >= 2 and parts[0].startswith('0x'):
+                            resources["semaphores"].append({
+                                "key": parts[0],
+                                "id": parts[1],
+                                "owner": parts[2] if len(parts) > 2 else current_user
+                            })
+
+            # Query shared memory
+            result = subprocess.run(
+                ["ipcs", "-m"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    if current_user in line:
+                        parts = line.split()
+                        if len(parts) >= 2 and parts[0].startswith('0x'):
+                            resources["shared_memory"].append({
+                                "key": parts[0],
+                                "id": parts[1],
+                                "owner": parts[2] if len(parts) > 2 else current_user,
+                                "size": parts[4] if len(parts) > 4 else "0"
+                            })
+
+            # Query message queues
+            result = subprocess.run(
+                ["ipcs", "-q"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                for line in result.stdout.split('\n'):
+                    if current_user in line:
+                        parts = line.split()
+                        if len(parts) >= 2 and parts[0].startswith('0x'):
+                            resources["message_queues"].append({
+                                "key": parts[0],
+                                "id": parts[1],
+                                "owner": parts[2] if len(parts) > 2 else current_user
+                            })
+
+        except subprocess.TimeoutExpired:
+            logger.warning("Timeout querying IPC resources")
+        except FileNotFoundError:
+            logger.debug("ipcs command not available on this system")
+        except Exception as e:
+            logger.error(f"Error querying IPC resources: {e}")
+
+        return resources
+
+    def _cleanup_ipc_resources(self) -> Dict[str, int]:
+        """
+        Clean up orphaned IPC resources (semaphores, shared memory, message queues).
+        Only removes resources from current user that appear to be orphaned.
+        """
+        if not self.config.get('enable_ipc_cleanup', True):
+            return {"semaphores": 0, "shared_memory": 0, "message_queues": 0}
+
+        cleaned = {"semaphores": 0, "shared_memory": 0, "message_queues": 0}
+
+        try:
+            current_user = os.getenv("USER", "")
+            if not current_user:
+                return cleaned
+
+            resources = self._get_ipc_resources()
+
+            # Clean up semaphores
+            for sem in resources["semaphores"]:
+                try:
+                    # Verify it's owned by current user and try to remove
+                    result = subprocess.run(
+                        ["ipcrm", "-s", sem["id"]],
+                        capture_output=True,
+                        text=True,
+                        timeout=2
+                    )
+                    if result.returncode == 0:
+                        cleaned["semaphores"] += 1
+                        logger.debug(f"Removed orphaned semaphore {sem['id']}")
+                except subprocess.TimeoutExpired:
+                    logger.warning(f"Timeout removing semaphore {sem['id']}")
+                except Exception as e:
+                    logger.debug(f"Could not remove semaphore {sem['id']}: {e}")
+
+            # Clean up shared memory
+            for shm in resources["shared_memory"]:
+                try:
+                    result = subprocess.run(
+                        ["ipcrm", "-m", shm["id"]],
+                        capture_output=True,
+                        text=True,
+                        timeout=2
+                    )
+                    if result.returncode == 0:
+                        cleaned["shared_memory"] += 1
+                        logger.debug(f"Removed orphaned shared memory {shm['id']} ({shm.get('size', '0')} bytes)")
+                except subprocess.TimeoutExpired:
+                    logger.warning(f"Timeout removing shared memory {shm['id']}")
+                except Exception as e:
+                    logger.debug(f"Could not remove shared memory {shm['id']}: {e}")
+
+            # Clean up message queues
+            for mq in resources["message_queues"]:
+                try:
+                    result = subprocess.run(
+                        ["ipcrm", "-q", mq["id"]],
+                        capture_output=True,
+                        text=True,
+                        timeout=2
+                    )
+                    if result.returncode == 0:
+                        cleaned["message_queues"] += 1
+                        logger.debug(f"Removed orphaned message queue {mq['id']}")
+                except subprocess.TimeoutExpired:
+                    logger.warning(f"Timeout removing message queue {mq['id']}")
+                except Exception as e:
+                    logger.debug(f"Could not remove message queue {mq['id']}: {e}")
+
+            # Log summary if anything was cleaned
+            total_cleaned = sum(cleaned.values())
+            if total_cleaned > 0:
+                logger.info(
+                    f"🧹 Cleaned {total_cleaned} orphaned IPC resources: "
+                    f"{cleaned['semaphores']} semaphores, {cleaned['shared_memory']} shared memory segments, "
+                    f"{cleaned['message_queues']} message queues"
+                )
+        except FileNotFoundError:
+            logger.debug("ipcrm command not available on this system")
+        except Exception as e:
+            logger.error(f"Error cleaning up IPC resources: {e}")
+
+        return cleaned
 
     def _update_problem_patterns(self, process_name: str, was_problematic: bool):
         """Learn from cleanup actions"""

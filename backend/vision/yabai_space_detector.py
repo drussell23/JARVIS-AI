@@ -8,8 +8,17 @@ import json
 import logging
 from typing import Dict, List, Any, Optional
 from pathlib import Path
+from enum import Enum
 
 logger = logging.getLogger(__name__)
+
+
+class YabaiStatus(Enum):
+    """Status of Yabai installation and availability"""
+    AVAILABLE = "available"
+    NOT_INSTALLED = "not_installed"
+    NO_PERMISSIONS = "no_permissions"
+    ERROR = "error"
 
 
 class YabaiSpaceDetector:
@@ -46,6 +55,23 @@ class YabaiSpaceDetector:
     def is_available(self) -> bool:
         """Check if Yabai detector is available"""
         return self.yabai_available
+
+    def get_status(self) -> YabaiStatus:
+        """Get the current Yabai availability status"""
+        if self.yabai_available:
+            return YabaiStatus.AVAILABLE
+
+        # Check if yabai is installed but not running
+        try:
+            result = subprocess.run(["which", "yabai"], capture_output=True, text=True)
+            if result.returncode == 0:
+                # Yabai is installed but not responding - likely permissions issue
+                return YabaiStatus.NO_PERMISSIONS
+            else:
+                # Yabai not installed
+                return YabaiStatus.NOT_INSTALLED
+        except:
+            return YabaiStatus.ERROR
 
     def enumerate_all_spaces(self) -> List[Dict[str, Any]]:
         """Enumerate all Mission Control spaces using Yabai"""
