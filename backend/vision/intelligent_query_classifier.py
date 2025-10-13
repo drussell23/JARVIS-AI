@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 class QueryIntent(Enum):
     """Query classification intents"""
+
     METADATA_ONLY = "metadata_only"  # Yabai-only, no screenshots
     VISUAL_ANALYSIS = "visual_analysis"  # Current screen capture + Claude
     DEEP_ANALYSIS = "deep_analysis"  # Multi-space capture + Yabai + Claude
@@ -29,6 +30,7 @@ class QueryIntent(Enum):
 @dataclass
 class ClassificationResult:
     """Result of query classification"""
+
     intent: QueryIntent
     confidence: float  # 0.0 to 1.0
     reasoning: str  # Why this classification was chosen
@@ -68,9 +70,7 @@ class IntelligentQueryClassifier:
         logger.info("[CLASSIFIER] Intelligent query classifier initialized")
 
     async def classify_query(
-        self,
-        query: str,
-        context: Optional[Dict[str, Any]] = None
+        self, query: str, context: Optional[Dict[str, Any]] = None
     ) -> ClassificationResult:
         """
         Classify a user query into one of three intents using Claude.
@@ -96,17 +96,34 @@ class IntelligentQueryClassifier:
         features = self._extract_features(query, context)
 
         # Build classification prompt for Claude
-        classification_prompt = self._build_classification_prompt(query, features, context)
+        classification_prompt = self._build_classification_prompt(
+            query, features, context
+        )
 
         # Get classification from Claude
         try:
-            if self.claude:
-                response = await self._call_claude_for_classification(classification_prompt)
+            # Handle our ClaudeVisionWrapper, which provides vision-specific methods
+            if hasattr(self.claude, "analyze_image_with_prompt"):
+                # Use the vision analyzer by providing a dummy image payload
+                response = await self.claude.analyze_image_with_prompt(
+                    image=None,
+                    prompt=classification_prompt,
+                    max_tokens=500,
+                )
                 result = self._parse_claude_classification(response, features)
+            # If the Claude client exposes the Anthropic messages API
+            elif hasattr(self.claude, "messages"):
+                response = await self.claude.messages.create(
+                    model="claude-3-5-sonnet-20241022",
+                    max_tokens=500,
+                    messages=[{"role": "user", "content": classification_prompt}],
+                )
+                content = response.content[0].text if response.content else ""
+                result = self._parse_claude_classification(
+                    {"response": content}, features
+                )
             else:
-                # Fallback: Use heuristic classification
-                logger.warning("[CLASSIFIER] No Claude client, using fallback heuristics")
-                result = self._fallback_classification(query, features)
+                raise ValueError("Claude classifier client missing expected interfaces")
 
         except Exception as e:
             logger.error(f"[CLASSIFIER] Classification error: {e}", exc_info=True)
@@ -132,7 +149,9 @@ class IntelligentQueryClassifier:
 
         return result
 
-    def _extract_features(self, query: str, context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    def _extract_features(
+        self, query: str, context: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
         """
         Extract features from query and context for classification.
         Zero hardcoded patterns - features are descriptive, not prescriptive.
@@ -150,14 +169,31 @@ class IntelligentQueryClassifier:
             ),
             "has_visual_keywords": any(
                 word in query.lower()
-                for word in ["see", "look", "show", "view", "display", "screen", "analyze", "read"]
+                for word in [
+                    "see",
+                    "look",
+                    "show",
+                    "view",
+                    "display",
+                    "screen",
+                    "analyze",
+                    "read",
+                ]
             ),
             "has_metadata_keywords": any(
                 word in query.lower()
-                for word in ["how many", "which", "list", "what apps", "summary", "overview"]
+                for word in [
+                    "how many",
+                    "which",
+                    "list",
+                    "what apps",
+                    "summary",
+                    "overview",
+                ]
             ),
             "has_question_mark": "?" in query,
-            "is_imperative": query.strip().endswith("!") or any(
+            "is_imperative": query.strip().endswith("!")
+            or any(
                 query.lower().startswith(word)
                 for word in ["tell", "show", "give", "list", "describe"]
             ),
@@ -174,10 +210,7 @@ class IntelligentQueryClassifier:
         return features
 
     def _build_classification_prompt(
-        self,
-        query: str,
-        features: Dict[str, Any],
-        context: Optional[Dict[str, Any]]
+        self, query: str, features: Dict[str, Any], context: Optional[Dict[str, Any]]
     ) -> str:
         """
         Build a prompt for Claude to classify the query.
@@ -247,31 +280,34 @@ Respond with ONLY the JSON, no other text.
     async def _call_claude_for_classification(self, prompt: str) -> Dict[str, Any]:
         """Call Claude API for classification"""
         try:
-            # Use the Claude client's message API
-            if hasattr(self.claude, 'analyze_with_prompt'):
-                # If it's a vision analyzer wrapper
-                response = await self.claude.analyze_with_prompt(prompt)
+            # Handle our ClaudeVisionWrapper, which provides vision-specific methods
+            if hasattr(self.claude, "analyze_image_with_prompt"):
+                # Use the vision analyzer by providing a dummy image payload
+                response = await self.claude.analyze_image_with_prompt(
+                    image=None,
+                    prompt=prompt,
+                    max_tokens=500,
+                )
                 return response
-            elif hasattr(self.claude, 'messages'):
-                # If it's the Anthropic client directly
+
+            # If the Claude client exposes the Anthropic messages API
+            if hasattr(self.claude, "messages"):
                 response = await self.claude.messages.create(
                     model="claude-3-5-sonnet-20241022",
                     max_tokens=500,
-                    messages=[{"role": "user", "content": prompt}]
+                    messages=[{"role": "user", "content": prompt}],
                 )
-                content = response.content[0].text
+                content = response.content[0].text if response.content else ""
                 return {"response": content}
-            else:
-                raise ValueError("Claude client doesn't have expected methods")
+
+            raise ValueError("Claude classifier client missing expected interfaces")
 
         except Exception as e:
             logger.error(f"[CLASSIFIER] Claude API call failed: {e}")
             raise
 
     def _parse_claude_classification(
-        self,
-        response: Dict[str, Any],
-        features: Dict[str, Any]
+        self, response: Dict[str, Any], features: Dict[str, Any]
     ) -> ClassificationResult:
         """Parse Claude's classification response"""
         import json
@@ -293,7 +329,9 @@ Respond with ONLY the JSON, no other text.
                 try:
                     intent = QueryIntent(intent_str.lower())
                 except ValueError:
-                    logger.warning(f"[CLASSIFIER] Invalid intent '{intent_str}', defaulting to VISUAL_ANALYSIS")
+                    logger.warning(
+                        f"[CLASSIFIER] Invalid intent '{intent_str}', defaulting to VISUAL_ANALYSIS"
+                    )
                     intent = QueryIntent.VISUAL_ANALYSIS
 
                 # Parse confidence
@@ -319,7 +357,7 @@ Respond with ONLY the JSON, no other text.
                     confidence=confidence,
                     reasoning=reasoning,
                     second_best=second_best,
-                    features=features
+                    features=features,
                 )
             else:
                 raise ValueError("No valid JSON found in Claude response")
@@ -331,9 +369,7 @@ Respond with ONLY the JSON, no other text.
             return self._fallback_classification("", features)
 
     def _fallback_classification(
-        self,
-        query: str,
-        features: Dict[str, Any]
+        self, query: str, features: Dict[str, Any]
     ) -> ClassificationResult:
         """
         Fallback classification using simple heuristics.
@@ -365,26 +401,32 @@ Respond with ONLY the JSON, no other text.
         deep_score = 0
         if "across" in query_lower or "all" in query_lower:
             deep_score += 0.5  # Increased from 0.4
-        if features.get("has_space_reference", False) and features.get("has_visual_keywords", False):
+        if features.get("has_space_reference", False) and features.get(
+            "has_visual_keywords", False
+        ):
             deep_score += 0.3
         if "analyze" in query_lower or "comprehensive" in query_lower:
             deep_score += 0.2
         # Strong signal: "what's happening" + space reference
-        if ("happening" in query_lower or "working on" in query_lower) and features.get("has_space_reference", False):
+        if ("happening" in query_lower or "working on" in query_lower) and features.get(
+            "has_space_reference", False
+        ):
             deep_score += 0.3
 
         # Determine intent
         scores = [
             (QueryIntent.METADATA_ONLY, metadata_score),
             (QueryIntent.VISUAL_ANALYSIS, visual_score),
-            (QueryIntent.DEEP_ANALYSIS, deep_score)
+            (QueryIntent.DEEP_ANALYSIS, deep_score),
         ]
         scores.sort(key=lambda x: x[1], reverse=True)
 
         intent = scores[0][0]
         # Use a confidence boost formula: base_score + (base_score * 0.3) to get above 0.60 threshold
         base_confidence = scores[0][1]
-        confidence = min(0.85, base_confidence + (base_confidence * 0.3))  # Boost confidence for fallback
+        confidence = min(
+            0.85, base_confidence + (base_confidence * 0.3)
+        )  # Boost confidence for fallback
         second_best = (scores[1][0], scores[1][1]) if len(scores) > 1 else None
 
         return ClassificationResult(
@@ -392,7 +434,7 @@ Respond with ONLY the JSON, no other text.
             confidence=confidence,
             reasoning="Fallback heuristic classification (Claude unavailable)",
             second_best=second_best,
-            features=features
+            features=features,
         )
 
     def _check_cache(self, query: str) -> Optional[ClassificationResult]:
@@ -419,10 +461,7 @@ Respond with ONLY the JSON, no other text.
         # Limit cache size
         if len(self._classification_cache) > 100:
             # Remove oldest entries
-            sorted_keys = sorted(
-                self._cache_timestamps.items(),
-                key=lambda x: x[1]
-            )
+            sorted_keys = sorted(self._cache_timestamps.items(), key=lambda x: x[1])
             for key, _ in sorted_keys[:20]:  # Remove 20 oldest
                 del self._classification_cache[key]
                 del self._cache_timestamps[key]
