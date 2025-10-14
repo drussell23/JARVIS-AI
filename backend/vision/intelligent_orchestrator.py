@@ -767,10 +767,10 @@ class IntelligentOrchestrator:
     ) -> Dict[str, Any]:
         """Generate richly detailed workspace overview with clean bullet formatting"""
         
-        # Build overview with clean bullet points and proper line breaks
-        response_parts = [
-            f"Sir, you're working across {snapshot.total_spaces} desktop spaces:",
-            ""  # Blank line for spacing
+        # Build overview with proper HTML structure
+        html_parts = [
+            f"<p>Sir, you're working across {snapshot.total_spaces} desktop spaces:</p>",
+            "<ul>"
         ]
         
         # List each space with rich, detailed activity descriptions
@@ -795,29 +795,31 @@ class IntelligentOrchestrator:
                 # Check if activity has multiple lines (rich detail)
                 if "\n" in activity:
                     # Multi-line format for rich details
-                    response_parts.append(f"• Space {space_id}{current_marker}: {primary_app}")
+                    html_parts.append(f"<li><strong>Space {space_id}{current_marker}:</strong> {primary_app}")
+                    html_parts.append("<ul>")
                     for line in activity.split("\n"):
-                        response_parts.append(f"  {line}")
+                        html_parts.append(f"<li>{line}</li>")
+                    html_parts.append("</ul></li>")
                 else:
                     # Single line format with clean bullet
-                    response_parts.append(f"• Space {space_id}{current_marker}: {primary_app} — {activity}")
+                    html_parts.append(f"<li><strong>Space {space_id}{current_marker}:</strong> {primary_app} — {activity}</li>")
             else:
                 current_marker = " (current)" if is_current else ""
-                response_parts.append(f"• Space {space_id}{current_marker}: Empty")
-            
-            # Add line break after each space for proper formatting
-            response_parts.append("")
+                html_parts.append(f"<li><strong>Space {space_id}{current_marker}:</strong> Empty</li>")
         
-        # Generate intelligent workflow summary without separator
+        html_parts.append("</ul>")
+        
+        # Generate intelligent workflow summary
         workflow_summary = await self._generate_detailed_workflow_summary(snapshot, patterns)
         if workflow_summary:
-            response_parts.append("Workflow Analysis:")
+            html_parts.append("<p><strong>Workflow Analysis:</strong></p>")
+            html_parts.append("<ul>")
             for line in workflow_summary.split("\n"):
                 if line.strip():
-                    response_parts.append(f"• {line}")
-                    response_parts.append("")  # Add line break after each workflow item
+                    html_parts.append(f"<li>{line}</li>")
+            html_parts.append("</ul>")
         
-        response_text = "\n".join(response_parts)
+        response_text = "".join(html_parts)
         
         return {
             "analysis": response_text,
