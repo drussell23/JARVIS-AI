@@ -2538,13 +2538,36 @@ class AdaptiveResponseGenerator:
             activity_summary = "working on multiple different tasks"
 
         response_parts = [
-            f"You're currently {activity_summary} across your {workspace['total_spaces']} desktop spaces"
+            f"You're currently {activity_summary} across your {workspace['total_spaces']} desktop spaces."
         ]
+
+        # Add detailed space breakdown
+        space_details = []
+        for space_detail in workspace["space_details"]:
+            space_id = space_detail["space_id"]
+            is_current = space_detail.get("is_current", False)
+            activity = space_detail.get("primary_activity") or space_detail.get("primary_app") or "Empty"
+            apps = space_detail.get("applications", [])
+
+            if is_current:
+                if apps:
+                    space_details.append(f"**Space {space_id} (current)**: {activity} - {', '.join(apps[:3])}")
+                else:
+                    space_details.append(f"**Space {space_id} (current)**: {activity}")
+            else:
+                if apps:
+                    space_details.append(f"Space {space_id}: {activity} - {', '.join(apps[:2])}")
+                else:
+                    space_details.append(f"Space {space_id}: {activity}")
+
+        if space_details:
+            response_parts.append("\nSpace breakdown:")
+            response_parts.extend(space_details)
 
         # Add correlation insights
         if correlations:
             correlation = correlations[0]
-            response_parts.append(f"💡 {correlation['description']}")
+            response_parts.append(f"\n💡 {correlation['description']}")
 
         return ". ".join(response_parts) + "."
 
