@@ -195,10 +195,19 @@ class IntelligentOrchestrator:
             patterns = await self._detect_workflow_patterns(workspace_snapshot, captured_content)
             workspace_snapshot.patterns_detected = patterns
             
-            # Phase 6: Intelligent Analysis (Claude Vision)
-            analysis_result = await self._analyze_with_claude(
-                query, intent, workspace_snapshot, captured_content, claude_api_key
-            )
+            # Phase 6: Intelligent Analysis
+            # For workspace overview queries, generate simple list-based response
+            # For detailed queries, use Claude Vision analysis
+            if intent == QueryIntent.WORKSPACE_OVERVIEW:
+                self.logger.info("[ORCHESTRATOR] Generating workspace overview response (no Claude analysis needed)")
+                analysis_result = await self._generate_workspace_overview(
+                    query, workspace_snapshot, patterns
+                )
+            else:
+                self.logger.info(f"[ORCHESTRATOR] Using Claude Vision for {intent.value} analysis")
+                analysis_result = await self._analyze_with_claude(
+                    query, intent, workspace_snapshot, captured_content, claude_api_key
+                )
             
             # Phase 7: Context Management
             context = AnalysisContext(
@@ -246,6 +255,15 @@ class IntelligentOrchestrator:
     async def _analyze_query_intent(self, query: str) -> QueryIntent:
         """Analyze query intent using dynamic pattern matching"""
         query_lower = query.lower()
+        
+        # Check for explicit workspace overview queries FIRST (highest priority)
+        overview_keywords = [
+            "list all", "show all", "across", "desktop spaces", 
+            "how many spaces", "all my spaces", "workspace overview",
+            "what spaces", "all desktop"
+        ]
+        if any(keyword in query_lower for keyword in overview_keywords):
+            return QueryIntent.WORKSPACE_OVERVIEW
         
         # Dynamic intent patterns (no hardcoding)
         intent_patterns = {
@@ -730,6 +748,49 @@ class IntelligentOrchestrator:
                 "analysis": f"Analysis failed: {str(e)}",
                 "fallback": True
             }
+    
+    async def _generate_workspace_overview(
+        self,
+        query: str,
+        snapshot: WorkspaceSnapshot,
+        patterns: List[WorkflowPattern]
+    ) -> Dict[str, Any]:
+        """Generate simple workspace overview response without Claude analysis"""
+        
+        # Build overview response
+        response_parts = [f"Sir, you're working across {snapshot.total_spaces} desktop spaces:\n"]
+        
+        # List each space with its applications
+        for space in sorted(snapshot.spaces, key=lambda x: x.get("space_id", 0)):
+            space_id = space.get("space_id", "?")
+            apps = space.get("applications", [])
+            is_current = space.get("is_current", False)
+            
+            if apps:
+                # Get primary app (first one)
+                primary_app = apps[0]
+                activity = space.get("primary_activity", "Active")
+                
+                current_marker = " (current)" if is_current else ""
+                response_parts.append(f"• Space {space_id}{current_marker}: {primary_app} - {activity}")
+            else:
+                current_marker = " (current)" if is_current else ""
+                response_parts.append(f"• Space {space_id}{current_marker}: Empty")
+        
+        # Add workflow pattern summary if detected
+        if patterns:
+            response_parts.append(f"\nYour primary focus appears to be on {patterns[0].value.replace('_', ' ')} work.")
+        
+        response_text = "\n".join(response_parts)
+        
+        return {
+            "analysis": response_text,
+            "analysis_time": 0.0,  # No Claude call needed
+            "images_analyzed": 0,
+            "intent": "workspace_overview",
+            "patterns": [p.value for p in patterns],
+            "overview_mode": True
+        }
     
     async def _build_analysis_prompt(
         self,
