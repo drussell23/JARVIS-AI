@@ -2570,7 +2570,7 @@ const JarvisVoice = () => {
           {response && (
             <div className="jarvis-message">
               <span className="message-label">JARVIS:</span>
-              <span className="message-text">{response}</span>
+              <span className="message-text" style={{ whiteSpace: 'pre-wrap' }}>{response}</span>
             </div>
           )}
         </div>

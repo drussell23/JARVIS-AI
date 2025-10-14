@@ -346,6 +346,7 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(10px);
   animation: slideUp 0.3s ease-out;
+  white-space: pre-wrap; /* Preserve line breaks */
 }
 
 .user-message {
@@ -381,6 +382,7 @@
   line-height: 1.6;
   font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
   letter-spacing: 0.02em;
+  white-space: pre-wrap; /* Preserve line breaks */
 }
 
 /* Error Display - Subtle */
