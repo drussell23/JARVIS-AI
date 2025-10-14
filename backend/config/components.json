@@ -9,7 +9,7 @@
     "import_function": "import_chatbots"
   },
   "vision": {
-    "priority": "HIGH",
+    "priority": "CORE",
     "estimated_memory_mb": 300,
     "estimated_load_time_ms": 100,
     "intent_keywords": ["screen", "see", "look", "watch", "monitor", "capture", "desktop", "window", "vision", "analyze", "show me", "what's on"],

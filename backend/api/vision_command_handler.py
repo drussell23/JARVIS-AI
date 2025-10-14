@@ -420,7 +420,7 @@ class VisionCommandHandler:
 
         if intelligent_system_available and self.smart_router and self.context_manager:
             try:
-                logger.info("[INTELLIGENT] Using smart router for query classification")
+                logger.info(f"[INTELLIGENT] Using smart router for query classification: '{command_text}'")
 
                 # Get context for classification
                 context = self.context_manager.get_context_for_query(command_text)
@@ -441,6 +441,8 @@ class VisionCommandHandler:
                 routing_result = await self.smart_router.route_query(
                     query=command_text, context=context
                 )
+
+                logger.info(f"[INTELLIGENT] Query classified as: {routing_result.intent.value} (confidence: {getattr(routing_result, 'confidence', 'N/A')})")
 
                 # Record query in context manager
                 self.context_manager.record_query(
@@ -1158,7 +1160,22 @@ BE CONCISE. No technical details.
                 self.intelligence, "_gather_multi_space_data"
             ):
                 window_data = await self.intelligence._gather_multi_space_data()
-                logger.info(f"[INTELLIGENT] Retrieved Yabai data for {len(window_data.get('spaces', []))} spaces")
+
+                # Debug: Log the structure of window_data
+                logger.info(f"[INTELLIGENT-DEBUG] Window data keys: {window_data.keys() if window_data else 'None'}")
+
+                spaces = window_data.get('spaces', [])
+                logger.info(f"[INTELLIGENT] Retrieved Yabai data for {len(spaces)} spaces")
+
+                # Debug: Log first space details to verify we have window titles
+                if spaces:
+                    first_space = spaces[0] if isinstance(spaces, list) else next(iter(spaces.values())) if isinstance(spaces, dict) else None
+                    if first_space:
+                        logger.info(f"[INTELLIGENT-DEBUG] First space sample: {first_space}")
+                        if 'windows' in first_space:
+                            first_window = first_space['windows'][0] if first_space['windows'] else None
+                            if first_window:
+                                logger.info(f"[INTELLIGENT-DEBUG] First window sample: app={first_window.get('app', 'N/A')}, title={first_window.get('title', 'N/A')[:50]}")
 
             # Capture ONLY current space screenshot (non-disruptive)
             current_screenshot = await self._capture_screen(multi_space=False)
@@ -1172,8 +1189,17 @@ BE CONCISE. No technical details.
 
             # Build enhanced prompt with Yabai context
             if self.intelligence and window_data:
-                # Extract Yabai metadata summary
-                spaces = window_data.get('spaces', [])
+                # Handle different formats of spaces data (could be list or dict)
+                spaces_raw = window_data.get('spaces', [])
+
+                # Convert to list if it's a dict
+                if isinstance(spaces_raw, dict):
+                    spaces = list(spaces_raw.values())
+                elif isinstance(spaces_raw, list):
+                    spaces = spaces_raw
+                else:
+                    # Try spaces_list as alternative key
+                    spaces = window_data.get('spaces_list', [])
                 total_spaces = len(spaces)
 
                 context_summary = [f"You have {total_spaces} desktop spaces total."]
@@ -1228,6 +1254,9 @@ Based on the window titles and applications listed above for ALL spaces, plus th
 
 Be SPECIFIC and DETAILED. Use the actual window titles to infer what work is being done. Don't just list apps - explain what you're doing in each space based on the window titles."""
 
+                # Debug: Log the enhanced prompt to verify it's being built correctly
+                logger.info(f"[INTELLIGENT-DEBUG] Enhanced prompt length: {len(enhanced_prompt)} chars")
+                logger.info(f"[INTELLIGENT-DEBUG] Context summary preview: {context_summary[:3] if context_summary else 'No context'}")
                 logger.info("[INTELLIGENT] Sending enhanced prompt to Claude with current space + Yabai context")
 
                 # Call Claude with current screenshot + enhanced prompt

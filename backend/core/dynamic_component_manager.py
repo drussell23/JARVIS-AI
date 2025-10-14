@@ -1802,9 +1802,10 @@ class DynamicComponentManager:
             await self._unload_idle_components(ComponentPriority.LOW, idle_seconds=10)
 
         elif pressure == MemoryPressure.EMERGENCY:
-            # Emergency: Unload ALL non-core components
+            # Emergency: Unload ALL non-core components (but keep vision for multi-space queries)
             for name, comp in self.components.items():
-                if comp.priority != ComponentPriority.CORE:
+                # Never unload CORE components or vision (needed for multi-space queries)
+                if comp.priority != ComponentPriority.CORE and name != 'vision':
                     await self.unload_component(name)
 
     async def _unload_idle_components(self, priority: ComponentPriority, idle_seconds: float):
@@ -1812,6 +1813,10 @@ class DynamicComponentManager:
         current_time = time.time()
 
         for name, comp in self.components.items():
+            # Skip vision component - always keep loaded for multi-space queries
+            if name == 'vision':
+                continue
+
             if comp.priority == priority and comp.state == ComponentState.LOADED:
                 idle_time = current_time - comp.last_used
                 if idle_time > idle_seconds:

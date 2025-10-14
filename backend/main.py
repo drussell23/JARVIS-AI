@@ -559,6 +559,11 @@ async def lifespan(app: FastAPI):
                 if comp.priority == ComponentPriority.CORE
             ]
 
+            # IMPORTANT: Always include vision as CORE to prevent multi-space query issues
+            if 'vision' not in core_components:
+                core_components.append('vision')
+                logger.info("   ⚠️ Vision not in CORE list, adding it to ensure multi-space queries work")
+
             logger.info(f"   Loading {len(core_components)} CORE components: {core_components}")
 
             for comp_name in core_components:
