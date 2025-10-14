@@ -236,6 +236,12 @@ class VisionCommandHandler:
     async def initialize_intelligence(self, api_key: str = None):
         """Initialize pure vision intelligence system"""
         if not self.intelligence:
+            # If no API key provided, try to get from environment
+            if not api_key:
+                api_key = os.getenv("ANTHROPIC_API_KEY")
+                if api_key:
+                    logger.info("[PURE VISION] Using API key from environment")
+                    
             # Try to get existing vision analyzer from app state
             vision_analyzer = None
             try:
