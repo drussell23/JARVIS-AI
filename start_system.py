@@ -610,7 +610,8 @@ class AsyncSystemManager:
             from process_cleanup_manager import (
                 ProcessCleanupManager,
                 emergency_cleanup,
-                ensure_fresh_jarvis_instance
+                ensure_fresh_jarvis_instance,
+                prevent_multiple_jarvis_instances
             )
 
             print(f"\n{Colors.BLUE}Checking for stuck processes...{Colors.ENDC}")
@@ -743,14 +744,22 @@ class AsyncSystemManager:
                 print(f"{Colors.GREEN}✓ No stuck processes found{Colors.ENDC}")
             
             # Step 3: Final check - ensure we can start fresh
-            if ensure_fresh_jarvis_instance():
-                print(f"{Colors.GREEN}✓ Ready to start fresh JARVIS instance{Colors.ENDC}")
+            can_start, message = prevent_multiple_jarvis_instances()
+            if can_start:
+                print(f"{Colors.GREEN}✓ {message}{Colors.ENDC}")
             else:
-                print(f"{Colors.WARNING}⚠️ Another JARVIS instance may be running{Colors.ENDC}")
+                print(f"{Colors.WARNING}⚠️ {message}{Colors.ENDC}")
                 if self.auto_cleanup:
                     print(f"{Colors.YELLOW}Forcing cleanup for fresh start...{Colors.ENDC}")
                     emergency_cleanup(force=True)
                     await asyncio.sleep(2)
+                    # Re-check after cleanup
+                    can_start, message = prevent_multiple_jarvis_instances()
+                    if can_start:
+                        print(f"{Colors.GREEN}✓ {message}{Colors.ENDC}")
+                    else:
+                        print(f"{Colors.FAIL}❌ Still cannot start: {message}{Colors.ENDC}")
+                        return False
 
         except ImportError:
             print(f"{Colors.WARNING}Process cleanup manager not available{Colors.ENDC}")
@@ -2901,6 +2910,7 @@ async def main():
     """Main entry point"""
     global _manager
 
+    # Parse arguments first to check for flags
     parser = argparse.ArgumentParser(
         description="J.A.R.V.I.S. Advanced AI System v14.0.0 - AUTONOMOUS Edition"
     )
@@ -2910,22 +2920,6 @@ async def main():
     )
     parser.add_argument(
         "--frontend-only", action="store_true", help="Start frontend only"
-    )
-    parser.add_argument(
-        "--standard", action="store_true", help="Use standard backend (no optimization)"
-    )
-    parser.add_argument(
-        "--check-only", action="store_true", help="Check setup and exit"
-    )
-    parser.add_argument(
-        "--no-auto-cleanup",
-        action="store_true",
-        help="Disable automatic cleanup of stuck processes (will prompt instead)",
-    )
-    parser.add_argument(
-        "--autonomous",
-        action="store_true",
-        help="Enable autonomous mode with zero configuration (default: enabled if available)",
     )
     parser.add_argument(
         "--no-autonomous",
@@ -2943,12 +2937,88 @@ async def main():
         help="Run normal cleanup process and exit (less aggressive than emergency)",
     )
     parser.add_argument(
+        "--force-start",
+        action="store_true",
+        help="Skip multiple instance check and force start (use with caution)",
+    )
+    parser.add_argument(
         "--restart",
         action="store_true",
         help="Restart JARVIS: kill old instances, start fresh, and verify intelligent system",
     )
+    parser.add_argument(
+        "--check-only",
+        action="store_true",
+        help="Check system state and provide recommendations without starting",
+    )
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Enable verbose logging"
+    )
+    parser.add_argument(
+        "--debug", action="store_true", help="Enable debug mode with detailed output"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Backend port (default: 8000)",
+    )
+    parser.add_argument(
+        "--frontend-port",
+        type=int,
+        default=3000,
+        help="Frontend port (default: 3000)",
+    )
+    parser.add_argument(
+        "--monitoring-port",
+        type=int,
+        default=8888,
+        help="Monitoring dashboard port (default: 8888)",
+    )
+    parser.add_argument(
+        "--no-cleanup",
+        action="store_true",
+        help="Skip automatic cleanup of old processes",
+    )
+    parser.add_argument(
+        "--auto-cleanup",
+        action="store_true",
+        help="Force automatic cleanup (default behavior)",
+    )
+    parser.add_argument(
+        "--standard", action="store_true", help="Use standard backend (no optimization)"
+    )
+    parser.add_argument(
+        "--no-auto-cleanup",
+        action="store_true",
+        help="Disable automatic cleanup of stuck processes (will prompt instead)",
+    )
 
     args = parser.parse_args()
+
+    # Early check for multiple instances (before creating manager)
+    if not args.force_start:
+        try:
+            backend_dir = Path(__file__).parent / "backend"
+            if str(backend_dir) not in sys.path:
+                sys.path.insert(0, str(backend_dir))
+            
+            from process_cleanup_manager import prevent_multiple_jarvis_instances
+            
+            can_start, message = prevent_multiple_jarvis_instances()
+            if not can_start:
+                print(f"\n{Colors.FAIL}❌ Cannot start JARVIS: {message}{Colors.ENDC}")
+                print(f"{Colors.YELLOW}Use --emergency-cleanup to force restart{Colors.ENDC}")
+                print(f"{Colors.YELLOW}Use --force-start to skip this check (use with caution){Colors.ENDC}")
+                return 1
+            else:
+                print(f"\n{Colors.GREEN}✓ {message}{Colors.ENDC}")
+        except ImportError:
+            print(f"{Colors.WARNING}⚠️ Process cleanup manager not available - skipping startup check{Colors.ENDC}")
+        except Exception as e:
+            print(f"{Colors.WARNING}⚠️ Startup check failed: {e}{Colors.ENDC}")
+    else:
+        print(f"\n{Colors.WARNING}⚠️ Skipping multiple instance check (--force-start){Colors.ENDC}")
 
     # Set up logging
     logging.basicConfig(

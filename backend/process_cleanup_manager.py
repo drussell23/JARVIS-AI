@@ -286,7 +286,44 @@ class ProcessCleanupManager:
         current_pid = os.getpid()
         target_port = int(os.getenv('BACKEND_PORT', '8000'))
         
-        # Check for processes using the target port
+        # First, check for any JARVIS processes regardless of port
+        jarvis_processes = self._find_jarvis_processes()
+        other_jarvis_processes = [p for p in jarvis_processes if p['pid'] != current_pid]
+        
+        if other_jarvis_processes:
+            logger.warning(f"Found {len(other_jarvis_processes)} other JARVIS processes running:")
+            for proc in other_jarvis_processes:
+                logger.warning(f"  - PID {proc['pid']}: {proc['name']} (age: {proc['age_seconds']/60:.1f} min)")
+            
+            # Check if we should take over (code changes or old instance)
+            if self._detect_code_changes():
+                logger.info("Code changes detected, terminating old instances...")
+                for proc_info in other_jarvis_processes:
+                    try:
+                        proc = psutil.Process(proc_info['pid'])
+                        logger.info(f"Terminating old JARVIS process {proc_info['pid']}")
+                        proc.terminate()
+                        try:
+                            proc.wait(timeout=5)
+                        except psutil.TimeoutExpired:
+                            proc.kill()
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+                time.sleep(2)  # Give processes time to clean up
+                return True
+            else:
+                # Check if any of these processes are using our target port
+                for proc_info in other_jarvis_processes:
+                    try:
+                        proc = psutil.Process(proc_info['pid'])
+                        for conn in proc.connections():
+                            if conn.laddr.port == target_port and conn.status == "LISTEN":
+                                logger.warning(f"JARVIS instance {proc_info['pid']} is using port {target_port}")
+                                return False
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        continue
+        
+        # Check for processes using the target port (fallback)
         try:
             for conn in psutil.net_connections():
                 if conn.laddr.port == target_port and conn.status == "LISTEN":
@@ -1390,6 +1427,64 @@ def ensure_fresh_jarvis_instance():
     
     # Ensure single instance
     return manager.ensure_single_instance()
+
+
+def prevent_multiple_jarvis_instances():
+    """
+    Comprehensive check to prevent multiple JARVIS instances from running.
+    This is the main function to call at startup.
+    
+    Returns:
+        Tuple[bool, str]: (can_start, message)
+        - can_start: True if it's safe to start JARVIS
+        - message: Human-readable status message
+    """
+    manager = ProcessCleanupManager()
+    
+    try:
+        # Step 1: Check for crash recovery
+        if manager.check_for_segfault_recovery():
+            return True, "System recovered from crash - safe to start fresh"
+        
+        # Step 2: Check for code changes and clean up old instances
+        cleaned = manager.cleanup_old_instances_on_code_change()
+        if cleaned:
+            return True, f"Cleaned {len(cleaned)} old instances due to code changes - safe to start"
+        
+        # Step 3: Check for existing JARVIS processes
+        jarvis_processes = manager._find_jarvis_processes()
+        current_pid = os.getpid()
+        other_processes = [p for p in jarvis_processes if p['pid'] != current_pid]
+        
+        if other_processes:
+            # Check if any are using the target port
+            target_port = int(os.getenv('BACKEND_PORT', '8000'))
+            port_conflict = False
+            
+            for proc_info in other_processes:
+                try:
+                    proc = psutil.Process(proc_info['pid'])
+                    for conn in proc.connections():
+                        if conn.laddr.port == target_port and conn.status == "LISTEN":
+                            port_conflict = True
+                            break
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+            
+            if port_conflict:
+                return False, f"JARVIS instance already running on port {target_port}. Use --emergency-cleanup to force restart."
+            else:
+                return True, f"Found {len(other_processes)} other JARVIS processes but no port conflict - safe to start"
+        
+        # Step 4: Final port check
+        if not manager.ensure_single_instance():
+            return False, "Port conflict detected. Another JARVIS instance may be running."
+        
+        return True, "No conflicts detected - safe to start JARVIS"
+        
+    except Exception as e:
+        logger.error(f"Error checking for multiple instances: {e}")
+        return False, f"Error during startup check: {e}"
 
 
 def emergency_cleanup(force: bool = False):
