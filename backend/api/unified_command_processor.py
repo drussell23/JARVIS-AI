@@ -469,7 +469,8 @@ class UnifiedCommandProcessor:
             )
             return CommandType.DOCUMENT, 0.95
 
-        # Vision detection through semantic analysis
+        # Vision detection through semantic analysis (CHECK BEFORE QUERY!)
+        # This must come before query detection to catch vision questions
         vision_score = self._calculate_vision_score(words, command_lower)
         if vision_score > 0.7:
             return CommandType.VISION, vision_score
@@ -503,8 +504,12 @@ class UnifiedCommandProcessor:
             return CommandType.META, 0.9
 
         # Query detection through linguistic analysis
+        # NOTE: This comes AFTER vision detection to allow vision questions
         is_question = self._is_question_pattern(words)
         if is_question:
+            # Check again if this might be a vision question
+            if vision_score > 0.5:  # Lower threshold for questions
+                return CommandType.VISION, vision_score
             return CommandType.QUERY, 0.8
 
         # URL/Web detection
@@ -591,9 +596,13 @@ class UnifiedCommandProcessor:
     def _calculate_vision_score(self, words: List[str], command_lower: str) -> float:
         """Calculate likelihood of vision command"""
         score = 0.0
+        
+        # Clean words by removing punctuation for better matching
+        import re
+        clean_words = [re.sub(r'[^\w\s]', '', word) for word in words]
 
         # EXCLUDE lock/unlock commands - they're system commands, not vision
-        if "lock" in words or "unlock" in words:
+        if "lock" in clean_words or "unlock" in clean_words:
             return 0.0
 
         # Vision verbs
@@ -609,7 +618,12 @@ class UnifiedCommandProcessor:
             "check",
             "examine",
         }
-        score += sum(0.2 for word in words if word in vision_verbs)
+        verb_count = sum(1 for word in clean_words if word in vision_verbs)
+        score += verb_count * 0.2
+        
+        # "monitor" or "analyze" with "screen" is definitely vision
+        if ("monitor" in clean_words or "analyze" in clean_words) and "screen" in clean_words:
+            score += 0.5  # Extra boost for monitor/analyze screen
 
         # Vision nouns (but be careful with 'screen' - it could be system related)
         vision_nouns = {
@@ -623,31 +637,40 @@ class UnifiedCommandProcessor:
             "workspace",
             "screen",
         }
-        score += sum(0.15 for word in words if word in vision_nouns)
+        score += sum(0.15 for word in clean_words if word in vision_nouns)
 
         # Multi-space indicators (very strong vision signal)
         multi_space_indicators = {
             "desktop",
             "space",
+            "spaces",  # Added plural
             "workspace",
+            "workspaces",  # Added plural
             "across",
             "multiple",
             "different",
             "other",
             "all",
         }
-        multi_space_count = sum(1 for word in words if word in multi_space_indicators)
+        multi_space_count = sum(1 for word in clean_words if word in multi_space_indicators)
         if multi_space_count > 0:
             score += 0.4 * multi_space_count  # Strong boost for multi-space queries
+            
+        # Extra boost for "desktop spaces" or "workspace" combinations
+        if ("desktop" in clean_words and ("space" in clean_words or "spaces" in clean_words)) or \
+           ("workspace" in clean_words or "workspaces" in clean_words):
+            score += 0.3  # Extra boost for these specific combinations
 
         # 'screen' only counts as vision if paired with vision verbs or multi-space indicators
-        if "screen" in words and (
-            any(word in vision_verbs for word in words) or multi_space_count > 0
-        ):
-            score += 0.15
+        if "screen" in clean_words:
+            if any(word in vision_verbs for word in clean_words) or multi_space_count > 0:
+                score += 0.15
+            # Questions about screen are very likely vision
+            elif clean_words[0] in {"what", "whats", "show", "display"}:
+                score += 0.6  # Strong boost for screen questions
 
         # Questioning about visual or workspace
-        if words and words[0] in {"what", "what's", "whats"}:
+        if clean_words and clean_words[0] in {"what", "whats"}:
             visual_indicators = {
                 "screen",
                 "see",
@@ -659,7 +682,7 @@ class UnifiedCommandProcessor:
                 "going",
                 "doing",
             }
-            if any(word in words for word in visual_indicators):
+            if any(word in clean_words for word in visual_indicators):
                 score += 0.3
 
         # Phrases that strongly indicate workspace/multi-space vision queries
