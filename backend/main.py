@@ -103,6 +103,16 @@ if sys.platform == "darwin":  # macOS specific
     os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
     os.environ["PYTHONUNBUFFERED"] = "1"
 
+# IMPORTANT: Clear module cache to ensure fresh imports
+# This fixes the issue where cached modules prevent loading updated code
+try:
+    from clear_module_cache import clear_all_caches, verify_fresh_imports
+    cleared = clear_all_caches()
+    verify_fresh_imports()
+    print(f"✅ Module cache cleared: {cleared} modules removed - using fresh code!")
+except Exception as e:
+    print(f"⚠️ Could not clear module cache: {e}")
+
 # Clean up leaked semaphores from previous runs FIRST
 if sys.platform == "darwin":  # macOS specific
     try:
@@ -1076,6 +1086,14 @@ try:
 except Exception as e:
     logger.warning(f"Could not reload vision handler: {e}")
 
+# Apply runtime patches to fix vision classification
+try:
+    from runtime_patcher import patch_running_system
+    if patch_running_system():
+        logger.info("✅ Runtime patches applied - vision routing fixed!")
+except Exception as e:
+    logger.warning(f"Could not apply runtime patches: {e}")
+
 # Create FastAPI app
 logger.info("Creating optimized FastAPI app...")
 app = FastAPI(
@@ -1877,6 +1895,14 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    # Apply runtime patches just before starting
+    try:
+        from runtime_patcher import patch_running_system
+        if patch_running_system():
+            print("✅ Runtime patches applied - vision routing fixed!")
+    except Exception as e:
+        print(f"⚠️ Could not apply runtime patches: {e}")
+    
     # Print startup information
     print(f"\n🚀 Starting JARVIS Backend")
     print(f"   HTTP:      http://localhost:{args.port}")

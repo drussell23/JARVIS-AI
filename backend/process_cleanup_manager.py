@@ -67,7 +67,9 @@ class ProcessCleanupManager:
             'jarvis_excluded_patterns': [
                 # Exclude IDE/editor processes that may contain "jarvis" in path
                 'vscode', 'code helper', 'cursor', 'sublime', 'pycharm',
-                'codeium', 'copilot', 'node_modules', '.vscode'
+                'codeium', 'copilot', 'node_modules', '.vscode',
+                # Exclude macOS system processes
+                'controlcenter', 'ControlCenter.app', 'CoreServices'
             ],
             'jarvis_port_patterns': [3000, 8000, 8001, 8010, 8080, 8765, 5000],  # Common JARVIS ports including frontend
             'system_critical': [
@@ -586,9 +588,13 @@ class ProcessCleanupManager:
             # Check working directory for JARVIS project
             try:
                 cwd = proc.cwd()
-                if 'jarvis-ai-agent' in cwd.lower() or 'jarvis' in cwd.lower():
+                # Be more specific - must be JARVIS-AI-Agent directory, not just any dir with "jarvis"
+                if 'jarvis-ai-agent' in cwd.lower():
                     # It's in JARVIS directory, now check if it's actually JARVIS code
                     if any(pattern.lower() in cmdline for pattern in self.config["jarvis_patterns"]):
+                        return True
+                    # Also check if it's running our Python files
+                    if proc_name.startswith('python') and ('main.py' in cmdline or 'start_system.py' in cmdline):
                         return True
             except (psutil.AccessDenied, PermissionError, psutil.NoSuchProcess):
                 pass

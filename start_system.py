@@ -133,7 +133,52 @@ except ImportError:
 # Add backend to path for autonomous systems
 sys.path.insert(0, str(Path(__file__).parent / "backend"))
 
-# Import autonomous systems - with fallback implementation
+# CRITICAL: Clear ALL Python caches BEFORE any backend imports
+# This ensures we get fresh code with all fixes
+print("🧹 Clearing Python module cache...")
+try:
+    # Clear bytecode caches manually WITHOUT importing our modules
+    import shutil
+    backend_path = Path(__file__).parent / "backend"
+    
+    # Remove all __pycache__ directories
+    for pycache_dir in backend_path.rglob("__pycache__"):
+        try:
+            shutil.rmtree(pycache_dir)
+        except:
+            pass
+    
+    # Remove any .pyc files
+    for pyc_file in backend_path.rglob("*.pyc"):
+        try:
+            pyc_file.unlink()
+        except:
+            pass
+    
+    # Clear sys.modules of any cached backend modules
+    modules_to_remove = []
+    for module_name in list(sys.modules.keys()):
+        if any(x in module_name for x in ['backend.', 'api.', 'vision.', 'unified', 'command']):
+            modules_to_remove.append(module_name)
+    
+    for module_name in modules_to_remove:
+        del sys.modules[module_name]
+    
+    if modules_to_remove:
+        print(f"✅ Cleared {len(modules_to_remove)} cached modules")
+    
+    # Set environment to prevent new cache files
+    os.environ['PYTHONDONTWRITEBYTECODE'] = '1'
+    
+    # Now import the cache cleaner for verification
+    from clear_module_cache import verify_fresh_imports
+    verify_fresh_imports()
+    print("✅ Module cache cleared - using fresh code with all fixes!")
+    
+except Exception as e:
+    print(f"⚠️ Could not clear module cache: {e}")
+
+# NOW it's safe to import autonomous systems - they'll use fresh code
 try:
     from backend.core.autonomous_orchestrator import (
         AutonomousOrchestrator as _AutonomousOrchestrator,
@@ -1150,6 +1195,7 @@ class AsyncSystemManager:
 
         process = await asyncio.create_subprocess_exec(
             sys.executable,
+            "-B",  # Don't write bytecode - ensures fresh imports
             server_script,
             "--port",
             str(self.ports["main_api"]),
@@ -1237,6 +1283,7 @@ class AsyncSystemManager:
 
                 process = await asyncio.create_subprocess_exec(
                     sys.executable,
+                    "-B",  # Don't write bytecode - ensures fresh imports
                     "main_minimal.py",
                     "--port",
                     str(self.ports["main_api"]),
@@ -1373,6 +1420,7 @@ class AsyncSystemManager:
         with open(log_file, "w") as log:
             process = await asyncio.create_subprocess_exec(
                 sys.executable,
+                "-B",  # Don't write bytecode - ensures fresh imports
                 server_script,
                 "--port",
                 str(self.ports["main_api"]),
