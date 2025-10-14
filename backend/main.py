@@ -1047,10 +1047,16 @@ async def lifespan(app: FastAPI):
 # Apply vision monitoring fix
 try:
     import api.direct_vision_fix
-
     logger.info("Vision monitoring fix applied")
 except Exception as e:
     logger.warning(f"Could not apply vision fix: {e}")
+
+# Force reload vision handler to get latest fixes
+try:
+    import api.reload_vision_fix
+    logger.info("Vision handler reloaded with multi-space fixes")
+except Exception as e:
+    logger.warning(f"Could not reload vision handler: {e}")
 
 # Create FastAPI app
 logger.info("Creating optimized FastAPI app...")
