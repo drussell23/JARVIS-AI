@@ -12,7 +12,7 @@ from .workspace_analyzer import (
     WorkspaceAnalysis,
     SpaceSummary,
     ActivityType,
-    ActivityPattern
+    ActivityPattern,
 )
 from .yabai_space_detector import YabaiStatus
 
@@ -35,7 +35,7 @@ class SpaceResponseGenerator:
         "Sir, let me give you an overview",
         "Sir, here's what's happening",
         "Allow me to report",
-        "Sir, I've analyzed your workspace"
+        "Sir, I've analyzed your workspace",
     ]
 
     TRANSITION_PHRASES = [
@@ -43,51 +43,38 @@ class SpaceResponseGenerator:
         "Additionally",
         "I also notice",
         "Furthermore",
-        "It appears"
+        "It appears",
     ]
 
     ACTIVITY_DESCRIPTIONS = {
-        ActivityType.CODING: [
-            "working on code",
-            "developing",
-            "coding",
-            "programming"
-        ],
+        ActivityType.CODING: ["working on code", "developing", "coding", "programming"],
         ActivityType.BROWSING: [
             "browsing the web",
             "researching online",
-            "web browsing"
+            "web browsing",
         ],
-        ActivityType.COMMUNICATION: [
-            "communicating",
-            "in conversation",
-            "messaging"
-        ],
-        ActivityType.DESIGN: [
-            "designing",
-            "working on design",
-            "creating visuals"
-        ],
+        ActivityType.COMMUNICATION: ["communicating", "in conversation", "messaging"],
+        ActivityType.DESIGN: ["designing", "working on design", "creating visuals"],
         ActivityType.TERMINAL: [
             "working in the terminal",
             "running commands",
-            "terminal session active"
+            "terminal session active",
         ],
         ActivityType.DOCUMENTATION: [
             "writing documentation",
             "taking notes",
-            "documenting"
+            "documenting",
         ],
         ActivityType.MEDIA: [
             "consuming media",
             "listening to music",
-            "watching content"
+            "watching content",
         ],
         ActivityType.PRODUCTIVITY: [
             "working on productivity tasks",
             "organizing",
-            "planning"
-        ]
+            "planning",
+        ],
     }
 
     def __init__(self, use_sir_prefix: bool = True):
@@ -100,9 +87,7 @@ class SpaceResponseGenerator:
         self.use_sir_prefix = use_sir_prefix
 
     def generate_overview_response(
-        self,
-        analysis: WorkspaceAnalysis,
-        include_details: bool = True
+        self, analysis: WorkspaceAnalysis, include_details: bool = True
     ) -> str:
         """
         Generate complete workspace overview response
@@ -142,9 +127,7 @@ class SpaceResponseGenerator:
         return response
 
     def generate_space_specific_response(
-        self,
-        analysis: WorkspaceAnalysis,
-        space_id: int
+        self, analysis: WorkspaceAnalysis, space_id: int
     ) -> str:
         """
         Generate response for a specific space
@@ -187,12 +170,15 @@ class SpaceResponseGenerator:
 
         # Window titles (if meaningful)
         meaningful_titles = [
-            t for t in space.window_titles
-            if t and len(t) > 5 and not t.startswith('Window')
+            t
+            for t in space.window_titles
+            if t and len(t) > 5 and not t.startswith("Window")
         ][:3]
 
         if meaningful_titles:
-            parts.append("Working on: " + ", ".join(f'"{t}"' for t in meaningful_titles))
+            parts.append(
+                "Working on: " + ", ".join(f'"{t}"' for t in meaningful_titles)
+            )
 
         return "\n".join(parts)
 
@@ -247,7 +233,7 @@ I'll continue using basic workspace detection. If you'd like enhanced multi-spac
         if analysis.detected_project:
             return f"{greeting} of your work on {analysis.detected_project}."
 
-        return f"{greeting} of your workspace activity across your {analysis.total_spaces} desktop spaces:"
+        return f"{greeting} of your workspace activity across your {analysis.total_spaces} desktop spaces:\n"
 
     def _generate_summary(self, analysis: WorkspaceAnalysis) -> str:
         """Generate high-level summary"""
@@ -270,7 +256,9 @@ I'll continue using basic workspace detection. If you'd like enhanced multi-spac
 
         # Overall activity
         if analysis.overall_activity and analysis.overall_activity.confidence > 0.6:
-            activity_desc = self._get_activity_description(analysis.overall_activity.activity_type)
+            activity_desc = self._get_activity_description(
+                analysis.overall_activity.activity_type
+            )
             parts.append(f"primarily focused on {activity_desc}")
 
         return " ".join(parts) + "."
@@ -284,10 +272,8 @@ I'll continue using basic workspace detection. If you'd like enhanced multi-spac
                 continue  # Skip empty spaces
 
             # Format space header
-            space_header = f"**{space.space_name}**"
-            if space.is_current:
-                space_header += " (Current)"
-            space_header += ":"
+            current_marker = " (current)" if space.is_current else ""
+            space_header = f"• Space {space.space_id}{current_marker}:"
 
             # Describe activity
             if space.window_count == 1:
@@ -337,7 +323,7 @@ I'll continue using basic workspace detection. If you'd like enhanced multi-spac
         if not insights:
             return ""
 
-        return "\n".join(insights)
+        return "\n\n" + "\n".join(insights)
 
     def _describe_activity(self, activity: ActivityPattern) -> str:
         """Describe an activity pattern"""
@@ -357,10 +343,7 @@ I'll continue using basic workspace detection. If you'd like enhanced multi-spac
         """Get description for activity type"""
         import random
 
-        descriptions = self.ACTIVITY_DESCRIPTIONS.get(
-            activity_type,
-            ["working"]
-        )
+        descriptions = self.ACTIVITY_DESCRIPTIONS.get(activity_type, ["working"])
         return random.choice(descriptions)
 
     def _get_space_context(self, space: SpaceSummary) -> str:
@@ -375,16 +358,19 @@ I'll continue using basic workspace detection. If you'd like enhanced multi-spac
             # Look for file names
             for title in space.window_titles[:3]:
                 # Extract filename
-                filename_match = re.search(r'([^\\/]+\.[a-z]{2,4})', title, re.IGNORECASE)
+                filename_match = re.search(
+                    r"([^\\/]+\.[a-z]{2,4})", title, re.IGNORECASE
+                )
                 if filename_match:
                     return f"working on {filename_match.group(1)}"
 
                 # Extract project hints
-                if '/' in title or '\\' in title:
-                    path_parts = re.split(r'[\\/]', title)
+                if "/" in title or "\\" in title:
+                    path_parts = re.split(r"[\\/]", title)
                     meaningful_parts = [
-                        p for p in path_parts
-                        if p and p not in {'Users', 'Documents', 'Desktop', 'home'}
+                        p
+                        for p in path_parts
+                        if p and p not in {"Users", "Documents", "Desktop", "home"}
                     ]
                     if meaningful_parts:
                         return f"in {meaningful_parts[-1]}"
@@ -406,9 +392,7 @@ I'll continue using basic workspace detection. If you'd like enhanced multi-spac
             return ", ".join(items[:-1]) + f", and {items[-1]}"
 
     def generate_app_location_response(
-        self,
-        analysis: WorkspaceAnalysis,
-        app_name: str
+        self, analysis: WorkspaceAnalysis, app_name: str
     ) -> str:
         """
         Generate response about where an app is located
@@ -432,8 +416,7 @@ I'll continue using basic workspace detection. If you'd like enhanced multi-spac
         if len(found_spaces) == 1:
             space = found_spaces[0]
             windows_with_app = [
-                w for w in space.window_titles
-                if app_name.lower() in w.lower()
+                w for w in space.window_titles if app_name.lower() in w.lower()
             ]
 
             response = f"Sir, {app_name} is running in {space.space_name}."
