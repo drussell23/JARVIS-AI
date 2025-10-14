@@ -102,7 +102,7 @@ import os
 if sys.platform == "darwin":  # macOS specific
     os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
     os.environ["PYTHONUNBUFFERED"] = "1"
-    
+
 # Clean up leaked semaphores from previous runs FIRST
 if sys.platform == "darwin":  # macOS specific
     try:
@@ -114,7 +114,7 @@ if sys.platform == "darwin":  # macOS specific
                 f"ipcs -s 2>/dev/null | grep {user} | awk '{{print $2}}' | while read id; do ipcrm -s $id 2>/dev/null; done",
                 shell=True,
                 capture_output=True,
-                timeout=5
+                timeout=5,
             )
             if result.returncode == 0:
                 print(f"[STARTUP] Cleaned up leaked semaphores")
@@ -123,7 +123,7 @@ if sys.platform == "darwin":  # macOS specific
 
     # Set spawn mode - MUST be before any other multiprocessing usage
     try:
-        multiprocessing.set_start_method('spawn', force=True)
+        multiprocessing.set_start_method("spawn", force=True)
         print("[STARTUP] Set multiprocessing to spawn mode")
     except RuntimeError as e:
         # Already set, that's fine
@@ -205,12 +205,17 @@ DYNAMIC_LOADING_ENABLED = False
 
 try:
     from core.dynamic_component_manager import get_component_manager
+
     logger.info("✅ Dynamic Component Manager available")
-    DYNAMIC_LOADING_ENABLED = os.getenv("DYNAMIC_COMPONENT_LOADING", "true").lower() == "true"
+    DYNAMIC_LOADING_ENABLED = (
+        os.getenv("DYNAMIC_COMPONENT_LOADING", "true").lower() == "true"
+    )
     if DYNAMIC_LOADING_ENABLED:
         logger.info("🧩 Dynamic Component Loading: ENABLED")
     else:
-        logger.info("⚠️ Dynamic Component Loading: DISABLED (set DYNAMIC_COMPONENT_LOADING=true to enable)")
+        logger.info(
+            "⚠️ Dynamic Component Loading: DISABLED (set DYNAMIC_COMPONENT_LOADING=true to enable)"
+        )
 except ImportError:
     logger.warning("⚠️ Dynamic Component Manager not available - using legacy loading")
     DYNAMIC_LOADING_ENABLED = False
@@ -419,6 +424,7 @@ def import_monitoring():
 def import_voice_unlock():
     """Import voice unlock components"""
     import logging
+
     logger = logging.getLogger(__name__)
 
     voice_unlock = {}
@@ -513,38 +519,14 @@ async def lifespan(app: FastAPI):
         # Start memory pressure monitoring
         asyncio.create_task(dynamic_component_manager.start_monitoring())
         logger.info(f"   Memory limit: {dynamic_component_manager.memory_limit_gb}GB")
-        logger.info(f"   ARM64 optimized: {dynamic_component_manager.arm64_optimizer.is_arm64}")
+        logger.info(
+            f"   ARM64 optimized: {dynamic_component_manager.arm64_optimizer.is_arm64}"
+        )
         logger.info("✅ Dynamic component loading enabled")
 
     # CRITICAL: Check for code changes and clean up old instances FIRST
-    try:
-        from process_cleanup_manager import (
-            ensure_fresh_jarvis_instance,
-            cleanup_system_for_jarvis,
-        )
-
-        logger.info("🔍 Checking for code changes and old instances...")
-        if not ensure_fresh_jarvis_instance():
-            logger.error("❌ Another JARVIS instance is already running on this port!")
-            logger.error("   Please stop the other instance or use a different port.")
-            raise RuntimeError("Port conflict - another JARVIS instance is running")
-
-        # Run full system cleanup
-        logger.info("🧹 Running system cleanup before startup...")
-        cleanup_report = await cleanup_system_for_jarvis(dry_run=False)
-
-        if cleanup_report.get("code_changes_cleanup"):
-            logger.info(
-                f"✅ Cleaned {len(cleanup_report['code_changes_cleanup'])} old instances due to code changes"
-            )
-
-    except ImportError:
-        logger.warning(
-            "⚠️  Process cleanup manager not available - old instances may still be running"
-        )
-    except Exception as e:
-        logger.error(f"Error during process cleanup: {e}")
-        # Continue startup anyway
+    # TEMPORARILY DISABLED - causing hang
+    logger.info("⚠️ Process cleanup temporarily disabled for debugging")
 
     # Run parallel imports if enabled
     if DYNAMIC_LOADING_ENABLED and dynamic_component_manager:
@@ -555,28 +537,39 @@ async def lifespan(app: FastAPI):
 
             # Load only CORE priority components at startup
             core_components = [
-                name for name, comp in dynamic_component_manager.components.items()
+                name
+                for name, comp in dynamic_component_manager.components.items()
                 if comp.priority == ComponentPriority.CORE
             ]
 
             # IMPORTANT: Always include vision as CORE to prevent multi-space query issues
-            if 'vision' not in core_components:
-                core_components.append('vision')
-                logger.info("   ⚠️ Vision not in CORE list, adding it to ensure multi-space queries work")
+            if "vision" not in core_components:
+                core_components.append("vision")
+                logger.info(
+                    "   ⚠️ Vision not in CORE list, adding it to ensure multi-space queries work"
+                )
 
-            logger.info(f"   Loading {len(core_components)} CORE components: {core_components}")
+            logger.info(
+                f"   Loading {len(core_components)} CORE components: {core_components}"
+            )
 
             for comp_name in core_components:
                 success = await dynamic_component_manager.load_component(comp_name)
                 if success:
                     comp = dynamic_component_manager.components[comp_name]
                     components[comp_name] = comp.instance
-                    logger.info(f"   ✅ {comp_name} loaded ({comp.memory_estimate_mb}MB)")
+                    logger.info(
+                        f"   ✅ {comp_name} loaded ({comp.memory_estimate_mb}MB)"
+                    )
                 else:
                     logger.warning(f"   ⚠️ {comp_name} failed to load")
 
-            logger.info(f"✅ Dynamic component loading active - {len(core_components)} CORE components loaded")
-            logger.info(f"   Other components will load on-demand based on user commands")
+            logger.info(
+                f"✅ Dynamic component loading active - {len(core_components)} CORE components loaded"
+            )
+            logger.info(
+                f"   Other components will load on-demand based on user commands"
+            )
 
         except Exception as e:
             logger.error(f"Dynamic loading failed, falling back to legacy mode: {e}")
@@ -711,7 +704,9 @@ async def lifespan(app: FastAPI):
                 # Multi-Space Context Tracking + Implicit Reference + Cross-Space Intelligence
                 # ========================================================================
                 try:
-                    from backend.core.context.context_integration_bridge import initialize_integration_bridge
+                    from backend.core.context.context_integration_bridge import (
+                        initialize_integration_bridge,
+                    )
 
                     logger.info("🧠 Initializing Context Intelligence System...")
                     logger.info("   Priority 1: Multi-Space Context Tracking")
@@ -723,32 +718,49 @@ async def lifespan(app: FastAPI):
                     app.state.context_bridge = bridge
 
                     # Integrate with PureVisionIntelligence for vision updates
-                    if hasattr(vision_command_handler, 'vision_intelligence'):
-                        logger.info("   🔗 Connecting Vision Intelligence to Context Bridge...")
+                    if hasattr(vision_command_handler, "vision_intelligence"):
+                        logger.info(
+                            "   🔗 Connecting Vision Intelligence to Context Bridge..."
+                        )
                         # Store bridge reference in vision intelligence so it can feed updates
-                        vision_command_handler.vision_intelligence.context_bridge = bridge
-                        logger.info("   ✅ Vision Intelligence connected to Context Bridge")
+                        vision_command_handler.vision_intelligence.context_bridge = (
+                            bridge
+                        )
+                        logger.info(
+                            "   ✅ Vision Intelligence connected to Context Bridge"
+                        )
 
                     # Integrate with AsyncPipeline for command processing
                     jarvis_api = voice.get("jarvis_api")
-                    if jarvis_api and hasattr(jarvis_api, 'async_pipeline'):
+                    if jarvis_api and hasattr(jarvis_api, "async_pipeline"):
                         jarvis_api.async_pipeline.context_bridge = bridge
                         logger.info("   ✅ AsyncPipeline connected to Context Bridge")
 
                     # Get intelligence summary
                     summary = bridge.get_workspace_intelligence_summary()
                     logger.info("✅ Context Intelligence System initialized:")
-                    logger.info(f"   • Multi-Space Context Tracking: Active ({summary.get('total_spaces', 0)} spaces)")
+                    logger.info(
+                        f"   • Multi-Space Context Tracking: Active ({summary.get('total_spaces', 0)} spaces)"
+                    )
                     logger.info(f"   • Implicit Reference Resolution: Enabled")
                     logger.info(f"   • Cross-Space Intelligence: Enabled")
-                    logger.info(f"   • Natural Language Queries: 'what does it say?', 'what am I working on?'")
-                    logger.info(f"   • Workspace Synthesis: Combining context from all spaces")
+                    logger.info(
+                        f"   • Natural Language Queries: 'what does it say?', 'what am I working on?'"
+                    )
+                    logger.info(
+                        f"   • Workspace Synthesis: Combining context from all spaces"
+                    )
 
                 except ImportError as e:
-                    logger.warning(f"   ⚠️ Context Intelligence System not available: {e}")
+                    logger.warning(
+                        f"   ⚠️ Context Intelligence System not available: {e}"
+                    )
                     app.state.context_bridge = None
                 except Exception as e:
-                    logger.error(f"   ❌ Context Intelligence initialization failed: {e}", exc_info=True)
+                    logger.error(
+                        f"   ❌ Context Intelligence initialization failed: {e}",
+                        exc_info=True,
+                    )
                     app.state.context_bridge = None
 
                 # Log proactive monitoring configuration
@@ -901,7 +913,7 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60 + "\n")
 
     # Initialize Voice Unlock system components (WebSocket server)
-    voice_unlock = components.get("voice_unlock", {})
+    voice_unlock = components.get("voice_unlock") or {}
     if (
         voice_unlock
         and voice_unlock.get("startup_integration")
@@ -960,18 +972,20 @@ async def lifespan(app: FastAPI):
         # Register backend service
         backend_port = int(os.getenv("BACKEND_PORT", "8000"))
         await orchestrator.register_service("jarvis_backend", backend_port, "http")
-        await mesh.join({
-            "name": "jarvis_backend",
-            "port": backend_port,
-            "protocol": "http",
-            "type": "backend",
-            "endpoints": {
-                "health": "/health",
-                "vision": "/vision",
-                "voice": "/voice",
-                "chat": "/chat"
+        await mesh.join(
+            {
+                "name": "jarvis_backend",
+                "port": backend_port,
+                "protocol": "http",
+                "type": "backend",
+                "endpoints": {
+                    "health": "/health",
+                    "vision": "/vision",
+                    "voice": "/voice",
+                    "chat": "/chat",
+                },
             }
-        })
+        )
 
         app.state.orchestrator = orchestrator
         app.state.mesh = mesh
@@ -1014,12 +1028,14 @@ async def lifespan(app: FastAPI):
     if hasattr(app.state, "context_bridge"):
         try:
             from backend.core.unified_context_bridge import shutdown_context_bridge
+
             await shutdown_context_bridge()
             logger.info("✅ Unified Context Bridge stopped")
         except Exception as e:
             logger.error(f"Failed to stop Context Bridge: {e}")
 
     # Stop Voice Unlock system
+    voice_unlock = components.get("voice_unlock") or {}
     if hasattr(app.state, "voice_unlock_system") and voice_unlock.get(
         "shutdown_system"
     ):
@@ -1047,6 +1063,7 @@ async def lifespan(app: FastAPI):
 # Apply vision monitoring fix
 try:
     import api.direct_vision_fix
+
     logger.info("Vision monitoring fix applied")
 except Exception as e:
     logger.warning(f"Could not apply vision fix: {e}")
@@ -1054,6 +1071,7 @@ except Exception as e:
 # Force reload vision handler to get latest fixes
 try:
     import api.reload_vision_fix
+
     logger.info("Vision handler reloaded with multi-space fixes")
 except Exception as e:
     logger.warning(f"Could not reload vision handler: {e}")
@@ -1241,12 +1259,14 @@ async def health_check():
             "memory_pressure": mgr.memory_monitor.current_pressure().value,
             "arm64_optimized": mgr.arm64_optimizer.is_arm64,
             "m1_detected": mgr.arm64_optimizer.is_m1,
-            "config_loaded": os.path.exists(mgr.config_path) if mgr.config_path else False,
+            "config_loaded": (
+                os.path.exists(mgr.config_path) if mgr.config_path else False
+            ),
             "advanced_preloader": {
                 "predictor_active": mgr.advanced_predictor is not None,
                 "dependency_resolver_active": mgr.dependency_resolver is not None,
                 "smart_cache_active": mgr.smart_cache is not None,
-            }
+            },
         }
     else:
         component_manager_details = {"enabled": False}
@@ -1288,9 +1308,10 @@ async def autonomous_status():
             mesh_status = {"error": str(e)}
 
     return {
-        "autonomous_enabled": orchestrator_status is not None or mesh_status is not None,
+        "autonomous_enabled": orchestrator_status is not None
+        or mesh_status is not None,
         "orchestrator": orchestrator_status,
-        "mesh": mesh_status
+        "mesh": mesh_status,
     }
 
 
@@ -1307,7 +1328,7 @@ async def component_status():
         "enabled": True,
         "config_path": mgr.config_path,
         "memory_limit_gb": mgr.memory_limit_gb,
-        **status  # Unpack all status fields
+        **status,  # Unpack all status fields
     }
 
 
@@ -1321,14 +1342,16 @@ async def component_metrics():
     status = mgr.get_status()
 
     # Calculate efficiency score
-    total_loads = status['performance']['total_loads']
-    cache_hit_rate = status['performance']['cache_hit_rate']
-    memory_saved = status['memory']['saved_mb']
+    total_loads = status["performance"]["total_loads"]
+    cache_hit_rate = status["performance"]["cache_hit_rate"]
+    memory_saved = status["memory"]["saved_mb"]
 
     efficiency_score = 0
     if total_loads > 0:
         # Score based on cache hits, memory savings, and load count
-        efficiency_score = min(100, (cache_hit_rate * 0.4) + (min(memory_saved / 100, 50) * 0.6))
+        efficiency_score = min(
+            100, (cache_hit_rate * 0.4) + (min(memory_saved / 100, 50) * 0.6)
+        )
 
     return {
         "enabled": True,
@@ -1336,14 +1359,22 @@ async def component_metrics():
         "efficiency_score": round(efficiency_score, 1),
         "metrics": {
             "component_utilization": {
-                "total": status['total_components'],
-                "loaded": status['loaded_components'],
-                "utilization_percent": round((status['loaded_components'] / status['total_components']) * 100, 1) if status['total_components'] > 0 else 0
+                "total": status["total_components"],
+                "loaded": status["loaded_components"],
+                "utilization_percent": (
+                    round(
+                        (status["loaded_components"] / status["total_components"])
+                        * 100,
+                        1,
+                    )
+                    if status["total_components"] > 0
+                    else 0
+                ),
             },
-            "memory_metrics": status['memory'],
-            "performance_metrics": status['performance'],
-            "platform_info": status['platform']
-        }
+            "memory_metrics": status["memory"],
+            "performance_metrics": status["performance"],
+            "platform_info": status["platform"],
+        },
     }
 
 
@@ -1384,6 +1415,7 @@ def mount_routers():
         # Set JARVIS instance in unified WebSocket pipeline
         try:
             from api.unified_websocket import set_jarvis_instance
+
             jarvis_api = voice.get("jarvis_api")
             if jarvis_api:
                 set_jarvis_instance(jarvis_api)
@@ -1422,6 +1454,7 @@ def mount_routers():
     # Wake Word API - Always mount (has stub functionality)
     try:
         from api.wake_word_api import router as wake_word_router
+
         # Router already has prefix="/api/wake-word", don't add it again
         app.include_router(wake_word_router)
         logger.info("✅ Wake Word API mounted at /api/wake-word")
@@ -1432,7 +1465,9 @@ def mount_routers():
             app.state.wake_word = wake_word
             logger.info("✅ Wake Word detection service available")
         else:
-            logger.info("ℹ️  Wake Word API available (stub mode - service not initialized)")
+            logger.info(
+                "ℹ️  Wake Word API available (stub mode - service not initialized)"
+            )
     except ImportError as e:
         logger.warning(f"⚠️ Wake Word API not available: {e}")
 
@@ -1460,7 +1495,7 @@ def mount_routers():
         logger.debug("Self-healing API not available")
 
     # Context Intelligence API (Priority 1-3 features)
-    if hasattr(app.state, 'context_bridge') and app.state.context_bridge:
+    if hasattr(app.state, "context_bridge") and app.state.context_bridge:
         from fastapi import Request
         from pydantic import BaseModel
 
@@ -1481,8 +1516,7 @@ def mount_routers():
             """
             try:
                 response = await app.state.context_bridge.handle_user_query(
-                    request.query,
-                    request.current_space_id
+                    request.query, request.current_space_id
                 )
                 return {"success": True, "response": response}
             except Exception as e:
@@ -1504,7 +1538,7 @@ def mount_routers():
             space_id: int,
             app_name: str,
             ocr_text: str,
-            screenshot_path: Optional[str] = None
+            screenshot_path: Optional[str] = None,
         ):
             """Process OCR update from vision system"""
             try:
@@ -1512,7 +1546,7 @@ def mount_routers():
                     space_id=space_id,
                     app_name=app_name,
                     ocr_text=ocr_text,
-                    screenshot_path=screenshot_path
+                    screenshot_path=screenshot_path,
                 )
                 return {"success": True}
             except Exception as e:

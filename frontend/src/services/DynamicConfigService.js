@@ -19,9 +19,9 @@ class DynamicConfigService {
 
     // Discovery configuration
     // Prioritize known working ports and exclude problematic ones
-    this.commonPorts = [8000, 8010, 3001, 8080, 8888];
-    // Skip ports with known CORS issues: 5000 (Control Center), 8001 (node service)
-    this.excludedPorts = [5000, 8001, 5001];
+    this.commonPorts = [8000, 8001, 8010, 3001, 8080, 8888];
+    // Skip ports with known CORS issues: 5000 (Control Center)
+    this.excludedPorts = [5000, 5001];
     this.discoveryTimeout = 500; // ms per port
     this.maxRetries = 3;
 
