@@ -838,7 +838,8 @@ class MultiSpaceCaptureEngine:
             detector = MultiSpaceWindowDetector()
             window_data = detector.get_all_windows_across_spaces()
 
-            spaces = window_data.get("spaces", [])
+            # Try both 'spaces_list' and 'spaces' for compatibility
+            spaces = window_data.get("spaces_list", window_data.get("spaces", []))
             space_ids = []
 
             for space in spaces:

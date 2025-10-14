@@ -629,17 +629,43 @@ class VisionCommandHandler:
                     if status == YabaiStatus.AVAILABLE:
                         # Get workspace data from Yabai
                         workspace_data = self.yabai_detector.get_workspace_summary()
-                        spaces = workspace_data["spaces"]
+                        spaces_dict = workspace_data["spaces"]
+
+                        # Convert dict spaces to objects with required attributes
+                        from types import SimpleNamespace
+                        spaces = []
+                        for space_dict in spaces_dict:
+                            # Use space_id field that actually exists in the dict
+                            space_id = space_dict.get("space_id", space_dict.get("id", 0))
+                            space = SimpleNamespace(
+                                index=space_id,
+                                display_name=space_dict.get("space_name", f"Space {space_id}"),
+                                is_focused=space_dict.get("is_current", False),
+                                display=space_dict.get("display", 1)
+                            )
+                            spaces.append(space)
 
                         # Collect all windows from all spaces
                         windows = []
-                        for space in spaces:
-                            space_id = space.get("index", space.get("id"))
+                        for space_dict in spaces_dict:
+                            # Use space_id field, not index
+                            space_id = space_dict.get("space_id")
                             if space_id:
-                                space_windows = (
-                                    self.yabai_detector.get_windows_for_space(space_id)
-                                )
-                                windows.extend(space_windows)
+                                # Get windows directly from the space dict
+                                space_windows = space_dict.get("windows", [])
+                                
+                                # Convert window dicts to objects with required attributes
+                                for window_dict in space_windows:
+                                    window = SimpleNamespace(
+                                        app_name=window_dict.get("app", "Unknown"),
+                                        title=window_dict.get("title", ""),
+                                        window_id=window_dict.get("id", 0),
+                                        space_index=space_id,
+                                        is_minimized=window_dict.get("minimized", False),
+                                        is_hidden=window_dict.get("hidden", False),
+                                        is_substantial=True  # Assume windows from Yabai are substantial
+                                    )
+                                    windows.append(window)
 
                         # Analyze workspace activity
                         analysis = self.workspace_analyzer.analyze(spaces, windows)
