@@ -414,6 +414,12 @@ class VisionCommandHandler:
         if follow_up_result.get("handled"):
             return follow_up_result
 
+        # Check if this is a multi-space query that should use intelligent orchestration
+        if self._is_multi_space_query(command_text):
+            orchestration_result = await self._handle_intelligent_orchestration(command_text)
+            if orchestration_result.get("handled"):
+                return orchestration_result
+
         # Check if this is a proactive monitoring command
         monitoring_handler = get_monitoring_handler(self)
         monitoring_result = await monitoring_handler.handle_monitoring_request(
@@ -569,6 +575,10 @@ class VisionCommandHandler:
     async def analyze_screen(self, command_text: str) -> Dict[str, Any]:
         """Analyze screen with enhanced multi-space intelligence"""
         logger.info(f"[VISION] analyze_screen called with: {command_text}")
+
+        # Ensure intelligence is initialized
+        if not self.intelligence:
+            await self.initialize_intelligence()
 
         # Use the same logic as handle_command but for screen analysis
         try:
@@ -1339,14 +1349,53 @@ Be SPECIFIC and DETAILED. Use the actual window titles to infer what work is bei
             if not is_follow_up:
                 return {"handled": False}
             
-            # Check if we have recent multi-space context
-            if not hasattr(self, '_last_multi_space_context'):
+            # Check if we have recent multi-space context or orchestration context
+            has_context = (
+                hasattr(self, '_last_multi_space_context') or 
+                hasattr(self, '_last_orchestration_context')
+            )
+            
+            if not has_context:
                 return {"handled": False}
             
-            context = self._last_multi_space_context
-            spaces = context.get('spaces', [])
+            # Try to use orchestration context first, then fall back to multi-space context
+            if hasattr(self, '_last_orchestration_context'):
+                orchestration_context = self._last_orchestration_context
+                context_id = orchestration_context.get('context_id')
+                
+                if context_id:
+                    # Use intelligent orchestrator for follow-up
+                    api_key = os.getenv("ANTHROPIC_API_KEY")
+                    if api_key:
+                        try:
+                            from vision.intelligent_orchestrator import get_intelligent_orchestrator
+                            orchestrator = get_intelligent_orchestrator()
+                            
+                            result = await orchestrator.handle_follow_up_query(
+                                query=command_text,
+                                context_id=context_id,
+                                claude_api_key=api_key
+                            )
+                            
+                            if result.get("success"):
+                                return {
+                                    "handled": True,
+                                    "response": result.get("analysis", {}).get("analysis", "Follow-up analysis completed"),
+                                    "follow_up_analysis": True,
+                                    "uses_claude_vision": True,
+                                    "orchestration": True
+                                }
+                        except Exception as e:
+                            logger.warning(f"[FOLLOW-UP] Orchestration follow-up failed: {e}")
             
-            if not spaces:
+            # Fall back to original multi-space context
+            if hasattr(self, '_last_multi_space_context'):
+                context = self._last_multi_space_context
+                spaces = context.get('spaces', [])
+                
+                if not spaces:
+                    return {"handled": False}
+            else:
                 return {"handled": False}
             
             logger.info("[FOLLOW-UP] Detected multi-space follow-up query")
@@ -1580,6 +1629,67 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
         except Exception as e:
             logger.error(f"[FOLLOW-UP] Failed to capture space {space_id}: {e}")
             return None
+
+    def _is_multi_space_query(self, command_text: str) -> bool:
+        """Check if query is about multiple desktop spaces"""
+        command_lower = command_text.lower()
+        
+        multi_space_indicators = [
+            "across", "all", "every", "each", "multiple", "spaces", "desktops",
+            "workspace", "what's happening", "what is happening", "show me",
+            "tell me about", "analyze", "overview", "summary"
+        ]
+        
+        return any(indicator in command_lower for indicator in multi_space_indicators)
+
+    async def _handle_intelligent_orchestration(self, command_text: str) -> Dict[str, Any]:
+        """Handle multi-space queries using intelligent orchestration"""
+        try:
+            logger.info("[ORCHESTRATOR] Handling multi-space query with intelligent orchestration")
+            
+            # Get API key
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+            if not api_key:
+                logger.warning("[ORCHESTRATOR] No Claude API key available")
+                return {"handled": False}
+            
+            # Import and use intelligent orchestrator
+            from vision.intelligent_orchestrator import get_intelligent_orchestrator
+            
+            orchestrator = get_intelligent_orchestrator()
+            
+            # Perform intelligent analysis
+            result = await orchestrator.analyze_workspace_intelligently(
+                query=command_text,
+                claude_api_key=api_key
+            )
+            
+            if result.get("success"):
+                # Store context for follow-up questions
+                context_id = result.get("context_id")
+                if context_id:
+                    self._last_orchestration_context = {
+                        "context_id": context_id,
+                        "timestamp": datetime.now(),
+                        "query": command_text
+                    }
+                
+                return {
+                    "handled": True,
+                    "response": result.get("analysis", {}).get("analysis", "Analysis completed"),
+                    "orchestration": True,
+                    "context_id": context_id,
+                    "patterns": result.get("patterns_detected", []),
+                    "performance": result.get("performance", {}),
+                    "uses_claude_vision": True
+                }
+            else:
+                logger.warning(f"[ORCHESTRATOR] Analysis failed: {result.get('error')}")
+                return {"handled": False}
+                
+        except Exception as e:
+            logger.error(f"[ORCHESTRATOR] Intelligent orchestration failed: {e}", exc_info=True)
+            return {"handled": False}
 
     async def _proactive_monitoring_loop(self):
         """Proactive monitoring with pure intelligence"""
