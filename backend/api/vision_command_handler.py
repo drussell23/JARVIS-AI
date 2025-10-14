@@ -1385,7 +1385,7 @@ Be SPECIFIC and DETAILED. Use the actual window titles to infer what work is bei
             # Switch to the target space and capture screenshot
             screenshot = await self._capture_space_screenshot(target_space.get('space_id', 1))
             
-            if not screenshot:
+            if screenshot is None:
                 return {
                     "handled": True,
                     "response": f"I couldn't capture a screenshot of Space {target_space.get('space_id', '?')}, Sir.",
@@ -1455,41 +1455,126 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
             return {"handled": False}
 
     async def _capture_space_screenshot(self, space_id: int) -> Any:
-        """Capture screenshot of a specific space"""
+        """Capture screenshot of a specific space without switching"""
         try:
-            # Try to switch to the requested space and capture it
-            logger.info(f"[FOLLOW-UP] Attempting to capture Space {space_id}")
+            logger.info(f"[FOLLOW-UP] Attempting to capture Space {space_id} without switching")
             
-            # Check if we can use Yabai to switch spaces
-            if hasattr(self, 'yabai_detector') and self.yabai_detector:
-                try:
-                    # Use Yabai to switch to the target space
-                    import subprocess
-                    result = subprocess.run(
-                        ['yabai', '-m', 'space', '--focus', str(space_id)],
-                        capture_output=True,
-                        text=True,
-                        timeout=2
-                    )
+            # Try to use multi-space capture engine for non-disruptive capture
+            try:
+                from vision.multi_space_capture_engine import MultiSpaceCaptureEngine, SpaceCaptureRequest, CaptureQuality
+                
+                # Create capture engine
+                capture_engine = MultiSpaceCaptureEngine()
+                
+                # Create capture request
+                request = SpaceCaptureRequest(
+                    space_ids=[space_id],
+                    reason="follow_up_analysis",
+                    quality=CaptureQuality.FULL,
+                    use_cache=True
+                )
+                
+                # Attempt capture using CG Windows API (non-disruptive)
+                screenshot = await capture_engine._capture_with_cg_windows(space_id, request)
+                
+                if screenshot is not None:
+                    logger.info(f"[FOLLOW-UP] Successfully captured Space {space_id} using CG Windows API")
+                    return screenshot
+                else:
+                    logger.warning(f"[FOLLOW-UP] CG Windows capture failed for Space {space_id}")
                     
-                    if result.returncode == 0:
-                        logger.info(f"[FOLLOW-UP] Successfully switched to Space {space_id}")
-                        # Small delay to let the space switch complete
-                        await asyncio.sleep(0.5)
-                        # Capture screenshot of the switched space
-                        screenshot = await self._capture_screen(multi_space=False)
-                        return screenshot
-                    else:
-                        logger.warning(f"[FOLLOW-UP] Failed to switch to Space {space_id}: {result.stderr}")
-                        
-                except Exception as e:
-                    logger.warning(f"[FOLLOW-UP] Space switching failed: {e}")
+            except Exception as e:
+                logger.warning(f"[FOLLOW-UP] Multi-space capture engine failed: {e}")
             
-            # Fallback: capture current space and inform user
+            # Fallback: Use AppleScript to switch spaces (disruptive but functional)
+            try:
+                logger.info(f"[FOLLOW-UP] Attempting AppleScript space switch to Space {space_id}")
+                import subprocess
+                
+                # Get current space from context to switch back later
+                original_space_id = None
+                if hasattr(self, '_last_multi_space_context'):
+                    spaces = self._last_multi_space_context.get('spaces', [])
+                    current_space = next((s for s in spaces if s.get('is_current', False)), None)
+                    if current_space:
+                        original_space_id = current_space.get('space_id')
+                
+                # Calculate how many spaces to move (right = +1, left = -1)
+                if original_space_id and space_id != original_space_id:
+                    spaces_to_move = space_id - original_space_id
+                    
+                    # Use AppleScript to switch spaces
+                    for _ in range(abs(spaces_to_move)):
+                        if spaces_to_move > 0:
+                            # Move right
+                            result = subprocess.run(
+                                ['osascript', '-e', 'tell application "System Events" to key code 19 using {control down}'],
+                                capture_output=True,
+                                text=True,
+                                timeout=2
+                            )
+                        else:
+                            # Move left
+                            result = subprocess.run(
+                                ['osascript', '-e', 'tell application "System Events" to key code 18 using {control down}'],
+                                capture_output=True,
+                                text=True,
+                                timeout=2
+                            )
+                        
+                        if result.returncode != 0:
+                            logger.warning(f"[FOLLOW-UP] AppleScript space switch failed: {result.stderr}")
+                            break
+                        
+                        # Small delay between switches
+                        await asyncio.sleep(0.3)
+                    
+                    logger.info(f"[FOLLOW-UP] Successfully switched to Space {space_id}")
+                    # Additional delay to let the space switch complete
+                    await asyncio.sleep(0.5)
+                    
+                    # Capture screenshot of the switched space
+                    screenshot = await self._capture_screen(multi_space=False)
+                    
+                    # Switch back to original space
+                    if original_space_id:
+                        try:
+                            spaces_to_move_back = original_space_id - space_id
+                            for _ in range(abs(spaces_to_move_back)):
+                                if spaces_to_move_back > 0:
+                                    # Move right
+                                    subprocess.run(
+                                        ['osascript', '-e', 'tell application "System Events" to key code 19 using {control down}'],
+                                        capture_output=True,
+                                        text=True,
+                                        timeout=2
+                                    )
+                                else:
+                                    # Move left
+                                    subprocess.run(
+                                        ['osascript', '-e', 'tell application "System Events" to key code 18 using {control down}'],
+                                        capture_output=True,
+                                        text=True,
+                                        timeout=2
+                                    )
+                                await asyncio.sleep(0.3)
+                            logger.info(f"[FOLLOW-UP] Switched back to Space {original_space_id}")
+                        except Exception as e:
+                            logger.warning(f"[FOLLOW-UP] Failed to switch back: {e}")
+                    
+                    return screenshot
+                else:
+                    logger.info(f"[FOLLOW-UP] Already on Space {space_id}, capturing current space")
+                    screenshot = await self._capture_screen(multi_space=False)
+                    return screenshot
+                        
+            except Exception as e:
+                logger.warning(f"[FOLLOW-UP] AppleScript space switching failed: {e}")
+            
+            # Final fallback: capture current space and inform user
             logger.info(f"[FOLLOW-UP] Falling back to current space capture")
             screenshot = await self._capture_screen(multi_space=False)
             
-            # Add a note to the prompt that this is the current space, not the requested one
             return screenshot
             
         except Exception as e:
