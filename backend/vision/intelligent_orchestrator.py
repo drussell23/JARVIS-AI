@@ -767,10 +767,10 @@ class IntelligentOrchestrator:
     ) -> Dict[str, Any]:
         """Generate richly detailed workspace overview with clean bullet formatting"""
         
-        # Build overview with proper HTML structure
-        html_parts = [
-            f"<p>Sir, you're working across {snapshot.total_spaces} desktop spaces:</p>",
-            "<ul>"
+        # Build overview with clean bullet points (plain text with newlines)
+        response_parts = [
+            f"Sir, you're working across {snapshot.total_spaces} desktop spaces:",
+            ""
         ]
         
         # List each space with rich, detailed activity descriptions
@@ -795,31 +795,26 @@ class IntelligentOrchestrator:
                 # Check if activity has multiple lines (rich detail)
                 if "\n" in activity:
                     # Multi-line format for rich details
-                    html_parts.append(f"<li><strong>Space {space_id}{current_marker}:</strong> {primary_app}")
-                    html_parts.append("<ul>")
+                    response_parts.append(f"• Space {space_id}{current_marker}: {primary_app}")
                     for line in activity.split("\n"):
-                        html_parts.append(f"<li>{line}</li>")
-                    html_parts.append("</ul></li>")
+                        response_parts.append(f"  {line}")
                 else:
                     # Single line format with clean bullet
-                    html_parts.append(f"<li><strong>Space {space_id}{current_marker}:</strong> {primary_app} — {activity}</li>")
+                    response_parts.append(f"• Space {space_id}{current_marker}: {primary_app} — {activity}")
             else:
                 current_marker = " (current)" if is_current else ""
-                html_parts.append(f"<li><strong>Space {space_id}{current_marker}:</strong> Empty</li>")
-        
-        html_parts.append("</ul>")
+                response_parts.append(f"• Space {space_id}{current_marker}: Empty")
         
         # Generate intelligent workflow summary
         workflow_summary = await self._generate_detailed_workflow_summary(snapshot, patterns)
         if workflow_summary:
-            html_parts.append("<p><strong>Workflow Analysis:</strong></p>")
-            html_parts.append("<ul>")
+            response_parts.append("")
+            response_parts.append("Workflow Analysis:")
             for line in workflow_summary.split("\n"):
                 if line.strip():
-                    html_parts.append(f"<li>{line}</li>")
-            html_parts.append("</ul>")
+                    response_parts.append(f"• {line}")
         
-        response_text = "".join(html_parts)
+        response_text = "\n".join(response_parts)
         
         return {
             "analysis": response_text,
