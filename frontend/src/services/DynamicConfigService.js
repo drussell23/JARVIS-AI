@@ -19,7 +19,7 @@ class DynamicConfigService {
 
     // Discovery configuration
     // Prioritize known working ports and exclude problematic ones
-    this.commonPorts = [8010, 8000, 3001, 8080, 8888];
+    this.commonPorts = [8000, 8010, 3001, 8080, 8888];
     // Skip ports with known CORS issues: 5000 (Control Center), 8001 (node service)
     this.excludedPorts = [5000, 8001, 5001];
     this.discoveryTimeout = 500; // ms per port
@@ -134,7 +134,7 @@ class DynamicConfigService {
       logger.debug(`Skipping excluded port ${port}`);
       return null;
     }
-    
+
     const baseUrl = `http://localhost:${port}`;
     // Only log in debug mode to reduce console noise
     // logger.debug(`Scanning port ${port}...`);
@@ -185,7 +185,7 @@ class DynamicConfigService {
 
   async discoverEndpoints(baseUrl) {
     const endpoints = {};
-    
+
     logger.debug(`🔍 Discovering endpoints at ${baseUrl}...`);
 
     // Common API endpoints to check
@@ -212,7 +212,7 @@ class DynamicConfigService {
           // For POST endpoints, try GET first for discovery
           discoveryMethod = 'GET';
         }
-        
+
         const options = {
           method: discoveryMethod,
           headers: {
@@ -220,9 +220,9 @@ class DynamicConfigService {
             'Content-Type': 'application/json'
           }
         };
-        
+
         const response = await this.fetchWithTimeout(`${baseUrl}${path}`, 500, true, options);
-        
+
         // Accept 200, 204, 401, 405 (method not allowed means endpoint exists)
         if (response.ok || response.status === 401 || response.status === 405) {
           endpoints[name] = { path, method: endpointsToCheck.find(e => e.name === name)?.method || 'GET' };
@@ -238,14 +238,14 @@ class DynamicConfigService {
 
     // Log discovered endpoints
     const found = results.filter(r => r !== null);
-    
+
     // Check if this is minimal mode based on discovered endpoints
-    const hasAdvancedEndpoints = found.some(e => 
-      e.name === 'ml_audio_config' || 
-      e.name === 'wake_word_status' || 
+    const hasAdvancedEndpoints = found.some(e =>
+      e.name === 'ml_audio_config' ||
+      e.name === 'wake_word_status' ||
       e.name === 'vision_websocket'
     );
-    
+
     if (found.length > 0 && !hasAdvancedEndpoints) {
       logger.info(`⚡ Backend running in MINIMAL MODE at ${baseUrl}`);
       logger.info(`  ✅ Found ${found.length} basic endpoints`);

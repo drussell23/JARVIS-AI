@@ -6,14 +6,14 @@
 import configService from './services/DynamicConfigService';
 
 // Dynamic API URL - will be updated when config service discovers backend
-let API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8010';
+let API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 let WS_BASE_URL = API_BASE_URL.replace('http://', 'ws://').replace('https://', 'wss://');
 
 // Update URLs when config service is ready
 configService.on('config-ready', (config) => {
   API_BASE_URL = config.API_BASE_URL || API_BASE_URL;
   WS_BASE_URL = config.WS_BASE_URL || WS_BASE_URL;
-  
+
   // Update exported values
   module.exports.API_BASE_URL = API_BASE_URL;
   module.exports.WS_BASE_URL = WS_BASE_URL;
@@ -23,7 +23,7 @@ configService.on('config-ready', (config) => {
 configService.on('config-updated', (config) => {
   API_BASE_URL = config.API_BASE_URL || API_BASE_URL;
   WS_BASE_URL = config.WS_BASE_URL || WS_BASE_URL;
-  
+
   // Update exported values
   module.exports.API_BASE_URL = API_BASE_URL;
   module.exports.WS_BASE_URL = WS_BASE_URL;
@@ -39,20 +39,20 @@ export const CONFIG = {
   SPEECH_SYNTHESIS_RATE: 1.0,
   SPEECH_SYNTHESIS_PITCH: 0.95,
   SPEECH_SYNTHESIS_VOLUME: 1.0,
-  
+
   // Audio settings
   AUDIO_SAMPLE_RATE: 44100,
   AUDIO_CHANNELS: 1,
-  
+
   // Vision system settings
   VISION_UPDATE_INTERVAL: 2000,
   VISION_RECONNECT_ATTEMPTS: 5,
   VISION_RECONNECT_DELAY: 2000,
-  
+
   // WebSocket settings
   WS_RECONNECT_DELAY: 3000,
   WS_MAX_RECONNECT_ATTEMPTS: 10,
-  
+
   // ML Audio settings
   ML_AUDIO_ENABLED: true,
   ML_AUTO_RECOVERY: true,

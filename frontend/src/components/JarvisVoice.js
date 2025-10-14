@@ -50,7 +50,7 @@ const configPromise = new Promise((resolve) => {
 
   // Initialize API URLs when config is ready
   const handleConfigReady = (config) => {
-    API_URL = config.API_BASE_URL || configService.getApiUrl() || 'http://localhost:8010';
+    API_URL = config.API_BASE_URL || configService.getApiUrl() || 'http://localhost:8000';
     WS_URL = config.WS_BASE_URL || configService.getWebSocketUrl() || API_URL.replace('http://', 'ws://').replace('https://', 'wss://');
     configReady = true;
     console.log('JarvisVoice: Config ready', { API_URL, WS_URL });
@@ -58,7 +58,7 @@ const configPromise = new Promise((resolve) => {
   };
 
   configService.once('config-ready', handleConfigReady);
-  
+
   // Check again in case we missed the event
   setTimeout(() => {
     if (!configReady) {
@@ -68,7 +68,7 @@ const configPromise = new Promise((resolve) => {
       }
     }
   }, 100);
-  
+
   // Final fallback after 1 second
   setTimeout(() => {
     if (!configReady) {
@@ -85,7 +85,7 @@ const configPromise = new Promise((resolve) => {
 configService.on('config-updated', (config) => {
   const newApiUrl = config.API_BASE_URL || configService.getApiUrl();
   const newWsUrl = config.WS_BASE_URL || configService.getWebSocketUrl();
-  
+
   if (newApiUrl !== API_URL || newWsUrl !== WS_URL) {
     API_URL = newApiUrl;
     WS_URL = newWsUrl;
@@ -122,7 +122,7 @@ class VisionConnection {
         console.log('VisionConnection: Waiting for config...');
         await configPromise;
       }
-      
+
       // Use main backend port for vision WebSocket
       const wsBaseUrl = WS_URL || configService.getWebSocketUrl() || 'ws://localhost:8010';
       const wsUrl = `${wsBaseUrl}/vision/ws`;  // Use consistent WebSocket URL
@@ -375,14 +375,14 @@ class VisionConnection {
 const getStartupGreeting = () => {
   const hour = new Date().getHours();
   const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-  
+
   // Determine time of day
   let timeContext = 'evening';
   if (hour >= 5 && hour < 12) timeContext = 'morning';
   else if (hour >= 12 && hour < 17) timeContext = 'afternoon';
   else if (hour >= 17 && hour < 22) timeContext = 'evening';
   else timeContext = 'night';
-  
+
   const greetings = {
     morning: [
       "Good morning, Sir. JARVIS systems initialized and ready for your command.",
@@ -414,7 +414,7 @@ const getStartupGreeting = () => {
       "Systems operational, Sir. Burning the midnight oil?"
     ]
   };
-  
+
   // Add some variety with status messages
   const statusMessages = [
     "JARVIS initialization complete. All systems operational.",
@@ -424,13 +424,13 @@ const getStartupGreeting = () => {
     "AI neural pathways synchronized. Ready to proceed.",
     "Voice recognition calibrated. Standing by for your command."
   ];
-  
+
   // Mix time-based and status-based greetings
   let greetingPool = [...greetings[timeContext]];
   if (Math.random() < 0.3) {
     greetingPool.push(...statusMessages);
   }
-  
+
   // Weekend special
   if (dayName === 'Saturday' || dayName === 'Sunday') {
     if (Math.random() < 0.3) {
@@ -440,7 +440,7 @@ const getStartupGreeting = () => {
       );
     }
   }
-  
+
   return greetingPool[Math.floor(Math.random() * greetingPool.length)];
 };
 
@@ -462,7 +462,7 @@ const getWakeWordResponse = () => {
     "JARVIS ready. What's on your mind?",
     "Systems ready. What can I do for you?"
   ];
-  
+
   return responses[Math.floor(Math.random() * responses.length)];
 };
 
@@ -510,7 +510,7 @@ const JarvisVoice = () => {
     if ('speechSynthesis' in window) {
       // Force load voices
       window.speechSynthesis.getVoices();
-      
+
       // Listen for voices to be loaded
       window.speechSynthesis.onvoiceschanged = () => {
         const voices = window.speechSynthesis.getVoices();
@@ -526,7 +526,7 @@ const JarvisVoice = () => {
       // Wait for config to be ready before making any API calls
       await configPromise;
       console.log('JarvisVoice: Config ready, initializing...');
-      
+
       await checkJarvisStatus();
       await checkMicrophonePermission();
       await initializeWakeWordService();
@@ -755,16 +755,16 @@ const JarvisVoice = () => {
       console.log('JarvisVoice: Waiting for config before checking status...');
       await configPromise;
     }
-    
+
     try {
-      const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8010';
+      const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8000';
       console.log('JarvisVoice: Checking JARVIS status at:', apiUrl);
       const response = await fetch(`${apiUrl}/voice/jarvis/status`);
       const data = await response.json();
-      
+
       // Enhanced logging for mode detection
       const previousMode = systemMode;
-      
+
       if (data.mode === 'minimal') {
         console.log('🔄 JARVIS Status: Running in MINIMAL MODE');
         console.log('  ⏳ This is temporary while full system initializes');
@@ -796,10 +796,10 @@ const JarvisVoice = () => {
           console.log('    • Memory system online');
           console.log('    • Advanced tools enabled');
           console.log('  🚀 System running at full capacity!');
-          
+
           // Show success message to user - NO AUDIO FEEDBACK (removed to prevent feedback loops)
           setResponse('System upgraded! All features are now available.');
-          
+
           // Show upgrade success banner
           setShowUpgradeSuccess(true);
           setTimeout(() => setShowUpgradeSuccess(false), 10000); // Hide after 10 seconds
@@ -879,7 +879,7 @@ const JarvisVoice = () => {
       console.log('WebSocket already connected or connecting');
       return;
     }
-    
+
     // Ensure config is ready
     if (!configReady || !WS_URL) {
       console.log('JarvisVoice: Waiting for config before WebSocket connection...');
@@ -940,12 +940,12 @@ const JarvisVoice = () => {
         const voiceUnlockText = data.message || data.text || 'Voice unlock command processed';
         setResponse(voiceUnlockText);
         setIsProcessing(false);
-        
+
         // NO AUDIO FEEDBACK for voice unlock (removed to prevent feedback loops)
         if ((data.message || data.text) && data.speak !== false) {
           console.log('[JARVIS Audio] Voice unlock response (silent):', voiceUnlockText);
         }
-        
+
         // Reset waiting state after voice unlock command
         if (isWaitingForCommandRef.current) {
           setTimeout(() => {
@@ -1018,7 +1018,7 @@ const JarvisVoice = () => {
           console.log('[JARVIS Audio] Speaking exact text:', responseText);
           speakResponse(responseText, false);
         }
-        
+
         // Reset waiting state after successful command
         if (isWaitingForCommandRef.current && responseText && !responseText.toLowerCase().includes('error')) {
           setTimeout(() => {
@@ -1271,7 +1271,7 @@ const JarvisVoice = () => {
       console.log('JarvisVoice: Waiting for config before wake word init...');
       await configPromise;
     }
-    
+
     if (!wakeWordServiceRef.current) {
       // Create a simplified wake word handler object
       wakeWordServiceRef.current = {
@@ -1302,7 +1302,7 @@ const JarvisVoice = () => {
       // Try to connect to backend wake word service if available
       try {
         const wakeService = new WakeWordService();
-        const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8010';
+        const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8000';
         console.log('JarvisVoice: Initializing wake word service at:', apiUrl);
         const initialized = await wakeService.initialize(apiUrl);
         if (initialized) {
@@ -1820,9 +1820,9 @@ const JarvisVoice = () => {
       console.log('JarvisVoice: Waiting for config before activating...');
       await configPromise;
     }
-    
+
     try {
-      const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8010';
+      const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8000';
       console.log('JarvisVoice: Activating JARVIS at:', apiUrl);
       const response = await fetch(`${apiUrl}/voice/jarvis/activate`, {
         method: 'POST',
@@ -1831,11 +1831,11 @@ const JarvisVoice = () => {
         },
         body: JSON.stringify({})
       });
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const data = await response.json();
       console.log('JarvisVoice: Activation response:', data);
       setJarvisStatus('activating');
@@ -2152,7 +2152,7 @@ const JarvisVoice = () => {
   const playAudioUsingPost = async (text, onStartCallback = null) => {
     console.log('[JARVIS Audio] POST: Attempting to play audio via POST');
     try {
-      const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8010';
+      const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8000';
       const response = await fetch(`${apiUrl}/audio/speak`, {
         method: 'POST',
         headers: {
@@ -2228,7 +2228,7 @@ const JarvisVoice = () => {
   // Speech queue to prevent overlapping
   const speechQueueRef = useRef([]);
   const isSpeakingRef = useRef(false);
-  
+
   const processNextInSpeechQueue = async () => {
     if (speechQueueRef.current.length === 0 || isSpeakingRef.current) {
       return;
@@ -2241,7 +2241,7 @@ const JarvisVoice = () => {
 
     await speakResponseInternal(text, callback);
   };
-  
+
   const stopAllSpeech = () => {
     console.log('[JARVIS Audio] Stopping all speech and clearing queue');
     // Clear the queue
@@ -2284,7 +2284,7 @@ const JarvisVoice = () => {
       await processNextInSpeechQueue();
     }
   };
-  
+
   const speakResponseInternal = async (text, onStartCallback = null) => {
     // Prevent overlapping speech
     if (isSpeakingRef.current) {
@@ -2307,7 +2307,7 @@ const JarvisVoice = () => {
 
       if (!usePost) {
         // Short text: Use GET method with URL
-        const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8010';
+        const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8000';
         const audioUrl = `${apiUrl}/audio/speak/${encodeURIComponent(text)}`;
         console.log('[JARVIS Audio] Using GET method:', audioUrl);
 
@@ -2356,7 +2356,7 @@ const JarvisVoice = () => {
         audio.src = audioUrl;
         audio.volume = 1.0;
         audio.crossOrigin = 'anonymous';  // Enable CORS
-        
+
         // Try to play
         console.log('[JARVIS Audio] Attempting to play audio...');
         await audio.play();
@@ -2401,7 +2401,7 @@ const JarvisVoice = () => {
           selectedVoice = voices.find(voice =>
             (voice.lang.includes('en-GB') || voice.lang.includes('en_GB')) &&
             (voice.name.includes('Oliver') || voice.name.includes('James') ||
-             voice.name.toLowerCase().includes('male'))
+              voice.name.toLowerCase().includes('male'))
           );
         }
 
@@ -2495,7 +2495,7 @@ const JarvisVoice = () => {
           </span>
         )}
       </div>
-      
+
       {/* Mode Information Banner */}
       {systemMode === 'minimal' && jarvisStatus === 'online' && (
         <div className="minimal-mode-banner">
@@ -2506,7 +2506,7 @@ const JarvisVoice = () => {
           </div>
         </div>
       )}
-      
+
       {/* Upgrade Success Banner */}
       {showUpgradeSuccess && (
         <div className="upgrade-success-banner">
@@ -2578,7 +2578,7 @@ const JarvisVoice = () => {
 
       {/* Workflow Progress */}
       {workflowProgress && (
-        <WorkflowProgress 
+        <WorkflowProgress
           workflow={workflowProgress}
           currentAction={workflowProgress.currentAction}
           onCancel={() => {
