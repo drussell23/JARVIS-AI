@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional, Callable, List
 from datetime import datetime
 
 from .pure_vision_intelligence import (
-    PureVisionIntelligence,
+    PureVisionIntelligence, 
     ProactiveIntelligence,
     WorkflowIntelligence,
     ConversationContext,
@@ -124,26 +124,26 @@ class WebSocketLogger:
 
     def __init__(self):
         self.websocket_callback: Optional[Callable] = None
-
+        
     def set_websocket_callback(self, callback: Callable):
         """Set callback to send logs through WebSocket"""
         self.websocket_callback = callback
-
+        
     async def log(self, message: str, level: str = "info"):
         """Send log message through WebSocket"""
         if self.websocket_callback:
             try:
                 await self.websocket_callback(
                     {
-                        "type": "debug_log",
-                        "message": f"[VISION] {message}",
-                        "level": level,
+                    "type": "debug_log",
+                    "message": f"[VISION] {message}",
+                    "level": level,
                         "timestamp": datetime.now().isoformat(),
                     }
                 )
             except Exception as e:
                 logger.error(f"Failed to send WebSocket log: {e}")
-
+        
         # Also log to server console
         if level == "error":
             logger.error(message)
@@ -160,7 +160,7 @@ class VisionCommandHandler:
     Handles vision commands using pure Claude intelligence.
     Zero templates, zero hardcoded responses.
     """
-
+    
     def __init__(self):
         self.vision_manager = None
         self.intelligence = None
@@ -168,7 +168,7 @@ class VisionCommandHandler:
         self.workflow = None
         self.monitoring_active = False
         self.jarvis_api = None  # For voice integration
-
+        
         # Initialize enhanced multi-space system if available
         self.enhanced_system = None
         if enhanced_system_available:
@@ -232,7 +232,7 @@ class VisionCommandHandler:
                 logger.info("[VISION] ✅ Proactive suggestions system initialized")
             except Exception as e:
                 logger.warning(f"[VISION] Could not initialize proactive system: {e}")
-
+        
     async def initialize_intelligence(self, api_key: str = None):
         """Initialize pure vision intelligence system"""
         if not self.intelligence:
@@ -255,7 +255,7 @@ class VisionCommandHandler:
                     )
             except Exception as e:
                 logger.debug(f"Could not get vision analyzer from app state: {e}")
-
+                
             # If no app state analyzer and we have an API key, create one
             if not vision_analyzer and api_key:
                 try:
@@ -267,17 +267,17 @@ class VisionCommandHandler:
                     )
                 except Exception as e:
                     logger.error(f"Failed to create vision analyzer: {e}")
-
+                
             # Store the vision analyzer reference for later use
             self.vision_analyzer = vision_analyzer
-
+            
             # If no existing analyzer, create a wrapper for the API
             if vision_analyzer:
                 # Create a Claude client wrapper that uses the existing vision analyzer
                 class ClaudeVisionWrapper:
                     def __init__(self, analyzer):
                         self.analyzer = analyzer
-
+                        
                     async def analyze_image_with_prompt(
                         self, image: Any, prompt: str, max_tokens: int = 500
                     ) -> Dict[str, Any]:
@@ -287,7 +287,7 @@ class VisionCommandHandler:
                             result = await self.analyzer.analyze_image_with_prompt(
                                 image=image, prompt=prompt
                             )
-
+                            
                             # Extract the response text
                             if isinstance(result, dict):
                                 # First check for 'content' key (from analyze_image_with_prompt)
@@ -305,7 +305,7 @@ class VisionCommandHandler:
                         except Exception as e:
                             logger.error(f"Vision analyzer error: {e}")
                             raise
-
+                    
                     async def analyze_multiple_images_with_prompt(
                         self,
                         images: List[Dict[str, Any]],
@@ -340,7 +340,7 @@ class VisionCommandHandler:
                         except Exception as e:
                             logger.error(f"Multi-image vision analyzer error: {e}")
                             raise
-
+                            
                 claude_client = ClaudeVisionWrapper(vision_analyzer)
             else:
                 # No vision analyzer available - use mock
@@ -348,7 +348,7 @@ class VisionCommandHandler:
                     "[PURE VISION] No vision analyzer available, using mock responses"
                 )
                 claude_client = None
-
+            
             # Initialize intelligence systems with multi-space enabled
             self.intelligence = PureVisionIntelligence(
                 claude_client, enable_multi_space=True
@@ -358,7 +358,7 @@ class VisionCommandHandler:
             self.intelligence.jarvis_api = self
             self.proactive = ProactiveIntelligence(self.intelligence)
             self.workflow = WorkflowIntelligence(self.intelligence)
-
+            
             # Update enhanced system with intelligence if available
             if self.enhanced_system:
                 self.enhanced_system.vision_intelligence = self.intelligence
@@ -391,9 +391,9 @@ class VisionCommandHandler:
                     logger.warning(
                         f"[INTELLIGENT] Could not update classifier/router with Claude client: {e}"
                     )
-
+            
             logger.info("[PURE VISION] Intelligence systems initialized")
-
+            
     async def handle_command(self, command_text: str) -> Dict[str, Any]:
         """
         Handle any vision command with pure intelligence.
@@ -401,7 +401,7 @@ class VisionCommandHandler:
         """
         logger.info(f"[VISION] Handling command: {command_text}")
         await ws_logger.log(f"Processing vision command: {command_text}")
-
+        
         # IMPORTANT: Check if this is a lock/unlock screen command - should NOT be handled by vision
         command_lower = command_text.lower()
         if ("lock" in command_lower and "screen" in command_lower) or (
@@ -433,7 +433,7 @@ class VisionCommandHandler:
         )
         if monitoring_result.get("handled"):
             return monitoring_result
-
+        
         # INTELLIGENT CLASSIFICATION SYSTEM (RUNS FIRST - HIGHEST PRIORITY)
         # Use smart router to classify and route query to optimal pipeline
         # ==============================================================================
@@ -502,17 +502,17 @@ class VisionCommandHandler:
         # ==============================================================================
         # END INTELLIGENT CLASSIFICATION SYSTEM
         # ==============================================================================
-
+        
         # Ensure intelligence is initialized
         if not self.intelligence:
             await self.initialize_intelligence()
-
+            
         # Check if this is a multi-space query first
         needs_multi_space = False
         if self.intelligence and hasattr(self.intelligence, "_should_use_multi_space"):
             needs_multi_space = self.intelligence._should_use_multi_space(command_text)
             logger.info(f"[VISION] Multi-space query detected: {needs_multi_space}")
-
+        
         # Capture screen(s) based on query type
         if needs_multi_space:
             # Capture multiple spaces for comprehensive analysis
@@ -523,11 +523,11 @@ class VisionCommandHandler:
         else:
             # Single space capture
             screenshot = await self._capture_screen()
-
+            
         if not screenshot:
             # Even error messages come from Claude
             return await self._get_error_response("screenshot_failed", command_text)
-
+            
         # Fallback to old logic
         # First check if it's an activity reporting command (faster than Claude)
         if is_activity_reporting_command(command_text):
@@ -557,7 +557,7 @@ class VisionCommandHandler:
         if is_monitoring_command:
             return await self._handle_monitoring_command(command_text, screenshot)
         else:
-            # Pure vision query - let Claude see and respond
+                # Pure vision query - let Claude see and respond
             response = await self.intelligence.understand_and_respond(
                 screenshot, command_text
             )
@@ -758,7 +758,7 @@ class VisionCommandHandler:
                 response = await self.intelligence.understand_and_respond(
                     screenshot, command_text
                 )
-
+                
                 return {
                     "handled": True,
                     "response": response,
@@ -780,7 +780,7 @@ class VisionCommandHandler:
                 "error": str(e),
                 "monitoring_active": self.monitoring_active,
             }
-
+            
     async def _is_monitoring_command(self, command: str, screenshot: Any) -> bool:
         """Let Claude determine if this is a monitoring command"""
         prompt = f"""Look at the screen and the user's command: "{command}"
@@ -801,7 +801,7 @@ Examples of non-monitoring commands:
 - "what's my battery?"
 - "analyze this screen"
 """
-
+        
         response = await self.intelligence._get_claude_vision_response(
             screenshot, prompt
         )
@@ -811,28 +811,28 @@ Examples of non-monitoring commands:
         self, command: str, screenshot: Any
     ) -> Dict[str, Any]:
         """Handle monitoring commands with natural responses"""
-
+        
         # Check if this is an activity reporting command
         if is_activity_reporting_command(command):
             monitoring_handler = get_monitoring_handler(self)
             return await monitoring_handler.enable_change_reporting()
-
+        
         # Let Claude understand if this is start or stop
         intent_prompt = f"""The user said: "{command}"
 
 Are they asking to START or STOP monitoring?
 Respond with just "START" or "STOP".
 """
-
+        
         response = await self.intelligence._get_claude_vision_response(
             screenshot, intent_prompt
         )
         intent = response.get("response", "").strip().upper()
-
+        
         if intent == "START":
             self.monitoring_active = True
             self.proactive.monitoring_active = True
-
+            
             # Start multi-space monitoring with purple indicator
             monitoring_success = False
             if hasattr(self.intelligence, "start_multi_space_monitoring"):
@@ -845,7 +845,7 @@ Respond with just "START" or "STOP".
                 else:
                     logger.warning("Failed to start multi-space monitoring")
                     monitoring_success = False
-
+            
             # Update vision status if monitoring started successfully
             if monitoring_success:
                 try:
@@ -856,7 +856,7 @@ Respond with just "START" or "STOP".
                     logger.info("✅ Vision status updated to connected (old flow)")
                 except Exception as e:
                     logger.error(f"Failed to update vision status: {e}")
-
+            
             # Get natural response for starting monitoring
             if monitoring_success:
                 start_prompt = f"""The user asked: "{command}"
@@ -888,19 +888,19 @@ BE CONCISE.
             response = await self.intelligence._get_claude_vision_response(
                 screenshot, start_prompt
             )
-
+            
             # Start proactive monitoring
             asyncio.create_task(self._proactive_monitoring_loop())
-
+            
         else:  # STOP
             self.monitoring_active = False
             self.proactive.monitoring_active = False
-
+            
             # Stop multi-space monitoring and remove purple indicator
             if hasattr(self.intelligence, "stop_multi_space_monitoring"):
                 await self.intelligence.stop_multi_space_monitoring()
                 logger.info("Multi-space monitoring stopped, purple indicator removed")
-
+            
             # Update vision status to disconnected
             try:
                 from vision.vision_status_manager import get_vision_status_manager
@@ -910,7 +910,7 @@ BE CONCISE.
                 logger.info("✅ Vision status updated to disconnected (old flow)")
             except Exception as e:
                 logger.error(f"Failed to update vision status: {e}")
-
+            
             # Get natural response for stopping monitoring
             stop_prompt = f"""The user asked: "{command}"
 
@@ -925,23 +925,23 @@ BE CONCISE. No technical details.
             response = await self.intelligence._get_claude_vision_response(
                 screenshot, stop_prompt
             )
-
+            
         return {
             "handled": True,
             "response": response.get("response"),
             "monitoring_active": self.monitoring_active,
             "pure_intelligence": True,
         }
-
+    
     async def _handle_monitoring_control(
         self, command: str, context: Dict[str, Any], screenshot: Any
     ) -> Dict[str, Any]:
         """Handle monitoring control commands with new system"""
         state_manager = get_state_manager()
         indicator_controller = get_indicator_controller()
-
+        
         action = context["action"]
-
+        
         if action == MonitoringAction.START:
             # Check if we can start monitoring
             can_start, reason = state_manager.can_start_monitoring()
@@ -952,18 +952,18 @@ BE CONCISE. No technical details.
                     "monitoring_active": state_manager.is_monitoring_active(),
                     "pure_intelligence": True,
                 }
-
+            
             # Transition to activating state
             await state_manager.transition_to(MonitoringState.ACTIVATING)
-
+            
             # Activate macOS indicator
             indicator_result = await indicator_controller.activate_indicator()
-
+            
             if indicator_result["success"]:
                 # Update state manager
                 state_manager.update_component_status("macos_indicator", True)
                 state_manager.add_capability(MonitoringCapability.MACOS_INDICATOR)
-
+                
                 # Start multi-space monitoring
                 monitoring_started = False
                 if hasattr(self.intelligence, "start_multi_space_monitoring"):
@@ -973,15 +973,15 @@ BE CONCISE. No technical details.
                     if monitoring_started:
                         state_manager.update_component_status("multi_space", True)
                         state_manager.add_capability(MonitoringCapability.MULTI_SPACE)
-
+                
                 # Update monitoring active flag
                 self.monitoring_active = True
                 self.proactive.monitoring_active = True
                 state_manager.update_component_status("vision_intelligence", True)
-
+                
                 # Transition to active state
                 await state_manager.transition_to(MonitoringState.ACTIVE)
-
+                
                 # Update vision status to connected
                 try:
                     from vision.vision_status_manager import get_vision_status_manager
@@ -991,10 +991,10 @@ BE CONCISE. No technical details.
                     logger.info("✅ Vision status updated to connected")
                 except Exception as e:
                     logger.error(f"Failed to update vision status: {e}")
-
+                
                 # Start proactive monitoring
                 asyncio.create_task(self._proactive_monitoring_loop())
-
+                
                 return {
                     "handled": True,
                     "response": "Screen monitoring is now active, Sir. The purple indicator is visible in your menu bar, and I can see your entire workspace.",
@@ -1011,7 +1011,7 @@ BE CONCISE. No technical details.
                         "details": indicator_result,
                     },
                 )
-
+                
                 return {
                     "handled": True,
                     "response": "I couldn't activate screen monitoring, Sir. Please ensure screen recording permission is granted in System Preferences.",
@@ -1019,7 +1019,7 @@ BE CONCISE. No technical details.
                     "pure_intelligence": True,
                     "error": indicator_result.get("error"),
                 }
-
+                
         elif action == MonitoringAction.STOP:
             # Check if we can stop monitoring
             can_stop, reason = state_manager.can_stop_monitoring()
@@ -1030,33 +1030,33 @@ BE CONCISE. No technical details.
                     "monitoring_active": state_manager.is_monitoring_active(),
                     "pure_intelligence": True,
                 }
-
+            
             # Transition to deactivating state
             await state_manager.transition_to(MonitoringState.DEACTIVATING)
-
+            
             # Stop monitoring components
             self.monitoring_active = False
             self.proactive.monitoring_active = False
-
+            
             # Stop multi-space monitoring
             if hasattr(self.intelligence, "stop_multi_space_monitoring"):
                 await self.intelligence.stop_multi_space_monitoring()
-
+            
             # Deactivate macOS indicator
             indicator_result = await indicator_controller.deactivate_indicator()
-
+            
             # Clear capabilities
             state_manager.remove_capability(MonitoringCapability.MACOS_INDICATOR)
             state_manager.remove_capability(MonitoringCapability.MULTI_SPACE)
-
+            
             # Update component status
             state_manager.update_component_status("macos_indicator", False)
             state_manager.update_component_status("multi_space", False)
             state_manager.update_component_status("vision_intelligence", False)
-
+            
             # Transition to inactive state
             await state_manager.transition_to(MonitoringState.INACTIVE)
-
+            
             # Update vision status to disconnected
             try:
                 from vision.vision_status_manager import get_vision_status_manager
@@ -1066,7 +1066,7 @@ BE CONCISE. No technical details.
                 logger.info("✅ Vision status updated to disconnected")
             except Exception as e:
                 logger.error(f"Failed to update vision status: {e}")
-
+            
             return {
                 "handled": True,
                 "response": "Screen monitoring has been disabled, Sir.",
@@ -1074,21 +1074,21 @@ BE CONCISE. No technical details.
                 "pure_intelligence": True,
                 "indicator_active": False,
             }
-
+        
         return {
             "handled": True,
             "response": "I'm not sure how to handle that monitoring command, Sir.",
             "monitoring_active": self.monitoring_active,
             "pure_intelligence": True,
         }
-
+    
     async def _handle_monitoring_status(
         self, command: str, context: Dict[str, Any], screenshot: Any
     ) -> Dict[str, Any]:
         """Handle monitoring status queries"""
         state_manager = get_state_manager()
         state_info = state_manager.get_state_info()
-
+        
         # Build status response
         if state_info["is_active"]:
             capabilities = state_info["active_capabilities"]
@@ -1098,7 +1098,7 @@ BE CONCISE. No technical details.
             response = f"Monitoring is currently {state_info['current_state'].replace('_', ' ')}, Sir."
         else:
             response = "No Sir, monitoring is not active. Would you like me to start monitoring your screen?"
-
+        
         return {
             "handled": True,
             "response": response,
@@ -1726,50 +1726,50 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
     async def _proactive_monitoring_loop(self):
         """Proactive monitoring with pure intelligence"""
         logger.info("[VISION] Starting proactive monitoring loop")
-
+        
         while self.monitoring_active:
             try:
                 # Wait before next check
                 await asyncio.sleep(5)
-
+                
                 if not self.monitoring_active:
                     break
-
+                    
                 # Capture screen and check for important changes
                 screenshot = await self._capture_screen()
                 if screenshot:
                     proactive_message = await self.proactive.observe_and_communicate(
                         screenshot
                     )
-
+                    
                     if proactive_message and self.jarvis_api:
                         # Send proactive message through JARVIS voice
                         try:
                             await self.jarvis_api.speak_proactive(proactive_message)
                         except Exception as e:
                             logger.error(f"Failed to speak proactive message: {e}")
-
+                            
             except Exception as e:
                 logger.error(f"Proactive monitoring error: {e}")
                 await asyncio.sleep(5)
-
+                
     async def _capture_screen(
         self, multi_space=False, space_number=None
     ) -> Optional[Any]:
         """
         Capture screen(s) with multi-space support
-
+        
         Args:
             multi_space: If True, capture all desktop spaces
             space_number: If provided, capture specific space
-
+            
         Returns:
             Single screenshot or Dict[int, screenshot] for multi-space
         """
         try:
             # Initialize vision manager if needed
             await self._ensure_vision_manager()
-
+            
             if (
                 self.vision_manager
                 and hasattr(self.vision_manager, "vision_analyzer")
@@ -1788,19 +1788,19 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
                     import subprocess
                     import tempfile
                     from PIL import Image
-
+                    
                     with tempfile.NamedTemporaryFile(
                         suffix=".png", delete=False
                     ) as tmp:
                         tmp_path = tmp.name
-
+                    
                     # Capture screen
                     result = subprocess.run(
                         ["screencapture", "-x", tmp_path],
                         capture_output=True,
                         text=True,
                     )
-
+                    
                     if result.returncode == 0:
                         # Load and return image
                         screenshot = Image.open(tmp_path)
@@ -1809,15 +1809,15 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
                         return screenshot
                     else:
                         logger.error(f"screencapture failed: {result.stderr}")
-
+                        
                 except Exception as e:
                     logger.error(f"Direct capture failed: {e}")
-
+                    
         except Exception as e:
             logger.error(f"Screen capture error: {e}")
-
+            
         return None
-
+        
     async def _ensure_vision_manager(self):
         """Initialize vision manager if not already done"""
         if not self.vision_manager:
@@ -1827,10 +1827,10 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
                     from api.vision_websocket import vision_manager
                 except ImportError:
                     from .vision_websocket import vision_manager
-
+                    
                 self.vision_manager = vision_manager
                 logger.info(f"[VISION INIT] Vision manager imported: {vision_manager}")
-
+                
                 # Check if vision_analyzer needs initialization
                 if hasattr(vision_manager, "vision_analyzer"):
                     if vision_manager.vision_analyzer is None:
@@ -1860,7 +1860,7 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
                             logger.error(
                                 f"[VISION INIT] Failed to get vision analyzer from app state: {e}"
                             )
-
+                        
                         # If still None and we have our own vision analyzer, use that
                         if (
                             vision_manager.vision_analyzer is None
@@ -1873,10 +1873,10 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
                             )
                     else:
                         logger.info("[VISION INIT] Vision analyzer already set")
-
+                        
             except Exception as e:
                 logger.error(f"Failed to initialize vision manager: {e}")
-
+                
     async def _get_error_response(
         self, error_type: str, command: str, details: str = ""
     ) -> Dict[str, Any]:
@@ -1890,7 +1890,7 @@ You're JARVIS. Respond naturally to explain the issue and suggest a solution.
 Be helpful and specific, but keep it conversational.
 Never use generic error messages or technical jargon.
 """
-
+        
         # Use mock response if no Claude client
         if self.intelligence and self.intelligence.claude:
             response = await self.intelligence._get_claude_vision_response(
@@ -1905,7 +1905,7 @@ Never use generic error messages or technical jargon.
                 error_message = "I encountered an issue processing that request. Let me recalibrate the vision systems."
             else:
                 error_message = f"Something went wrong with that request, Sir. {details if details else 'Let me investigate.'}"
-
+                
         return {
             "handled": True,
             "response": error_message,
@@ -1913,7 +1913,7 @@ Never use generic error messages or technical jargon.
             "pure_intelligence": True,
             "monitoring_active": self.monitoring_active,
         }
-
+        
     def get_session_stats(self) -> Dict[str, Any]:
         """Get session statistics"""
         stats = {
@@ -1927,8 +1927,8 @@ Never use generic error messages or technical jargon.
         if self.intelligence and self.intelligence.context:
             stats.update(
                 {
-                    "conversation_length": len(self.intelligence.context.history),
-                    "workflow_state": self.intelligence.context.workflow_state,
+                "conversation_length": len(self.intelligence.context.history),
+                "workflow_state": self.intelligence.context.workflow_state,
                     "emotional_state": (
                         self.intelligence.context.emotional_context.value
                         if self.intelligence.context.emotional_context

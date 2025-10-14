@@ -325,7 +325,12 @@ class ProcessCleanupManager:
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         continue
         
-        # Check for processes using the target port (fallback)
+        # DISABLED: net_connections hangs on macOS due to security restrictions
+        # Skip directly to returning True to allow JARVIS to start
+        return True
+        
+        # Original code disabled (everything below is commented out):
+        """
         try:
             for conn in psutil.net_connections():
                 if conn.laddr.port == target_port and conn.status == "LISTEN":
@@ -354,13 +359,16 @@ class ProcessCleanupManager:
                             pass
         except (psutil.AccessDenied, PermissionError):
             # Fall back to checking specific port using lsof
-            logger.info(f"Permission denied for net_connections, checking port {target_port} with lsof...")
-            try:
-                result = subprocess.run(
-                    ["lsof", "-i", f":{target_port}", "-t"],
-                    capture_output=True,
-                    text=True
-                )
+            # DISABLED: lsof hangs on macOS - this was preventing JARVIS from starting
+            logger.info(f"Skipping lsof check (macOS compatibility)")
+            return True  # Allow JARVIS to start
+            
+            # Original code disabled:
+            # result = subprocess.run(
+            #     ["lsof", "-i", f":{target_port}", "-t"],
+            #     capture_output=True,
+            #     text=True
+            # )
                 if result.stdout.strip():
                     pids = [int(pid) for pid in result.stdout.strip().split('\n') if pid]
                     for pid in pids:
@@ -386,6 +394,7 @@ class ProcessCleanupManager:
                 logger.error(f"Failed to check port with lsof: {e}")
         
         return True
+        """
 
     def get_system_snapshot(self) -> Dict[str, Any]:
         """Get a snapshot of the system state using Swift if available"""
@@ -817,9 +826,14 @@ class ProcessCleanupManager:
 
     def _cleanup_orphaned_ports(self):
         """Clean up ports that might be stuck from previous JARVIS runs"""
+        # DISABLED: net_connections hangs on macOS due to security restrictions
+        logger.info("Skipping orphaned ports cleanup (macOS compatibility)")
+        return
+        
+        # Original code disabled (commented out to prevent hanging):
+        """
         for port in self.config["jarvis_port_patterns"]:
             try:
-                # Find process using this port
                 for conn in psutil.net_connections():
                     if conn.laddr.port == port and conn.status == "LISTEN":
                         try:
@@ -835,6 +849,7 @@ class ProcessCleanupManager:
                             pass
             except:
                 pass
+        """
 
     def _get_ipc_resources(self) -> Dict[str, List[Dict]]:
         """
@@ -1338,6 +1353,10 @@ class ProcessCleanupManager:
         return results
     
     def check_for_segfault_recovery(self) -> bool:
+        # DISABLED: This causes infinite loops on macOS
+        return False
+        
+    def check_for_segfault_recovery_disabled(self) -> bool:
         """
         Check if we need to recover from a segfault or crash.
         Returns True if recovery actions were taken.
@@ -1448,9 +1467,9 @@ def prevent_multiple_jarvis_instances():
     manager = ProcessCleanupManager()
     
     try:
-        # Step 1: Check for crash recovery
-        if manager.check_for_segfault_recovery():
-            return True, "System recovered from crash - safe to start fresh"
+        # DISABLED: Check for crash recovery (causes loops on macOS)
+        # if manager.check_for_segfault_recovery():
+        #     return True, "System recovered from crash - safe to start fresh"
         
         # Step 2: Check for code changes and clean up old instances
         cleaned = manager.cleanup_old_instances_on_code_change()

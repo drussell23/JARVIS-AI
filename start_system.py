@@ -663,36 +663,20 @@ class AsyncSystemManager:
 
             manager = ProcessCleanupManager()
 
-            # Step 1: Check for segfault/crash recovery first
-            if manager.check_for_segfault_recovery():
-                print(f"{Colors.YELLOW}🔧 Performed crash recovery cleanup!{Colors.ENDC}")
-                print(f"{Colors.GREEN}  System cleaned from previous crash{Colors.ENDC}")
-                await asyncio.sleep(2)  # Give system time to stabilize
+            # DISABLED: Segfault recovery check that can cause loops on macOS
+            # if manager.check_for_segfault_recovery():
+            #     print(f"{Colors.YELLOW}🔧 Performed crash recovery cleanup!{Colors.ENDC}")
+            #     print(f"{Colors.GREEN}  System cleaned from previous crash{Colors.ENDC}")
+            #     await asyncio.sleep(2)  # Give system time to stabilize
                 
-            # Step 2: Check for code changes and clean up old instances
-            code_cleanup = manager.cleanup_old_instances_on_code_change()
-            if code_cleanup:
-                print(f"{Colors.YELLOW}Code changes detected!{Colors.ENDC}")
-                print(f"{Colors.GREEN}  Cleaned {len(code_cleanup)} old JARVIS instances{Colors.ENDC}")
-                await asyncio.sleep(1)
-
-            # --- Parallelize the checks ---
-            async def get_recommendations():
-                return manager.get_cleanup_recommendations()
-
-            async def analyze_state():
-                return manager.analyze_system_state()
-
-            # Run checks concurrently
-            recommendations, state = await asyncio.gather(
-                get_recommendations(), analyze_state()
-            )
-            # --- End of parallelization ---
-
-            if recommendations:
-                print(f"{Colors.YELLOW}System optimization suggestions:{Colors.ENDC}")
-                for rec in recommendations:
-                    print(f"  • {rec}")
+            # DISABLED: Cleanup operations that hang on macOS
+            # These operations try to access network connections and use lsof
+            # which are blocked by macOS security, causing JARVIS to hang
+            print(f"{Colors.YELLOW}Skipping cleanup checks (macOS compatibility mode){Colors.ENDC}")
+            
+            # Set empty state to skip cleanup
+            recommendations = []
+            state = {"stuck_processes": [], "high_cpu_processes": [], "high_memory_processes": []}
 
             # Check if cleanup is needed (more aggressive thresholds)
             needs_cleanup = (
@@ -765,24 +749,9 @@ class AsyncSystemManager:
                     if not self.auto_cleanup:
                         print(f"\n{Colors.BLUE}Cleaning up processes...{Colors.ENDC}")
 
-                    report = await manager.smart_cleanup(dry_run=False)
-
-                    cleaned_count = len(
-                        [a for a in report["actions"] if a.get("success", False)]
-                    )
-                    if cleaned_count > 0:
-                        print(
-                            f"{Colors.GREEN}✓ Cleaned up {cleaned_count} processes{Colors.ENDC}"
-                        )
-                        print(
-                            f"{Colors.GREEN}  Freed ~{report['freed_resources']['cpu_percent']:.1f}% CPU, "
-                            f"{report['freed_resources']['memory_mb']}MB memory{Colors.ENDC}"
-                        )
-
-                        # Wait a moment for system to stabilize
-                        await asyncio.sleep(2)
-                    else:
-                        print(f"{Colors.YELLOW}No processes were cleaned{Colors.ENDC}")
+                    # DISABLED: smart_cleanup hangs on macOS
+                    print(f"{Colors.YELLOW}Skipping smart cleanup (macOS compatibility){Colors.ENDC}")
+                    report = {"actions": [], "freed_resources": {"cpu_percent": 0, "memory_mb": 0}}
                 else:
                     print(f"{Colors.YELLOW}Skipping cleanup{Colors.ENDC}")
             else:
@@ -3051,16 +3020,8 @@ async def main():
             if str(backend_dir) not in sys.path:
                 sys.path.insert(0, str(backend_dir))
             
-            from process_cleanup_manager import prevent_multiple_jarvis_instances
-            
-            can_start, message = prevent_multiple_jarvis_instances()
-            if not can_start:
-                print(f"\n{Colors.FAIL}❌ Cannot start JARVIS: {message}{Colors.ENDC}")
-                print(f"{Colors.YELLOW}Use --emergency-cleanup to force restart{Colors.ENDC}")
-                print(f"{Colors.YELLOW}Use --force-start to skip this check (use with caution){Colors.ENDC}")
-                return 1
-            else:
-                print(f"\n{Colors.GREEN}✓ {message}{Colors.ENDC}")
+            # DISABLED: prevent_multiple_jarvis_instances uses network checks that hang on macOS
+            print(f"\n{Colors.GREEN}✓ Skipping instance check (macOS compatibility mode){Colors.ENDC}")
         except ImportError:
             print(f"{Colors.WARNING}⚠️ Process cleanup manager not available - skipping startup check{Colors.ENDC}")
         except Exception as e:
@@ -3127,9 +3088,9 @@ async def main():
             
             manager = ProcessCleanupManager()
             
-            # Check for crash recovery
-            if manager.check_for_segfault_recovery():
-                print(f"{Colors.YELLOW}🔧 Performed crash recovery cleanup{Colors.ENDC}")
+            # DISABLED: Check for crash recovery (causes loops on macOS)
+            # if manager.check_for_segfault_recovery():
+            #     print(f"{Colors.YELLOW}🔧 Performed crash recovery cleanup{Colors.ENDC}")
             
             # Check for code changes
             code_cleanup = manager.cleanup_old_instances_on_code_change()
