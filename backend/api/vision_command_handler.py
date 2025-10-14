@@ -347,6 +347,9 @@ class VisionCommandHandler:
             self.intelligence = PureVisionIntelligence(
                 claude_client, enable_multi_space=True
             )
+            
+            # Give intelligence access to this handler for context storage
+            self.intelligence.jarvis_api = self
             self.proactive = ProactiveIntelligence(self.intelligence)
             self.workflow = WorkflowIntelligence(self.intelligence)
 
@@ -405,6 +408,11 @@ class VisionCommandHandler:
                 "handled": False,
                 "reason": "Lock/unlock screen commands are system commands, not vision",
             }
+
+        # Check if this is a follow-up to a multi-space query
+        follow_up_result = await self._handle_multi_space_follow_up(command_text)
+        if follow_up_result.get("handled"):
+            return follow_up_result
 
         # Check if this is a proactive monitoring command
         monitoring_handler = get_monitoring_handler(self)
@@ -1270,6 +1278,13 @@ Be SPECIFIC and DETAILED. Use the actual window titles to infer what work is bei
                         response, window_data
                     )
 
+                # Store context for follow-up queries
+                self._last_multi_space_context = {
+                    'spaces': spaces,
+                    'window_data': window_data,
+                    'timestamp': datetime.now()
+                }
+
                 return response or "I analyzed your desktop spaces, Sir."
 
             # Fallback: Claude with screenshot only (no Yabai context)
@@ -1285,13 +1300,201 @@ Be SPECIFIC and DETAILED. Use the actual window titles to infer what work is bei
                 "[INTELLIGENT] Intelligence not available, falling back to Yabai metadata analysis"
             )
             if self.yabai_detector and self.workspace_analyzer:
-                return await self._handle_yabai_query(query, context)
+                response = await self._handle_yabai_query(query, context)
+                
+                # Store context for follow-up queries even in fallback mode
+                try:
+                    spaces = self.yabai_detector.enumerate_all_spaces()
+                    self._last_multi_space_context = {
+                        'spaces': spaces,
+                        'window_data': None,
+                        'timestamp': datetime.now()
+                    }
+                except Exception as e:
+                    logger.debug(f"Could not store multi-space context: {e}")
+                
+                return response
 
             return "Multi-space analysis not available, Sir."
 
         except Exception as e:
             logger.error(f"[INTELLIGENT] Multi-space query handler error: {e}", exc_info=True)
             raise
+
+    async def _handle_multi_space_follow_up(self, command_text: str) -> Dict[str, Any]:
+        """
+        Handle follow-up questions to multi-space queries with Claude Vision analysis
+        """
+        try:
+            command_lower = command_text.lower()
+            
+            # Check if this is a follow-up response
+            follow_up_indicators = [
+                "yes", "sure", "okay", "do it", "tell me more", "explain",
+                "what about", "how about", "show me", "describe", "analyze"
+            ]
+            
+            is_follow_up = any(indicator in command_lower for indicator in follow_up_indicators)
+            
+            if not is_follow_up:
+                return {"handled": False}
+            
+            # Check if we have recent multi-space context
+            if not hasattr(self, '_last_multi_space_context'):
+                return {"handled": False}
+            
+            context = self._last_multi_space_context
+            spaces = context.get('spaces', [])
+            
+            if not spaces:
+                return {"handled": False}
+            
+            logger.info("[FOLLOW-UP] Detected multi-space follow-up query")
+            
+            # Determine which space to analyze
+            target_space = None
+            
+            # Check for specific space references
+            import re
+            space_match = re.search(r'space\s+(\d+)', command_lower)
+            if space_match:
+                target_space_id = int(space_match.group(1))
+                target_space = next((s for s in spaces if s.get('space_id') == target_space_id), None)
+            
+            # Check for application references
+            if not target_space:
+                for space in spaces:
+                    apps = space.get('applications', [])
+                    for app in apps:
+                        if app.lower() in command_lower:
+                            target_space = space
+                            break
+                    if target_space:
+                        break
+            
+            # Default to current space if no specific target
+            if not target_space:
+                target_space = next((s for s in spaces if s.get('is_current', False)), spaces[0] if spaces else None)
+            
+            if not target_space:
+                return {"handled": False}
+            
+            # Capture screenshot of the target space
+            logger.info(f"[FOLLOW-UP] Analyzing Space {target_space.get('space_id', '?')} with Claude Vision")
+            
+            # Switch to the target space and capture screenshot
+            screenshot = await self._capture_space_screenshot(target_space.get('space_id', 1))
+            
+            if not screenshot:
+                return {
+                    "handled": True,
+                    "response": f"I couldn't capture a screenshot of Space {target_space.get('space_id', '?')}, Sir.",
+                    "follow_up_analysis": True
+                }
+            
+            # Build enhanced prompt for Claude Vision analysis
+            space_id = target_space.get('space_id', '?')
+            apps = target_space.get('applications', [])
+            primary_app = target_space.get('primary_activity', 'Unknown')
+            
+            enhanced_prompt = f"""You are JARVIS analyzing Space {space_id} in detail.
+
+SPACE CONTEXT:
+- Space ID: {space_id}
+- Primary Application: {primary_app}
+- Applications: {', '.join(apps) if apps else 'None'}
+- Is Current Space: {target_space.get('is_current', False)}
+
+USER'S FOLLOW-UP REQUEST: "{command_text}"
+
+INSTRUCTIONS:
+1. Analyze the screenshot of Space {space_id} in detail
+2. Focus on what the user is asking about specifically
+3. Provide detailed information about:
+   - What applications are visible and what they're showing
+   - Any specific content, errors, or important information
+   - The current state of work in this space
+4. Be specific and detailed - quote exact text when visible
+5. Address the user as "Sir" naturally
+6. If there are any errors or issues, highlight them clearly
+
+Provide a comprehensive analysis of what you see in Space {space_id}."""
+
+            # Use Claude Vision for detailed analysis
+            if self.intelligence and hasattr(self.intelligence, 'claude') and self.intelligence.claude:
+                # Call Claude Vision directly for detailed analysis
+                try:
+                    claude_response = await self.intelligence.claude.analyze_image_with_prompt(
+                        image=screenshot,
+                        prompt=enhanced_prompt,
+                        max_tokens=1000
+                    )
+                    
+                    # Extract response text
+                    if isinstance(claude_response, dict):
+                        response = claude_response.get('content', claude_response.get('response', str(claude_response)))
+                    else:
+                        response = str(claude_response)
+                        
+                except Exception as e:
+                    logger.error(f"[FOLLOW-UP] Claude Vision analysis failed: {e}")
+                    response = f"I can see Space {space_id} has {primary_app} running, but I encountered an error during detailed analysis, Sir."
+            else:
+                response = f"I can see Space {space_id} has {primary_app} running, but I need Claude Vision to provide detailed analysis, Sir."
+            
+            return {
+                "handled": True,
+                "response": response,
+                "follow_up_analysis": True,
+                "analyzed_space": space_id,
+                "uses_claude_vision": True
+            }
+                
+        except Exception as e:
+            logger.error(f"[FOLLOW-UP] Multi-space follow-up handler error: {e}", exc_info=True)
+            return {"handled": False}
+
+    async def _capture_space_screenshot(self, space_id: int) -> Any:
+        """Capture screenshot of a specific space"""
+        try:
+            # Try to switch to the requested space and capture it
+            logger.info(f"[FOLLOW-UP] Attempting to capture Space {space_id}")
+            
+            # Check if we can use Yabai to switch spaces
+            if hasattr(self, 'yabai_detector') and self.yabai_detector:
+                try:
+                    # Use Yabai to switch to the target space
+                    import subprocess
+                    result = subprocess.run(
+                        ['yabai', '-m', 'space', '--focus', str(space_id)],
+                        capture_output=True,
+                        text=True,
+                        timeout=2
+                    )
+                    
+                    if result.returncode == 0:
+                        logger.info(f"[FOLLOW-UP] Successfully switched to Space {space_id}")
+                        # Small delay to let the space switch complete
+                        await asyncio.sleep(0.5)
+                        # Capture screenshot of the switched space
+                        screenshot = await self._capture_screen(multi_space=False)
+                        return screenshot
+                    else:
+                        logger.warning(f"[FOLLOW-UP] Failed to switch to Space {space_id}: {result.stderr}")
+                        
+                except Exception as e:
+                    logger.warning(f"[FOLLOW-UP] Space switching failed: {e}")
+            
+            # Fallback: capture current space and inform user
+            logger.info(f"[FOLLOW-UP] Falling back to current space capture")
+            screenshot = await self._capture_screen(multi_space=False)
+            
+            # Add a note to the prompt that this is the current space, not the requested one
+            return screenshot
+            
+        except Exception as e:
+            logger.error(f"[FOLLOW-UP] Failed to capture space {space_id}: {e}")
+            return None
 
     async def _proactive_monitoring_loop(self):
         """Proactive monitoring with pure intelligence"""

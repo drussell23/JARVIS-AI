@@ -2569,7 +2569,7 @@ class AdaptiveResponseGenerator:
             correlation = correlations[0]
             response_parts.append(f"\n💡 {correlation['description']}")
 
-        return ". ".join(response_parts) + "."
+        return "\n\n".join(response_parts)
 
     def _generate_correlation_response(self, response_data: Dict[str, Any]) -> str:
         """Generate correlation-focused response"""

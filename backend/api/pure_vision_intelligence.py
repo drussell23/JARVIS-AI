@@ -1478,6 +1478,10 @@ Be specific and natural. Never say "I previously saw" - instead say things like 
                         "spaces": window_data.get("total_spaces", 0),
                         "apps": window_data.get("total_apps", 0)
                     })
+                    
+                    # Store multi-space context for follow-up queries
+                    self._store_multi_space_context(window_data)
+                    
                     return enhanced_response
             
             # Fallback: Use standard single-space analysis if no enhanced system
@@ -1503,6 +1507,42 @@ Be specific and natural. Never say "I previously saw" - instead say things like 
             await self._enable_cross_space_monitoring(window_data)
 
         return natural_response
+
+    def _store_multi_space_context(self, window_data: Dict[str, Any]):
+        """Store multi-space context for follow-up queries"""
+        try:
+            spaces = window_data.get('spaces', [])
+            if spaces:
+                # Convert to the format expected by follow-up handler
+                formatted_spaces = []
+                
+                # Handle both dict and list formats
+                if isinstance(spaces, dict):
+                    spaces_list = list(spaces.values())
+                else:
+                    spaces_list = spaces
+                
+                for space in spaces_list:
+                    if isinstance(space, dict):
+                        formatted_spaces.append({
+                            'space_id': space.get('space_id', space.get('index', 1)),
+                            'primary_activity': space.get('primary_activity', space.get('primary_app', 'Unknown')),
+                            'applications': space.get('applications', []),
+                            'is_current': space.get('is_current', False),
+                            'window_count': space.get('window_count', 0)
+                        })
+                
+                # Store in a way that the vision command handler can access
+                if hasattr(self, 'jarvis_api') and self.jarvis_api:
+                    # Store in the vision command handler
+                    self.jarvis_api._last_multi_space_context = {
+                        'spaces': formatted_spaces,
+                        'window_data': window_data,
+                        'timestamp': datetime.now()
+                    }
+                    logger.info(f"[CONTEXT] Stored multi-space context for {len(formatted_spaces)} spaces")
+        except Exception as e:
+            logger.debug(f"Could not store multi-space context: {e}")
 
     async def _gather_multi_space_data(self) -> Dict[str, Any]:
         """Gather comprehensive data about all spaces"""
