@@ -767,7 +767,7 @@ class IntelligentOrchestrator:
     ) -> Dict[str, Any]:
         """Generate richly detailed workspace overview with clean bullet formatting"""
         
-        # Build overview with clean bullet points
+        # Build overview with clean bullet points and proper line breaks
         response_parts = [
             f"Sir, you're working across {snapshot.total_spaces} desktop spaces:",
             ""  # Blank line for spacing
@@ -804,15 +804,18 @@ class IntelligentOrchestrator:
             else:
                 current_marker = " (current)" if is_current else ""
                 response_parts.append(f"• Space {space_id}{current_marker}: Empty")
+            
+            # Add line break after each space for proper formatting
+            response_parts.append("")
         
         # Generate intelligent workflow summary without separator
         workflow_summary = await self._generate_detailed_workflow_summary(snapshot, patterns)
         if workflow_summary:
-            response_parts.append("")  # Blank line before summary
             response_parts.append("Workflow Analysis:")
             for line in workflow_summary.split("\n"):
                 if line.strip():
                     response_parts.append(f"• {line}")
+                    response_parts.append("")  # Add line break after each workflow item
         
         response_text = "\n".join(response_parts)
         
