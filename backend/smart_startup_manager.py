@@ -295,12 +295,13 @@ class SmartStartupManager:
                 # Get resources (rate-limited internally)
                 resources = self.get_system_resources()
                 
-                # Only log if consistently high (prevents log spam)
-                if resources.memory_percent > 85:
+                # Only log if consistently high (prevents log spam) - macOS-aware
+                available_gb = resources.memory_available_mb / 1024.0
+                if available_gb < 2.0:  # Less than 2GB available
                     consecutive_high_memory += 1
                     if consecutive_high_memory == 3:  # Log only when it reaches 3
                         logger.warning(
-                            f"⚠️  Sustained high memory usage: {resources.memory_percent:.1f}% "
+                            f"⚠️  Sustained high memory usage: {available_gb:.1f}GB available "
                             f"({resources.memory_available_mb}MB free)"
                         )
                 else:
@@ -313,9 +314,10 @@ class SmartStartupManager:
                 else:
                     consecutive_high_cpu = 0
                 
-                # Emergency measures if critically low on memory
-                if resources.memory_percent > 95:
-                    logger.error("🚨 CRITICAL: Memory exhausted, triggering emergency cleanup!")
+                # Emergency measures if critically low on memory (macOS-aware)
+                available_gb = resources.memory_available_mb / 1024.0
+                if available_gb < 0.5:  # Less than 500MB available
+                    logger.error(f"🚨 CRITICAL: Memory exhausted ({available_gb:.1f}GB available), triggering emergency cleanup!")
                     await self._emergency_cleanup()
                     # Longer sleep after emergency cleanup
                     await asyncio.sleep(30)

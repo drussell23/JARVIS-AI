@@ -1046,7 +1046,7 @@ class ProcessCleanupManager:
             logger.error(f"Failed to save cleanup history: {e}")
 
     def get_cleanup_recommendations(self) -> List[str]:
-        """Get recommendations based on current system state"""
+        """Get recommendations based on current system state (macOS-aware)"""
         state = self.analyze_system_state()
         recommendations = []
 
@@ -1055,23 +1055,24 @@ class ProcessCleanupManager:
                 f"System CPU is high ({state['cpu_percent']:.1f}%). Consider closing unnecessary applications."
             )
 
-        # Convert memory_percent to 0-1 range for comparison
-        memory_percent_normalized = state["memory_percent"] / 100.0
+        # Use available memory instead of percentage (macOS-aware)
+        # macOS typically shows 70-90% usage due to caching - this is normal!
+        available_gb = state["memory_available_mb"] / 1024.0
         
-        if memory_percent_normalized > self.config.get("memory_threshold_critical", 0.70):
+        if available_gb < 0.5:  # Less than 500MB available
             recommendations.append(
-                f"⚠️ CRITICAL: Memory usage is very high ({state['memory_percent']:.1f}%). "
+                f"⚠️ CRITICAL: Very low available memory ({available_gb:.1f}GB). "
                 f"Immediate action required!"
             )
-        elif memory_percent_normalized > self.config.get("memory_threshold_warning", 0.50):
+        elif available_gb < 1.0:  # Less than 1GB available
             recommendations.append(
-                f"⚡ WARNING: Memory usage is elevated ({state['memory_percent']:.1f}%). "
-                f"Target is {self.config['memory_threshold'] * 100:.0f}%."
+                f"⚡ WARNING: Low available memory ({available_gb:.1f}GB). "
+                f"Consider closing applications."
             )
-        elif memory_percent_normalized > self.config["memory_threshold"]:
+        elif available_gb < 2.0:  # Less than 2GB available
             recommendations.append(
-                f"Memory usage ({state['memory_percent']:.1f}%) exceeds target of "
-                f"{self.config['memory_threshold'] * 100:.0f}%. Consider optimization."
+                f"Memory is getting low ({available_gb:.1f}GB available). "
+                f"Monitor for potential issues."
             )
 
         if len(state["zombie_processes"]) > 0:

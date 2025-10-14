@@ -679,11 +679,15 @@ class AsyncSystemManager:
             state = {"stuck_processes": [], "high_cpu_processes": [], "high_memory_processes": []}
 
             # Check if cleanup is needed (more aggressive thresholds)
+            # IMPORTANT: Use available memory, not percent (macOS caches aggressively)
+            memory = psutil.virtual_memory()
+            available_gb = memory.available / (1024**3)
+            
             needs_cleanup = (
                 len(state.get("stuck_processes", [])) > 0
                 or len(state.get("zombie_processes", [])) > 0
                 or state.get("cpu_percent", 0) > 70
-                or state.get("memory_percent", 0) > 70  # Added memory check
+                or available_gb < 2.0  # macOS-aware: <2GB available (was >70% used)
                 or any(
                     p["age_seconds"] > 300 for p in state.get("jarvis_processes", [])
                 )
@@ -691,7 +695,7 @@ class AsyncSystemManager:
             
             # Check for critical conditions that need emergency cleanup
             needs_emergency = (
-                state.get("memory_percent", 0) > 80
+                available_gb < 1.0  # macOS-aware: <1GB available (was >80% used)
                 or len(state.get("zombie_processes", [])) > 2
                 or len(state.get("jarvis_processes", [])) > 3
             )
@@ -2251,10 +2255,11 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
         return False
 
     async def _heal_memory_pressure(self) -> bool:
-        """Fix high memory usage"""
+        """Fix high memory usage (macOS-aware)"""
         memory = psutil.virtual_memory()
+        available_gb_before = memory.available / (1024**3)
         print(
-            f"{Colors.YELLOW}🔧 Memory at {memory.percent:.1f}%, attempting cleanup...{Colors.ENDC}"
+            f"{Colors.YELLOW}🔧 Low memory: {available_gb_before:.1f}GB available, attempting cleanup...{Colors.ENDC}"
         )
 
         # Kill common memory hogs
@@ -2286,9 +2291,12 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
         await asyncio.sleep(3)
 
         new_memory = psutil.virtual_memory()
-        if new_memory.percent < memory.percent - 5:
+        available_gb_after = new_memory.available / (1024**3)
+        
+        # Success if we freed at least 500MB
+        if available_gb_after > available_gb_before + 0.5:
             print(
-                f"{Colors.GREEN}✅ Memory reduced to {new_memory.percent:.1f}%{Colors.ENDC}"
+                f"{Colors.GREEN}✅ Memory freed: {available_gb_after:.1f}GB available (gained {available_gb_after - available_gb_before:.1f}GB){Colors.ENDC}"
             )
             return True
 

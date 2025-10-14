@@ -122,11 +122,13 @@ class OptimizedVoiceSystem(MLEnhancedVoiceSystem):
         """
         Optimized wake word detection using streaming and lazy loading
         """
-        # Check resource usage before processing
+        # Check resource usage before processing (macOS-aware)
         snapshot = self.resource_monitor.get_current_snapshot()
-        if snapshot and snapshot.memory_percent > 90:
-            logger.warning("Memory critical, skipping detection")
-            return False, 0.0, "System resources exhausted"
+        if snapshot:
+            available_gb = snapshot.memory_available_mb / 1024.0
+            if available_gb < 0.5:  # Less than 500MB available
+                logger.warning(f"Memory critical ({available_gb:.1f}GB available), skipping detection")
+                return False, 0.0, "System resources exhausted"
         
         # Use streaming processor if enabled
         if self.streaming_processor and self.optimization_config.streaming.low_latency_mode:

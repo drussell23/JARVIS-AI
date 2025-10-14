@@ -169,11 +169,12 @@ class ModelManager:
             return None
     
     def _ensure_memory_available(self, new_model_name: str) -> bool:
-        """Ensure enough memory is available for a new model"""
-        # Check system memory
-        memory_percent = psutil.virtual_memory().percent
-        if memory_percent > 90:
-            logger.warning(f"System memory critical: {memory_percent}%")
+        """Ensure enough memory is available for a new model (macOS-aware)"""
+        # Check system memory - use available memory instead of percentage
+        memory = psutil.virtual_memory()
+        available_gb = memory.available / (1024 ** 3)
+        if available_gb < 0.5:  # Less than 500MB available
+            logger.warning(f"System memory critical: {available_gb:.1f}GB available")
             self._emergency_cleanup()
         
         # Check our memory limit

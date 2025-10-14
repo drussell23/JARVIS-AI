@@ -883,18 +883,33 @@ class MemoryPressureMonitor:
         self.monitoring = False
 
     def current_pressure(self) -> MemoryPressure:
-        """Get current memory pressure level"""
+        """
+        Get current memory pressure level.
+        
+        IMPORTANT: macOS memory management is different from Linux!
+        macOS will typically show 70-90% memory usage under normal conditions
+        because it caches aggressively. We need to look at AVAILABLE memory,
+        not just percentage used.
+        
+        Thresholds based on available memory (not percent used):
+        - LOW: >4GB available
+        - MEDIUM: 2-4GB available  
+        - HIGH: 1-2GB available
+        - CRITICAL: 500MB-1GB available
+        - EMERGENCY: <500MB available
+        """
         try:
             memory = psutil.virtual_memory()
-            percent_used = memory.percent
-
-            if percent_used < 12.5:
+            available_gb = memory.available / (1024 ** 3)
+            
+            # Use available memory (more accurate for macOS)
+            if available_gb > 4.0:
                 return MemoryPressure.LOW
-            elif percent_used < 25:
+            elif available_gb > 2.0:
                 return MemoryPressure.MEDIUM
-            elif percent_used < 50:
+            elif available_gb > 1.0:
                 return MemoryPressure.HIGH
-            elif percent_used < 75:
+            elif available_gb > 0.5:
                 return MemoryPressure.CRITICAL
             else:
                 return MemoryPressure.EMERGENCY

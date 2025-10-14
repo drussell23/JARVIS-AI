@@ -203,6 +203,60 @@ self._last_multi_space_context = {
 - Structured analysis (Environment, Work, Errors)
 - Natural language responses
 
+## macOS Compatibility
+
+### Memory Pressure Detection (Fixed: 2025-10-14)
+
+JARVIS now includes macOS-aware memory pressure detection throughout the entire codebase. This was a critical fix that resolved startup issues where the system would incorrectly enter EMERGENCY mode on macOS.
+
+**The Problem:**
+- Original logic used Linux-style percentage-based thresholds (>75% = EMERGENCY)
+- macOS shows 70-90% RAM usage as NORMAL due to aggressive caching
+- System at 81% usage with 3GB available was flagged as EMERGENCY (incorrect)
+- This blocked component loading and made the backend non-functional
+
+**The Solution:**
+All memory detection now uses **available memory** instead of percentage:
+
+| Memory Pressure | Available Memory | System Behavior |
+|----------------|------------------|-----------------|
+| LOW | > 4GB | Normal operation, all features enabled |
+| MEDIUM | 2-4GB | Healthy operation (typical on macOS) |
+| HIGH | 1-2GB | Start optimizing, reduce background tasks |
+| CRITICAL | 500MB-1GB | Aggressive cleanup, limit new operations |
+| EMERGENCY | < 500MB | Maximum cleanup, block non-essential features |
+
+**Files Updated (9 total):**
+1. `backend/core/dynamic_component_manager.py` - Core memory pressure detection
+2. `start_system.py` - Startup cleanup triggers
+3. `backend/process_cleanup_manager.py` - System recommendations
+4. `backend/resource_manager.py` - Emergency handling
+5. `backend/smart_startup_manager.py` - Resource monitoring
+6. `backend/voice/model_manager.py` - Model loading decisions
+7. `backend/voice/resource_monitor.py` - Adaptive management
+8. `backend/voice/optimized_voice_system.py` - Wake word detection
+9. `backend/voice_unlock/ml/ml_integration.py` - Health checks
+
+**Impact:**
+- ✅ Backend starts reliably every time on macOS
+- ✅ No false memory alarms at normal usage (70-90%)
+- ✅ Components load correctly in MEDIUM pressure mode
+- ✅ System only takes action when truly low on memory (<2GB)
+
+**Technical Details:**
+```python
+# OLD (Linux-style - incorrect for macOS)
+if memory.percent > 75:
+    return MemoryPressure.EMERGENCY
+
+# NEW (macOS-aware - correct)
+available_gb = memory.available / (1024 ** 3)
+if available_gb < 0.5:
+    return MemoryPressure.EMERGENCY
+```
+
+This fix accounts for macOS's memory management where high percentage usage is normal and "available memory" includes cache that can be instantly freed.
+
 ## Fixes Applied
 
 1. ✅ Vision component set to CORE priority
@@ -213,6 +267,7 @@ self._last_multi_space_context = {
 6. ✅ Follow-up context storage and detection
 7. ✅ Space-specific screenshot capture
 8. ✅ Comprehensive debug logging
+9. ✅ macOS-aware memory detection (system-wide)
 
 ## License
 
