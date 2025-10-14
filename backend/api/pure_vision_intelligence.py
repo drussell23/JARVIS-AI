@@ -630,7 +630,10 @@ class PureVisionIntelligence:
 
         # Already have multi-space screenshots from handler
         if isinstance(screenshot, dict) and len(screenshot) > 1:
+            logger.info(f"[VISION] Multi-space screenshots detected: {len(screenshot)} spaces, keys: {list(screenshot.keys())}")
             return await self._analyze_multi_space_screenshots(screenshot, user_query)
+        elif isinstance(screenshot, dict):
+            logger.info(f"[VISION] Screenshot is dict but only {len(screenshot)} item(s): {list(screenshot.keys())}")
 
         # Adaptive multi-space decision
         should_use_multispace = False
@@ -1234,6 +1237,51 @@ Be specific and natural. Never say "I previously saw" - instead say things like 
         This is called when vision_command_handler has already captured multiple spaces
         """
         logger.info(f"Analyzing {len(screenshots)} pre-captured space screenshots")
+
+        # Validate screenshots before proceeding - check both empty and invalid contents
+        if not screenshots or not any(screenshots.values()):
+            logger.warning("[MULTI-SPACE] No valid screenshots provided for analysis - falling back to window data")
+            logger.debug(f"[MULTI-SPACE] Screenshots dict: {list(screenshots.keys()) if screenshots else 'empty'}")
+            # Get window data for context
+            window_data = await self._gather_multi_space_data()
+            
+            # Try to provide a response based on window data alone
+            if window_data and window_data.get("total_spaces", 0) > 0:
+                total_spaces = window_data.get("total_spaces", 0)
+                total_windows = len(window_data.get("windows", []))
+                spaces_list = window_data.get("spaces", [])
+                
+                # Build basic overview from window data
+                response_parts = [
+                    f"Sir, I can see you have {total_spaces} desktop spaces with {total_windows} windows total."
+                ]
+                
+                # Add brief space summary if available
+                if spaces_list:
+                    response_parts.append("\nHere's what I can detect:")
+                    for space in spaces_list[:5]:  # Limit to first 5 spaces
+                        if isinstance(space, dict):
+                            space_id = space.get("space_id", space.get("id", "unknown"))
+                            windows = space.get("windows", [])
+                            if windows:
+                                apps = [w.get("app", "Unknown") for w in windows[:3]]
+                                response_parts.append(f"  • Space {space_id}: {', '.join(apps)}")
+                
+                response_parts.append(
+                    "\nNote: I'm unable to capture screenshots at the moment. "
+                    "Please ensure screen recording permissions are enabled in "
+                    "System Preferences > Security & Privacy > Screen Recording."
+                )
+                
+                return "\n".join(response_parts)
+            
+            # Provide helpful error message if no window data either
+            return (
+                "I'm unable to capture screenshots of your desktop spaces at the moment. "
+                "Please ensure screen recording permissions are enabled for JARVIS in "
+                "System Preferences > Security & Privacy > Privacy > Screen Recording. "
+                "Once enabled, I'll be able to provide visual analysis across all your desktop spaces."
+            )
 
         # Get window data for context
         window_data = await self._gather_multi_space_data()
@@ -2169,9 +2217,14 @@ Remember: Natural, helpful, and space-aware responses.
         self, screenshots: Dict[int, Any], prompt: str
     ) -> Dict[str, Any]:
         """Get Claude's response with multiple screenshots"""
-        # Validate input
+        # Validate input - check both empty and invalid contents
         if not screenshots:
             raise ValueError("No screenshots provided for multi-space analysis")
+        
+        # Check if all values are None or invalid
+        valid_screenshots = {k: v for k, v in screenshots.items() if v is not None}
+        if not valid_screenshots:
+            raise ValueError(f"All screenshots are invalid (None/empty): {list(screenshots.keys())}")
 
         logger.info(
             f"[CLAUDE_MULTI] Preparing {len(screenshots)} screenshots for Claude"

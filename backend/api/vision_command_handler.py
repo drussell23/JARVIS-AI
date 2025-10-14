@@ -755,6 +755,10 @@ class VisionCommandHandler:
                 }
             else:
                 # Fallback to basic Claude analysis
+                logger.info(f"[VISION] Using basic Claude analysis, screenshot type: {type(screenshot)}")
+                if isinstance(screenshot, dict):
+                    logger.info(f"[VISION] Screenshot dict keys: {list(screenshot.keys())}, values: {[type(v) for v in screenshot.values()]}")
+                
                 response = await self.intelligence.understand_and_respond(
                     screenshot, command_text
                 )
@@ -773,11 +777,28 @@ class VisionCommandHandler:
 
             traceback.print_exc()
 
+            # Provide more helpful error messages
+            error_type = type(e).__name__
+            error_msg = str(e)
+            
+            if error_type == "ValueError":
+                if "screenshot" in error_msg.lower() or "capture" in error_msg.lower() or "invalid" in error_msg.lower():
+                    user_message = (
+                        "I'm unable to capture screenshots of your desktop spaces at the moment. "
+                        "Please ensure screen recording permissions are enabled for JARVIS in "
+                        "System Preferences > Security & Privacy > Privacy > Screen Recording."
+                    )
+                else:
+                    user_message = f"I encountered a data error: {error_msg}. Please try again."
+            else:
+                user_message = f"I encountered an error while analyzing your screen: {error_msg}. Please try again."
+
             # Return error response
             return {
                 "handled": False,
-                "response": f"I encountered an error while analyzing your screen: {str(e)}",
-                "error": str(e),
+                "response": user_message,
+                "error": error_msg,
+                "error_type": error_type,
                 "monitoring_active": self.monitoring_active,
             }
             

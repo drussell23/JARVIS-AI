@@ -3569,6 +3569,26 @@ class ClaudeVisionAnalyzer:
             )
         elif isinstance(image, Image.Image):
             pil_image = image
+        elif hasattr(image, 'screenshot') and image.screenshot is not None:
+            # Handle CaptureResult objects from cg_window_capture
+            # CaptureResult has a 'screenshot' attribute that contains a numpy array
+            logger.debug(f"[PREPROCESS] Extracting screenshot from CaptureResult (type: {type(image.screenshot)})")
+            if isinstance(image.screenshot, np.ndarray):
+                pil_image = await asyncio.get_event_loop().run_in_executor(
+                    self.executor, Image.fromarray, image.screenshot.astype(np.uint8)
+                )
+            elif isinstance(image.screenshot, Image.Image):
+                pil_image = image.screenshot
+            else:
+                raise ValueError(f"CaptureResult.screenshot has unsupported type: {type(image.screenshot)}")
+        elif hasattr(image, 'image'):
+            # Handle alternative attribute name
+            pil_image = image.image
+            logger.debug(f"[PREPROCESS] Extracted PIL image from image attribute: {type(pil_image)}")
+        elif hasattr(image, 'pil_image'):
+            # Handle another alternative attribute name
+            pil_image = image.pil_image
+            logger.debug(f"[PREPROCESS] Extracted PIL image from pil_image attribute: {type(pil_image)}")
         else:
             raise ValueError(f"Unsupported image type: {type(image)}")
 

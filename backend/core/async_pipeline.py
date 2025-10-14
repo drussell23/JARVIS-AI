@@ -1663,10 +1663,25 @@ class AdvancedAsyncPipeline:
 
             except Exception as e:
                 logger.error(f"Error in vision command: {e}")
+                import traceback
+                traceback.print_exc()
                 context.metadata["vision_error"] = str(e)
-                context.response = (
-                    f"I encountered an error analyzing your screen: {str(e)}"
-                )
+                
+                # Provide more helpful error messages based on error type
+                error_msg = str(e)
+                if "ValueError" in str(type(e).__name__):
+                    if "screenshot" in error_msg.lower() or "capture" in error_msg.lower():
+                        context.response = (
+                            "I'm unable to capture screenshots of your desktop spaces at the moment. "
+                            "Please ensure screen recording permissions are enabled for JARVIS in "
+                            "System Preferences > Security & Privacy > Privacy > Screen Recording."
+                        )
+                    else:
+                        context.response = f"I encountered an error analyzing your screen: {error_msg}. Please try again."
+                else:
+                    context.response = (
+                        f"I encountered an error analyzing your screen: {error_msg}. Please try again."
+                    )
             return
 
         # For other commands, check if JARVIS is available
