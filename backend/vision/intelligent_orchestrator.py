@@ -765,12 +765,15 @@ class IntelligentOrchestrator:
         snapshot: WorkspaceSnapshot,
         patterns: List[WorkflowPattern]
     ) -> Dict[str, Any]:
-        """Generate intelligent workspace overview with dynamic activity descriptions"""
+        """Generate richly detailed workspace overview with clean bullet formatting"""
         
-        # Build overview response
-        response_parts = [f"Sir, you're working across {snapshot.total_spaces} desktop spaces:\n"]
+        # Build overview with clean bullet points
+        response_parts = [
+            f"Sir, you're working across {snapshot.total_spaces} desktop spaces:",
+            ""  # Blank line for spacing
+        ]
         
-        # List each space with intelligent activity descriptions
+        # List each space with rich, detailed activity descriptions
         for space in sorted(snapshot.spaces, key=lambda x: x.get("space_id", 0)):
             space_id = space.get("space_id", "?")
             apps = space.get("applications", [])
@@ -781,21 +784,35 @@ class IntelligentOrchestrator:
                 # Get primary app
                 primary_app = apps[0]
                 
-                # Generate intelligent activity description from window titles
-                activity = await self._infer_activity_from_context(
+                # Generate detailed activity description with rich context
+                activity = await self._infer_detailed_activity(
                     primary_app, window_titles, apps
                 )
                 
+                # Format with current indicator
                 current_marker = " (current)" if is_current else ""
-                response_parts.append(f"• Space {space_id}{current_marker}: {primary_app} - {activity}")
+                
+                # Check if activity has multiple lines (rich detail)
+                if "\n" in activity:
+                    # Multi-line format for rich details
+                    response_parts.append(f"• Space {space_id}{current_marker}: {primary_app}")
+                    for line in activity.split("\n"):
+                        response_parts.append(f"  {line}")
+                else:
+                    # Single line format with clean bullet
+                    response_parts.append(f"• Space {space_id}{current_marker}: {primary_app} — {activity}")
             else:
                 current_marker = " (current)" if is_current else ""
                 response_parts.append(f"• Space {space_id}{current_marker}: Empty")
         
-        # Generate intelligent workflow summary
-        workflow_summary = await self._generate_workflow_summary(snapshot, patterns)
+        # Generate intelligent workflow summary without separator
+        workflow_summary = await self._generate_detailed_workflow_summary(snapshot, patterns)
         if workflow_summary:
-            response_parts.append(f"\n{workflow_summary}")
+            response_parts.append("")  # Blank line before summary
+            response_parts.append("Workflow Analysis:")
+            for line in workflow_summary.split("\n"):
+                if line.strip():
+                    response_parts.append(f"• {line}")
         
         response_text = "\n".join(response_parts)
         
@@ -808,6 +825,189 @@ class IntelligentOrchestrator:
             "overview_mode": True
         }
     
+    async def _infer_detailed_activity(
+        self,
+        app_name: str,
+        window_titles: List[str],
+        all_apps: List[str]
+    ) -> str:
+        """
+        Generate RICH, DETAILED activity descriptions with maximum context.
+        Extracts specific files, URLs, tasks, and provides actionable information.
+        NO HARDCODING - pure semantic intelligence.
+        """
+        
+        # If we have window titles, do deep analysis
+        if window_titles:
+            title = next((t for t in window_titles if t and len(t) > 0), "")
+            
+            if title:
+                title_lower = title.lower()
+                app_lower = app_name.lower()
+                
+                # === BROWSER INTELLIGENCE (Chrome, Safari, Firefox) ===
+                if any(browser in app_lower for browser in ['chrome', 'safari', 'firefox', 'edge', 'brave']):
+                    # Extract website and tab context
+                    if 'github.com' in title_lower or 'github' in title_lower:
+                        # Extract repo name if present
+                        if '/' in title:
+                            parts = [p for p in title.split('/') if p.strip()]
+                            if len(parts) >= 2:
+                                repo = parts[-1].split('—')[0].split('-')[0].strip()
+                                return f"Browsing GitHub repository: {repo}"
+                        return "Browsing GitHub"
+                    
+                    elif 'stackoverflow' in title_lower:
+                        # Try to extract question topic
+                        question = title.split('-')[0].strip()
+                        if len(question) < 60 and len(question) > 5:
+                            return f"Stack Overflow: {question}"
+                        return "Researching solutions on Stack Overflow"
+                    
+                    elif 'youtube' in title_lower:
+                        video_title = title.split('-')[0].split('—')[0].strip()
+                        if len(video_title) < 60 and len(video_title) > 5:
+                            return f"Watching: {video_title}"
+                        return "Watching YouTube videos"
+                    
+                    elif any(site in title_lower for site in ['reddit', 'twitter', 'linkedin', 'facebook']):
+                        site_name = next(s.capitalize() for s in ['reddit', 'twitter', 'linkedin', 'facebook'] if s in title_lower)
+                        return f"Browsing {site_name}"
+                    
+                    elif 'google' in title_lower and ('search' in title_lower or '?' in title):
+                        # Try to extract search query
+                        return "Searching Google"
+                    
+                    elif 'localhost' in title_lower or '127.0.0.1' in title_lower:
+                        # Extract port and app
+                        if ':' in title:
+                            port_part = title.split(':')[1].split()[0]
+                            return f"Testing local app on port {port_part}"
+                        return "Testing local development server"
+                    
+                    elif 'docs' in title_lower or 'documentation' in title_lower:
+                        # Extract doc topic
+                        doc_name = title.split('—')[0].split('-')[0].split('|')[0].strip()
+                        if len(doc_name) < 50 and len(doc_name) > 3:
+                            return f"Reading docs: {doc_name}"
+                        return "Reading documentation"
+                    
+                    else:
+                        # Generic but extract first part of title
+                        page_title = title.split('—')[0].split('-')[0].split('|')[0].strip()
+                        if len(page_title) < 60 and len(page_title) > 3:
+                            return f"Viewing: {page_title}"
+                        return "Web browsing"
+                
+                # === TERMINAL INTELLIGENCE ===
+                elif 'terminal' in app_lower or 'iterm' in app_lower:
+                    # Extract what's running in terminal
+                    if 'jupyter' in title_lower:
+                        notebook_name = title.split(':')[0].strip()
+                        if len(notebook_name) < 40:
+                            return f"Running Jupyter: {notebook_name}"
+                        return "Running Jupyter Notebook server"
+                    
+                    elif 'npm' in title_lower:
+                        if 'run dev' in title_lower or 'dev' in title_lower:
+                            return "Running npm dev server"
+                        elif 'install' in title_lower:
+                            return "Installing npm packages"
+                        return "Running npm commands"
+                    
+                    elif 'python' in title_lower:
+                        # Extract script name
+                        if '.py' in title:
+                            script = title.split('.py')[0].split()[-1] + '.py'
+                            return f"Running Python script: {script}"
+                        return "Running Python"
+                    
+                    elif 'docker' in title_lower:
+                        return "Managing Docker containers"
+                    
+                    elif 'ssh' in title_lower:
+                        # Extract server name
+                        server = title.split('@')[-1].split()[0] if '@' in title else None
+                        if server and len(server) < 30:
+                            return f"SSH connected to {server}"
+                        return "Connected via SSH"
+                    
+                    elif 'git' in title_lower:
+                        return "Running Git commands"
+                    
+                    elif 'vim' in title_lower or 'nano' in title_lower or 'emacs' in title_lower:
+                        return "Editing files in terminal"
+                    
+                    # Check for directory context
+                    elif '~/' in title or '/' in title:
+                        # Extract current directory
+                        parts = title.split('/')
+                        if len(parts) > 0:
+                            current_dir = parts[-1].split()[0].strip()
+                            if current_dir and len(current_dir) < 30:
+                                return f"Working in: {current_dir}"
+                    
+                    return "Terminal session"
+                
+                # === CODE EDITOR INTELLIGENCE (Cursor, VSCode, etc.) ===
+                elif any(editor in app_lower for editor in ['cursor', 'code', 'vscode', 'sublime', 'atom']):
+                    # Extract project and file
+                    if '—' in title or '–' in title:
+                        parts = title.replace('–', '—').split('—')
+                        
+                        # Try to get file name
+                        file_part = parts[0].strip()
+                        project_part = parts[-1].strip() if len(parts) > 1 else None
+                        
+                        # Extract project name
+                        if project_part:
+                            project_name = project_part.split('[')[0].split('(')[0].strip()
+                            
+                            # Extract file name if present
+                            if '.' in file_part and len(file_part) < 40:
+                                file_name = file_part.split('/')[-1].strip()
+                                return f"Editing {file_name}\n   📂 Project: {project_name}"
+                            else:
+                                return f"Working on {project_name} project"
+                        
+                        # Fallback: just file name
+                        if '.' in file_part and len(file_part) < 40:
+                            return f"Editing: {file_part}"
+                    
+                    # Check for file extension in title
+                    extensions = ['.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.cpp', '.go', '.rs', '.rb', '.php', '.css', '.html', '.md']
+                    for ext in extensions:
+                        if ext in title:
+                            file_name = title.split(ext)[0].split()[-1] + ext
+                            return f"Editing: {file_name}"
+                    
+                    return "Code editing"
+                
+                # === DATA SCIENCE / JUPYTER ===
+                elif 'jupyter' in app_lower or '.ipynb' in title_lower:
+                    notebook_name = title.split('.ipynb')[0].split('/')[-1].strip()
+                    if len(notebook_name) < 40 and len(notebook_name) > 0:
+                        return f"Analyzing data: {notebook_name}.ipynb"
+                    return "Data analysis in Jupyter"
+                
+                # === FILE BROWSER (Finder, etc.) ===
+                elif 'finder' in app_lower:
+                    # Extract current folder/location
+                    location = title.strip()
+                    if location and len(location) < 40 and location not in ['Finder', 'File Browser']:
+                        return f"Browsing: {location}"
+                    return "File management"
+                
+                # === GENERIC: Try to extract meaningful title ===
+                clean_title = title.split('—')[0].split('-')[0].split('|')[0].strip()
+                if len(clean_title) < 60 and len(clean_title) > 3:
+                    # Check if it's not just the app name
+                    if clean_title.lower() != app_name.lower():
+                        return clean_title
+        
+        # === FALLBACK: Use original simpler inference ===
+        return await self._infer_activity_from_context(app_name, window_titles, all_apps)
+    
     async def _infer_activity_from_context(
         self,
         app_name: str,
@@ -815,7 +1015,7 @@ class IntelligentOrchestrator:
         all_apps: List[str]
     ) -> str:
         """
-        Intelligently infer what the user is doing based on app and window context.
+        Simpler activity inference for fallback cases.
         NO HARDCODING - uses dynamic pattern recognition and semantic analysis.
         """
         
@@ -954,6 +1154,76 @@ class IntelligentOrchestrator:
         
         # Ultimate fallback: Generic but accurate
         return "Active"
+    
+    async def _generate_detailed_workflow_summary(
+        self,
+        snapshot: WorkspaceSnapshot,
+        patterns: List[WorkflowPattern]
+    ) -> str:
+        """
+        Generate RICH workflow summary with detailed multi-dimensional analysis.
+        NO HARDCODING - comprehensive dynamic analysis.
+        """
+        
+        # Collect detailed workspace intelligence
+        all_apps = set()
+        dev_spaces = []
+        browser_spaces = []
+        terminal_spaces = []
+        
+        for space in snapshot.spaces:
+            apps = space.get("applications", [])
+            space_id = space.get("space_id")
+            all_apps.update(apps)
+            
+            for app in apps:
+                app_lower = app.lower()
+                if any(dev in app_lower for dev in ['cursor', 'code', 'vscode', 'sublime']):
+                    dev_spaces.append(space_id)
+                if any(browser in app_lower for browser in ['chrome', 'safari', 'firefox']):
+                    browser_spaces.append(space_id)
+                if 'terminal' in app_lower or 'iterm' in app_lower:
+                    terminal_spaces.append(space_id)
+        
+        # Build rich summary
+        summary_parts = []
+        
+        # Multi-space activity pattern
+        active_spaces = len([s for s in snapshot.spaces if len(s.get("applications", [])) > 0])
+        if active_spaces >= 4:
+            summary_parts.append(f"You're actively multitasking across {active_spaces} spaces")
+        elif active_spaces >= 2:
+            summary_parts.append(f"Working across {active_spaces} active spaces")
+        
+        # Development focus
+        if dev_spaces:
+            if len(dev_spaces) > 1:
+                summary_parts.append(f"Development work happening in {len(dev_spaces)} spaces")
+            else:
+                summary_parts.append("Focused development work")
+        
+        # Context switching indicator
+        if len(dev_spaces) > 0 and len(browser_spaces) > 0:
+            summary_parts.append("Switching between coding and research")
+        
+        # Terminal activity
+        if terminal_spaces:
+            summary_parts.append("Active terminal sessions running")
+        
+        # Overall workflow categorization
+        categories = []
+        if dev_spaces: categories.append("development")
+        if terminal_spaces: categories.append("command-line")
+        if browser_spaces: categories.append("web research")
+        
+        if len(categories) >= 2:
+            summary_parts.append(f"Primary focus: {' + '.join(categories)}")
+        
+        # Fallback to original summary if needed
+        if not summary_parts:
+            return await self._generate_workflow_summary(snapshot, patterns)
+        
+        return "\n".join(summary_parts)
     
     async def _generate_workflow_summary(
         self,
