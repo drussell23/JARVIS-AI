@@ -810,22 +810,61 @@ class IntelligentOrchestrator:
     ) -> str:
         """Generate fallback analysis when visual content is unavailable"""
         
+        query_lower = query.lower()
         response_parts = []
         
-        # Provide overview based on metadata
-        response_parts.append(f"I can see you have {snapshot.total_spaces} desktop spaces active.")
+        # Check if query is asking about errors
+        if "error" in query_lower:
+            response_parts.append("Sir, to detect errors visually, I need Claude Vision API access.")
+            response_parts.append("However, I can tell you what applications are running:")
+            
+            # Find terminal/code spaces
+            for space in snapshot.spaces:
+                space_id = space.get("space_id")
+                apps = space.get("applications", [])
+                
+                if any(app in ["Terminal", "iTerm2", "Code", "Cursor"] for app in apps):
+                    primary_app = apps[0] if apps else "Unknown"
+                    response_parts.append(f"• Space {space_id}: {primary_app}")
+            
+            response_parts.append("\nTo see actual error messages with OCR, set your ANTHROPIC_API_KEY environment variable.")
         
-        # List key activities
-        key_apps = set()
-        for space in snapshot.spaces:
-            for app in space.get("applications", []):
-                key_apps.add(app)
-        
-        if key_apps:
-            response_parts.append(f"Key applications: {', '.join(sorted(key_apps)[:5])}")
-        
-        # Add recommendation
-        response_parts.append("For deeper visual analysis, please ensure screen recording permissions are enabled.")
+        # Check if query is asking about specific space
+        elif any(f"space {i}" in query_lower for i in range(1, 11)):
+            # Extract space number
+            for i in range(1, 11):
+                if f"space {i}" in query_lower:
+                    target_space = next((s for s in snapshot.spaces if s.get("space_id") == i), None)
+                    if target_space:
+                        apps = target_space.get("applications", [])
+                        window_titles = target_space.get("window_titles", [])
+                        
+                        if apps:
+                            response_parts.append(f"Sir, Space {i} is running {apps[0]}.")
+                            if window_titles:
+                                response_parts.append(f"Window: {window_titles[0][:100]}")
+                        else:
+                            response_parts.append(f"Sir, Space {i} appears to be empty.")
+                        
+                        response_parts.append("\nFor visual analysis (OCR, error detection), set your ANTHROPIC_API_KEY.")
+                    else:
+                        response_parts.append(f"Sir, I don't see a Space {i} in your workspace.")
+                    break
+        else:
+            # General fallback
+            response_parts.append(f"Sir, I can see you have {snapshot.total_spaces} desktop spaces active.")
+            
+            # List key activities
+            key_apps = set()
+            for space in snapshot.spaces:
+                for app in space.get("applications", []):
+                    key_apps.add(app)
+            
+            if key_apps:
+                response_parts.append(f"Key applications: {', '.join(sorted(key_apps)[:5])}")
+            
+            # Add recommendation
+            response_parts.append("For deeper visual analysis, set your ANTHROPIC_API_KEY environment variable.")
         
         return " ".join(response_parts)
     

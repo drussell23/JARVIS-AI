@@ -1684,37 +1684,47 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
             return None
 
     def _is_multi_space_query(self, command_text: str) -> bool:
-        """Check if query is about multiple desktop spaces"""
+        """Check if query is about multiple desktop spaces OR specific space analysis"""
         command_lower = command_text.lower()
         
+        # Multi-space overview indicators
         multi_space_indicators = [
-            "across", "all", "every", "each", "multiple", "spaces", "desktops",
-            "workspace", "what's happening", "what is happening", "show me",
-            "tell me about", "analyze", "overview", "summary"
+            "across", "all my", "every", "each", "multiple", "spaces", "desktops",
+            "workspace", "what's happening", "what is happening", "show me all",
+            "tell me about", "overview", "summary", "list all"
         ]
         
-        return any(indicator in command_lower for indicator in multi_space_indicators)
+        # Visual analysis indicators (even for single space)
+        visual_analysis_indicators = [
+            "error", "see", "look at", "show me", "what's in", "what is in",
+            "analyze", "read", "check", "debug", "terminal", "code", "browser",
+            "space 1", "space 2", "space 3", "space 4", "space 5", "space 6",
+            "space 7", "space 8", "space 9", "space 10"
+        ]
+        
+        # Return true if it's a multi-space query OR a visual analysis query
+        return (any(indicator in command_lower for indicator in multi_space_indicators) or
+                any(indicator in command_lower for indicator in visual_analysis_indicators))
 
     async def _handle_intelligent_orchestration(self, command_text: str) -> Dict[str, Any]:
         """Handle multi-space queries using intelligent orchestration"""
         try:
             logger.info("[ORCHESTRATOR] Handling multi-space query with intelligent orchestration")
             
-            # Get API key
+            # Get API key (can be None for metadata-only queries)
             api_key = os.getenv("ANTHROPIC_API_KEY")
             if not api_key:
-                logger.warning("[ORCHESTRATOR] No Claude API key available")
-                return {"handled": False}
+                logger.warning("[ORCHESTRATOR] No Claude API key - will use metadata-based analysis only")
             
             # Import and use intelligent orchestrator
             from vision.intelligent_orchestrator import get_intelligent_orchestrator
             
             orchestrator = get_intelligent_orchestrator()
             
-            # Perform intelligent analysis
+            # Perform intelligent analysis (works with or without API key)
             result = await orchestrator.analyze_workspace_intelligently(
                 query=command_text,
-                claude_api_key=api_key
+                claude_api_key=api_key  # Can be None
             )
             
             if result.get("success"):
