@@ -1,0 +1,95 @@
+{
+  "display_monitoring": {
+    "enabled": true,
+    "check_interval_seconds": 10.0,
+    "startup_delay_seconds": 2.0,
+    "detection_methods": ["applescript", "coregraphics", "yabai"],
+    "preferred_detection_method": "applescript"
+  },
+  "displays": {
+    "monitored_displays": [
+      {
+        "id": "living_room_tv",
+        "name": "Living Room TV",
+        "display_type": "airplay",
+        "aliases": ["Living Room", "LG TV", "TV"],
+        "auto_connect": false,
+        "auto_prompt": true,
+        "connection_mode": "extend",
+        "priority": 1,
+        "enabled": true
+      }
+    ],
+    "ignored_displays": [
+      "Built-in Retina Display"
+    ]
+  },
+  "voice_integration": {
+    "enabled": true,
+    "voice_engine": "edge_tts",
+    "voice_name": "en-US-GuyNeural",
+    "prompt_template": "Sir, I see your {display_name} is now available. Would you like to extend your display to it?",
+    "connection_success_message": "Connected to {display_name}, sir.",
+    "connection_failure_message": "Unable to connect to {display_name}. {error_detail}",
+    "speak_on_detection": true,
+    "speak_on_connection": true,
+    "speak_on_disconnection": false
+  },
+  "applescript": {
+    "enabled": true,
+    "timeout_seconds": 5.0,
+    "retry_attempts": 3,
+    "retry_delay_seconds": 0.5,
+    "control_center_process": "ControlCenter",
+    "screen_mirroring_menu_item": "Screen Mirroring",
+    "filter_system_items": ["Turn Display Mirroring Off", ""]
+  },
+  "coregraphics": {
+    "enabled": true,
+    "max_displays": 32,
+    "detect_airplay": true,
+    "detect_external": true,
+    "exclude_builtin": true
+  },
+  "yabai": {
+    "enabled": false,
+    "command_timeout": 3.0
+  },
+  "caching": {
+    "enabled": true,
+    "screenshot_ttl_seconds": 30,
+    "ocr_result_ttl_seconds": 300,
+    "display_list_ttl_seconds": 5,
+    "max_cache_size_mb": 100
+  },
+  "performance": {
+    "parallel_detection": true,
+    "max_concurrent_operations": 4,
+    "graceful_degradation": true,
+    "fallback_on_error": true
+  },
+  "notifications": {
+    "enabled": true,
+    "notification_types": ["display_connected", "display_disconnected", "detection_error"],
+    "use_system_notifications": false,
+    "use_voice_notifications": true
+  },
+  "logging": {
+    "level": "INFO",
+    "log_detection_events": true,
+    "log_applescript_commands": false,
+    "log_performance_metrics": true
+  },
+  "security": {
+    "require_user_consent_first_time": true,
+    "remember_consent": true,
+    "auto_connect_only_known_displays": true
+  },
+  "advanced": {
+    "multi_monitor_support": true,
+    "temporal_tracking": false,
+    "predictive_detection": false,
+    "learn_user_patterns": false
+  },
+  "last_updated": "2025-10-15T00:00:00"
+}

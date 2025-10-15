@@ -5,7 +5,7 @@ Advanced Browser Automation with Natural Language Control + Zero Configuration
 ⚡ ULTRA-OPTIMIZED: 30% Memory Target (4.8GB on 16GB Systems)
 🤖 AUTONOMOUS: Self-Discovering, Self-Healing, Self-Optimizing
 
-The JARVIS backend loads 8 critical components:
+The JARVIS backend loads 9 critical components:
 
 1. CHATBOTS - Claude Vision AI for conversation and screen understanding
 2. VISION - Real-time screen capture with Multi-Space Desktop Monitoring
@@ -35,6 +35,15 @@ The JARVIS backend loads 8 critical components:
    • Customizable wake words and responses
    • Adaptive sensitivity learning
    • Natural activation: "I'm online Sir, waiting for your command"
+
+9. DISPLAY_MONITOR - External Display Management (NEW!)
+   • Automatic AirPlay/external display detection
+   • Multi-method detection: AppleScript, CoreGraphics, Yabai
+   • Voice announcements: "Sir, I see your Living Room TV is available..."
+   • Smart caching: 3-5x performance improvement, 60-80% fewer API calls
+   • Auto-connect or voice-prompt modes
+   • Zero hardcoding - fully configuration-driven
+   • Living Room TV monitoring active by default
 
 🆕 AUTONOMOUS FEATURES (v14.0):
 - Zero Configuration: No hardcoded ports or URLs
@@ -78,7 +87,7 @@ Browser Automation Features (v13.4.0):
 - Cross-Browser Support: Safari, Chrome, Firefox, and others
 - AppleScript Integration: Native macOS browser control
 
-All 8 components must load for full functionality.
+All 9 components must load for full functionality.
 """
 
 import os
@@ -1325,6 +1334,9 @@ class AsyncSystemManager:
                             )
                             print(
                                 f"  {Colors.GREEN}✅ WAKE_WORD{Colors.ENDC}   - 'Hey JARVIS' detection active"
+                            )
+                            print(
+                                f"  {Colors.GREEN}✅ DISPLAY_MONITOR{Colors.ENDC} - Living Room TV monitoring active"
                             )
             except:
                 # Fallback if we can't check

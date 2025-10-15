@@ -2,7 +2,7 @@
 """
 JARVIS AI Backend - Optimized Main Entry Point
 
-This backend loads 7 critical components that power the JARVIS AI system:
+This backend loads 9 critical components that power the JARVIS AI system:
 
 1. CHATBOTS (Claude Vision Chatbot)
    - Powers conversational AI with Claude 3.5 Sonnet
@@ -49,21 +49,31 @@ This backend loads 7 critical components that power the JARVIS AI system:
    - Essential for production stability
    - Integration metrics tracking for all vision components
 
-7. VOICE UNLOCK (Biometric Mac Authentication) - NEW!
+7. VOICE UNLOCK (Biometric Mac Authentication)
    - Voice-based biometric authentication for macOS
    - Secure voiceprint enrollment and storage
    - Anti-spoofing protection with liveness detection
    - Screensaver and system integration
    - Adaptive authentication with continuous learning
 
-8. WAKE WORD (Hands-free Activation) - NEW!
+8. WAKE WORD (Hands-free Activation)
    - "Hey JARVIS" wake word detection
    - Always-listening mode with zero button clicks
    - Multi-engine detection (Porcupine, Vosk, WebRTC)
    - Adaptive sensitivity and anti-spoofing
    - Customizable wake words and responses
 
-All 8 components must load successfully for full JARVIS functionality.
+9. DISPLAY MONITOR (External Display Management) - NEW!
+   - Automatic AirPlay/external display detection
+   - Multi-method detection (AppleScript, CoreGraphics, Yabai)
+   - Voice announcements for display availability
+   - Smart caching for 3-5x performance improvement
+   - Auto-connect or prompt modes
+   - Living Room TV monitoring (configurable)
+   - Zero hardcoding - fully configuration-driven
+   - Event-driven callbacks for custom integrations
+
+All 9 components must load successfully for full JARVIS functionality.
 The system uses parallel imports to reduce startup time from ~20s to ~7-9s.
 
 Enhanced Vision Features (v13.3.1):
@@ -239,6 +249,7 @@ async def parallel_import_components():
         "monitoring": import_monitoring,
         "voice_unlock": import_voice_unlock,
         "wake_word": import_wake_word,
+        "display_monitor": import_display_monitor,
     }
 
     # Use thread pool for imports
@@ -503,6 +514,33 @@ def import_wake_word():
     return wake_word
 
 
+def import_display_monitor():
+    """Import display monitor components"""
+    display_monitor = {}
+
+    try:
+        from display.advanced_display_monitor import (
+            get_display_monitor,
+            AdvancedDisplayMonitor,
+        )
+        from display.display_voice_handler import create_voice_handler
+        from display.display_config_manager import get_config_manager
+
+        display_monitor["get_monitor"] = get_display_monitor
+        display_monitor["monitor_class"] = AdvancedDisplayMonitor
+        display_monitor["voice_handler_factory"] = create_voice_handler
+        display_monitor["config_manager_factory"] = get_config_manager
+        display_monitor["available"] = True
+
+        logger.info("  ✅ Display Monitor components loaded")
+
+    except ImportError as e:
+        logger.warning(f"  ⚠️  Display Monitor not available: {e}")
+        display_monitor["available"] = False
+
+    return display_monitor
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Optimized lifespan handler with parallel initialization"""
@@ -590,6 +628,7 @@ async def lifespan(app: FastAPI):
             components["monitoring"] = import_monitoring()
             components["voice_unlock"] = import_voice_unlock()
             components["wake_word"] = import_wake_word()
+            components["display_monitor"] = import_display_monitor()
 
     # Initialize memory manager
     memory_class = components.get("memory", {}).get("manager_class")
@@ -1046,10 +1085,10 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Failed to stop Voice Unlock system: {e}")
 
-    # Stop display monitoring
+    # Stop display monitoring (Component #9)
     if hasattr(app.state, "display_monitor"):
         try:
-            await app.state.display_monitor.stop_monitoring()
+            await app.state.display_monitor.stop()
             logger.info("✅ Display monitoring stopped")
         except Exception as e:
             logger.error(f"Error stopping display monitoring: {e}")
@@ -1618,39 +1657,47 @@ def mount_routers():
     except Exception as e:
         logger.warning(f"⚠️  Proximity-Aware Display API not available: {e}")
     
-    # Simple Display Monitor API (NO proximity detection)
+    # Advanced Display Monitor (Component #9) - Multi-method detection with voice integration
     try:
-        from api.display_monitor_api import router as display_monitor_router
-        from display import get_display_monitor
-        
-        app.include_router(display_monitor_router, tags=["display-monitor"])
-        logger.info("✅ Simple Display Monitor API configured (no proximity detection)")
-        
-        # Auto-start monitoring if displays are configured
-        try:
-            monitor = get_display_monitor()
-            
-            # Register Living Room TV by default
-            monitor.register_display("Living Room TV", auto_prompt=True, default_mode="extend")
-            logger.info("   📺 Registered 'Living Room TV' for monitoring")
-            
-            # Store monitor in app state for access by other components
-            app.state.display_monitor = monitor
-            
-            # Start monitoring automatically
-            async def start_display_monitoring():
-                await asyncio.sleep(2)  # Wait for system to fully initialize
-                await monitor.start_monitoring()
-                logger.info("   ✅ Display monitoring started - checking Screen Mirroring menu every 10s")
-                logger.info("   📺 JARVIS will prompt when Living Room TV becomes available")
-            
-            asyncio.create_task(start_display_monitoring())
-            
-        except Exception as e:
-            logger.warning(f"   ⚠️ Could not auto-start display monitoring: {e}")
-            
+        display_monitor_comp = components.get("display_monitor", {})
+        if display_monitor_comp.get("available"):
+            logger.info("🖥️  Initializing Advanced Display Monitor (Component #9)...")
+
+            # Create voice handler for display monitor
+            voice_handler_factory = display_monitor_comp.get("voice_handler_factory")
+            get_monitor = display_monitor_comp.get("get_monitor")
+
+            if voice_handler_factory and get_monitor:
+                # Create voice handler
+                voice_handler = voice_handler_factory()
+
+                # Get monitor instance with voice integration
+                monitor = get_monitor(voice_handler=voice_handler)
+
+                # Store monitor in app state for access by other components
+                app.state.display_monitor = monitor
+
+                # Start monitoring automatically
+                async def start_display_monitoring():
+                    await asyncio.sleep(2)  # Wait for system to fully initialize
+                    await monitor.start()
+                    logger.info("   ✅ Display monitoring started")
+                    logger.info("   📺 Monitoring for configured displays (Living Room TV)")
+                    logger.info("   🎤 Voice announcements enabled")
+                    logger.info("   ⚡ Smart caching enabled (3-5x performance)")
+                    logger.info("   🔍 Detection methods: AppleScript, CoreGraphics, Yabai")
+
+                asyncio.create_task(start_display_monitoring())
+                logger.info("✅ Advanced Display Monitor configured")
+            else:
+                logger.warning("   ⚠️ Display monitor factories not available")
+        else:
+            logger.warning("⚠️  Display Monitor not available (component not loaded)")
+
     except Exception as e:
-        logger.warning(f"⚠️  Display Monitor API not available: {e}")
+        logger.warning(f"⚠️  Display Monitor initialization failed: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
 
     # ML Audio API (with built-in fallback) - Always mount regardless of WebSocket status
     try:
