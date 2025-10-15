@@ -171,10 +171,39 @@ class PureVisionIntelligence:
     Now with optional multi-space awareness for workspace-wide intelligence.
     """
 
-    def __init__(self, claude_client, enable_multi_space: bool = True):
+    def __init__(
+        self,
+        claude_client,
+        enable_multi_space: bool = True,
+        context_store=None,
+        context_bridge=None,
+    ):
         self.claude = claude_client
         self.context = ConversationContext()
         self.screen_cache = {}  # Hash -> understanding
+
+        # ═══════════════════════════════════════════════════════════════
+        # Context Intelligence Bridge Integration
+        # ═══════════════════════════════════════════════════════════════
+        self.context_bridge = (
+            context_bridge  # Access to Context Intelligence (Priority 1-3)
+        )
+
+        # ═══════════════════════════════════════════════════════════════
+        # Follow-Up Context Tracking
+        # ═══════════════════════════════════════════════════════════════
+        self.context_store = context_store
+        if self.context_store is None:
+            try:
+                from backend.core.context.memory_store import InMemoryContextStore
+
+                self.context_store = InMemoryContextStore(max_size=50)
+                logger.info(
+                    "Initialized in-memory context store for follow-up tracking"
+                )
+            except Exception as e:
+                logger.warning(f"Could not initialize context store: {e}")
+                self.context_store = None
 
         # Multi-space components (if available and enabled)
         self.multi_space_enabled = enable_multi_space and MULTI_SPACE_AVAILABLE
@@ -241,30 +270,405 @@ class PureVisionIntelligence:
         else:
             logger.info("Multi-space awareness disabled or unavailable")
 
+    # ═══════════════════════════════════════════════════════════════
+    # Follow-Up Context Tracking Methods
+    # ═══════════════════════════════════════════════════════════════
+
+    async def track_pending_question(
+        self,
+        question_text: str,
+        window_type: str,
+        window_id: str,
+        space_id: str,
+        snapshot_id: str,
+        summary: str,
+        ocr_text: str | None = None,
+        ttl_seconds: int = 120,
+    ) -> str | None:
+        """
+        Track a pending question after JARVIS asks the user something.
+        Returns context ID if successful, None if store unavailable.
+        """
+        if not self.context_store:
+            logger.warning("Cannot track pending question: context store not available")
+            return None
+
+        try:
+            from backend.core.models.context_envelope import (
+                ContextEnvelope,
+                ContextMetadata,
+                ContextCategory,
+                ContextPriority,
+                VisionContextPayload,
+            )
+
+            # Create vision context envelope
+            metadata = ContextMetadata(
+                category=ContextCategory.VISION,
+                priority=ContextPriority.HIGH,
+                source="pure_vision_intelligence",
+                tags=(window_type, "pending_question"),
+            )
+
+            payload = VisionContextPayload(
+                window_type=window_type,
+                window_id=window_id,
+                space_id=space_id,
+                snapshot_id=snapshot_id,
+                summary=summary,
+                ocr_text=ocr_text,
+            )
+
+            envelope = ContextEnvelope(
+                metadata=metadata,
+                payload=payload,
+                ttl_seconds=ttl_seconds,
+                decay_rate=0.01,  # 1% per second
+            )
+
+            context_id = await self.context_store.add(envelope)
+            logger.info(
+                f"[FOLLOW-UP] Tracked pending question: '{question_text}' "
+                f"(context_id={context_id}, window={window_type})"
+            )
+
+            # Telemetry: Track pending context creation
+            try:
+                from backend.core.telemetry.events import get_telemetry
+
+                telemetry = get_telemetry()
+                await telemetry.track_event(
+                    "follow_up.pending_created",
+                    {
+                        "context_id": context_id,
+                        "window_type": window_type,
+                        "question_text": question_text[:100],
+                        "ttl_seconds": ttl_seconds,
+                        "has_ocr_text": ocr_text is not None,
+                    },
+                )
+            except:
+                pass  # Telemetry is optional
+
+            return context_id
+
+        except Exception as e:
+            logger.error(f"Failed to track pending question: {e}", exc_info=True)
+            return None
+
+    async def get_active_pending(self):
+        """Retrieve the most recent valid pending context."""
+        if not self.context_store:
+            return None
+
+        try:
+            # Clear expired contexts first
+            await self.context_store.clear_expired()
+
+            # Get most relevant
+            contexts = await self.context_store.get_most_relevant(limit=1)
+            return contexts[0] if contexts else None
+
+        except Exception as e:
+            logger.error(f"Failed to get active pending context: {e}", exc_info=True)
+            return None
+
+    async def clear_all_pending(self):
+        """Clear all pending contexts."""
+        if self.context_store:
+            try:
+                await self.context_store.clear_all()
+                logger.info("[FOLLOW-UP] Cleared all pending contexts")
+            except Exception as e:
+                logger.error(f"Failed to clear pending contexts: {e}", exc_info=True)
+
+    async def _track_followup_opportunity(
+        self,
+        user_query: str,
+        jarvis_response: str,
+        screenshot: Any,
+        understanding: Dict[str, Any],
+    ):
+        """
+        Intelligently detect when JARVIS mentions seeing a terminal/window
+        but hasn't provided deep analysis yet, and track it for follow-up.
+
+        This enables conversations like:
+        User: "can you see my terminal?"
+        JARVIS: "Yes, I can see Terminal on Desktop 2..."
+        User: "what does it say?" or "are there any errors?"
+        JARVIS: [Actually reads and analyzes the terminal content]
+        """
+        if not self.context_store:
+            return  # No context store, skip tracking
+
+        try:
+            response_lower = jarvis_response.lower()
+            query_lower = user_query.lower()
+
+            # Detect if JARVIS mentioned seeing something but didn't analyze it deeply
+            mentioned_terminal = any(
+                word in response_lower
+                for word in [
+                    "terminal",
+                    "command line",
+                    "shell",
+                    "bash",
+                    "zsh",
+                    "iterm",
+                ]
+            )
+            mentioned_browser = any(
+                word in response_lower
+                for word in ["browser", "chrome", "safari", "firefox", "webpage", "tab"]
+            )
+            mentioned_code = any(
+                word in response_lower
+                for word in ["code", "editor", "vscode", "vs code", "ide", "file"]
+            )
+            mentioned_window = "window" in response_lower or "desktop" in response_lower
+
+            # Check if user asked "can you see" or similar discovery question
+            is_discovery_query = any(
+                phrase in query_lower
+                for phrase in [
+                    "can you see",
+                    "do you see",
+                    "what do you see",
+                    "show me",
+                    "what's on",
+                    "what's in",
+                ]
+            )
+
+            # Check if response is brief (indicates surface-level observation)
+            is_brief_response = len(jarvis_response.split()) < 50
+
+            # If JARVIS mentioned a window/terminal/etc in a brief response to a discovery query,
+            # track it as a follow-up opportunity
+            should_track = (
+                is_discovery_query
+                and is_brief_response
+                and (
+                    mentioned_terminal
+                    or mentioned_browser
+                    or mentioned_code
+                    or mentioned_window
+                )
+            )
+
+            if should_track:
+                # Determine window type
+                if mentioned_terminal:
+                    window_type = "terminal"
+                    follow_up_question = "Would you like me to read what's in the Terminal and check for any errors or important output?"
+                elif mentioned_browser:
+                    window_type = "browser"
+                    follow_up_question = "Would you like me to read the page content or summarize what's displayed?"
+                elif mentioned_code:
+                    window_type = "code"
+                    follow_up_question = "Would you like me to analyze the code for any issues or errors?"
+                else:
+                    window_type = "general"
+                    follow_up_question = "Would you like me to describe what's in that window in more detail?"
+
+                # Extract space/window info from response if available
+                import re
+
+                space_match = re.search(r"desktop\s*(\d+)", response_lower)
+                space_id = space_match.group(1) if space_match else "unknown"
+
+                # Generate snapshot ID from screenshot hash
+                import hashlib
+
+                snapshot_id = hashlib.md5(
+                    str(datetime.now().timestamp()).encode()
+                ).hexdigest()[:12]
+
+                # Track the pending question
+                context_id = await self.track_pending_question(
+                    question_text=follow_up_question,
+                    window_type=window_type,
+                    window_id=f"{window_type}_{space_id}",
+                    space_id=str(space_id),
+                    snapshot_id=snapshot_id,
+                    summary=f"User asked '{user_query}', JARVIS responded '{jarvis_response[:100]}'",
+                    ocr_text=None,  # Will be extracted on follow-up
+                    ttl_seconds=180,  # 3 minutes to ask follow-up
+                )
+
+                if context_id:
+                    logger.info(
+                        f"[FOLLOW-UP] Tracked opportunity for {window_type} deep-dive "
+                        f"(context_id={context_id}, space={space_id})"
+                    )
+
+        except Exception as e:
+            logger.error(
+                f"[FOLLOW-UP] Failed to track followup opportunity: {e}", exc_info=True
+            )
+
+    # ═══════════════════════════════════════════════════════════════
+
+    def _compute_query_intent_score(self, query: str) -> Dict[str, float]:
+        """
+        Dynamically compute intent scores for query routing.
+        Uses linguistic analysis instead of hardcoded rules.
+        Optimized for M1 Mac - lightweight, no ML models.
+
+        Returns: Dict of intent names to confidence scores
+        """
+        query_lower = query.lower()
+        scores = {}
+
+        # Analyze query structure
+        words = query_lower.split()
+        first_word = words[0] if words else ""
+        word_count = len(words)
+
+        # Intent: Multi-space awareness
+        multi_space_signals = 0
+        # Location indicators
+        if any(
+            loc in query_lower
+            for loc in ["other", "another", "different", "all", "every", "across"]
+        ):
+            multi_space_signals += 1
+        # Space/window references
+        if any(
+            space in query_lower
+            for space in ["space", "desktop", "window", "screen", "workspace"]
+        ):
+            multi_space_signals += 1
+        # Plural app references
+        if any(
+            plural in query_lower
+            for plural in ["terminals", "windows", "apps", "applications"]
+        ):
+            multi_space_signals += 1
+        scores["multi_space"] = min(1.0, multi_space_signals * 0.35)
+
+        # Intent: Detailed explanation
+        explanation_signals = 0
+        if any(
+            verb in query_lower
+            for verb in ["explain", "describe", "tell", "show", "detail"]
+        ):
+            explanation_signals += 1
+        if any(q in query_lower for q in ["what is", "what's", "how does", "why is"]):
+            explanation_signals += 1
+        if word_count > 8:  # Detailed questions tend to be longer
+            explanation_signals += 0.5
+        scores["detailed_explanation"] = min(1.0, explanation_signals * 0.4)
+
+        # Intent: Quick visibility check
+        visibility_signals = 0
+        if first_word in ["can", "do", "is", "are"]:
+            visibility_signals += 1
+        if any(
+            vis in query_lower for vis in ["see", "visible", "showing", "displayed"]
+        ):
+            visibility_signals += 1
+        if word_count <= 8:  # Quick checks tend to be short
+            visibility_signals += 0.5
+        scores["quick_visibility"] = min(1.0, visibility_signals * 0.4)
+
+        # Intent: Context-dependent (references previous state)
+        context_signals = 0
+        if self.context_bridge and self.context_bridge._last_context:
+            # Check if query references entities from last context
+            last_apps = {
+                app.get("name", "").lower()
+                for app in self.context_bridge._last_context.get("apps", [])
+            }
+            if any(app in query_lower for app in last_apps):
+                context_signals += 1
+        scores["context_dependent"] = min(1.0, context_signals * 0.6)
+
+        return scores
+
     async def understand_and_respond(self, screenshot: Any, user_query: str) -> str:
         """
         Core method: Claude sees, understands, and responds naturally.
-        No templates. No hardcoding. Pure intelligence.
-        Now with optional multi-space awareness for workspace-wide queries.
+        ENHANCED: Dynamic, adaptive routing with semantic analysis.
+        - No hardcoded patterns
+        - Lightweight NLP (optimized for M1 Mac)
+        - Integrates with Context Intelligence Bridge
 
         Args:
             screenshot: Can be a single image OR Dict[int, image] for multi-space
             user_query: The user's question
         """
-        # Check if we already have multi-space screenshots
-        if isinstance(screenshot, dict) and len(screenshot) > 1:
-            # We already have multi-space screenshots from vision_command_handler
-            return await self._analyze_multi_space_screenshots(screenshot, user_query)
+        # ═══════════════════════════════════════════════════════════════
+        # STAGE 1: Semantic Intent Analysis
+        # Compute intent scores to dynamically route the query
+        # ═══════════════════════════════════════════════════════════════
+        intent_scores = self._compute_query_intent_score(user_query)
+        logger.debug(f"[VISION] Intent scores: {intent_scores}")
 
-        # Check if query needs multi-space handling (but we don't have screenshots yet)
-        if self.multi_space_enabled and self._should_use_multi_space(user_query):
-            return await self._multi_space_understand_and_respond(
-                screenshot, user_query
+        # ═══════════════════════════════════════════════════════════════
+        # STAGE 2: Follow-up Detection (Highest Priority)
+        # If this is a conversational continuation, use Context Bridge
+        # ═══════════════════════════════════════════════════════════════
+        if self.context_bridge:
+            try:
+                followup_response = await self.context_bridge.check_followup_query(
+                    user_query
+                )
+                if followup_response:
+                    logger.info(
+                        "[VISION] Follow-up detected - using Context Bridge's detailed response"
+                    )
+                    return followup_response
+            except Exception as e:
+                logger.warning(f"[VISION] Error checking for follow-up: {e}")
+
+        # ═══════════════════════════════════════════════════════════════
+        # STAGE 3: Multi-Space Analysis Decision
+        # Use intent scores + multi-space detector for smart routing
+        # ═══════════════════════════════════════════════════════════════
+
+        # Already have multi-space screenshots from handler
+        if isinstance(screenshot, dict) and len(screenshot) > 1:
+            logger.info(f"[VISION] Multi-space screenshots detected: {len(screenshot)} spaces, keys: {list(screenshot.keys())}")
+            return await self._analyze_multi_space_screenshots(screenshot, user_query)
+        elif isinstance(screenshot, dict):
+            logger.info(f"[VISION] Screenshot is dict but only {len(screenshot)} item(s): {list(screenshot.keys())}")
+
+        # Adaptive multi-space decision
+        should_use_multispace = False
+        if self.multi_space_enabled:
+            # Combine intent score with multi-space detector
+            multispace_score = intent_scores.get("multi_space", 0.0)
+            detector_result = (
+                self._should_use_multi_space(user_query)
+                if hasattr(self, "_should_use_multi_space")
+                else False
             )
 
-        # Original single-space logic
-        # Generate rich context for Claude
-        context_prompt = self._build_pure_intelligence_prompt(user_query)
+            # Use multi-space if either score is high or detector says yes
+            should_use_multispace = multispace_score >= 0.5 or detector_result
+
+            if should_use_multispace:
+                logger.info(
+                    f"[VISION] Multi-space analysis triggered (score: {multispace_score:.2f})"
+                )
+                return await self._multi_space_understand_and_respond(
+                    screenshot, user_query
+                )
+
+        # ═══════════════════════════════════════════════════════════════
+        # STAGE 4: Single-Space Analysis with Adaptive Context
+        # Build context based on query intent for optimal Claude performance
+        # ═══════════════════════════════════════════════════════════════
+        structured_context = await self._get_structured_context(user_query)
+
+        # Adaptive prompt building based on intent
+        context_prompt = self._build_pure_intelligence_prompt(
+            user_query,
+            structured_context,
+            intent_scores=intent_scores,  # Pass intent scores for adaptive prompting
+        )
 
         # Let Claude see and respond naturally
         claude_response = await self._get_claude_vision_response(
@@ -281,13 +685,239 @@ class PureVisionIntelligence:
         # Detect workflow changes
         self.context.workflow_state = self.context.detect_workflow(understanding)
 
+        # ═══════════════════════════════════════════════════════════════
+        # Feed understanding back to Context Intelligence Bridge
+        # This updates the context graph with what Claude observed
+        # ═══════════════════════════════════════════════════════════════
+        await self._update_context_bridge(understanding, user_query, natural_response)
+
+        # ═══════════════════════════════════════════════════════════════
+        # Track pending follow-up questions when JARVIS mentions seeing
+        # a terminal/window but hasn't provided detailed analysis yet
+        # ═══════════════════════════════════════════════════════════════
+        await self._track_followup_opportunity(
+            user_query, natural_response, screenshot, understanding
+        )
+
         return natural_response
 
-    def _build_pure_intelligence_prompt(self, user_query: str) -> str:
+    async def _update_context_bridge(
+        self, understanding: Dict[str, Any], user_query: str, response: str = ""
+    ):
+        """
+        Feed Claude's understanding back to Context Intelligence Bridge.
+        This creates a feedback loop: Vision sees → Context stores → Vision uses context.
+        Also saves conversational context for multi-turn conversations.
+        """
+        if not self.context_bridge:
+            return
+
+        try:
+            # ═══════════════════════════════════════════════════════════════
+            # Save conversational context for follow-up queries
+            # ═══════════════════════════════════════════════════════════════
+            # Detect if we should save context for follow-up
+            should_save_context = False
+            query_lower = user_query.lower()
+            response_lower = response.lower() if response else ""
+
+            # Trigger 1: JARVIS asks a question (existing behavior)
+            if response and (
+                "would you like" in response_lower or "can i help" in response_lower
+            ):
+                should_save_context = True
+
+            # Trigger 2: User asks visibility queries
+            visibility_keywords = [
+                "can you see",
+                "do you see",
+                "what do you see",
+                "where is",
+                "show me",
+                "what's in",
+            ]
+            if any(keyword in query_lower for keyword in visibility_keywords):
+                should_save_context = True
+
+            # Trigger 3: Response mentions specific apps/terminals/windows
+            app_mentions = [
+                "terminal",
+                "chrome",
+                "browser",
+                "vscode",
+                "code",
+                "desktop",
+                "window",
+                "space",
+            ]
+            if response and any(mention in response_lower for mention in app_mentions):
+                should_save_context = True
+
+            if should_save_context:
+                # Save context for continuation
+                self.context_bridge._save_conversation_context(
+                    query=user_query,
+                    response=response,
+                    current_space_id=understanding.get("current_space_id"),
+                )
+                logger.info(
+                    "[VISION→CONTEXT] Saved conversational context for follow-up"
+                )
+
+            # ═══════════════════════════════════════════════════════════════
+            # Extract what Claude observed and update context graph
+            # ═══════════════════════════════════════════════════════════════
+            observed_apps = understanding.get("observed_applications", [])
+            screen_text = understanding.get("screen_text", "")
+            detected_errors = understanding.get("detected_errors", [])
+            current_space = understanding.get("current_space_id", 1)
+
+            # If Claude saw a terminal, extract terminal-specific data
+            for app in observed_apps:
+                app_name = app.get("name", "")
+                app_type = app.get("type", "").lower()
+
+                if "terminal" in app_name.lower() or app_type == "terminal":
+                    # Extract terminal context from what Claude saw
+                    terminal_text = app.get("content", screen_text)
+
+                    # Use TerminalCommandIntelligence to analyze the text
+                    if self.context_bridge.terminal_intelligence:
+                        term_ctx = await self.context_bridge.terminal_intelligence.analyze_terminal_context(
+                            terminal_text
+                        )
+
+                        # Update the context graph with terminal data
+                        space_id = app.get("space_id", current_space)
+                        self.context_bridge.context_graph.update_terminal_context(
+                            space_id=space_id,
+                            app_name=app_name,
+                            command=term_ctx.last_command,
+                            output=term_ctx.command_output,
+                            errors=term_ctx.errors,
+                            working_dir=term_ctx.current_directory,
+                        )
+
+                        logger.info(
+                            f"[VISION→CONTEXT] Updated terminal context for {app_name} in Space {space_id}"
+                        )
+
+            # Update based on detected errors (even if not from terminal)
+            if detected_errors:
+                for error in detected_errors:
+                    error_text = (
+                        error if isinstance(error, str) else error.get("text", "")
+                    )
+                    app_name = (
+                        error.get("app", "Unknown")
+                        if isinstance(error, dict)
+                        else "Unknown"
+                    )
+
+                    # Try to update terminal context if error looks terminal-related
+                    if any(
+                        keyword in error_text.lower()
+                        for keyword in ["error:", "exception:", "traceback", "failed"]
+                    ):
+                        self.context_bridge.context_graph.update_terminal_context(
+                            space_id=current_space,
+                            app_name=app_name,
+                            errors=[error_text],
+                        )
+
+        except Exception as e:
+            logger.error(
+                f"[VISION→CONTEXT] Error updating context bridge: {e}", exc_info=True
+            )
+
+    async def _get_structured_context(
+        self, user_query: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get structured context from Context Intelligence Bridge.
+        Combines multi-space tracking, terminal intelligence, and cross-space correlation.
+        """
+        if not self.context_bridge:
+            return None
+
+        try:
+            # Get comprehensive workspace summary
+            summary = self.context_bridge.context_graph.get_summary()
+
+            # Extract relevant context
+            structured = {
+                "total_spaces": summary.get("total_spaces", 0),
+                "active_spaces": summary.get("active_spaces", []),
+                "applications": {},
+                "errors": [],
+                "recent_commands": [],
+            }
+
+            # Gather context from all spaces
+            for space_id, space_data in summary.get("spaces", {}).items():
+                apps = space_data.get("applications", {})
+                for app_name, app_data in apps.items():
+                    if app_data.get("activity_count", 0) > 0:
+                        structured["applications"][f"{app_name} (Space {space_id})"] = {
+                            "type": app_data.get("context_type"),
+                            "last_activity": app_data.get("last_activity"),
+                            "significance": app_data.get("significance"),
+                        }
+
+                        # Extract terminal errors and commands
+                        if app_data.get("context_type") == "terminal":
+                            # Try to get actual terminal context
+                            space = self.context_bridge.context_graph.spaces.get(
+                                space_id
+                            )
+                            if space:
+                                app_ctx = space.applications.get(app_name)
+                                if app_ctx and app_ctx.terminal_context:
+                                    term_ctx = app_ctx.terminal_context
+                                    if term_ctx.errors:
+                                        for error in term_ctx.errors:
+                                            structured["errors"].append(
+                                                {
+                                                    "space": space_id,
+                                                    "app": app_name,
+                                                    "error": error,
+                                                    "command": term_ctx.last_command,
+                                                }
+                                            )
+                                    if term_ctx.last_command:
+                                        structured["recent_commands"].append(
+                                            {
+                                                "space": space_id,
+                                                "app": app_name,
+                                                "command": term_ctx.last_command,
+                                                "directory": term_ctx.working_directory,
+                                            }
+                                        )
+
+            return (
+                structured
+                if (structured["applications"] or structured["errors"])
+                else None
+            )
+
+        except Exception as e:
+            logger.error(f"[VISION-INTEL] Error getting structured context: {e}")
+            return None
+
+    def _build_pure_intelligence_prompt(
+        self,
+        user_query: str,
+        structured_context: Optional[Dict[str, Any]] = None,
+        intent_scores: Optional[Dict[str, float]] = None,
+    ) -> str:
         """
         Build a rich, contextual prompt for Claude that enables natural responses.
-        This is the ONLY place we guide Claude - no response templates!
+        ENHANCED: Adaptive prompting based on query intent scores.
+        - Adjusts detail level based on intent
+        - Prioritizes relevant information
+        - Optimized for M1 Mac performance
         """
+        intent_scores = intent_scores or {}
         temporal_context = self.context.get_temporal_context()
 
         # Build conversation history context
@@ -306,7 +936,65 @@ class PureVisionIntelligence:
             user_query, temporal_context
         )
 
-        # Build the prompt that enables natural intelligence
+        # Build structured context section if available
+        structured_section = ""
+        if structured_context:
+            structured_section = (
+                "\n\n═══ WORKSPACE INTELLIGENCE (from Context System) ═══\n"
+            )
+
+            if structured_context.get("errors"):
+                structured_section += "\n🔴 DETECTED ERRORS:\n"
+                for err in structured_context["errors"]:
+                    structured_section += (
+                        f"  • {err['app']} (Space {err['space']}): {err['error']}\n"
+                    )
+                    if err.get("command"):
+                        structured_section += f"    Command: {err['command']}\n"
+
+            if structured_context.get("recent_commands"):
+                structured_section += "\n💻 RECENT TERMINAL ACTIVITY:\n"
+                for cmd in structured_context["recent_commands"][-3:]:
+                    structured_section += (
+                        f"  • Space {cmd['space']}: `{cmd['command']}`"
+                    )
+                    if cmd.get("directory"):
+                        structured_section += f" in {cmd['directory']}"
+                    structured_section += "\n"
+
+            if structured_context.get("applications"):
+                structured_section += f"\n📱 ACTIVE APPLICATIONS ({len(structured_context['applications'])} windows):\n"
+                for app_name, app_info in list(
+                    structured_context["applications"].items()
+                )[:5]:
+                    structured_section += f"  • {app_name}: {app_info['type']}\n"
+
+            structured_section += "\nUse this context to enhance your visual analysis!\n═══════════════════════════════════════════════════\n"
+
+        # ═══════════════════════════════════════════════════════════════
+        # Adaptive Instructions based on Intent Scores
+        # ═══════════════════════════════════════════════════════════════
+        detail_level = "concise"
+        terminal_focus = "mention if visible"
+        response_length = "1-2 sentences"
+
+        # Adjust based on intent scores
+        if intent_scores.get("detailed_explanation", 0) >= 0.6:
+            detail_level = "detailed"
+            response_length = "2-4 sentences with specific details"
+
+        if intent_scores.get("quick_visibility", 0) >= 0.6:
+            detail_level = "minimal"
+            response_length = "1 sentence maximum"
+
+        # Emphasize terminal reading if query mentions terminal/errors
+        if any(
+            term in user_query.lower()
+            for term in ["terminal", "error", "command", "happening"]
+        ):
+            terminal_focus = "READ carefully and quote exact content"
+
+        # Build the adaptive prompt
         prompt = f"""You are JARVIS, Tony Stark's AI assistant. You're looking at the user's screen.
 
 User's Current Question: "{user_query}"
@@ -317,22 +1005,32 @@ Temporal Context: {temporal_context['temporal_state']}
 {f"Previous query was: '{temporal_context['previous_query']}'" if temporal_context.get('previous_query') else ""}
 
 Current Workflow: {self.context.workflow_state or 'unknown'}
-
+{structured_section}
 Instructions for Natural Response:
+
+RESPONSE STYLE: {detail_level.upper()} ({response_length})
+
+Core Guidelines:
 1. Look at the screen and understand what you see
-2. Answer ONLY what was asked - be concise and direct
-3. Use exact values when visible but keep context minimal
-4. Address the user as "Sir" naturally
-5. {emotional_guidance}
-6. Keep response to 1-2 sentences unless more detail specifically requested
-7. Optionally add ONE brief, helpful insight if truly relevant
-8. Never describe the entire screen unless asked
+2. COMBINE visual analysis with the structured workspace context above
+3. **Terminal Windows - {terminal_focus}:**
+   - Error messages (lines with "Error:", "Traceback", exception names)
+   - Last executed command (look for shell prompts: $, %, >)
+   - Working directory if visible
+   - Be SPECIFIC - quote exact error text when present
+4. Proactively mention errors from EITHER structured context OR visual screen content
+5. Answer ONLY what was asked - stay focused on the user's question
+6. Use exact values/paths/commands when visible
+7. Address the user as "Sir" naturally
+8. {emotional_guidance}
+9. Prioritize accuracy over completeness - better to be precise than verbose
 
-IMPORTANT: Be conversational but CONCISE. Focus on answering the specific question.
-Example: "I can see Chrome with your JARVIS interface open, Sir."
-NOT: Long descriptions of everything on screen.
+EXAMPLES:
+✓ Good (Detailed): "Yes, I can see Terminal in Space 2, Sir. I notice there's a ModuleNotFoundError when running `python app.py`. The error indicates the 'requests' module isn't installed. Would you like me to suggest a fix?"
+✓ Good (Quick): "Yes, Terminal is visible in Space 2, Sir."
+✗ Bad: "Yes, I can see your terminal is open on Desktop 2." (Too vague, no specific content)
 
-Remember: Natural, brief, and directly answering what was asked.
+Remember: Natural, {detail_level}, directly answering what was asked, and SPECIFIC about errors/commands you see.
 """
         return prompt
 
@@ -374,6 +1072,20 @@ Remember: Natural, brief, and directly answering what was asked.
                 response = await self.claude.analyze_image_with_prompt(
                     image=screenshot, prompt=prompt, max_tokens=500
                 )
+
+                # Debug: Check response type
+                logger.debug(f"[CLAUDE_SINGLE] Response type: {type(response)}")
+
+                # Ensure response is a dictionary
+                if not isinstance(response, dict):
+                    logger.error(
+                        f"[CLAUDE_SINGLE] Invalid response type: {type(response)}, converting to dict"
+                    )
+                    response = {
+                        "content": f"I encountered an error analyzing the screen. Response type was {type(response)}.",
+                        "success": False,
+                        "error": f"Invalid response type: {type(response)}",
+                    }
 
                 # Parse Claude's response to extract the natural language and understanding
                 # Claude returns text, we need to structure it
@@ -526,6 +1238,51 @@ Be specific and natural. Never say "I previously saw" - instead say things like 
         """
         logger.info(f"Analyzing {len(screenshots)} pre-captured space screenshots")
 
+        # Validate screenshots before proceeding - check both empty and invalid contents
+        if not screenshots or not any(screenshots.values()):
+            logger.warning("[MULTI-SPACE] No valid screenshots provided for analysis - falling back to window data")
+            logger.debug(f"[MULTI-SPACE] Screenshots dict: {list(screenshots.keys()) if screenshots else 'empty'}")
+            # Get window data for context
+            window_data = await self._gather_multi_space_data()
+            
+            # Try to provide a response based on window data alone
+            if window_data and window_data.get("total_spaces", 0) > 0:
+                total_spaces = window_data.get("total_spaces", 0)
+                total_windows = len(window_data.get("windows", []))
+                spaces_list = window_data.get("spaces", [])
+                
+                # Build basic overview from window data
+                response_parts = [
+                    f"Sir, I can see you have {total_spaces} desktop spaces with {total_windows} windows total."
+                ]
+                
+                # Add brief space summary if available
+                if spaces_list:
+                    response_parts.append("\nHere's what I can detect:")
+                    for space in spaces_list[:5]:  # Limit to first 5 spaces
+                        if isinstance(space, dict):
+                            space_id = space.get("space_id", space.get("id", "unknown"))
+                            windows = space.get("windows", [])
+                            if windows:
+                                apps = [w.get("app", "Unknown") for w in windows[:3]]
+                                response_parts.append(f"  • Space {space_id}: {', '.join(apps)}")
+                
+                response_parts.append(
+                    "\nNote: I'm unable to capture screenshots at the moment. "
+                    "Please ensure screen recording permissions are enabled in "
+                    "System Preferences > Security & Privacy > Screen Recording."
+                )
+                
+                return "\n".join(response_parts)
+            
+            # Provide helpful error message if no window data either
+            return (
+                "I'm unable to capture screenshots of your desktop spaces at the moment. "
+                "Please ensure screen recording permissions are enabled for JARVIS in "
+                "System Preferences > Security & Privacy > Privacy > Screen Recording. "
+                "Once enabled, I'll be able to provide visual analysis across all your desktop spaces."
+            )
+
         # Get window data for context
         window_data = await self._gather_multi_space_data()
 
@@ -563,32 +1320,110 @@ Be specific and natural. Never say "I previously saw" - instead say things like 
         # 1. Get comprehensive window data across all spaces
         window_data = await self._gather_multi_space_data()
 
-        # 2. Analyze query intent
-        query_analysis = self.multi_space_extension.process_multi_space_query(
-            user_query, window_data
-        )
+        # 2. Analyze query intent with enhanced system
+        if hasattr(self.multi_space_extension, "analyze_comprehensive_workspace"):
+            # Use our enhanced multi-space intelligence system
+            query_analysis = {
+                "intent": self.multi_space_extension.query_detector.detect_intent(
+                    user_query
+                ),
+                "workspace_data": window_data,
+                "analysis_type": "enhanced",
+            }
+        else:
+            # Fallback to old system
+            query_analysis = self.multi_space_extension.process_multi_space_query(
+                user_query, window_data
+            )
 
         # 3. Determine if we need additional visual data
-        needs_multi_capture = self._needs_multi_space_capture(
-            query_analysis, window_data
-        )
+        # For overview queries, NEVER capture screenshots (prevents Mission Control trigger)
+        query_intent = query_analysis.get("intent")
+        if hasattr(query_intent, "query_type"):
+            from vision.multi_space_intelligence import SpaceQueryType
+            
+            # Overview queries should ONLY use Yabai data (no visual capture)
+            if query_intent.query_type == SpaceQueryType.WORKSPACE_OVERVIEW:
+                logger.info("[SILENT MODE] Workspace overview - using Yabai data only (no Mission Control)")
+                needs_multi_capture = False
+            elif query_analysis.get("analysis_type") == "enhanced":
+                # Other enhanced queries may need screenshots
+                needs_multi_capture = self._needs_multi_space_capture(
+                    query_analysis, window_data
+                )
+            else:
+                # Fallback logic
+                needs_multi_capture = self._needs_multi_space_capture(
+                    query_analysis, window_data
+                )
+        else:
+            # Fallback for old system
+            needs_multi_capture = self._needs_multi_space_capture(
+                query_analysis, window_data
+            )
 
         if needs_multi_capture:
-            # 4. Capture screenshots from relevant spaces
+            # 4. Try to capture screenshots from relevant spaces (with timeout)
             logger.info(
                 f"Attempting to capture multi-space screenshots for query: {user_query}"
             )
-            multi_screenshots = await self._capture_multi_space_screenshots(
-                query_analysis, window_data
-            )
-            logger.info(
-                f"Captured {len(multi_screenshots)} screenshots from spaces: {list(multi_screenshots.keys())}"
-            )
+            
+            try:
+                # Add timeout to screenshot capture to prevent hanging
+                multi_screenshots = await asyncio.wait_for(
+                    self._capture_multi_space_screenshots(query_analysis, window_data),
+                    timeout=15.0  # 15 second timeout for screenshot capture
+                )
+                logger.info(
+                    f"Captured {len(multi_screenshots)} screenshots from spaces: {list(multi_screenshots.keys())}"
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Screenshot capture timed out - using window data only")
+                multi_screenshots = {}
+            except Exception as e:
+                logger.warning(f"Screenshot capture failed: {e} - using window data only")
+                multi_screenshots = {}
+            
+            # If no screenshots were captured, generate response from window data immediately
+            if not multi_screenshots and query_analysis.get("analysis_type") == "enhanced":
+                logger.info("[FAST PATH] No screenshots available - generating response from window data")
+                enhanced_response = self.multi_space_extension.analyze_comprehensive_workspace(
+                    user_query, window_data
+                )
+                if enhanced_response:
+                    logger.info(f"[ENHANCED MULTI-SPACE] Generated response from window data: {len(enhanced_response)} chars")
+                    return enhanced_response
 
-            # 5. Build comprehensive prompt with visual context from all spaces
-            enhanced_prompt = self._build_comprehensive_multi_space_prompt(
-                user_query, query_analysis["intent"], window_data, multi_screenshots
-            )
+            # 5. Generate enhanced response using our intelligent system
+            if query_analysis.get("analysis_type") == "enhanced":
+                # Try enhanced comprehensive workspace analysis with screenshots
+                enhanced_response = (
+                    self.multi_space_extension.generate_enhanced_workspace_response(
+                        user_query, window_data, multi_screenshots
+                    )
+                )
+                # If enhanced response returns None, fall through to use Claude API
+                if enhanced_response is not None:
+                    logger.info(
+                        f"[ENHANCED MULTI-SPACE] Using template response: {len(enhanced_response)} chars"
+                    )
+                    return enhanced_response
+                else:
+                    logger.info(
+                        "[ENHANCED MULTI-SPACE] Using Claude API for intelligent analysis with screenshots"
+                    )
+                    # Build prompt for Claude API
+                    enhanced_prompt = self._build_comprehensive_multi_space_prompt(
+                        user_query,
+                        query_analysis["intent"],
+                        window_data,
+                        multi_screenshots,
+                    )
+            else:
+                # Fallback to old prompt-based system
+                enhanced_prompt = self._build_comprehensive_multi_space_prompt(
+                    user_query, query_analysis["intent"], window_data, multi_screenshots
+                )
 
             # Create multi-space context for debugging
             context = MultiSpaceContext(
@@ -603,11 +1438,19 @@ Be specific and natural. Never say "I previously saw" - instead say things like 
 
             # Populate space summaries
             for space_info in window_data.get("spaces", []):
-                space_id = (
-                    space_info.space_id
-                    if hasattr(space_info, "space_id")
-                    else space_info.get("space_id")
-                )
+                if isinstance(space_info, int):
+                    # Handle case where spaces is a list of integers
+                    space_id = space_info
+                elif hasattr(space_info, "space_id"):
+                    space_id = space_info.space_id
+                elif isinstance(space_info, dict):
+                    space_id = space_info.get("space_id")
+                else:
+                    # Fallback for unknown types
+                    logger.warning(
+                        f"Unknown space_info type: {type(space_info)}, value: {space_info}"
+                    )
+                    space_id = 1
                 if space_id:
                     space_windows = [
                         w
@@ -633,8 +1476,17 @@ Be specific and natural. Never say "I previously saw" - instead say things like 
             # Store for debugging
             self._last_multi_space_context = context
 
-            # 6. Analyze with full multi-space visual context
-            if multi_screenshots:
+            # 6. Analyze with full multi-space visual context and Claude response handling logic (FRD-3)
+            if multi_screenshots:  # FRD-3
+                logger.info(
+                    f"[MULTI-SPACE] Sending {len(multi_screenshots)} screenshots to Claude"
+                )
+                # Log screenshot shapes for debugging purposes
+                for space_id, screenshot in multi_screenshots.items():
+                    logger.info(
+                        f"  Space {space_id}: screenshot shape {screenshot.shape if hasattr(screenshot, 'shape') else 'unknown'}"
+                    )
+                # Analyze with Claude Vision
                 claude_response = await self._get_multi_space_claude_response(
                     multi_screenshots, enhanced_prompt
                 )
@@ -658,7 +1510,30 @@ Be specific and natural. Never say "I previously saw" - instead say things like 
                         "Please try asking again in a moment."
                     )
         else:
-            # Use standard single-space analysis
+            # No multi-space capture needed - use window data only (FAST PATH)
+            logger.info("[FAST PATH] Multi-space query without screenshot capture - using window data")
+            
+            # Generate response directly from window data
+            if query_analysis.get("analysis_type") == "enhanced":
+                enhanced_response = self.multi_space_extension.analyze_comprehensive_workspace(
+                    user_query, window_data
+                )
+                if enhanced_response:
+                    logger.info(f"[FAST RESPONSE] Generated from window data: {len(enhanced_response)} chars")
+                    # Update context
+                    self.context.add_interaction(user_query, enhanced_response, {
+                        "method": "window_data_only",
+                        "spaces": window_data.get("total_spaces", 0),
+                        "apps": window_data.get("total_apps", 0)
+                    })
+                    
+                    # Store multi-space context for follow-up queries
+                    self._store_multi_space_context(window_data)
+                    
+                    return enhanced_response
+            
+            # Fallback: Use standard single-space analysis if no enhanced system
+            logger.warning("[FALLBACK] Using single-space analysis for multi-space query")
             enhanced_prompt = self._build_multi_space_prompt(
                 user_query, query_analysis["intent"], window_data
             )
@@ -680,6 +1555,42 @@ Be specific and natural. Never say "I previously saw" - instead say things like 
             await self._enable_cross_space_monitoring(window_data)
 
         return natural_response
+
+    def _store_multi_space_context(self, window_data: Dict[str, Any]):
+        """Store multi-space context for follow-up queries"""
+        try:
+            spaces = window_data.get('spaces', [])
+            if spaces:
+                # Convert to the format expected by follow-up handler
+                formatted_spaces = []
+                
+                # Handle both dict and list formats
+                if isinstance(spaces, dict):
+                    spaces_list = list(spaces.values())
+                else:
+                    spaces_list = spaces
+                
+                for space in spaces_list:
+                    if isinstance(space, dict):
+                        formatted_spaces.append({
+                            'space_id': space.get('space_id', space.get('index', 1)),
+                            'primary_activity': space.get('primary_activity', space.get('primary_app', 'Unknown')),
+                            'applications': space.get('applications', []),
+                            'is_current': space.get('is_current', False),
+                            'window_count': space.get('window_count', 0)
+                        })
+                
+                # Store in a way that the vision command handler can access
+                if hasattr(self, 'jarvis_api') and self.jarvis_api:
+                    # Store in the vision command handler
+                    self.jarvis_api._last_multi_space_context = {
+                        'spaces': formatted_spaces,
+                        'window_data': window_data,
+                        'timestamp': datetime.now()
+                    }
+                    logger.info(f"[CONTEXT] Stored multi-space context for {len(formatted_spaces)} spaces")
+        except Exception as e:
+            logger.debug(f"Could not store multi-space context: {e}")
 
     async def _gather_multi_space_data(self) -> Dict[str, Any]:
         """Gather comprehensive data about all spaces"""
@@ -791,15 +1702,28 @@ Remember: Natural, helpful, and space-aware responses.
 
         # Per-space summaries
         for space in spaces:
-            # Handle both SpaceInfo objects and dictionaries
-            if hasattr(space, "space_id"):
+            # Handle integers, SpaceInfo objects, and dictionaries
+            if isinstance(space, int):
+                # Handle case where spaces is a list of integers
+                space_id = space
+                window_count = 0
+                is_current = space == 1  # Assume space 1 is current
+            elif hasattr(space, "space_id"):
                 space_id = space.space_id
                 window_count = space.window_count
                 is_current = space.is_current
-            else:
+            elif isinstance(space, dict):
                 space_id = space["space_id"]
                 window_count = space["window_count"]
                 is_current = space["is_current"]
+            else:
+                # Fallback for unknown types
+                logger.warning(
+                    f"Unknown space type in context: {type(space)}, value: {space}"
+                )
+                space_id = 1
+                window_count = 0
+                is_current = True
 
             # Get primary apps on this space
             space_windows = [
@@ -919,13 +1843,24 @@ Remember: Natural, helpful, and space-aware responses.
 
         # Update space summaries
         for space in window_data.get("spaces", []):
-            # Handle both SpaceInfo objects and dictionaries
-            if hasattr(space, "space_id"):
+            # Handle integers, SpaceInfo objects, and dictionaries
+            if isinstance(space, int):
+                # Handle case where spaces is a list of integers
+                space_id = space
+                window_count = 0
+            elif hasattr(space, "space_id"):
                 space_id = space.space_id
                 window_count = space.window_count
-            else:
+            elif isinstance(space, dict):
                 space_id = space["space_id"]
                 window_count = space["window_count"]
+            else:
+                # Fallback for unknown types
+                logger.warning(
+                    f"Unknown space type in context update: {type(space)}, value: {space}"
+                )
+                space_id = 1
+                window_count = 0
 
             self.multi_space_context.space_summaries[space_id] = {
                 "window_count": window_count,
@@ -965,15 +1900,19 @@ Remember: Natural, helpful, and space-aware responses.
         if hasattr(intent, "query_type"):
             from vision.multi_space_intelligence import SpaceQueryType
 
-            # These query types require visual data from multiple spaces
+            # Only SPECIFIC_DETAIL queries need screenshots
+            # WORKSPACE_OVERVIEW can use window data for faster responses
             visual_query_types = {
-                SpaceQueryType.SPECIFIC_DETAIL,
-                SpaceQueryType.ALL_SPACES,
-                SpaceQueryType.WORKSPACE_OVERVIEW,
+                SpaceQueryType.SPECIFIC_DETAIL,  # "What's in that window on Desktop 2?"
             }
 
             if intent.query_type in visual_query_types:
                 return True
+            
+            # For overview queries, window data is sufficient
+            if intent.query_type == SpaceQueryType.WORKSPACE_OVERVIEW:
+                logger.info("[OPTIMIZATION] Using window data for workspace overview (no screenshots needed)")
+                return False
 
         # Check if query explicitly asks for visual details
         visual_keywords = [
@@ -1043,7 +1982,34 @@ Remember: Natural, helpful, and space-aware responses.
         result = await self.capture_engine.capture_all_spaces(request)
 
         if result.success:
-            return result.screenshots
+            logger.info(
+                f"[CAPTURE] Success! Captured spaces: {list(result.screenshots.keys())}"
+            )
+            # Log screenshot shapes for debugging purposes (only for first 5 spaces) for now to reduce noise in logs for users
+            for space_id, screenshot in result.screenshots.items():
+                # Check if screenshot is a numpy array
+                if isinstance(screenshot, np.ndarray):
+                    logger.info(
+                        f"[CAPTURE] Space {space_id}: Screenshot shape {screenshot.shape}"
+                    )
+                    # Get apps for space for debugging purposes (only for first 5 apps) for now to reduce noise in logs for users
+                    space_apps = [
+                        # Get app name from window object or dict
+                        (
+                            w.app_name
+                            if hasattr(w, "app_name")
+                            else w.get("app_name", "Unknown")
+                        )
+                        # Filter windows by space id
+                        for w in window_data.get("windows", [])
+                        # Check if window is in space
+                        if (hasattr(w, "space_id") and w.space_id == space_id)
+                        or (isinstance(w, dict) and w.get("space_id") == space_id)
+                    ]
+                    logger.info(
+                        f"[CAPTURE] Space {space_id} apps: {list(set(space_apps))[:5]}"
+                    )
+            return result.screenshots  # Return full results
         else:
             logger.warning(f"Multi-space capture had errors: {result.errors}")
             return result.screenshots  # Return partial results
@@ -1054,10 +2020,21 @@ Remember: Natural, helpful, and space-aware responses.
         """Determine which spaces need to be captured based on query"""
         intent = query_analysis.get("intent")
         spaces = set()
-
-        # Always include current space
         current_space = window_data.get("current_space", {}).get("id", 1)
-        spaces.add(current_space)
+
+        # Check if query is specifically asking about "other" spaces
+        query = query_analysis.get("query", "").lower()
+        is_other_space_query = any(
+            phrase in query
+            for phrase in [
+                "other window",
+                "other space",
+                "another window",
+                "another space",
+                "different window",
+                "different space",
+            ]
+        )
 
         # Add target space if specified
         if intent and hasattr(intent, "target_space") and intent.target_space:
@@ -1072,6 +2049,43 @@ Remember: Natural, helpful, and space-aware responses.
                     and hasattr(window, "space_id")
                 ):
                     spaces.add(window.space_id)
+                    logger.info(
+                        f"[SPACES] Found {intent.target_app} in space {window.space_id}"
+                    )
+
+        # Only include current space if:
+        # 1. No other spaces were found (fallback)
+        # 2. Query is not specifically about "other" spaces
+        # 3. The target app is in the current space
+        if not spaces:
+            # No specific spaces found, include current as fallback
+            spaces.add(current_space)
+            logger.info(
+                f"[SPACES] No specific spaces found, using current space {current_space}"
+            )
+        elif not is_other_space_query:
+            # Not asking about "other" spaces, might want current too
+            if intent and hasattr(intent, "target_app") and intent.target_app:
+                # Check if target app is also in current space
+                for window in window_data.get("windows", []):
+                    if (
+                        hasattr(window, "app_name")
+                        and intent.target_app.lower() in window.app_name.lower()
+                        and hasattr(window, "space_id")
+                        and window.space_id == current_space
+                    ):
+                        spaces.add(current_space)
+                        logger.info(
+                            f"[SPACES] {intent.target_app} also found in current space {current_space}"
+                        )
+                        break
+            else:
+                # No specific app mentioned, include current
+                spaces.add(current_space)
+        else:
+            logger.info(
+                f"[SPACES] Query is about OTHER spaces, excluding current space {current_space}"
+            )
 
         # For overview queries, capture all spaces
         if intent and hasattr(intent, "query_type"):
@@ -1081,10 +2095,21 @@ Remember: Natural, helpful, and space-aware responses.
                 SpaceQueryType.ALL_SPACES,
                 SpaceQueryType.WORKSPACE_OVERVIEW,
             ]:
-                all_spaces = [
-                    s.space_id if hasattr(s, "space_id") else s.get("space_id", 1)
-                    for s in window_data.get("spaces", [])
-                ]
+                all_spaces = []
+                for s in window_data.get("spaces", []):
+                    if isinstance(s, int):
+                        # Handle case where spaces is a list of integers
+                        all_spaces.append(s)
+                    elif hasattr(s, "space_id"):
+                        # Handle case where s is an object with space_id attribute
+                        all_spaces.append(s.space_id)
+                    elif isinstance(s, dict):
+                        # Handle case where s is a dictionary
+                        all_spaces.append(s.get("space_id", 1))
+                    else:
+                        # Fallback for unknown types
+                        logger.warning(f"Unknown space type: {type(s)}, value: {s}")
+                        all_spaces.append(1)
                 spaces.update(all_spaces)
 
         return sorted(list(spaces))
@@ -1096,21 +2121,95 @@ Remember: Natural, helpful, and space-aware responses.
         window_data: Dict[str, Any],
         screenshots: Dict[int, Any],
     ) -> str:
-        """Build prompt that includes visual context from multiple spaces"""
+        """
+        Build prompt that includes visual context from multiple spaces.
+        ENHANCED: Intelligently directs Claude's focus based on query.
+        """
         base_prompt = self._build_multi_space_prompt(query, intent, window_data)
 
-        # Add visual context information
-        visual_context = f"\n\nVISUAL CONTEXT AVAILABLE:\n"
+        # Intelligently detect what app/window user is asking about
+        query_lower = query.lower()
+        target_apps = []
+
+        # Extract app mentions from query
+        app_keywords = {
+            "terminal": ["terminal", "term", "shell", "bash", "zsh"],
+            "chrome": ["chrome", "browser"],
+            "safari": ["safari"],
+            "firefox": ["firefox"],
+            "vscode": ["vscode", "code", "visual studio"],
+            "editor": ["editor", "text editor"],
+        }
+
+        for app_type, keywords in app_keywords.items():
+            if any(kw in query_lower for kw in keywords):
+                target_apps.append(app_type)
+
+        # Build visual context with smart focus
+        visual_context = f"\n\n{'═'*60}\nVISUAL CONTEXT AVAILABLE\n{'═'*60}\n"
+
+        current_space_id = window_data.get("current_space", {}).get("id", 1)
+
+        # Special handling when only showing other spaces
+        if current_space_id not in screenshots and len(screenshots) > 0:
+            visual_context += f"⚠️ NOTE: Showing ONLY the OTHER desktop space(s), NOT the current screen\n"
+            visual_context += (
+                f"The user is specifically asking about windows in OTHER spaces\n\n"
+            )
+
         visual_context += (
-            f"I have provided screenshots from {len(screenshots)} desktop spaces:\n"
+            f"I have provided screenshots from {len(screenshots)} desktop space(s):\n\n"
         )
 
         for space_id in sorted(screenshots.keys()):
-            is_current = space_id == window_data.get("current_space", {}).get("id", 1)
-            status = " (current)" if is_current else ""
-            visual_context += f"- Desktop {space_id}{status}: Full visual access\n"
+            is_current = space_id == current_space_id
+            status = (
+                " (current screen)" if is_current else " (OTHER SPACE - NOT CURRENT)"
+            )
+            visual_context += f"  📸 Desktop {space_id}{status}: Full visual access\n"
 
-        visual_context += "\nAnalyze ALL provided screenshots to give a complete answer about the user's workspace."
+        # Add intelligent focus instructions
+        if target_apps:
+            visual_context += f"\n{'─'*60}\n"
+            visual_context += f"⚠️  CRITICAL FOCUS INSTRUCTION:\n"
+            visual_context += (
+                f"The user is asking about: {', '.join(target_apps).upper()}\n\n"
+            )
+            visual_context += f"YOU MUST:\n"
+            visual_context += (
+                f"1. Find the {target_apps[0].upper()} window across ALL screenshots\n"
+            )
+            visual_context += f"2. READ the actual content visible in that {target_apps[0].upper()} window\n"
+            visual_context += f"3. Describe what you see IN THAT SPECIFIC WINDOW\n"
+            visual_context += (
+                f"4. Do NOT describe other windows unless specifically asked\n\n"
+            )
+
+            if "terminal" in target_apps:
+                visual_context += f"For TERMINAL windows specifically:\n"
+                visual_context += f"  ⚠️ IMPORTANT: Terminal.app is NOT the browser console/developer tools!\n"
+                visual_context += (
+                    f"  • Look for the actual Terminal application window\n"
+                )
+                visual_context += (
+                    f"  • Terminal has a dark background with command line interface\n"
+                )
+                visual_context += (
+                    f"  • Read visible commands (look for $ or % prompts)\n"
+                )
+                visual_context += f"  • Quote exact error messages if present\n"
+                visual_context += (
+                    f"  • Note working directory (usually shown after ~)\n"
+                )
+                visual_context += f"  • Mention what process/script is running\n"
+                visual_context += f"  • DO NOT describe browser console as Terminal\n"
+                visual_context += f"  • Be SPECIFIC about actual Terminal content\n\n"
+
+            visual_context += f"{'─'*60}\n"
+        else:
+            visual_context += (
+                "\nAnalyze ALL provided screenshots to give a complete answer.\n"
+            )
 
         return base_prompt + visual_context
 
@@ -1118,9 +2217,25 @@ Remember: Natural, helpful, and space-aware responses.
         self, screenshots: Dict[int, Any], prompt: str
     ) -> Dict[str, Any]:
         """Get Claude's response with multiple screenshots"""
-        # Validate input
+        # Validate input - check both empty and invalid contents
         if not screenshots:
             raise ValueError("No screenshots provided for multi-space analysis")
+        
+        # Check if all values are None or invalid
+        valid_screenshots = {k: v for k, v in screenshots.items() if v is not None}
+        if not valid_screenshots:
+            raise ValueError(f"All screenshots are invalid (None/empty): {list(screenshots.keys())}")
+
+        logger.info(
+            f"[CLAUDE_MULTI] Preparing {len(screenshots)} screenshots for Claude"
+        )
+        for space_id, screenshot in screenshots.items():
+            if isinstance(screenshot, np.ndarray):
+                logger.info(
+                    f"[CLAUDE_MULTI] Space {space_id}: numpy array shape {screenshot.shape}"
+                )
+            else:
+                logger.info(f"[CLAUDE_MULTI] Space {space_id}: type {type(screenshot)}")
 
         if self.claude:
             try:
@@ -1128,18 +2243,48 @@ Remember: Natural, helpful, and space-aware responses.
                 images = []
                 for space_id in sorted(screenshots.keys()):
                     screenshot = screenshots[space_id]
+                    logger.info(
+                        f"[CLAUDE_MULTI] Processing screenshot for space {space_id}"
+                    )
 
                     # Convert numpy array to PIL Image if needed
                     if isinstance(screenshot, np.ndarray):
                         from PIL import Image
 
                         screenshot = Image.fromarray(screenshot)
+                        logger.info(
+                            f"[CLAUDE_MULTI] Converted space {space_id} numpy array to PIL Image"
+                        )
 
                     images.append({"image": screenshot, "label": f"Desktop {space_id}"})
 
                 # Call Claude with multiple images
+                logger.info(
+                    f"[CLAUDE_MULTI] Sending {len(images)} images to Claude with labels: {[img['label'] for img in images]}"
+                )
+                logger.info(f"[CLAUDE_MULTI] Prompt (first 500 chars): {prompt[:500]}")
                 response = await self.claude.analyze_multiple_images_with_prompt(
                     images=images, prompt=prompt, max_tokens=1000
+                )
+
+                # Debug: Check response type
+                logger.info(
+                    f"[CLAUDE_MULTI] Response type: {type(response)}, value: {response}"
+                )
+
+                # Ensure response is a dictionary
+                if not isinstance(response, dict):
+                    logger.error(
+                        f"[CLAUDE_MULTI] Invalid response type: {type(response)}, converting to dict"
+                    )
+                    response = {
+                        "content": f"I encountered an error analyzing multiple spaces. Response type was {type(response)}.",
+                        "success": False,
+                        "error": f"Invalid response type: {type(response)}",
+                    }
+
+                logger.info(
+                    f"[CLAUDE_MULTI] Claude response received (length: {len(response.get('content', ''))})"
                 )
 
                 return {
@@ -1200,10 +2345,19 @@ Remember: Natural, helpful, and space-aware responses.
         # Enable capture engine prefetching
         if hasattr(self, "capture_engine"):
             # Get all space IDs
-            space_ids = [
-                s.space_id if hasattr(s, "space_id") else s.get("space_id", 1)
-                for s in window_data.get("spaces", [])
-            ]
+            space_ids = []
+            for s in window_data.get("spaces", []):
+                if isinstance(s, int):
+                    space_ids.append(s)
+                elif hasattr(s, "space_id"):
+                    space_ids.append(s.space_id)
+                elif isinstance(s, dict):
+                    space_ids.append(s.get("space_id", 1))
+                else:
+                    logger.warning(
+                        f"Unknown space type in monitoring: {type(s)}, value: {s}"
+                    )
+                    space_ids.append(1)
 
             # Start prefetching for all spaces
             await self.capture_engine.prefetch_spaces(space_ids)

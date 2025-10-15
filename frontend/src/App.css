@@ -116,6 +116,7 @@
   background: rgba(10, 20, 42, 0.6);
   color: var(--text-primary);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35), inset 0 0 30px rgba(0, 229, 255, 0.06);
+  white-space: pre-wrap; /* Preserve line breaks and spaces */
 }
 
 .chat-entry.user {

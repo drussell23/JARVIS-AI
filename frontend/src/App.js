@@ -191,7 +191,7 @@ function App() {
             <div key={index} className={`chat-entry ${entry.sender.toLowerCase().replace(' ', '-')}`}>
               <div className="chat-bubble">
                 <div className="sender-label">{entry.sender}</div>
-                <div>{entry.message}</div>
+                <div style={{ whiteSpace: 'pre-wrap' }}>{entry.message}</div>
               </div>
             </div>
           ))}

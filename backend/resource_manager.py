@@ -430,10 +430,11 @@ class ResourceManager:
             import gc
             gc.collect()
             
-            # If still critical, consider process restart
+            # If still critical, consider process restart (macOS-aware)
             new_snapshot = self._take_snapshot()
-            if new_snapshot.memory_percent > 90:
-                logger.critical("Memory critical - recommend JARVIS restart")
+            available_gb = new_snapshot.memory_available_mb / 1024.0
+            if available_gb < 0.5:  # Less than 500MB available
+                logger.critical(f"Memory critical ({available_gb:.1f}GB available) - recommend JARVIS restart")
                 
 
 # Global instance

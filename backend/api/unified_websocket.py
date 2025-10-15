@@ -65,7 +65,7 @@ class UnifiedWebSocketManager:
         self.pipeline.register_stage(
             "message_processing",
             self._process_message_async,
-            timeout=30.0,
+            timeout=60.0,  # Increased from 30s for multi-space vision queries
             retry_count=1,
             required=True
         )
@@ -74,7 +74,7 @@ class UnifiedWebSocketManager:
         self.pipeline.register_stage(
             "command_execution",
             self._execute_command_async,
-            timeout=45.0,
+            timeout=90.0,  # Increased from 45s for complex vision processing
             retry_count=2,
             required=True
         )

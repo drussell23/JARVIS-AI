@@ -145,13 +145,14 @@ class VoiceUnlockMLSystem:
             }
             
     def _check_system_health(self) -> bool:
-        """Check if system is healthy for new operations"""
+        """Check if system is healthy for new operations (macOS-aware)"""
         stats = self.monitor.get_current_stats()
         
-        # Check memory
-        memory_percent = stats['system']['memory_percent']
-        if memory_percent > 90:
-            logger.warning(f"High memory usage: {memory_percent}%")
+        # Check memory - use available memory instead of percentage
+        memory_available_mb = stats['system'].get('memory_available_mb', 2048)
+        available_gb = memory_available_mb / 1024.0
+        if available_gb < 0.5:  # Less than 500MB available
+            logger.warning(f"Low available memory: {available_gb:.1f}GB")
             self.is_healthy = False
             return False
             

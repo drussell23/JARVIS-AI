@@ -431,12 +431,13 @@ class AdaptiveResourceManager:
                         processor.config.chunk_size_samples // 2)
                     adaptation["actions"].append("Reduced chunk size")
         
-        # High memory - unload models
-        if snapshot.memory_percent > 85:
+        # High memory - unload models (macOS-aware)
+        available_gb = snapshot.memory_available_mb / 1024.0
+        if available_gb < 1.0:  # Less than 1GB available
             if "model_manager" in self.managed_components:
                 manager = self.managed_components["model_manager"]
                 manager._emergency_cleanup()
-                adaptation["actions"].append("Emergency model cleanup")
+                adaptation["actions"].append(f"Emergency model cleanup ({available_gb:.1f}GB available)")
         
         # Thermal throttling - reduce all activity
         if snapshot.thermal_state in ["serious", "critical"]:

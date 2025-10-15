@@ -19,7 +19,7 @@ from .macos_controller import MacOSController, CommandCategory, SafetyLevel
 from .dynamic_app_controller import get_dynamic_app_controller
 from .fast_app_launcher import get_fast_app_launcher
 from .vision_action_handler import get_vision_action_handler
-from workflows.weather_app_vision_unified import execute_weather_app_workflow
+# Removed to avoid circular import - will import locally when needed
 
 logger = logging.getLogger(__name__)
 
@@ -541,6 +541,8 @@ class ClaudeCommandInterpreter:
         # Special handling for weather workflow
         if workflow_name == "check_weather_app" or "weather" in intent.raw_command.lower():
             try:
+                # Import locally to avoid circular import
+                from backend.workflows.weather_app_vision_unified import execute_weather_app_workflow
                 # Use the unified weather app vision workflow
                 query = intent.raw_command if intent.raw_command else "What's the weather today?"
                 message = await execute_weather_app_workflow(self.controller, self.vision_handler, query)

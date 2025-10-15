@@ -3569,6 +3569,26 @@ class ClaudeVisionAnalyzer:
             )
         elif isinstance(image, Image.Image):
             pil_image = image
+        elif hasattr(image, 'screenshot') and image.screenshot is not None:
+            # Handle CaptureResult objects from cg_window_capture
+            # CaptureResult has a 'screenshot' attribute that contains a numpy array
+            logger.debug(f"[PREPROCESS] Extracting screenshot from CaptureResult (type: {type(image.screenshot)})")
+            if isinstance(image.screenshot, np.ndarray):
+                pil_image = await asyncio.get_event_loop().run_in_executor(
+                    self.executor, Image.fromarray, image.screenshot.astype(np.uint8)
+                )
+            elif isinstance(image.screenshot, Image.Image):
+                pil_image = image.screenshot
+            else:
+                raise ValueError(f"CaptureResult.screenshot has unsupported type: {type(image.screenshot)}")
+        elif hasattr(image, 'image'):
+            # Handle alternative attribute name
+            pil_image = image.image
+            logger.debug(f"[PREPROCESS] Extracted PIL image from image attribute: {type(pil_image)}")
+        elif hasattr(image, 'pil_image'):
+            # Handle another alternative attribute name
+            pil_image = image.pil_image
+            logger.debug(f"[PREPROCESS] Extracted PIL image from pil_image attribute: {type(pil_image)}")
         else:
             raise ValueError(f"Unsupported image type: {type(image)}")
 
@@ -5552,7 +5572,7 @@ Focus on what's visible in this specific region. Be concise but thorough."""
             result["metadata"] = {
                 "analysis_method": "multi_space",
                 "multi_space_context": {
-                    "total_spaces": len(window_data.get("spaces", [])),
+                    "total_spaces": len(window_data.get("spaces_list", window_data.get("spaces", {}))),
                     "total_windows": len(window_data.get("windows", [])),
                     "current_space": window_data.get("current_space", {}).get("id", 1),
                     "query_intent": (
@@ -5624,7 +5644,18 @@ Focus on what's visible in this specific region. Be concise but thorough."""
 
         # Build window summary
         window_summary = []
-        for space in window_data.get("spaces", []):
+
+        # Handle both list and dict formats for spaces
+        spaces_data = window_data.get("spaces_list", [])  # Try list format first
+        if not spaces_data:
+            # Fall back to dict format
+            spaces_dict = window_data.get("spaces", {})
+            if isinstance(spaces_dict, dict):
+                spaces_data = list(spaces_dict.values())
+            else:
+                spaces_data = spaces_dict  # It might already be a list
+
+        for space in spaces_data:
             space_id = (
                 space.space_id
                 if hasattr(space, "space_id")
@@ -5641,6 +5672,13 @@ Focus on what's visible in this specific region. Be concise but thorough."""
                 else space.get("is_current", False)
             )
 
+            # Get workspace name if available
+            space_name = (
+                space.space_name
+                if hasattr(space, "space_name")
+                else space.get("space_name", f"Desktop {space_id}")
+            )
+
             space_windows = [
                 w
                 for w in window_data.get("windows", [])
@@ -5652,8 +5690,9 @@ Focus on what's visible in this specific region. Be concise but thorough."""
 
             status = "(current)" if is_current else ""
             apps = f" - {', '.join(app_names)}" if app_names else ""
+            # Use actual workspace name instead of "Desktop N"
             window_summary.append(
-                f"Desktop {space_id} {status}: {window_count} windows{apps}"
+                f"{space_name} {status}: {window_count} windows{apps}"
             )
 
         # Build the enhanced prompt
@@ -5662,7 +5701,7 @@ Focus on what's visible in this specific region. Be concise but thorough."""
 USER QUERY: "{query}"
 
 MULTI-SPACE CONTEXT:
-You have visibility across {len(window_data.get('spaces', []))} desktop spaces.
+You have visibility across {len(spaces_data)} desktop spaces.
 {chr(10).join(window_summary)}
 
 Total windows across all spaces: {len(window_data.get('windows', []))}
@@ -5953,6 +5992,7 @@ For this query, provide a helpful response that leverages the multi-space inform
                 tmp_path = tmp.name
 
             # Run screencapture with timeout
+            # Note: screencapture writes to file, no need for pipes (prevents semaphore leaks)
             result = await asyncio.wait_for(
                 asyncio.create_subprocess_exec(
                     "screencapture",
@@ -5961,13 +6001,11 @@ For this query, provide a helpful response that leverages the multi-space inform
                     "-t",
                     "png",
                     tmp_path,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
                 ),
                 timeout=5.0,
             )
 
-            stdout, stderr = await result.communicate()
+            await result.wait()
 
             if (
                 result.returncode == 0
@@ -5977,8 +6015,7 @@ For this query, provide a helpful response that leverages the multi-space inform
                 image = Image.open(tmp_path)
                 return image
             else:
-                if stderr:
-                    logger.error(f"screencapture stderr: {stderr.decode()}")
+                logger.error(f"screencapture failed with return code: {result.returncode}")
                 return None
 
         except asyncio.TimeoutError:
@@ -6068,8 +6105,27 @@ For this query, provide a helpful response that leverages the multi-space inform
 
             if not result.success:
                 logger.error(f"[MULTI-SPACE] Capture failed: {result.errors}")
-                # Fall back to single current space capture
-                return await self._capture_macos_screencapture()
+                # Check if we have any partial results
+                if result.screenshots:
+                    logger.info(f"[MULTI-SPACE] Using partial results: {len(result.screenshots)}/{len(space_ids)} spaces captured")
+                    # Return partial results instead of falling back
+                    screenshots = {}
+                    for space_id, screenshot_array in result.screenshots.items():
+                        if isinstance(screenshot_array, np.ndarray):
+                            screenshots[space_id] = Image.fromarray(screenshot_array)
+                        else:
+                            screenshots[space_id] = screenshot_array
+
+                    # Return appropriate format
+                    if capture_all or len(screenshots) > 1:
+                        return screenshots
+                    else:
+                        # Single space - return just the image
+                        return screenshots.get(space_ids[0]) if screenshots else None
+                else:
+                    # No results at all - fall back to single current space capture
+                    logger.warning("[MULTI-SPACE] No screenshots captured at all, falling back to single space")
+                    return await self._capture_macos_screencapture()
 
             # Log performance metrics
             logger.info(
@@ -6125,11 +6181,20 @@ For this query, provide a helpful response that leverages the multi-space inform
             detector = MultiSpaceWindowDetector()
             window_data = detector.get_all_windows_across_spaces()
 
-            # Find the specific space
-            for space in window_data.get("spaces", []):
+            # Find the specific space - handle both list and dict formats
+            spaces_data = window_data.get("spaces_list", [])
+            if not spaces_data:
+                spaces_dict = window_data.get("spaces", {})
+                if isinstance(spaces_dict, dict):
+                    spaces_data = list(spaces_dict.values())
+                else:
+                    spaces_data = spaces_dict
+
+            for space in spaces_data:
                 if hasattr(space, "space_id") and space.space_id == space_id:
                     return {
                         "space_id": space_id,
+                        "space_name": getattr(space, "space_name", f"Desktop {space_id}"),
                         "window_count": getattr(space, "window_count", 0),
                         "is_current": getattr(space, "is_current", False),
                         "applications": list(getattr(space, "applications", {}).keys()),
@@ -6137,9 +6202,10 @@ For this query, provide a helpful response that leverages the multi-space inform
                 elif isinstance(space, dict) and space.get("space_id") == space_id:
                     return {
                         "space_id": space_id,
+                        "space_name": space.get("space_name", f"Desktop {space_id}"),
                         "window_count": space.get("window_count", 0),
                         "is_current": space.get("is_current", False),
-                        "applications": list(space.get("applications", {}).keys()),
+                        "applications": space.get("applications", []),
                     }
 
             return {"space_id": space_id, "error": "Space not found"}

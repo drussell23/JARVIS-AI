@@ -408,6 +408,27 @@ class AdvancedAsyncPipeline:
         # Performance monitoring
         self.performance_metrics: Dict[str, List[float]] = defaultdict(list)
 
+        # ═══════════════════════════════════════════════════════════════
+        # Follow-Up System Components
+        # ═══════════════════════════════════════════════════════════════
+        self.intent_engine = None
+        self.context_store = None
+        self.router = None
+        self._follow_up_enabled = self.config.get("follow_up_enabled", True)
+
+        # ═══════════════════════════════════════════════════════════════
+        # Context Intelligence System (Priority 1-3)
+        # ═══════════════════════════════════════════════════════════════
+        self.context_bridge = None  # Will be set by main.py if available
+
+        if self._follow_up_enabled:
+            try:
+                self._init_followup_system()
+                logger.info("✅ Follow-up system initialized successfully")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize follow-up system: {e}", exc_info=True)
+                self._follow_up_enabled = False
+
         # Initialize default stages
         self._register_default_stages()
 
@@ -450,6 +471,80 @@ class AdvancedAsyncPipeline:
 
         self.register_stage(
             "response_generation", self._generate_response, timeout=10.0, required=True
+        )
+
+    def _init_followup_system(self):
+        """Initialize follow-up handling system components."""
+        from pathlib import Path
+        from backend.core.intent.adaptive_classifier import (
+            AdaptiveIntentEngine,
+            LexicalClassifier,
+            WeightedVotingStrategy,
+        )
+        from backend.core.intent.intent_registry import IntentRegistry
+        from backend.core.context.memory_store import InMemoryContextStore
+        from backend.core.routing.adaptive_router import (
+            AdaptiveRouter,
+            RouteMatcher,
+            logging_middleware,
+            context_validation_middleware,
+        )
+        from backend.vision.handlers.follow_up_plugin import VisionFollowUpPlugin
+        from backend.core.routing.adaptive_router import PluginRegistry
+
+        # Initialize intent registry and load patterns
+        config_path = Path(__file__).parent.parent / "config" / "followup_intents.json"
+        if config_path.exists():
+            registry = IntentRegistry(config_path=config_path)
+        else:
+            from backend.core.intent.intent_registry import create_default_registry
+            registry = create_default_registry()
+
+        patterns = registry.get_all_patterns()
+
+        # Create lexical classifier
+        classifier = LexicalClassifier(
+            name="lexical_followup",
+            patterns=patterns,
+            priority=100,  # Highest priority
+            case_sensitive=False,
+        )
+
+        # Create intent engine
+        self.intent_engine = AdaptiveIntentEngine(
+            classifiers=[classifier],
+            strategy=WeightedVotingStrategy(
+                source_weights={"lexical_followup": 1.0},
+                min_confidence=0.6,
+            ),
+        )
+
+        # Initialize context store
+        max_contexts = self.config.get("max_pending_contexts", 100)
+        self.context_store = InMemoryContextStore(max_size=max_contexts)
+
+        # Start auto-cleanup
+        asyncio.create_task(self.context_store.start_auto_cleanup())
+
+        # Initialize router
+        matcher = RouteMatcher()
+        self.router = AdaptiveRouter(matcher=matcher)
+
+        # Add middleware
+        self.router.use_middleware(logging_middleware)
+        self.router.use_middleware(context_validation_middleware)
+
+        # Register vision follow-up plugin
+        self.plugin_registry = PluginRegistry(self.router)
+        vision_plugin = VisionFollowUpPlugin()
+        asyncio.create_task(
+            self.plugin_registry.register_plugin("vision_followup", vision_plugin)
+        )
+
+        logger.info(
+            f"Follow-up system initialized: "
+            f"{self.intent_engine.classifier_count} classifiers, "
+            f"max_contexts={max_contexts}"
         )
 
     def register_stage(
@@ -850,6 +945,28 @@ class AdvancedAsyncPipeline:
                 "screen analysis",
                 "vision analysis",
                 "visual analysis",
+                # Multi-space and workspace queries - PRIORITIZE THESE
+                "across my desktop spaces",
+                "happening across my desktop",
+                "desktop spaces",
+                "desktop space",
+                "across my desktop",
+                "happening across",
+                "what's happening across",
+                "what is happening across",
+                "my workspace",
+                "what am i working on",
+                # Follow-up queries that should use vision/context
+                "explain what is happening",
+                "explain what's happening",
+                "what is happening",
+                "what's happening",
+                "explain in detail",
+                "tell me more",
+                "give me details",
+                "what about the terminal",
+                "what about the",
+                "in the terminal",
             ],
             "system_control": [
                 "open",
@@ -902,9 +1019,15 @@ class AdvancedAsyncPipeline:
 
         # Check for compound commands (multiple intents)
         detected_intents = []
+
+        # Log when checking vision patterns specifically for debugging
+        if "desktop space" in text_lower or "across my desktop" in text_lower:
+            logger.info(f"[INTENT DEBUG] Checking vision patterns for: {text_lower[:100]}")
+
         for intent, keywords in intent_rules.items():
             if any(kw in text_lower for kw in keywords):
                 detected_intents.append(intent)
+                logger.info(f"[INTENT DEBUG] Detected intent '{intent}' for text: {text_lower[:50]}")
 
         # Intelligently handle multiple intents
         if len(detected_intents) > 1:
@@ -923,8 +1046,12 @@ class AdvancedAsyncPipeline:
         elif detected_intents:
             context.intent = detected_intents[0]
             logger.info(
-                f"Intent detected: {context.intent} for command: {context.text}"
+                f"[INTENT FINAL] Intent detected: {context.intent} for command: {context.text}"
             )
+
+            # Extra logging for vision commands
+            if context.intent == "vision":
+                logger.info(f"[VISION DETECTED] Command will be routed to vision handler: {context.text[:50]}")
         else:
             # Use ML-based intent detection as fallback
             context.intent = await self._ml_intent_detection(text_lower)
@@ -1015,8 +1142,190 @@ class AdvancedAsyncPipeline:
 
     async def _process_command(self, context: PipelineContext):
         """Process command based on intent"""
-        # Check for lock/unlock commands first - these can work without JARVIS
+
+        # ═══════════════════════════════════════════════════════════════
+        # FOLLOW-UP INTENT DETECTION (Highest Priority)
+        # Check if this is a follow-up response to a pending question
+        # ═══════════════════════════════════════════════════════════════
+        try:
+            if hasattr(self, 'intent_engine') and hasattr(self, 'router'):
+                # Track telemetry start time
+                import time as time_module
+                followup_start = time_module.time()
+
+                # Classify intent using adaptive engine
+                intent_result = await self.intent_engine.classify(context.text, {})
+
+                if intent_result.primary_intent == "follow_up" and intent_result.confidence >= 0.75:
+                    logger.info(f"[FOLLOW-UP] Detected follow-up intent (confidence={intent_result.confidence:.2f})")
+
+                    # Telemetry: Track follow-up detection
+                    try:
+                        from backend.core.telemetry.events import get_telemetry
+                        telemetry = get_telemetry()
+                        await telemetry.track_event(
+                            "follow_up.intent_detected",
+                            {
+                                "confidence": intent_result.confidence,
+                                "user_input": context.text[:50],
+                            }
+                        )
+                    except:
+                        pass  # Telemetry is optional
+
+                    # Retrieve active pending context
+                    if hasattr(self, 'context_store'):
+                        from backend.core.context.store_interface import ContextQuery
+
+                        # Get most recent valid context
+                        pending_contexts = await self.context_store.get_most_relevant(limit=1)
+
+                        if pending_contexts:
+                            pending_context = pending_contexts[0]
+                            context_age = int((datetime.utcnow() - pending_context.metadata.created_at).total_seconds())
+                            logger.info(
+                                f"[FOLLOW-UP] Found pending context: {pending_context.metadata.id} "
+                                f"(category={pending_context.metadata.category.name}, "
+                                f"age={context_age}s)"
+                            )
+
+                            # Route to follow-up handler
+                            routing_result = await self.router.route(
+                                user_input=context.text,
+                                intent=intent_result,
+                                context=pending_context,
+                            )
+
+                            # Calculate latency
+                            latency_ms = int((time_module.time() - followup_start) * 1000)
+
+                            if routing_result.success:
+                                # Mark context as consumed
+                                await self.context_store.mark_consumed(pending_context.metadata.id)
+
+                                # Set response and metadata
+                                context.response = routing_result.response
+                                context.metadata["handled_by"] = "follow_up_handler"
+                                context.metadata["follow_up_context_id"] = pending_context.metadata.id
+                                context.metadata["routing_metadata"] = routing_result.metadata
+                                context.metadata["latency_ms"] = latency_ms
+
+                                # Telemetry: Track successful follow-up resolution
+                                try:
+                                    telemetry = get_telemetry()
+                                    await telemetry.track_event(
+                                        "follow_up.resolved",
+                                        {
+                                            "context_id": pending_context.metadata.id,
+                                            "context_category": pending_context.metadata.category.name,
+                                            "context_age_seconds": context_age,
+                                            "window_type": getattr(pending_context.payload, 'window_type', 'unknown'),
+                                            "latency_ms": latency_ms,
+                                            "response_length": len(routing_result.response),
+                                        }
+                                    )
+                                except:
+                                    pass  # Telemetry is optional
+
+                                logger.info(f"[FOLLOW-UP] Successfully handled: {routing_result.response[:100]}... (latency={latency_ms}ms)")
+                                return
+                            else:
+                                # Telemetry: Track failed routing
+                                try:
+                                    telemetry = get_telemetry()
+                                    await telemetry.track_event(
+                                        "follow_up.route_failed",
+                                        {
+                                            "context_id": pending_context.metadata.id,
+                                            "error": routing_result.error,
+                                            "latency_ms": latency_ms,
+                                        }
+                                    )
+                                except:
+                                    pass
+
+                                logger.warning(f"[FOLLOW-UP] Handler failed: {routing_result.error}")
+                        else:
+                            logger.info("[FOLLOW-UP] No active pending context found")
+
+                            # Telemetry: Track context miss
+                            try:
+                                telemetry = get_telemetry()
+                                await telemetry.track_event(
+                                    "follow_up.no_pending_context",
+                                    {"user_input": context.text[:50]}
+                                )
+                            except:
+                                pass
+
+                            context.response = "I don't have any pending context to follow up on. What would you like me to look at?"
+                            context.metadata["handled_by"] = "follow_up_no_context"
+                            return
+        except Exception as e:
+            logger.error(f"[FOLLOW-UP] Error in follow-up detection: {e}", exc_info=True)
+            # Fall through to normal processing
+
+        # ═══════════════════════════════════════════════════════════════
+        # CONTEXT INTELLIGENCE QUERIES (Priority 1-3)
+        # Handle natural language queries: "what does it say?", "what am I working on?"
+        # ═══════════════════════════════════════════════════════════════
         text_lower = context.text.lower()
+
+        # IMPORTANT: Check if this is a desktop space query FIRST
+        is_desktop_space_query = any(phrase in text_lower for phrase in [
+            "desktop space", "desktop spaces",
+            "across my desktop", "across desktop",
+            "happening across", "across my",  # Add more specific patterns
+            "what's happening across", "what is happening across"
+        ])
+
+        if is_desktop_space_query:
+            logger.info(f"[PIPELINE] Detected desktop space query, skipping context intelligence handler: {text_lower[:50]}")
+            # Don't process as context query - let it go to vision handler
+        else:
+            # Only check context patterns if NOT a desktop space query
+            context_query_patterns = [
+                "what does it say", "what's the error", "what is the error",
+                "explain that", "explain this", "what's that", "what is that",
+                "what am i working on", "what's happening", "what is happening",
+                "what's related", "what is related", "what's connected",
+                "can you see", "do you see", "are you seeing", "what do you see"
+            ]
+
+            if any(pattern in text_lower for pattern in context_query_patterns):
+                try:
+                    # Get context bridge - it's set directly on self by main.py
+                    context_bridge = self.context_bridge
+
+                    # Fallback: try to get from jarvis instance
+                    if not context_bridge and hasattr(self, 'jarvis') and self.jarvis:
+                        if hasattr(self.jarvis, 'context_bridge'):
+                            context_bridge = self.jarvis.context_bridge
+                        elif hasattr(self.jarvis, 'state') and hasattr(self.jarvis.state, 'context_bridge'):
+                            context_bridge = self.jarvis.state.context_bridge
+
+                    if context_bridge:
+                        logger.info(f"[CONTEXT-INTEL] Processing workspace query: {context.text}")
+
+                        # Query the context intelligence system
+                        response = await context_bridge.handle_user_query(
+                            context.text,
+                            current_space_id=context.metadata.get('current_space_id')
+                        )
+
+                        if response:
+                            context.response = response
+                            context.metadata["handled_by"] = "context_intelligence"
+                            logger.info(f"[CONTEXT-INTEL] Query resolved: {response[:100]}...")
+                            return
+                    else:
+                        logger.debug("[CONTEXT-INTEL] Context bridge not available")
+
+                except Exception as e:
+                    logger.error(f"[CONTEXT-INTEL] Error processing context query: {e}", exc_info=True)
+                    # Fall through to normal processing
+
+        # Check for lock/unlock commands first - these can work without JARVIS
         if any(
             phrase in text_lower
             for phrase in [
@@ -1343,18 +1652,36 @@ class AdvancedAsyncPipeline:
                         f"[PIPELINE] Vision response: {context.response[:100]}..."
                     )
                 else:
-                    # Vision handler didn't handle it
-                    context.response = "I processed your command: '{context.text}', {context.user_name}."
+                    # Vision handler didn't handle it - log details for debugging
                     logger.warning(
-                        f"[PIPELINE] Vision command not handled by vision_command_handler"
+                        f"[PIPELINE] Vision command not handled. Result: {result}"
+                    )
+                    context.response = f"Let me analyze your desktop spaces, {context.user_name}."
+                    logger.warning(
+                        f"[PIPELINE] Vision handler returned: handled={result.get('handled')}, reason={result.get('reason', 'unknown')}"
                     )
 
             except Exception as e:
                 logger.error(f"Error in vision command: {e}")
+                import traceback
+                traceback.print_exc()
                 context.metadata["vision_error"] = str(e)
-                context.response = (
-                    f"I encountered an error analyzing your screen: {str(e)}"
-                )
+                
+                # Provide more helpful error messages based on error type
+                error_msg = str(e)
+                if "ValueError" in str(type(e).__name__):
+                    if "screenshot" in error_msg.lower() or "capture" in error_msg.lower():
+                        context.response = (
+                            "I'm unable to capture screenshots of your desktop spaces at the moment. "
+                            "Please ensure screen recording permissions are enabled for JARVIS in "
+                            "System Preferences > Security & Privacy > Privacy > Screen Recording."
+                        )
+                    else:
+                        context.response = f"I encountered an error analyzing your screen: {error_msg}. Please try again."
+                else:
+                    context.response = (
+                        f"I encountered an error analyzing your screen: {error_msg}. Please try again."
+                    )
             return
 
         # For other commands, check if JARVIS is available

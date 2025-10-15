@@ -16,7 +16,7 @@ class NetworkRecoveryManager {
             'mlBackendRecovery',
             'edgeProcessing'
         ];
-        
+
         this.recoveryAttempts = 0;
         this.maxRecoveryAttempts = 5;
         this.connectionHealth = {
@@ -25,17 +25,17 @@ class NetworkRecoveryManager {
             averageLatency: 0,
             serviceStatus: {}
         };
-        
+
         this.fallbackProviders = {
             google: 'https://www.google.com/speech-api/v2/recognize',
             azure: 'https://speech.platform.bing.com/recognize',
             ibm: 'https://stream.watsonplatform.net/speech-to-text/api/v1/recognize'
         };
-        
+
         this.isRecovering = false;
         this.recoveryQueue = [];
         this.monitoringInterval = null;
-        
+
         // Start connection monitoring
         this.startConnectionMonitoring();
     }
@@ -53,18 +53,18 @@ class NetworkRecoveryManager {
 
         this.isRecovering = true;
         this.recoveryAttempts++;
-        
+
         console.log(`🔧 Advanced Network Recovery - Attempt ${this.recoveryAttempts}`);
-        
+
         // Update connection health
         this.connectionHealth.consecutiveFailures++;
-        
+
         // Try strategies in order
         for (const strategy of this.strategies) {
             try {
                 console.log(`🔄 Trying strategy: ${strategy}`);
                 const result = await this[`strategy_${strategy}`](error, recognition, context);
-                
+
                 if (result.success) {
                     this.onRecoverySuccess(strategy, result);
                     this.isRecovering = false;
@@ -75,10 +75,10 @@ class NetworkRecoveryManager {
                 console.warn(`Strategy ${strategy} failed:`, e);
             }
         }
-        
+
         this.isRecovering = false;
         this.processRecoveryQueue();
-        
+
         return {
             success: false,
             message: 'All recovery strategies exhausted',
@@ -92,18 +92,18 @@ class NetworkRecoveryManager {
     async strategy_connectionCheck(error, recognition, context) {
         // Test basic connectivity
         const isOnline = await this.checkConnectivity();
-        
+
         if (!isOnline) {
             // Wait for connection
             console.log('🔌 No internet connection, waiting...');
             await this.waitForConnection(5000);
-            
+
             if (await this.checkConnectivity()) {
                 // Connection restored
                 return await this.restartRecognition(recognition);
             }
         }
-        
+
         // Try different DNS servers
         const dnsServers = ['8.8.8.8', '1.1.1.1', '208.67.222.222'];
         for (const dns of dnsServers) {
@@ -112,7 +112,7 @@ class NetworkRecoveryManager {
                 return await this.restartRecognition(recognition);
             }
         }
-        
+
         return { success: false };
     }
 
@@ -122,7 +122,7 @@ class NetworkRecoveryManager {
     async strategy_dnsFlush(error, recognition, context) {
         // Signal backend to help with network diagnostics
         try {
-            const apiUrl = configService.getApiUrl() || window.API_URL || 'http://localhost:8010';
+            const apiUrl = configService.getApiUrl() || window.API_URL || 'http://localhost:8000';
             const response = await fetch(`${apiUrl}/network/diagnose`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -132,7 +132,7 @@ class NetworkRecoveryManager {
                     userAgent: navigator.userAgent
                 })
             });
-            
+
             if (response.ok) {
                 const diagnosis = await response.json();
                 if (diagnosis.recovered) {
@@ -142,7 +142,7 @@ class NetworkRecoveryManager {
         } catch (e) {
             console.warn('Network diagnosis failed:', e);
         }
-        
+
         return { success: false };
     }
 
@@ -151,7 +151,7 @@ class NetworkRecoveryManager {
      */
     async strategy_serviceSwitch(error, recognition, context) {
         console.log('🔀 Attempting to switch speech recognition service...');
-        
+
         // Try alternative recognition services
         for (const [provider, endpoint] of Object.entries(this.fallbackProviders)) {
             try {
@@ -160,24 +160,24 @@ class NetworkRecoveryManager {
                     method: 'HEAD',
                     mode: 'no-cors'
                 });
-                
+
                 // If reachable, update recognition config
                 if (testResponse || testResponse.type === 'opaque') {
                     console.log(`✅ ${provider} service available`);
-                    
+
                     // Modify recognition to use alternative service
                     recognition.stop();
-                    
+
                     // Create new recognition with different settings
                     const newRecognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
                     newRecognition.continuous = recognition.continuous;
                     newRecognition.interimResults = recognition.interimResults;
-                    
+
                     // Some browsers allow service endpoint configuration
                     if (newRecognition.serviceURI) {
                         newRecognition.serviceURI = endpoint;
                     }
-                    
+
                     return {
                         success: true,
                         message: `Switched to ${provider} speech service`,
@@ -188,7 +188,7 @@ class NetworkRecoveryManager {
                 console.warn(`${provider} service test failed:`, e);
             }
         }
-        
+
         return { success: false };
     }
 
@@ -197,16 +197,16 @@ class NetworkRecoveryManager {
      */
     async strategy_webSocketFallback(error, recognition, context) {
         console.log('🔌 Attempting WebSocket audio streaming fallback...');
-        
+
         try {
             // Check if JARVIS WebSocket is available
             const wsUrl = configService.getWebSocketUrl('voice/jarvis/stream') || `${window.WS_URL || 'ws://localhost:8010'}/voice/jarvis/stream`;
             const ws = new WebSocket(wsUrl);
-            
+
             return new Promise((resolve) => {
                 ws.onopen = () => {
                     console.log('✅ WebSocket audio streaming available');
-                    
+
                     // Return WebSocket as alternative
                     resolve({
                         success: true,
@@ -215,12 +215,12 @@ class NetworkRecoveryManager {
                         websocket: ws
                     });
                 };
-                
+
                 ws.onerror = () => {
                     ws.close();
                     resolve({ success: false });
                 };
-                
+
                 // Timeout after 3 seconds
                 setTimeout(() => {
                     if (ws.readyState !== WebSocket.OPEN) {
@@ -240,7 +240,7 @@ class NetworkRecoveryManager {
      */
     async strategy_offlineMode(error, recognition, context) {
         console.log('📴 Enabling offline mode with command queueing...');
-        
+
         // Enable offline mode
         return {
             success: true,
@@ -256,9 +256,9 @@ class NetworkRecoveryManager {
      */
     async strategy_mlBackendRecovery(error, recognition, context) {
         console.log('🤖 Requesting ML backend assistance...');
-        
+
         try {
-            const apiUrl = configService.getApiUrl() || window.API_URL || 'http://localhost:8010';
+            const apiUrl = configService.getApiUrl() || window.API_URL || 'http://localhost:8000';
             const response = await fetch(`${apiUrl}/audio/ml/advanced-recovery`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -273,16 +273,16 @@ class NetworkRecoveryManager {
                     }
                 })
             });
-            
+
             if (response.ok) {
                 const strategy = await response.json();
-                
+
                 if (strategy.customScript) {
                     // Execute custom recovery script from ML
                     try {
                         const recoveryFunc = new Function('recognition', 'context', strategy.customScript);
                         const result = await recoveryFunc(recognition, context);
-                        
+
                         if (result.success) {
                             return result;
                         }
@@ -290,7 +290,7 @@ class NetworkRecoveryManager {
                         console.error('ML recovery script failed:', e);
                     }
                 }
-                
+
                 if (strategy.proxyEndpoint) {
                     // Use ML backend as proxy
                     return {
@@ -304,7 +304,7 @@ class NetworkRecoveryManager {
         } catch (e) {
             console.warn('ML backend recovery failed:', e);
         }
-        
+
         return { success: false };
     }
 
@@ -313,7 +313,7 @@ class NetworkRecoveryManager {
      */
     async strategy_edgeProcessing(error, recognition, context) {
         console.log('🔲 Attempting edge processing with local models...');
-        
+
         // Check if we can use browser's local speech processing
         if ('SpeechRecognition' in window) {
             try {
@@ -321,7 +321,7 @@ class NetworkRecoveryManager {
                 const offlineRecognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
                 offlineRecognition.continuous = true;
                 offlineRecognition.interimResults = true;
-                
+
                 // Some browsers support offline recognition
                 if (offlineRecognition.grammars) {
                     const grammar = '#JSGF V1.0; grammar commands; public <command> = jarvis | hey jarvis | stop | start | help;';
@@ -329,14 +329,14 @@ class NetworkRecoveryManager {
                     speechRecognitionList.addFromString(grammar, 1);
                     offlineRecognition.grammars = speechRecognitionList;
                 }
-                
+
                 // Test offline recognition
                 return new Promise((resolve) => {
                     let timeout = setTimeout(() => {
                         offlineRecognition.stop();
                         resolve({ success: false });
                     }, 2000);
-                    
+
                     offlineRecognition.onstart = () => {
                         clearTimeout(timeout);
                         console.log('✅ Offline recognition available');
@@ -346,26 +346,26 @@ class NetworkRecoveryManager {
                             offlineRecognition
                         });
                     };
-                    
+
                     offlineRecognition.onerror = () => {
                         clearTimeout(timeout);
                         resolve({ success: false });
                     };
-                    
+
                     offlineRecognition.start();
                 });
             } catch (e) {
                 console.warn('Edge processing failed:', e);
             }
         }
-        
+
         return { success: false };
     }
 
     /**
      * Helper Methods
      */
-    
+
     async checkConnectivity() {
         try {
             const response = await fetch('https://www.google.com/generate_204', {
@@ -380,14 +380,14 @@ class NetworkRecoveryManager {
 
     async waitForConnection(timeout = 5000) {
         const startTime = Date.now();
-        
+
         while (Date.now() - startTime < timeout) {
             if (await this.checkConnectivity()) {
                 return true;
             }
             await new Promise(resolve => setTimeout(resolve, 500));
         }
-        
+
         return false;
     }
 
@@ -410,9 +410,9 @@ class NetworkRecoveryManager {
         } catch (e) {
             // Already stopped
         }
-        
+
         await new Promise(resolve => setTimeout(resolve, 500));
-        
+
         try {
             recognition.start();
             return {
@@ -429,19 +429,19 @@ class NetworkRecoveryManager {
 
     onRecoverySuccess(strategy, result) {
         console.log(`✅ Recovery successful using strategy: ${strategy}`);
-        
+
         // Reset counters
         this.recoveryAttempts = 0;
         this.connectionHealth.consecutiveFailures = 0;
         this.connectionHealth.lastSuccessful = Date.now();
-        
+
         // Log to ML backend for learning
         this.logRecoverySuccess(strategy, result);
     }
 
     async logRecoverySuccess(strategy, result) {
         try {
-            const apiUrl = configService.getApiUrl() || window.API_URL || 'http://localhost:8010';
+            const apiUrl = configService.getApiUrl() || window.API_URL || 'http://localhost:8000';
             await fetch(`${apiUrl}/audio/ml/recovery-success`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -468,7 +468,7 @@ class NetworkRecoveryManager {
         // Monitor connection health every 30 seconds
         this.monitoringInterval = setInterval(async () => {
             const isOnline = await this.checkConnectivity();
-            
+
             if (!isOnline && this.connectionHealth.consecutiveFailures === 0) {
                 console.warn('🔴 Connection lost - preparing recovery strategies...');
                 this.preloadRecoveryStrategies();
@@ -483,7 +483,7 @@ class NetworkRecoveryManager {
     async preloadRecoveryStrategies() {
         // Preload resources for faster recovery
         console.log('📦 Preloading recovery resources...');
-        
+
         // Cache alternative service endpoints
         for (const endpoint of Object.values(this.fallbackProviders)) {
             try {
