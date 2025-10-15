@@ -1,0 +1,19 @@
+{
+  "display_locations": {
+    "1": {
+      "display_id": 1,
+      "location_name": "Test Display",
+      "zone": "office",
+      "expected_proximity_range": [
+        0.0,
+        5.0
+      ],
+      "bluetooth_beacon_uuid": null,
+      "position_3d": null,
+      "auto_connect_enabled": true,
+      "connection_priority": 0.8,
+      "tags": []
+    }
+  },
+  "last_updated": "2025-10-15T02:37:46.284449"
+}

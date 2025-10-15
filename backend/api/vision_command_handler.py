@@ -415,7 +415,17 @@ class VisionCommandHandler:
                 "reason": "Lock/unlock screen commands are system commands, not vision",
             }
 
-        # Check for multi-monitor queries FIRST (highest priority)
+        # PHASE 1.2C: Check for voice prompt responses (YES/NO) - HIGHEST PRIORITY
+        voice_response_result = await self._handle_voice_prompt_response(command_text)
+        if voice_response_result.get("handled"):
+            return voice_response_result
+        
+        # PHASE 1.2C: Check for proximity-aware routing
+        proximity_routing_result = await self._handle_proximity_aware_routing(command_text)
+        if proximity_routing_result.get("handled"):
+            return proximity_routing_result
+        
+        # Check for multi-monitor queries
         if self._is_multi_monitor_query(command_text):
             monitor_result = await self._handle_multi_monitor_query(command_text)
             if monitor_result.get("handled"):
@@ -1831,6 +1841,120 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
             
         except Exception as e:
             logger.error(f"[MULTI-MONITOR] Error handling query: {e}", exc_info=True)
+            return {"handled": False}
+    
+    async def _handle_voice_prompt_response(self, command_text: str) -> Dict[str, Any]:
+        """
+        PHASE 1.2C: Handle voice prompt responses (Yes/No for display connection)
+        
+        Intercepts "yes", "no", "connect", etc. commands when waiting for
+        display connection prompt response.
+        """
+        try:
+            from proximity.voice_prompt_manager import get_voice_prompt_manager
+            
+            manager = get_voice_prompt_manager()
+            
+            # Only handle if we're waiting for a response
+            if manager.prompt_state.value != "waiting_for_response":
+                return {"handled": False}
+            
+            logger.info(f"[VOICE PROMPT] Handling response: {command_text}")
+            
+            # Handle the voice response
+            result = await manager.handle_voice_response(command_text)
+            
+            if result.get("handled"):
+                return {
+                    "handled": True,
+                    "response": result.get("response", ""),
+                    "action": result.get("action"),
+                    "connection_result": result.get("connection_result"),
+                    "monitoring_active": self.monitoring_active
+                }
+            else:
+                return {"handled": False}
+                
+        except Exception as e:
+            logger.error(f"[VOICE PROMPT] Error handling response: {e}")
+            return {"handled": False}
+    
+    async def _handle_proximity_aware_routing(self, command_text: str) -> Dict[str, Any]:
+        """
+        PHASE 1.2C: Handle proximity-aware command routing
+        
+        Routes vision commands to displays based on user proximity context.
+        Adds natural language acknowledgments and generates voice prompts.
+        """
+        try:
+            # Check if this is a vision/display command
+            vision_keywords = ["show", "display", "what's", "analyze", "look at", "see", "check"]
+            if not any(keyword in command_text.lower() for keyword in vision_keywords):
+                return {"handled": False}
+            
+            logger.info("[PROXIMITY ROUTING] Attempting proximity-aware routing")
+            
+            from proximity.proximity_command_router import get_proximity_command_router
+            from proximity.proximity_display_bridge import get_proximity_display_bridge
+            from proximity.voice_prompt_manager import get_voice_prompt_manager
+            from proximity.display_availability_detector import get_availability_detector
+            
+            # Get routing result
+            router = get_proximity_command_router()
+            routing_result = await router.route_command(command_text)
+            
+            if routing_result.get("success") and routing_result.get("proximity_based"):
+                # Proximity-based routing successful
+                voice_response = routing_result.get("voice_response")
+                target_display = routing_result.get("target_display")
+                display_id = routing_result.get("display_id")
+                
+                # Check if target display is available (TV on/off detection)
+                detector = get_availability_detector()
+                is_available = await detector.is_display_available(display_id)
+                
+                if not is_available:
+                    return {
+                        "handled": True,
+                        "response": f"Sir, the {routing_result.get('display_name')} appears to be offline or disconnected. Please ensure it's powered on.",
+                        "monitoring_active": self.monitoring_active
+                    }
+                
+                # Check if we should generate a connection prompt
+                bridge = get_proximity_display_bridge()
+                decision = await bridge.make_connection_decision()
+                
+                if decision and decision.action == ConnectionAction.PROMPT_USER:
+                    # Generate voice prompt
+                    prompt_manager = get_voice_prompt_manager()
+                    prompt = await prompt_manager.generate_prompt_for_decision(decision)
+                    
+                    if prompt:
+                        # Return prompt to user
+                        return {
+                            "handled": True,
+                            "response": prompt,
+                            "awaiting_response": True,
+                            "display_id": display_id,
+                            "monitoring_active": self.monitoring_active
+                        }
+                
+                # Regular routing response
+                logger.info(f"[PROXIMITY ROUTING] Routed to display: {routing_result.get('display_name')}")
+                
+                return {
+                    "handled": True,
+                    "response": f"{voice_response}\n\nProcessing your command: {command_text}",
+                    "routing_info": routing_result,
+                    "proximity_based": True,
+                    "monitoring_active": self.monitoring_active
+                }
+            else:
+                # No proximity data or routing failed
+                return {"handled": False}
+                
+        except Exception as e:
+            logger.error(f"[PROXIMITY ROUTING] Error: {e}")
             return {"handled": False}
     
     async def _handle_intelligent_orchestration(self, command_text: str) -> Dict[str, Any]:

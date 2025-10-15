@@ -1601,6 +1601,14 @@ def mount_routers():
         logger.info("✅ Multi-Monitor display routes configured")
     except Exception as e:
         logger.warning(f"⚠️  Multi-Monitor display routes not available: {e}")
+    
+    # Proximity-Aware Display Routes (Phase 1.2)
+    try:
+        from api.proximity_display_api import router as proximity_display_router
+        app.include_router(proximity_display_router, tags=["proximity-display"])
+        logger.info("✅ Proximity-Aware Display API configured")
+    except Exception as e:
+        logger.warning(f"⚠️  Proximity-Aware Display API not available: {e}")
 
     # ML Audio API (with built-in fallback) - Always mount regardless of WebSocket status
     try:

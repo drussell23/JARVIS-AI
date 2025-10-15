@@ -435,10 +435,13 @@ class MultiMonitorDetector:
             logger.error(f"Error capturing display {display_info.display_id}: {e}")
             return None
     
-    async def get_display_summary(self) -> Dict[str, Any]:
+    async def get_display_summary(self, include_proximity: bool = False) -> Dict[str, Any]:
         """
         Get a summary of all displays and their current state
         
+        Args:
+            include_proximity: If True, include proximity scores and context
+            
         Returns:
             Dictionary with display summary information
         """
@@ -454,6 +457,32 @@ class MultiMonitorDetector:
                 "capture_stats": self.capture_stats.copy()
             }
             
+            # Add proximity context if requested
+            proximity_context = None
+            if include_proximity:
+                try:
+                    from proximity.proximity_display_bridge import get_proximity_display_bridge
+                    bridge = get_proximity_display_bridge()
+                    
+                    # Convert displays to dict format for bridge
+                    display_dicts = [
+                        {
+                            "display_id": d.display_id,
+                            "name": d.name,
+                            "resolution": d.resolution,
+                            "position": d.position,
+                            "is_primary": d.is_primary
+                        }
+                        for d in displays
+                    ]
+                    
+                    proximity_context = await bridge.get_proximity_display_context(display_dicts)
+                    summary["proximity_context"] = proximity_context.to_dict()
+                    
+                except Exception as prox_error:
+                    logger.warning(f"Could not get proximity context: {prox_error}")
+                    summary["proximity_context"] = None
+            
             for display_info in displays:
                 display_summary = {
                     "id": display_info.display_id,
@@ -464,6 +493,13 @@ class MultiMonitorDetector:
                     "spaces": [space_id for space_id, display_id in space_mappings.items() 
                               if display_id == display_info.display_id]
                 }
+                
+                # Add proximity score if available
+                if proximity_context:
+                    display_summary["proximity_score"] = proximity_context.proximity_scores.get(
+                        display_info.display_id, 0.0
+                    )
+                
                 summary["displays"].append(display_summary)
             
             return summary
