@@ -1609,6 +1609,37 @@ def mount_routers():
         logger.info("✅ Proximity-Aware Display API configured")
     except Exception as e:
         logger.warning(f"⚠️  Proximity-Aware Display API not available: {e}")
+    
+    # Simple Display Monitor API (NO proximity detection)
+    try:
+        from api.display_monitor_api import router as display_monitor_router
+        from display import get_display_monitor
+        
+        app.include_router(display_monitor_router, tags=["display-monitor"])
+        logger.info("✅ Simple Display Monitor API configured (no proximity detection)")
+        
+        # Auto-start monitoring if displays are configured
+        try:
+            monitor = get_display_monitor()
+            
+            # Check if there are any monitored displays in config
+            # For now, register Living Room TV by default
+            monitor.register_display("Living Room TV", auto_prompt=True, default_mode="extend")
+            logger.info("   📺 Registered 'Living Room TV' for monitoring")
+            
+            # Start monitoring automatically
+            async def start_display_monitoring():
+                await asyncio.sleep(2)  # Wait for system to fully initialize
+                await monitor.start_monitoring()
+                logger.info("   ✅ Display monitoring started (checking every 10s)")
+            
+            asyncio.create_task(start_display_monitoring())
+            
+        except Exception as e:
+            logger.warning(f"   ⚠️ Could not auto-start display monitoring: {e}")
+            
+    except Exception as e:
+        logger.warning(f"⚠️  Display Monitor API not available: {e}")
 
     # ML Audio API (with built-in fallback) - Always mount regardless of WebSocket status
     try:

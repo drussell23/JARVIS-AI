@@ -60,6 +60,12 @@ from .display_availability_detector import (
     get_availability_detector
 )
 
+from .airplay_discovery import (
+    AirPlayDiscoveryService,
+    AirPlayDevice,
+    get_airplay_discovery
+)
+
 __all__ = [
     "ProximityData",
     "DisplayLocation",
@@ -80,7 +86,10 @@ __all__ = [
     "PromptState",
     "get_voice_prompt_manager",
     "DisplayAvailabilityDetector",
-    "get_availability_detector"
+    "get_availability_detector",
+    "AirPlayDiscoveryService",
+    "AirPlayDevice",
+    "get_airplay_discovery"
 ]
 
 __version__ = "1.0.0"

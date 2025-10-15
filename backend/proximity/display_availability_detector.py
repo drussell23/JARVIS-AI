@@ -23,6 +23,12 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 
+# Import statement moved here for better organization
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from proximity.airplay_discovery import AirPlayDiscoveryService
+
+
 class DisplayAvailabilityDetector:
     """
     Detects if displays are currently available (powered on and connected)
@@ -48,41 +54,60 @@ class DisplayAvailabilityDetector:
         
         self.logger.info("[DISPLAY DETECTOR] Initialized")
     
-    async def is_display_available(self, display_id: int) -> bool:
+    async def is_display_available(
+        self,
+        display_id: int = None,
+        device_name: str = None
+    ) -> bool:
         """
         Check if a specific display is currently available
         
         Args:
-            display_id: Display ID to check
+            display_id: Display ID to check (for active displays)
+            device_name: Device name to check (for AirPlay displays)
             
         Returns:
-            True if display is available (powered on and connected)
+            True if display is available (powered on and connected OR available via AirPlay)
         """
         try:
-            # Refresh availability
-            await self.refresh_available_displays()
+            # Check active displays by ID
+            if display_id is not None:
+                await self.refresh_available_displays()
+                available = display_id in self.available_displays
+                
+                # Update history
+                if display_id not in self.availability_history:
+                    self.availability_history[display_id] = []
+                self.availability_history[display_id].append(available)
+                
+                # Keep only last 100 checks
+                if len(self.availability_history[display_id]) > 100:
+                    self.availability_history[display_id] = self.availability_history[display_id][-100:]
+                
+                return available
             
-            # Check if in available set
-            available = display_id in self.available_displays
+            # Check AirPlay displays by name
+            if device_name is not None:
+                from proximity.airplay_discovery import get_airplay_discovery
+                
+                discovery = get_airplay_discovery()
+                available = await discovery.is_device_available(device_name)
+                
+                self.logger.debug(f"[DISPLAY DETECTOR] AirPlay '{device_name}' available: {available}")
+                return available
             
-            # Update history
-            if display_id not in self.availability_history:
-                self.availability_history[display_id] = []
-            self.availability_history[display_id].append(available)
-            
-            # Keep only last 100 checks
-            if len(self.availability_history[display_id]) > 100:
-                self.availability_history[display_id] = self.availability_history[display_id][-100:]
-            
-            return available
+            return False
             
         except Exception as e:
-            self.logger.error(f"[DISPLAY DETECTOR] Error checking display {display_id}: {e}")
+            self.logger.error(f"[DISPLAY DETECTOR] Error checking display: {e}")
             return False
     
-    async def refresh_available_displays(self) -> Set[int]:
+    async def refresh_available_displays(self, include_airplay: bool = True) -> Set[int]:
         """
         Refresh list of currently available displays
+        
+        Args:
+            include_airplay: Also discover AirPlay-capable displays
         
         Returns:
             Set of available display IDs
@@ -90,7 +115,7 @@ class DisplayAvailabilityDetector:
         try:
             self.total_checks += 1
             
-            # Get displays from multi-monitor detector
+            # Get displays from multi-monitor detector (active displays)
             from vision.multi_monitor_detector import MultiMonitorDetector
             
             detector = MultiMonitorDetector()
@@ -100,12 +125,40 @@ class DisplayAvailabilityDetector:
             self.available_displays = {d.display_id for d in displays}
             self.last_check_time = datetime.now()
             
-            self.logger.debug(f"[DISPLAY DETECTOR] Available displays: {self.available_displays}")
+            self.logger.debug(f"[DISPLAY DETECTOR] Active displays: {self.available_displays}")
+            
+            # ENHANCED: Also discover AirPlay-capable displays (not yet connected)
+            if include_airplay:
+                airplay_displays = await self._discover_airplay_displays()
+                self.logger.debug(f"[DISPLAY DETECTOR] AirPlay-capable displays: {airplay_displays}")
+            
             return self.available_displays
             
         except Exception as e:
             self.logger.error(f"[DISPLAY DETECTOR] Error refreshing displays: {e}")
             return set()
+    
+    async def _discover_airplay_displays(self) -> List[str]:
+        """
+        Discover AirPlay-capable displays that aren't yet connected
+        
+        Returns:
+            List of AirPlay device names
+        """
+        try:
+            from proximity.airplay_discovery import get_airplay_discovery
+            
+            discovery = get_airplay_discovery()
+            devices = await discovery.discover_airplay_devices()
+            
+            device_names = [d.device_name for d in devices if d.is_available]
+            
+            self.logger.info(f"[DISPLAY DETECTOR] Found {len(device_names)} AirPlay devices: {device_names}")
+            return device_names
+            
+        except Exception as e:
+            self.logger.error(f"[DISPLAY DETECTOR] AirPlay discovery error: {e}")
+            return []
     
     async def get_availability_status(self, display_id: int) -> Dict:
         """

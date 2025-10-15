@@ -525,3 +525,65 @@ async def check_display_availability(display_id: int) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"[API] Error checking display availability: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/airplay-devices")
+async def discover_airplay_devices() -> Dict[str, Any]:
+    """
+    Discover available AirPlay devices (TVs, Apple TVs, etc.)
+    
+    Returns:
+        List of discovered AirPlay devices
+    """
+    try:
+        from proximity.airplay_discovery import get_airplay_discovery
+        
+        discovery = get_airplay_discovery()
+        devices = await discovery.discover_airplay_devices()
+        
+        return {
+            "total_devices": len(devices),
+            "devices": [
+                {
+                    "device_name": d.device_name,
+                    "device_id": d.device_id,
+                    "device_type": d.device_type,
+                    "is_available": d.is_available,
+                    "discovered_at": d.discovered_at.isoformat() if d.discovered_at else None
+                }
+                for d in devices
+            ],
+            "stats": discovery.get_discovery_stats()
+        }
+        
+    except Exception as e:
+        logger.error(f"[API] Error discovering AirPlay devices: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/airplay-connect")
+async def connect_to_airplay_device(
+    device_name: str,
+    mode: str = "extend"
+) -> Dict[str, Any]:
+    """
+    Connect to an AirPlay device
+    
+    Args:
+        device_name: Name of AirPlay device (e.g., "Sony TV")
+        mode: "extend" or "mirror"
+        
+    Returns:
+        Connection result
+    """
+    try:
+        from proximity.airplay_discovery import get_airplay_discovery
+        
+        discovery = get_airplay_discovery()
+        result = await discovery.connect_to_airplay_device(device_name, mode)
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"[API] Error connecting to AirPlay device: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
