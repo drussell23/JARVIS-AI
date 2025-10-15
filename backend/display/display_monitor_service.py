@@ -138,21 +138,49 @@ class DisplayMonitorService:
     
     async def _poll_available_displays(self):
         """
-        Poll Screen Mirroring menu for available displays
+        Poll for connected displays (HDMI, USB-C, AirPlay)
         
         Detects when new displays become available and generates prompts
         """
         try:
             self.total_polls += 1
             
-            # Get currently available displays from AirPlay discovery
-            from proximity.airplay_discovery import get_airplay_discovery
+            # Method 1: Check CONNECTED displays via Core Graphics (HDMI, USB-C, already-connected AirPlay)
+            current_available = set()
             
-            discovery = get_airplay_discovery()
-            devices = await discovery.discover_airplay_devices()
+            try:
+                from vision.multi_monitor_detector import MultiMonitorDetector
+                
+                detector = MultiMonitorDetector()
+                displays = await detector.detect_displays()
+                
+                # Add display names (skip primary/built-in display)
+                for display in displays:
+                    if not display.is_primary:  # Skip built-in MacBook display
+                        # Try to get a friendly name
+                        display_name = display.name
+                        if display_name and display_name != "Primary Display":
+                            current_available.add(display_name)
+                            self.logger.debug(f"[DISPLAY MONITOR] Found connected display: {display_name}")
+                
+            except Exception as e:
+                self.logger.error(f"[DISPLAY MONITOR] Core Graphics detection failed: {e}")
             
-            # Extract device names
-            current_available = {d.device_name for d in devices if d.is_available}
+            # Method 2: Also check for AirPlay devices (newly available, not yet connected)
+            try:
+                from proximity.airplay_discovery import get_airplay_discovery
+                
+                discovery = get_airplay_discovery()
+                devices = await discovery.discover_airplay_devices()
+                
+                # Extract device names
+                for d in devices:
+                    if d.is_available:
+                        current_available.add(d.device_name)
+                        self.logger.debug(f"[DISPLAY MONITOR] Found AirPlay device: {d.device_name}")
+                        
+            except Exception as e:
+                self.logger.error(f"[DISPLAY MONITOR] AirPlay discovery failed: {e}")
             
             # Check for newly available monitored displays
             newly_available = current_available - self.previously_available

@@ -1046,6 +1046,14 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Failed to stop Voice Unlock system: {e}")
 
+    # Stop display monitoring
+    if hasattr(app.state, "display_monitor"):
+        try:
+            await app.state.display_monitor.stop_monitoring()
+            logger.info("✅ Display monitoring stopped")
+        except Exception as e:
+            logger.error(f"Error stopping display monitoring: {e}")
+    
     # Stop dynamic component loader and self-healer
     try:
         from vision.dynamic_component_loader import get_component_loader
@@ -1622,16 +1630,19 @@ def mount_routers():
         try:
             monitor = get_display_monitor()
             
-            # Check if there are any monitored displays in config
-            # For now, register Living Room TV by default
+            # Register Living Room TV by default
             monitor.register_display("Living Room TV", auto_prompt=True, default_mode="extend")
             logger.info("   📺 Registered 'Living Room TV' for monitoring")
+            
+            # Store monitor in app state for access by other components
+            app.state.display_monitor = monitor
             
             # Start monitoring automatically
             async def start_display_monitoring():
                 await asyncio.sleep(2)  # Wait for system to fully initialize
                 await monitor.start_monitoring()
-                logger.info("   ✅ Display monitoring started (checking every 10s)")
+                logger.info("   ✅ Display monitoring started - checking Screen Mirroring menu every 10s")
+                logger.info("   📺 JARVIS will prompt when Living Room TV becomes available")
             
             asyncio.create_task(start_display_monitoring())
             

@@ -415,7 +415,12 @@ class VisionCommandHandler:
                 "reason": "Lock/unlock screen commands are system commands, not vision",
             }
 
-        # PHASE 1.2C: Check for voice prompt responses (YES/NO) - HIGHEST PRIORITY
+        # SIMPLE TV MONITOR: Check for display prompt responses (YES/NO) - HIGHEST PRIORITY
+        tv_response_result = await self._handle_tv_monitor_response(command_text)
+        if tv_response_result.get("handled"):
+            return tv_response_result
+        
+        # PHASE 1.2C: Check for voice prompt responses (YES/NO)
         voice_response_result = await self._handle_voice_prompt_response(command_text)
         if voice_response_result.get("handled"):
             return voice_response_result
@@ -1841,6 +1846,49 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
             
         except Exception as e:
             logger.error(f"[MULTI-MONITOR] Error handling query: {e}", exc_info=True)
+            return {"handled": False}
+    
+    async def _handle_tv_monitor_response(self, command_text: str) -> Dict[str, Any]:
+        """
+        SIMPLE TV MONITOR: Handle voice responses for TV connection prompts
+        
+        Intercepts "yes", "no" commands when JARVIS asks about connecting to Living Room TV
+        """
+        try:
+            from display import get_display_monitor
+            
+            monitor = get_display_monitor()
+            
+            # Only handle if we're waiting for a response
+            if not monitor.has_pending_prompt():
+                return {"handled": False}
+            
+            logger.info(f"[TV MONITOR] Handling response: {command_text}")
+            
+            # Handle the voice response
+            result = await monitor.handle_user_response(command_text)
+            
+            if result.get("handled"):
+                response_text = result.get("response", "")
+                if result.get("action") == "connect":
+                    # Successfully connected
+                    connection_result = result.get("result", {})
+                    if connection_result.get("success"):
+                        response_text = connection_result.get("response", "Connected to Living Room TV")
+                    else:
+                        response_text = connection_result.get("response", "Connection failed")
+                
+                return {
+                    "handled": True,
+                    "response": response_text,
+                    "action": result.get("action"),
+                    "monitoring_active": self.monitoring_active
+                }
+            else:
+                return {"handled": False}
+                
+        except Exception as e:
+            logger.error(f"[TV MONITOR] Error handling response: {e}")
             return {"handled": False}
     
     async def _handle_voice_prompt_response(self, command_text: str) -> Dict[str, Any]:
