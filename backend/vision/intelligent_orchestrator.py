@@ -1453,9 +1453,17 @@ class IntelligentOrchestrator:
         intent_instructions = {
             QueryIntent.ERROR_ANALYSIS: """
 🔍 ERROR DETECTION FOCUS:
+- **FIRST**: Check for IDE PROBLEMS/ERRORS panel (usually at bottom of VS Code/Cursor)
+  * Read EVERY error/warning listed with OCR
+  * Extract: file name, line number, exact error message
+  * Count: X errors, Y warnings
 - Perform OCR on ALL visible text, especially error messages, stack traces, warnings
-- Identify red error indicators, warning icons, status badges
-- Extract exact error messages, line numbers, file names
+- Identify red error indicators, warning icons, status badges, red squiggly underlines
+- Extract exact error messages, line numbers, file names from:
+  * Problems panel (PRIMARY SOURCE)
+  * Terminal output (stack traces)
+  * Browser console (JavaScript errors)
+  * Status bar error badges
 - Analyze error context: what file, what function, what's breaking
 - Look for related errors across multiple windows
 - Provide specific, actionable fix suggestions based on the visual error context""",
@@ -1592,18 +1600,28 @@ Current space: Space {snapshot.current_space}
    - Extract technical terms: function names, variable names, API calls
    - Identify documentation content, Stack Overflow snippets, GitHub issues
    - Read terminal output: commands, errors, success messages, paths
+   - **READ IDE PANELS**: Problems/Errors panel, Output panel, Debug console, Terminal tabs
 
 2️⃣ UI STATE DETECTION:
-   - Error indicators: red badges, error icons, alert dialogs
+   - Error indicators: red badges, error icons, alert dialogs, red squiggly lines
    - Status indicators: loading spinners, progress bars, completion checkmarks
    - Interactive states: selected items, focused elements, hover states
    - Visual warnings: yellow/orange warning icons, deprecation notices
+   - **IDE-SPECIFIC UI**: 
+     * VS Code/Cursor: PROBLEMS panel (bottom), error count badge, file tabs with error dots
+     * Terminal: error text (red), warnings (yellow), stack traces
+     * Browser: Console errors (red), Network tab errors, DevTools messages
 
 3️⃣ CODE COMPREHENSION (if visible):
    - What file is being edited (visible in tab/title)
    - What function/class is visible in the viewport
    - Language/framework indicators (file extensions, syntax highlighting)
    - Code quality signals: linter errors, syntax highlighting of issues
+   - **CRITICAL**: Check for PROBLEMS/ERRORS panel at bottom of IDE:
+     * Read EVERY error/warning listed in the Problems panel
+     * Note the file name, line number, and error message for each
+     * Count total errors vs warnings
+     * Identify which errors are most critical
 
 4️⃣ CONTEXTUAL INTELLIGENCE:
    - Project/repo identification from visible paths, folder names
@@ -1612,11 +1630,15 @@ Current space: Space {snapshot.current_space}
    - Browser content: what docs/APIs being researched, related to coding?
 
 5️⃣ ERROR FORENSICS (if errors detected):
-   - EXACT error message (word-for-word OCR extraction)
-   - Error location: file name, line number, function name
-   - Error type: syntax, runtime, logical, API, network, etc.
-   - Visual context: what code surrounds the error
+   - **PRIMARY SOURCE**: Check IDE's PROBLEMS panel first - this lists ALL detected errors
+   - EXACT error message (word-for-word OCR extraction from Problems panel OR terminal)
+   - Error location: file name, line number, function name (from Problems panel)
+   - Error type: syntax, runtime, logical, API, network, linter, type error, etc.
+   - Visual context: what code surrounds the error (if visible in editor)
    - Actionable fix: specific suggestion based on visual error context
+   - **FORMAT**: List each error from Problems panel like:
+     * Error 1: [File:Line] - [Exact error message]
+     * Error 2: [File:Line] - [Exact error message]
 
 6️⃣ CROSS-SPACE INTELLIGENCE:
    - Connections: Is the browser researching errors from the terminal?
