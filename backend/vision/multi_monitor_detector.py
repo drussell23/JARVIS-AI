@@ -132,21 +132,26 @@ class MultiMonitorDetector:
             displays = []
             
             # Get display list from Core Graphics
-            display_count = Quartz.CGGetActiveDisplayList(0, None, None)
-            if display_count == 0:
+            # CGGetActiveDisplayList returns (error_code, (display_ids...), count)
+            max_displays = 32  # Support up to 32 displays
+            result = Quartz.CGGetActiveDisplayList(max_displays, None, None)
+            
+            # Result is a 3-tuple: (error_code, (display_ids...), count)
+            error_code = result[0]
+            display_ids_tuple = result[1]
+            display_count = result[2]
+            
+            if error_code != 0:
+                logger.error(f"CGGetActiveDisplayList failed with error code: {error_code}")
+                return []
+            
+            if not display_ids_tuple or display_count == 0:
                 logger.warning("No displays detected")
                 return []
             
-            # Allocate array for display IDs
-            display_ids = (Quartz.CGDirectDisplayID * display_count)()
-            actual_count = Quartz.CGGetActiveDisplayList(
-                display_count, display_ids, None
-            )
+            logger.info(f"Detected {display_count} displays")
             
-            logger.info(f"Detected {actual_count} displays")
-            
-            for i in range(actual_count):
-                display_id = display_ids[i]
+            for display_id in display_ids_tuple:
                 
                 # Get display bounds
                 bounds = Quartz.CGDisplayBounds(display_id)
@@ -231,7 +236,7 @@ class MultiMonitorDetector:
             return {}
     
     async def _get_yabai_space_mappings(self) -> Dict[int, SpaceDisplayMapping]:
-        """Get space mappings from Yabai CLI"""
+        """Get space mappings from Yabai CLI with proper JSON parsing"""
         try:
             # Query Yabai for spaces
             result = await asyncio.create_subprocess_exec(
@@ -245,26 +250,35 @@ class MultiMonitorDetector:
                 logger.error(f"Yabai spaces query failed: {stderr.decode()}")
                 return {}
             
-            # Parse Yabai output (simplified - would need proper JSON parsing)
-            spaces_data = stdout.decode().strip()
-            logger.debug(f"Yabai spaces data: {spaces_data}")
+            # Parse JSON output from Yabai
+            import json
+            spaces_data = json.loads(stdout.decode())
             
-            # For now, create basic mappings
-            # In a full implementation, this would parse the actual Yabai JSON output
+            # Build mappings from Yabai data
             mappings = {}
-            for display_id in self.displays.keys():
-                # Create a basic mapping (this is simplified)
-                space_id = len(mappings) + 1
+            for space in spaces_data:
+                space_id = space.get("index", 0)
+                display_id = space.get("display", 1)  # Yabai's display field
+                is_active = space.get("has-focus", False)
+                space_label = space.get("label", "")
+                space_name = space_label if space_label else f"Space {space_id}"
+                
                 mapping = SpaceDisplayMapping(
                     space_id=space_id,
                     display_id=display_id,
-                    space_name=f"Space {space_id}",
-                    is_active=True
+                    space_name=space_name,
+                    is_active=is_active
                 )
                 mappings[space_id] = mapping
+                
+                logger.debug(f"Mapped Space {space_id} → Display {display_id} ({space_name})")
             
+            logger.info(f"Parsed {len(mappings)} space mappings from Yabai")
             return mappings
             
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse Yabai JSON output: {e}")
+            return {}
         except Exception as e:
             logger.error(f"Error querying Yabai for space mappings: {e}")
             return {}
@@ -447,8 +461,8 @@ class MultiMonitorDetector:
                     "resolution": display_info.resolution,
                     "position": display_info.position,
                     "is_primary": display_info.is_primary,
-                    "spaces": [space_id for space_id, mapping in space_mappings.items() 
-                              if mapping.display_id == display_info.display_id]
+                    "spaces": [space_id for space_id, display_id in space_mappings.items() 
+                              if display_id == display_info.display_id]
                 }
                 summary["displays"].append(display_summary)
             

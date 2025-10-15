@@ -1593,6 +1593,14 @@ def mount_routers():
         logger.info("✅ Vision WebSocket endpoint mounted at /vision/ws/vision")
     except ImportError as e:
         logger.warning(f"Could not import vision WebSocket endpoint: {e}")
+    
+    # Multi-Monitor Display Routes
+    try:
+        from api.display_routes import router as display_router
+        app.include_router(display_router, tags=["displays"])
+        logger.info("✅ Multi-Monitor display routes configured")
+    except Exception as e:
+        logger.warning(f"⚠️  Multi-Monitor display routes not available: {e}")
 
     # ML Audio API (with built-in fallback) - Always mount regardless of WebSocket status
     try:

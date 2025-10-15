@@ -415,6 +415,12 @@ class VisionCommandHandler:
                 "reason": "Lock/unlock screen commands are system commands, not vision",
             }
 
+        # Check for multi-monitor queries FIRST (highest priority)
+        if self._is_multi_monitor_query(command_text):
+            monitor_result = await self._handle_multi_monitor_query(command_text)
+            if monitor_result.get("handled"):
+                return monitor_result
+        
         # Check if this is a follow-up to a multi-space query
         follow_up_result = await self._handle_multi_space_follow_up(command_text)
         if follow_up_result.get("handled"):
@@ -562,11 +568,11 @@ class VisionCommandHandler:
                 screenshot, command_text
             )
 
-            return {
-                "handled": True,
-                "response": response,
-                "pure_intelligence": True,
-                "monitoring_active": self.monitoring_active,
+                return {
+                    "handled": True,
+                    "response": response,
+                    "pure_intelligence": True,
+                    "monitoring_active": self.monitoring_active,
                 "context": self.intelligence.context.get_temporal_context(),
             }
 
@@ -682,12 +688,12 @@ class VisionCommandHandler:
                             f"[YABAI] Successfully generated workspace overview with {len(spaces)} spaces"
                         )
 
-                        return {
-                            "handled": True,
-                            "response": response,
-                            "pure_intelligence": True,
+                    return {
+                        "handled": True,
+                        "response": response,
+                        "pure_intelligence": True,
                             "yabai_powered": True,
-                            "monitoring_active": self.monitoring_active,
+                        "monitoring_active": self.monitoring_active,
                             "context": (
                                 self.intelligence.context.get_temporal_context()
                                 if self.intelligence
@@ -701,8 +707,8 @@ class VisionCommandHandler:
                                 "yabai_status": status.value,
                                 "total_windows": len(windows),
                             },
-                        }
-                    else:
+                    }
+        else:
                         # Yabai not available - provide installation guidance
                         logger.warning(
                             f"[YABAI] Not available (status: {status.value})"
@@ -1683,6 +1689,18 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
             logger.error(f"[FOLLOW-UP] Failed to capture space {space_id}: {e}")
             return None
 
+    def _is_multi_monitor_query(self, command_text: str) -> bool:
+        """Check if query is about multiple monitors/displays"""
+        query_lower = command_text.lower()
+        monitor_keywords = [
+            "monitor", "display", "screen",
+            "second monitor", "primary monitor", "main monitor",
+            "monitor 1", "monitor 2", "monitor 3", "monitor 4",
+            "all monitors", "all displays", "both monitors",
+            "left monitor", "right monitor", "show me all displays"
+        ]
+        return any(keyword in query_lower for keyword in monitor_keywords)
+    
     def _is_multi_space_query(self, command_text: str) -> bool:
         """Check if query is about multiple desktop spaces OR specific space analysis"""
         command_lower = command_text.lower()
@@ -1706,6 +1724,115 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
         return (any(indicator in command_lower for indicator in multi_space_indicators) or
                 any(indicator in command_lower for indicator in visual_analysis_indicators))
 
+    async def _handle_multi_monitor_query(self, command_text: str) -> Dict[str, Any]:
+        """Handle multi-monitor specific queries with intelligent routing"""
+        try:
+            logger.info("[MULTI-MONITOR] Handling multi-monitor query")
+            
+            from vision.multi_monitor_detector import MultiMonitorDetector
+            from vision.query_disambiguation import get_query_disambiguator
+            
+            detector = MultiMonitorDetector()
+            
+            # Detect displays
+            displays = await detector.detect_displays()
+            
+            if len(displays) == 0:
+                return {
+                    "handled": True,
+                    "response": "Sir, I cannot detect any displays. Please ensure screen recording permissions are enabled.",
+                    "monitoring_active": self.monitoring_active
+                }
+            
+            if len(displays) == 1:
+                # Single display - redirect to normal space analysis
+                logger.info("[MULTI-MONITOR] Only one display, routing to multi-space handler")
+                return {"handled": False}  # Let multi-space handler take over
+            
+            # Handle "show me all displays" type queries
+            query_lower = command_text.lower()
+            if any(keyword in query_lower for keyword in ["all displays", "all monitors", "show me all"]):
+                summary = await detector.get_display_summary()
+                
+                # Generate natural language summary
+                response_parts = [f"Sir, you have {len(displays)} displays connected:"]
+                for i, display in enumerate(displays):
+                    position = "Primary" if display.is_primary else f"Monitor {i+1}"
+                    resolution = f"{display.resolution[0]}x{display.resolution[1]}"
+                    response_parts.append(f"\n• {position}: {resolution}")
+                    
+                    # Add space info if available
+                    if summary.get("space_mappings"):
+                        spaces_on_display = [
+                            space_id for space_id, mapping in summary["space_mappings"].items()
+                            if mapping.display_id == display.display_id
+                        ]
+                        if spaces_on_display:
+                            response_parts.append(f"  (Spaces: {', '.join(map(str, spaces_on_display))})")
+                
+                return {
+                    "handled": True,
+                    "response": "".join(response_parts),
+                    "display_summary": summary,
+                    "monitoring_active": self.monitoring_active
+                }
+            
+            # Parse which monitor user is asking about
+            disambiguator = get_query_disambiguator()
+            monitor_ref = await disambiguator.resolve_monitor_reference(command_text, displays)
+            
+            if monitor_ref is None or monitor_ref.ambiguous:
+                # Ask for clarification
+                clarification = await disambiguator.ask_clarification(command_text, displays)
+                return {
+                    "handled": True,
+                    "response": clarification,
+                    "needs_clarification": True,
+                    "available_displays": len(displays),
+                    "monitoring_active": self.monitoring_active
+                }
+            
+            # Capture specific monitor
+            result = await detector.capture_all_displays()
+            
+            if monitor_ref.display_id not in result.displays_captured:
+                return {
+                    "handled": True,
+                    "response": f"Sir, I was unable to capture display {monitor_ref.display_id}.",
+                    "monitoring_active": self.monitoring_active
+                }
+            
+            # Get display info
+            target_display = next((d for d in displays if d.display_id == monitor_ref.display_id), None)
+            
+            # Analyze with Claude
+            screenshot = result.displays_captured[monitor_ref.display_id]
+            
+            if target_display:
+                display_name = "the primary display" if target_display.is_primary else f"Monitor {displays.index(target_display) + 1}"
+                analysis_query = f"Analyze this screenshot from {display_name}: {command_text}"
+            else:
+                analysis_query = command_text
+            
+            # Use Claude Vision for analysis
+            response = await self.intelligence.understand_and_respond(screenshot, analysis_query)
+            
+            return {
+                "handled": True,
+                "response": response,
+                "display_id": monitor_ref.display_id,
+                "display_info": {
+                    "resolution": target_display.resolution,
+                    "is_primary": target_display.is_primary,
+                    "position": target_display.position
+                } if target_display else {},
+                "monitoring_active": self.monitoring_active
+            }
+            
+        except Exception as e:
+            logger.error(f"[MULTI-MONITOR] Error handling query: {e}", exc_info=True)
+            return {"handled": False}
+    
     async def _handle_intelligent_orchestration(self, command_text: str) -> Dict[str, Any]:
         """Handle multi-space queries using intelligent orchestration"""
         try:
@@ -2088,7 +2215,7 @@ Never use generic error messages or technical jargon.
             )
 
             if suggestion:
-                return {
+        return {
                     "available": True,
                     "has_suggestion": True,
                     "suggestion": {

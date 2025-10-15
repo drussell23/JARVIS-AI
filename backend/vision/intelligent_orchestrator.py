@@ -62,7 +62,7 @@ class WorkflowPattern(Enum):
 
 @dataclass
 class WorkspaceSnapshot:
-    """Complete workspace state snapshot"""
+    """Complete workspace state snapshot with multi-monitor awareness"""
     timestamp: datetime
     spaces: List[Dict[str, Any]]
     current_space: int
@@ -73,6 +73,10 @@ class WorkspaceSnapshot:
     patterns_detected: List[WorkflowPattern] = field(default_factory=list)
     capture_priorities: Dict[int, CapturePriority] = field(default_factory=dict)
     context_summary: str = ""
+    # Multi-monitor support
+    displays: List[Any] = field(default_factory=list)  # List of DisplayInfo objects
+    space_display_mapping: Dict[int, int] = field(default_factory=dict)  # space_id -> display_id
+    total_displays: int = 0
 
 @dataclass
 class CaptureTarget:
@@ -133,16 +137,18 @@ class IntelligentOrchestrator:
         self._initialize_subsystems()
         
     def _initialize_subsystems(self):
-        """Initialize Yabai, CG Windows API, and Claude Vision subsystems"""
+        """Initialize Yabai, CG Windows API, Claude Vision, and Multi-Monitor subsystems"""
         try:
             # Import subsystems dynamically
             from .yabai_space_detector import get_yabai_detector
             from .cg_window_capture import get_capture_engine
             from .claude_vision_analyzer_main import ClaudeVisionAnalyzer
+            from .multi_monitor_detector import MultiMonitorDetector
             
             self.yabai_detector = get_yabai_detector()
             self.cg_capture_engine = get_capture_engine()
             self.claude_analyzer = None  # Will be initialized with API key
+            self.monitor_detector = MultiMonitorDetector()  # Multi-monitor support
             
             self.logger.info("✅ Intelligent Orchestrator subsystems initialized")
             
@@ -349,6 +355,17 @@ class IntelligentOrchestrator:
                 f"{time.time()}_{len(spaces)}_{total_windows}".encode()
             ).hexdigest()[:12]
             
+            # Add multi-monitor detection
+            displays = []
+            space_display_mapping = {}
+            try:
+                if self.monitor_detector:
+                    displays = await self.monitor_detector.detect_displays()
+                    space_display_mapping = await self.monitor_detector.get_space_display_mapping()
+                    self.logger.info(f"[SCOUT] Detected {len(displays)} displays")
+            except Exception as e:
+                self.logger.warning(f"[SCOUT] Multi-monitor detection failed: {e}")
+            
             snapshot = WorkspaceSnapshot(
                 timestamp=datetime.now(),
                 spaces=spaces,
@@ -356,11 +373,14 @@ class IntelligentOrchestrator:
                 total_spaces=len(spaces),
                 total_windows=total_windows,
                 total_apps=len(total_apps),
-                snapshot_id=snapshot_id
+                snapshot_id=snapshot_id,
+                displays=displays,
+                space_display_mapping=space_display_mapping,
+                total_displays=len(displays)
             )
             
             scouting_time = time.time() - start_time
-            self.logger.info(f"[SCOUTING] Completed in {scouting_time:.3f}s")
+            self.logger.info(f"[SCOUTING] Completed in {scouting_time:.3f}s - {len(displays)} displays, {len(spaces)} spaces")
             
             return snapshot
             
