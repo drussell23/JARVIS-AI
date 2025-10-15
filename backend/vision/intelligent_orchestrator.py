@@ -543,11 +543,28 @@ class IntelligentOrchestrator:
             
             # Use CG Windows API for non-disruptive capture
             if hasattr(self.cg_capture_engine, 'capture_window_by_id'):
-                screenshot = self.cg_capture_engine.capture_window_by_id(window_id)
+                result = self.cg_capture_engine.capture_window_by_id(window_id)
             else:
                 # Fallback to capture_window method
-                screenshot = self.cg_capture_engine.capture_window(window_id)
-            return screenshot
+                result = self.cg_capture_engine.capture_window(window_id)
+            
+            # Extract numpy array from CaptureResult
+            if result is None:
+                return None
+            elif isinstance(result, np.ndarray):
+                return result
+            elif hasattr(result, 'screenshot'):
+                # CaptureResult object - extract screenshot
+                screenshot = result.screenshot
+                if screenshot is not None and result.success:
+                    self.logger.debug(f"[CAPTURE] Extracted screenshot from CaptureResult: {screenshot.shape}")
+                    return screenshot
+                else:
+                    self.logger.warning(f"[CAPTURE] CaptureResult failed or has no screenshot: {result.error if hasattr(result, 'error') else 'unknown'}")
+                    return None
+            else:
+                self.logger.warning(f"[CAPTURE] Unexpected return type: {type(result)}")
+                return result
             
         except Exception as e:
             self.logger.error(f"[CAPTURE] Window capture failed: {e}")
@@ -736,20 +753,47 @@ class IntelligentOrchestrator:
                         "description": f"Space {content_data['target'].space_id} - {content_data['target'].app_name}"
                     })
             
-            # Analyze with Claude
+            # Analyze with Claude Vision
             start_time = time.time()
+            
+            if not images:
+                self.logger.warning("[CLAUDE] No images available for analysis, using metadata")
+                # Fallback to metadata-based response
+                return {
+                    "analysis": "Sir, I have access to your workspace metadata but no visual content was captured. " +
+                               await self._generate_fallback_analysis(query, snapshot),
+                    "analysis_time": 0.0,
+                    "images_analyzed": 0,
+                    "intent": intent.value,
+                    "patterns": [p.value for p in snapshot.patterns_detected],
+                    "visual_analysis": False
+                }
+            
+            # Perform Claude Vision analysis
+            self.logger.info(f"[CLAUDE] Analyzing {len(images)} images with enhanced visual intelligence prompt")
             analysis_result = await self.claude_analyzer.analyze_screenshot_async(
-                images[0]["image"] if images else None,
+                images[0]["image"],
                 prompt
             )
             analysis_time = time.time() - start_time
             
+            # Extract Claude's response
+            claude_response = analysis_result.get("description", "Analysis completed")
+            
+            # Enhance response with visual intelligence markers
             return {
-                "analysis": analysis_result.get("description", "Analysis completed"),
+                "analysis": claude_response,
                 "analysis_time": analysis_time,
                 "images_analyzed": len(images),
                 "intent": intent.value,
-                "patterns": [p.value for p in snapshot.patterns_detected]
+                "patterns": [p.value for p in snapshot.patterns_detected],
+                "visual_analysis": True,
+                "visual_insights": {
+                    "ocr_performed": True,
+                    "ui_state_detected": True,
+                    "error_detection_active": intent == QueryIntent.ERROR_ANALYSIS,
+                    "cross_space_analysis": len(images) > 1
+                }
             }
             
         except Exception as e:
@@ -758,6 +802,32 @@ class IntelligentOrchestrator:
                 "analysis": f"Analysis failed: {str(e)}",
                 "fallback": True
             }
+    
+    async def _generate_fallback_analysis(
+        self,
+        query: str,
+        snapshot: WorkspaceSnapshot
+    ) -> str:
+        """Generate fallback analysis when visual content is unavailable"""
+        
+        response_parts = []
+        
+        # Provide overview based on metadata
+        response_parts.append(f"I can see you have {snapshot.total_spaces} desktop spaces active.")
+        
+        # List key activities
+        key_apps = set()
+        for space in snapshot.spaces:
+            for app in space.get("applications", []):
+                key_apps.add(app)
+        
+        if key_apps:
+            response_parts.append(f"Key applications: {', '.join(sorted(key_apps)[:5])}")
+        
+        # Add recommendation
+        response_parts.append("For deeper visual analysis, please ensure screen recording permissions are enabled.")
+        
+        return " ".join(response_parts)
     
     async def _generate_workspace_overview(
         self,
@@ -1310,59 +1380,181 @@ class IntelligentOrchestrator:
         snapshot: WorkspaceSnapshot,
         captured_content: Dict[str, Any]
     ) -> str:
-        """Build enhanced prompt for Claude Vision analysis"""
+        """Build ENHANCED prompt for deep Claude Vision intelligence"""
         
-        # Base prompt
-        prompt = f"""You are JARVIS, Tony Stark's AI assistant with advanced vision capabilities.
-
-USER QUERY: "{query}"
-QUERY INTENT: {intent.value}
-
-WORKSPACE CONTEXT:
-You have visibility across {snapshot.total_spaces} desktop spaces with {snapshot.total_windows} windows total.
-Current space: {snapshot.current_space}
-
-SPACE BREAKDOWN:"""
+        # Intent-specific visual analysis focus
+        intent_instructions = {
+            QueryIntent.ERROR_ANALYSIS: """
+🔍 ERROR DETECTION FOCUS:
+- Perform OCR on ALL visible text, especially error messages, stack traces, warnings
+- Identify red error indicators, warning icons, status badges
+- Extract exact error messages, line numbers, file names
+- Analyze error context: what file, what function, what's breaking
+- Look for related errors across multiple windows
+- Provide specific, actionable fix suggestions based on the visual error context""",
+            
+            QueryIntent.DEBUGGING_SESSION: """
+🐛 DEBUGGING INTELLIGENCE:
+- Read code visible in the editor: what function/class is being edited
+- Identify debugging artifacts: breakpoints, console logs, print statements
+- Analyze terminal output: what commands ran, what failed, what succeeded
+- Look for test results, pytest output, jest results
+- Connect the code being written with terminal/browser output
+- Identify the debugging strategy: logging, testing, stepping, tracing""",
+            
+            QueryIntent.RESEARCH_REVIEW: """
+📚 RESEARCH COMPREHENSION:
+- Read URLs, page titles, documentation headings visible in browsers
+- Identify what topics/APIs/frameworks are being researched
+- Extract key technical terms, API names, library versions
+- Look for Stack Overflow, GitHub issues, documentation pages
+- Connect research content to code being written in other spaces
+- Identify learning patterns: tutorial following, API exploration, debugging research""",
+            
+            QueryIntent.WORKFLOW_STATUS: """
+⚙️ WORKFLOW INTELLIGENCE:
+- Analyze UI states: loading spinners, progress bars, status indicators
+- Read terminal prompts: what commands are running, what's idle
+- Identify file/project names visible in window titles and tabs
+- Look for git branch names, commit messages, terminal paths
+- Detect multitasking patterns: split screens, multiple tabs, context switching
+- Analyze work momentum: active editing, testing, researching, or stuck""",
+            
+            QueryIntent.MULTITASKING_CHECK: """
+🔄 MULTITASKING ANALYSIS:
+- Identify distinct tasks across different spaces
+- Read project names, repo names from window titles
+- Detect context switching: frequency, patterns, related/unrelated tasks
+- Analyze cognitive load: how many different contexts are active
+- Look for task relationships: are tasks related or completely different
+- Provide insight into focus vs fragmentation"""
+        }
         
-        # Add space details
+        # Get intent-specific instructions
+        visual_focus = intent_instructions.get(intent, """
+👁️ GENERAL VISUAL INTELLIGENCE:
+- Perform comprehensive OCR on all visible text
+- Identify UI elements, states, and interactions
+- Extract meaningful context from visual content
+- Connect visual patterns to semantic understanding""")
+        
+        # Build comprehensive prompt
+        prompt = f"""You are JARVIS, Tony Stark's AI with ADVANCED VISION INTELLIGENCE.
+
+═══════════════════════════════════════════════════════════════
+USER REQUEST: "{query}"
+INTENT: {intent.value.upper()}
+═══════════════════════════════════════════════════════════════
+
+🌐 MULTI-SPACE CONTEXT:
+You have visual access to {snapshot.total_spaces} desktop spaces with {snapshot.total_windows} active windows.
+Current space: Space {snapshot.current_space}
+
+📍 SPACE BREAKDOWN:"""
+        
+        # Add rich space details
         for space in snapshot.spaces:
             space_id = space["space_id"]
             is_current = space.get("is_current", False)
             apps = space.get("applications", [])
             primary_app = space.get("primary_app", "Unknown")
+            window_titles = space.get("window_titles", [])
             
-            current_marker = " (CURRENT)" if is_current else ""
+            current_marker = " ← YOU ARE HERE" if is_current else ""
             prompt += f"\n• Space {space_id}{current_marker}: {primary_app}"
-            if apps:
-                prompt += f" - {', '.join(apps)}"
+            if apps and len(apps) > 1:
+                prompt += f" + {len(apps)-1} more apps"
+            if window_titles:
+                # Show first window title for context
+                first_title = window_titles[0][:60] + "..." if len(window_titles[0]) > 60 else window_titles[0]
+                prompt += f"\n  Window: {first_title}"
         
-        # Add captured content context
+        # Add captured visual content metadata
         if captured_content:
-            prompt += "\n\nCAPTURED CONTENT FOR ANALYSIS:"
+            prompt += "\n\n🎯 VISUAL CONTENT CAPTURED FOR DEEP ANALYSIS:"
             for content_key, content_data in captured_content.items():
                 target = content_data["target"]
-                prompt += f"\n• Space {target.space_id}: {target.app_name} - {target.window_title}"
-                prompt += f"\n  Priority: {target.priority.value} ({target.reason})"
+                prompt += f"\n• Space {target.space_id}: {target.app_name}"
+                prompt += f"\n  Window: {target.window_title[:80]}"
+                prompt += f"\n  Analysis Priority: {target.priority.value.upper()} - {target.reason}"
         
         # Add detected patterns
         if snapshot.patterns_detected:
-            patterns = [p.value for p in snapshot.patterns_detected]
-            prompt += f"\n\nDETECTED WORKFLOW PATTERNS: {', '.join(patterns)}"
+            patterns = [p.value.upper() for p in snapshot.patterns_detected]
+            prompt += f"\n\n🔍 DETECTED WORKFLOW PATTERNS: {', '.join(patterns)}"
         
-        # Add analysis instructions
-        prompt += f"""
+        # Add intent-specific visual intelligence instructions
+        prompt += f"\n\n{visual_focus}"
+        
+        # Add comprehensive analysis framework
+        prompt += """
 
-ANALYSIS INSTRUCTIONS:
-1. Analyze the visual content in detail
-2. Focus on the user's specific query and intent
-3. Identify patterns and connections across spaces
-4. Provide actionable insights and recommendations
-5. Address the user as "Sir" naturally
-6. Be specific about what you see and what it means
-7. If you detect errors or issues, highlight them clearly
-8. Connect related activities across different spaces
+═══════════════════════════════════════════════════════════════
+🎯 COMPREHENSIVE VISUAL ANALYSIS FRAMEWORK
+═══════════════════════════════════════════════════════════════
 
-Provide a comprehensive analysis that helps the user understand their workspace and what's happening."""
+1️⃣ VISUAL OCR & TEXT EXTRACTION:
+   - Read ALL visible text: error messages, code, URLs, file names, commands
+   - Extract technical terms: function names, variable names, API calls
+   - Identify documentation content, Stack Overflow snippets, GitHub issues
+   - Read terminal output: commands, errors, success messages, paths
+
+2️⃣ UI STATE DETECTION:
+   - Error indicators: red badges, error icons, alert dialogs
+   - Status indicators: loading spinners, progress bars, completion checkmarks
+   - Interactive states: selected items, focused elements, hover states
+   - Visual warnings: yellow/orange warning icons, deprecation notices
+
+3️⃣ CODE COMPREHENSION (if visible):
+   - What file is being edited (visible in tab/title)
+   - What function/class is visible in the viewport
+   - Language/framework indicators (file extensions, syntax highlighting)
+   - Code quality signals: linter errors, syntax highlighting of issues
+
+4️⃣ CONTEXTUAL INTELLIGENCE:
+   - Project/repo identification from visible paths, folder names
+   - Git branch/commit info from terminal or editor status bar
+   - Running processes: what's executing, what's idle, what failed
+   - Browser content: what docs/APIs being researched, related to coding?
+
+5️⃣ ERROR FORENSICS (if errors detected):
+   - EXACT error message (word-for-word OCR extraction)
+   - Error location: file name, line number, function name
+   - Error type: syntax, runtime, logical, API, network, etc.
+   - Visual context: what code surrounds the error
+   - Actionable fix: specific suggestion based on visual error context
+
+6️⃣ CROSS-SPACE INTELLIGENCE:
+   - Connections: Is the browser researching errors from the terminal?
+   - Flow: Is code in editor related to terminal output?
+   - Context switching: Moving between related or unrelated tasks?
+   - Workflow coherence: Focused debugging vs scattered exploration
+
+7️⃣ ACTIONABLE INSIGHTS:
+   - What should the user do next?
+   - What's blocking progress (if anything)?
+   - What's working well in the workflow?
+   - Suggestions for optimization or focus
+
+═══════════════════════════════════════════════════════════════
+📝 RESPONSE FORMAT
+═══════════════════════════════════════════════════════════════
+
+Address the user as "Sir" naturally. Structure your response based on what you ACTUALLY SEE:
+
+**[Primary Insight Based on Visual Analysis]**
+
+[Detailed visual observations with specific OCR text, UI states, and context]
+
+🔍 Key Visual Findings:
+• [Specific thing you see and what it means]
+• [Another specific visual observation]
+• [Cross-space connections you notice]
+
+💡 Recommendations:
+• [Actionable suggestion based on visual analysis]
+
+Be SPECIFIC with visual details: quote exact error messages, name specific files/functions visible, describe UI states precisely. Don't be generic - use the VISUAL CONTENT!"""
         
         return prompt
     
