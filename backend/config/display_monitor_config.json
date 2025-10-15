@@ -3,8 +3,8 @@
     "enabled": true,
     "check_interval_seconds": 10.0,
     "startup_delay_seconds": 2.0,
-    "detection_methods": ["applescript", "coregraphics", "yabai"],
-    "preferred_detection_method": "applescript"
+    "detection_methods": ["dnssd", "applescript", "coregraphics", "yabai"],
+    "preferred_detection_method": "dnssd"
   },
   "displays": {
     "monitored_displays": [
@@ -36,13 +36,20 @@
     "speak_on_disconnection": false
   },
   "applescript": {
-    "enabled": true,
+    "enabled": false,
     "timeout_seconds": 5.0,
     "retry_attempts": 3,
     "retry_delay_seconds": 0.5,
     "control_center_process": "ControlCenter",
     "screen_mirroring_menu_item": "Screen Mirroring",
     "filter_system_items": ["Turn Display Mirroring Off", ""]
+  },
+  "dnssd": {
+    "enabled": true,
+    "timeout_seconds": 5.0,
+    "service_type": "_airplay._tcp",
+    "exclude_local_device": true,
+    "comment": "DNS-SD (Bonjour) detection for AirPlay devices - works on macOS Sequoia+"
   },
   "coregraphics": {
     "enabled": true,

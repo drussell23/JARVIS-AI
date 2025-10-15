@@ -70,5 +70,14 @@
     "dependencies": ["voice"],
     "description": "Hands-free 'Hey JARVIS' activation",
     "import_function": "import_wake_word"
+  },
+  "display_monitor": {
+    "priority": "CORE",
+    "estimated_memory_mb": 50,
+    "estimated_load_time_ms": 100,
+    "intent_keywords": ["display", "screen mirroring", "airplay", "tv", "external display", "monitor", "connect display"],
+    "dependencies": ["voice"],
+    "description": "AirPlay/external display detection & management",
+    "import_function": "import_display_monitor"
   }
 }

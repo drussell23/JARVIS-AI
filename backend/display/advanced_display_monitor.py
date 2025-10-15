@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 class DetectionMethod(Enum):
     """Available detection methods"""
     APPLESCRIPT = "applescript"
+    DNSSD = "dnssd"
     COREGRAPHICS = "coregraphics"
     YABAI = "yabai"
 
@@ -247,6 +248,74 @@ class AppleScriptDetector:
             return {"success": False, "message": str(e)}
 
 
+class DNSSDDetector:
+    """DNS-SD (Bonjour) based AirPlay display detection for macOS Sequoia+"""
+
+    def __init__(self, config: Dict):
+        self.config = config
+        self.timeout = config.get('timeout_seconds', 5.0)
+        self.service_type = config.get('service_type', '_airplay._tcp')
+        self.exclude_local = config.get('exclude_local_device', True)
+
+    async def detect_displays(self) -> List[str]:
+        """Detect AirPlay displays using dns-sd"""
+        try:
+            # Start dns-sd browsing in background
+            process = await asyncio.create_subprocess_exec(
+                'dns-sd', '-B', self.service_type,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+
+            # Let it run for timeout seconds to collect results
+            await asyncio.sleep(self.timeout)
+
+            # Kill the process
+            process.terminate()
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(),
+                    timeout=2.0
+                )
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+                stdout, stderr = b'', b''
+
+            if stdout:
+                output = stdout.decode('utf-8', errors='ignore')
+
+                # Parse dns-sd output
+                # Format: "Timestamp A/R Flags if Domain Service Type Instance Name"
+                # We want the Instance Name column
+                devices = []
+                for line in output.split('\n'):
+                    if 'Add' in line and self.service_type in line:
+                        # Split by multiple spaces and get last part (instance name)
+                        parts = [p for p in line.split('  ') if p.strip()]
+                        if len(parts) >= 3:
+                            instance_name = parts[-1].strip()
+
+                            # Filter out local device if configured
+                            if self.exclude_local and "MacBook" in instance_name:
+                                continue
+
+                            if instance_name and instance_name not in devices:
+                                devices.append(instance_name)
+
+                logger.debug(f"DNS-SD detected: {devices}")
+                return devices
+
+            return []
+
+        except FileNotFoundError:
+            logger.warning("dns-sd command not found")
+            return []
+        except Exception as e:
+            logger.error(f"DNS-SD detection error: {e}")
+            return []
+
+
 class CoreGraphicsDetector:
     """Core Graphics-based display detection"""
 
@@ -407,17 +476,22 @@ class AdvancedDisplayMonitor:
         """Initialize detection method instances"""
         methods = self.config['display_monitoring']['detection_methods']
 
-        if 'applescript' in methods and self.config['applescript']['enabled']:
+        if 'applescript' in methods and self.config.get('applescript', {}).get('enabled', False):
             self.detectors[DetectionMethod.APPLESCRIPT] = AppleScriptDetector(
                 self.config['applescript']
             )
 
-        if 'coregraphics' in methods and self.config['coregraphics']['enabled']:
+        if 'dnssd' in methods and self.config.get('dnssd', {}).get('enabled', False):
+            self.detectors[DetectionMethod.DNSSD] = DNSSDDetector(
+                self.config['dnssd']
+            )
+
+        if 'coregraphics' in methods and self.config.get('coregraphics', {}).get('enabled', False):
             self.detectors[DetectionMethod.COREGRAPHICS] = CoreGraphicsDetector(
                 self.config['coregraphics']
             )
 
-        if 'yabai' in methods and self.config['yabai']['enabled']:
+        if 'yabai' in methods and self.config.get('yabai', {}).get('enabled', False):
             self.detectors[DetectionMethod.YABAI] = YabaiDetector(
                 self.config['yabai']
             )
