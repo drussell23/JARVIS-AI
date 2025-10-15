@@ -183,8 +183,8 @@ class IntelligentOrchestrator:
             workspace_snapshot = await self._scout_workspace()
             self.logger.info(f"[ORCHESTRATOR] Workspace scouted: {workspace_snapshot.total_spaces} spaces, {workspace_snapshot.total_windows} windows")
             
-            # Phase 3: Dynamic Target Selection
-            capture_targets = await self._select_capture_targets(intent, workspace_snapshot)
+            # Phase 3: Dynamic Target Selection (with query-specific targeting)
+            capture_targets = await self._select_capture_targets(intent, workspace_snapshot, query)
             self.logger.info(f"[ORCHESTRATOR] Selected {len(capture_targets)} capture targets")
             
             # Phase 4: Selective Visual Capture (CG Windows API)
@@ -371,14 +371,30 @@ class IntelligentOrchestrator:
     async def _select_capture_targets(
         self, 
         intent: QueryIntent, 
-        snapshot: WorkspaceSnapshot
+        snapshot: WorkspaceSnapshot,
+        query: Optional[str] = None
     ) -> List[CaptureTarget]:
         """Dynamically select capture targets based on intent and workspace state"""
+        
+        # Check if query specifies a particular space
+        target_space_id = None
+        if query:
+            query_lower = query.lower()
+            for i in range(1, 21):  # Support up to Space 20
+                if f"space {i}" in query_lower:
+                    target_space_id = i
+                    self.logger.info(f"[ORCHESTRATOR] Query targets specific Space {i}")
+                    break
         
         targets = []
         
         for space in snapshot.spaces:
             space_id = space["space_id"]
+            
+            # If query specifies a space, ONLY capture that space
+            if target_space_id is not None and space_id != target_space_id:
+                continue
+            
             windows = space.get("windows", [])
             
             for window in windows:
@@ -389,6 +405,13 @@ class IntelligentOrchestrator:
                 priority, reason, value = await self._calculate_capture_priority(
                     intent, app_name, window_title, space
                 )
+                
+                # If targeting specific space, capture ALL windows from that space
+                if target_space_id == space_id:
+                    if priority == CapturePriority.SKIP:
+                        priority = CapturePriority.HIGH  # Boost priority for targeted space
+                    reason = f"Requested: Space {target_space_id}"
+                    value = max(value, 0.9)  # Ensure high value
                 
                 if priority != CapturePriority.SKIP and value >= self._config["min_capture_value"]:
                     target = CaptureTarget(
@@ -401,6 +424,11 @@ class IntelligentOrchestrator:
                         estimated_value=value
                     )
                     targets.append(target)
+        
+        # If targeting specific space, return ALL its targets (don't limit)
+        if target_space_id is not None:
+            self.logger.info(f"[ORCHESTRATOR] Captured {len(targets)} targets from Space {target_space_id}")
+            return targets
         
         # Sort by priority and value
         targets.sort(key=lambda t: (t.priority.value, -t.estimated_value))
@@ -1477,8 +1505,31 @@ class IntelligentOrchestrator:
 - Extract meaningful context from visual content
 - Connect visual patterns to semantic understanding""")
         
+        # Check if analyzing specific space
+        query_lower = query.lower()
+        target_space = None
+        for i in range(1, 21):
+            if f"space {i}" in query_lower:
+                target_space = i
+                break
+        
         # Build comprehensive prompt
-        prompt = f"""You are JARVIS, Tony Stark's AI with ADVANCED VISION INTELLIGENCE.
+        if target_space:
+            prompt = f"""You are JARVIS, Tony Stark's AI with ADVANCED VISION INTELLIGENCE.
+
+═══════════════════════════════════════════════════════════════
+USER REQUEST: "{query}"
+INTENT: {intent.value.upper()}
+TARGET: **SPACE {target_space} ONLY** (User specifically requested this space)
+═══════════════════════════════════════════════════════════════
+
+🎯 FOCUSED ANALYSIS ON SPACE {target_space}:
+You are analyzing ONLY Space {target_space}. Do NOT analyze other spaces.
+Workspace context: {snapshot.total_spaces} desktop spaces total, current space: {snapshot.current_space}
+
+📍 SPACE BREAKDOWN:"""
+        else:
+            prompt = f"""You are JARVIS, Tony Stark's AI with ADVANCED VISION INTELLIGENCE.
 
 ═══════════════════════════════════════════════════════════════
 USER REQUEST: "{query}"
@@ -1510,7 +1561,11 @@ Current space: Space {snapshot.current_space}
         
         # Add captured visual content metadata
         if captured_content:
-            prompt += "\n\n🎯 VISUAL CONTENT CAPTURED FOR DEEP ANALYSIS:"
+            if target_space:
+                prompt += f"\n\n🎯 VISUAL CONTENT FROM SPACE {target_space} (AS REQUESTED):"
+            else:
+                prompt += "\n\n🎯 VISUAL CONTENT CAPTURED FOR DEEP ANALYSIS:"
+            
             for content_key, content_data in captured_content.items():
                 target = content_data["target"]
                 prompt += f"\n• Space {target.space_id}: {target.app_name}"
@@ -1579,7 +1634,11 @@ Current space: Space {snapshot.current_space}
 📝 RESPONSE FORMAT
 ═══════════════════════════════════════════════════════════════
 
-Address the user as "Sir" naturally. Structure your response based on what you ACTUALLY SEE:
+Address the user as "Sir" naturally. Structure your response based on what you ACTUALLY SEE.
+
+{f"⚠️  IMPORTANT: The user asked specifically about SPACE {target_space}. Your response MUST be about Space {target_space} ONLY. Do NOT analyze other spaces!" if target_space else ""}
+
+Response structure:
 
 **[Primary Insight Based on Visual Analysis]**
 
