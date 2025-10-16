@@ -1325,6 +1325,41 @@ class AdvancedAsyncPipeline:
                     logger.error(f"[CONTEXT-INTEL] Error processing context query: {e}", exc_info=True)
                     # Fall through to normal processing
 
+        # ═══════════════════════════════════════════════════════════════
+        # UNIFIED COMMAND PROCESSOR (Priority 4)
+        # Delegate to unified processor for advanced command routing
+        # Handles: display commands, system commands, vision, etc.
+        # ═══════════════════════════════════════════════════════════════
+        try:
+            from api.unified_command_processor import get_unified_processor
+
+            processor = get_unified_processor()
+
+            # Check if unified processor can handle this command
+            logger.info(f"[PIPELINE] Attempting unified processor for: {context.text}")
+            result = await processor.process_command(context.text, websocket=None)
+
+            # If unified processor successfully handled it, use that result
+            if result.get("success") or result.get("command_type") != "unknown":
+                response_text = result.get("response", "Command processed, Sir.")
+                command_type = result.get("command_type", "unknown")
+
+                logger.info(f"[PIPELINE] ✅ Unified processor handled command (type={command_type}): {response_text[:100]}")
+
+                context.response = response_text
+                context.metadata["handled_by"] = "unified_command_processor"
+                context.metadata["command_type"] = command_type
+                context.metadata["processor_result"] = result
+                return
+            else:
+                logger.debug(f"[PIPELINE] Unified processor didn't handle command, continuing pipeline")
+
+        except ImportError:
+            logger.debug("[PIPELINE] Unified processor not available, continuing pipeline")
+        except Exception as e:
+            logger.error(f"[PIPELINE] Error in unified processor: {e}", exc_info=True)
+            # Fall through to normal processing
+
         # Check for lock/unlock commands first - these can work without JARVIS
         if any(
             phrase in text_lower
