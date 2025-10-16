@@ -818,11 +818,30 @@ class AdvancedDisplayMonitor:
 
 # Singleton instance
 _monitor_instance: Optional[AdvancedDisplayMonitor] = None
+_app_monitor_instance: Optional[AdvancedDisplayMonitor] = None  # Monitor from app.state
+
+
+def set_app_display_monitor(monitor: AdvancedDisplayMonitor):
+    """Set the app's display monitor instance (used by main.py)"""
+    global _app_monitor_instance
+    _app_monitor_instance = monitor
 
 
 def get_display_monitor(config_path: Optional[str] = None, voice_handler = None) -> AdvancedDisplayMonitor:
-    """Get singleton display monitor instance"""
-    global _monitor_instance
+    """
+    Get singleton display monitor instance
+    
+    Priority:
+    1. App monitor instance (if set by main.py) - the running instance
+    2. Singleton instance (fallback)
+    3. Create new instance (last resort)
+    """
+    global _monitor_instance, _app_monitor_instance
+    
+    # Always prefer the app monitor if available (the one that's actually running)
+    if _app_monitor_instance is not None:
+        return _app_monitor_instance
+    
     if _monitor_instance is None:
         _monitor_instance = AdvancedDisplayMonitor(config_path, voice_handler)
     return _monitor_instance

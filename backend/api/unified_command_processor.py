@@ -185,7 +185,7 @@ class UnifiedContext:
 class UnifiedCommandProcessor:
     """Dynamic command processor that learns and adapts"""
 
-    def __init__(self, claude_api_key: Optional[str] = None):
+    def __init__(self, claude_api_key: Optional[str] = None, app=None):
         self.context = UnifiedContext(conversation_history=[])
         self.handlers = {}
         self.pattern_learner = DynamicPatternLearner()
@@ -193,6 +193,7 @@ class UnifiedCommandProcessor:
         self.success_patterns = defaultdict(list)
         self._initialize_handlers()
         self.claude_api_key = claude_api_key
+        self._app = app  # Store app reference for accessing app.state
         self._load_learned_data()
 
     def _load_learned_data(self):
@@ -971,6 +972,7 @@ class UnifiedCommandProcessor:
             CommandType.SYSTEM,
             CommandType.META,
             CommandType.DOCUMENT,
+            CommandType.DISPLAY,  # Display has dedicated handler below
         ]:
             return {
                 "success": False,
@@ -1958,9 +1960,20 @@ class UnifiedCommandProcessor:
         logger.info(f"[DISPLAY] Processing display command: '{command_text}'")
 
         try:
-            from display import get_display_monitor
-
-            monitor = get_display_monitor()
+            # Try to get the running display monitor instance
+            monitor = None
+            
+            # Check if we have app reference
+            if hasattr(self, '_app') and self._app:
+                if hasattr(self._app.state, 'display_monitor'):
+                    monitor = self._app.state.display_monitor
+                    logger.info("[DISPLAY] Using running display monitor from app.state")
+            
+            # Fallback: get singleton instance
+            if monitor is None:
+                from display import get_display_monitor
+                monitor = get_display_monitor()
+                logger.info("[DISPLAY] Using display monitor singleton")
 
             # Extract display name from command
             # Look for TV names, room names, or brand names
@@ -2373,9 +2386,12 @@ class UnifiedCommandProcessor:
 _unified_processor = None
 
 
-def get_unified_processor(api_key: Optional[str] = None) -> UnifiedCommandProcessor:
+def get_unified_processor(api_key: Optional[str] = None, app=None) -> UnifiedCommandProcessor:
     """Get or create the unified command processor"""
     global _unified_processor
     if _unified_processor is None:
-        _unified_processor = UnifiedCommandProcessor(api_key)
+        _unified_processor = UnifiedCommandProcessor(api_key, app=app)
+    elif app is not None and not hasattr(_unified_processor, '_app'):
+        # Update existing processor with app reference
+        _unified_processor._app = app
     return _unified_processor

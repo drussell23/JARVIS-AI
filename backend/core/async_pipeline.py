@@ -1332,8 +1332,10 @@ class AdvancedAsyncPipeline:
         # ═══════════════════════════════════════════════════════════════
         try:
             from api.unified_command_processor import get_unified_processor
-
-            processor = get_unified_processor()
+            
+            # Try to get app from JARVIS instance
+            app = getattr(self.jarvis, 'app', None) if hasattr(self, 'jarvis') else None
+            processor = get_unified_processor(app=app)
 
             # Check if unified processor can handle this command
             logger.info(f"[PIPELINE] Attempting unified processor for: {context.text}")

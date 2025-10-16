@@ -11,6 +11,7 @@ Date: 2025-10-15
 # Import from advanced display monitor (Component #9)
 from .advanced_display_monitor import (
     get_display_monitor,
+    set_app_display_monitor,
     AdvancedDisplayMonitor,
     DisplayInfo,
     MonitoredDisplay,
@@ -28,6 +29,7 @@ from .display_monitor_service import (
 __all__ = [
     # Advanced display monitor (primary)
     "get_display_monitor",
+    "set_app_display_monitor",
     "AdvancedDisplayMonitor",
     "DisplayInfo",
     "MonitoredDisplay",

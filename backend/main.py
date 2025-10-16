@@ -1673,6 +1673,11 @@ def mount_routers():
 
                 # Get monitor instance with voice integration
                 monitor = get_monitor(voice_handler=voice_handler)
+                
+                # Register as the app's monitor instance (singleton pattern)
+                from display.advanced_display_monitor import set_app_display_monitor
+                set_app_display_monitor(monitor)
+                logger.info("   ✅ Display monitor registered as singleton")
 
                 # Set WebSocket manager for UI notifications
                 try:
