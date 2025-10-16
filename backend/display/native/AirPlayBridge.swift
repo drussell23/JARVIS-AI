@@ -356,67 +356,89 @@ class RoutePickerController: NSObject {
     // MARK: - Private Helpers
 
     private func clickRoutePickerButton(_ picker: AVRoutePickerView) async throws {
-        // Get AX element for the picker view
-        guard let pickerWindow = picker.window else {
+        // Find the button within the AVRoutePickerView using the view hierarchy
+        // AVRoutePickerView contains an NSButton as a subview
+        guard let button = findRoutePickerButton(in: picker) else {
+            NSLog("[ROUTE PICKER] Could not find button in picker view hierarchy")
             throw AirPlayHelperError.routePickerNotFound
         }
 
-        // Get the PID for our own process
-        let pid = NSRunningApplication.current.processIdentifier
-        let windowElement = AXUIElementCreateApplication(pid)
-
-        // Search for the route picker button within our window
-        guard let pickerButton = searchForRoutePickerButton(in: windowElement) else {
-            throw AirPlayHelperError.routePickerNotFound
-        }
-
-        // Click the button
-        let result = AXUIElementPerformAction(pickerButton, kAXPressAction as CFString)
-
-        guard result == .success else {
-            throw AirPlayHelperError.selectionFailed("Failed to click route picker button: \(result.rawValue)")
-        }
+        // Programmatically click the button
+        button.performClick(nil)
 
         NSLog("[ROUTE PICKER] Route picker button clicked")
     }
 
+    private func findRoutePickerButton(in view: NSView) -> NSButton? {
+        // Check if this view is an NSButton
+        if let button = view as? NSButton {
+            return button
+        }
+
+        // Search subviews recursively
+        for subview in view.subviews {
+            if let button = findRoutePickerButton(in: subview) {
+                return button
+            }
+        }
+
+        return nil
+    }
+
     private func selectDeviceInMenu(_ deviceName: String) async throws -> Bool {
-        // Search the AX tree for a menu item with the device name
-        let systemWide = AXUIElementCreateSystemWide()
+        // Search within our app's UI hierarchy for the menu
+        // AVRoutePickerView creates a popover that's part of our app's process
+        let pid = NSRunningApplication.current.processIdentifier
+        let appElement = AXUIElementCreateApplication(pid)
 
         // Give menu time to populate
-        for _ in 0..<20 {
-            if let menuItem = searchAXTreeForMenuItem(systemWide, matching: deviceName) {
-                // Click the menu item
+        for attempt in 0..<20 {
+            // Log available menu items periodically
+            if attempt == 3 || attempt == 7 || attempt == 15 {
+                let availableItems = getAllMenuItems(appElement)
+                NSLog("[ROUTE PICKER] Available items (attempt \(attempt)): \(availableItems.joined(separator: ", "))")
+            }
+
+            if let menuItem = searchAXTreeForMenuItem(appElement, matching: deviceName) {
+                // Click the menu item/checkbox
                 let result = AXUIElementPerformAction(menuItem, kAXPressAction as CFString)
 
                 if result == .success {
                     NSLog("[ROUTE PICKER] Selected device: '\(deviceName)'")
                     return true
                 } else {
-                    NSLog("[ROUTE PICKER] Failed to click menu item: \(result.rawValue)")
+                    NSLog("[ROUTE PICKER] Failed to click device: \(result.rawValue)")
                 }
             }
 
             // Wait a bit before next attempt
-            try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            try await Task.sleep(nanoseconds: 150_000_000) // 150ms
         }
+
+        // Final debug: log all available items
+        let finalItems = getAllMenuItems(appElement)
+        NSLog("[ROUTE PICKER] Final scan - all available items: \(finalItems.joined(separator: " | "))")
 
         return false
     }
 
-    private func searchForRoutePickerButton(in element: AXUIElement) -> AXUIElement? {
-        // The route picker shows as a button with role AXButton
+    private func getAllMenuItems(_ element: AXUIElement, maxDepth: Int = 10, currentDepth: Int = 0) -> [String] {
+        guard currentDepth < maxDepth else { return [] }
+
+        var items: [String] = []
+
+        // Check if this is a menu item or checkbox
         var role: AnyObject?
         AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
 
-        if let roleString = role as? String, roleString == kAXButtonRole as String {
-            // Check if this is the route picker button
-            var description: AnyObject?
-            AXUIElementCopyAttributeValue(element, kAXDescriptionAttribute as CFString, &description)
+        if let roleString = role as? String {
+            if roleString == kAXMenuItemRole as String || roleString == kAXCheckBoxRole as String {
+                var titleValue: AnyObject?
+                AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &titleValue)
 
-            if let desc = description as? String, desc.contains("Route") || desc.contains("AirPlay") {
-                return element
+                if let titleString = titleValue as? String, !titleString.isEmpty {
+                    items.append("\(titleString) (\(roleString))")
+                }
             }
         }
 
@@ -424,37 +446,38 @@ class RoutePickerController: NSObject {
         var children: AnyObject?
         let result = AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &children)
 
-        guard result == .success, let childArray = children as? [AXUIElement] else {
-            return nil
-        }
-
-        for child in childArray {
-            if let found = searchForRoutePickerButton(in: child) {
-                return found
+        if result == .success, let childArray = children as? [AXUIElement] {
+            for child in childArray {
+                items.append(contentsOf: getAllMenuItems(child, maxDepth: maxDepth, currentDepth: currentDepth + 1))
             }
         }
 
-        return nil
+        return items
     }
+
 
     private func searchAXTreeForMenuItem(_ element: AXUIElement, matching title: String, maxDepth: Int = 10, currentDepth: Int = 0) -> AXUIElement? {
         guard currentDepth < maxDepth else { return nil }
 
-        // Check if this is a menu item
+        // Check if this is a menu item or checkbox (AVRoutePickerView uses checkboxes)
         var role: AnyObject?
         AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
 
-        if let roleString = role as? String, roleString == kAXMenuItemRole as String {
-            // Check title
-            var titleValue: AnyObject?
-            AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &titleValue)
+        if let roleString = role as? String {
+            // AVRoutePickerView uses AXCheckBox for device items
+            if roleString == kAXMenuItemRole as String || roleString == kAXCheckBoxRole as String {
+                // Check title
+                var titleValue: AnyObject?
+                AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &titleValue)
 
-            if let titleString = titleValue as? String {
-                // Flexible matching: exact, contains, or case-insensitive
-                if titleString == title ||
-                   titleString.lowercased() == title.lowercased() ||
-                   titleString.lowercased().contains(title.lowercased()) {
-                    return element
+                if let titleString = titleValue as? String {
+                    // Flexible matching: exact, contains, or case-insensitive
+                    if titleString == title ||
+                       titleString.lowercased() == title.lowercased() ||
+                       titleString.lowercased().contains(title.lowercased()) {
+                        NSLog("[ROUTE PICKER] Found matching element: '\(titleString)' (role: \(roleString))")
+                        return element
+                    }
                 }
             }
         }

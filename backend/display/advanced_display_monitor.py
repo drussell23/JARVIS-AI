@@ -745,47 +745,64 @@ class AdvancedDisplayMonitor:
         """
         Connect to a display using advanced methods
 
-        Connection Strategy (prioritized):
-        1. Protocol-Level AirPlay (FASTEST - direct network protocol, no UI needed!)
-        2. Vision-Guided Navigator (uses JARVIS eyes - bypasses all macOS restrictions!)
-        3. Native Swift Bridge fallback
-        4. AppleScript fallback
-        5. Voice guidance to user
+        Connection Strategy (prioritized - PRODUCTION HARDENED):
+        1. 🥇 Route Picker Helper (AVRoutePickerView + Accessibility - MOST RELIABLE!)
+        2. 🥈 Protocol-Level AirPlay (Bonjour/mDNS + RAOP - direct protocol)
+        3. 🥉 Vision-Guided Navigator (Claude Vision - bypasses macOS restrictions)
+        4. Native Swift Bridge fallback
+        5. AppleScript fallback
+        6. Voice guidance to user
 
         Args:
             display_id: Display ID from configuration
 
         Returns:
-            Connection result dictionary
+            Connection result dictionary with telemetry
         """
         # Find monitored display
         monitored = next((d for d in self.monitored_displays if d.id == display_id), None)
         if not monitored:
             return {"success": False, "message": f"Display {display_id} not found in configuration"}
 
+        logger.info(f"[DISPLAY MONITOR] ========================================")
         logger.info(f"[DISPLAY MONITOR] Connecting to {monitored.name}...")
+        logger.info(f"[DISPLAY MONITOR] Starting 6-tier connection waterfall")
+        logger.info(f"[DISPLAY MONITOR] ========================================")
 
-        # Strategy 1: Try Protocol-Level AirPlay (BEST METHOD - fastest, most reliable!)
+        connection_start = asyncio.get_event_loop().time()
+        strategies_attempted = []
+
+        # Strategy 1: Route Picker Helper (AVRoutePickerView + Accessibility) - BEST METHOD!
         try:
-            from display.airplay_manager import get_airplay_manager
+            from display.route_picker_helper_client import get_route_picker_client
 
-            airplay_manager = get_airplay_manager()
+            logger.info(f"[DISPLAY MONITOR] 🥇 STRATEGY 1: Route Picker Helper (Track A - Public APIs)")
+            logger.info(f"[DISPLAY MONITOR] Using AVRoutePickerView + Accessibility for {monitored.name}")
+            logger.info(f"[DISPLAY MONITOR] ✅ LEGAL, App Store compliant, macOS native UI")
 
-            # Initialize if not already
-            if not airplay_manager.is_initialized:
-                await airplay_manager.initialize()
+            strategies_attempted.append("route_picker_helper")
 
-            logger.info(f"[DISPLAY MONITOR] 🚀 Using PROTOCOL-LEVEL AIRPLAY for {monitored.name}")
-            logger.info("[DISPLAY MONITOR] Direct network protocol - bypasses all UI automation!")
+            client = get_route_picker_client()
 
-            # Determine mode
-            mode = monitored.connection_mode if hasattr(monitored, 'connection_mode') else "extend"
+            # Ensure helper is running
+            if not client.is_running:
+                helper_started = await client.start_helper()
+                if not helper_started:
+                    logger.warning("[DISPLAY MONITOR] Could not start Route Picker Helper")
+                    raise Exception("Helper failed to start")
 
-            result = await airplay_manager.connect_to_device(monitored.name, mode=mode)
+            # Connect with retry logic
+            result = await client.connect_to_device(
+                device_name=monitored.name,
+                retry_attempts=2,
+                retry_delay=1.0
+            )
 
             if result.get('success'):
                 self.connected_displays.add(display_id)
                 await self._emit_event('display_connected', display=monitored)
+
+                duration = asyncio.get_event_loop().time() - connection_start
 
                 # Speak success message
                 if self.config['voice_integration']['speak_on_connection']:
@@ -800,27 +817,93 @@ class AdvancedDisplayMonitor:
                     else:
                         subprocess.Popen(['say', message])
 
+                logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via Route Picker Helper in {duration:.2f}s")
+                logger.info(f"[DISPLAY MONITOR] Method: AVRoutePickerView + Accessibility (Public APIs)")
+                logger.info(f"[DISPLAY MONITOR] ========================================")
+
+                return {
+                    "success": True,
+                    "message": f"Connected to {monitored.name} via Route Picker Helper",
+                    "method": "route_picker_helper",
+                    "duration": duration,
+                    "strategies_attempted": strategies_attempted,
+                    "telemetry": result.get('telemetry', {}),
+                    "tier": 1
+                }
+            else:
+                logger.warning(f"[DISPLAY MONITOR] Route Picker Helper failed: {result.get('message')}")
+
+        except Exception as e:
+            logger.warning(f"[DISPLAY MONITOR] Route Picker Helper error: {e}", exc_info=True)
+
+        # Strategy 2: Protocol-Level AirPlay (Bonjour/mDNS + RAOP)
+        try:
+            from display.airplay_manager import get_airplay_manager
+
+            logger.info(f"[DISPLAY MONITOR] 🥈 STRATEGY 2: Protocol-Level AirPlay (Bonjour/mDNS + RAOP)")
+            logger.info(f"[DISPLAY MONITOR] Direct network protocol for {monitored.name}")
+
+            strategies_attempted.append("airplay_protocol")
+
+            airplay_manager = get_airplay_manager()
+
+            # Initialize if not already
+            if not airplay_manager.is_initialized:
+                await airplay_manager.initialize()
+
+            # Determine mode
+            mode = monitored.connection_mode if hasattr(monitored, 'connection_mode') else "extend"
+
+            result = await airplay_manager.connect_to_device(monitored.name, mode=mode)
+
+            if result.get('success'):
+                self.connected_displays.add(display_id)
+                await self._emit_event('display_connected', display=monitored)
+
+                duration = asyncio.get_event_loop().time() - connection_start
+
+                # Speak success message
+                if self.config['voice_integration']['speak_on_connection']:
+                    template = self.config['voice_integration']['connection_success_message']
+                    message = template.format(display_name=monitored.name)
+
+                    if self.voice_handler:
+                        try:
+                            await self.voice_handler.speak(message)
+                        except:
+                            subprocess.Popen(['say', message])
+                    else:
+                        subprocess.Popen(['say', message])
+
+                logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via Protocol-Level AirPlay in {duration:.2f}s")
+                logger.info(f"[DISPLAY MONITOR] ========================================")
+
                 return {
                     "success": True,
                     "message": f"Connected via AirPlay protocol in {result.get('duration', 0):.1f}s",
                     "method": "airplay_protocol",
-                    "duration": result.get('duration', 0),
-                    "protocol_method": result.get('method', 'system_native')
+                    "duration": duration,
+                    "strategies_attempted": strategies_attempted,
+                    "protocol_method": result.get('method', 'system_native'),
+                    "tier": 2
                 }
             else:
                 logger.warning(f"[DISPLAY MONITOR] Protocol-level AirPlay failed: {result.get('message')}")
-                # Continue to fallback strategies
 
         except Exception as e:
             logger.warning(f"[DISPLAY MONITOR] Protocol-level AirPlay error: {e}")
-            # Continue to fallback strategies
 
-        # Strategy 2: Try Vision-Guided Navigator (fallback - bypasses all restrictions!)
+        # Strategy 3: Vision-Guided Navigator (Claude Vision)
         try:
             from display.vision_ui_navigator import get_vision_navigator
-            
+
+            logger.info(f"[DISPLAY MONITOR] 🥉 STRATEGY 3: Vision-Guided Navigator (Claude Vision)")
+            logger.info(f"[DISPLAY MONITOR] JARVIS will SEE and CLICK the UI for {monitored.name}")
+
+            strategies_attempted.append("vision_guided")
+
             navigator = get_vision_navigator()
-            
+
             # Connect vision analyzer if available
             if not navigator.vision_analyzer and hasattr(self, 'vision_analyzer'):
                 navigator.set_vision_analyzer(self.vision_analyzer)
@@ -835,22 +918,21 @@ class AdvancedDisplayMonitor:
                             logger.info("[DISPLAY MONITOR] Connected vision analyzer from app.state")
                 except:
                     pass
-            
+
             if navigator.vision_analyzer:
-                logger.info(f"[DISPLAY MONITOR] 👁️ Using VISION-GUIDED navigation for {monitored.name}")
-                logger.info("[DISPLAY MONITOR] JARVIS will SEE and CLICK the UI - bypassing all macOS restrictions!")
-                
                 result = await navigator.connect_to_display(monitored.name)
-                
+
                 if result.success:
                     self.connected_displays.add(display_id)
                     await self._emit_event('display_connected', display=monitored)
-                    
+
+                    duration = asyncio.get_event_loop().time() - connection_start
+
                     # Speak success message
                     if self.config['voice_integration']['speak_on_connection']:
                         template = self.config['voice_integration']['connection_success_message']
                         message = template.format(display_name=monitored.name)
-                        
+
                         if self.voice_handler:
                             try:
                                 await self.voice_handler.speak(message)
@@ -858,44 +940,52 @@ class AdvancedDisplayMonitor:
                                 subprocess.Popen(['say', message])
                         else:
                             subprocess.Popen(['say', message])
-                    
+
+                    logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via Vision Navigation in {duration:.2f}s")
+                    logger.info(f"[DISPLAY MONITOR] ========================================")
+
                     return {
                         "success": True,
                         "message": f"Connected via vision navigation in {result.duration:.1f}s",
                         "method": "vision_guided",
-                        "duration": result.duration,
-                        "steps_completed": result.steps_completed
+                        "duration": duration,
+                        "strategies_attempted": strategies_attempted,
+                        "steps_completed": result.steps_completed,
+                        "tier": 3
                     }
                 else:
                     logger.warning(f"[DISPLAY MONITOR] Vision navigation failed: {result.message}")
-                    # Continue to fallback strategies
             else:
                 logger.warning("[DISPLAY MONITOR] Vision analyzer not available for vision navigation")
-                
+
         except Exception as e:
             logger.warning(f"[DISPLAY MONITOR] Vision navigator error: {e}")
-            # Continue to fallback strategies
 
-        # Strategy 2: Try Native Swift Bridge
+        # Strategy 4: Native Swift Bridge
         try:
             from display.native import get_native_controller
-            
+
+            logger.info(f"[DISPLAY MONITOR] STRATEGY 4: Native Swift Bridge")
+            strategies_attempted.append("native_swift")
+
             native_controller = get_native_controller()
-            
+
             if await native_controller.initialize():
                 logger.info(f"[DISPLAY MONITOR] Using native Swift bridge for {monitored.name}")
-                
+
                 result = await native_controller.connect(monitored.name)
-                
+
                 if result.success:
                     self.connected_displays.add(display_id)
                     await self._emit_event('display_connected', display=monitored)
-                    
+
+                    duration = asyncio.get_event_loop().time() - connection_start
+
                     # Speak success message
                     if self.config['voice_integration']['speak_on_connection']:
                         template = self.config['voice_integration']['connection_success_message']
                         message = template.format(display_name=monitored.name)
-                        
+
                         if self.voice_handler:
                             try:
                                 await self.voice_handler.speak(message)
@@ -903,31 +993,39 @@ class AdvancedDisplayMonitor:
                                 subprocess.Popen(['say', message])
                         else:
                             subprocess.Popen(['say', message])
-                    
+
+                    logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via Native Swift Bridge in {duration:.2f}s")
+                    logger.info(f"[DISPLAY MONITOR] ========================================")
+
                     return {
                         "success": True,
                         "message": result.message,
                         "method": result.method,
-                        "duration": result.duration,
-                        "fallback_used": result.fallback_used
+                        "duration": duration,
+                        "strategies_attempted": strategies_attempted,
+                        "fallback_used": result.fallback_used,
+                        "tier": 4
                     }
                 else:
                     logger.warning(f"[DISPLAY MONITOR] Native bridge failed: {result.message}")
             else:
                 logger.warning("[DISPLAY MONITOR] Native bridge not available")
-                
+
         except Exception as e:
             logger.warning(f"[DISPLAY MONITOR] Native bridge error: {e}")
 
-        # Strategy 3: Try AppleScript fallback
+        # Strategy 5: AppleScript fallback
         if DetectionMethod.APPLESCRIPT in self.detectors:
-            logger.info(f"[DISPLAY MONITOR] Trying AppleScript fallback for {monitored.name}")
-            
+            logger.info(f"[DISPLAY MONITOR] STRATEGY 5: AppleScript Fallback")
+            strategies_attempted.append("applescript")
+
             result = await self.detectors[DetectionMethod.APPLESCRIPT].connect_display(monitored.name)
 
             if result['success']:
                 self.connected_displays.add(display_id)
                 await self._emit_event('display_connected', display=monitored)
+
+                duration = asyncio.get_event_loop().time() - connection_start
 
                 # Speak success message
                 if self.config['voice_integration']['speak_on_connection']:
@@ -942,28 +1040,42 @@ class AdvancedDisplayMonitor:
                     else:
                         subprocess.Popen(['say', message])
 
+                logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via AppleScript in {duration:.2f}s")
+                logger.info(f"[DISPLAY MONITOR] ========================================")
+
+                result['duration'] = duration
+                result['strategies_attempted'] = strategies_attempted
+                result['tier'] = 5
                 return result
 
-        # Strategy 4: All automated methods failed - provide voice guidance
+        # Strategy 6: All automated methods failed - provide voice guidance
+        duration = asyncio.get_event_loop().time() - connection_start
+
         guidance_message = (
             f"I can see {monitored.name} is available, but all automated connection methods failed. "
             f"Please click the Screen Mirroring icon in your menu bar and select {monitored.name} manually."
         )
-        
-        logger.warning(f"[DISPLAY MONITOR] All connection strategies failed for {monitored.name}")
-        
+
+        logger.error(f"[DISPLAY MONITOR] ❌ ALL 6 STRATEGIES FAILED for {monitored.name}")
+        logger.error(f"[DISPLAY MONITOR] Strategies attempted: {', '.join(strategies_attempted)}")
+        logger.error(f"[DISPLAY MONITOR] Total time: {duration:.2f}s")
+        logger.error(f"[DISPLAY MONITOR] ========================================")
+
         # Speak guidance
         if self.voice_handler:
             try:
                 await self.voice_handler.speak(guidance_message)
             except:
                 subprocess.Popen(['say', guidance_message])
-        
+
         return {
             "success": False,
             "message": guidance_message,
             "method": "none",
-            "guidance_provided": True
+            "duration": duration,
+            "strategies_attempted": strategies_attempted,
+            "guidance_provided": True,
+            "tier": 6
         }
 
     def get_status(self) -> Dict[str, Any]:
