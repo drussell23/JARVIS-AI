@@ -82,7 +82,7 @@
     "use_voice_notifications": true
   },
   "logging": {
-    "level": "INFO",
+    "level": "DEBUG",
     "log_detection_events": true,
     "log_applescript_commands": false,
     "log_performance_metrics": true

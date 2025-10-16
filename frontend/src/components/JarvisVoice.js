@@ -930,6 +930,16 @@ const JarvisVoice = () => {
       case 'connected':
         setJarvisStatus('online');
         break;
+      case 'display_detected':
+        // Handle display monitor notifications
+        console.log('🖥️ Display detected:', data);
+        const displayMessage = data.message || `${data.display_name} is now available`;
+        setResponse(displayMessage);
+        // Speak the message using JARVIS voice
+        if (data.message) {
+          speakResponse(data.message, false);
+        }
+        break;
       case 'processing':
         setIsProcessing(true);
         // Don't cancel speech here - it might cancel the wake word response
@@ -1553,11 +1563,19 @@ const JarvisVoice = () => {
             case 'audio-capture':
               setError('🎤 Microphone access denied. ML recovery failed.');
               setMicStatus('error');
+              // Stop continuous listening to prevent retry loop
+              continuousListeningRef.current = false;
+              setContinuousListening(false);
+              console.warn('⛔ Stopping continuous listening due to audio capture error');
               break;
 
             case 'not-allowed':
               setError('🚫 Microphone permission denied. Please enable in browser settings.');
               setMicStatus('error');
+              // Stop continuous listening to prevent retry loop
+              continuousListeningRef.current = false;
+              setContinuousListening(false);
+              console.warn('⛔ Stopping continuous listening due to permission denial');
               break;
 
             case 'no-speech':

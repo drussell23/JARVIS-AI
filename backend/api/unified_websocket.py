@@ -27,6 +27,7 @@ class UnifiedWebSocketManager:
 
     def __init__(self):
         self.connections: Dict[str, WebSocket] = {}
+        self.display_monitor = None  # Will be set by main.py
 
         # Initialize async pipeline for WebSocket operations
         self.pipeline = get_async_pipeline()
@@ -42,16 +43,16 @@ class UnifiedWebSocketManager:
             "vision_analyze": self._handle_vision_analyze,
             "vision_monitor": self._handle_vision_monitor,
             "workspace_analysis": self._handle_workspace_analysis,
-            
+
             # Audio/ML handlers
             "ml_audio_stream": self._handle_ml_audio,
             "audio_error": self._handle_audio_error,
-            
+
             # System handlers
             "model_status": self._handle_model_status,
             "network_status": self._handle_network_status,
             "notification": self._handle_notification,
-            
+
             # General handlers
             "ping": self._handle_ping,
             "subscribe": self._handle_subscribe,
@@ -234,7 +235,7 @@ class UnifiedWebSocketManager:
         self.connections[client_id] = websocket
         connection_capabilities[client_id] = set()
         logger.info(f"Client {client_id} connected to unified WebSocket")
-        
+
         # Send welcome message
         await websocket.send_json({
             "type": "connection_established",
@@ -242,6 +243,24 @@ class UnifiedWebSocketManager:
             "timestamp": datetime.now().isoformat(),
             "available_handlers": list(self.handlers.keys())
         })
+
+        # Send current display status if display monitor is available
+        if self.display_monitor:
+            try:
+                available_displays = self.display_monitor.get_available_display_details()
+                if available_displays:
+                    logger.info(f"[WS] Sending {len(available_displays)} available displays to new client")
+                    for display in available_displays:
+                        await websocket.send_json({
+                            "type": "display_detected",
+                            "display_name": display["display_name"],
+                            "display_id": display["display_id"],
+                            "message": display["message"],
+                            "timestamp": datetime.now().isoformat(),
+                            "on_connect": True  # Flag to indicate this is initial status
+                        })
+            except Exception as e:
+                logger.warning(f"[WS] Failed to send display status to new client: {e}")
         
     def disconnect(self, client_id: str):
         """Remove WebSocket connection"""

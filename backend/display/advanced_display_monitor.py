@@ -424,6 +424,7 @@ class AdvancedDisplayMonitor:
         """
         self.config = self._load_config(config_path)
         self.voice_handler = voice_handler
+        self.websocket_manager = None  # Will be set by main.py
 
         # Initialize components
         self.cache = DisplayCache(
@@ -442,6 +443,7 @@ class AdvancedDisplayMonitor:
         self.monitoring_task: Optional[asyncio.Task] = None
         self.available_displays: Set[str] = set()
         self.connected_displays: Set[str] = set()
+        self.initial_scan_complete = False  # Track if initial scan is done
 
         # Event callbacks
         self.callbacks: Dict[str, List[Callable]] = {
@@ -453,6 +455,11 @@ class AdvancedDisplayMonitor:
         }
 
         logger.info(f"[DISPLAY MONITOR] Initialized with {len(self.monitored_displays)} monitored displays")
+
+    def set_websocket_manager(self, ws_manager):
+        """Set WebSocket manager for UI notifications"""
+        self.websocket_manager = ws_manager
+        logger.info("[DISPLAY MONITOR] WebSocket manager set")
 
     def _load_config(self, config_path: Optional[str]) -> Dict:
         """Load configuration from file"""
@@ -562,15 +569,18 @@ class AdvancedDisplayMonitor:
                 pass
 
         self.cache.clear()
+        self.initial_scan_complete = False  # Reset for next start
         logger.info("[DISPLAY MONITOR] Stopped monitoring")
 
     async def _monitor_loop(self):
         """Main monitoring loop"""
         check_interval = self.config['display_monitoring']['check_interval_seconds']
+        logger.info(f"[DISPLAY MONITOR] Monitor loop starting (interval: {check_interval}s)")
 
         try:
             while self.is_monitoring:
                 await self._check_displays()
+                logger.debug(f"[DISPLAY MONITOR] Check complete, sleeping {check_interval}s...")
                 await asyncio.sleep(check_interval)
         except asyncio.CancelledError:
             logger.info("[DISPLAY MONITOR] Monitoring cancelled")
@@ -583,6 +593,7 @@ class AdvancedDisplayMonitor:
         try:
             # Detect all available displays
             detected_displays = await self._detect_all_displays()
+            logger.debug(f"[DISPLAY MONITOR] Check: detected {len(detected_displays)} displays: {detected_displays}")
 
             # Match against monitored displays
             current_available = set()
@@ -590,18 +601,34 @@ class AdvancedDisplayMonitor:
                 for monitored in self.monitored_displays:
                     if monitored.matches(display_name):
                         current_available.add(monitored.id)
+                        logger.debug(f"[DISPLAY MONITOR] Check: matched '{display_name}' to '{monitored.name}' (id: {monitored.id})")
 
-                        # New display detected
+                        # New display detected - only announce if initial scan is complete
                         if monitored.id not in self.available_displays:
-                            await self._handle_display_detected(monitored, display_name)
+                            if self.initial_scan_complete:
+                                # Display became available after initial scan - announce it!
+                                logger.info(f"[DISPLAY MONITOR] STATE CHANGE: {monitored.name} became AVAILABLE")
+                                await self._handle_display_detected(monitored, display_name)
+                            else:
+                                # Initial scan - just log it quietly
+                                logger.info(f"[DISPLAY MONITOR] Initial scan found: {monitored.name} (no announcement)")
 
-            # Check for lost displays
-            for display_id in self.available_displays - current_available:
-                monitored = next((d for d in self.monitored_displays if d.id == display_id), None)
-                if monitored:
-                    await self._handle_display_lost(monitored)
+            # Check for lost displays (only after initial scan)
+            if self.initial_scan_complete:
+                for display_id in self.available_displays - current_available:
+                    monitored = next((d for d in self.monitored_displays if d.id == display_id), None)
+                    if monitored:
+                        logger.info(f"[DISPLAY MONITOR] STATE CHANGE: {monitored.name} became UNAVAILABLE")
+                        await self._handle_display_lost(monitored)
 
+            logger.debug(f"[DISPLAY MONITOR] Check: available={list(current_available)}, previous={list(self.available_displays)}")
             self.available_displays = current_available
+
+            # Mark initial scan as complete after first run
+            if not self.initial_scan_complete:
+                self.initial_scan_complete = True
+                logger.info(f"[DISPLAY MONITOR] Initial scan complete. Currently available displays: {list(current_available)}")
+                logger.info("[DISPLAY MONITOR] Now monitoring for display changes...")
 
         except Exception as e:
             logger.error(f"[DISPLAY MONITOR] Error checking displays: {e}")
@@ -656,6 +683,21 @@ class AdvancedDisplayMonitor:
 
         # Emit event
         await self._emit_event('display_detected', display=monitored, detected_name=detected_name)
+
+        # Send WebSocket notification to UI
+        if self.websocket_manager:
+            try:
+                message = f"Sir, I see your {monitored.name} is now available. Would you like to extend your display to it?"
+                await self.websocket_manager.broadcast({
+                    'type': 'display_detected',
+                    'display_name': monitored.name,
+                    'display_id': monitored.id,
+                    'message': message,
+                    'timestamp': datetime.now().isoformat()
+                })
+                logger.debug(f"[DISPLAY MONITOR] Broadcasted detection to UI")
+            except Exception as e:
+                logger.warning(f"[DISPLAY MONITOR] Failed to broadcast to UI: {e}")
 
         # Voice prompt if enabled
         if monitored.auto_prompt and self.config['voice_integration']['speak_on_detection']:
@@ -751,6 +793,27 @@ class AdvancedDisplayMonitor:
             "detection_methods": [m.value for m in self.detectors.keys()],
             "cache_enabled": self.config['caching']['enabled']
         }
+
+    def get_available_display_details(self) -> list:
+        """
+        Get detailed information about currently available displays
+
+        Returns:
+            List of dicts with display details (name, id, message)
+        """
+        details = []
+        for display_id in self.available_displays:
+            monitored = next((d for d in self.monitored_displays if d.id == display_id), None)
+            if monitored:
+                message = f"Sir, I see your {monitored.name} is now available. Would you like to extend your display to it?"
+                details.append({
+                    "display_name": monitored.name,
+                    "display_id": monitored.id,
+                    "message": message,
+                    "auto_connect": monitored.auto_connect,
+                    "auto_prompt": monitored.auto_prompt
+                })
+        return details
 
 
 # Singleton instance

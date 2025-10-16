@@ -44,7 +44,7 @@ class DisplayVoiceHandler:
         # Voice settings from environment
         self.voice_enabled = os.getenv('JARVIS_VOICE_ENABLED', 'true').lower() == 'true'
         self.voice_rate = float(os.getenv('JARVIS_VOICE_RATE', '1.0'))
-        self.voice_name = os.getenv('JARVIS_VOICE_NAME', 'Samantha')
+        self.voice_name = os.getenv('JARVIS_VOICE_NAME', 'Daniel')  # British male voice
 
         logger.info(f"[DISPLAY VOICE] Initialized (enabled={self.voice_enabled})")
 

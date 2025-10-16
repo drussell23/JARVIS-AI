@@ -1674,6 +1674,15 @@ def mount_routers():
                 # Get monitor instance with voice integration
                 monitor = get_monitor(voice_handler=voice_handler)
 
+                # Set WebSocket manager for UI notifications
+                try:
+                    from api.unified_websocket import ws_manager
+                    monitor.set_websocket_manager(ws_manager)
+                    ws_manager.display_monitor = monitor  # Allow ws_manager to send current status to new clients
+                    logger.info("   ✅ Display monitor connected to WebSocket")
+                except Exception as ws_err:
+                    logger.warning(f"   ⚠️ Could not connect display monitor to WebSocket: {ws_err}")
+
                 # Store monitor in app state for access by other components
                 app.state.display_monitor = monitor
 
