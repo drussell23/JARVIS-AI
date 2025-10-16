@@ -107,7 +107,11 @@ class CoordinateCalculator:
             
             # Convert to global coordinates
             region_offset = context.get('region_offset', (0, 0)) if context else (0, 0)
+            logger.info(f"[COORD CALC] Region offset: {region_offset}")
+            logger.info(f"[COORD CALC] Local coords: {corrected}")
+            
             global_coords = self._to_global_coordinates(corrected, region_offset)
+            logger.info(f"[COORD CALC] Global coords: {global_coords}")
             
             # Clamp to screen bounds
             clamped = self._clamp_to_screen(global_coords)
@@ -163,12 +167,14 @@ class CoordinateCalculator:
         if dpi_scale == 1.0:
             return coords
         
-        # Scale coordinates
-        x, y = coords
-        corrected_x = x / dpi_scale
-        corrected_y = y / dpi_scale
+        # NOTE: On macOS, PyAutoGUI coordinates are already in logical pixels
+        # The DPI scaling is handled by the system, so we don't need to divide
+        # The coordinates from detection are already correct for clicking
         
-        return (corrected_x, corrected_y)
+        x, y = coords
+        logger.info(f"[COORD CALC] No DPI correction needed - coordinates already in logical pixels: ({x:.1f}, {y:.1f})")
+        
+        return (x, y)
     
     def _to_global_coordinates(
         self,
@@ -181,6 +187,8 @@ class CoordinateCalculator:
         
         global_x = int(round(x + offset_x))
         global_y = int(round(y + offset_y))
+        
+        logger.info(f"[COORD CALC] Converting ({x:.1f}, {y:.1f}) + offset ({offset_x}, {offset_y}) = ({global_x}, {global_y})")
         
         return (global_x, global_y)
     

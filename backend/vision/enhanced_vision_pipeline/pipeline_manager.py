@@ -229,6 +229,12 @@ class VisionPipelineManager:
                 )
             
             # Stage 3: Coordinate Calculation
+            # Pass region offset from Stage 1
+            if context is None:
+                context = {}
+            context['region_offset'] = (stage1_result['segmented_region'].x, stage1_result['segmented_region'].y)
+            context['dpi_scale'] = stage1_result['segmented_region'].dpi_scale
+            
             stage3_result = await self._execute_stage_3(stage2_result, context)
             if not stage3_result['success']:
                 return await self._handle_stage_failure(

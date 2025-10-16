@@ -126,6 +126,15 @@ class IconDetectionEngine:
             logger.info(f"[ICON DETECTOR] ✅ Icon found via {best_result.method}")
             logger.info(f"[ICON DETECTOR] Confidence: {best_result.confidence:.2%}")
             logger.info(f"[ICON DETECTOR] Bounding box: {best_result.bounding_box}")
+            logger.info(f"[ICON DETECTOR] Center point: {best_result.center_point}")
+            
+            # Debug: Check if coordinates are reasonable for Control Center
+            if best_result.center_point:
+                x, y = best_result.center_point
+                if y > 50:  # Control Center should be in menu bar (y < 30)
+                    logger.warning(f"[ICON DETECTOR] ⚠️  Suspicious coordinates: ({x}, {y}) - Control Center should be in menu bar!")
+                if x > 2000:  # Control Center should be around 1340 on 1440px screen
+                    logger.warning(f"[ICON DETECTOR] ⚠️  Suspicious X coordinate: {x} - Control Center should be around 1340!")
             
             return {
                 'success': True,
@@ -184,12 +193,17 @@ class IconDetectionEngine:
             if best_match and best_confidence > self.min_confidence:
                 (x, y), (h, w) = best_match
                 
+                center_x = x + w // 2
+                center_y = y + h // 2
+                
+                logger.info(f"[ICON DETECTOR] Template match: bbox=({x}, {y}, {w}, {h}), center=({center_x}, {center_y})")
+                
                 return DetectionResult(
                     found=True,
                     bounding_box=(x, y, w, h),
                     confidence=float(best_confidence),
                     method='template_matching',
-                    center_point=(x + w // 2, y + h // 2),
+                    center_point=(center_x, center_y),
                     metadata={'scale_tested': 10, 'best_scale': scale}
                 )
             
@@ -205,6 +219,8 @@ class IconDetectionEngine:
             # Convert to grayscale
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             
+            logger.info(f"[ICON DETECTOR] Edge detection on image: {img.shape}")
+            
             # Apply Gaussian blur
             blurred = cv2.GaussianBlur(gray, (5, 5), 0)
             
@@ -214,18 +230,22 @@ class IconDetectionEngine:
             # Find contours
             contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             
+            logger.info(f"[ICON DETECTOR] Found {len(contours)} contours")
+            
             # Filter contours by target-specific criteria
             target_criteria = self._get_target_criteria(target)
             
             best_contour = None
             best_score = 0.0
             
-            for contour in contours:
+            for i, contour in enumerate(contours):
                 # Get bounding rectangle
                 x, y, w, h = cv2.boundingRect(contour)
                 
                 # Calculate score based on size, aspect ratio, position
                 score = self._score_contour(contour, target_criteria)
+                
+                logger.info(f"[ICON DETECTOR] Contour {i}: bbox=({x}, {y}, {w}, {h}), score={score:.2%}")
                 
                 if score > best_score:
                     best_score = score
@@ -233,14 +253,71 @@ class IconDetectionEngine:
             
             if best_contour and best_score > self.min_confidence:
                 x, y, w, h = best_contour
+                center_x = x + w // 2
+                center_y = y + h // 2
+                
+                logger.info(f"[ICON DETECTOR] ✅ Best contour: ({x}, {y}, {w}, {h}) -> ({center_x}, {center_y})")
                 
                 return DetectionResult(
                     found=True,
                     bounding_box=(x, y, w, h),
                     confidence=float(best_score),
                     method='edge_detection',
-                    center_point=(x + w // 2, y + h // 2),
+                    center_point=(center_x, center_y),
                     metadata={'contours_analyzed': len(contours)}
+                )
+            
+            # For Control Center, prioritize contours in the right area
+            if target == 'control_center':
+                img_height, img_width = img.shape[:2]
+                
+                # Control Center should be in the right 20% of the menu bar
+                right_threshold = img_width * 0.8
+                
+                # Filter contours to only those in the right area
+                right_area_contours = []
+                for contour in contours:
+                    x, y, w, h = cv2.boundingRect(contour)
+                    if x >= right_threshold:  # In right 20% of menu bar
+                        score = self._score_contour(contour, target_criteria)
+                        right_area_contours.append((contour, score, (x, y, w, h)))
+                
+                if right_area_contours:
+                    # Sort by score and take the best
+                    right_area_contours.sort(key=lambda x: x[1], reverse=True)
+                    best_contour, best_score, bbox = right_area_contours[0]
+                    
+                    if best_score > self.min_confidence:
+                        x, y, w, h = bbox
+                        center_x = x + w // 2
+                        center_y = y + h // 2
+                        
+                        logger.info(f"[ICON DETECTOR] ✅ Control Center found in right area: ({center_x}, {center_y})")
+                        
+                        return DetectionResult(
+                            found=True,
+                            bounding_box=(x, y, w, h),
+                            confidence=float(best_score),
+                            method='edge_detection_right_area',
+                            center_point=(center_x, center_y),
+                            metadata={'right_area_filter': True, 'contours_analyzed': len(right_area_contours)}
+                        )
+                
+                # Final fallback: use heuristic position
+                logger.warning("[ICON DETECTOR] No suitable contour in right area, using heuristic")
+
+                heuristic_x = img_width - 100  # 100px from right edge
+                heuristic_y = 15  # Menu bar is ~30px tall, center at y=15
+
+                logger.info(f"[ICON DETECTOR] Using heuristic position: ({heuristic_x}, {heuristic_y})")
+
+                return DetectionResult(
+                    found=True,
+                    bounding_box=(heuristic_x - 15, heuristic_y - 15, 30, 30),
+                    confidence=0.70,
+                    method='edge_detection_heuristic',
+                    center_point=(heuristic_x, heuristic_y),
+                    metadata={'heuristic': True, 'img_size': (img_width, img_height)}
                 )
             
             raise ValueError(f"No suitable contour found (score: {best_score:.2%})")

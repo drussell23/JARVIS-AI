@@ -304,10 +304,17 @@ class VisionUINavigator:
                 if not screenshot:
                     raise Exception("Failed to capture screen")
 
+                # Crop to menu bar region only (top 50px of screen)
+                # This makes detection much faster and more accurate
+                menu_bar_height = 50
+                menu_bar_screenshot = screenshot.crop((0, 0, screenshot.width, menu_bar_height))
+
+                logger.info(f"[VISION NAV] Cropped to menu bar region: {menu_bar_screenshot.size}")
+
                 # Create screen region for detection
                 screen_region = ScreenRegion(
-                    image=screenshot,
-                    bounds=(0, 0, screenshot.width, screenshot.height),
+                    image=menu_bar_screenshot,
+                    bounds=(0, 0, menu_bar_screenshot.width, menu_bar_screenshot.height),
                     region_type='menu_bar',
                     confidence=1.0
                 )

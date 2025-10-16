@@ -178,7 +178,7 @@ class ScreenRegionAnalyzer:
             'control_center': {
                 'x': 0,
                 'y': 0,
-                'width': -1,  # Full width
+                'width': 1440,  # Screen width (will be adjusted for Retina)
                 'height': 30,  # Menu bar height
                 'name': 'menu_bar'
             },
@@ -336,7 +336,28 @@ class ScreenRegionAnalyzer:
         try:
             import subprocess
             
-            # Get screen info using system_profiler
+            # Capture a small region to detect scaling
+            temp_path = Path.home() / '.jarvis' / 'screenshots' / 'dpi_test.png'
+            
+            # Capture 100x100 region
+            process = await asyncio.create_subprocess_exec(
+                'screencapture', '-R', '0,0,100,100', '-x', str(temp_path),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            await process.communicate()
+            
+            if temp_path.exists():
+                from PIL import Image
+                img = Image.open(temp_path)
+                
+                # Check if image is larger than expected (Retina scaling)
+                if img.size[0] > 100:
+                    scale = img.size[0] / 100
+                    logger.info(f"[SCREEN ANALYZER] Detected DPI scale: {scale}x")
+                    return scale
+            
+            # Fallback: Check system profiler
             result = subprocess.run(
                 ['system_profiler', 'SPDisplaysDataType'],
                 capture_output=True,
