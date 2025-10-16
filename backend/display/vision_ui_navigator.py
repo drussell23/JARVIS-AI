@@ -105,13 +105,33 @@ class VisionUINavigator:
         # Learning system: Cache successful Control Center position
         self.learned_cc_position = None  # Will be (x, y) after first successful click
         self.learning_cache_file = Path.home() / '.jarvis' / 'control_center_position.json'
-        
+
+        # Advanced detection system
+        self.detection_history = []  # Track last 10 detection attempts with outcomes
+        self.failure_patterns = {}  # Track common failure scenarios
+        self.adaptive_confidence_threshold = 0.75  # Dynamic threshold based on history
+        self.screen_context = {}  # Cache screen state (resolution, dark mode, etc.)
+        self.detection_strategies = ['learned', 'primary', 'multi_pass', 'exhaustive', 'heuristic']
+        self.current_strategy_index = 0
+
+        # Edge case detection flags
+        self.edge_cases = {
+            'dark_mode': None,  # Will be detected
+            'retina_display': None,  # Will be detected
+            'resolution': None,  # Will be detected
+            'menu_bar_autohide': False,
+            'time_format_12h': True
+        }
+
         # Configure PyAutoGUI safety
         pyautogui.PAUSE = self.config.get('mouse', {}).get('delay_between_actions', 0.5)
         pyautogui.FAILSAFE = True
-        
+
         # Load learned Control Center position if available
         self._load_learned_position()
+
+        # Detect edge cases on initialization
+        self._detect_edge_cases()
 
         logger.info("[VISION NAV] Vision UI Navigator initialized")
         logger.info(f"[VISION NAV] Enhanced Pipeline: {'enabled' if self.use_enhanced_pipeline else 'disabled'}")
@@ -305,11 +325,179 @@ class VisionUINavigator:
                 json.dump({
                     'control_center_position': [x, y],
                     'screen_resolution': list(pyautogui.size()),
+                    'edge_cases': self.edge_cases,
                     'learned_at': datetime.now().isoformat()
                 }, f)
             logger.info(f"[VISION NAV] 💾 Saved learned position: ({x}, {y})")
         except Exception as e:
             logger.warning(f"[VISION NAV] Could not save learned position: {e}")
+
+    def _detect_edge_cases(self):
+        """Detect screen configuration and edge cases"""
+        try:
+            # Detect resolution
+            width, height = pyautogui.size()
+            self.edge_cases['resolution'] = (width, height)
+            self.screen_context['resolution'] = (width, height)
+
+            # Detect retina display (macOS specific)
+            try:
+                import subprocess
+                result = subprocess.run(['system_profiler', 'SPDisplaysDataType'],
+                                      capture_output=True, text=True, timeout=2)
+                self.edge_cases['retina_display'] = 'Retina' in result.stdout
+            except:
+                self.edge_cases['retina_display'] = False
+
+            # Detect dark mode (macOS specific)
+            try:
+                import subprocess
+                result = subprocess.run(['defaults', 'read', '-g', 'AppleInterfaceStyle'],
+                                      capture_output=True, text=True, timeout=1)
+                self.edge_cases['dark_mode'] = 'Dark' in result.stdout
+            except:
+                self.edge_cases['dark_mode'] = False  # Light mode or unable to detect
+
+            logger.info(f"[VISION NAV] 🔍 Edge cases detected: {self.edge_cases}")
+
+        except Exception as e:
+            logger.warning(f"[VISION NAV] Could not detect edge cases: {e}")
+
+    def _calculate_confidence_score(self, analysis: str, coords: tuple, menu_bar_width: int) -> float:
+        """
+        Calculate confidence score for detected Control Center position
+
+        Returns: Float 0.0-1.0 representing confidence
+        """
+        try:
+            confidence = 0.0
+            x, y = coords
+
+            # Factor 1: Position in expected range (0.3 weight)
+            expected_min = menu_bar_width - 180
+            expected_max = menu_bar_width - 100
+            if expected_min <= x <= expected_max:
+                position_score = 1.0
+            elif expected_min - 50 <= x <= expected_max + 50:
+                position_score = 0.5  # Close but not ideal
+            else:
+                position_score = 0.0
+            confidence += position_score * 0.3
+
+            # Factor 2: Y position centered (0.1 weight)
+            if 12 <= y <= 18:
+                confidence += 0.1
+            elif 5 <= y <= 25:
+                confidence += 0.05
+
+            # Factor 3: Analysis mentions key features (0.3 weight)
+            key_features = [
+                'rectangle', 'overlap', 'side-by-side',
+                'monochrome', 'gray', 'white'
+            ]
+            feature_score = sum(1 for f in key_features if f.lower() in analysis.lower())
+            confidence += min(feature_score / len(key_features), 1.0) * 0.3
+
+            # Factor 4: Analysis explicitly mentions HIGH confidence (0.15 weight)
+            if 'CONFIDENCE: HIGH' in analysis:
+                confidence += 0.15
+            elif 'CONFIDENCE: MEDIUM' in analysis:
+                confidence += 0.075
+
+            # Factor 5: Verification provided (0.15 weight)
+            if 'VERIFICATION:' in analysis and any(word in analysis for word in ['NOT Siri', 'NOT brightness', 'NOT WiFi']):
+                confidence += 0.15
+
+            return min(confidence, 1.0)
+
+        except Exception as e:
+            logger.warning(f"[VISION NAV] Error calculating confidence: {e}")
+            return 0.5  # Default medium confidence
+
+    def _record_detection_attempt(self, success: bool, coords: tuple, confidence: float, strategy: str, error: str = None):
+        """Record detection attempt for adaptive learning"""
+        try:
+            attempt = {
+                'timestamp': datetime.now().isoformat(),
+                'success': success,
+                'coords': coords,
+                'confidence': confidence,
+                'strategy': strategy,
+                'error': error,
+                'resolution': self.edge_cases['resolution'],
+                'dark_mode': self.edge_cases['dark_mode']
+            }
+
+            self.detection_history.append(attempt)
+
+            # Keep only last 10 attempts
+            if len(self.detection_history) > 10:
+                self.detection_history.pop(0)
+
+            # Update failure patterns
+            if not success and error:
+                self.failure_patterns[error] = self.failure_patterns.get(error, 0) + 1
+
+            # Adjust adaptive threshold based on recent history
+            if len(self.detection_history) >= 5:
+                recent_successes = sum(1 for a in self.detection_history[-5:] if a['success'])
+                success_rate = recent_successes / 5
+                if success_rate < 0.6:
+                    # Lower threshold if we're having trouble
+                    self.adaptive_confidence_threshold = max(0.6, self.adaptive_confidence_threshold - 0.05)
+                    logger.info(f"[VISION NAV] 📉 Lowered confidence threshold to {self.adaptive_confidence_threshold}")
+                elif success_rate > 0.8:
+                    # Raise threshold if we're doing well
+                    self.adaptive_confidence_threshold = min(0.85, self.adaptive_confidence_threshold + 0.02)
+
+        except Exception as e:
+            logger.warning(f"[VISION NAV] Could not record detection attempt: {e}")
+
+    async def _adaptive_strategy_selection(self) -> str:
+        """Select best detection strategy based on historical data"""
+        try:
+            # If no history, use default order
+            if not self.detection_history:
+                return self.detection_strategies[0]
+
+            # If learned position exists and has been working, prioritize it
+            if self.learned_cc_position:
+                recent_learned_attempts = [a for a in self.detection_history[-3:]
+                                          if a.get('strategy') == 'learned']
+                if recent_learned_attempts and all(a['success'] for a in recent_learned_attempts):
+                    logger.info("[VISION NAV] 🎓 Using learned position (high success rate)")
+                    return 'learned'
+
+            # Check success rate by strategy
+            strategy_stats = {}
+            for attempt in self.detection_history[-10:]:
+                strat = attempt.get('strategy', 'unknown')
+                if strat not in strategy_stats:
+                    strategy_stats[strat] = {'successes': 0, 'total': 0}
+                strategy_stats[strat]['total'] += 1
+                if attempt['success']:
+                    strategy_stats[strat]['successes'] += 1
+
+            # Find best performing strategy
+            best_strategy = None
+            best_rate = 0.0
+            for strat, stats in strategy_stats.items():
+                if stats['total'] >= 2:  # Need at least 2 attempts
+                    rate = stats['successes'] / stats['total']
+                    if rate > best_rate:
+                        best_rate = rate
+                        best_strategy = strat
+
+            if best_strategy and best_rate > 0.7:
+                logger.info(f"[VISION NAV] 📊 Using {best_strategy} strategy (success rate: {best_rate:.1%})")
+                return best_strategy
+
+            # Fall back to default order
+            return 'primary'
+
+        except Exception as e:
+            logger.warning(f"[VISION NAV] Error in adaptive strategy selection: {e}")
+            return 'primary'
 
     async def _find_and_click_control_center(self) -> bool:
         """
@@ -362,8 +550,23 @@ class VisionUINavigator:
             if self.vision_analyzer:
                 logger.info("[VISION NAV] 🤖 Asking Claude Vision to locate Control Center...")
 
-                # ULTRA-ENHANCED prompt with step-by-step analysis and validation
-                prompt = """You are analyzing a macOS menu bar screenshot. Your mission is to find the Control Center icon with 100% accuracy.
+                # ULTRA-ENHANCED prompt with dynamic context and step-by-step analysis
+                # Add dynamic context based on detected edge cases
+                context_info = []
+                if self.edge_cases.get('dark_mode'):
+                    context_info.append("**CONTEXT: Dark mode is enabled** - Control Center icon will appear as light gray/white on dark background")
+                else:
+                    context_info.append("**CONTEXT: Light mode is enabled** - Control Center icon will appear as dark gray on light background")
+
+                if self.edge_cases.get('resolution'):
+                    width, height = self.edge_cases['resolution']
+                    context_info.append(f"**CONTEXT: Screen resolution is {width}x{height}** - Control Center should be around X={width-140}")
+
+                context_section = "\n".join(context_info) if context_info else ""
+
+                prompt = f"""You are analyzing a macOS menu bar screenshot. Your mission is to find the Control Center icon with 100% accuracy.
+
+{context_section}
 
 **CRITICAL - VISUAL IDENTIFICATION:**
 
@@ -472,7 +675,7 @@ Take your time. Analyze carefully. The correct icon is there - find the two over
                 analysis = await self._analyze_with_vision(screenshot_path, prompt)
 
                 if analysis:
-                    logger.info(f"[VISION NAV] Claude response received: {analysis[:150]}...")
+                    logger.info(f"[VISION NAV] Claude response received: {analysis[:200]}...")
 
                     # Extract coordinates with robust parsing
                     coords = self._extract_coordinates_advanced(analysis, menu_bar_screenshot)
@@ -481,16 +684,43 @@ Take your time. Analyze carefully. The correct icon is there - find the two over
                         x, y = coords
                         logger.info(f"[VISION NAV] ✅ Claude Vision detected Control Center at ({x}, {y})")
 
+                        # Calculate confidence score
+                        confidence = self._calculate_confidence_score(
+                            analysis, coords, menu_bar_screenshot.width
+                        )
+                        logger.info(f"[VISION NAV] 📊 Confidence score: {confidence:.2f} (threshold: {self.adaptive_confidence_threshold:.2f})")
+
                         # Validate coordinates are within menu bar bounds
                         if not self._validate_coordinates(x, y, menu_bar_screenshot.width, menu_bar_height):
                             logger.warning(f"[VISION NAV] ⚠️ Coordinates out of bounds, adjusting...")
                             x, y = self._adjust_suspicious_coordinates(x, y, menu_bar_screenshot.width, menu_bar_height)
                             logger.info(f"[VISION NAV] Adjusted to: ({x}, {y})")
+                            confidence *= 0.8  # Reduce confidence for adjusted coordinates
 
                         # ADVANCED: Spatial validation - Control Center should be in right section
                         if not await self._validate_control_center_position(x, y, menu_bar_screenshot):
                             logger.warning(f"[VISION NAV] ⚠️ Position failed spatial validation at ({x}, {y})")
+                            self._record_detection_attempt(
+                                success=False,
+                                coords=(x, y),
+                                confidence=confidence,
+                                strategy='primary',
+                                error='spatial_validation_failed'
+                            )
                             logger.info("[VISION NAV] Attempting multi-pass detection...")
+                            return await self._multi_pass_detection(menu_bar_screenshot)
+
+                        # Check if confidence meets adaptive threshold
+                        if confidence < self.adaptive_confidence_threshold:
+                            logger.warning(f"[VISION NAV] ⚠️ Confidence {confidence:.2f} below threshold {self.adaptive_confidence_threshold:.2f}")
+                            self._record_detection_attempt(
+                                success=False,
+                                coords=(x, y),
+                                confidence=confidence,
+                                strategy='primary',
+                                error='low_confidence'
+                            )
+                            logger.info("[VISION NAV] Attempting multi-pass detection for higher confidence...")
                             return await self._multi_pass_detection(menu_bar_screenshot)
 
                         # Click the icon
@@ -498,10 +728,26 @@ Take your time. Analyze carefully. The correct icon is there - find the two over
 
                         # Self-correction: Verify we clicked the right icon
                         if await self._verify_control_center_clicked(x, y):
+                            # Record successful detection
+                            self._record_detection_attempt(
+                                success=True,
+                                coords=(x, y),
+                                confidence=confidence,
+                                strategy='primary'
+                            )
                             # Save this position for future use
                             self._save_learned_position(x, y)
+                            logger.info(f"[VISION NAV] ✅ Control Center clicked successfully (confidence: {confidence:.2f})")
                             return True
                         else:
+                            # Record failed detection
+                            self._record_detection_attempt(
+                                success=False,
+                                coords=(x, y),
+                                confidence=confidence,
+                                strategy='primary',
+                                error='verification_failed'
+                            )
                             # Wrong icon clicked - try to self-correct
                             logger.warning("[VISION NAV] ⚠️ Wrong icon clicked! Attempting self-correction...")
                             corrected = await self._self_correct_control_center_click()
