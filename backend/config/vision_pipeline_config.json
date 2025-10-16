@@ -1,0 +1,110 @@
+{
+  "performance": {
+    "target_latency_ms": 3000,
+    "max_history_size": 100,
+    "enable_telemetry": true,
+    "enable_profiling": false
+  },
+  "detection": {
+    "min_confidence": 0.85,
+    "coordinate_precision_px": 2,
+    "detection_accuracy_target": 0.99,
+    "methods": [
+      "template_matching",
+      "edge_detection",
+      "shape_recognition"
+    ]
+  },
+  "recovery": {
+    "max_retries": 3,
+    "retry_delay_ms": 500,
+    "enable_fallback": true,
+    "recovery_success_target": 0.95,
+    "fallback_strategies": [
+      "retry_with_different_method",
+      "adjust_confidence_threshold",
+      "use_heuristic"
+    ]
+  },
+  "validation": {
+    "multi_model_enabled": true,
+    "monte_carlo_samples": 100,
+    "outlier_rejection_threshold": 2.5,
+    "min_agreement": 0.66,
+    "enable_claude_validation": true
+  },
+  "stages": {
+    "screen_segmentation": {
+      "enabled": true,
+      "timeout_ms": 500
+    },
+    "icon_recognition": {
+      "enabled": true,
+      "timeout_ms": 1000
+    },
+    "coordinate_calculation": {
+      "enabled": true,
+      "timeout_ms": 200
+    },
+    "multi_model_validation": {
+      "enabled": true,
+      "timeout_ms": 800
+    },
+    "mouse_automation": {
+      "enabled": true,
+      "timeout_ms": 500
+    }
+  },
+  "segmentation": {
+    "quadtree_max_depth": 4,
+    "variance_threshold": 50,
+    "contrast_factor": 1.3,
+    "noise_reduction_enabled": true,
+    "enable_edge_detection": true,
+    "adaptive_thresholding": true
+  },
+  "coordinate_calculation": {
+    "target_precision_px": 2,
+    "enable_subpixel": true,
+    "dpi_correction_enabled": true,
+    "boundary_clamping": true,
+    "vector_math_enabled": true
+  },
+  "mouse_automation": {
+    "min_duration_ms": 200,
+    "max_duration_ms": 500,
+    "acceleration_factor": 0.3,
+    "click_delay_ms": 100,
+    "enable_double_click": false,
+    "bezier_control_points": 3,
+    "enable_trajectory_smoothing": true,
+    "micro_adjustment_enabled": true
+  },
+  "targets": {
+    "control_center": {
+      "region": "menu_bar",
+      "expected_size": [18, 32],
+      "detection_methods": ["shape_recognition", "edge_detection"],
+      "validation_strict": true
+    },
+    "screen_mirroring": {
+      "region": "control_center_panel",
+      "expected_size": [40, 80],
+      "detection_methods": ["template_matching", "edge_detection"],
+      "validation_strict": true
+    },
+    "display_device": {
+      "region": "screen_mirroring_menu",
+      "expected_size": [200, 60],
+      "detection_methods": ["template_matching", "ocr"],
+      "validation_strict": false
+    }
+  },
+  "advanced": {
+    "parallel_processing": true,
+    "gpu_acceleration": false,
+    "cache_intermediate_results": true,
+    "adaptive_learning": true,
+    "error_recovery_ml": false
+  }
+}

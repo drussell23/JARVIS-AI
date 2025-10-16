@@ -71,5 +71,11 @@
     "log_vision_responses": true,
     "log_mouse_movements": false,
     "screenshot_dir": "~/.jarvis/screenshots/ui_navigation"
+  },
+  "advanced": {
+    "use_enhanced_pipeline": true,
+    "pipeline_config_path": "config/vision_pipeline_config.json",
+    "enable_ml_learning": false,
+    "enable_performance_profiling": true
   }
 }

@@ -88,12 +88,18 @@ class VisionUINavigator:
         # Vision analyzer (will be set by display monitor)
         self.vision_analyzer = None
         
+        # Enhanced Vision Pipeline (v1.0)
+        self.enhanced_pipeline = None
+        self.use_enhanced_pipeline = self.config.get('advanced', {}).get('use_enhanced_pipeline', True)
+        
         # Statistics
         self.stats = {
             'total_navigations': 0,
             'successful': 0,
             'failed': 0,
-            'avg_duration': 0.0
+            'avg_duration': 0.0,
+            'enhanced_pipeline_used': 0,
+            'fallback_used': 0
         }
         
         # Configure PyAutoGUI safety
@@ -101,6 +107,7 @@ class VisionUINavigator:
         pyautogui.FAILSAFE = True
         
         logger.info("[VISION NAV] Vision UI Navigator initialized")
+        logger.info(f"[VISION NAV] Enhanced Pipeline: {'enabled' if self.use_enhanced_pipeline else 'disabled'}")
     
     def _load_config(self, config_path: Path) -> Dict[str, Any]:
         """Load configuration"""
@@ -149,6 +156,41 @@ class VisionUINavigator:
         """Set Claude Vision analyzer instance"""
         self.vision_analyzer = analyzer
         logger.info("[VISION NAV] Vision analyzer connected")
+        
+        # Initialize Enhanced Vision Pipeline
+        if self.use_enhanced_pipeline:
+            asyncio.create_task(self._initialize_enhanced_pipeline())
+    
+    async def _initialize_enhanced_pipeline(self):
+        """Initialize Enhanced Vision Pipeline"""
+        try:
+            from vision.enhanced_vision_pipeline import get_vision_pipeline
+            
+            self.enhanced_pipeline = get_vision_pipeline()
+            
+            # Initialize all stages
+            initialized = await self.enhanced_pipeline.initialize()
+            
+            if initialized:
+                # Connect Claude Vision to validator
+                if self.enhanced_pipeline.model_validator and self.vision_analyzer:
+                    self.enhanced_pipeline.model_validator.set_claude_analyzer(self.vision_analyzer)
+                
+                logger.info("[VISION NAV] ✅ Enhanced Vision Pipeline v1.0 initialized")
+                logger.info("[VISION NAV] 🚀 5-stage pipeline ready:")
+                logger.info("[VISION NAV]    Stage 1: Screen Region Segmentation (Quadtree)")
+                logger.info("[VISION NAV]    Stage 2: Icon Pattern Recognition (OpenCV + Edge)")
+                logger.info("[VISION NAV]    Stage 3: Coordinate Calculation (Physics-based)")
+                logger.info("[VISION NAV]    Stage 4: Multi-Model Validation (Monte Carlo)")
+                logger.info("[VISION NAV]    Stage 5: Mouse Automation (Bezier trajectories)")
+            else:
+                logger.warning("[VISION NAV] Enhanced Pipeline initialization failed, using fallback")
+                self.use_enhanced_pipeline = False
+                
+        except Exception as e:
+            logger.warning(f"[VISION NAV] Could not initialize Enhanced Pipeline: {e}")
+            logger.info("[VISION NAV] Using fallback navigation methods")
+            self.use_enhanced_pipeline = False
     
     async def connect_to_display(self, display_name: str) -> NavigationResult:
         """
@@ -235,6 +277,26 @@ class VisionUINavigator:
     async def _find_and_click_control_center(self) -> bool:
         """Find and click Control Center icon in menu bar"""
         try:
+            # Try Enhanced Vision Pipeline first
+            if self.use_enhanced_pipeline and self.enhanced_pipeline:
+                logger.info("[VISION NAV] 🚀 Using Enhanced Vision Pipeline v1.0")
+                
+                result = await self.enhanced_pipeline.execute_pipeline(
+                    target='control_center',
+                    context={'navigator': self}
+                )
+                
+                if result.success:
+                    self.stats['enhanced_pipeline_used'] += 1
+                    logger.info(f"[VISION NAV] ✅ Enhanced Pipeline succeeded in {result.execution_time_ms:.1f}ms")
+                    return True
+                else:
+                    logger.warning(f"[VISION NAV] Enhanced Pipeline failed: {result.error}")
+                    logger.info("[VISION NAV] Falling back to legacy methods")
+            
+            # Fallback: Claude Vision + Heuristic
+            self.stats['fallback_used'] += 1
+            
             # Capture current screen
             screenshot = await self._capture_screen()
             
@@ -269,8 +331,8 @@ class VisionUINavigator:
                 else:
                     logger.warning("[VISION NAV] Could not extract coordinates from vision response")
             
-            # Fallback: Use heuristic (top-right area of menu bar)
-            logger.info("[VISION NAV] Using fallback heuristic for Control Center")
+            # Final fallback: Use heuristic (top-right area of menu bar)
+            logger.info("[VISION NAV] Using heuristic fallback for Control Center")
             return await self._click_control_center_heuristic()
             
         except Exception as e:
