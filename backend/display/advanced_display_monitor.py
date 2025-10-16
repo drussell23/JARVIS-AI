@@ -743,12 +743,13 @@ class AdvancedDisplayMonitor:
 
     async def connect_display(self, display_id: str) -> Dict[str, Any]:
         """
-        Connect to a display using advanced native methods
+        Connect to a display using advanced methods
         
         Connection Strategy (prioritized):
-        1. Native Swift Bridge (keyboard automation, menu bar clicks)
-        2. AppleScript fallback
-        3. Voice guidance to user
+        1. Vision-Guided Navigator (uses JARVIS eyes - bypasses all macOS restrictions!)
+        2. Native Swift Bridge fallback
+        3. AppleScript fallback
+        4. Voice guidance to user
 
         Args:
             display_id: Display ID from configuration
@@ -763,13 +764,73 @@ class AdvancedDisplayMonitor:
 
         logger.info(f"[DISPLAY MONITOR] Connecting to {monitored.name}...")
 
-        # Strategy 1: Try Native Swift Bridge (best method)
+        # Strategy 1: Try Vision-Guided Navigator (BEST METHOD - bypasses all restrictions!)
+        try:
+            from display.vision_ui_navigator import get_vision_navigator
+            
+            navigator = get_vision_navigator()
+            
+            # Connect vision analyzer if available
+            if not navigator.vision_analyzer and hasattr(self, 'vision_analyzer'):
+                navigator.set_vision_analyzer(self.vision_analyzer)
+            elif not navigator.vision_analyzer:
+                # Try to get from app.state
+                try:
+                    import sys
+                    if hasattr(sys.modules.get('__main__'), 'app'):
+                        app = sys.modules['__main__'].app
+                        if hasattr(app, 'state') and hasattr(app.state, 'vision_analyzer'):
+                            navigator.set_vision_analyzer(app.state.vision_analyzer)
+                            logger.info("[DISPLAY MONITOR] Connected vision analyzer from app.state")
+                except:
+                    pass
+            
+            if navigator.vision_analyzer:
+                logger.info(f"[DISPLAY MONITOR] 👁️ Using VISION-GUIDED navigation for {monitored.name}")
+                logger.info("[DISPLAY MONITOR] JARVIS will SEE and CLICK the UI - bypassing all macOS restrictions!")
+                
+                result = await navigator.connect_to_display(monitored.name)
+                
+                if result.success:
+                    self.connected_displays.add(display_id)
+                    await self._emit_event('display_connected', display=monitored)
+                    
+                    # Speak success message
+                    if self.config['voice_integration']['speak_on_connection']:
+                        template = self.config['voice_integration']['connection_success_message']
+                        message = template.format(display_name=monitored.name)
+                        
+                        if self.voice_handler:
+                            try:
+                                await self.voice_handler.speak(message)
+                            except:
+                                subprocess.Popen(['say', message])
+                        else:
+                            subprocess.Popen(['say', message])
+                    
+                    return {
+                        "success": True,
+                        "message": f"Connected via vision navigation in {result.duration:.1f}s",
+                        "method": "vision_guided",
+                        "duration": result.duration,
+                        "steps_completed": result.steps_completed
+                    }
+                else:
+                    logger.warning(f"[DISPLAY MONITOR] Vision navigation failed: {result.message}")
+                    # Continue to fallback strategies
+            else:
+                logger.warning("[DISPLAY MONITOR] Vision analyzer not available for vision navigation")
+                
+        except Exception as e:
+            logger.warning(f"[DISPLAY MONITOR] Vision navigator error: {e}")
+            # Continue to fallback strategies
+
+        # Strategy 2: Try Native Swift Bridge
         try:
             from display.native import get_native_controller
             
             native_controller = get_native_controller()
             
-            # Ensure it's initialized
             if await native_controller.initialize():
                 logger.info(f"[DISPLAY MONITOR] Using native Swift bridge for {monitored.name}")
                 
@@ -801,15 +862,13 @@ class AdvancedDisplayMonitor:
                     }
                 else:
                     logger.warning(f"[DISPLAY MONITOR] Native bridge failed: {result.message}")
-                    # Continue to fallback strategies
             else:
                 logger.warning("[DISPLAY MONITOR] Native bridge not available")
                 
         except Exception as e:
             logger.warning(f"[DISPLAY MONITOR] Native bridge error: {e}")
-            # Continue to fallback strategies
 
-        # Strategy 2: Try AppleScript fallback
+        # Strategy 3: Try AppleScript fallback
         if DetectionMethod.APPLESCRIPT in self.detectors:
             logger.info(f"[DISPLAY MONITOR] Trying AppleScript fallback for {monitored.name}")
             
@@ -834,11 +893,10 @@ class AdvancedDisplayMonitor:
 
                 return result
 
-        # Strategy 3: All automated methods failed - provide voice guidance
+        # Strategy 4: All automated methods failed - provide voice guidance
         guidance_message = (
-            f"I've detected {monitored.name}, but I need accessibility permissions to connect automatically. "
-            f"Please click the Screen Mirroring icon in your menu bar and select {monitored.name}, "
-            f"or grant me accessibility permissions in System Settings."
+            f"I can see {monitored.name} is available, but all automated connection methods failed. "
+            f"Please click the Screen Mirroring icon in your menu bar and select {monitored.name} manually."
         )
         
         logger.warning(f"[DISPLAY MONITOR] All connection strategies failed for {monitored.name}")

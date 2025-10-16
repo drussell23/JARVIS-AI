@@ -700,6 +700,16 @@ async def lifespan(app: FastAPI):
         if analyzer_class and api_key:
             app.state.vision_analyzer = analyzer_class(api_key)
             logger.info("✅ Vision analyzer initialized")
+            
+            # Connect Vision Navigator to vision analyzer (for display connection)
+            try:
+                from display.vision_ui_navigator import get_vision_navigator
+                navigator = get_vision_navigator()
+                navigator.set_vision_analyzer(app.state.vision_analyzer)
+                logger.info("✅ Vision Navigator connected to Claude Vision analyzer")
+                logger.info("   👁️ JARVIS can now navigate Control Center using vision!")
+            except Exception as e:
+                logger.debug(f"Vision Navigator connection skipped: {e}")
 
             # Set vision analyzer in vision websocket manager
             try:
@@ -1678,6 +1688,25 @@ def mount_routers():
                 from display.advanced_display_monitor import set_app_display_monitor
                 set_app_display_monitor(monitor)
                 logger.info("   ✅ Display monitor registered as singleton")
+                
+                # Connect Vision Navigator with Claude Vision analyzer
+                try:
+                    from display.vision_ui_navigator import get_vision_navigator
+                    
+                    navigator = get_vision_navigator()
+                    
+                    # Connect vision analyzer if available
+                    if hasattr(app.state, 'vision_analyzer'):
+                        navigator.set_vision_analyzer(app.state.vision_analyzer)
+                        # Also connect to monitor
+                        monitor.vision_analyzer = app.state.vision_analyzer
+                        logger.info("   ✅ Vision Navigator connected to Claude Vision")
+                        logger.info("   👁️ JARVIS can now SEE and CLICK UI elements!")
+                    else:
+                        logger.warning("   ⚠️ Vision analyzer not available yet (will connect later)")
+                        
+                except Exception as nav_err:
+                    logger.warning(f"   ⚠️ Could not initialize Vision Navigator: {nav_err}")
 
                 # Set WebSocket manager for UI notifications
                 try:

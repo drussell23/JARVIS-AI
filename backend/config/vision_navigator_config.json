@@ -1,0 +1,75 @@
+{
+  "navigation": {
+    "max_retries": 3,
+    "retry_delay": 1.0,
+    "screenshot_verification": true,
+    "step_delay": 0.8,
+    "max_navigation_time": 30.0,
+    "verify_each_step": true,
+    "save_debug_screenshots": true
+  },
+  "mouse": {
+    "delay_between_actions": 0.5,
+    "click_duration": 0.1,
+    "movement_speed": 0.3,
+    "double_click_enabled": false,
+    "failsafe_enabled": true
+  },
+  "vision": {
+    "confidence_threshold": 0.7,
+    "use_bounding_boxes": true,
+    "verify_actions": true,
+    "screenshot_format": "png",
+    "screenshot_quality": 95,
+    "max_analysis_time": 10.0,
+    "enable_ocr_fallback": true
+  },
+  "prompts": {
+    "find_control_center": "CRITICAL: You MUST respond with ONLY pixel coordinates, nothing else.\n\nLook at this menu bar screenshot. Find the Control Center icon (two overlapping squares, top-right corner, near the clock/date).\n\nYour ENTIRE response must be ONLY coordinates in this EXACT format:\n(1400, 12)\n\nDo NOT include any other text. ONLY the coordinates in parentheses.",
+    
+    "find_screen_mirroring": "CRITICAL: You MUST respond with ONLY pixel coordinates, nothing else.\n\nLook at this Control Center screenshot. Find the Screen Mirroring button (icon looks like two overlapping screens/displays, may have text 'Screen Mirroring').\n\nYour ENTIRE response must be ONLY coordinates in this EXACT format:\n(800, 300)\n\nDo NOT include any other text. ONLY the coordinates in parentheses.",
+    
+    "find_display": "CRITICAL: You MUST respond with ONLY pixel coordinates, nothing else.\n\nLook at this Screen Mirroring menu. Find '{display_name}' in the device list (has TV/display icon next to the text).\n\nYour ENTIRE response must be ONLY coordinates in this EXACT format:\n(850, 450)\n\nDo NOT include any other text. ONLY the coordinates in parentheses.",
+    
+    "verify_connection": "Look at this screenshot. Is there any indication that the display '{display_name}' is currently connected? Look for: checkmarks, connection indicators, the device showing as 'Connected', or the device appearing in a 'Connected Displays' section. Answer with just: YES or NO"
+  },
+  "ui_elements": {
+    "control_center": {
+      "search_region": "top_right",
+      "icon_description": "two overlapping squares",
+      "typical_position_from_right": 70,
+      "menu_bar_height": 25
+    },
+    "screen_mirroring": {
+      "icon_description": "two overlapping screens",
+      "typical_text": ["Screen Mirroring", "Screen Mirror", "Display"]
+    },
+    "display_device": {
+      "icon_description": "TV or monitor icon",
+      "text_pattern": "{display_name}"
+    }
+  },
+  "fallback_strategies": {
+    "control_center": [
+      "claude_vision",
+      "heuristic_position",
+      "icon_template_match"
+    ],
+    "screen_mirroring": [
+      "claude_vision",
+      "ocr_text_search",
+      "icon_detection"
+    ],
+    "display_selection": [
+      "claude_vision",
+      "ocr_exact_match",
+      "fuzzy_text_match"
+    ]
+  },
+  "debug": {
+    "save_all_screenshots": true,
+    "log_vision_responses": true,
+    "log_mouse_movements": false,
+    "screenshot_dir": "~/.jarvis/screenshots/ui_navigation"
+  }
+}
