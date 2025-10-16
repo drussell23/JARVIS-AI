@@ -490,34 +490,73 @@ class VisionUINavigator:
             # - "x: 1234, y: 56"
             # - "at (1234, 56)"
             # - "1234, 56"
+            # - "X_POSITION: 1234" and "Y_POSITION: 56"
+            # - "approximately 1234 pixels from the left"
             
-            # Pattern 1: (x, y) format
+            # Pattern 1: (x, y) format - most explicit
             match = re.search(r'\((\d+),\s*(\d+)\)', response)
             if match:
                 x, y = int(match.group(1)), int(match.group(2))
-                logger.info(f"[VISION NAV] Extracted coordinates: ({x}, {y})")
+                logger.info(f"[VISION NAV] ✅ Extracted coordinates (format 1): ({x}, {y})")
                 return (x, y)
             
-            # Pattern 2: x: 1234, y: 56
-            match = re.search(r'x:\s*(\d+).*?y:\s*(\d+)', response, re.IGNORECASE)
+            # Pattern 2: X_POSITION: 1234, Y_POSITION: 56 format
+            x_match = re.search(r'X[_\s]*POSITION:\s*(\d+)', response, re.IGNORECASE)
+            y_match = re.search(r'Y[_\s]*POSITION:\s*(\d+)', response, re.IGNORECASE)
+            if x_match and y_match:
+                x, y = int(x_match.group(1)), int(y_match.group(1))
+                logger.info(f"[VISION NAV] ✅ Extracted coordinates (format 2): ({x}, {y})")
+                return (x, y)
+            
+            # Pattern 3: x: 1234, y: 56
+            match = re.search(r'x:\s*(\d+).*?y:\s*(\d+)', response, re.IGNORECASE | re.DOTALL)
             if match:
                 x, y = int(match.group(1)), int(match.group(2))
-                logger.info(f"[VISION NAV] Extracted coordinates: ({x}, {y})")
+                logger.info(f"[VISION NAV] ✅ Extracted coordinates (format 3): ({x}, {y})")
                 return (x, y)
             
-            # Pattern 3: JSON format
-            match = re.search(r'\{.*?"x":\s*(\d+).*?"y":\s*(\d+).*?\}', response, re.IGNORECASE)
+            # Pattern 4: JSON format
+            match = re.search(r'\{.*?"x":\s*(\d+).*?"y":\s*(\d+).*?\}', response, re.IGNORECASE | re.DOTALL)
             if match:
                 x, y = int(match.group(1)), int(match.group(2))
-                logger.info(f"[VISION NAV] Extracted coordinates: ({x}, {y})")
+                logger.info(f"[VISION NAV] ✅ Extracted coordinates (format 4): ({x}, {y})")
                 return (x, y)
             
-            logger.warning(f"[VISION NAV] Could not extract coordinates from response.")
+            # Pattern 5: "approximately X pixels from the left/right" and "Y pixels from top"
+            # Look for descriptions like "1400 pixels from the left edge"
+            left_match = re.search(r'(\d+)\s*(?:pixels?)?\s*from\s*(?:the\s*)?left', response, re.IGNORECASE)
+            right_match = re.search(r'(\d+)\s*(?:pixels?)?\s*from\s*(?:the\s*)?right', response, re.IGNORECASE)
+            top_match = re.search(r'(\d+)\s*(?:pixels?)?\s*from\s*(?:the\s*)?top', response, re.IGNORECASE)
+            
+            if (left_match or right_match) and top_match:
+                # Get screen dimensions
+                screen_width, screen_height = pyautogui.size()
+                
+                if left_match:
+                    x = int(left_match.group(1))
+                elif right_match:
+                    x = screen_width - int(right_match.group(1))
+                
+                y = int(top_match.group(1))
+                logger.info(f"[VISION NAV] ✅ Extracted coordinates (format 5): ({x}, {y})")
+                return (x, y)
+            
+            # Pattern 6: Just two numbers in sequence (risky but try as last resort)
+            numbers = re.findall(r'\b(\d{3,4})\b', response)  # 3-4 digit numbers (likely pixel coords)
+            if len(numbers) >= 2:
+                x, y = int(numbers[0]), int(numbers[1])
+                # Sanity check: coordinates should be reasonable
+                screen_width, screen_height = pyautogui.size()
+                if 0 <= x <= screen_width and 0 <= y <= screen_height:
+                    logger.info(f"[VISION NAV] ✅ Extracted coordinates (format 6 - guessed): ({x}, {y})")
+                    return (x, y)
+            
+            logger.warning(f"[VISION NAV] ❌ Could not extract coordinates from response.")
             logger.warning(f"[VISION NAV] Full response: {response[:500]}")
             return None
             
         except Exception as e:
-            logger.error(f"[VISION NAV] Error extracting coordinates: {e}")
+            logger.error(f"[VISION NAV] Error extracting coordinates: {e}", exc_info=True)
             return None
     
     async def _click_at(self, x: int, y: int):
