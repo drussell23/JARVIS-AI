@@ -380,21 +380,42 @@ class UnifiedWebSocketManager:
 
             logger.info(f"[WS] Processing voice command: {command_text}")
 
-            # Use the async pipeline for full command processing (including document creation)
-            result = await self.pipeline.execute(command_text)
+            # Use unified command processor for full command classification and handling
+            # This includes display commands, system commands, vision, etc.
+            try:
+                from api.unified_command_processor import get_unified_processor
+                processor = get_unified_processor()
+                result = await processor.process_command(command_text, websocket=None)
 
-            # Extract response from pipeline result
-            response_text = result.response or "Command processed, Sir."
+                response_text = result.get("response", "Command processed, Sir.")
+                success = result.get("success", False)
+                command_type = result.get("command_type", "unknown")
 
-            logger.info(f"[WS] Pipeline result: {response_text[:100]}")
+                logger.info(f"[WS] Unified processor result: {response_text[:100]}")
 
-            return {
-                "type": "response",
-                "text": response_text,
-                "status": "success" if result.success else "error",
-                "command_type": result.metadata.get("intent", "unknown"),
-                "speak": True
-            }
+                return {
+                    "type": "response",
+                    "text": response_text,
+                    "status": "success" if success else "error",
+                    "command_type": command_type,
+                    "speak": True
+                }
+            except ImportError:
+                # Fallback to async pipeline if unified processor not available
+                logger.warning("[WS] Unified processor not available, falling back to async pipeline")
+                result = await self.pipeline.execute(command_text)
+
+                response_text = result.response or "Command processed, Sir."
+
+                logger.info(f"[WS] Pipeline result: {response_text[:100]}")
+
+                return {
+                    "type": "response",
+                    "text": response_text,
+                    "status": "success" if result.success else "error",
+                    "command_type": result.metadata.get("intent", "unknown"),
+                    "speak": True
+                }
 
         except Exception as e:
             logger.error(f"Error processing voice command: {e}", exc_info=True)
