@@ -262,7 +262,7 @@ class AirPlayDiscoveryService:
 
             # Get service info
             info = AsyncServiceInfo(service_type, name)
-            await info.async_request(zeroconf.zeroconf, 3000)
+            await info.async_request(zeroconf, 3000)
 
             if not info:
                 logger.warning(f"[AIRPLAY DISCOVERY] Could not get info for {name}")
