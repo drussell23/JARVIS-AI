@@ -275,263 +275,256 @@ class VisionUINavigator:
             )
     
     async def _find_and_click_control_center(self) -> bool:
-        """Find and click Control Center icon in menu bar using ML-powered detection"""
+        """
+        Find and click Control Center icon using direct Claude Vision detection
+
+        This method uses Claude Vision API directly for maximum accuracy.
+        Claude can SEE the exact location of UI elements with no dependencies.
+        """
         try:
-            # Try Enhanced Vision Pipeline with ML Template Generator first
-            if self.use_enhanced_pipeline and self.enhanced_pipeline:
-                logger.info("[VISION NAV] 🚀 Using Enhanced Vision Pipeline v1.0 with ML Template Generator")
-
-                result = await self.enhanced_pipeline.execute_pipeline(
-                    target='control_center',
-                    context={'navigator': self}
-                )
-
-                if result.success:
-                    self.stats['enhanced_pipeline_used'] += 1
-                    logger.info(f"[VISION NAV] ✅ Enhanced Pipeline + ML succeeded in {result.execution_time_ms:.1f}ms")
-                    return True
-                else:
-                    logger.warning(f"[VISION NAV] Enhanced Pipeline failed: {result.error}")
-                    logger.info("[VISION NAV] Falling back to direct ML detection")
-
-            # Fallback 1: Direct ML Template Detection
-            try:
-                from vision.enhanced_vision_pipeline.icon_detection_engine import IconDetectionEngine
-                from vision.enhanced_vision_pipeline.screen_region_analyzer import ScreenRegion
-
-                # Capture screen
-                screenshot = await self._capture_screen()
-                if not screenshot:
-                    raise Exception("Failed to capture screen")
-
-                # Crop to menu bar region only (top 50px of screen)
-                # This makes detection much faster and more accurate
-                menu_bar_height = 50
-                menu_bar_screenshot = screenshot.crop((0, 0, screenshot.width, menu_bar_height))
-
-                logger.info(f"[VISION NAV] Cropped to menu bar region: {menu_bar_screenshot.size}")
-
-                # Create screen region for detection
-                screen_region = ScreenRegion(
-                    image=menu_bar_screenshot,
-                    bounds=(0, 0, menu_bar_screenshot.width, menu_bar_screenshot.height),
-                    region_type='menu_bar',
-                    confidence=1.0
-                )
-
-                # Initialize icon detector with ML template generator
-                detector = IconDetectionEngine(self.config)
-                await detector.initialize()
-
-                logger.info("[VISION NAV] 🎯 Using ML Template Generator for Control Center detection")
-
-                # Detect Control Center icon
-                detection_result = await detector.detect_icon(
-                    region=screen_region,
-                    target='control_center',
-                    context={'navigator': self}
-                )
-
-                if detection_result.get('success'):
-                    best_result = detection_result['detection_results']['best']
-
-                    if best_result.found and best_result.center_point:
-                        x, y = best_result.center_point
-                        logger.info(f"[VISION NAV] ✅ ML Template detected Control Center at ({x}, {y})")
-                        logger.info(f"[VISION NAV]    Confidence: {best_result.confidence:.2%}, Method: {best_result.method}")
-
-                        # Click the icon
-                        await self._click_at(x, y)
-
-                        self.stats['enhanced_pipeline_used'] += 1
-                        return True
-
-            except Exception as ml_error:
-                logger.warning(f"[VISION NAV] ML detection failed: {ml_error}")
-
-            # Fallback 2: Claude Vision (ENHANCED with better prompt)
-            self.stats['fallback_used'] += 1
-
-            # Capture full screen (not cropped - Claude needs full context)
+            # Capture screen
             screenshot = await self._capture_screen()
-
             if not screenshot:
                 logger.error("[VISION NAV] Failed to capture screen")
                 return False
 
-            # Crop to menu bar for Claude Vision (faster analysis)
-            menu_bar_screenshot = screenshot.crop((0, 0, screenshot.width, 50))
+            # Crop to menu bar region (top 50px) for faster analysis
+            menu_bar_height = 50
+            menu_bar_screenshot = screenshot.crop((0, 0, screenshot.width, menu_bar_height))
+
+            logger.info(f"[VISION NAV] 🎯 Direct Claude Vision detection for Control Center")
+            logger.info(f"[VISION NAV] Analyzing menu bar: {menu_bar_screenshot.width}x{menu_bar_screenshot.height}px")
 
             # Save screenshot for analysis
-            screenshot_path = self.screenshots_dir / f'control_center_search_{int(time.time())}.png'
+            screenshot_path = self.screenshots_dir / f'control_center_{int(time.time())}.png'
             menu_bar_screenshot.save(screenshot_path)
 
+            # Primary Method: Claude Vision Direct Detection
             if self.vision_analyzer:
-                logger.info("[VISION NAV] Using Claude Vision to locate Control Center icon...")
+                logger.info("[VISION NAV] 🤖 Asking Claude Vision to locate Control Center...")
 
-                # Enhanced prompt with specific instructions
-                prompt = """Find the Control Center icon in this macOS menu bar.
+                # Enhanced, detailed prompt for maximum accuracy
+                prompt = """You are analyzing a macOS menu bar screenshot. I need you to find the Control Center icon and provide its EXACT pixel coordinates.
 
-The Control Center icon looks like two overlapping rounded rectangles (like a toggle switch).
-It's typically located in the RIGHT section of the menu bar, near the WiFi, Battery, and Time icons.
+**What the Control Center icon looks like:**
+- Two overlapping rounded rectangles (like a toggle or switch icon)
+- Solid fill, no transparency
+- Approximately 20-24px wide, 16-20px tall
+- Located in the RIGHT section of the menu bar
 
-Please provide the EXACT pixel coordinates where I should click to open Control Center.
-Respond in this format: X_POSITION: [x coordinate], Y_POSITION: [y coordinate]
+**Where to find it:**
+- In the top menu bar (this cropped image shows ONLY the menu bar)
+- To the right of most icons
+- Typically near WiFi, Bluetooth, Battery, and Time display
+- Usually about 150-200 pixels from the right edge
 
-For example: X_POSITION: 545, Y_POSITION: 15"""
+**Your task:**
+1. Locate the Control Center icon visually
+2. Determine its CENTER POINT coordinates
+3. Respond with EXACT pixel coordinates
+
+**Response format (use this exact format):**
+X_POSITION: [x coordinate]
+Y_POSITION: [y coordinate]
+
+**Example response:**
+X_POSITION: 1260
+Y_POSITION: 15
+
+Provide only the coordinates in this format. Be as accurate as possible."""
 
                 # Analyze with Claude Vision
                 analysis = await self._analyze_with_vision(screenshot_path, prompt)
 
-                logger.info(f"[VISION NAV] Claude Vision response: {analysis[:200] if analysis else 'None'}...")
+                if analysis:
+                    logger.info(f"[VISION NAV] Claude response received: {analysis[:150]}...")
 
-                # Extract coordinates from analysis
-                coords = self._extract_coordinates_from_response(analysis)
+                    # Extract coordinates with robust parsing
+                    coords = self._extract_coordinates_advanced(analysis, menu_bar_screenshot)
 
-                if coords:
-                    x, y = coords
-                    logger.info(f"[VISION NAV] ✅ Claude Vision found Control Center at ({x}, {y})")
+                    if coords:
+                        x, y = coords
+                        logger.info(f"[VISION NAV] ✅ Claude Vision detected Control Center at ({x}, {y})")
 
-                    # Verify coordinates are reasonable for menu bar
-                    if y > 40:
-                        logger.warning(f"[VISION NAV] ⚠️ Suspicious Y coordinate: {y} (should be <40 for menu bar)")
-                        logger.info("[VISION NAV] Adjusting Y to 15 (menu bar center)")
-                        y = 15
+                        # Validate coordinates are within menu bar bounds
+                        if not self._validate_coordinates(x, y, menu_bar_screenshot.width, menu_bar_height):
+                            logger.warning(f"[VISION NAV] ⚠️ Coordinates out of bounds, adjusting...")
+                            x, y = self._adjust_suspicious_coordinates(x, y, menu_bar_screenshot.width, menu_bar_height)
+                            logger.info(f"[VISION NAV] Adjusted to: ({x}, {y})")
 
-                    # Click the icon
-                    await self._click_at(x, y)
-
-                    return True
+                        # Click the icon
+                        await self._click_at(x, y)
+                        return True
+                    else:
+                        logger.warning("[VISION NAV] Could not extract valid coordinates from Claude response")
+                        logger.debug(f"[VISION NAV] Full response: {analysis[:500]}")
                 else:
-                    logger.warning("[VISION NAV] Could not extract coordinates from Claude Vision response")
+                    logger.warning("[VISION NAV] No response from Claude Vision")
 
-            # Final fallback: Use heuristic (top-right area of menu bar)
-            logger.info("[VISION NAV] Using heuristic fallback for Control Center")
+            # Fallback: Smart heuristic based on typical Control Center placement
+            logger.info("[VISION NAV] 💡 Using smart heuristic fallback")
             return await self._click_control_center_heuristic()
 
         except Exception as e:
-            logger.error(f"[VISION NAV] Error finding Control Center: {e}")
+            logger.error(f"[VISION NAV] Error in Control Center detection: {e}", exc_info=True)
             return False
     
     async def _find_and_click_screen_mirroring(self) -> bool:
-        """Find and click Screen Mirroring button in Control Center using ML-powered detection"""
+        """
+        Find and click Screen Mirroring button using direct Claude Vision detection
+
+        This method uses Claude Vision API directly for maximum accuracy.
+        """
         try:
             # Let UI settle after Control Center opens
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.5)
 
             # Capture screen
             screenshot = await self._capture_screen()
             if not screenshot:
+                logger.error("[VISION NAV] Failed to capture screen")
                 return False
 
-            # Try ML Template Detection first
-            try:
-                from vision.enhanced_vision_pipeline.icon_detection_engine import IconDetectionEngine
-                from vision.enhanced_vision_pipeline.screen_region_analyzer import ScreenRegion
+            logger.info(f"[VISION NAV] 🎯 Direct Claude Vision detection for Screen Mirroring")
 
-                # Create screen region for detection
-                screen_region = ScreenRegion(
-                    image=screenshot,
-                    bounds=(0, 0, screenshot.width, screenshot.height),
-                    region_type='control_center',
-                    confidence=1.0
-                )
+            # Save screenshot for analysis
+            screenshot_path = self.screenshots_dir / f'screen_mirroring_{int(time.time())}.png'
+            screenshot.save(screenshot_path)
 
-                # Initialize icon detector with ML template generator
-                detector = IconDetectionEngine(self.config)
-                await detector.initialize()
+            # Primary Method: Claude Vision Direct Detection
+            if self.vision_analyzer:
+                logger.info("[VISION NAV] 🤖 Asking Claude Vision to locate Screen Mirroring button...")
 
-                logger.info("[VISION NAV] 🎯 Using ML Template Generator for Screen Mirroring detection")
+                # Enhanced prompt for Screen Mirroring detection
+                prompt = """You are analyzing a macOS Control Center screenshot. I need you to find the Screen Mirroring button and provide its EXACT pixel coordinates.
 
-                # Detect Screen Mirroring button
-                detection_result = await detector.detect_icon(
-                    region=screen_region,
-                    target='screen_mirroring',
-                    context={'navigator': self}
-                )
+**What the Screen Mirroring button looks like:**
+- Icon shows two overlapping screens/rectangles (computer monitor symbol)
+- Usually has text "Screen Mirroring" below or next to the icon
+- Blue or white icon depending on state
+- Located in Control Center panel (dark or light background)
 
-                if detection_result.get('success'):
-                    best_result = detection_result['detection_results']['best']
+**Your task:**
+1. Locate the Screen Mirroring button visually
+2. Determine its CENTER POINT coordinates
+3. Respond with EXACT pixel coordinates
 
-                    if best_result.found and best_result.center_point:
-                        x, y = best_result.center_point
-                        logger.info(f"[VISION NAV] ✅ ML Template detected Screen Mirroring at ({x}, {y})")
-                        logger.info(f"[VISION NAV]    Confidence: {best_result.confidence:.2%}, Method: {best_result.method}")
+**Response format (use this exact format):**
+X_POSITION: [x coordinate]
+Y_POSITION: [y coordinate]
+
+**Example response:**
+X_POSITION: 680
+Y_POSITION: 450
+
+Provide only the coordinates in this format. Be as accurate as possible."""
+
+                # Analyze with Claude Vision
+                analysis = await self._analyze_with_vision(screenshot_path, prompt)
+
+                if analysis:
+                    logger.info(f"[VISION NAV] Claude response received: {analysis[:150]}...")
+
+                    # Extract coordinates with robust parsing
+                    coords = self._extract_coordinates_advanced(analysis, screenshot)
+
+                    if coords:
+                        x, y = coords
+                        logger.info(f"[VISION NAV] ✅ Claude Vision detected Screen Mirroring at ({x}, {y})")
 
                         # Click the button
                         await self._click_at(x, y)
-
                         return True
+                    else:
+                        logger.warning("[VISION NAV] Could not extract valid coordinates from Claude response")
+                        logger.debug(f"[VISION NAV] Full response: {analysis[:500]}")
+                else:
+                    logger.warning("[VISION NAV] No response from Claude Vision")
 
-            except Exception as ml_error:
-                logger.warning(f"[VISION NAV] ML detection failed: {ml_error}")
-
-            # Fallback 1: Claude Vision
-            screenshot_path = self.screenshots_dir / f'screen_mirroring_search_{int(time.time())}.png'
-            screenshot.save(screenshot_path)
-
-            prompt = self.config['prompts']['find_screen_mirroring']
-
-            if self.vision_analyzer:
-                logger.info("[VISION NAV] Using Claude Vision to locate Screen Mirroring button...")
-
-                analysis = await self._analyze_with_vision(screenshot_path, prompt)
-                coords = self._extract_coordinates_from_response(analysis)
-
-                if coords:
-                    x, y = coords
-                    logger.info(f"[VISION NAV] Screen Mirroring found at ({x}, {y})")
-
-                    # Click the button
-                    await self._click_at(x, y)
-
-                    return True
-
-            # Fallback 2: OCR search for text "Screen Mirroring" or "Display"
-            logger.info("[VISION NAV] Using OCR fallback for Screen Mirroring")
+            # Fallback: OCR search for text "Screen Mirroring"
+            logger.info("[VISION NAV] 💡 Using OCR fallback for Screen Mirroring")
             return await self._click_screen_mirroring_ocr(screenshot)
 
         except Exception as e:
-            logger.error(f"[VISION NAV] Error finding Screen Mirroring: {e}")
+            logger.error(f"[VISION NAV] Error finding Screen Mirroring: {e}", exc_info=True)
             return False
     
     async def _find_and_click_display(self, display_name: str) -> bool:
-        """Find and click display in the list"""
+        """
+        Find and click display in the list using direct Claude Vision detection
+        """
         try:
+            # Let UI settle after Screen Mirroring menu opens
+            await asyncio.sleep(0.5)
+
             # Capture screen with display list
-            await asyncio.sleep(0.3)
             screenshot = await self._capture_screen()
-            
             if not screenshot:
+                logger.error("[VISION NAV] Failed to capture screen")
                 return False
-            
-            screenshot_path = self.screenshots_dir / f'display_list_{int(time.time())}.png'
+
+            logger.info(f"[VISION NAV] 🎯 Direct Claude Vision detection for '{display_name}'")
+
+            # Save screenshot for analysis
+            screenshot_path = self.screenshots_dir / f'display_{display_name}_{int(time.time())}.png'
             screenshot.save(screenshot_path)
-            
-            # Use Claude Vision to find the display
-            prompt = self.config['prompts']['find_display'].format(display_name=display_name)
-            
+
+            # Primary Method: Claude Vision Direct Detection
             if self.vision_analyzer:
-                logger.info(f"[VISION NAV] Using Claude Vision to locate '{display_name}'...")
-                
+                logger.info(f"[VISION NAV] 🤖 Asking Claude Vision to locate '{display_name}'...")
+
+                # Enhanced prompt for display detection
+                prompt = f"""You are analyzing a macOS Screen Mirroring menu. I need you to find the display named "{display_name}" and provide its EXACT pixel coordinates.
+
+**What to look for:**
+- Text reading "{display_name}"
+- May appear in a list of available displays
+- May have an icon next to it (TV icon, monitor icon, etc.)
+- Could be in light or dark background
+
+**Your task:**
+1. Locate the "{display_name}" display entry
+2. Determine the CENTER POINT coordinates where I should click
+3. Respond with EXACT pixel coordinates
+
+**Response format (use this exact format):**
+X_POSITION: [x coordinate]
+Y_POSITION: [y coordinate]
+
+**Example response:**
+X_POSITION: 720
+Y_POSITION: 380
+
+Provide only the coordinates in this format. Be as accurate as possible."""
+
+                # Analyze with Claude Vision
                 analysis = await self._analyze_with_vision(screenshot_path, prompt)
-                coords = self._extract_coordinates_from_response(analysis)
-                
-                if coords:
-                    x, y = coords
-                    logger.info(f"[VISION NAV] '{display_name}' found at ({x}, {y})")
-                    
-                    # Click the display
-                    await self._click_at(x, y)
-                    
-                    return True
-            
+
+                if analysis:
+                    logger.info(f"[VISION NAV] Claude response received: {analysis[:150]}...")
+
+                    # Extract coordinates with robust parsing
+                    coords = self._extract_coordinates_advanced(analysis, screenshot)
+
+                    if coords:
+                        x, y = coords
+                        logger.info(f"[VISION NAV] ✅ Claude Vision detected '{display_name}' at ({x}, {y})")
+
+                        # Click the display
+                        await self._click_at(x, y)
+                        return True
+                    else:
+                        logger.warning("[VISION NAV] Could not extract valid coordinates from Claude response")
+                        logger.debug(f"[VISION NAV] Full response: {analysis[:500]}")
+                else:
+                    logger.warning("[VISION NAV] No response from Claude Vision")
+
             # Fallback: OCR search for display name
-            logger.info(f"[VISION NAV] Using OCR fallback to find '{display_name}'")
+            logger.info(f"[VISION NAV] 💡 Using OCR fallback to find '{display_name}'")
             return await self._click_display_ocr(screenshot, display_name)
-            
+
         except Exception as e:
-            logger.error(f"[VISION NAV] Error finding display: {e}")
+            logger.error(f"[VISION NAV] Error finding display: {e}", exc_info=True)
             return False
     
     async def _verify_connection(self, display_name: str) -> bool:
@@ -658,84 +651,225 @@ For example: X_POSITION: 545, Y_POSITION: 15"""
             logger.error(f"[VISION NAV] Vision analysis error: {e}", exc_info=True)
             return None
     
-    def _extract_coordinates_from_response(self, response: str) -> Optional[Tuple[int, int]]:
-        """Extract (x, y) coordinates from Claude Vision response"""
+    def _extract_coordinates_advanced(self, response: str, screenshot: Image.Image) -> Optional[Tuple[int, int]]:
+        """
+        Advanced coordinate extraction with multiple format support and validation
+
+        Supports formats like:
+        - X_POSITION: 1260, Y_POSITION: 15
+        - (1260, 15)
+        - x: 1260, y: 15
+        - center at 1260, 15
+        - 180 pixels from right edge
+
+        Args:
+            response: Claude Vision response text
+            screenshot: Screenshot being analyzed (for dimension validation)
+
+        Returns:
+            (x, y) tuple or None
+        """
         if not response:
+            logger.warning("[VISION NAV] Empty response from Claude Vision")
             return None
-        
+
         try:
-            # Look for patterns like:
-            # - "coordinates: (1234, 56)"
-            # - "x: 1234, y: 56"
-            # - "at (1234, 56)"
-            # - "1234, 56"
-            # - "X_POSITION: 1234" and "Y_POSITION: 56"
-            # - "approximately 1234 pixels from the left"
-            
-            # Pattern 1: (x, y) format - most explicit
+            logger.debug(f"[VISION NAV] Parsing response: {response[:200]}...")
+
+            # Pattern 1: X_POSITION: 1234, Y_POSITION: 56 (our requested format)
+            x_match = re.search(r'X[_\s]*POSITION\s*:\s*(\d+)', response, re.IGNORECASE)
+            y_match = re.search(r'Y[_\s]*POSITION\s*:\s*(\d+)', response, re.IGNORECASE)
+            if x_match and y_match:
+                x, y = int(x_match.group(1)), int(y_match.group(1))
+                logger.info(f"[VISION NAV] ✅ Extracted (X_POSITION format): ({x}, {y})")
+                return self._validate_and_return(x, y, screenshot)
+
+            # Pattern 2: (x, y) tuple format
             match = re.search(r'\((\d+),\s*(\d+)\)', response)
             if match:
                 x, y = int(match.group(1)), int(match.group(2))
-                logger.info(f"[VISION NAV] ✅ Extracted coordinates (format 1): ({x}, {y})")
-                return (x, y)
-            
-            # Pattern 2: X_POSITION: 1234, Y_POSITION: 56 format
+                logger.info(f"[VISION NAV] ✅ Extracted (tuple format): ({x}, {y})")
+                return self._validate_and_return(x, y, screenshot)
+
+            # Pattern 3: x: 1234, y: 56
+            match = re.search(r'x\s*[:=]\s*(\d+).*?y\s*[:=]\s*(\d+)', response, re.IGNORECASE | re.DOTALL)
+            if match:
+                x, y = int(match.group(1)), int(match.group(2))
+                logger.info(f"[VISION NAV] ✅ Extracted (x:y format): ({x}, {y})")
+                return self._validate_and_return(x, y, screenshot)
+
+            # Pattern 4: JSON format {"x": 1234, "y": 56}
+            match = re.search(r'\{.*?"x"\s*:\s*(\d+).*?"y"\s*:\s*(\d+).*?\}', response, re.IGNORECASE | re.DOTALL)
+            if match:
+                x, y = int(match.group(1)), int(match.group(2))
+                logger.info(f"[VISION NAV] ✅ Extracted (JSON format): ({x}, {y})")
+                return self._validate_and_return(x, y, screenshot)
+
+            # Pattern 5: "center at 1234, 56" or "located at 1234, 56"
+            match = re.search(r'(?:center|located|position|point)\s+(?:at\s+)?(\d+)\s*,\s*(\d+)', response, re.IGNORECASE)
+            if match:
+                x, y = int(match.group(1)), int(match.group(2))
+                logger.info(f"[VISION NAV] ✅ Extracted (descriptive format): ({x}, {y})")
+                return self._validate_and_return(x, y, screenshot)
+
+            # Pattern 6: Descriptive "X pixels from left/right, Y pixels from top"
+            left_match = re.search(r'(\d+)\s*(?:px|pixels?)?\s*from\s+(?:the\s+)?left', response, re.IGNORECASE)
+            right_match = re.search(r'(\d+)\s*(?:px|pixels?)?\s*from\s+(?:the\s+)?right', response, re.IGNORECASE)
+            top_match = re.search(r'(\d+)\s*(?:px|pixels?)?\s*from\s+(?:the\s+)?top', response, re.IGNORECASE)
+
+            if (left_match or right_match) and top_match:
+                if left_match:
+                    x = int(left_match.group(1))
+                elif right_match:
+                    x = screenshot.width - int(right_match.group(1))
+
+                y = int(top_match.group(1))
+                logger.info(f"[VISION NAV] ✅ Extracted (descriptive pixels format): ({x}, {y})")
+                return self._validate_and_return(x, y, screenshot)
+
+            # Pattern 7: Two sequential 3-4 digit numbers (last resort)
+            numbers = re.findall(r'\b(\d{3,4})\b', response)
+            if len(numbers) >= 2:
+                x, y = int(numbers[0]), int(numbers[1])
+                # Only use if reasonable for screenshot dimensions
+                if 0 <= x <= screenshot.width * 2 and 0 <= y <= 100:  # Allow 2x for Retina
+                    logger.info(f"[VISION NAV] ⚠️  Extracted (guessed from numbers): ({x}, {y})")
+                    return self._validate_and_return(x, y, screenshot)
+
+            # No patterns matched
+            logger.error(f"[VISION NAV] ❌ Could not extract coordinates from Claude response")
+            logger.error(f"[VISION NAV] Full response: {response[:800]}")
+            return None
+
+        except Exception as e:
+            logger.error(f"[VISION NAV] Error extracting coordinates: {e}", exc_info=True)
+            return None
+
+    def _validate_and_return(self, x: int, y: int, screenshot: Image.Image) -> Tuple[int, int]:
+        """
+        Validate coordinates and return them (with logging)
+
+        Args:
+            x: X coordinate
+            y: Y coordinate
+            screenshot: Screenshot for dimension checking
+
+        Returns:
+            (x, y) tuple
+        """
+        width = screenshot.width
+        height = screenshot.height
+
+        # Log dimensions for debugging
+        logger.debug(f"[VISION NAV] Screenshot dimensions: {width}x{height}px")
+        logger.debug(f"[VISION NAV] Proposed coordinates: ({x}, {y})")
+
+        # Basic sanity checks
+        if x < 0 or y < 0:
+            logger.warning(f"[VISION NAV] ⚠️ Negative coordinates: ({x}, {y})")
+
+        if x > width:
+            logger.warning(f"[VISION NAV] ⚠️ X coordinate {x} exceeds width {width}")
+
+        if y > height:
+            logger.warning(f"[VISION NAV] ⚠️ Y coordinate {y} exceeds height {height}")
+
+        return (x, y)
+
+    def _validate_coordinates(self, x: int, y: int, width: int, height: int) -> bool:
+        """
+        Validate that coordinates are within acceptable bounds
+
+        Args:
+            x: X coordinate
+            y: Y coordinate
+            width: Screen/region width
+            height: Screen/region height
+
+        Returns:
+            True if valid, False otherwise
+        """
+        # Allow some tolerance for Retina displays (2x scaling)
+        max_x = width * 2
+        max_y = height * 2
+
+        valid = (
+            0 <= x <= max_x and
+            0 <= y <= max_y
+        )
+
+        if not valid:
+            logger.warning(f"[VISION NAV] Coordinates ({x}, {y}) outside bounds (0-{max_x}, 0-{max_y})")
+
+        return valid
+
+    def _adjust_suspicious_coordinates(self, x: int, y: int, width: int, height: int) -> Tuple[int, int]:
+        """
+        Adjust suspicious coordinates to reasonable values
+
+        Args:
+            x: X coordinate
+            y: Y coordinate
+            width: Screen/region width
+            height: Screen/region height
+
+        Returns:
+            Adjusted (x, y) tuple
+        """
+        adjusted_x = x
+        adjusted_y = y
+
+        # If Y is too large, assume menu bar center
+        if y > height:
+            adjusted_y = 15  # Menu bar center
+            logger.info(f"[VISION NAV] Adjusted Y: {y} → {adjusted_y} (menu bar center)")
+
+        # If X is too large, cap at width
+        if x > width:
+            # Try to preserve relative position
+            if x <= width * 2:  # Might be Retina coordinates
+                adjusted_x = x // 2
+                logger.info(f"[VISION NAV] Adjusted X: {x} → {adjusted_x} (Retina scaling)")
+            else:
+                adjusted_x = width - 180  # Typical Control Center position
+                logger.info(f"[VISION NAV] Adjusted X: {x} → {adjusted_x} (capped to typical position)")
+
+        # If X is too small (unlikely for Control Center in right section)
+        if x < width // 2:
+            logger.warning(f"[VISION NAV] X coordinate {x} seems too far left for Control Center")
+            adjusted_x = width - 180
+            logger.info(f"[VISION NAV] Adjusted X: {x} → {adjusted_x} (moved to right section)")
+
+        return (adjusted_x, adjusted_y)
+
+    def _extract_coordinates_from_response(self, response: str) -> Optional[Tuple[int, int]]:
+        """
+        Legacy coordinate extraction method (kept for compatibility)
+
+        NOTE: Use _extract_coordinates_advanced() for new code
+        """
+        if not response:
+            return None
+
+        try:
+            # Use a simple fallback implementation
+            # Pattern: X_POSITION: 1234, Y_POSITION: 56
             x_match = re.search(r'X[_\s]*POSITION:\s*(\d+)', response, re.IGNORECASE)
             y_match = re.search(r'Y[_\s]*POSITION:\s*(\d+)', response, re.IGNORECASE)
             if x_match and y_match:
                 x, y = int(x_match.group(1)), int(y_match.group(1))
-                logger.info(f"[VISION NAV] ✅ Extracted coordinates (format 2): ({x}, {y})")
                 return (x, y)
-            
-            # Pattern 3: x: 1234, y: 56
-            match = re.search(r'x:\s*(\d+).*?y:\s*(\d+)', response, re.IGNORECASE | re.DOTALL)
+
+            # Pattern: (x, y)
+            match = re.search(r'\((\d+),\s*(\d+)\)', response)
             if match:
                 x, y = int(match.group(1)), int(match.group(2))
-                logger.info(f"[VISION NAV] ✅ Extracted coordinates (format 3): ({x}, {y})")
                 return (x, y)
-            
-            # Pattern 4: JSON format
-            match = re.search(r'\{.*?"x":\s*(\d+).*?"y":\s*(\d+).*?\}', response, re.IGNORECASE | re.DOTALL)
-            if match:
-                x, y = int(match.group(1)), int(match.group(2))
-                logger.info(f"[VISION NAV] ✅ Extracted coordinates (format 4): ({x}, {y})")
-                return (x, y)
-            
-            # Pattern 5: "approximately X pixels from the left/right" and "Y pixels from top"
-            # Look for descriptions like "1400 pixels from the left edge"
-            left_match = re.search(r'(\d+)\s*(?:pixels?)?\s*from\s*(?:the\s*)?left', response, re.IGNORECASE)
-            right_match = re.search(r'(\d+)\s*(?:pixels?)?\s*from\s*(?:the\s*)?right', response, re.IGNORECASE)
-            top_match = re.search(r'(\d+)\s*(?:pixels?)?\s*from\s*(?:the\s*)?top', response, re.IGNORECASE)
-            
-            if (left_match or right_match) and top_match:
-                # Get screen dimensions
-                screen_width, screen_height = pyautogui.size()
-                
-                if left_match:
-                    x = int(left_match.group(1))
-                elif right_match:
-                    x = screen_width - int(right_match.group(1))
-                
-                y = int(top_match.group(1))
-                logger.info(f"[VISION NAV] ✅ Extracted coordinates (format 5): ({x}, {y})")
-                return (x, y)
-            
-            # Pattern 6: Just two numbers in sequence (risky but try as last resort)
-            numbers = re.findall(r'\b(\d{3,4})\b', response)  # 3-4 digit numbers (likely pixel coords)
-            if len(numbers) >= 2:
-                x, y = int(numbers[0]), int(numbers[1])
-                # Sanity check: coordinates should be reasonable
-                screen_width, screen_height = pyautogui.size()
-                if 0 <= x <= screen_width and 0 <= y <= screen_height:
-                    logger.info(f"[VISION NAV] ✅ Extracted coordinates (format 6 - guessed): ({x}, {y})")
-                    return (x, y)
-            
-            logger.warning(f"[VISION NAV] ❌ Could not extract coordinates from response.")
-            logger.warning(f"[VISION NAV] Full response: {response[:500]}")
+
             return None
-            
+
         except Exception as e:
-            logger.error(f"[VISION NAV] Error extracting coordinates: {e}", exc_info=True)
+            logger.error(f"[VISION NAV] Error extracting coordinates: {e}")
             return None
     
     async def _click_at(self, x: int, y: int):
