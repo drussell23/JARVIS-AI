@@ -744,12 +744,13 @@ class AdvancedDisplayMonitor:
     async def connect_display(self, display_id: str) -> Dict[str, Any]:
         """
         Connect to a display using advanced methods
-        
+
         Connection Strategy (prioritized):
-        1. Vision-Guided Navigator (uses JARVIS eyes - bypasses all macOS restrictions!)
-        2. Native Swift Bridge fallback
-        3. AppleScript fallback
-        4. Voice guidance to user
+        1. Protocol-Level AirPlay (FASTEST - direct network protocol, no UI needed!)
+        2. Vision-Guided Navigator (uses JARVIS eyes - bypasses all macOS restrictions!)
+        3. Native Swift Bridge fallback
+        4. AppleScript fallback
+        5. Voice guidance to user
 
         Args:
             display_id: Display ID from configuration
@@ -764,7 +765,57 @@ class AdvancedDisplayMonitor:
 
         logger.info(f"[DISPLAY MONITOR] Connecting to {monitored.name}...")
 
-        # Strategy 1: Try Vision-Guided Navigator (BEST METHOD - bypasses all restrictions!)
+        # Strategy 1: Try Protocol-Level AirPlay (BEST METHOD - fastest, most reliable!)
+        try:
+            from display.airplay_manager import get_airplay_manager
+
+            airplay_manager = get_airplay_manager()
+
+            # Initialize if not already
+            if not airplay_manager.is_initialized:
+                await airplay_manager.initialize()
+
+            logger.info(f"[DISPLAY MONITOR] 🚀 Using PROTOCOL-LEVEL AIRPLAY for {monitored.name}")
+            logger.info("[DISPLAY MONITOR] Direct network protocol - bypasses all UI automation!")
+
+            # Determine mode
+            mode = monitored.connection_mode if hasattr(monitored, 'connection_mode') else "extend"
+
+            result = await airplay_manager.connect_to_device(monitored.name, mode=mode)
+
+            if result.get('success'):
+                self.connected_displays.add(display_id)
+                await self._emit_event('display_connected', display=monitored)
+
+                # Speak success message
+                if self.config['voice_integration']['speak_on_connection']:
+                    template = self.config['voice_integration']['connection_success_message']
+                    message = template.format(display_name=monitored.name)
+
+                    if self.voice_handler:
+                        try:
+                            await self.voice_handler.speak(message)
+                        except:
+                            subprocess.Popen(['say', message])
+                    else:
+                        subprocess.Popen(['say', message])
+
+                return {
+                    "success": True,
+                    "message": f"Connected via AirPlay protocol in {result.get('duration', 0):.1f}s",
+                    "method": "airplay_protocol",
+                    "duration": result.get('duration', 0),
+                    "protocol_method": result.get('method', 'system_native')
+                }
+            else:
+                logger.warning(f"[DISPLAY MONITOR] Protocol-level AirPlay failed: {result.get('message')}")
+                # Continue to fallback strategies
+
+        except Exception as e:
+            logger.warning(f"[DISPLAY MONITOR] Protocol-level AirPlay error: {e}")
+            # Continue to fallback strategies
+
+        # Strategy 2: Try Vision-Guided Navigator (fallback - bypasses all restrictions!)
         try:
             from display.vision_ui_navigator import get_vision_navigator
             
