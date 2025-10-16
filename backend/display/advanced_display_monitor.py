@@ -772,69 +772,71 @@ class AdvancedDisplayMonitor:
         connection_start = asyncio.get_event_loop().time()
         strategies_attempted = []
 
-        # Strategy 1: Route Picker Helper (AVRoutePickerView + Accessibility) - BEST METHOD!
+        # Strategy 1: PyATV Protocol-Level AirPlay - FASTEST & MOST RELIABLE!
         try:
-            from display.route_picker_helper_client import get_route_picker_client
+            from display.pyatv_airplay_controller import get_pyatv_controller
 
-            logger.info(f"[DISPLAY MONITOR] 🥇 STRATEGY 1: Route Picker Helper (Track A - Public APIs)")
-            logger.info(f"[DISPLAY MONITOR] Using AVRoutePickerView + Accessibility for {monitored.name}")
-            logger.info(f"[DISPLAY MONITOR] ✅ LEGAL, App Store compliant, macOS native UI")
+            logger.info(f"[DISPLAY MONITOR] 🥇 STRATEGY 1: PyATV Protocol-Level AirPlay")
+            logger.info(f"[DISPLAY MONITOR] Direct network protocol - bypasses UI entirely")
+            logger.info(f"[DISPLAY MONITOR] ✅ Fast discovery + connection for {monitored.name}")
 
-            strategies_attempted.append("route_picker_helper")
+            strategies_attempted.append("pyatv_protocol")
 
-            client = get_route_picker_client()
+            controller = get_pyatv_controller()
 
-            # Ensure helper is running
-            if not client.is_running:
-                helper_started = await client.start_helper()
-                if not helper_started:
-                    logger.warning("[DISPLAY MONITOR] Could not start Route Picker Helper")
-                    raise Exception("Helper failed to start")
-
-            # Connect with retry logic
-            result = await client.connect_to_device(
+            # Discover and connect
+            result = await controller.connect_to_device(
                 device_name=monitored.name,
-                retry_attempts=2,
-                retry_delay=1.0
+                timeout=8.0
             )
 
             if result.get('success'):
-                self.connected_displays.add(display_id)
-                await self._emit_event('display_connected', display=monitored)
+                # Try to start screen mirroring
+                logger.info("[DISPLAY MONITOR] Device connected - attempting screen mirroring...")
+                mirror_result = await controller.start_screen_mirroring(monitored.name)
 
-                duration = asyncio.get_event_loop().time() - connection_start
+                if mirror_result.get('success'):
+                    self.connected_displays.add(display_id)
+                    await self._emit_event('display_connected', display=monitored)
 
-                # Speak success message
-                if self.config['voice_integration']['speak_on_connection']:
-                    template = self.config['voice_integration']['connection_success_message']
-                    message = template.format(display_name=monitored.name)
+                    duration = asyncio.get_event_loop().time() - connection_start
 
-                    if self.voice_handler:
-                        try:
-                            await self.voice_handler.speak(message)
-                        except:
+                    # Speak success message
+                    if self.config['voice_integration']['speak_on_connection']:
+                        template = self.config['voice_integration']['connection_success_message']
+                        message = template.format(display_name=monitored.name)
+
+                        if self.voice_handler:
+                            try:
+                                await self.voice_handler.speak(message)
+                            except:
+                                subprocess.Popen(['say', message])
+                        else:
                             subprocess.Popen(['say', message])
-                    else:
-                        subprocess.Popen(['say', message])
 
-                logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via Route Picker Helper in {duration:.2f}s")
-                logger.info(f"[DISPLAY MONITOR] Method: AVRoutePickerView + Accessibility (Public APIs)")
-                logger.info(f"[DISPLAY MONITOR] ========================================")
+                    logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via PyATV Protocol in {duration:.2f}s")
+                    logger.info(f"[DISPLAY MONITOR] Method: Protocol-Level AirPlay (Direct Network)")
+                    logger.info(f"[DISPLAY MONITOR] ========================================")
 
-                return {
-                    "success": True,
-                    "message": f"Connected to {monitored.name} via Route Picker Helper",
-                    "method": "route_picker_helper",
-                    "duration": duration,
-                    "strategies_attempted": strategies_attempted,
-                    "telemetry": result.get('telemetry', {}),
-                    "tier": 1
-                }
+                    return {
+                        "success": True,
+                        "message": f"Connected to {monitored.name} via PyATV",
+                        "method": "pyatv_protocol",
+                        "duration": duration,
+                        "strategies_attempted": strategies_attempted,
+                        "telemetry": mirror_result,
+                        "tier": 1
+                    }
+                else:
+                    # Connection succeeded but mirroring failed - log and fall through
+                    logger.warning(f"[DISPLAY MONITOR] PyATV connected but mirroring failed: {mirror_result.get('message')}")
+                    raise Exception(f"Mirroring failed: {mirror_result.get('message')}")
             else:
-                logger.warning(f"[DISPLAY MONITOR] Route Picker Helper failed: {result.get('message')}")
+                logger.warning(f"[DISPLAY MONITOR] PyATV connection failed: {result.get('message')}")
+                raise Exception(result.get('message', 'Connection failed'))
 
         except Exception as e:
-            logger.warning(f"[DISPLAY MONITOR] Route Picker Helper error: {e}", exc_info=True)
+            logger.warning(f"[DISPLAY MONITOR] PyATV error: {e}", exc_info=True)
 
         # Strategy 2: Protocol-Level AirPlay (Bonjour/mDNS + RAOP)
         try:
