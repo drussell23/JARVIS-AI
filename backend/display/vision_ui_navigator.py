@@ -303,35 +303,52 @@ class VisionUINavigator:
             if self.vision_analyzer:
                 logger.info("[VISION NAV] 🤖 Asking Claude Vision to locate Control Center...")
 
-                # Enhanced, detailed prompt for maximum accuracy
+                # Enhanced, detailed prompt with exclusion rules
                 prompt = """You are analyzing a macOS menu bar screenshot. I need you to find the Control Center icon and provide its EXACT pixel coordinates.
 
-**What the Control Center icon looks like:**
-- Two overlapping rounded rectangles (like a toggle or switch icon)
-- Solid fill, no transparency
-- Approximately 20-24px wide, 16-20px tall
-- Located in the RIGHT section of the menu bar
+**CRITICAL: What Control Center icon looks like:**
+- Two overlapping rounded rectangles (like toggle switches stacked)
+- Looks like two squares overlapping side by side
+- Solid white/gray icon on dark menu bar background
+- 20-24px wide, 16-20px tall
+- UNIQUE SHAPE - nothing else looks like this!
 
-**Where to find it:**
-- In the top menu bar (this cropped image shows ONLY the menu bar)
-- To the right of most icons
-- Typically near WiFi, Bluetooth, Battery, and Time display
-- Usually about 150-200 pixels from the right edge
+**IMPORTANT: What Control Center is NOT:**
+- NOT the WiFi icon (radiating waves)
+- NOT the Bluetooth icon (B symbol)
+- NOT the Battery icon (battery shape)
+- NOT the Time/Clock display (numbers)
+- NOT the Keyboard Brightness icon (sun symbol)
+- NOT the Display Brightness icon (sun with monitor)
+- NOT the Sound icon (speaker symbol)
+
+**Where to find Control Center:**
+- Far RIGHT section of menu bar
+- Between Display/Keyboard brightness icons and Time display
+- Usually 100-180 pixels from the right edge
+- Look for the UNIQUE two overlapping rectangles shape
+
+**IMPORTANT SPATIAL CLUES:**
+1. Control Center is to the LEFT of the Time display
+2. Control Center is to the RIGHT of brightness/sound icons
+3. It's in the last 200 pixels from the right edge
+4. Look for the distinctive "two overlapping squares" shape
 
 **Your task:**
-1. Locate the Control Center icon visually
-2. Determine its CENTER POINT coordinates
-3. Respond with EXACT pixel coordinates
+1. Scan the RIGHT section of the menu bar (last 250 pixels)
+2. Find the icon with TWO OVERLAPPING RECTANGLES shape
+3. Ignore all other icon shapes (sun, waves, battery, etc.)
+4. Provide EXACT center coordinates
 
-**Response format (use this exact format):**
+**Response format (REQUIRED):**
 X_POSITION: [x coordinate]
 Y_POSITION: [y coordinate]
 
-**Example response:**
+**Example:**
 X_POSITION: 1260
 Y_POSITION: 15
 
-Provide only the coordinates in this format. Be as accurate as possible."""
+Be VERY careful to identify the correct two-overlapping-rectangles icon shape!"""
 
                 # Analyze with Claude Vision
                 analysis = await self._analyze_with_vision(screenshot_path, prompt)
@@ -351,6 +368,12 @@ Provide only the coordinates in this format. Be as accurate as possible."""
                             logger.warning(f"[VISION NAV] ⚠️ Coordinates out of bounds, adjusting...")
                             x, y = self._adjust_suspicious_coordinates(x, y, menu_bar_screenshot.width, menu_bar_height)
                             logger.info(f"[VISION NAV] Adjusted to: ({x}, {y})")
+
+                        # ADVANCED: Spatial validation - Control Center should be in right section
+                        if not await self._validate_control_center_position(x, y, menu_bar_screenshot):
+                            logger.warning(f"[VISION NAV] ⚠️ Position failed spatial validation at ({x}, {y})")
+                            logger.info("[VISION NAV] Attempting multi-pass detection...")
+                            return await self._multi_pass_detection(menu_bar_screenshot)
 
                         # Click the icon
                         await self._click_at(x, y)
@@ -899,6 +922,173 @@ Provide only the coordinates in this format. Be as accurate as possible."""
             logger.error(f"[VISION NAV] Click error: {e}")
             raise
     
+    async def _validate_control_center_position(self, x: int, y: int, menu_bar_screenshot: Image.Image) -> bool:
+        """
+        Advanced spatial validation to ensure detected position is reasonable for Control Center
+
+        Uses spatial reasoning to validate that the detected coordinates make sense
+        for where Control Center icon should be located.
+
+        Args:
+            x: Detected X coordinate
+            y: Detected Y coordinate
+            menu_bar_screenshot: Menu bar image
+
+        Returns:
+            True if position passes validation, False otherwise
+        """
+        try:
+            width = menu_bar_screenshot.width
+
+            # Control Center should be in the RIGHT 30% of menu bar
+            right_section_start = width * 0.7
+
+            if x < right_section_start:
+                logger.warning(f"[VISION NAV] ⚠️ X={x} too far left (should be > {right_section_start:.0f})")
+                return False
+
+            # Control Center should NOT be in the very last 100px (that's usually time/date)
+            if x > width - 100:
+                logger.warning(f"[VISION NAV] ⚠️ X={x} too far right (time display area)")
+                return False
+
+            # Y should be centered in menu bar
+            if y < 5 or y > 35:
+                logger.warning(f"[VISION NAV] ⚠️ Y={y} outside menu bar center range (5-35)")
+                return False
+
+            logger.info(f"[VISION NAV] ✅ Position validation passed for ({x}, {y})")
+            return True
+
+        except Exception as e:
+            logger.error(f"[VISION NAV] Error in position validation: {e}")
+            return True  # Don't block on validation errors
+
+    async def _multi_pass_detection(self, menu_bar_screenshot: Image.Image) -> bool:
+        """
+        Advanced multi-pass detection using different strategies
+
+        When initial detection fails spatial validation, this method tries
+        multiple detection strategies:
+        1. Ask Claude to list ALL icons and their positions
+        2. Use process of elimination to find Control Center
+        3. Focus on rightmost region only
+
+        Args:
+            menu_bar_screenshot: Menu bar image
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            logger.info("[VISION NAV] 🔄 Starting multi-pass detection...")
+
+            # Save screenshot for analysis
+            screenshot_path = self.screenshots_dir / f'multipass_{int(time.time())}.png'
+            menu_bar_screenshot.save(screenshot_path)
+
+            if not self.vision_analyzer:
+                logger.error("[VISION NAV] No vision analyzer for multi-pass")
+                return False
+
+            # PASS 1: Comprehensive icon mapping
+            logger.info("[VISION NAV] Pass 1: Mapping all icons...")
+
+            mapping_prompt = """Analyze this macOS menu bar and list ALL visible icons from LEFT to RIGHT.
+
+For EACH icon, provide:
+1. Icon type (e.g., "WiFi", "Bluetooth", "Battery", "Time", "Control Center", etc.)
+2. X position (approximate center)
+3. Visual description
+
+**CRITICAL:** The Control Center icon looks like TWO OVERLAPPING RECTANGLES or squares overlapping side by side.
+It is NOT the sun icon (brightness), NOT the WiFi icon, NOT the battery icon.
+
+Format your response like this:
+ICON_1: WiFi | X: 1200 | Radiating waves symbol
+ICON_2: Bluetooth | X: 1225 | B symbol
+ICON_3: Battery | X: 1250 | Battery shape
+ICON_4: Control Center | X: 1280 | Two overlapping rectangles
+ICON_5: Time | X: 1350 | Clock/time display
+
+List ALL icons you see, from left to right."""
+
+            analysis = await self._analyze_with_vision(screenshot_path, mapping_prompt)
+
+            if analysis:
+                logger.info(f"[VISION NAV] Icon mapping response: {analysis[:300]}...")
+
+                # Extract Control Center position from mapping
+                cc_match = re.search(r'Control\s*Center.*?X[:\s]*(\d+)', analysis, re.IGNORECASE)
+                if cc_match:
+                    x = int(cc_match.group(1))
+                    y = 15  # Menu bar center
+
+                    logger.info(f"[VISION NAV] ✅ Multi-pass detected Control Center at ({x}, {y})")
+
+                    # Validate this position
+                    if await self._validate_control_center_position(x, y, menu_bar_screenshot):
+                        # Click it
+                        await self._click_at(x, y)
+
+                        # Verify
+                        if await self._verify_control_center_clicked(x, y):
+                            logger.info("[VISION NAV] ✅ Multi-pass detection successful!")
+                            return True
+
+            # PASS 2: Focused right-side detection
+            logger.info("[VISION NAV] Pass 2: Focused right-side scan...")
+
+            # Crop to rightmost 250 pixels only
+            right_section = menu_bar_screenshot.crop((menu_bar_screenshot.width - 250, 0, menu_bar_screenshot.width, 50))
+            right_path = self.screenshots_dir / f'right_section_{int(time.time())}.png'
+            right_section.save(right_path)
+
+            focused_prompt = """This is the RIGHTMOST section of the macOS menu bar (last 250 pixels).
+
+Find the Control Center icon. It looks like TWO OVERLAPPING RECTANGLES side by side.
+
+IGNORE these icons:
+- Sun symbol (brightness)
+- WiFi waves
+- Battery
+- Clock/time numbers
+
+Provide X position relative to this cropped image (0-250).
+
+Format:
+X_POSITION: [number]
+Y_POSITION: 15
+
+Be VERY careful - only select the two-overlapping-rectangles icon!"""
+
+            analysis2 = await self._analyze_with_vision(right_path, focused_prompt)
+
+            if analysis2:
+                coords = self._extract_coordinates_advanced(analysis2, right_section)
+                if coords:
+                    relative_x, y = coords
+                    # Convert relative X to absolute X
+                    absolute_x = (menu_bar_screenshot.width - 250) + relative_x
+
+                    logger.info(f"[VISION NAV] ✅ Focused scan detected at relative ({relative_x}, {y}), absolute ({absolute_x}, {y})")
+
+                    # Click it
+                    await self._click_at(absolute_x, y)
+
+                    # Verify
+                    if await self._verify_control_center_clicked(absolute_x, y):
+                        logger.info("[VISION NAV] ✅ Focused scan successful!")
+                        return True
+
+            # If all passes fail, fall back to heuristic
+            logger.warning("[VISION NAV] ⚠️ All multi-pass attempts failed, using heuristic")
+            return await self._click_control_center_heuristic()
+
+        except Exception as e:
+            logger.error(f"[VISION NAV] Error in multi-pass detection: {e}", exc_info=True)
+            return False
+
     async def _verify_control_center_clicked(self, clicked_x: int, clicked_y: int) -> bool:
         """
         Verify that Control Center actually opened after clicking
