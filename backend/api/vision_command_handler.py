@@ -703,12 +703,12 @@ class VisionCommandHandler:
                             f"[YABAI] Successfully generated workspace overview with {len(spaces)} spaces"
                         )
 
-                    return {
-                        "handled": True,
-                        "response": response,
-                        "pure_intelligence": True,
+                        return {
+                            "handled": True,
+                            "response": response,
+                            "pure_intelligence": True,
                             "yabai_powered": True,
-                        "monitoring_active": self.monitoring_active,
+                            "monitoring_active": self.monitoring_active,
                             "context": (
                                 self.intelligence.context.get_temporal_context()
                                 if self.intelligence
@@ -722,8 +722,8 @@ class VisionCommandHandler:
                                 "yabai_status": status.value,
                                 "total_windows": len(windows),
                             },
-                    }
-        else:
+                        }
+                    else:
                         # Yabai not available - provide installation guidance
                         logger.warning(
                             f"[YABAI] Not available (status: {status.value})"
@@ -2387,7 +2387,7 @@ Never use generic error messages or technical jargon.
             )
 
             if suggestion:
-        return {
+                return {
                     "available": True,
                     "has_suggestion": True,
                     "suggestion": {
