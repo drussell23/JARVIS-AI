@@ -654,6 +654,23 @@ class UnifiedCommandProcessor:
         if has_tv_indicator and (has_action or score > 0):
             score += 0.3
 
+        # Specific display name patterns (HIGH confidence even without action verb)
+        # These patterns strongly indicate user wants to connect to a display
+        display_name_patterns = [
+            r"living\s*room\s*tv",      # "living room tv"
+            r"bedroom\s*tv",             # "bedroom tv"
+            r"kitchen\s*tv",             # "kitchen tv"
+            r"office\s*tv",              # "office tv"
+            r"\w+\s*room\s*tv",         # "any room tv"
+            r"(sony|lg|samsung)\s*tv",   # "sony tv", "lg tv", etc.
+        ]
+
+        for pattern in display_name_patterns:
+            if re.search(pattern, command_lower):
+                # Known display name mentioned - very likely a connection request
+                score = max(score, 0.85)
+                break
+
         # Specific phrase matching (highest confidence)
         if "screen mirror" in command_lower or "screen mirroring" in command_lower:
             score = max(score, 0.95)
