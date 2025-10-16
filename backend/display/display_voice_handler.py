@@ -62,11 +62,8 @@ class DisplayVoiceHandler:
 
         logger.info(f"[DISPLAY VOICE] Speaking: {message}")
 
-        # Try JARVIS voice systems first
-        if await self._try_jarvis_voice(message, priority):
-            return
-
-        # Fallback to macOS say command
+        # For display monitor, always use macOS say for immediate feedback
+        # This ensures the announcement is heard right when the TV is detected
         await self._speak_with_say(message)
 
     async def _try_jarvis_voice(self, message: str, priority: str) -> bool:
@@ -76,22 +73,11 @@ class DisplayVoiceHandler:
         Returns:
             True if successful, False if not available
         """
-        # Try voice_integration (preferred)
-        if self.voice_integration:
-            try:
-                notification = {
-                    'message': message,
-                    'priority': priority,
-                    'category': 'display_monitor',
-                    'timestamp': asyncio.get_event_loop().time()
-                }
-                await self.voice_integration.handle_notification(notification)
-                logger.debug("[DISPLAY VOICE] Used voice_integration")
-                return True
-            except Exception as e:
-                logger.warning(f"[DISPLAY VOICE] voice_integration error: {e}")
+        # For display monitor, we want immediate audio feedback
+        # Skip voice_integration (which queues notifications) and use macOS say directly
+        # This ensures users hear the announcement immediately when TV is detected
 
-        # Try voice_engine
+        # Try voice_engine if available
         if self.voice_engine:
             try:
                 # Check if voice_engine has speak method
@@ -221,15 +207,17 @@ def create_voice_handler(voice_engine=None, voice_integration=None) -> DisplayVo
         except:
             pass
 
-    if voice_integration is None:
-        try:
-            from vision.voice_integration_handler import VoiceIntegrationHandler
-            voice_integration = VoiceIntegrationHandler()
-            logger.info("[DISPLAY VOICE] Auto-detected VoiceIntegrationHandler")
-        except:
-            pass
+    # Don't auto-detect voice_integration for display monitor
+    # We want immediate audio feedback via macOS say, not queued notifications
+    # if voice_integration is None:
+    #     try:
+    #         from vision.voice_integration_handler import VoiceIntegrationHandler
+    #         voice_integration = VoiceIntegrationHandler()
+    #         logger.info("[DISPLAY VOICE] Auto-detected VoiceIntegrationHandler")
+    #     except:
+    #         pass
 
-    return DisplayVoiceHandler(voice_engine, voice_integration)
+    return DisplayVoiceHandler(voice_engine, voice_integration=None)
 
 
 if __name__ == "__main__":
