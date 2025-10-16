@@ -1,0 +1,11 @@
+{
+  "httpPort": 8020,
+  "accessibilityRetries": 3,
+  "retryDelay": 1.0,
+  "menuOpenDelay": 0.5,
+  "deviceSelectionTimeout": 10.0,
+  "telemetry": {
+    "enabled": true,
+    "logPath": "/tmp/airplay_helper.log"
+  }
+}
