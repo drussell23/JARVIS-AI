@@ -2,23 +2,41 @@
 Display Module
 ==============
 
-Simple display monitoring and management.
-No proximity detection needed - just monitors Screen Mirroring menu.
+Advanced display monitoring and management with multi-method detection.
 
 Author: Derek Russell
 Date: 2025-10-15
 """
 
+# Import from advanced display monitor (Component #9)
+from .advanced_display_monitor import (
+    get_display_monitor,
+    AdvancedDisplayMonitor,
+    DisplayInfo,
+    MonitoredDisplay,
+    DetectionMethod,
+    DisplayType,
+    ConnectionMode
+)
+
+# Legacy imports for backward compatibility
 from .display_monitor_service import (
     DisplayMonitorService,
     DisplayMonitorConfig,
-    get_display_monitor
 )
 
 __all__ = [
+    # Advanced display monitor (primary)
+    "get_display_monitor",
+    "AdvancedDisplayMonitor",
+    "DisplayInfo",
+    "MonitoredDisplay",
+    "DetectionMethod",
+    "DisplayType",
+    "ConnectionMode",
+    # Legacy (backward compatibility)
     "DisplayMonitorService",
     "DisplayMonitorConfig",
-    "get_display_monitor"
 ]
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
