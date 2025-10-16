@@ -275,105 +275,196 @@ class VisionUINavigator:
             )
     
     async def _find_and_click_control_center(self) -> bool:
-        """Find and click Control Center icon in menu bar"""
+        """Find and click Control Center icon in menu bar using ML-powered detection"""
         try:
-            # Try Enhanced Vision Pipeline first
+            # Try Enhanced Vision Pipeline with ML Template Generator first
             if self.use_enhanced_pipeline and self.enhanced_pipeline:
-                logger.info("[VISION NAV] 🚀 Using Enhanced Vision Pipeline v1.0")
-                
+                logger.info("[VISION NAV] 🚀 Using Enhanced Vision Pipeline v1.0 with ML Template Generator")
+
                 result = await self.enhanced_pipeline.execute_pipeline(
                     target='control_center',
                     context={'navigator': self}
                 )
-                
+
                 if result.success:
                     self.stats['enhanced_pipeline_used'] += 1
-                    logger.info(f"[VISION NAV] ✅ Enhanced Pipeline succeeded in {result.execution_time_ms:.1f}ms")
+                    logger.info(f"[VISION NAV] ✅ Enhanced Pipeline + ML succeeded in {result.execution_time_ms:.1f}ms")
                     return True
                 else:
                     logger.warning(f"[VISION NAV] Enhanced Pipeline failed: {result.error}")
-                    logger.info("[VISION NAV] Falling back to legacy methods")
-            
-            # Fallback: Claude Vision + Heuristic
+                    logger.info("[VISION NAV] Falling back to direct ML detection")
+
+            # Fallback 1: Direct ML Template Detection
+            try:
+                from vision.enhanced_vision_pipeline.icon_detection_engine import IconDetectionEngine
+                from vision.enhanced_vision_pipeline.screen_region_analyzer import ScreenRegion
+
+                # Capture screen
+                screenshot = await self._capture_screen()
+                if not screenshot:
+                    raise Exception("Failed to capture screen")
+
+                # Create screen region for detection
+                screen_region = ScreenRegion(
+                    image=screenshot,
+                    bounds=(0, 0, screenshot.width, screenshot.height),
+                    region_type='menu_bar',
+                    confidence=1.0
+                )
+
+                # Initialize icon detector with ML template generator
+                detector = IconDetectionEngine(self.config)
+                await detector.initialize()
+
+                logger.info("[VISION NAV] 🎯 Using ML Template Generator for Control Center detection")
+
+                # Detect Control Center icon
+                detection_result = await detector.detect_icon(
+                    region=screen_region,
+                    target='control_center',
+                    context={'navigator': self}
+                )
+
+                if detection_result.get('success'):
+                    best_result = detection_result['detection_results']['best']
+
+                    if best_result.found and best_result.center_point:
+                        x, y = best_result.center_point
+                        logger.info(f"[VISION NAV] ✅ ML Template detected Control Center at ({x}, {y})")
+                        logger.info(f"[VISION NAV]    Confidence: {best_result.confidence:.2%}, Method: {best_result.method}")
+
+                        # Click the icon
+                        await self._click_at(x, y)
+
+                        self.stats['enhanced_pipeline_used'] += 1
+                        return True
+
+            except Exception as ml_error:
+                logger.warning(f"[VISION NAV] ML detection failed: {ml_error}")
+
+            # Fallback 2: Claude Vision + Heuristic
             self.stats['fallback_used'] += 1
-            
+
             # Capture current screen
             screenshot = await self._capture_screen()
-            
+
             if not screenshot:
                 logger.error("[VISION NAV] Failed to capture screen")
                 return False
-            
+
             # Save screenshot for analysis
             screenshot_path = self.screenshots_dir / f'control_center_search_{int(time.time())}.png'
             screenshot.save(screenshot_path)
-            
+
             # Use Claude Vision to find Control Center icon
             prompt = self.config['prompts']['find_control_center']
-            
+
             if self.vision_analyzer:
                 logger.info("[VISION NAV] Using Claude Vision to locate Control Center icon...")
-                
+
                 # Analyze with Claude Vision
                 analysis = await self._analyze_with_vision(screenshot_path, prompt)
-                
+
                 # Extract coordinates from analysis
                 coords = self._extract_coordinates_from_response(analysis)
-                
+
                 if coords:
                     x, y = coords
                     logger.info(f"[VISION NAV] Control Center found at ({x}, {y})")
-                    
+
                     # Click the icon
                     await self._click_at(x, y)
-                    
+
                     return True
                 else:
                     logger.warning("[VISION NAV] Could not extract coordinates from vision response")
-            
+
             # Final fallback: Use heuristic (top-right area of menu bar)
             logger.info("[VISION NAV] Using heuristic fallback for Control Center")
             return await self._click_control_center_heuristic()
-            
+
         except Exception as e:
             logger.error(f"[VISION NAV] Error finding Control Center: {e}")
             return False
     
     async def _find_and_click_screen_mirroring(self) -> bool:
-        """Find and click Screen Mirroring button in Control Center"""
+        """Find and click Screen Mirroring button in Control Center using ML-powered detection"""
         try:
-            # Capture screen after Control Center opened
-            await asyncio.sleep(0.3)  # Let UI settle
+            # Let UI settle after Control Center opens
+            await asyncio.sleep(0.3)
+
+            # Capture screen
             screenshot = await self._capture_screen()
-            
             if not screenshot:
                 return False
-            
+
+            # Try ML Template Detection first
+            try:
+                from vision.enhanced_vision_pipeline.icon_detection_engine import IconDetectionEngine
+                from vision.enhanced_vision_pipeline.screen_region_analyzer import ScreenRegion
+
+                # Create screen region for detection
+                screen_region = ScreenRegion(
+                    image=screenshot,
+                    bounds=(0, 0, screenshot.width, screenshot.height),
+                    region_type='control_center',
+                    confidence=1.0
+                )
+
+                # Initialize icon detector with ML template generator
+                detector = IconDetectionEngine(self.config)
+                await detector.initialize()
+
+                logger.info("[VISION NAV] 🎯 Using ML Template Generator for Screen Mirroring detection")
+
+                # Detect Screen Mirroring button
+                detection_result = await detector.detect_icon(
+                    region=screen_region,
+                    target='screen_mirroring',
+                    context={'navigator': self}
+                )
+
+                if detection_result.get('success'):
+                    best_result = detection_result['detection_results']['best']
+
+                    if best_result.found and best_result.center_point:
+                        x, y = best_result.center_point
+                        logger.info(f"[VISION NAV] ✅ ML Template detected Screen Mirroring at ({x}, {y})")
+                        logger.info(f"[VISION NAV]    Confidence: {best_result.confidence:.2%}, Method: {best_result.method}")
+
+                        # Click the button
+                        await self._click_at(x, y)
+
+                        return True
+
+            except Exception as ml_error:
+                logger.warning(f"[VISION NAV] ML detection failed: {ml_error}")
+
+            # Fallback 1: Claude Vision
             screenshot_path = self.screenshots_dir / f'screen_mirroring_search_{int(time.time())}.png'
             screenshot.save(screenshot_path)
-            
-            # Use Claude Vision to find Screen Mirroring
+
             prompt = self.config['prompts']['find_screen_mirroring']
-            
+
             if self.vision_analyzer:
                 logger.info("[VISION NAV] Using Claude Vision to locate Screen Mirroring button...")
-                
+
                 analysis = await self._analyze_with_vision(screenshot_path, prompt)
                 coords = self._extract_coordinates_from_response(analysis)
-                
+
                 if coords:
                     x, y = coords
                     logger.info(f"[VISION NAV] Screen Mirroring found at ({x}, {y})")
-                    
+
                     # Click the button
                     await self._click_at(x, y)
-                    
+
                     return True
-            
-            # Fallback: Search for text "Screen Mirroring" or "Display"
+
+            # Fallback 2: OCR search for text "Screen Mirroring" or "Display"
             logger.info("[VISION NAV] Using OCR fallback for Screen Mirroring")
             return await self._click_screen_mirroring_ocr(screenshot)
-            
+
         except Exception as e:
             logger.error(f"[VISION NAV] Error finding Screen Mirroring: {e}")
             return False
