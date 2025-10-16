@@ -101,13 +101,22 @@ class VisionUINavigator:
             'enhanced_pipeline_used': 0,
             'fallback_used': 0
         }
+
+        # Learning system: Cache successful Control Center position
+        self.learned_cc_position = None  # Will be (x, y) after first successful click
+        self.learning_cache_file = Path.home() / '.jarvis' / 'control_center_position.json'
         
         # Configure PyAutoGUI safety
         pyautogui.PAUSE = self.config.get('mouse', {}).get('delay_between_actions', 0.5)
         pyautogui.FAILSAFE = True
         
+        # Load learned Control Center position if available
+        self._load_learned_position()
+
         logger.info("[VISION NAV] Vision UI Navigator initialized")
         logger.info(f"[VISION NAV] Enhanced Pipeline: {'enabled' if self.use_enhanced_pipeline else 'disabled'}")
+        if self.learned_cc_position:
+            logger.info(f"[VISION NAV] 🎓 Learned position loaded: {self.learned_cc_position}")
     
     def _load_config(self, config_path: Path) -> Dict[str, Any]:
         """Load configuration"""
@@ -274,14 +283,64 @@ class VisionUINavigator:
                 error_details={'exception': str(e), 'steps_completed': steps_completed}
             )
     
+    def _load_learned_position(self):
+        """Load previously learned Control Center position from cache"""
+        try:
+            if self.learning_cache_file.exists():
+                with open(self.learning_cache_file) as f:
+                    data = json.load(f)
+                    self.learned_cc_position = tuple(data.get('control_center_position', []))
+                    if self.learned_cc_position:
+                        logger.info(f"[VISION NAV] 🎓 Loaded learned position: {self.learned_cc_position}")
+        except Exception as e:
+            logger.warning(f"[VISION NAV] Could not load learned position: {e}")
+            self.learned_cc_position = None
+
+    def _save_learned_position(self, x: int, y: int):
+        """Save successful Control Center position for future use"""
+        try:
+            self.learned_cc_position = (x, y)
+            self.learning_cache_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.learning_cache_file, 'w') as f:
+                json.dump({
+                    'control_center_position': [x, y],
+                    'screen_resolution': list(pyautogui.size()),
+                    'learned_at': datetime.now().isoformat()
+                }, f)
+            logger.info(f"[VISION NAV] 💾 Saved learned position: ({x}, {y})")
+        except Exception as e:
+            logger.warning(f"[VISION NAV] Could not save learned position: {e}")
+
     async def _find_and_click_control_center(self) -> bool:
         """
-        Find and click Control Center icon using direct Claude Vision detection
+        Find and click Control Center icon using learned position + Claude Vision
 
-        This method uses Claude Vision API directly for maximum accuracy.
-        Claude can SEE the exact location of UI elements with no dependencies.
+        Priority:
+        1. Try learned position (if available and recently successful)
+        2. Use Claude Vision detection with enhanced prompts
+        3. Multi-pass detection if needed
+        4. Heuristic fallback
+
+        This method learns from successful clicks to improve accuracy over time.
         """
         try:
+            # Try learned position first (fastest and most accurate if available)
+            if self.learned_cc_position:
+                logger.info(f"[VISION NAV] 🎓 Trying learned position: {self.learned_cc_position}")
+                x, y = self.learned_cc_position
+
+                await self._click_at(x, y)
+
+                if await self._verify_control_center_clicked(x, y):
+                    logger.info("[VISION NAV] ✅ Learned position worked!")
+                    return True
+                else:
+                    logger.warning("[VISION NAV] ⚠️ Learned position failed, clearing cache...")
+                    self.learned_cc_position = None  # Clear failed position
+                    if self.learning_cache_file.exists():
+                        self.learning_cache_file.unlink()
+
+            # Continue with Claude Vision detection
             # Capture screen
             screenshot = await self._capture_screen()
             if not screenshot:
@@ -314,6 +373,7 @@ class VisionUINavigator:
 - UNIQUE SHAPE - nothing else looks like this!
 
 **IMPORTANT: What Control Center is NOT:**
+- NOT the Siri icon (colorful orb/circle - VERY COMMON MISTAKE!)
 - NOT the WiFi icon (radiating waves)
 - NOT the Bluetooth icon (B symbol)
 - NOT the Battery icon (battery shape)
@@ -321,6 +381,7 @@ class VisionUINavigator:
 - NOT the Keyboard Brightness icon (sun symbol)
 - NOT the Display Brightness icon (sun with monitor)
 - NOT the Sound icon (speaker symbol)
+- NOT any colorful icon (Control Center is monochrome gray/white)
 
 **Where to find Control Center:**
 - Far RIGHT section of menu bar
@@ -380,11 +441,15 @@ Be VERY careful to identify the correct two-overlapping-rectangles icon shape!""
 
                         # Self-correction: Verify we clicked the right icon
                         if await self._verify_control_center_clicked(x, y):
+                            # Save this position for future use
+                            self._save_learned_position(x, y)
                             return True
                         else:
                             # Wrong icon clicked - try to self-correct
                             logger.warning("[VISION NAV] ⚠️ Wrong icon clicked! Attempting self-correction...")
-                            return await self._self_correct_control_center_click()
+                            corrected = await self._self_correct_control_center_click()
+                            # Note: self_correct method will save position if it succeeds
+                            return corrected
                     else:
                         logger.warning("[VISION NAV] Could not extract valid coordinates from Claude response")
                         logger.debug(f"[VISION NAV] Full response: {analysis[:500]}")
@@ -1262,8 +1327,15 @@ Please help me find the correct icon!"""
 
             # Verify the correction worked
             await asyncio.sleep(0.5)
-            logger.info("[VISION NAV] ✅ Self-correction complete!")
-            return True
+
+            # Verify and save if successful
+            if await self._verify_control_center_clicked(corrected_x, corrected_y):
+                logger.info("[VISION NAV] ✅ Self-correction successful!")
+                self._save_learned_position(corrected_x, corrected_y)
+                return True
+            else:
+                logger.warning("[VISION NAV] ⚠️ Self-correction verification failed")
+                return False
 
         except Exception as e:
             logger.error(f"[VISION NAV] Error during self-correction: {e}", exc_info=True)
