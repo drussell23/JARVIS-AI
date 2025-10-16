@@ -578,16 +578,16 @@ class VisionCommandHandler:
         if is_monitoring_command:
             return await self._handle_monitoring_command(command_text, screenshot)
         else:
-                # Pure vision query - let Claude see and respond
+            # Pure vision query - let Claude see and respond
             response = await self.intelligence.understand_and_respond(
                 screenshot, command_text
             )
 
-                return {
-                    "handled": True,
-                    "response": response,
-                    "pure_intelligence": True,
-                    "monitoring_active": self.monitoring_active,
+            return {
+                "handled": True,
+                "response": response,
+                "pure_intelligence": True,
+                "monitoring_active": self.monitoring_active,
                 "context": self.intelligence.context.get_temporal_context(),
             }
 
