@@ -120,6 +120,7 @@ class CommandType(Enum):
     META = "meta"
     VOICE_UNLOCK = "voice_unlock"
     DOCUMENT = "document"
+    DISPLAY = "display"
     UNKNOWN = "unknown"
 
 
@@ -368,6 +369,14 @@ class UnifiedCommandProcessor:
             )
             return CommandType.VOICE_UNLOCK, 0.85 + (voice_patterns * 0.05)
 
+        # Display/Screen mirroring detection (HIGH PRIORITY - before vision to avoid confusion)
+        display_score = self._calculate_display_score(words, command_lower)
+        if display_score > 0.7:
+            logger.info(
+                f"Display command detected: '{command_lower}' with score={display_score}"
+            )
+            return CommandType.DISPLAY, display_score
+
         # Check for implicit compound commands (app + action without connector)
         # Example: "open safari search for cats"
         if len(words) >= 3:
@@ -593,10 +602,70 @@ class UnifiedCommandProcessor:
 
         return indicators
 
+    def _calculate_display_score(self, words: List[str], command_lower: str) -> float:
+        """
+        Calculate likelihood of display/screen mirroring command
+
+        Detects commands like:
+        - "screen mirror my Mac to the Living Room TV"
+        - "connect to Living Room TV"
+        - "extend display to Sony TV"
+        - "airplay to Living Room TV"
+        """
+        score = 0.0
+
+        # Clean words by removing punctuation
+        import re
+        clean_words = [re.sub(r'[^\w\s]', '', word) for word in words]
+
+        # Primary display/mirroring keywords (STRONG indicators)
+        primary_keywords = {
+            "mirror": 0.8,
+            "airplay": 0.9,
+            "extend": 0.7,
+        }
+
+        for keyword, weight in primary_keywords.items():
+            if keyword in clean_words:
+                score += weight
+
+        # Secondary display keywords (combined with display action)
+        secondary_keywords = {"display", "screen", "tv", "television"}
+        has_secondary = any(kw in clean_words for kw in secondary_keywords)
+
+        # Display action verbs
+        action_verbs = {"connect", "cast", "project", "stream", "share"}
+        has_action = any(verb in clean_words for verb in action_verbs)
+
+        # Boost if we have action verb + display keyword
+        if has_action and has_secondary:
+            score += 0.6
+
+        # Boost for prepositions indicating target ("to", "on")
+        if ("to" in clean_words or "on" in clean_words) and has_secondary:
+            score += 0.2
+
+        # Check for TV/display names (Living Room, Sony, etc.)
+        # If "room" or "tv" or brand names are mentioned with action
+        tv_indicators = {"room", "tv", "television", "sony", "lg", "samsung"}
+        has_tv_indicator = any(indicator in clean_words for indicator in tv_indicators)
+
+        if has_tv_indicator and (has_action or score > 0):
+            score += 0.3
+
+        # Specific phrase matching (highest confidence)
+        if "screen mirror" in command_lower or "screen mirroring" in command_lower:
+            score = max(score, 0.95)
+
+        if "airplay" in command_lower and "to" in command_lower:
+            score = max(score, 0.95)
+
+        return min(score, 1.0)  # Cap at 1.0
+
     def _calculate_vision_score(self, words: List[str], command_lower: str) -> float:
         """Calculate likelihood of vision command"""
         score = 0.0
-        
+
         # Clean words by removing punctuation for better matching
         import re
         clean_words = [re.sub(r'[^\w\s]', '', word) for word in words]
@@ -970,6 +1039,15 @@ class UnifiedCommandProcessor:
                         "response": "Understood",
                         "command_type": "meta",
                     }
+            elif command_type == CommandType.DISPLAY:
+                # Handle display/screen mirroring commands
+                result = await self._execute_display_command(command_text)
+                return {
+                    "success": result.get("success", False),
+                    "response": result.get("response", ""),
+                    "command_type": command_type.value,
+                    **result,
+                }
             elif command_type == CommandType.DOCUMENT:
                 # Handle document creation commands WITH CONTEXT AWARENESS
                 logger.info(
@@ -1857,6 +1935,118 @@ class UnifiedCommandProcessor:
 
         # Default fallback
         return "safari"
+
+    async def _execute_display_command(self, command_text: str) -> Dict[str, Any]:
+        """
+        Execute display/screen mirroring commands
+
+        Handles commands like:
+        - "screen mirror my Mac to the Living Room TV"
+        - "connect to Living Room TV"
+        - "extend display to Sony TV"
+        - "airplay to Living Room TV"
+
+        Flow:
+        1. TV is in standby mode (AirPlay chip active, broadcasts availability)
+        2. macOS Control Center sees "Living Room TV"
+        3. JARVIS detects "Living Room TV" via DNS-SD
+        4. User command triggers AirPlay connection request
+        5. Sony TV receives wake signal → Powers ON automatically
+        6. Mac screen appears on Sony TV
+        """
+        command_lower = command_text.lower()
+        logger.info(f"[DISPLAY] Processing display command: '{command_text}'")
+
+        try:
+            from display import get_display_monitor
+
+            monitor = get_display_monitor()
+
+            # Extract display name from command
+            # Look for TV names, room names, or brand names
+            display_name = None
+
+            # Check config for monitored displays
+            status = monitor.get_status()
+            available_displays = monitor.get_available_display_details()
+
+            logger.debug(f"[DISPLAY] Available displays: {[d['display_name'] for d in available_displays]}")
+
+            # Match display name in command text
+            display_id = None
+            for display_info in available_displays:
+                name = display_info["display_name"]
+                # Check if display name appears in command (case insensitive)
+                if name.lower() in command_lower:
+                    display_name = name
+                    display_id = display_info["display_id"]
+                    break
+
+            if not display_name:
+                # Try to extract room name or TV reference
+                import re
+                # Match patterns like "living room", "bedroom", "sony", "lg", etc.
+                patterns = [
+                    r"(living\s*room|bedroom|kitchen|office)\s*tv",
+                    r"(sony|lg|samsung)\s*tv",
+                    r"to\s+([a-z\s]+tv)",
+                ]
+                for pattern in patterns:
+                    match = re.search(pattern, command_lower)
+                    if match:
+                        extracted = match.group(0).replace("to ", "").strip()
+                        # Try to match with available displays
+                        for display_info in available_displays:
+                            if extracted.lower() in display_info["display_name"].lower():
+                                display_name = display_info["display_name"]
+                                display_id = display_info["display_id"]
+                                break
+                        if display_name:
+                            break
+
+            # Determine mode (mirror vs extend)
+            mode = "mirror" if "mirror" in command_lower else "extend"
+
+            if not display_id:
+                # No specific display found, show available options
+                if available_displays:
+                    names = [d["display_name"] for d in available_displays]
+                    return {
+                        "success": False,
+                        "response": f"I couldn't determine which display to connect to. Available displays: {', '.join(names)}. Please specify one.",
+                        "available_displays": names,
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "response": "No displays are currently available. Please ensure your TV or display is powered on and connected to the network.",
+                    }
+
+            logger.info(f"[DISPLAY] Connecting to '{display_name}' (id: {display_id}) in {mode} mode...")
+
+            # Connect to display using display_id
+            result = await monitor.connect_display(display_id)
+
+            if result.get("success"):
+                return {
+                    "success": True,
+                    "response": f"Connected to {display_name}, sir. Your screen is now being {mode}ed.",
+                    "display_name": display_name,
+                    "mode": mode,
+                }
+            else:
+                return {
+                    "success": False,
+                    "response": result.get("message", f"Unable to connect to {display_name}."),
+                    "display_name": display_name,
+                }
+
+        except Exception as e:
+            logger.error(f"[DISPLAY] Error executing display command: {e}", exc_info=True)
+            return {
+                "success": False,
+                "response": f"I encountered an error while trying to connect to the display: {str(e)}",
+            }
 
     async def _execute_system_command(self, command_text: str) -> Dict[str, Any]:
         """Dynamically execute system commands without hardcoding"""
