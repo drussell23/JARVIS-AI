@@ -710,11 +710,12 @@ Menu bar layout from RIGHT to LEFT (with EXACT pixel distances):
     (far right)                       (TARGET!)              (TOO FAR LEFT!)
     X > 1335                          X = 1300-1335          X < 1290
 
-**ABSOLUTE RULES - POSITION-BASED:**
-1. Control Center MUST be 110-140px from RIGHT edge
-2. If X < (width - 150): TOO FAR LEFT = This is SIRI, NOT Control Center!
-3. If X > (width - 105): TOO FAR RIGHT = This is Time display, NOT Control Center!
-4. The CORRECT range is NARROW: X must be in [width-140] to [width-110]
+**ABSOLUTE RULES - POSITION-BASED (STRICTLY ENFORCED):**
+1. Control Center MUST be 108-142px from RIGHT edge (NARROW RANGE!)
+2. If X < (width - 142): TOO FAR LEFT = This is SIRI, NOT Control Center!
+3. If X > (width - 108): TOO FAR RIGHT = This is Time display, NOT Control Center!
+4. The CORRECT range is VERY NARROW: X must be in [width-142] to [width-108]
+5. Siri is typically at width-170, Control Center at width-125, Time at width-80
 
 **VISUAL LAYOUT WITH PIXEL DISTANCES:**
 
@@ -742,15 +743,17 @@ Menu bar layout (RIGHT section):
 Exact position rules:
 1. Start from the RIGHT edge of the screen
 2. Skip the Time display (numbers like "2:55 AM" - last 105 pixels from right)
-3. Control Center is immediately to the LEFT of Time (110-140px from right edge)
-4. Siri is FURTHER LEFT than Control Center (>150px from right edge)
-5. Control Center X position MUST be in range: [screen_width - 140] to [screen_width - 110]
+3. Control Center is immediately to the LEFT of Time (108-142px from right edge - STRICT!)
+4. Siri is FURTHER LEFT than Control Center (>145px from right edge)
+5. Control Center X position MUST be in range: [screen_width - 142] to [screen_width - 108]
 6. Control Center Y position should be centered: 12-18 pixels from top
+7. Any detection outside this range will be REJECTED as wrong icon
 
 **WARNING: COMMON MISTAKE - Siri vs Control Center:**
-- Siri: Circular, colorful, X > 150px from right (X ~1270 on 1440px screen)
-- Control Center: Rectangular, monochrome, X = 110-140px from right (X ~1315 on 1440px screen)
+- Siri: Circular, colorful, X > 145px from right (X ~1270 on 1440px screen) - REJECT THIS!
+- Control Center: Rectangular, monochrome, X = 108-142px from right (X ~1315 on 1440px screen) - CORRECT!
 - THEY ARE NEXT TO EACH OTHER - Make sure you pick the RIGHT ONE!
+- If you detect X < (width - 142), you've selected Siri - WRONG! Move RIGHT!
 
 **STEP-BY-STEP DETECTION PROCESS:**
 
@@ -769,8 +772,9 @@ Step 7: If all checks pass, this is Control Center
 - [ ] Is the icon MONOCHROME gray/white (NO colors)?
 - [ ] Is the icon NOT circular (rules out Siri)?
 - [ ] Is the icon NOT sun-shaped (rules out Brightness)?
-- [ ] Is the X position between screen_width-180 and screen_width-100?
+- [ ] Is the X position between screen_width-142 and screen_width-108? (STRICT!)
 - [ ] Is the Y position centered in menu bar (12-18px)?
+- [ ] Did I verify I'm NOT detecting Siri (which is >145px from right)?
 
 **RESPONSE FORMAT (Required):**
 
@@ -847,7 +851,8 @@ Take your time. Analyze carefully. The correct icon is there - find the two over
                         width = menu_bar_screenshot.width
                         distance_from_right = width - x
 
-                        if distance_from_right > 150:
+                        # TIGHTENED: Reject if too far left (Siri zone)
+                        if distance_from_right > 142:
                             logger.error(f"[VISION NAV] 🚫 REJECTED: Position is {distance_from_right}px from right edge (TOO FAR LEFT - likely Siri)")
                             logger.error(f"[VISION NAV] 🚫 Control Center should be 110-140px from right, detected {distance_from_right}px")
                             self._record_detection_attempt(
@@ -860,7 +865,7 @@ Take your time. Analyze carefully. The correct icon is there - find the two over
                             logger.info("[VISION NAV] 🔄 Attempting multi-pass to find Control Center CLOSER to right edge...")
                             return await self._multi_pass_detection(menu_bar_screenshot)
 
-                        if distance_from_right < 105:
+                        if distance_from_right < 108:
                             logger.error(f"[VISION NAV] 🚫 REJECTED: Position is {distance_from_right}px from right edge (TOO FAR RIGHT - likely in time zone)")
                             self._record_detection_attempt(
                                 success=False,
@@ -872,7 +877,7 @@ Take your time. Analyze carefully. The correct icon is there - find the two over
                             logger.info("[VISION NAV] 🔄 Attempting multi-pass detection...")
                             return await self._multi_pass_detection(menu_bar_screenshot)
 
-                        logger.info(f"[VISION NAV] ✅ Position check passed: {distance_from_right}px from right edge (acceptable range for Control Center)")
+                        logger.info(f"[VISION NAV] ✅ Position check passed: {distance_from_right}px from right edge (ideal range: 110-140px)")
 
                         # CRITICAL LAYER 2: Color analysis - reject colorful icons (Siri)
                         color_analysis = self._analyze_icon_color(menu_bar_screenshot, x, y)
@@ -1547,24 +1552,30 @@ Provide only the coordinates in this format. Be as accurate as possible."""
             # PASS 1: Comprehensive icon mapping
             logger.info("[VISION NAV] Pass 1: Mapping all icons...")
 
-            mapping_prompt = """Analyze this macOS menu bar and list ALL visible icons from LEFT to RIGHT.
+            mapping_prompt = """Analyze this macOS menu bar and list ALL visible icons from LEFT to RIGHT, focusing especially on the RIGHTMOST icons.
 
 For EACH icon, provide:
-1. Icon type (e.g., "WiFi", "Bluetooth", "Battery", "Time", "Control Center", etc.)
+1. Icon type (e.g., "WiFi", "Bluetooth", "Battery", "Siri", "Control Center", "Time", etc.)
 2. X position (approximate center)
-3. Visual description
+3. Visual description (color, shape, etc.)
 
-**CRITICAL:** The Control Center icon looks like TWO OVERLAPPING RECTANGLES or squares overlapping side by side.
-It is NOT the sun icon (brightness), NOT the WiFi icon, NOT the battery icon.
+**CRITICAL DISTINCTIONS - These are DIFFERENT icons:**
+
+1. **Siri**: COLORFUL circular orb (rainbow/purple/blue colors), typically at X = width - 170 to width - 150
+2. **Control Center**: TWO OVERLAPPING RECTANGLES (side by side), MONOCHROME (gray/white), typically at X = width - 135 to width - 115
+3. **Time Display**: Numbers showing time, typically at X = width - 80
+
+**IMPORTANT:** Siri and Control Center are NEXT TO EACH OTHER! Siri is to the LEFT, Control Center is to the RIGHT (closer to time display).
 
 Format your response like this:
-ICON_1: WiFi | X: 1200 | Radiating waves symbol
-ICON_2: Bluetooth | X: 1225 | B symbol
-ICON_3: Battery | X: 1250 | Battery shape
-ICON_4: Control Center | X: 1280 | Two overlapping rectangles
-ICON_5: Time | X: 1350 | Clock/time display
+ICON_1: WiFi | X: 1200 | Radiating waves, white
+ICON_2: Bluetooth | X: 1225 | B symbol, white
+ICON_3: Battery | X: 1250 | Battery shape, white
+ICON_4: Siri | X: 1270 | Circular colorful orb (purple/rainbow)
+ICON_5: Control Center | X: 1315 | Two overlapping rectangles, monochrome gray
+ICON_6: Time | X: 1360 | Clock/time numbers "2:55 AM"
 
-List ALL icons you see, from left to right."""
+List ALL icons you see, from left to right. Pay special attention to distinguishing Siri (colorful circle) from Control Center (gray rectangles)."""
 
             analysis = await self._analyze_with_vision(screenshot_path, mapping_prompt)
 
@@ -1579,9 +1590,15 @@ List ALL icons you see, from left to right."""
 
                     logger.info(f"[VISION NAV] ✅ Multi-pass detected Control Center at ({x}, {y})")
 
-                    # Validate this position
-                    if await self._validate_control_center_position(x, y, menu_bar_screenshot):
-                        # Click it
+                    # Validate this position with strict bounds
+                    width = menu_bar_screenshot.width
+                    distance_from_right = width - x
+
+                    if distance_from_right > 142 or distance_from_right < 108:
+                        logger.warning(f"[VISION NAV] ⚠️ Multi-pass position {distance_from_right}px from right is outside ideal range (108-142px)")
+                        # Continue to Pass 2 instead of using this position
+                    elif await self._validate_control_center_position(x, y, menu_bar_screenshot):
+                        # Position is good, click it
                         await self._click_at(x, y)
 
                         # Verify
@@ -1599,13 +1616,23 @@ List ALL icons you see, from left to right."""
 
             focused_prompt = """This is the RIGHTMOST section of the macOS menu bar (last 250 pixels).
 
-Find the Control Center icon. It looks like TWO OVERLAPPING RECTANGLES side by side.
+Find the Control Center icon. It looks like TWO OVERLAPPING RECTANGLES side by side, MONOCHROME (gray/white).
 
-IGNORE these icons:
-- Sun symbol (brightness)
-- WiFi waves
-- Battery
-- Clock/time numbers
+**CRITICAL - IGNORE THESE WRONG ICONS:**
+- Siri: COLORFUL circular orb (purple/rainbow) - This is TOO FAR LEFT!
+- Sun symbol (brightness) - Wrong shape
+- WiFi waves - Wrong shape
+- Battery - Wrong shape
+- Clock/time numbers - TOO FAR RIGHT!
+
+**WHAT TO LOOK FOR:**
+- Shape: TWO RECTANGLES side by side [ ][ ] or overlapping slightly
+- Color: MONOCHROME gray or white (NOT colorful!)
+- Position: Between Siri (colorful) and Time (numbers), typically around X=115-135 in this 250px crop
+- This should be the icon CLOSEST to the right edge that is NOT the time display
+
+**YOUR TASK:**
+Look for the MONOCHROME rectangular icon between any colorful icons (like Siri) and the time display.
 
 Provide X position relative to this cropped image (0-250).
 
@@ -1613,7 +1640,7 @@ Format:
 X_POSITION: [number]
 Y_POSITION: 15
 
-Be VERY careful - only select the two-overlapping-rectangles icon!"""
+Be VERY careful - Control Center is monochrome rectangles, NOT the colorful Siri orb!"""
 
             analysis2 = await self._analyze_with_vision(right_path, focused_prompt)
 
@@ -1626,13 +1653,22 @@ Be VERY careful - only select the two-overlapping-rectangles icon!"""
 
                     logger.info(f"[VISION NAV] ✅ Focused scan detected at relative ({relative_x}, {y}), absolute ({absolute_x}, {y})")
 
-                    # Click it
-                    await self._click_at(absolute_x, y)
+                    # Validate position with strict bounds
+                    width = menu_bar_screenshot.width
+                    distance_from_right = width - absolute_x
 
-                    # Verify
-                    if await self._verify_control_center_clicked(absolute_x, y):
-                        logger.info("[VISION NAV] ✅ Focused scan successful!")
-                        return True
+                    if distance_from_right > 142 or distance_from_right < 108:
+                        logger.warning(f"[VISION NAV] ⚠️ Focused scan position {distance_from_right}px from right is outside ideal range (108-142px)")
+                        logger.warning("[VISION NAV] ⚠️ Skipping this detection, will use heuristic")
+                    else:
+                        logger.info(f"[VISION NAV] ✅ Focused scan position validated: {distance_from_right}px from right edge")
+                        # Click it
+                        await self._click_at(absolute_x, y)
+
+                        # Verify
+                        if await self._verify_control_center_clicked(absolute_x, y):
+                            logger.info("[VISION NAV] ✅ Focused scan successful!")
+                            return True
 
             # If all passes fail, fall back to heuristic
             logger.warning("[VISION NAV] ⚠️ All multi-pass attempts failed, using heuristic")
