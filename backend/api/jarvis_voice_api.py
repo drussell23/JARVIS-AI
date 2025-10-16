@@ -765,7 +765,32 @@ class JARVISVoiceAPI:
             logger.info(f"[JARVIS API] Document creation command detected - skipping vision handler: '{command.text}'")
             # Skip vision handler entirely - will go to unified processor below
         else:
-            # First check if this is a vision command
+            # First check if this is a display connection command
+            try:
+                from .display_voice_handler import handle_display_command
+
+                display_result = await handle_display_command(command.text)
+                if display_result.get("handled"):
+                    logger.info(f"[JARVIS API] Display command handled: {display_result.get('message')}")
+
+                    # Return appropriate response
+                    if display_result.get("success"):
+                        return {
+                            "success": True,
+                            "action": "display_connection",
+                            "response": display_result.get("message"),
+                            "result": display_result
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "response": display_result.get("message", "Display connection failed"),
+                            "error": display_result.get("message")
+                        }
+            except Exception as e:
+                logger.debug(f"[JARVIS API] Display handler not available or error: {e}")
+
+            # Then check if this is a vision command
             logger.info(f"[JARVIS API] Checking if '{command.text}' is a vision command...")
 
             # Quick check for monitoring commands
