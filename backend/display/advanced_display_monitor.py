@@ -962,21 +962,36 @@ def set_app_display_monitor(monitor: AdvancedDisplayMonitor):
 def get_display_monitor(config_path: Optional[str] = None, voice_handler = None) -> AdvancedDisplayMonitor:
     """
     Get singleton display monitor instance
-    
+
     Priority:
     1. App monitor instance (if set by main.py) - the running instance
     2. Singleton instance (fallback)
     3. Create new instance (last resort)
     """
     global _monitor_instance, _app_monitor_instance
-    
+
     # Always prefer the app monitor if available (the one that's actually running)
     if _app_monitor_instance is not None:
-        return _app_monitor_instance
-    
-    if _monitor_instance is None:
+        monitor = _app_monitor_instance
+    elif _monitor_instance is None:
         _monitor_instance = AdvancedDisplayMonitor(config_path, voice_handler)
-    return _monitor_instance
+        monitor = _monitor_instance
+    else:
+        monitor = _monitor_instance
+
+    # Ensure vision analyzer is connected if available and not already set
+    if not hasattr(monitor, 'vision_analyzer') or monitor.vision_analyzer is None:
+        try:
+            import sys
+            if hasattr(sys.modules.get('__main__'), 'app'):
+                app = sys.modules['__main__'].app
+                if hasattr(app, 'state') and hasattr(app.state, 'vision_analyzer'):
+                    monitor.vision_analyzer = app.state.vision_analyzer
+                    logger.debug("[DISPLAY MONITOR] Connected vision analyzer from app.state")
+        except:
+            pass
+
+    return monitor
 
 
 if __name__ == "__main__":
