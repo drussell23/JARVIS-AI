@@ -12,10 +12,12 @@ from .native_airplay_controller import (
     NativeAirPlayController,
     ConnectionResult,
     ConnectionMethod,
+    get_native_controller,
 )
 
 __all__ = [
     "NativeAirPlayController",
     "ConnectionResult",
     "ConnectionMethod",
+    "get_native_controller",
 ]

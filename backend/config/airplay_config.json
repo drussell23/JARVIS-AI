@@ -3,7 +3,6 @@
   "retryAttempts": 3,
   "retryDelay": 1.5,
   "fallbackStrategies": [
-    "menu_bar_click",
     "keyboard_automation",
     "applescript"
   ],

@@ -282,25 +282,50 @@ class NativeAirPlayController: @unchecked Sendable {
     // MARK: - Keyboard Automation Strategy
     
     private func connectViaKeyboard(displayName: String) async throws {
-        // Check accessibility permissions
-        guard AXIsProcessTrusted() else {
-            throw AirPlayError.permissionDenied
-        }
+        // Hybrid approach: Use AppleScript to open menu, then Accessibility API to click
+        // This works around Sequoia's menu bar restrictions
         
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.main.async {
                 do {
-                    // Step 1: Open Control Center
-                    try self.openControlCenter()
-                    Thread.sleep(forTimeInterval: 0.5)
+                    // Use AppleScript to click Screen Mirroring icon
+                    // Even though it can't read menu items, it CAN click the icon itself
+                    let script = """
+                    tell application "System Events"
+                        try
+                            -- Click the Screen Mirroring menu bar item
+                            -- It's in the menu bar extras on the right side
+                            keystroke "f" using {command down, control down}
+                            delay 0.5
+                        end try
+                    end tell
+                    """
                     
-                    // Step 2: Navigate to Screen Mirroring
-                    try self.navigateToScreenMirroring()
-                    Thread.sleep(forTimeInterval: 0.5)
+                    var error: NSDictionary?
+                    if let scriptObject = NSAppleScript(source: script) {
+                        _ = scriptObject.executeAndReturnError(&error)
+                    }
                     
-                    // Step 3: Select display
-                    try self.selectDisplay(displayName)
+                    // Wait for menu to open
+                    Thread.sleep(forTimeInterval: 0.8)
+                    
+                    // Now try to find and click the display in the opened menu
+                    // Search the entire accessibility tree for the display name
+                    let systemWide = AXUIElementCreateSystemWide()
+                    
+                    if let displayItem = self.searchAXTree(systemWide, matching: displayName, maxDepth: 10) {
+                        let result = AXUIElementPerformAction(displayItem, kAXPressAction as CFString)
+                        if result == .success {
+                            continuation.resume()
+                            return
+                        }
+                    }
+                    
+                    // If Accessibility API didn't work, try keyboard navigation
+                    // Type the display name to filter
+                    try self.typeText(displayName)
                     Thread.sleep(forTimeInterval: 0.3)
+                    try self.sendKey(.returnKey)
                     
                     continuation.resume()
                 } catch {
@@ -311,33 +336,101 @@ class NativeAirPlayController: @unchecked Sendable {
     }
     
     private func openControlCenter() throws {
-        // Click Control Center in menu bar (right side)
-        let screenFrame = NSScreen.main?.frame ?? .zero
-        let controlCenterX = screenFrame.maxX - 100 // Approximate position
-        let controlCenterY = 10.0
+        // Find and click Screen Mirroring menu bar item directly using Accessibility API
+        let systemWide = AXUIElementCreateSystemWide()
         
-        try sendMouseClick(x: controlCenterX, y: controlCenterY)
+        var menuBar: AnyObject?
+        let result = AXUIElementCopyAttributeValue(
+            systemWide,
+            kAXMenuBarAttribute as CFString,
+            &menuBar
+        )
+        
+        guard result == .success, let menuBarElement = menuBar as! AXUIElement? else {
+            throw AirPlayError.keyboardAutomationFailed("Cannot access menu bar")
+        }
+        
+        // Get all menu bar items
+        var children: AnyObject?
+        let childResult = AXUIElementCopyAttributeValue(
+            menuBarElement,
+            kAXChildrenAttribute as CFString,
+            &children
+        )
+        
+        guard childResult == .success, let menuBarItems = children as? [AXUIElement] else {
+            throw AirPlayError.keyboardAutomationFailed("Cannot get menu bar items")
+        }
+        
+        // Find Screen Mirroring item by searching for the description
+        // Screen Mirroring shows as "Screen Mirroring" or sometimes just shows up in the extras
+        for item in menuBarItems {
+            var description: AnyObject?
+            AXUIElementCopyAttributeValue(item, kAXDescriptionAttribute as CFString, &description)
+            
+            var title: AnyObject?
+            AXUIElementCopyAttributeValue(item, kAXTitleAttribute as CFString, &title)
+            
+            let descStr = description as? String ?? ""
+            let titleStr = title as? String ?? ""
+            
+            // Check if this is the Screen Mirroring menu bar item
+            if descStr.contains("Screen Mirroring") || 
+               titleStr.contains("Screen Mirroring") ||
+               descStr.contains("Display") {
+                
+                // Click it
+                let clickResult = AXUIElementPerformAction(item, kAXPressAction as CFString)
+                if clickResult == .success {
+                    return
+                } else {
+                    throw AirPlayError.keyboardAutomationFailed("Cannot click Screen Mirroring: \(clickResult.rawValue)")
+                }
+            }
+        }
+        
+        // If not found in main menu bar, try searching in Control Center
+        // Look for Control Center icon and click it first
+        for item in menuBarItems {
+            var description: AnyObject?
+            AXUIElementCopyAttributeValue(item, kAXDescriptionAttribute as CFString, &description)
+            
+            let descStr = description as? String ?? ""
+            
+            if descStr.contains("Control Center") {
+                // Click Control Center
+                _ = AXUIElementPerformAction(item, kAXPressAction as CFString)
+                Thread.sleep(forTimeInterval: 0.5)
+                
+                // Now search for Screen Mirroring in the opened menu
+                return
+            }
+        }
+        
+        throw AirPlayError.keyboardAutomationFailed("Screen Mirroring menu bar item not found")
     }
     
     private func navigateToScreenMirroring() throws {
-        // Use keyboard shortcut if configured
-        if let shortcut = config.keyboardShortcuts["screen_mirroring"] {
-            try sendKeyboardShortcut(shortcut)
-        } else {
-            // Type "screen" to search
-            try typeText("screen mirror")
-            Thread.sleep(forTimeInterval: 0.3)
-            try sendKey(.returnKey)
-        }
+        // After opening, we should already be in Screen Mirroring menu
+        // Just wait for menu to populate
+        Thread.sleep(forTimeInterval: 0.3)
     }
     
     private func selectDisplay(_ displayName: String) throws {
-        // Type display name to filter
-        try typeText(displayName)
-        Thread.sleep(forTimeInterval: 0.2)
+        // Find the display in the open menu using Accessibility API
+        let systemWide = AXUIElementCreateSystemWide()
         
-        // Press return to select
-        try sendKey(.returnKey)
+        // Search the accessibility tree for the display name
+        if let displayItem = searchAXTree(systemWide, matching: displayName) {
+            // Click the display menu item
+            let result = AXUIElementPerformAction(displayItem, kAXPressAction as CFString)
+            guard result == .success else {
+                throw AirPlayError.keyboardAutomationFailed("Failed to click display: \(result.rawValue)")
+            }
+            return
+        }
+        
+        throw AirPlayError.displayNotFound(displayName)
     }
     
     // MARK: - Menu Bar Click Strategy
@@ -387,8 +480,38 @@ class NativeAirPlayController: @unchecked Sendable {
             return nil
         }
         
-        // Search for Screen Mirroring item
-        return searchAXTree(menuBarElement, matching: "Screen Mirroring")
+        // Get all menu bar items
+        var children: AnyObject?
+        let childResult = AXUIElementCopyAttributeValue(
+            menuBarElement,
+            kAXChildrenAttribute as CFString,
+            &children
+        )
+        
+        guard childResult == .success, let menuBarItems = children as? [AXUIElement] else {
+            return nil
+        }
+        
+        // Search through menu bar items for Screen Mirroring
+        for item in menuBarItems {
+            var description: AnyObject?
+            AXUIElementCopyAttributeValue(item, kAXDescriptionAttribute as CFString, &description)
+            
+            var title: AnyObject?
+            AXUIElementCopyAttributeValue(item, kAXTitleAttribute as CFString, &title)
+            
+            let descStr = (description as? String ?? "").lowercased()
+            let titleStr = (title as? String ?? "").lowercased()
+            
+            // Check for Screen Mirroring in description or title
+            if descStr.contains("screen mirroring") || 
+               descStr.contains("display") ||
+               titleStr.contains("screen mirroring") {
+                return item
+            }
+        }
+        
+        return nil
     }
     
     private func findDisplayInMenu(_ displayName: String) -> AXUIElement? {
@@ -396,12 +519,27 @@ class NativeAirPlayController: @unchecked Sendable {
         return searchAXTree(systemWide, matching: displayName)
     }
     
-    private func searchAXTree(_ element: AXUIElement, matching title: String) -> AXUIElement? {
+    private func searchAXTree(_ element: AXUIElement, matching title: String, maxDepth: Int = 5, currentDepth: Int = 0) -> AXUIElement? {
+        guard currentDepth < maxDepth else { return nil }
+        
+        // Check title
         var titleValue: AnyObject?
         AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &titleValue)
         
-        if let titleString = titleValue as? String, titleString.contains(title) {
-            return element
+        if let titleString = titleValue as? String {
+            if titleString.lowercased().contains(title.lowercased()) {
+                return element
+            }
+        }
+        
+        // Check description
+        var descValue: AnyObject?
+        AXUIElementCopyAttributeValue(element, kAXDescriptionAttribute as CFString, &descValue)
+        
+        if let descString = descValue as? String {
+            if descString.lowercased().contains(title.lowercased()) {
+                return element
+            }
         }
         
         // Search children
@@ -413,7 +551,7 @@ class NativeAirPlayController: @unchecked Sendable {
         }
         
         for child in childArray {
-            if let found = searchAXTree(child, matching: title) {
+            if let found = searchAXTree(child, matching: title, maxDepth: maxDepth, currentDepth: currentDepth + 1) {
                 return found
             }
         }
