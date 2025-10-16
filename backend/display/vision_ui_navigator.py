@@ -362,54 +362,111 @@ class VisionUINavigator:
             if self.vision_analyzer:
                 logger.info("[VISION NAV] 🤖 Asking Claude Vision to locate Control Center...")
 
-                # Enhanced, detailed prompt with exclusion rules
-                prompt = """You are analyzing a macOS menu bar screenshot. I need you to find the Control Center icon and provide its EXACT pixel coordinates.
+                # ULTRA-ENHANCED prompt with step-by-step analysis and validation
+                prompt = """You are analyzing a macOS menu bar screenshot. Your mission is to find the Control Center icon with 100% accuracy.
 
-**CRITICAL: What Control Center icon looks like:**
-- Two overlapping rounded rectangles (like toggle switches stacked)
-- Looks like two squares overlapping side by side
-- Solid white/gray icon on dark menu bar background
-- 20-24px wide, 16-20px tall
-- UNIQUE SHAPE - nothing else looks like this!
+**CRITICAL - VISUAL IDENTIFICATION:**
 
-**IMPORTANT: What Control Center is NOT:**
-- NOT the Siri icon (colorful orb/circle - VERY COMMON MISTAKE!)
-- NOT the WiFi icon (radiating waves)
-- NOT the Bluetooth icon (B symbol)
-- NOT the Battery icon (battery shape)
-- NOT the Time/Clock display (numbers)
-- NOT the Keyboard Brightness icon (sun symbol)
-- NOT the Display Brightness icon (sun with monitor)
-- NOT the Sound icon (speaker symbol)
-- NOT any colorful icon (Control Center is monochrome gray/white)
+The Control Center icon looks like this (simplified ASCII representation):
+```
+[ ][ ]  <-- Two rectangles side-by-side, slightly overlapping
+```
 
-**Where to find Control Center:**
-- Far RIGHT section of menu bar
-- Between Display/Keyboard brightness icons and Time display
-- Usually 100-180 pixels from the right edge
-- Look for the UNIQUE two overlapping rectangles shape
+**Precise Visual Description:**
+- Two overlapping rounded rectangles oriented HORIZONTALLY (side-by-side, NOT stacked vertically)
+- The rectangles overlap in the MIDDLE, creating a distinctive shape
+- Monochrome gray/white color ONLY (if you see ANY color, it's WRONG)
+- Size: Approximately 20-24px wide, 16-20px tall
+- Appears as a solid, simple geometric icon
+- The overlap creates a subtle "merged" appearance in the center
+- Think of it as looking like two phone screens or two cards placed side by side with overlap
 
-**IMPORTANT SPATIAL CLUES:**
-1. Control Center is to the LEFT of the Time display
-2. Control Center is to the RIGHT of brightness/sound icons
-3. It's in the last 200 pixels from the right edge
-4. Look for the distinctive "two overlapping squares" shape
+**SHAPE COMPARISON - Learn the Differences:**
+- Control Center: [ ][ ] (two rectangles side-by-side)
+- Keyboard Brightness: (O) (sun/star burst shape)
+- Siri: (O) (colorful circular orb - VERY COMMON MISTAKE!)
+- WiFi: ())) (radiating curved lines)
+- Bluetooth: (B) (stylized "B" letter)
+- Battery: [|||||] (rectangular battery outline)
+- Sound: (>) (speaker with waves)
+- Time: "2:55 AM" (text/numbers, NOT an icon)
 
-**Your task:**
-1. Scan the RIGHT section of the menu bar (last 250 pixels)
-2. Find the icon with TWO OVERLAPPING RECTANGLES shape
-3. Ignore all other icon shapes (sun, waves, battery, etc.)
-4. Provide EXACT center coordinates
+**ABSOLUTE EXCLUSIONS - If you see these, keep looking:**
+1. NOT Siri - circular/orb shape with colors (blue, pink, purple gradients)
+2. NOT Keyboard Brightness - sun symbol with rays
+3. NOT Display Brightness - sun inside a screen/monitor shape
+4. NOT WiFi - curved radiating lines
+5. NOT Bluetooth - "B" with triangular arrows
+6. NOT Battery - rectangular outline with fill indicator
+7. NOT Sound - speaker cone shape
+8. NOT Time Display - numerical text characters
+9. NOT any icon with COLOR (Control Center is grayscale ONLY)
+10. NOT any circular/round icon (Control Center is RECTANGULAR)
 
-**Response format (REQUIRED):**
-X_POSITION: [x coordinate]
-Y_POSITION: [y coordinate]
+**SPATIAL POSITIONING - Where to Look:**
 
-**Example:**
-X_POSITION: 1260
+Menu bar layout (RIGHT section):
+[...icons...] [Brightness] [Sound] [CONTROL CENTER] [Time Display]
+                                         ^
+                                    YOU WANT THIS!
+
+Exact position rules:
+1. Start from the RIGHT edge of the screen
+2. Skip the Time display (numbers like "2:55 AM" - usually last 80-120 pixels)
+3. Control Center is immediately to the LEFT of Time
+4. Control Center is typically 100-180 pixels from the right edge
+5. Control Center X position should be in range: [screen_width - 180] to [screen_width - 100]
+6. Control Center Y position should be centered: 12-18 pixels from top
+
+**STEP-BY-STEP DETECTION PROCESS:**
+
+Step 1: Scan the rightmost 250 pixels of the menu bar
+Step 2: Identify and SKIP the Time display (it's text/numbers)
+Step 3: Look for the first ICON to the left of Time
+Step 4: Check if it's two overlapping rectangles (side-by-side)
+Step 5: Verify it's monochrome (no colors)
+Step 6: Verify it's NOT circular (Siri) or sun-shaped (Brightness)
+Step 7: If all checks pass, this is Control Center
+
+**BEFORE RESPONDING - Self-Verification Checklist:**
+- [ ] Did I check the rightmost section (last 250px)?
+- [ ] Did I identify the Time display and look LEFT of it?
+- [ ] Is the icon I selected made of TWO RECTANGLES side-by-side?
+- [ ] Is the icon MONOCHROME gray/white (NO colors)?
+- [ ] Is the icon NOT circular (rules out Siri)?
+- [ ] Is the icon NOT sun-shaped (rules out Brightness)?
+- [ ] Is the X position between screen_width-180 and screen_width-100?
+- [ ] Is the Y position centered in menu bar (12-18px)?
+
+**RESPONSE FORMAT (Required):**
+
+First, describe what you see:
+CANDIDATE_DESCRIPTION: [Describe the icon you identified and why it matches Control Center]
+
+Then provide coordinates:
+X_POSITION: [x coordinate - center of icon]
+Y_POSITION: [y coordinate - center of icon]
+
+Finally, confirm:
+CONFIDENCE: [HIGH/MEDIUM/LOW]
+VERIFICATION: [Explain why you're certain this is NOT Siri/Brightness/other icons]
+
+**EXAMPLE RESPONSE:**
+CANDIDATE_DESCRIPTION: I identified an icon at X=1265 that shows two overlapping rectangles side-by-side. It's monochrome gray, located between a sun icon (brightness) and the time display "2:55 AM". The shape clearly shows two rounded rectangles with horizontal overlap, matching the Control Center design.
+
+X_POSITION: 1265
 Y_POSITION: 15
 
-Be VERY careful to identify the correct two-overlapping-rectangles icon shape!"""
+CONFIDENCE: HIGH
+VERIFICATION: This is NOT Siri (no circular shape or colors), NOT brightness (no sun rays), NOT WiFi (no curved lines). The two-rectangle side-by-side shape is unique to Control Center. Position is correct: to the left of time display.
+
+**CRITICAL REMINDER:**
+- If you're looking at a CIRCULAR icon, it's WRONG (likely Siri)
+- If you're looking at a SUN-SHAPED icon, it's WRONG (likely Brightness)
+- If you're looking at COLORED icon, it's WRONG (Control Center is grayscale)
+- Control Center has a UNIQUE shape: TWO RECTANGLES SIDE-BY-SIDE [ ][ ]
+
+Take your time. Analyze carefully. The correct icon is there - find the two overlapping rectangles!"""
 
                 # Analyze with Claude Vision
                 analysis = await self._analyze_with_vision(screenshot_path, prompt)
