@@ -743,7 +743,12 @@ class AdvancedDisplayMonitor:
 
     async def connect_display(self, display_id: str) -> Dict[str, Any]:
         """
-        Connect to a display
+        Connect to a display using advanced native methods
+        
+        Connection Strategy (prioritized):
+        1. Native Swift Bridge (keyboard automation, menu bar clicks)
+        2. AppleScript fallback
+        3. Voice guidance to user
 
         Args:
             display_id: Display ID from configuration
@@ -758,8 +763,56 @@ class AdvancedDisplayMonitor:
 
         logger.info(f"[DISPLAY MONITOR] Connecting to {monitored.name}...")
 
-        # Use AppleScript detector for connection
+        # Strategy 1: Try Native Swift Bridge (best method)
+        try:
+            from display.native import get_native_controller
+            
+            native_controller = get_native_controller()
+            
+            # Ensure it's initialized
+            if await native_controller.initialize():
+                logger.info(f"[DISPLAY MONITOR] Using native Swift bridge for {monitored.name}")
+                
+                result = await native_controller.connect(monitored.name)
+                
+                if result.success:
+                    self.connected_displays.add(display_id)
+                    await self._emit_event('display_connected', display=monitored)
+                    
+                    # Speak success message
+                    if self.config['voice_integration']['speak_on_connection']:
+                        template = self.config['voice_integration']['connection_success_message']
+                        message = template.format(display_name=monitored.name)
+                        
+                        if self.voice_handler:
+                            try:
+                                await self.voice_handler.speak(message)
+                            except:
+                                subprocess.Popen(['say', message])
+                        else:
+                            subprocess.Popen(['say', message])
+                    
+                    return {
+                        "success": True,
+                        "message": result.message,
+                        "method": result.method,
+                        "duration": result.duration,
+                        "fallback_used": result.fallback_used
+                    }
+                else:
+                    logger.warning(f"[DISPLAY MONITOR] Native bridge failed: {result.message}")
+                    # Continue to fallback strategies
+            else:
+                logger.warning("[DISPLAY MONITOR] Native bridge not available")
+                
+        except Exception as e:
+            logger.warning(f"[DISPLAY MONITOR] Native bridge error: {e}")
+            # Continue to fallback strategies
+
+        # Strategy 2: Try AppleScript fallback
         if DetectionMethod.APPLESCRIPT in self.detectors:
+            logger.info(f"[DISPLAY MONITOR] Trying AppleScript fallback for {monitored.name}")
+            
             result = await self.detectors[DetectionMethod.APPLESCRIPT].connect_display(monitored.name)
 
             if result['success']:
@@ -779,9 +832,30 @@ class AdvancedDisplayMonitor:
                     else:
                         subprocess.Popen(['say', message])
 
-            return result
+                return result
 
-        return {"success": False, "message": "AppleScript detector not available"}
+        # Strategy 3: All automated methods failed - provide voice guidance
+        guidance_message = (
+            f"I've detected {monitored.name}, but I need accessibility permissions to connect automatically. "
+            f"Please click the Screen Mirroring icon in your menu bar and select {monitored.name}, "
+            f"or grant me accessibility permissions in System Settings."
+        )
+        
+        logger.warning(f"[DISPLAY MONITOR] All connection strategies failed for {monitored.name}")
+        
+        # Speak guidance
+        if self.voice_handler:
+            try:
+                await self.voice_handler.speak(guidance_message)
+            except:
+                subprocess.Popen(['say', guidance_message])
+        
+        return {
+            "success": False,
+            "message": guidance_message,
+            "method": "none",
+            "guidance_provided": True
+        }
 
     def get_status(self) -> Dict[str, Any]:
         """Get current monitor status"""

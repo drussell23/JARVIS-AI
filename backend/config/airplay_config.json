@@ -1,0 +1,61 @@
+{
+  "connectionTimeout": 10.0,
+  "retryAttempts": 3,
+  "retryDelay": 1.5,
+  "fallbackStrategies": [
+    "menu_bar_click",
+    "keyboard_automation",
+    "applescript"
+  ],
+  "keyboardShortcuts": {
+    "screen_mirroring": "cmd+f1",
+    "control_center": "cmd+ctrl+c"
+  },
+  "connection_methods": {
+    "menu_bar_click": {
+      "enabled": true,
+      "priority": 1,
+      "requires_accessibility": true,
+      "timeout": 5.0,
+      "description": "Click Screen Mirroring in menu bar using accessibility APIs"
+    },
+    "keyboard_automation": {
+      "enabled": true,
+      "priority": 2,
+      "requires_accessibility": true,
+      "timeout": 8.0,
+      "description": "Use keyboard automation to navigate Control Center"
+    },
+    "applescript": {
+      "enabled": true,
+      "priority": 3,
+      "requires_accessibility": true,
+      "timeout": 5.0,
+      "description": "Traditional AppleScript approach (may fail on Sequoia+)"
+    },
+    "private_api": {
+      "enabled": false,
+      "priority": 4,
+      "requires_accessibility": false,
+      "timeout": 3.0,
+      "description": "Use private CoreMediaStream APIs (future enhancement)"
+    }
+  },
+  "discovery_methods": {
+    "coregraphics": {
+      "enabled": true,
+      "timeout": 2.0,
+      "exclude_builtin": true
+    },
+    "dnssd": {
+      "enabled": true,
+      "timeout": 3.0,
+      "service_type": "_airplay._tcp"
+    }
+  },
+  "logging": {
+    "level": "INFO",
+    "log_connection_attempts": true,
+    "log_keyboard_events": false
+  }
+}
