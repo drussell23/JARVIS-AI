@@ -855,6 +855,30 @@ Take your time. Analyze carefully. The correct icon is there - find the two over
                         if distance_from_right > 142:
                             logger.error(f"[VISION NAV] 🚫 REJECTED: Position is {distance_from_right}px from right edge (TOO FAR LEFT - likely Siri)")
                             logger.error(f"[VISION NAV] 🚫 Control Center should be 110-140px from right, detected {distance_from_right}px")
+
+                            # SMART SEARCH: Look for Control Center near the detected position
+                            logger.info(f"[VISION NAV] 🔍 Searching for Control Center near detected position...")
+
+                            # Search to the right of the detected position (where Control Center likely is)
+                            search_positions = [
+                                (x + 30, y),  # 30px right
+                                (x + 45, y),  # 45px right (typical Siri-to-Control Center distance)
+                                (x + 60, y),  # 60px right
+                                (x - 30, y),  # 30px left (in case we overshot)
+                            ]
+
+                            for search_x, search_y in search_positions:
+                                search_distance = width - search_x
+                                if 108 <= search_distance <= 142:
+                                    # Check color at this position
+                                    search_color = self._analyze_icon_color(menu_bar_screenshot, search_x, search_y)
+                                    if not search_color['is_colorful'] and search_color['saturation_avg'] < 20:
+                                        logger.info(f"[VISION NAV] ✅ Found monochrome icon at ({search_x}, {search_y}) - likely Control Center!")
+                                        await self._click_at(search_x, search_y)
+                                        if await self._verify_control_center_clicked(search_x, search_y):
+                                            logger.info("[VISION NAV] ✅ Smart search successful!")
+                                            return True
+
                             self._record_detection_attempt(
                                 success=False,
                                 coords=(x, y),
@@ -862,7 +886,7 @@ Take your time. Analyze carefully. The correct icon is there - find the two over
                                 strategy='primary',
                                 error='position_too_far_left_likely_siri'
                             )
-                            logger.info("[VISION NAV] 🔄 Attempting multi-pass to find Control Center CLOSER to right edge...")
+                            logger.info("[VISION NAV] 🔄 Smart search didn't find Control Center, attempting multi-pass...")
                             return await self._multi_pass_detection(menu_bar_screenshot)
 
                         if distance_from_right < 108:
@@ -884,6 +908,28 @@ Take your time. Analyze carefully. The correct icon is there - find the two over
                         if color_analysis['is_colorful']:
                             logger.error(f"[VISION NAV] 🚫 REJECTED: Detected icon is COLORFUL (likely Siri, not Control Center)")
                             logger.error(f"[VISION NAV] 🚫 Saturation: {color_analysis['saturation_avg']:.1f}%, Variance: {color_analysis['color_variance']:.1f}")
+
+                            # INTELLIGENT ADJUSTMENT: Move right from Siri to find Control Center
+                            logger.info(f"[VISION NAV] 🎯 Detected Siri at X={x}, adjusting right by 40-50px to find Control Center")
+                            adjusted_x = x + 45  # Control Center is typically 40-50px to the right of Siri
+                            adjusted_y = y
+
+                            # Validate adjusted position
+                            width = menu_bar_screenshot.width
+                            adjusted_distance = width - adjusted_x
+
+                            if 108 <= adjusted_distance <= 142:
+                                logger.info(f"[VISION NAV] ✅ Adjusted position ({adjusted_x}, {adjusted_y}) is in valid range")
+                                # Verify the adjusted position is not colorful
+                                adjusted_color = self._analyze_icon_color(menu_bar_screenshot, adjusted_x, adjusted_y)
+                                if not adjusted_color['is_colorful']:
+                                    logger.info(f"[VISION NAV] ✅ Adjusted position is MONOCHROME - likely Control Center!")
+                                    await self._click_at(adjusted_x, adjusted_y)
+                                    if await self._verify_control_center_clicked(adjusted_x, adjusted_y):
+                                        logger.info("[VISION NAV] ✅ Successfully clicked Control Center via intelligent adjustment!")
+                                        return True
+
+                            # If adjustment didn't work, fall back to multi-pass
                             self._record_detection_attempt(
                                 success=False,
                                 coords=(x, y),
@@ -891,7 +937,7 @@ Take your time. Analyze carefully. The correct icon is there - find the two over
                                 strategy='primary',
                                 error='colorful_icon_detected_likely_siri'
                             )
-                            logger.info("[VISION NAV] 🔄 Attempting multi-pass detection to find MONOCHROME Control Center icon...")
+                            logger.info("[VISION NAV] 🔄 Adjustment didn't work, attempting multi-pass detection...")
                             return await self._multi_pass_detection(menu_bar_screenshot)
 
                         if not color_analysis['is_monochrome']:
@@ -1670,6 +1716,17 @@ Be VERY careful - Control Center is monochrome rectangles, NOT the colorful Siri
                             logger.info("[VISION NAV] ✅ Focused scan successful!")
                             return True
 
+            # PASS 3: Intelligent scanning approach
+            logger.info("[VISION NAV] Pass 3: Intelligent scanning approach...")
+            scan_result = await self._scan_for_control_center(menu_bar_screenshot)
+            if scan_result:
+                x, y = scan_result
+                logger.info(f"[VISION NAV] ✅ Intelligent scan found Control Center at ({x}, {y})")
+                await self._click_at(x, y)
+                if await self._verify_control_center_clicked(x, y):
+                    logger.info("[VISION NAV] ✅ Intelligent scan successful!")
+                    return True
+
             # If all passes fail, fall back to heuristic
             logger.warning("[VISION NAV] ⚠️ All multi-pass attempts failed, using heuristic")
             return await self._click_control_center_heuristic()
@@ -1865,11 +1922,107 @@ Please help me find the correct icon!"""
             logger.error(f"[VISION NAV] Error during self-correction: {e}", exc_info=True)
             return False
 
+    async def _scan_for_control_center(self, menu_bar_screenshot: Image.Image) -> tuple:
+        """
+        Intelligently scan the menu bar to find Control Center by analyzing multiple candidate positions
+        """
+        try:
+            logger.info("[VISION NAV] 🔍 Starting intelligent Control Center scan...")
+            width = menu_bar_screenshot.width
+            height = menu_bar_screenshot.height
+
+            # Define scan range: rightmost 300 pixels, excluding time area
+            scan_start = width - 300
+            scan_end = width - 100
+
+            candidates = []
+
+            # Scan in 15-pixel increments
+            for x in range(scan_start, scan_end, 15):
+                y = 15  # Center of menu bar
+
+                # Analyze color at this position
+                color_info = self._analyze_icon_color(menu_bar_screenshot, x, y)
+
+                # Calculate distance from right edge
+                distance_from_right = width - x
+
+                # Score this candidate
+                score = 0
+                reason = []
+
+                # Position scoring (ideal: 108-142px from right)
+                if 108 <= distance_from_right <= 142:
+                    score += 50
+                    reason.append(f"ideal position ({distance_from_right}px from right)")
+                elif 100 <= distance_from_right <= 150:
+                    score += 25
+                    reason.append(f"acceptable position ({distance_from_right}px from right)")
+
+                # Color scoring (Control Center is monochrome)
+                if color_info['is_monochrome']:
+                    score += 40
+                    reason.append("monochrome (gray/white)")
+                elif not color_info['is_colorful']:
+                    score += 20
+                    reason.append("not colorful")
+                else:
+                    score -= 30  # Penalty for colorful icons (likely Siri)
+                    reason.append("COLORFUL (likely Siri)")
+
+                # Saturation scoring
+                if color_info['saturation_avg'] < 10:
+                    score += 10
+                    reason.append(f"very low saturation ({color_info['saturation_avg']:.1f}%)")
+
+                candidates.append({
+                    'x': x,
+                    'y': y,
+                    'score': score,
+                    'distance_from_right': distance_from_right,
+                    'is_colorful': color_info['is_colorful'],
+                    'is_monochrome': color_info['is_monochrome'],
+                    'saturation': color_info['saturation_avg'],
+                    'reasons': reason
+                })
+
+            # Sort candidates by score
+            candidates.sort(key=lambda c: c['score'], reverse=True)
+
+            # Log top candidates
+            logger.info(f"[VISION NAV] Found {len(candidates)} candidates:")
+            for i, candidate in enumerate(candidates[:5]):
+                logger.info(f"[VISION NAV]   #{i+1}: X={candidate['x']} (score={candidate['score']}) - {', '.join(candidate['reasons'])}")
+
+            # Select best candidate
+            if candidates and candidates[0]['score'] >= 50:
+                best = candidates[0]
+                logger.info(f"[VISION NAV] ✅ Selected best candidate at X={best['x']} with score {best['score']}")
+                return (best['x'], best['y'])
+            else:
+                logger.warning("[VISION NAV] ⚠️ No strong candidate found via scanning")
+                return None
+
+        except Exception as e:
+            logger.error(f"[VISION NAV] Error in intelligent scan: {e}")
+            return None
+
     async def _click_control_center_heuristic(self) -> bool:
         """Fallback: Click Control Center using saved or heuristic position"""
         try:
             # Get screen dimensions
             screen_width, screen_height = pyautogui.size()
+
+            # First try intelligent scanning on the menu bar
+            menu_bar_height = 50
+            menu_bar_screenshot = await self._capture_menu_bar(menu_bar_height)
+            if menu_bar_screenshot:
+                scan_result = await self._scan_for_control_center(menu_bar_screenshot)
+                if scan_result:
+                    x, y = scan_result
+                    logger.info(f"[VISION NAV] 🎯 Heuristic scan found Control Center at ({x}, {y})")
+                    await self._click_at(x, y)
+                    return True
 
             logger.info(f"[VISION NAV] Screen dimensions: {screen_width}x{screen_height}")
 
