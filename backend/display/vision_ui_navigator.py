@@ -499,6 +499,98 @@ class VisionUINavigator:
             logger.warning(f"[VISION NAV] Error in adaptive strategy selection: {e}")
             return 'primary'
 
+    def _analyze_icon_color(self, screenshot: Image.Image, x: int, y: int) -> Dict[str, Any]:
+        """
+        Analyze the color properties of the icon region to detect Siri (colorful) vs Control Center (monochrome)
+
+        Returns dict with:
+        - is_colorful: True if icon has significant color (likely Siri)
+        - is_monochrome: True if icon is grayscale (likely Control Center)
+        - saturation_avg: Average color saturation (0-100)
+        - color_variance: Variance in hue values
+        """
+        try:
+            # Extract icon region (30x30 pixels around center)
+            icon_size = 30
+            left = max(0, x - icon_size // 2)
+            top = max(0, y - icon_size // 2)
+            right = min(screenshot.width, x + icon_size // 2)
+            bottom = min(screenshot.height, y + icon_size // 2)
+
+            icon_region = screenshot.crop((left, top, right, bottom))
+
+            # Convert to RGB if needed
+            if icon_region.mode != 'RGB':
+                icon_region = icon_region.convert('RGB')
+
+            # Get pixels
+            pixels = list(icon_region.getdata())
+
+            # Calculate color metrics
+            saturations = []
+            hues = []
+
+            for r, g, b in pixels:
+                # Convert RGB to HSV manually
+                r_norm, g_norm, b_norm = r / 255.0, g / 255.0, b / 255.0
+                max_c = max(r_norm, g_norm, b_norm)
+                min_c = min(r_norm, g_norm, b_norm)
+                delta = max_c - min_c
+
+                # Saturation (0-100)
+                if max_c > 0:
+                    saturation = (delta / max_c) * 100
+                else:
+                    saturation = 0
+                saturations.append(saturation)
+
+                # Hue (0-360)
+                if delta > 0:
+                    if max_c == r_norm:
+                        hue = 60 * (((g_norm - b_norm) / delta) % 6)
+                    elif max_c == g_norm:
+                        hue = 60 * (((b_norm - r_norm) / delta) + 2)
+                    else:
+                        hue = 60 * (((r_norm - g_norm) / delta) + 4)
+                    hues.append(hue)
+
+            # Calculate average saturation
+            saturation_avg = sum(saturations) / len(saturations) if saturations else 0
+
+            # Calculate hue variance (color diversity)
+            if len(hues) > 1:
+                hue_mean = sum(hues) / len(hues)
+                hue_variance = sum((h - hue_mean) ** 2 for h in hues) / len(hues)
+            else:
+                hue_variance = 0
+
+            # Determine if colorful or monochrome
+            # Siri has high saturation (>25) and high hue variance (>500)
+            # Control Center has low saturation (<15) and low hue variance (<100)
+            is_colorful = saturation_avg > 25 or hue_variance > 500
+            is_monochrome = saturation_avg < 15 and hue_variance < 100
+
+            result = {
+                'is_colorful': is_colorful,
+                'is_monochrome': is_monochrome,
+                'saturation_avg': saturation_avg,
+                'color_variance': hue_variance
+            }
+
+            logger.info(f"[VISION NAV] 🎨 Color analysis at ({x}, {y}): saturation={saturation_avg:.1f}, variance={hue_variance:.1f}, colorful={is_colorful}, mono={is_monochrome}")
+
+            return result
+
+        except Exception as e:
+            logger.warning(f"[VISION NAV] Error in color analysis: {e}")
+            # Return neutral result on error
+            return {
+                'is_colorful': False,
+                'is_monochrome': False,
+                'saturation_avg': 0,
+                'color_variance': 0
+            }
+
     async def _find_and_click_control_center(self) -> bool:
         """
         Find and click Control Center icon using learned position + Claude Vision
@@ -709,6 +801,25 @@ Take your time. Analyze carefully. The correct icon is there - find the two over
                             )
                             logger.info("[VISION NAV] Attempting multi-pass detection...")
                             return await self._multi_pass_detection(menu_bar_screenshot)
+
+                        # CRITICAL: Color analysis - reject colorful icons (Siri)
+                        color_analysis = self._analyze_icon_color(menu_bar_screenshot, x, y)
+                        if color_analysis['is_colorful']:
+                            logger.error(f"[VISION NAV] 🚫 REJECTED: Detected icon is COLORFUL (likely Siri, not Control Center)")
+                            logger.error(f"[VISION NAV] 🚫 Saturation: {color_analysis['saturation_avg']:.1f}%, Variance: {color_analysis['color_variance']:.1f}")
+                            self._record_detection_attempt(
+                                success=False,
+                                coords=(x, y),
+                                confidence=confidence,
+                                strategy='primary',
+                                error='colorful_icon_detected_likely_siri'
+                            )
+                            logger.info("[VISION NAV] 🔄 Attempting multi-pass detection to find MONOCHROME Control Center icon...")
+                            return await self._multi_pass_detection(menu_bar_screenshot)
+
+                        if not color_analysis['is_monochrome']:
+                            logger.warning(f"[VISION NAV] ⚠️ Icon color analysis inconclusive (not clearly monochrome)")
+                            confidence *= 0.7  # Reduce confidence if color is ambiguous
 
                         # Check if confidence meets adaptive threshold
                         if confidence < self.adaptive_confidence_threshold:
