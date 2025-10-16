@@ -652,7 +652,11 @@ class VisionUINavigator:
 
                 if self.edge_cases.get('resolution'):
                     width, height = self.edge_cases['resolution']
-                    context_info.append(f"**CONTEXT: Screen resolution is {width}x{height}** - Control Center should be around X={width-140}")
+                    expected_cc_x = width - 125  # Control Center typically 110-140px from right
+                    context_info.append(f"**CONTEXT: Screen resolution is {width}x{height}**")
+                    context_info.append(f"**CRITICAL POSITION: Control Center X should be approximately {expected_cc_x} (exactly 110-140px from RIGHT edge)**")
+                    context_info.append(f"**CRITICAL: If you detect X < {width-150}, it's TOO FAR LEFT (likely Siri, NOT Control Center)**")
+                    context_info.append(f"**CRITICAL: If you detect X > {width-105}, it's TOO FAR RIGHT (likely Time display, NOT Control Center)**")
 
                 context_section = "\n".join(context_info) if context_info else ""
 
@@ -698,20 +702,55 @@ The Control Center icon looks like this (simplified ASCII representation):
 9. NOT any icon with COLOR (Control Center is grayscale ONLY)
 10. NOT any circular/round icon (Control Center is RECTANGULAR)
 
+**CRITICAL: PIXEL-PERFECT POSITION REQUIREMENTS:**
+
+Menu bar layout from RIGHT to LEFT (with EXACT pixel distances):
+
+[Time: "2:55 AM"] <---105px---> [CONTROL CENTER] <---50px---> [SIRI - COLORFUL ORB]
+    (far right)                       (TARGET!)              (TOO FAR LEFT!)
+    X > 1335                          X = 1300-1335          X < 1290
+
+**ABSOLUTE RULES - POSITION-BASED:**
+1. Control Center MUST be 110-140px from RIGHT edge
+2. If X < (width - 150): TOO FAR LEFT = This is SIRI, NOT Control Center!
+3. If X > (width - 105): TOO FAR RIGHT = This is Time display, NOT Control Center!
+4. The CORRECT range is NARROW: X must be in [width-140] to [width-110]
+
+**VISUAL LAYOUT WITH PIXEL DISTANCES:**
+
+```
+RIGHT EDGE (X=1440)
+    |
+    |<-- 105px -->| TIME DISPLAY ("2:55 AM")
+    |             |
+    |<-- 125px -->|<-- CONTROL CENTER (TWO RECTANGLES [ ][ ]) **TARGET**
+    |             |
+    |<-- 170px -->|<-- SIRI (COLORFUL CIRCLE - WRONG!)
+    |             |
+    |<-- 200px -->|<-- BRIGHTNESS (SUN SHAPE - WRONG!)
+```
+
 **SPATIAL POSITIONING - Where to Look:**
 
 Menu bar layout (RIGHT section):
-[...icons...] [Brightness] [Sound] [CONTROL CENTER] [Time Display]
-                                         ^
-                                    YOU WANT THIS!
+[...icons...] [Brightness] [Siri] [CONTROL CENTER] [Time Display]
+                              ↑          ↑               ↑
+                         COLORFUL!   TWO RECTS!      NUMBERS!
+                         (X~1270)    (X~1315)        (X~1350)
+                         TOO LEFT!   CORRECT!        TOO RIGHT!
 
 Exact position rules:
 1. Start from the RIGHT edge of the screen
-2. Skip the Time display (numbers like "2:55 AM" - usually last 80-120 pixels)
-3. Control Center is immediately to the LEFT of Time
-4. Control Center is typically 100-180 pixels from the right edge
-5. Control Center X position should be in range: [screen_width - 180] to [screen_width - 100]
+2. Skip the Time display (numbers like "2:55 AM" - last 105 pixels from right)
+3. Control Center is immediately to the LEFT of Time (110-140px from right edge)
+4. Siri is FURTHER LEFT than Control Center (>150px from right edge)
+5. Control Center X position MUST be in range: [screen_width - 140] to [screen_width - 110]
 6. Control Center Y position should be centered: 12-18 pixels from top
+
+**WARNING: COMMON MISTAKE - Siri vs Control Center:**
+- Siri: Circular, colorful, X > 150px from right (X ~1270 on 1440px screen)
+- Control Center: Rectangular, monochrome, X = 110-140px from right (X ~1315 on 1440px screen)
+- THEY ARE NEXT TO EACH OTHER - Make sure you pick the RIGHT ONE!
 
 **STEP-BY-STEP DETECTION PROCESS:**
 
@@ -802,7 +841,40 @@ Take your time. Analyze carefully. The correct icon is there - find the two over
                             logger.info("[VISION NAV] Attempting multi-pass detection...")
                             return await self._multi_pass_detection(menu_bar_screenshot)
 
-                        # CRITICAL: Color analysis - reject colorful icons (Siri)
+                        # CRITICAL LAYER 1: Position-based Siri rejection
+                        # Siri is typically at X = width - 180 to width - 160
+                        # Control Center is at X = width - 140 to width - 110
+                        width = menu_bar_screenshot.width
+                        distance_from_right = width - x
+
+                        if distance_from_right > 150:
+                            logger.error(f"[VISION NAV] 🚫 REJECTED: Position is {distance_from_right}px from right edge (TOO FAR LEFT - likely Siri)")
+                            logger.error(f"[VISION NAV] 🚫 Control Center should be 110-140px from right, detected {distance_from_right}px")
+                            self._record_detection_attempt(
+                                success=False,
+                                coords=(x, y),
+                                confidence=confidence,
+                                strategy='primary',
+                                error='position_too_far_left_likely_siri'
+                            )
+                            logger.info("[VISION NAV] 🔄 Attempting multi-pass to find Control Center CLOSER to right edge...")
+                            return await self._multi_pass_detection(menu_bar_screenshot)
+
+                        if distance_from_right < 105:
+                            logger.error(f"[VISION NAV] 🚫 REJECTED: Position is {distance_from_right}px from right edge (TOO FAR RIGHT - likely in time zone)")
+                            self._record_detection_attempt(
+                                success=False,
+                                coords=(x, y),
+                                confidence=confidence,
+                                strategy='primary',
+                                error='position_too_far_right_in_time_zone'
+                            )
+                            logger.info("[VISION NAV] 🔄 Attempting multi-pass detection...")
+                            return await self._multi_pass_detection(menu_bar_screenshot)
+
+                        logger.info(f"[VISION NAV] ✅ Position check passed: {distance_from_right}px from right edge (acceptable range for Control Center)")
+
+                        # CRITICAL LAYER 2: Color analysis - reject colorful icons (Siri)
                         color_analysis = self._analyze_icon_color(menu_bar_screenshot, x, y)
                         if color_analysis['is_colorful']:
                             logger.error(f"[VISION NAV] 🚫 REJECTED: Detected icon is COLORFUL (likely Siri, not Control Center)")
@@ -820,6 +892,8 @@ Take your time. Analyze carefully. The correct icon is there - find the two over
                         if not color_analysis['is_monochrome']:
                             logger.warning(f"[VISION NAV] ⚠️ Icon color analysis inconclusive (not clearly monochrome)")
                             confidence *= 0.7  # Reduce confidence if color is ambiguous
+                        else:
+                            logger.info(f"[VISION NAV] ✅ Color check passed: Icon is MONOCHROME (Control Center)")
 
                         # Check if confidence meets adaptive threshold
                         if confidence < self.adaptive_confidence_threshold:
