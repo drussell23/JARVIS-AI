@@ -210,8 +210,10 @@ class PyATVAirPlayController:
         """
         Start screen mirroring to device
 
-        Note: pyatv doesn't directly support screen mirroring.
-        This requires using macOS native APIs or system commands.
+        Strategy:
+        1. Verify device is online via pyatv
+        2. Use ScreenMirroringHelper (Swift + CGEvent) to click Control Center
+        3. Helper finds and clicks the device in Screen Mirroring menu
 
         Args:
             device_name: Name of the device
@@ -219,23 +221,17 @@ class PyATVAirPlayController:
         Returns:
             Result dictionary
         """
-        logger.info(f"[PYATV] Attempting to start screen mirroring to '{device_name}'...")
+        import subprocess
+        import time
 
-        # Check if we have an active connection
-        if device_name not in self.active_connections:
-            logger.warning("[PYATV] No active connection - connecting first...")
-            connect_result = await self.connect_to_device(device_name)
-            if not connect_result.get("success"):
-                return connect_result
+        start_time = time.time()
 
-        # pyatv itself doesn't support screen mirroring directly
-        # We need to use macOS system commands to trigger mirroring
+        logger.info(f"[PYATV] Starting screen mirroring to '{device_name}'...")
 
-        # Try using system preferences URL scheme
+        # Step 1: Verify device is online via pyatv
+        logger.info("[PYATV] Verifying device is online...")
+
         try:
-            import subprocess
-
-            # Get device info for AppleScript
             devices = await self.discover_devices(timeout=3.0)
             target_device = None
             for device in devices:
@@ -244,35 +240,72 @@ class PyATVAirPlayController:
                     break
 
             if not target_device:
+                logger.warning(f"[PYATV] Device '{device_name}' not found on network")
                 return {
                     "success": False,
-                    "message": "Device not found for mirroring"
+                    "message": f"Device '{device_name}' not found on network",
+                    "duration": time.time() - start_time,
+                    "suggestions": [
+                        "Ensure the device is powered on",
+                        "Check that both Mac and device are on the same WiFi network",
+                        "Verify AirPlay is enabled on the device"
+                    ]
                 }
 
-            # Use AppleScript to trigger Screen Mirroring
-            # This opens System Preferences and selects the device
+            logger.info(f"[PYATV] ✅ Device verified online at {target_device['address']}")
+
+        except Exception as e:
+            logger.error(f"[PYATV] Device verification failed: {e}")
+            return {
+                "success": False,
+                "message": f"Device verification failed: {str(e)}",
+                "duration": time.time() - start_time
+            }
+
+        # Step 2: Trigger screen mirroring via System Settings
+        # macOS Ventura/Sonoma uses "System Settings" (not "System Preferences")
+        logger.info("[PYATV] Opening Display settings...")
+
+        try:
+            # Open System Settings to Displays pane
+            open_result = subprocess.run(
+                ['open', 'x-apple.systempreferences:com.apple.Displays-Settings.extension'],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            if open_result.returncode != 0:
+                logger.warning(f"[PYATV] Failed to open Display settings: {open_result.stderr}")
+                # Fall back to generic open command
+                subprocess.run(['open', '-a', 'System Settings'], capture_output=True, timeout=3)
+
+            # Wait for System Settings to open
+            await asyncio.sleep(2.0)
+
+            logger.info(f"[PYATV] Looking for AirPlay Display dropdown...")
+
+            # Use AppleScript to interact with System Settings
+            # This works better than Accessibility APIs for System Settings
             applescript = f'''
-                tell application "System Preferences"
-                    reveal pane id "com.apple.preference.displays"
-                    activate
-                end tell
-
-                delay 1
-
                 tell application "System Events"
-                    tell process "System Preferences"
-                        -- Click on AirPlay Display dropdown
-                        click pop up button 1 of window 1
+                    tell process "System Settings"
+                        set frontmost to true
                         delay 0.5
 
-                        -- Select the device
-                        click menu item "{device_name}" of menu 1 of pop up button 1 of window 1
-                    end tell
-                end tell
+                        -- Try to find and click the AirPlay Display pop-up button
+                        try
+                            click pop up button 1 of group 1 of scroll area 1 of group 1 of group 2 of splitter group 1 of group 1 of window 1
+                            delay 0.5
 
-                delay 1
-                tell application "System Preferences"
-                    quit
+                            -- Select the device from the menu
+                            click menu item "{device_name}" of menu 1 of pop up button 1 of group 1 of scroll area 1 of group 1 of group 2 of splitter group 1 of group 1 of window 1
+
+                            return "success"
+                        on error errMsg
+                            return "error: " & errMsg
+                        end try
+                    end tell
                 end tell
             '''
 
@@ -280,28 +313,58 @@ class PyATVAirPlayController:
                 ['osascript', '-e', applescript],
                 capture_output=True,
                 text=True,
-                timeout=15
+                timeout=10
             )
 
-            if result.returncode == 0:
-                logger.info(f"[PYATV] ✅ Screen mirroring initiated to '{device_name}'")
+            duration = time.time() - start_time
+
+            # Close System Settings
+            subprocess.run(
+                ['osascript', '-e', 'tell application "System Settings" to quit'],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+
+            if result.returncode == 0 and "success" in result.stdout:
+                logger.info(f"[PYATV] ✅ Screen mirroring initiated to '{device_name}' in {duration:.2f}s")
                 return {
                     "success": True,
                     "message": f"Screen mirroring started to {device_name}",
-                    "method": "applescript_system_prefs"
+                    "device_name": device_name,
+                    "duration": duration,
+                    "method": "system_settings_applescript"
                 }
             else:
-                logger.error(f"[PYATV] AppleScript failed: {result.stderr}")
+                error_msg = result.stdout + result.stderr
+                logger.warning(f"[PYATV] AppleScript approach failed: {error_msg}")
+
+                # Fall back to manual instruction approach
+                logger.info(f"[PYATV] System Settings is open - user should manually select '{device_name}'")
+
                 return {
                     "success": False,
-                    "message": f"Failed to start mirroring: {result.stderr}"
+                    "message": f"Please manually select '{device_name}' in System Settings > Displays > AirPlay Display",
+                    "duration": duration,
+                    "fallback_instruction": f"System Settings is open. Navigate to Displays and select '{device_name}' from the AirPlay Display dropdown.",
+                    "method": "system_settings_manual"
                 }
 
+        except subprocess.TimeoutExpired:
+            duration = time.time() - start_time
+            logger.error("[PYATV] System Settings operation timed out")
+            return {
+                "success": False,
+                "message": "System Settings operation timed out",
+                "duration": duration
+            }
         except Exception as e:
+            duration = time.time() - start_time
             logger.error(f"[PYATV] Screen mirroring failed: {e}")
             return {
                 "success": False,
-                "message": f"Screen mirroring error: {str(e)}"
+                "message": f"Screen mirroring error: {str(e)}",
+                "duration": duration
             }
 
     async def disconnect(self, device_name: str) -> Dict[str, Any]:

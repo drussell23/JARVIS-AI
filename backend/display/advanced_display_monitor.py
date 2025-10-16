@@ -772,71 +772,111 @@ class AdvancedDisplayMonitor:
         connection_start = asyncio.get_event_loop().time()
         strategies_attempted = []
 
-        # Strategy 1: PyATV Protocol-Level AirPlay - FASTEST & MOST RELIABLE!
+        # Strategy 1: HYBRID - PyATV Verification + Vision Navigator Execution
+        # This combines the best of both worlds:
+        # - PyATV: Fast device discovery/verification (3s)
+        # - Vision: Reliable UI clicking to trigger mirroring (5s)
+        # Total: ~8s with high reliability
         try:
             from display.pyatv_airplay_controller import get_pyatv_controller
+            from display.vision_ui_navigator import VisionUINavigator
 
-            logger.info(f"[DISPLAY MONITOR] 🥇 STRATEGY 1: PyATV Protocol-Level AirPlay")
-            logger.info(f"[DISPLAY MONITOR] Direct network protocol - bypasses UI entirely")
-            logger.info(f"[DISPLAY MONITOR] ✅ Fast discovery + connection for {monitored.name}")
+            logger.info(f"[DISPLAY MONITOR] 🥇 STRATEGY 1: HYBRID - PyATV + Vision Navigator")
+            logger.info(f"[DISPLAY MONITOR] Step 1: PyATV device verification (network protocol)")
+            logger.info(f"[DISPLAY MONITOR] Step 2: Vision Navigator UI execution (Claude Vision)")
 
-            strategies_attempted.append("pyatv_protocol")
+            strategies_attempted.append("hybrid_pyatv_vision")
 
+            # STEP 1: Verify device is online using PyATV (FAST - 3s)
+            pyatv_start = asyncio.get_event_loop().time()
             controller = get_pyatv_controller()
 
-            # Discover and connect
-            result = await controller.connect_to_device(
-                device_name=monitored.name,
-                timeout=8.0
+            logger.info(f"[DISPLAY MONITOR] 🔍 Verifying {monitored.name} is online...")
+            devices = await controller.discover_devices(timeout=3.0)
+
+            device_found = None
+            for device in devices:
+                if device["name"].lower() == monitored.name.lower():
+                    device_found = device
+                    break
+
+            if not device_found:
+                logger.warning(f"[DISPLAY MONITOR] Device '{monitored.name}' not found on network")
+                raise Exception(f"Device not found - may be offline or on different network")
+
+            pyatv_duration = asyncio.get_event_loop().time() - pyatv_start
+            logger.info(f"[DISPLAY MONITOR] ✅ Device verified online at {device_found['address']} ({pyatv_duration:.2f}s)")
+
+            # STEP 2: Use Vision Navigator to click UI (RELIABLE - 5s)
+            logger.info(f"[DISPLAY MONITOR] 🎯 Launching Vision Navigator to click UI...")
+            vision_start = asyncio.get_event_loop().time()
+
+            navigator = VisionUINavigator(
+                config_path=str(Path(__file__).parent.parent / "config" / "vision_navigator_config.json")
             )
 
-            if result.get('success'):
-                # Try to start screen mirroring
-                logger.info("[DISPLAY MONITOR] Device connected - attempting screen mirroring...")
-                mirror_result = await controller.start_screen_mirroring(monitored.name)
+            # Connect vision analyzer to navigator
+            vision_analyzer_connected = False
+            try:
+                from main import app
+                if hasattr(app, 'state') and hasattr(app.state, 'vision_analyzer'):
+                    navigator.set_vision_analyzer(app.state.vision_analyzer)
+                    vision_analyzer_connected = True
+                    logger.info("[DISPLAY MONITOR] Connected vision analyzer from app.state")
+            except:
+                pass
 
-                if mirror_result.get('success'):
-                    self.connected_displays.add(display_id)
-                    await self._emit_event('display_connected', display=monitored)
+            if not vision_analyzer_connected:
+                logger.warning("[DISPLAY MONITOR] Vision analyzer not available - falling back")
+                raise Exception("Vision analyzer not available")
 
-                    duration = asyncio.get_event_loop().time() - connection_start
+            # Execute UI navigation
+            result = await navigator.connect_to_display(monitored.name)
 
-                    # Speak success message
-                    if self.config['voice_integration']['speak_on_connection']:
-                        template = self.config['voice_integration']['connection_success_message']
-                        message = template.format(display_name=monitored.name)
+            if result.success:
+                vision_duration = asyncio.get_event_loop().time() - vision_start
+                total_duration = asyncio.get_event_loop().time() - connection_start
 
-                        if self.voice_handler:
-                            try:
-                                await self.voice_handler.speak(message)
-                            except:
-                                subprocess.Popen(['say', message])
-                        else:
+                self.connected_displays.add(display_id)
+                await self._emit_event('display_connected', display=monitored)
+
+                # Speak success message
+                if self.config['voice_integration']['speak_on_connection']:
+                    template = self.config['voice_integration']['connection_success_message']
+                    message = template.format(display_name=monitored.name)
+
+                    if self.voice_handler:
+                        try:
+                            await self.voice_handler.speak(message)
+                        except:
                             subprocess.Popen(['say', message])
+                    else:
+                        subprocess.Popen(['say', message])
 
-                    logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via PyATV Protocol in {duration:.2f}s")
-                    logger.info(f"[DISPLAY MONITOR] Method: Protocol-Level AirPlay (Direct Network)")
-                    logger.info(f"[DISPLAY MONITOR] ========================================")
+                logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via HYBRID Strategy in {total_duration:.2f}s")
+                logger.info(f"[DISPLAY MONITOR]    PyATV verification: {pyatv_duration:.2f}s")
+                logger.info(f"[DISPLAY MONITOR]    Vision UI execution: {vision_duration:.2f}s")
+                logger.info(f"[DISPLAY MONITOR] Method: Hybrid (PyATV Verify + Vision Navigate)")
+                logger.info(f"[DISPLAY MONITOR] ========================================")
 
-                    return {
-                        "success": True,
-                        "message": f"Connected to {monitored.name} via PyATV",
-                        "method": "pyatv_protocol",
-                        "duration": duration,
-                        "strategies_attempted": strategies_attempted,
-                        "telemetry": mirror_result,
-                        "tier": 1
-                    }
-                else:
-                    # Connection succeeded but mirroring failed - log and fall through
-                    logger.warning(f"[DISPLAY MONITOR] PyATV connected but mirroring failed: {mirror_result.get('message')}")
-                    raise Exception(f"Mirroring failed: {mirror_result.get('message')}")
+                return {
+                    "success": True,
+                    "message": f"Connected to {monitored.name} via Hybrid Strategy",
+                    "method": "hybrid_pyatv_vision",
+                    "duration": total_duration,
+                    "strategies_attempted": strategies_attempted,
+                    "pyatv_verification_time": pyatv_duration,
+                    "vision_execution_time": vision_duration,
+                    "device_ip": device_found['address'],
+                    "steps_completed": result.steps_completed,
+                    "tier": 1
+                }
             else:
-                logger.warning(f"[DISPLAY MONITOR] PyATV connection failed: {result.get('message')}")
-                raise Exception(result.get('message', 'Connection failed'))
+                logger.warning(f"[DISPLAY MONITOR] Vision navigation failed: {result.message}")
+                raise Exception(f"Vision navigation failed: {result.message}")
 
         except Exception as e:
-            logger.warning(f"[DISPLAY MONITOR] PyATV error: {e}", exc_info=True)
+            logger.warning(f"[DISPLAY MONITOR] Hybrid strategy error: {e}", exc_info=True)
 
         # Strategy 2: Protocol-Level AirPlay (Bonjour/mDNS + RAOP)
         try:

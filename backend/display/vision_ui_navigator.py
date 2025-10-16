@@ -1248,7 +1248,34 @@ Provide only the coordinates in this format. Be as accurate as possible."""
             logger.error(f"[VISION NAV] Screenshot fallback failed: {e}")
         
         return None
-    
+
+    async def _capture_menu_bar(self, menu_bar_height: int = 50) -> Optional[Image.Image]:
+        """
+        Capture just the menu bar area from the screen
+
+        Args:
+            menu_bar_height: Height of the menu bar in pixels (default: 50)
+
+        Returns:
+            PIL Image of the menu bar region, or None if capture fails
+        """
+        try:
+            # Capture full screen
+            full_screen = await self._capture_screen()
+            if not full_screen:
+                return None
+
+            # Crop to menu bar area (top portion)
+            width, height = full_screen.size
+            menu_bar_region = full_screen.crop((0, 0, width, menu_bar_height))
+
+            logger.debug(f"[VISION NAV] Menu bar captured: {width}x{menu_bar_height}px")
+            return menu_bar_region
+
+        except Exception as e:
+            logger.debug(f"[VISION NAV] Failed to capture menu bar: {e}")
+            return None
+
     async def _analyze_with_vision(self, image_path: Path, prompt: str) -> Optional[str]:
         """Analyze image with Claude Vision"""
         if not self.vision_analyzer:
