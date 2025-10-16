@@ -349,42 +349,61 @@ class VisionUINavigator:
             except Exception as ml_error:
                 logger.warning(f"[VISION NAV] ML detection failed: {ml_error}")
 
-            # Fallback 2: Claude Vision + Heuristic
+            # Fallback 2: Claude Vision (ENHANCED with better prompt)
             self.stats['fallback_used'] += 1
 
-            # Capture current screen
+            # Capture full screen (not cropped - Claude needs full context)
             screenshot = await self._capture_screen()
 
             if not screenshot:
                 logger.error("[VISION NAV] Failed to capture screen")
                 return False
 
+            # Crop to menu bar for Claude Vision (faster analysis)
+            menu_bar_screenshot = screenshot.crop((0, 0, screenshot.width, 50))
+
             # Save screenshot for analysis
             screenshot_path = self.screenshots_dir / f'control_center_search_{int(time.time())}.png'
-            screenshot.save(screenshot_path)
-
-            # Use Claude Vision to find Control Center icon
-            prompt = self.config['prompts']['find_control_center']
+            menu_bar_screenshot.save(screenshot_path)
 
             if self.vision_analyzer:
                 logger.info("[VISION NAV] Using Claude Vision to locate Control Center icon...")
 
+                # Enhanced prompt with specific instructions
+                prompt = """Find the Control Center icon in this macOS menu bar.
+
+The Control Center icon looks like two overlapping rounded rectangles (like a toggle switch).
+It's typically located in the RIGHT section of the menu bar, near the WiFi, Battery, and Time icons.
+
+Please provide the EXACT pixel coordinates where I should click to open Control Center.
+Respond in this format: X_POSITION: [x coordinate], Y_POSITION: [y coordinate]
+
+For example: X_POSITION: 545, Y_POSITION: 15"""
+
                 # Analyze with Claude Vision
                 analysis = await self._analyze_with_vision(screenshot_path, prompt)
+
+                logger.info(f"[VISION NAV] Claude Vision response: {analysis[:200] if analysis else 'None'}...")
 
                 # Extract coordinates from analysis
                 coords = self._extract_coordinates_from_response(analysis)
 
                 if coords:
                     x, y = coords
-                    logger.info(f"[VISION NAV] Control Center found at ({x}, {y})")
+                    logger.info(f"[VISION NAV] ✅ Claude Vision found Control Center at ({x}, {y})")
+
+                    # Verify coordinates are reasonable for menu bar
+                    if y > 40:
+                        logger.warning(f"[VISION NAV] ⚠️ Suspicious Y coordinate: {y} (should be <40 for menu bar)")
+                        logger.info("[VISION NAV] Adjusting Y to 15 (menu bar center)")
+                        y = 15
 
                     # Click the icon
                     await self._click_at(x, y)
 
                     return True
                 else:
-                    logger.warning("[VISION NAV] Could not extract coordinates from vision response")
+                    logger.warning("[VISION NAV] Could not extract coordinates from Claude Vision response")
 
             # Final fallback: Use heuristic (top-right area of menu bar)
             logger.info("[VISION NAV] Using heuristic fallback for Control Center")
@@ -744,16 +763,18 @@ class VisionUINavigator:
         try:
             # Get screen dimensions
             screen_width, screen_height = pyautogui.size()
-            
+
+            logger.info(f"[VISION NAV] Screen dimensions: {screen_width}x{screen_height}")
+
             # Try to use saved position from config first
             cc_config = self.config.get('ui_elements', {}).get('control_center', {})
-            
+
             if 'absolute_x' in cc_config and 'absolute_y' in cc_config:
                 # Use saved position
                 saved_x = cc_config['absolute_x']
                 saved_y = cc_config['absolute_y']
                 saved_screen_width = cc_config.get('screen_width', screen_width)
-                
+
                 # If screen resolution changed, adjust using offset
                 if saved_screen_width != screen_width and 'offset_from_right' in cc_config:
                     offset = cc_config['offset_from_right']
@@ -764,29 +785,33 @@ class VisionUINavigator:
                     x = saved_x
                     y = saved_y
                     logger.info(f"[VISION NAV] Using saved position from config: ({x}, {y})")
-                
+
                 await self._click_at(x, y)
                 return True
-            
-            # Fallback: Use heuristic (multiple positions)
-            logger.info(f"[VISION NAV] No saved position, using heuristic...")
-            logger.warning(f"[VISION NAV] 💡 TIP: Run setup_control_center_position.py to save exact position")
-            
+
+            # Fallback: Use improved heuristic based on typical Control Center placement
+            logger.info(f"[VISION NAV] No saved position, using improved heuristic...")
+            logger.warning(f"[VISION NAV] 💡 TIP: For perfect accuracy, let Claude Vision analyze your menu bar")
+
+            # Control Center is typically about 150-200px from the right edge on most Macs
+            # It's to the LEFT of the WiFi/Battery icons and time display
+            # Try multiple likely positions in order of probability
             positions_to_try = [
-                (screen_width - 100, 12, "100px from right"),
-                (screen_width - 80, 12, "80px from right"),
-                (screen_width - 70, 12, "70px from right (default)"),
-                (screen_width - 60, 12, "60px from right"),
-                (screen_width - 50, 12, "50px from right"),
+                (screen_width - 180, 15, "180px from right (typical position)"),
+                (screen_width - 160, 15, "160px from right"),
+                (screen_width - 200, 15, "200px from right"),
+                (screen_width - 150, 15, "150px from right"),
+                (screen_width - 220, 15, "220px from right"),
             ]
-            
-            # Just try the first position (don't spam clicks)
+
+            # Try the most likely position first
             x, y, description = positions_to_try[0]
             logger.info(f"[VISION NAV] Using heuristic: ({x}, {y}) - {description}")
-            
+            logger.info(f"[VISION NAV] This should click near the Control Center icon (two overlapping rectangles)")
+
             await self._click_at(x, y)
             return True
-            
+
         except Exception as e:
             logger.error(f"[VISION NAV] Heuristic click failed: {e}")
             return False
