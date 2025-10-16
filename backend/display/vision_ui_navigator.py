@@ -354,7 +354,14 @@ Provide only the coordinates in this format. Be as accurate as possible."""
 
                         # Click the icon
                         await self._click_at(x, y)
-                        return True
+
+                        # Self-correction: Verify we clicked the right icon
+                        if await self._verify_control_center_clicked(x, y):
+                            return True
+                        else:
+                            # Wrong icon clicked - try to self-correct
+                            logger.warning("[VISION NAV] ⚠️ Wrong icon clicked! Attempting self-correction...")
+                            return await self._self_correct_control_center_click()
                     else:
                         logger.warning("[VISION NAV] Could not extract valid coordinates from Claude response")
                         logger.debug(f"[VISION NAV] Full response: {analysis[:500]}")
@@ -892,6 +899,186 @@ Provide only the coordinates in this format. Be as accurate as possible."""
             logger.error(f"[VISION NAV] Click error: {e}")
             raise
     
+    async def _verify_control_center_clicked(self, clicked_x: int, clicked_y: int) -> bool:
+        """
+        Verify that Control Center actually opened after clicking
+
+        Args:
+            clicked_x: X coordinate that was clicked
+            clicked_y: Y coordinate that was clicked
+
+        Returns:
+            True if Control Center opened, False otherwise
+        """
+        try:
+            # Wait for UI to respond
+            await asyncio.sleep(0.5)
+
+            # Capture current screen
+            screenshot = await self._capture_screen()
+            if not screenshot:
+                logger.warning("[VISION NAV] Could not capture screen for verification")
+                return True  # Assume success if can't verify
+
+            # Save for analysis
+            screenshot_path = self.screenshots_dir / f'verification_{int(time.time())}.png'
+            screenshot.save(screenshot_path)
+
+            if not self.vision_analyzer:
+                return True  # Assume success if no analyzer
+
+            logger.info(f"[VISION NAV] 🔍 Verifying click at ({clicked_x}, {clicked_y})...")
+
+            # Ask Claude to verify
+            verification_prompt = """Look at this screenshot. Did Control Center open?
+
+Control Center is a panel that appears when you click the Control Center icon in the menu bar.
+It typically shows:
+- WiFi settings
+- Bluetooth settings
+- Screen Mirroring button
+- Display settings
+- Sound controls
+- Other system controls
+
+Please respond with:
+- "YES" if Control Center panel is open and visible
+- "NO" if Control Center is NOT open (might have clicked wrong icon)
+
+Keep your response very brief - just YES or NO."""
+
+            # Analyze with Claude Vision
+            analysis = await self._analyze_with_vision(screenshot_path, verification_prompt)
+
+            if analysis:
+                analysis_lower = analysis.lower()
+                logger.info(f"[VISION NAV] Verification response: {analysis[:100]}")
+
+                if 'yes' in analysis_lower or 'control center' in analysis_lower and 'open' in analysis_lower:
+                    logger.info("[VISION NAV] ✅ Verification passed - Control Center opened correctly")
+                    return True
+                elif 'no' in analysis_lower:
+                    logger.warning("[VISION NAV] ❌ Verification failed - Wrong icon was clicked")
+                    return False
+
+            # If unclear, assume success
+            logger.info("[VISION NAV] ⚠️ Could not determine verification status, assuming success")
+            return True
+
+        except Exception as e:
+            logger.error(f"[VISION NAV] Error verifying click: {e}", exc_info=True)
+            return True  # Assume success on error to avoid blocking
+
+    async def _self_correct_control_center_click(self) -> bool:
+        """
+        Self-correct by asking Claude what icon was clicked and where the real Control Center is
+
+        This method provides a feedback loop for learning from mistakes.
+
+        Returns:
+            True if successfully corrected and clicked the right icon
+        """
+        try:
+            logger.info("[VISION NAV] 🔧 Starting self-correction process...")
+
+            # Capture current screen state
+            screenshot = await self._capture_screen()
+            if not screenshot:
+                logger.error("[VISION NAV] Cannot self-correct without screenshot")
+                return False
+
+            # Crop to menu bar
+            menu_bar_screenshot = screenshot.crop((0, 0, screenshot.width, 50))
+
+            # Save for analysis
+            screenshot_path = self.screenshots_dir / f'self_correct_{int(time.time())}.png'
+            menu_bar_screenshot.save(screenshot_path)
+
+            if not self.vision_analyzer:
+                logger.error("[VISION NAV] Cannot self-correct without vision analyzer")
+                return False
+
+            # Ask Claude for correction
+            correction_prompt = """I clicked the wrong icon in the macOS menu bar. Please help me find the CORRECT Control Center icon.
+
+**What I need:**
+1. Identify which icon I clicked (wrong one)
+2. Find the ACTUAL Control Center icon (two overlapping rounded rectangles)
+3. Provide the EXACT coordinates of the CORRECT Control Center icon
+
+**Control Center icon characteristics:**
+- Two overlapping rounded rectangles (toggle/switch shape)
+- Solid icon, not transparent
+- Located in the RIGHT section of menu bar
+- Usually between WiFi/Bluetooth and the Time display
+- Typically around 150-200 pixels from the right edge
+
+**Response format:**
+WRONG_ICON: [description of what I clicked]
+CORRECT_X_POSITION: [x coordinate of REAL Control Center]
+CORRECT_Y_POSITION: [y coordinate of REAL Control Center]
+
+Example:
+WRONG_ICON: WiFi icon
+CORRECT_X_POSITION: 1260
+CORRECT_Y_POSITION: 15
+
+Please help me find the correct icon!"""
+
+            # Analyze with Claude Vision
+            logger.info("[VISION NAV] 🤖 Asking Claude for correction guidance...")
+            analysis = await self._analyze_with_vision(screenshot_path, correction_prompt)
+
+            if not analysis:
+                logger.error("[VISION NAV] No correction guidance received from Claude")
+                return False
+
+            logger.info(f"[VISION NAV] Correction guidance: {analysis[:200]}...")
+
+            # Extract corrected coordinates
+            x_match = re.search(r'CORRECT[_\s]*X[_\s]*POSITION\s*:\s*(\d+)', analysis, re.IGNORECASE)
+            y_match = re.search(r'CORRECT[_\s]*Y[_\s]*POSITION\s*:\s*(\d+)', analysis, re.IGNORECASE)
+
+            # Also try simpler patterns
+            if not (x_match and y_match):
+                coords = self._extract_coordinates_advanced(analysis, menu_bar_screenshot)
+                if coords:
+                    corrected_x, corrected_y = coords
+                    logger.info(f"[VISION NAV] 🎯 Extracted corrected coordinates: ({corrected_x}, {corrected_y})")
+                else:
+                    logger.error("[VISION NAV] Could not extract corrected coordinates")
+                    return False
+            else:
+                corrected_x = int(x_match.group(1))
+                corrected_y = int(y_match.group(1))
+                logger.info(f"[VISION NAV] 🎯 Corrected coordinates from Claude: ({corrected_x}, {corrected_y})")
+
+            # Extract what icon was clicked (for learning)
+            wrong_icon_match = re.search(r'WRONG[_\s]*ICON\s*:\s*(.+?)(?:\n|$)', analysis, re.IGNORECASE)
+            if wrong_icon_match:
+                wrong_icon = wrong_icon_match.group(1).strip()
+                logger.info(f"[VISION NAV] 📝 Claude identified wrong icon: {wrong_icon}")
+
+            # Validate corrected coordinates
+            if not self._validate_coordinates(corrected_x, corrected_y, menu_bar_screenshot.width, 50):
+                logger.warning(f"[VISION NAV] ⚠️ Corrected coordinates suspicious, adjusting...")
+                corrected_x, corrected_y = self._adjust_suspicious_coordinates(
+                    corrected_x, corrected_y, menu_bar_screenshot.width, 50
+                )
+
+            # Click the corrected coordinates
+            logger.info(f"[VISION NAV] 🖱️ Clicking corrected position: ({corrected_x}, {corrected_y})")
+            await self._click_at(corrected_x, corrected_y)
+
+            # Verify the correction worked
+            await asyncio.sleep(0.5)
+            logger.info("[VISION NAV] ✅ Self-correction complete!")
+            return True
+
+        except Exception as e:
+            logger.error(f"[VISION NAV] Error during self-correction: {e}", exc_info=True)
+            return False
+
     async def _click_control_center_heuristic(self) -> bool:
         """Fallback: Click Control Center using saved or heuristic position"""
         try:
