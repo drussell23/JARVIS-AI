@@ -541,19 +541,49 @@ class VisionUINavigator:
             raise
     
     async def _click_control_center_heuristic(self) -> bool:
-        """Fallback: Click Control Center using heuristic position"""
+        """Fallback: Click Control Center using saved or heuristic position"""
         try:
             # Get screen dimensions
             screen_width, screen_height = pyautogui.size()
             
-            # Control Center is typically in top-right
-            # macOS menu bar is ~25px tall
-            # Control Center is usually ~60-80px from right edge
+            # Try to use saved position from config first
+            cc_config = self.config.get('ui_elements', {}).get('control_center', {})
             
-            x = screen_width - 70
-            y = 12  # Center of menu bar
+            if 'absolute_x' in cc_config and 'absolute_y' in cc_config:
+                # Use saved position
+                saved_x = cc_config['absolute_x']
+                saved_y = cc_config['absolute_y']
+                saved_screen_width = cc_config.get('screen_width', screen_width)
+                
+                # If screen resolution changed, adjust using offset
+                if saved_screen_width != screen_width and 'offset_from_right' in cc_config:
+                    offset = cc_config['offset_from_right']
+                    x = screen_width - offset
+                    y = saved_y
+                    logger.info(f"[VISION NAV] Using adjusted position (screen resolution changed): ({x}, {y})")
+                else:
+                    x = saved_x
+                    y = saved_y
+                    logger.info(f"[VISION NAV] Using saved position from config: ({x}, {y})")
+                
+                await self._click_at(x, y)
+                return True
             
-            logger.info(f"[VISION NAV] Using heuristic: clicking at ({x}, {y}) for Control Center")
+            # Fallback: Use heuristic (multiple positions)
+            logger.info(f"[VISION NAV] No saved position, using heuristic...")
+            logger.warning(f"[VISION NAV] 💡 TIP: Run setup_control_center_position.py to save exact position")
+            
+            positions_to_try = [
+                (screen_width - 100, 12, "100px from right"),
+                (screen_width - 80, 12, "80px from right"),
+                (screen_width - 70, 12, "70px from right (default)"),
+                (screen_width - 60, 12, "60px from right"),
+                (screen_width - 50, 12, "50px from right"),
+            ]
+            
+            # Just try the first position (don't spam clicks)
+            x, y, description = positions_to_try[0]
+            logger.info(f"[VISION NAV] Using heuristic: ({x}, {y}) - {description}")
             
             await self._click_at(x, y)
             return True
