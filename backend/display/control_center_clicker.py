@@ -45,8 +45,8 @@ class ControlCenterClicker:
     EXTENDED_DISPLAY_X = 889
     EXTENDED_DISPLAY_Y = 283
 
-    START_MIRRORING_X = 930
-    START_MIRRORING_Y = 457
+    START_MIRRORING_X = 932
+    START_MIRRORING_Y = 468
 
     def __init__(self):
         self.logger = logger

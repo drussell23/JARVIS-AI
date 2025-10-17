@@ -141,7 +141,7 @@ JARVIS: "Display disconnected, sir."
 - Entire Screen: (553, 285)
 - Window/App: (723, 285)
 - Extended: (889, 283)
-- Start Mirroring: (930, 457)
+- Start Mirroring: (932, 468)
 
 **Connection Flow (3 clicks, ~2 seconds):**
 1. Click Control Center icon
