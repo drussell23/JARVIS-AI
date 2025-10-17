@@ -199,9 +199,10 @@ class UnifiedCommandProcessor:
         # Initialize multi-space context graph for advanced context tracking
         self.context_graph = None
 
-        # Initialize both resolver systems
+        # Initialize resolver systems
         self.contextual_resolver = None   # Space/monitor resolution
         self.implicit_resolver = None     # Entity/intent resolution
+        self.multi_space_handler = None   # Multi-space query handler
         self._initialize_resolvers()
 
     def _initialize_resolvers(self):
@@ -247,6 +248,26 @@ class UnifiedCommandProcessor:
             logger.error(f"[UNIFIED] Failed to initialize contextual resolver: {e}")
             self.contextual_resolver = None
 
+        # Step 4: Initialize MultiSpaceQueryHandler (parallel space analysis)
+        if self.context_graph:
+            try:
+                from context_intelligence.handlers import initialize_multi_space_handler
+                self.multi_space_handler = initialize_multi_space_handler(
+                    context_graph=self.context_graph,
+                    implicit_resolver=self.implicit_resolver,
+                    contextual_resolver=self.contextual_resolver
+                )
+                logger.info("[UNIFIED] ✅ MultiSpaceQueryHandler initialized")
+            except ImportError as e:
+                logger.warning(f"[UNIFIED] MultiSpaceQueryHandler not available: {e}")
+                self.multi_space_handler = None
+            except Exception as e:
+                logger.error(f"[UNIFIED] Failed to initialize multi-space handler: {e}")
+                self.multi_space_handler = None
+        else:
+            logger.info("[UNIFIED] Skipping multi-space handler (no context graph)")
+            self.multi_space_handler = None
+
         # Log integration status
         resolvers_active = []
         if self.context_graph:
@@ -255,6 +276,8 @@ class UnifiedCommandProcessor:
             resolvers_active.append("ImplicitResolver")
         if self.contextual_resolver:
             resolvers_active.append("ContextualResolver")
+        if self.multi_space_handler:
+            resolvers_active.append("MultiSpaceHandler")
 
         if resolvers_active:
             logger.info(f"[UNIFIED] 🎯 Active resolvers: {', '.join(resolvers_active)}")
@@ -1210,6 +1233,120 @@ class UnifiedCommandProcessor:
             )
         except Exception as e:
             logger.warning(f"[UNIFIED] Failed to record visual attention: {e}")
+    
+    def _is_multi_space_query(self, query: str) -> bool: # check if the query is about multiple spaces
+        """
+        Detect if a query is asking about multiple spaces.
+
+        Examples:
+        - "Compare space 3 and space 5"
+        - "Which space has the error?"
+        - "Find the terminal across all spaces"
+        - "What's different between space 1 and space 2?"
+        """
+        query_lower = query.lower() # convert the query to lowercase    
+
+        # Keywords that indicate multi-space queries
+        multi_space_keywords = [
+            "compare",
+            "difference",
+            "different",
+            "find",
+            "which space",
+            "across",
+            "all spaces",
+            "search",
+            "locate"
+        ]
+
+        # Check for keywords
+        if any(keyword in query_lower for keyword in multi_space_keywords): # if any of the keywords are in the query, it's a multi-space query
+            return True # return True if it's a multi-space query
+
+        # Check for multiple space mentions
+        import re
+        space_matches = re.findall(r'space\s+\d+', query_lower) # find all space mentions in the query
+        if len(space_matches) >= 2: # if there are at least two space mentions, it's a multi-space query
+            return True # return True if it's a multi-space query
+
+        return False # return False if it's not a multi-space query
+
+    # Function to handle multi-space queries
+    async def _handle_multi_space_query(self, query: str) -> Dict[str, Any]:
+        """
+        Handle multi-space queries using the MultiSpaceQueryHandler.
+
+        Args:
+            query: User's multi-space query
+
+        Returns:
+            Dict with comprehensive multi-space analysis
+        """
+        if not self.multi_space_handler: # if the multi-space handler is not available
+            # Fallback: treat as regular vision query
+            logger.warning("[UNIFIED] Multi-space query detected but handler not available")
+            return {
+                "success": False, # indicate failure
+                "response": "Multi-space analysis not available. Please specify a single space.", # add error message
+                "multi_space": False # indicate that it's not a multi-space query
+            }
+
+        try:
+            logger.info(f"[UNIFIED] Handling multi-space query: '{query}'")
+
+            # Use the multi-space handler
+            result = await self.multi_space_handler.handle_query(query) # handle the multi-space query
+
+            # Build response with the results of the multi-space query
+            response = {
+                "success": True, # indicate success
+                "response": result.synthesis, # add the synthesis to the response
+                "multi_space": True, # indicate that it's a multi-space query
+                "query_type": result.query_type.value, # add the query type to the response
+                "spaces_analyzed": result.spaces_analyzed, # add the spaces analyzed to the response
+                "results": [
+                    {
+                        "space_id": r.space_id, # add the space id to the response
+                        "success": r.success, # add the success to the response
+                        "app": r.app_name, # add the app name to the response
+                        "content_type": r.content_type, # add the content type to the response
+                        "summary": r.content_summary, # add the content summary to the response
+                        "errors": r.errors, # add the errors to the response
+                        "significance": r.significance # add the significance to the response
+                    }
+                    for r in result.results # loop through the results
+                ],
+                "confidence": result.confidence, # add the confidence to the response
+                "analysis_time": result.total_time # add the analysis time to the response
+            }
+
+            # Add comparison if available
+            if result.comparison: # if there is a comparison, add it to the response
+                response["comparison"] = result.comparison # add the comparison to the response
+
+            # Add differences if available
+            if result.differences: # if there is a difference, add it to the response
+                response["differences"] = result.differences # add the difference to the response
+
+            # Add search matches if available
+            if result.search_matches: # if there is a search match, add it to the response
+                response["search_matches"] = result.search_matches # add the search match to the response
+
+            logger.info(
+                f"[UNIFIED] Multi-space query completed: "
+                f"{len(result.spaces_analyzed)} spaces analyzed in {result.total_time:.2f}s"
+            )
+
+            return response
+
+        except Exception as e:
+            logger.error(f"[UNIFIED] Multi-space query failed: {e}", exc_info=True)
+            return {
+                "success": False,
+                "response": f"Multi-space analysis failed: {str(e)}",
+                "multi_space": True,
+                "error": str(e)
+            }
 
     async def _get_full_system_context(self) -> Dict[str, Any]:
         """Get comprehensive system context for intelligent command processing"""
@@ -1298,7 +1435,12 @@ class UnifiedCommandProcessor:
                 ):
                     result = await handler.handle_command(command_text)
                 else:
-                    # It's a vision query - use two-stage resolution
+                    # Check if this is a multi-space query first
+                    if self._is_multi_space_query(command_text):
+                        logger.info(f"[UNIFIED] Detected multi-space query: '{command_text}'")
+                        return await self._handle_multi_space_query(command_text)
+
+                    # It's a single-space vision query - use two-stage resolution
                     resolved_query = await self._resolve_vision_query(command_text)
 
                     # Check if clarification is needed
