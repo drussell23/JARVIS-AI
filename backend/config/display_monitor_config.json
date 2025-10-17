@@ -28,7 +28,7 @@
     "enabled": true,
     "voice_engine": "edge_tts",
     "voice_name": "en-US-GuyNeural",
-    "prompt_template": "Sir, I see your {display_name} is now available. Would you like to extend your display to it?",
+    "prompt_template": "JARVIS online. Ready for your command, sir.",
     "connection_success_message": "Connected to {display_name}, sir.",
     "connection_failure_message": "Unable to connect to {display_name}. {error_detail}",
     "speak_on_detection": true,

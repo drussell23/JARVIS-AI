@@ -628,6 +628,31 @@ class AdvancedDisplayMonitor:
             if not self.initial_scan_complete:
                 self.initial_scan_complete = True
                 logger.info(f"[DISPLAY MONITOR] Initial scan complete. Currently available displays: {list(current_available)}")
+
+                # Announce if displays were found on startup
+                if current_available and self.config['voice_integration']['speak_on_detection']:
+                    template = self.config['voice_integration']['prompt_template']
+                    # Use first found display name if template needs it, otherwise just use the template as-is
+                    if '{display_name}' in template:
+                        first_display = next(iter(current_available))
+                        monitored = next((d for d in self.monitored_displays if d.id == first_display), None)
+                        if monitored:
+                            message = template.format(display_name=monitored.name)
+                        else:
+                            message = template
+                    else:
+                        message = template
+
+                    logger.info(f"[DISPLAY MONITOR] Initial startup announcement: {message}")
+
+                    if self.voice_handler:
+                        try:
+                            await self.voice_handler.speak(message)
+                        except:
+                            subprocess.Popen(['say', message])
+                    else:
+                        subprocess.Popen(['say', message])
+
                 logger.info("[DISPLAY MONITOR] Now monitoring for display changes...")
 
         except Exception as e:
