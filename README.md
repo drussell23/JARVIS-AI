@@ -153,6 +153,97 @@ JARVIS: "Display disconnected, sir."
    - Display-aware query routing
    - Seamlessly integrates with AirPlay mirroring
 
+### 🔄 Integration Flow
+
+The display systems work together seamlessly:
+
+```
+Physical Monitors (Multi-Monitor Detector)
+    ↓
+Built-in Display + External Monitors
+    ↓
+Mission Control Spaces (Yabai Integration)
+    ↓
+Space-to-Monitor Mapping
+    ↓
+AirPlay Displays (Display Mirroring System)
+    ↓
+Living Room TV + Other AirPlay Devices
+    ↓
+Unified Intelligence (Intelligent Orchestrator)
+    ↓
+Voice-Controlled Display Operations
+```
+
+**Voice Commands Already Working:**
+
+**Multi-Monitor Queries:**
+- "What's on my second monitor?"
+- "Show me all my displays"
+- "What am I doing on monitor 2?"
+- "What's happening across all my screens?"
+
+**Display Mirroring:**
+- "Living Room TV" (connects to AirPlay)
+- "Change to extended display"
+- "Stop screen mirroring"
+
+**Space Analysis (with monitor awareness):**
+- "What's happening across my desktop spaces?"
+- "Analyze Space 2" (knows which monitor Space 2 is on)
+- "Show me the terminal" (finds it across all monitors)
+
+### 🧠 Contextual & Ambiguous Query Resolution
+
+JARVIS intelligently resolves ambiguous queries without requiring explicit space numbers:
+
+**Implicit Queries (auto-detects active space):**
+```
+You: "What's happening?"
+JARVIS: [Analyzes current/active space from Yabai]
+
+You: "What's the error?"
+JARVIS: [Shows error on active space]
+
+You: "What IDE am I using?"
+JARVIS: [Detects IDE on current space]
+```
+
+**Pronoun Resolution (tracks conversation context):**
+```
+You: "What's in space 3?"
+JARVIS: [Shows space 3 contents]
+
+You: "What about that space?"
+JARVIS: [Remembers you mean space 3]
+
+You: "What's happening in space 5?"
+JARVIS: [Shows space 5]
+
+You: "Compare them"
+JARVIS: [Compares spaces 3 and 5 from conversation history]
+```
+
+**Smart Clarification (when ambiguous):**
+```
+You: "Show me that screen"
+JARVIS: "Which space? (Currently on Space 2)"
+```
+
+**Resolution Strategies:**
+- **Active Space Detection**: Uses Yabai to detect focused space
+- **Conversation Tracking**: Remembers last 10 conversation turns
+- **Pronoun Resolution**: Resolves "it", "that", "them", "those"
+- **Comparison Detection**: Automatically compares recently queried spaces
+- **Fallback to Space 1**: When no context available
+- **Multi-Monitor Aware**: Knows which monitor each space is on
+
+**Integration:**
+- Fully integrated with Unified Command Processor
+- Automatically resolves ambiguous vision queries before execution
+- Transparent to the user - works seamlessly in background
+- Zero hardcoding - fully dynamic and adaptive
+
 ### 🔧 Display System Technical Details
 
 **Direct Coordinate Automation:**
@@ -582,6 +673,8 @@ User Query → Smart Router → Multi-Space Handler / Display Handler
 - **Command Processor**: Natural language display command processing
 - **Multi-Monitor Detector**: Core Graphics-based multi-display detection
 - **Space Display Mapper**: Yabai integration for space-to-monitor mapping
+- **Contextual Query Resolver**: Ambiguous query and pronoun resolution
+- **Conversation Tracker**: Session state and context management
 
 ### Configuration
 
@@ -807,6 +900,19 @@ This fix accounts for macOS's memory management where high percentage usage is n
 13. ✅ Per-monitor screenshot capture
 14. ✅ Display-aware query routing
 15. ✅ Comprehensive workspace analysis across all monitors
+
+## Contextual Intelligence Features (2025-10-17)
+
+1. ✅ Ambiguous query resolution (no space number needed)
+2. ✅ Pronoun reference tracking ("it", "that", "them")
+3. ✅ Conversation context (remembers last 10 turns)
+4. ✅ Active space auto-detection via Yabai
+5. ✅ Comparative query support ("compare them")
+6. ✅ Smart clarification requests
+7. ✅ Multi-strategy resolution (6 different strategies)
+8. ✅ Zero hardcoding - fully dynamic
+9. ✅ Async/await architecture
+10. ✅ 5-second caching for active space queries
 
 ## License
 

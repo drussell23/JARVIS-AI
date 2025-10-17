@@ -196,6 +196,23 @@ class UnifiedCommandProcessor:
         self._app = app  # Store app reference for accessing app.state
         self._load_learned_data()
 
+        # Initialize contextual query resolver
+        self.contextual_resolver = None  # Lazy load on first use
+        self._initialize_contextual_resolver()
+
+    def _initialize_contextual_resolver(self):
+        """Initialize the contextual query resolver for ambiguous query handling"""
+        try:
+            from context_intelligence.resolvers import get_contextual_resolver
+            self.contextual_resolver = get_contextual_resolver()
+            logger.info("[UNIFIED] Contextual query resolver initialized")
+        except ImportError:
+            logger.warning("[UNIFIED] Contextual query resolver not available")
+            self.contextual_resolver = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize contextual resolver: {e}")
+            self.contextual_resolver = None
+
     def _load_learned_data(self):
         """Load previously learned patterns and statistics"""
         try:
@@ -962,6 +979,97 @@ class UnifiedCommandProcessor:
 
         return False
 
+    async def _resolve_vision_query(self, query: str) -> Dict[str, Any]:
+        """
+        Resolve ambiguous vision queries using contextual query resolver
+
+        Examples:
+        - "What's happening?" -> Resolves to active space
+        - "What about that space?" -> Resolves to last queried space
+        - "Compare them" -> Resolves to last 2 queried spaces
+
+        Returns:
+            Dict with:
+            - resolved: bool (whether resolution was needed)
+            - query: str (potentially enhanced query with space info)
+            - spaces: List[int] (resolved space IDs)
+            - strategy: str (resolution strategy used)
+            - confidence: float (confidence in resolution)
+        """
+        if not self.contextual_resolver:
+            # No resolver available, return original query
+            return {
+                "resolved": False,
+                "query": query,
+                "spaces": None,
+                "strategy": None,
+                "confidence": 0.0
+            }
+
+        try:
+            # Use contextual resolver to handle ambiguous queries
+            resolution = await self.contextual_resolver.resolve_query(query)
+
+            if resolution.requires_clarification:
+                # Query is too ambiguous, return clarification message
+                return {
+                    "resolved": False,
+                    "query": query,
+                    "spaces": None,
+                    "clarification_needed": True,
+                    "clarification_message": resolution.clarification_message,
+                    "confidence": 0.0
+                }
+
+            if resolution.success and resolution.resolved_spaces:
+                # Successfully resolved - enhance query with space information
+                spaces = resolution.resolved_spaces
+                strategy = resolution.strategy_used.value
+
+                # Log the resolution
+                logger.info(
+                    f"[UNIFIED] Resolved '{query}' to spaces {spaces} "
+                    f"using {strategy} (confidence: {resolution.confidence})"
+                )
+
+                # Enhance query with space context for vision handler
+                # The vision handler can use this information
+                enhanced_query = query
+                if len(spaces) == 1:
+                    enhanced_query = f"{query} [space {spaces[0]}]"
+                elif len(spaces) > 1:
+                    enhanced_query = f"{query} [spaces {', '.join(map(str, spaces))}]"
+
+                return {
+                    "resolved": True,
+                    "query": enhanced_query,
+                    "spaces": spaces,
+                    "monitors": resolution.resolved_monitors,
+                    "strategy": strategy,
+                    "confidence": resolution.confidence,
+                    "metadata": resolution.metadata
+                }
+            else:
+                # No resolution needed (explicit query)
+                return {
+                    "resolved": False,
+                    "query": query,
+                    "spaces": resolution.resolved_spaces if resolution.success else None,
+                    "strategy": resolution.strategy_used.value if resolution.success else None,
+                    "confidence": resolution.confidence
+                }
+
+        except Exception as e:
+            logger.error(f"[UNIFIED] Error resolving vision query: {e}", exc_info=True)
+            # On error, return original query
+            return {
+                "resolved": False,
+                "query": query,
+                "spaces": None,
+                "error": str(e),
+                "confidence": 0.0
+            }
+
     async def _get_full_system_context(self) -> Dict[str, Any]:
         """Get comprehensive system context for intelligent command processing"""
         try:
@@ -1049,8 +1157,20 @@ class UnifiedCommandProcessor:
                 ):
                     result = await handler.handle_command(command_text)
                 else:
-                    # It's a vision query - analyze the screen with the specific query
-                    result = await handler.analyze_screen(command_text)
+                    # It's a vision query - resolve ambiguous queries first
+                    resolved_query = await self._resolve_vision_query(command_text)
+
+                    # Analyze the screen with the specific query
+                    result = await handler.analyze_screen(resolved_query.get("query", command_text))
+
+                    # Add resolution context to result
+                    if resolved_query.get("resolved"):
+                        result["query_resolution"] = {
+                            "original_query": command_text,
+                            "resolved_spaces": resolved_query.get("spaces"),
+                            "strategy": resolved_query.get("strategy"),
+                            "confidence": resolved_query.get("confidence")
+                        }
 
                 return {
                     "success": result.get("handled", False),
