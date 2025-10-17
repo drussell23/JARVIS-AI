@@ -772,111 +772,48 @@ class AdvancedDisplayMonitor:
         connection_start = asyncio.get_event_loop().time()
         strategies_attempted = []
 
-        # Strategy 1: HYBRID - PyATV Verification + Vision Navigator Execution
-        # This combines the best of both worlds:
-        # - PyATV: Fast device discovery/verification (3s)
-        # - Vision: Reliable UI clicking to trigger mirroring (5s)
-        # Total: ~8s with high reliability
+        # Strategy 1: CONTROL CENTER CLICK - Click verified coordinates!
+        # Step 1: Click (1245, 12) to open Control Center - no vision needed!
+        # Step 2: (Future) Find and click display name
+        # Total: ~1 second (just Control Center opening for now)
         try:
-            from display.pyatv_airplay_controller import get_pyatv_controller
-            from display.vision_ui_navigator import VisionUINavigator
+            from display.control_center_clicker import get_control_center_clicker
 
-            logger.info(f"[DISPLAY MONITOR] 🥇 STRATEGY 1: HYBRID - PyATV + Vision Navigator")
-            logger.info(f"[DISPLAY MONITOR] Step 1: PyATV device verification (network protocol)")
-            logger.info(f"[DISPLAY MONITOR] Step 2: Vision Navigator UI execution (Claude Vision)")
+            logger.info(f"[DISPLAY MONITOR] 🥇 STRATEGY 1: CONTROL CENTER CLICK")
+            logger.info(f"[DISPLAY MONITOR] Clicking Control Center at verified coordinates (1245, 12)")
+            logger.info(f"[DISPLAY MONITOR] No vision needed - just direct click!")
 
-            strategies_attempted.append("hybrid_pyatv_vision")
+            strategies_attempted.append("control_center_click")
 
-            # STEP 1: Verify device is online using PyATV (FAST - 3s)
-            pyatv_start = asyncio.get_event_loop().time()
-            controller = get_pyatv_controller()
+            # Get Control Center clicker
+            cc_clicker = get_control_center_clicker()
 
-            logger.info(f"[DISPLAY MONITOR] 🔍 Verifying {monitored.name} is online...")
-            devices = await controller.discover_devices(timeout=3.0)
+            # Step 1: Open Control Center
+            logger.info(f"[DISPLAY MONITOR] Opening Control Center...")
+            cc_result = cc_clicker.open_control_center(wait_after_click=0.5)
 
-            device_found = None
-            for device in devices:
-                if device["name"].lower() == monitored.name.lower():
-                    device_found = device
-                    break
+            if not cc_result.get('success'):
+                logger.warning(f"[DISPLAY MONITOR] Failed to open Control Center: {cc_result.get('message')}")
+                raise Exception(f"Could not open Control Center: {cc_result.get('message')}")
 
-            if not device_found:
-                logger.warning(f"[DISPLAY MONITOR] Device '{monitored.name}' not found on network")
-                raise Exception(f"Device not found - may be offline or on different network")
+            logger.info(f"[DISPLAY MONITOR] ✓ Control Center opened at {cc_result['coordinates']}")
 
-            pyatv_duration = asyncio.get_event_loop().time() - pyatv_start
-            logger.info(f"[DISPLAY MONITOR] ✅ Device verified online at {device_found['address']} ({pyatv_duration:.2f}s)")
+            # Step 2: (TODO) Find and click "Living Room TV"
+            # For now, we'll just report success of opening Control Center
+            # Next step will add OCR or simple vision to find the display name
+            logger.info(f"[DISPLAY MONITOR] Control Center is now open!")
+            logger.info(f"[DISPLAY MONITOR] (Next step: Find and click '{monitored.name}' in menu)")
 
-            # STEP 2: Use Vision Navigator to click UI (RELIABLE - 5s)
-            logger.info(f"[DISPLAY MONITOR] 🎯 Launching Vision Navigator to click UI...")
-            vision_start = asyncio.get_event_loop().time()
+            # Close Control Center for now (until we implement Step 2)
+            await asyncio.sleep(1)
+            cc_clicker.close_control_center()
 
-            navigator = VisionUINavigator(
-                config_path=str(Path(__file__).parent.parent / "config" / "vision_navigator_config.json")
-            )
-
-            # Connect vision analyzer to navigator
-            vision_analyzer_connected = False
-            try:
-                from main import app
-                if hasattr(app, 'state') and hasattr(app.state, 'vision_analyzer'):
-                    navigator.set_vision_analyzer(app.state.vision_analyzer)
-                    vision_analyzer_connected = True
-                    logger.info("[DISPLAY MONITOR] Connected vision analyzer from app.state")
-            except:
-                pass
-
-            if not vision_analyzer_connected:
-                logger.warning("[DISPLAY MONITOR] Vision analyzer not available - falling back")
-                raise Exception("Vision analyzer not available")
-
-            # Execute UI navigation
-            result = await navigator.connect_to_display(monitored.name)
-
-            if result.success:
-                vision_duration = asyncio.get_event_loop().time() - vision_start
-                total_duration = asyncio.get_event_loop().time() - connection_start
-
-                self.connected_displays.add(display_id)
-                await self._emit_event('display_connected', display=monitored)
-
-                # Speak success message
-                if self.config['voice_integration']['speak_on_connection']:
-                    template = self.config['voice_integration']['connection_success_message']
-                    message = template.format(display_name=monitored.name)
-
-                    if self.voice_handler:
-                        try:
-                            await self.voice_handler.speak(message)
-                        except:
-                            subprocess.Popen(['say', message])
-                    else:
-                        subprocess.Popen(['say', message])
-
-                logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via HYBRID Strategy in {total_duration:.2f}s")
-                logger.info(f"[DISPLAY MONITOR]    PyATV verification: {pyatv_duration:.2f}s")
-                logger.info(f"[DISPLAY MONITOR]    Vision UI execution: {vision_duration:.2f}s")
-                logger.info(f"[DISPLAY MONITOR] Method: Hybrid (PyATV Verify + Vision Navigate)")
-                logger.info(f"[DISPLAY MONITOR] ========================================")
-
-                return {
-                    "success": True,
-                    "message": f"Connected to {monitored.name} via Hybrid Strategy",
-                    "method": "hybrid_pyatv_vision",
-                    "duration": total_duration,
-                    "strategies_attempted": strategies_attempted,
-                    "pyatv_verification_time": pyatv_duration,
-                    "vision_execution_time": vision_duration,
-                    "device_ip": device_found['address'],
-                    "steps_completed": result.steps_completed,
-                    "tier": 1
-                }
-            else:
-                logger.warning(f"[DISPLAY MONITOR] Vision navigation failed: {result.message}")
-                raise Exception(f"Vision navigation failed: {result.message}")
+            # For now, raise an exception to try other strategies
+            # Once we implement Step 2, this will return success
+            raise Exception("Control Center click - Step 1 complete, Step 2 (find display) not yet implemented")
 
         except Exception as e:
-            logger.warning(f"[DISPLAY MONITOR] Hybrid strategy error: {e}", exc_info=True)
+            logger.warning(f"[DISPLAY MONITOR] Control Center click error: {e}", exc_info=True)
 
         # Strategy 2: Protocol-Level AirPlay (Bonjour/mDNS + RAOP)
         try:
