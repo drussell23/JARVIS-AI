@@ -1500,17 +1500,247 @@ This section identifies **edge cases, scenarios, and error handling logic that a
 **Impact:** Complete system failure
 **Current State:** No OCR fallback or coordinate validation exists
 
+**💡 Potential Solution:**
+```python
+class AdaptiveControlCenterClicker:
+    def __init__(self):
+        self.coordinate_methods = [
+            self._try_cached_coordinates,
+            self._try_ocr_detection,
+            self._try_accessibility_api,
+            self._try_applescript_fallback
+        ]
+
+    async def open_control_center(self) -> Dict[str, Any]:
+        """Try multiple methods with fallback chain"""
+        for method in self.coordinate_methods:
+            try:
+                result = await method()
+                if result["success"]:
+                    # Cache successful coordinates
+                    await self._update_coordinate_cache(
+                        "control_center",
+                        result["coordinates"]
+                    )
+                    return result
+            except Exception as e:
+                logger.debug(f"Method {method.__name__} failed: {e}")
+                continue
+
+        raise ControlCenterNotFoundError(
+            "Could not locate Control Center using any detection method"
+        )
+
+    async def _try_ocr_detection(self) -> Dict[str, Any]:
+        """Use OCR to find Control Center icon"""
+        # Capture menu bar
+        screenshot = pyautogui.screenshot(region=(0, 0, 2000, 100))
+
+        # Use pytesseract or Vision framework for OCR
+        import pytesseract
+        data = pytesseract.image_to_data(screenshot, output_type=pytesseract.Output.DICT)
+
+        # Find "Control Center" text or icon
+        for i, text in enumerate(data['text']):
+            if 'control' in text.lower():
+                x = data['left'][i] + data['width'][i] // 2
+                y = data['top'][i] + data['height'][i] // 2
+
+                # Verify by clicking and checking result
+                pyautogui.click(x, y)
+                await asyncio.sleep(0.5)
+
+                # Verify Control Center opened
+                if await self._verify_control_center_opened():
+                    return {"success": True, "coordinates": (x, y)}
+
+        return {"success": False}
+```
+
+---
+
 #### 🔴 Risk 2: Single Resolution Lock-In
 **Issue:** Only works on 1440x900 screens
 **Likelihood:** High (many users have different resolutions)
 **Impact:** Complete system failure for those users
 **Current State:** No resolution detection or scaling
 
+**💡 Potential Solution:**
+```python
+class ResolutionAwareClicker:
+    def __init__(self):
+        self.base_resolution = (1440, 900)  # Calibrated resolution
+        self.current_resolution = self._get_screen_resolution()
+        self.scale_x, self.scale_y = self._calculate_scale_factors()
+
+        # Scaled coordinates
+        self.CONTROL_CENTER_X = self._scale_x_coord(1245)
+        self.CONTROL_CENTER_Y = self._scale_y_coord(12)
+
+    def _get_screen_resolution(self) -> Tuple[int, int]:
+        """Get current screen resolution"""
+        from AppKit import NSScreen
+        screen = NSScreen.mainScreen()
+        frame = screen.frame()
+        return (int(frame.size.width), int(frame.size.height))
+
+    def _calculate_scale_factors(self) -> Tuple[float, float]:
+        """Calculate scaling factors"""
+        base_w, base_h = self.base_resolution
+        curr_w, curr_h = self.current_resolution
+
+        scale_x = curr_w / base_w
+        scale_y = curr_h / base_h
+
+        logger.info(
+            f"Screen resolution: {curr_w}x{curr_h} "
+            f"(base: {base_w}x{base_h}). "
+            f"Scale factors: x={scale_x:.2f}, y={scale_y:.2f}"
+        )
+
+        return (scale_x, scale_y)
+
+    def _scale_x_coord(self, x: int) -> int:
+        """Scale X coordinate"""
+        return int(x * self.scale_x)
+
+    def _scale_y_coord(self, y: int) -> int:
+        """Scale Y coordinate"""
+        return int(y * self.scale_y)
+
+    def validate_resolution(self) -> bool:
+        """Validate current resolution is supported"""
+        curr_w, curr_h = self.current_resolution
+
+        # Warn if resolution is very different
+        if abs(self.scale_x - 1.0) > 0.3 or abs(self.scale_y - 1.0) > 0.3:
+            logger.warning(
+                f"Screen resolution {curr_w}x{curr_h} differs significantly "
+                f"from calibrated 1440x900. Coordinate accuracy may be affected. "
+                f"Consider running calibration tool."
+            )
+            return False
+
+        return True
+```
+
+---
+
 #### 🔴 Risk 3: Single Display Limitation
 **Issue:** Hardcoded to "Living Room TV" only
 **Likelihood:** Medium (users have multiple displays)
 **Impact:** System unusable for other displays
 **Current State:** Only one display supported
+
+**💡 Potential Solution:**
+```python
+class DynamicDisplayConnector:
+    def __init__(self):
+        self.display_monitor = AdvancedDisplayMonitor()
+        self.display_cache = {}  # Cache display coordinates
+
+    async def connect_to_display(self, display_name: str) -> Dict[str, Any]:
+        """Connect to any AirPlay display by name"""
+
+        # Step 1: Find matching display
+        available_displays = await self.display_monitor.get_available_displays()
+        matched_display = await self._match_display_name(
+            display_name,
+            available_displays
+        )
+
+        if not matched_display:
+            raise DisplayNotFoundError(
+                f"Display '{display_name}' not found. "
+                f"Available: {', '.join(available_displays)}"
+            )
+
+        # Step 2: Get or detect coordinates for this display
+        coords = await self._get_display_coordinates(matched_display)
+
+        # Step 3: Execute connection
+        result = await self._execute_connection_flow(matched_display, coords)
+
+        return result
+
+    async def _match_display_name(
+        self,
+        query: str,
+        available: List[str]
+    ) -> Optional[str]:
+        """Match user query to available display names"""
+        from difflib import SequenceMatcher
+
+        query_lower = query.lower()
+        matches = []
+
+        for display in available:
+            display_lower = display.lower()
+
+            # Exact match
+            if query_lower == display_lower:
+                return display
+
+            # Substring match
+            if query_lower in display_lower or display_lower in query_lower:
+                matches.append((display, 0.9))
+                continue
+
+            # Fuzzy match
+            similarity = SequenceMatcher(None, query_lower, display_lower).ratio()
+            if similarity > 0.6:
+                matches.append((display, similarity))
+
+        if not matches:
+            return None
+
+        # Return best match
+        return max(matches, key=lambda x: x[1])[0]
+
+    async def _get_display_coordinates(self, display_name: str) -> Tuple[int, int]:
+        """Get or detect coordinates for a display"""
+
+        # Check cache first
+        if display_name in self.display_cache:
+            return self.display_cache[display_name]
+
+        # Detect using OCR
+        coords = await self._detect_display_in_menu(display_name)
+
+        if coords:
+            # Cache for future use
+            self.display_cache[display_name] = coords
+            await self._save_cache()
+
+        return coords
+
+    async def _detect_display_in_menu(self, display_name: str) -> Tuple[int, int]:
+        """Use OCR to find display in Screen Mirroring menu"""
+
+        # Open Control Center and Screen Mirroring menu
+        await self._open_control_center()
+        await self._open_screen_mirroring()
+
+        # Capture Screen Mirroring menu area
+        screenshot = pyautogui.screenshot(region=(1100, 100, 400, 400))
+
+        # OCR to find display name
+        import pytesseract
+        data = pytesseract.image_to_data(screenshot, output_type=pytesseract.Output.DICT)
+
+        for i, text in enumerate(data['text']):
+            if display_name.lower() in text.lower():
+                # Found the display - calculate absolute coordinates
+                x = 1100 + data['left'][i] + data['width'][i] // 2
+                y = 100 + data['top'][i] + data['height'][i] // 2
+
+                logger.info(f"Detected '{display_name}' at ({x}, {y})")
+                return (x, y)
+
+        raise DisplayNotFoundError(
+            f"Could not locate '{display_name}' in Screen Mirroring menu"
+        )
+```
 
 ---
 
@@ -1526,6 +1756,85 @@ This section identifies **edge cases, scenarios, and error handling logic that a
 - No state reset
 
 **Impact:** HIGH - User left with hanging UI, unclear error state
+
+**💡 Potential Solution:**
+```python
+class SafeDisplayConnector:
+    def __init__(self):
+        self.current_operation = None
+        self.display_monitor = AdvancedDisplayMonitor()
+
+    async def connect_with_monitoring(self, display_name: str) -> Dict[str, Any]:
+        """Connect with display availability monitoring"""
+        try:
+            self.current_operation = {
+                "type": "connect",
+                "display": display_name,
+                "started_at": datetime.now()
+            }
+
+            # Start monitoring in background
+            monitor_task = asyncio.create_task(
+                self._monitor_display_availability(display_name)
+            )
+
+            # Execute connection
+            result = await self._execute_connection(display_name)
+
+            # Stop monitoring
+            monitor_task.cancel()
+
+            return result
+
+        except DisplayDisconnectedError as e:
+            logger.error(f"Display disconnected during operation: {e}")
+
+            # Cleanup
+            await self._cleanup_ui()
+
+            # Notify user
+            await self._announce(
+                f"{display_name} disconnected during setup. "
+                f"Please check the connection and try again."
+            )
+
+            return {
+                "success": False,
+                "error": "display_disconnected",
+                "stage": self.current_operation.get("stage", "unknown")
+            }
+
+        finally:
+            # Always cleanup
+            await self._close_control_center()
+            self.current_operation = None
+
+    async def _monitor_display_availability(self, display_name: str):
+        """Monitor if display remains available"""
+        while True:
+            await asyncio.sleep(0.5)
+
+            # Check if display still available
+            available = await self.display_monitor.is_display_available(display_name)
+
+            if not available:
+                raise DisplayDisconnectedError(
+                    f"{display_name} is no longer available"
+                )
+
+    async def _cleanup_ui(self):
+        """Cleanup any open UI elements"""
+        # Close Control Center if open
+        await self._close_control_center()
+
+        # Close any modal dialogs
+        await self._close_dialogs()
+
+        # Reset cursor position
+        pyautogui.moveTo(pyautogui.size()[0] // 2, pyautogui.size()[1] // 2)
+
+        logger.info("UI cleanup completed")
+```
 
 ---
 
@@ -1547,6 +1856,85 @@ time.sleep(wait_after_click)
 
 **Impact:** HIGH - Silent failures, automation continues despite errors
 
+**💡 Potential Solution:**
+```python
+class VerifiedClicker:
+    async def click_and_verify(
+        self,
+        x: int,
+        y: int,
+        element_name: str,
+        verification_method: str = "screenshot"
+    ) -> bool:
+        """Click and verify the action succeeded"""
+
+        # Capture before state
+        before_screenshot = pyautogui.screenshot(region=(x-50, y-50, 100, 100))
+
+        # Perform click
+        pyautogui.click(x, y)
+        await asyncio.sleep(0.5)
+
+        # Capture after state
+        after_screenshot = pyautogui.screenshot(region=(x-50, y-50, 100, 100))
+
+        # Verify change occurred
+        if verification_method == "screenshot":
+            # Compare images
+            import cv2
+            import numpy as np
+
+            before = np.array(before_screenshot)
+            after = np.array(after_screenshot)
+
+            # Calculate difference
+            diff = cv2.absdiff(before, after)
+            diff_score = np.sum(diff) / diff.size
+
+            # If significant change, click worked
+            if diff_score > 10:  # Threshold
+                logger.debug(f"Click verified for {element_name} (diff={diff_score:.1f})")
+                return True
+            else:
+                logger.warning(f"Click may have failed for {element_name} (diff={diff_score:.1f})")
+                return False
+
+        elif verification_method == "accessibility":
+            # Use accessibility API to verify UI state change
+            return await self._verify_via_accessibility(element_name)
+
+        return False
+
+    async def open_control_center_verified(self) -> Dict[str, Any]:
+        """Open Control Center with verification"""
+
+        success = await self.click_and_verify(
+            self.CONTROL_CENTER_X,
+            self.CONTROL_CENTER_Y,
+            "Control Center",
+            verification_method="screenshot"
+        )
+
+        if not success:
+            # Retry with alternative method
+            logger.warning("Control Center click failed, trying OCR fallback...")
+            return await self._try_ocr_fallback()
+
+        return {"success": True, "method": "coordinates"}
+
+    async def _verify_via_accessibility(self, element_name: str) -> bool:
+        """Verify using macOS Accessibility API"""
+        # Use pyobjc to access Accessibility API
+        from ApplicationServices import AXUIElementCreateSystemWide, AXUIElementCopyAttributeValue
+
+        system_wide = AXUIElementCreateSystemWide()
+
+        # Check if element exists in accessibility tree
+        # (Implementation would check for specific UI elements)
+
+        return True  # Placeholder
+```
+
 ---
 
 #### 3. ❌ No Timeout Handling
@@ -1562,6 +1950,78 @@ time.sleep(wait_after_click)
 
 **Impact:** MEDIUM - Poor UX on slow networks, potential infinite waits
 
+**💡 Potential Solution:**
+```python
+class TimeoutAwareConnector:
+    async def connect_with_timeout(
+        self,
+        display_name: str,
+        timeout: int = 15,
+        progress_interval: int = 3
+    ) -> Dict[str, Any]:
+        """Connect with timeout and progress updates"""
+
+        start_time = datetime.now()
+        last_update = start_time
+
+        # Execute connection clicks
+        await self._execute_connection_clicks(display_name)
+
+        # Wait for connection with monitoring
+        connection_established = False
+
+        while not connection_established:
+            elapsed = (datetime.now() - start_time).total_seconds()
+
+            # Check timeout
+            if elapsed > timeout:
+                raise ConnectionTimeoutError(
+                    f"Connection to {display_name} timed out after {timeout}s. "
+                    f"Check network connection and display power."
+                )
+
+            # Progress updates
+            if (datetime.now() - last_update).total_seconds() > progress_interval:
+                await self._announce(
+                    f"Still connecting to {display_name}... ({int(elapsed)}s)"
+                )
+                last_update = datetime.now()
+
+            # Check connection status
+            connection_established = await self._verify_connection(display_name)
+
+            if not connection_established:
+                await asyncio.sleep(0.5)
+
+        total_time = (datetime.now() - start_time).total_seconds()
+
+        # Log slow connections
+        if total_time > 5:
+            logger.warning(
+                f"Slow connection: {total_time:.1f}s (normal: 2-3s). "
+                f"Network may be congested."
+            )
+
+        return {
+            "success": True,
+            "time": total_time,
+            "slow_network": total_time > 5
+        }
+
+    async def _verify_connection(self, display_name: str) -> bool:
+        """Verify display is connected"""
+        try:
+            result = subprocess.run(
+                ["system_profiler", "SPDisplaysDataType"],
+                capture_output=True,
+                text=True,
+                timeout=2
+            )
+            return display_name in result.stdout
+        except subprocess.TimeoutExpired:
+            return False
+```
+
 ---
 
 #### 4. ❌ No Retry Logic
@@ -1575,6 +2035,75 @@ time.sleep(wait_after_click)
 - Fails immediately if display not available
 
 **Impact:** MEDIUM - User must manually retry if display is booting
+
+**💡 Potential Solution:**
+```python
+class SmartRetryConnector:
+    async def connect_with_smart_retry(
+        self,
+        display_name: str,
+        max_retries: int = 2,
+        retry_delay: int = 3
+    ) -> Dict[str, Any]:
+        """Connect with intelligent retry logic"""
+
+        for attempt in range(max_retries + 1):
+            try:
+                # Check if display is available
+                available = await self._scan_for_display(display_name)
+
+                if not available:
+                    if attempt < max_retries:
+                        # Display not found - might be booting
+                        await self._announce(
+                            f"{display_name} is not available. "
+                            f"Waiting {retry_delay} seconds in case it's powering on... "
+                            f"(Attempt {attempt + 1}/{max_retries + 1})"
+                        )
+
+                        await asyncio.sleep(retry_delay)
+
+                        # Re-scan for displays
+                        logger.info(f"Retry {attempt + 1}: Re-scanning for {display_name}")
+                        continue
+                    else:
+                        # Final attempt failed
+                        raise DisplayNotFoundError(
+                            f"{display_name} is not available after {max_retries} retries. "
+                            f"Please ensure it's powered on and connected to the network."
+                        )
+
+                # Display found - attempt connection
+                result = await self._connect_to_display(display_name)
+
+                if result["success"]:
+                    if attempt > 0:
+                        logger.info(
+                            f"Connection succeeded on retry {attempt + 1}. "
+                            f"Display likely powered on during wait."
+                        )
+
+                    return result
+
+            except (ConnectionError, DisplayNotFoundError) as e:
+                if attempt < max_retries:
+                    logger.warning(f"Attempt {attempt + 1} failed: {e}")
+
+                    # Exponential backoff
+                    backoff_delay = retry_delay * (2 ** attempt)
+                    await asyncio.sleep(backoff_delay)
+                else:
+                    # All retries exhausted
+                    raise
+
+        # Should not reach here
+        raise ConnectionError(f"Failed to connect to {display_name}")
+
+    async def _scan_for_display(self, display_name: str) -> bool:
+        """Scan network for display"""
+        available_displays = await self.display_monitor.get_available_displays()
+        return display_name in available_displays
+```
 
 ---
 
@@ -1681,6 +2210,148 @@ def connect_to_living_room_tv(self):
 - No queuing mechanism
 
 **Impact:** MEDIUM - Conflicts if user sends multiple commands quickly
+
+**💡 Potential Solution:**
+```python
+class QueuedDisplayAutomation:
+    def __init__(self):
+        self.command_queue = asyncio.Queue()
+        self.is_executing = False
+        self.current_command = None
+        self._queue_processor_task = None
+
+    async def start(self):
+        """Start the queue processor"""
+        if not self._queue_processor_task:
+            self._queue_processor_task = asyncio.create_task(
+                self._process_queue()
+            )
+
+    async def execute_command(self, command: Dict[str, Any]) -> str:
+        """
+        Queue a command for execution
+
+        Returns:
+            command_id: Unique ID to track this command
+        """
+        command_id = str(uuid.uuid4())
+        command["id"] = command_id
+        command["queued_at"] = datetime.now()
+
+        await self.command_queue.put(command)
+
+        # Notify user if queue is getting long
+        queue_size = self.command_queue.qsize()
+        if queue_size > 2:
+            logger.warning(f"Command queue has {queue_size} pending commands")
+            await self._announce(
+                f"I have {queue_size} commands queued. "
+                f"Processing them one at a time..."
+            )
+
+        return command_id
+
+    async def _process_queue(self):
+        """Process commands from queue sequentially"""
+        logger.info("Command queue processor started")
+
+        while True:
+            try:
+                # Wait for next command
+                command = await self.command_queue.get()
+
+                self.is_executing = True
+                self.current_command = command
+
+                # Log queue info
+                wait_time = (datetime.now() - command["queued_at"]).total_seconds()
+                if wait_time > 1:
+                    logger.info(
+                        f"Processing command {command['id']} "
+                        f"(waited {wait_time:.1f}s in queue)"
+                    )
+
+                # Execute command
+                try:
+                    await self._execute_single_command(command)
+                except Exception as e:
+                    logger.error(f"Command {command['id']} failed: {e}")
+                    await self._announce(
+                        f"Command failed: {command['type']}. Error: {str(e)}"
+                    )
+
+                # Brief pause between commands
+                await asyncio.sleep(0.5)
+
+                self.current_command = None
+                self.is_executing = False
+
+                # Mark task as done
+                self.command_queue.task_done()
+
+            except asyncio.CancelledError:
+                logger.info("Command queue processor stopped")
+                break
+            except Exception as e:
+                logger.error(f"Unexpected error in queue processor: {e}")
+                await asyncio.sleep(1)  # Prevent tight loop on errors
+
+    async def _execute_single_command(self, command: Dict[str, Any]):
+        """Execute a single command"""
+        command_type = command["type"]
+
+        if command_type == "connect":
+            await self._handle_connect(command["display_name"])
+
+        elif command_type == "disconnect":
+            await self._handle_disconnect()
+
+        elif command_type == "change_mode":
+            await self._handle_mode_change(command["mode"])
+
+        else:
+            logger.warning(f"Unknown command type: {command_type}")
+
+    async def get_queue_status(self) -> Dict[str, Any]:
+        """Get current queue status"""
+        return {
+            "queue_size": self.command_queue.qsize(),
+            "is_executing": self.is_executing,
+            "current_command": self.current_command["type"] if self.current_command else None
+        }
+
+    async def clear_queue(self):
+        """Clear all pending commands (emergency stop)"""
+        cleared = 0
+        while not self.command_queue.empty():
+            try:
+                self.command_queue.get_nowait()
+                self.command_queue.task_done()
+                cleared += 1
+            except asyncio.QueueEmpty:
+                break
+
+        logger.warning(f"Cleared {cleared} commands from queue")
+        return cleared
+
+
+# Usage example:
+automation = QueuedDisplayAutomation()
+await automation.start()
+
+# User sends rapid commands
+command_id_1 = await automation.execute_command({
+    "type": "connect",
+    "display_name": "Living Room TV"
+})
+
+command_id_2 = await automation.execute_command({
+    "type": "change_mode",
+    "mode": "extended"
+})
+
+# Commands execute sequentially without conflicts
+```
 
 ---
 
@@ -1818,6 +2489,326 @@ def connect_to_living_room_tv(self):
 - VPN compatibility
 
 **Impact:** MEDIUM - Corporate environments
+
+---
+
+### Comprehensive Solution: Unified Robust Display Connector
+
+**Combining All Solutions Above:**
+
+```python
+class RobustDisplayConnector:
+    """
+    Unified display connector addressing all critical gaps:
+    - Multi-display support (dynamic detection)
+    - Resolution scaling
+    - OCR fallback
+    - Click verification
+    - Timeout handling
+    - Smart retry
+    - Command queuing
+    - State tracking
+    - Error recovery
+    """
+
+    def __init__(self):
+        # Resolution awareness
+        self.base_resolution = (1440, 900)
+        self.current_resolution = self._get_screen_resolution()
+        self.scale_x, self.scale_y = self._calculate_scale_factors()
+
+        # Display management
+        self.display_monitor = AdvancedDisplayMonitor()
+        self.display_cache = {}
+
+        # State tracking
+        self.current_connection = None
+        self.connection_history = []
+
+        # Command queuing
+        self.command_queue = asyncio.Queue()
+        self.is_executing = False
+
+        # Coordinate methods (fallback chain)
+        self.coordinate_methods = [
+            self._try_cached_coordinates,
+            self._try_scaled_coordinates,
+            self._try_ocr_detection,
+            self._try_accessibility_api
+        ]
+
+    async def connect(
+        self,
+        display_name: str,
+        mode: str = "entire",
+        timeout: int = 15,
+        max_retries: int = 2
+    ) -> Dict[str, Any]:
+        """
+        Robust connection with all safety features
+
+        Args:
+            display_name: Name of display to connect (fuzzy matching supported)
+            mode: Mirroring mode ("entire", "window", "extended")
+            timeout: Connection timeout in seconds
+            max_retries: Number of retry attempts
+
+        Returns:
+            Result dictionary with success status and metadata
+        """
+
+        # Queue command if already executing
+        if self.is_executing:
+            return await self._queue_command({
+                "type": "connect",
+                "display_name": display_name,
+                "mode": mode
+            })
+
+        self.is_executing = True
+
+        try:
+            # Step 1: Match display name (fuzzy)
+            matched_display = await self._match_display_with_retry(
+                display_name,
+                max_retries
+            )
+
+            # Step 2: Get/detect coordinates
+            coords = await self._get_display_coordinates_with_fallback(
+                matched_display
+            )
+
+            # Step 3: Execute connection with monitoring
+            result = await self._execute_connection_with_monitoring(
+                matched_display,
+                coords,
+                mode,
+                timeout
+            )
+
+            # Step 4: Update state
+            if result["success"]:
+                self.current_connection = {
+                    "display_name": matched_display,
+                    "mode": mode,
+                    "connected_at": datetime.now(),
+                    "coordinates": coords
+                }
+                self.connection_history.append(self.current_connection.copy())
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Connection failed: {e}")
+
+            # Always cleanup on error
+            await self._cleanup_ui()
+
+            return {
+                "success": False,
+                "error": str(e),
+                "error_type": type(e).__name__
+            }
+
+        finally:
+            self.is_executing = False
+
+    async def _match_display_with_retry(
+        self,
+        query: str,
+        max_retries: int
+    ) -> str:
+        """Match display with retry logic"""
+
+        for attempt in range(max_retries + 1):
+            available = await self.display_monitor.get_available_displays()
+
+            # Try fuzzy matching
+            matched = await self._fuzzy_match_display(query, available)
+
+            if matched:
+                return matched
+
+            if attempt < max_retries:
+                await self._announce(
+                    f"Display '{query}' not found. "
+                    f"Waiting 3 seconds in case it's booting... "
+                    f"(Attempt {attempt + 1}/{max_retries + 1})"
+                )
+                await asyncio.sleep(3)
+
+        raise DisplayNotFoundError(
+            f"Display '{query}' not found after {max_retries} retries"
+        )
+
+    async def _get_display_coordinates_with_fallback(
+        self,
+        display_name: str
+    ) -> Tuple[int, int]:
+        """Get coordinates with fallback chain"""
+
+        for method in self.coordinate_methods:
+            try:
+                coords = await method(display_name)
+                if coords:
+                    logger.info(f"Found coordinates via {method.__name__}")
+                    return coords
+            except Exception as e:
+                logger.debug(f"{method.__name__} failed: {e}")
+                continue
+
+        raise CoordinateDetectionError(
+            f"Could not detect coordinates for '{display_name}'"
+        )
+
+    async def _execute_connection_with_monitoring(
+        self,
+        display_name: str,
+        coords: Tuple[int, int],
+        mode: str,
+        timeout: int
+    ) -> Dict[str, Any]:
+        """Execute connection with monitoring and verification"""
+
+        start_time = datetime.now()
+
+        # Start availability monitoring
+        monitor_task = asyncio.create_task(
+            self._monitor_display_availability(display_name)
+        )
+
+        try:
+            # Open Control Center (verified)
+            cc_result = await self._open_control_center_verified()
+            if not cc_result["success"]:
+                raise ControlCenterError("Failed to open Control Center")
+
+            # Open Screen Mirroring (verified)
+            sm_result = await self._open_screen_mirroring_verified()
+            if not sm_result["success"]:
+                raise ScreenMirroringError("Failed to open Screen Mirroring")
+
+            # Click display (verified)
+            display_result = await self._click_display_verified(coords, display_name)
+            if not display_result["success"]:
+                raise DisplayClickError(f"Failed to click {display_name}")
+
+            # Wait for connection with timeout
+            connection_established = await self._wait_for_connection(
+                display_name,
+                timeout,
+                start_time
+            )
+
+            if not connection_established:
+                raise ConnectionTimeoutError(
+                    f"Connection timed out after {timeout}s"
+                )
+
+            total_time = (datetime.now() - start_time).total_seconds()
+
+            return {
+                "success": True,
+                "display_name": display_name,
+                "mode": mode,
+                "time": total_time,
+                "method": "verified_coordinates"
+            }
+
+        finally:
+            # Stop monitoring
+            monitor_task.cancel()
+
+            # Always close Control Center
+            await self._close_control_center()
+
+    async def _wait_for_connection(
+        self,
+        display_name: str,
+        timeout: int,
+        start_time: datetime
+    ) -> bool:
+        """Wait for connection with progress updates"""
+
+        last_update = start_time
+
+        while True:
+            elapsed = (datetime.now() - start_time).total_seconds()
+
+            if elapsed > timeout:
+                return False
+
+            # Progress updates every 3 seconds
+            if (datetime.now() - last_update).total_seconds() > 3:
+                await self._announce(
+                    f"Still connecting to {display_name}... ({int(elapsed)}s)"
+                )
+                last_update = datetime.now()
+
+            # Check if connected
+            if await self._verify_connection(display_name):
+                return True
+
+            await asyncio.sleep(0.5)
+
+    async def _cleanup_ui(self):
+        """Comprehensive UI cleanup"""
+        try:
+            await self._close_control_center()
+            await self._close_dialogs()
+            pyautogui.moveTo(
+                pyautogui.size()[0] // 2,
+                pyautogui.size()[1] // 2
+            )
+            logger.info("UI cleanup completed")
+        except Exception as e:
+            logger.error(f"Cleanup failed: {e}")
+
+    def get_status(self) -> Dict[str, Any]:
+        """Get current connection status"""
+        return {
+            "connected": self.current_connection is not None,
+            "current_display": self.current_connection.get("display_name") if self.current_connection else None,
+            "current_mode": self.current_connection.get("mode") if self.current_connection else None,
+            "is_executing": self.is_executing,
+            "queue_size": self.command_queue.qsize(),
+            "connection_count": len(self.connection_history)
+        }
+
+
+# Usage:
+connector = RobustDisplayConnector()
+
+# Simple connection
+result = await connector.connect("Living Room")  # Fuzzy match
+
+# Connection with options
+result = await connector.connect(
+    display_name="Bedroom TV",
+    mode="extended",
+    timeout=20,
+    max_retries=3
+)
+
+# Check status
+status = connector.get_status()
+```
+
+**Key Features:**
+- ✅ Works with any display (not hardcoded)
+- ✅ Resolution scaling (works on any screen size)
+- ✅ OCR fallback (survives macOS updates)
+- ✅ Click verification (detects failures)
+- ✅ Timeout handling (doesn't hang)
+- ✅ Smart retry (handles booting displays)
+- ✅ Command queuing (no conflicts)
+- ✅ State tracking (knows connection status)
+- ✅ Automatic cleanup (no leftover UI)
+- ✅ Comprehensive error handling
+- ✅ Fuzzy display matching
+- ✅ Progress updates
+- ✅ Connection monitoring
 
 ---
 
