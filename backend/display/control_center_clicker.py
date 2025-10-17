@@ -27,6 +27,10 @@ class ControlCenterClicker:
     LIVING_ROOM_TV_X = 1221
     LIVING_ROOM_TV_Y = 116
 
+    # Verified Stop Screen Mirroring coordinates (inside Screen Mirroring submenu)
+    STOP_MIRRORING_X = 1346
+    STOP_MIRRORING_Y = 345
+
     def __init__(self):
         self.logger = logger
 
@@ -263,6 +267,90 @@ class ControlCenterClicker:
             Dict with success status
         """
         return self.open_control_center(wait_after_click=wait_for_menu)
+
+    def click_stop_mirroring(self, wait_after_click: float = 0.5) -> Dict[str, Any]:
+        """
+        Click Stop Screen Mirroring in Screen Mirroring submenu
+
+        Args:
+            wait_after_click: Seconds to wait after clicking (for disconnection to complete)
+
+        Returns:
+            Dict with success status and message
+        """
+        try:
+            self.logger.info(f"Clicking Stop Mirroring at ({self.STOP_MIRRORING_X}, {self.STOP_MIRRORING_Y})")
+
+            # Move to Stop Mirroring button
+            pyautogui.moveTo(self.STOP_MIRRORING_X, self.STOP_MIRRORING_Y, duration=0.3)
+
+            # Click it
+            pyautogui.click(self.STOP_MIRRORING_X, self.STOP_MIRRORING_Y)
+
+            # Wait for disconnection to complete
+            time.sleep(wait_after_click)
+
+            self.logger.info("✓ Stop Mirroring clicked - disconnection initiated")
+            return {
+                "success": True,
+                "message": "Screen mirroring stopped",
+                "coordinates": (self.STOP_MIRRORING_X, self.STOP_MIRRORING_Y)
+            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to click Stop Mirroring: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Failed to stop mirroring: {str(e)}",
+                "error": str(e)
+            }
+
+    def disconnect_from_living_room_tv(self) -> Dict[str, Any]:
+        """
+        Complete flow: Control Center → Screen Mirroring → Stop Mirroring
+
+        Returns:
+            Dict with success status and message
+        """
+        try:
+            # Step 1: Open Control Center
+            self.logger.info("🎯 Step 1/3: Opening Control Center...")
+            cc_result = self.open_control_center(wait_after_click=0.5)
+
+            if not cc_result.get('success'):
+                return cc_result
+
+            # Step 2: Click Screen Mirroring
+            self.logger.info("🎯 Step 2/3: Opening Screen Mirroring menu...")
+            sm_result = self.open_screen_mirroring(wait_after_click=0.5)
+
+            if not sm_result.get('success'):
+                return sm_result
+
+            # Step 3: Click Stop Mirroring
+            self.logger.info("🎯 Step 3/3: Clicking Stop Mirroring...")
+            stop_result = self.click_stop_mirroring(wait_after_click=1.0)
+
+            if not stop_result.get('success'):
+                return stop_result
+
+            self.logger.info("✅ Successfully disconnected from Living Room TV!")
+            return {
+                "success": True,
+                "message": "Disconnected from Living Room TV",
+                "control_center_coords": (self.CONTROL_CENTER_X, self.CONTROL_CENTER_Y),
+                "screen_mirroring_coords": (self.SCREEN_MIRRORING_X, self.SCREEN_MIRRORING_Y),
+                "stop_mirroring_coords": (self.STOP_MIRRORING_X, self.STOP_MIRRORING_Y),
+                "method": "direct_coordinates"
+            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to disconnect from Living Room TV: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Failed: {str(e)}",
+                "error": str(e)
+            }
 
 
 # Singleton instance

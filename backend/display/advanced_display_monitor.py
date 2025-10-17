@@ -22,6 +22,7 @@ import logging
 import subprocess
 import json
 import hashlib
+import random
 from typing import List, Dict, Optional, Set, Callable, Any
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -631,7 +632,14 @@ class AdvancedDisplayMonitor:
 
                 # Announce if displays were found on startup
                 if current_available and self.config['voice_integration']['speak_on_detection']:
-                    template = self.config['voice_integration']['prompt_template']
+                    # Randomly select from available prompt templates for natural variety
+                    templates = self.config['voice_integration'].get('prompt_templates', [])
+                    if not templates:
+                        # Fallback to single template for backwards compatibility
+                        templates = [self.config['voice_integration'].get('prompt_template', 'JARVIS online.')]
+
+                    template = random.choice(templates)
+
                     # Use first found display name if template needs it, otherwise just use the template as-is
                     if '{display_name}' in template:
                         first_display = next(iter(current_available))
@@ -748,7 +756,13 @@ class AdvancedDisplayMonitor:
         if not self.config['voice_integration']['enabled']:
             return
 
-        template = self.config['voice_integration']['prompt_template']
+        # Randomly select from available prompt templates for natural variety
+        templates = self.config['voice_integration'].get('prompt_templates', [])
+        if not templates:
+            # Fallback to single template for backwards compatibility
+            templates = [self.config['voice_integration'].get('prompt_template', 'Display detected.')]
+
+        template = random.choice(templates)
         message = template.format(display_name=monitored.name)
 
         logger.info(f"[DISPLAY MONITOR] Voice: {message}")
@@ -1103,6 +1117,97 @@ class AdvancedDisplayMonitor:
             "guidance_provided": True,
             "tier": 6
         }
+
+    async def disconnect_display(self, display_id: str) -> Dict[str, Any]:
+        """
+        Disconnect from a display using direct coordinates
+
+        Args:
+            display_id: Display ID from configuration
+
+        Returns:
+            Disconnection result dictionary
+        """
+        # Find monitored display
+        monitored = next((d for d in self.monitored_displays if d.id == display_id), None)
+        if not monitored:
+            return {"success": False, "message": f"Display {display_id} not found in configuration"}
+
+        logger.info(f"[DISPLAY MONITOR] ========================================")
+        logger.info(f"[DISPLAY MONITOR] Disconnecting from {monitored.name}...")
+        logger.info(f"[DISPLAY MONITOR] ========================================")
+
+        disconnect_start = asyncio.get_event_loop().time()
+
+        try:
+            from display.control_center_clicker import get_control_center_clicker
+
+            logger.info(f"[DISPLAY MONITOR] Using DIRECT COORDINATES to disconnect")
+            logger.info(f"[DISPLAY MONITOR] Flow: Control Center → Screen Mirroring → Stop")
+
+            # Get Control Center clicker
+            cc_clicker = get_control_center_clicker()
+
+            # Execute disconnect flow: Control Center → Screen Mirroring → Stop
+            logger.info(f"[DISPLAY MONITOR] Executing 3-click disconnect flow...")
+            result = cc_clicker.disconnect_from_living_room_tv()
+
+            if result.get('success'):
+                total_duration = asyncio.get_event_loop().time() - disconnect_start
+
+                # Remove from connected displays
+                if display_id in self.connected_displays:
+                    self.connected_displays.remove(display_id)
+                await self._emit_event('display_disconnected', display=monitored)
+
+                # Speak disconnection message
+                if self.config['voice_integration']['speak_on_disconnection']:
+                    template = self.config['voice_integration'].get('disconnection_success_message', 'Display disconnected, sir.')
+                    message = template.format(display_name=monitored.name) if '{display_name}' in template else template
+
+                    if self.voice_handler:
+                        try:
+                            await self.voice_handler.speak(message)
+                        except:
+                            subprocess.Popen(['say', message])
+                    else:
+                        subprocess.Popen(['say', message])
+
+                logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS - Disconnected in {total_duration:.2f}s")
+                logger.info(f"[DISPLAY MONITOR] 1. Control Center: {result['control_center_coords']}")
+                logger.info(f"[DISPLAY MONITOR] 2. Screen Mirroring: {result['screen_mirroring_coords']}")
+                logger.info(f"[DISPLAY MONITOR] 3. Stop: {result['stop_mirroring_coords']}")
+                logger.info(f"[DISPLAY MONITOR] Method: {result['method']}")
+                logger.info(f"[DISPLAY MONITOR] ========================================")
+
+                return {
+                    "success": True,
+                    "message": f"Disconnected from {monitored.name}",
+                    "method": "direct_coordinates",
+                    "duration": total_duration,
+                    "coordinates": {
+                        "control_center": result['control_center_coords'],
+                        "screen_mirroring": result['screen_mirroring_coords'],
+                        "stop": result['stop_mirroring_coords']
+                    }
+                }
+            else:
+                logger.error(f"[DISPLAY MONITOR] ❌ Disconnect failed: {result.get('message')}")
+                return result
+
+        except Exception as e:
+            total_duration = asyncio.get_event_loop().time() - disconnect_start
+            logger.error(f"[DISPLAY MONITOR] ❌ Disconnect error: {e}", exc_info=True)
+            logger.error(f"[DISPLAY MONITOR] Total time: {total_duration:.2f}s")
+            logger.error(f"[DISPLAY MONITOR] ========================================")
+
+            return {
+                "success": False,
+                "message": f"Failed to disconnect: {str(e)}",
+                "method": "none",
+                "duration": total_duration,
+                "error": str(e)
+            }
 
     def get_status(self) -> Dict[str, Any]:
         """Get current monitor status"""

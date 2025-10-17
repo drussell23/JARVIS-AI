@@ -28,12 +28,24 @@
     "enabled": true,
     "voice_engine": "edge_tts",
     "voice_name": "en-US-GuyNeural",
-    "prompt_template": "JARVIS online. Ready for your command, sir.",
+    "prompt_templates": [
+      "JARVIS online. Ready for your command, sir.",
+      "Systems initialized. At your service, sir.",
+      "Good to see you, sir. How may I assist?",
+      "JARVIS standing by.",
+      "All systems operational, sir.",
+      "Online and ready, sir.",
+      "At your service.",
+      "Systems ready. Awaiting instructions, sir.",
+      "JARVIS operational.",
+      "Ready when you are, sir."
+    ],
     "connection_success_message": "Connected to {display_name}, sir.",
     "connection_failure_message": "Unable to connect to {display_name}. {error_detail}",
+    "disconnection_success_message": "Display disconnected, sir.",
     "speak_on_detection": true,
     "speak_on_connection": true,
-    "speak_on_disconnection": false
+    "speak_on_disconnection": true
   },
   "applescript": {
     "enabled": true,
