@@ -146,6 +146,13 @@ JARVIS: "Display disconnected, sir."
    - **Disconnect**: "stop", "stop living room tv", "disconnect display"
    - **Change Mode**: "change to extended", "switch to entire screen", "set to window mode"
 
+5. **Multi-Monitor Support** ⭐⭐⭐⭐⭐
+   - Detects all physical displays (built-in + external monitors)
+   - Maps Mission Control spaces to specific monitors
+   - Per-monitor screenshot capture for analysis
+   - Display-aware query routing
+   - Seamlessly integrates with AirPlay mirroring
+
 ### 🔧 Display System Technical Details
 
 **Direct Coordinate Automation:**
@@ -573,6 +580,8 @@ User Query → Smart Router → Multi-Space Handler / Display Handler
 - **Control Center Clicker**: Direct coordinate automation for screen mirroring
 - **Display Voice Handler**: Time-aware voice announcements
 - **Command Processor**: Natural language display command processing
+- **Multi-Monitor Detector**: Core Graphics-based multi-display detection
+- **Space Display Mapper**: Yabai integration for space-to-monitor mapping
 
 ### Configuration
 
@@ -612,6 +621,12 @@ Protected from unloading in `dynamic_component_manager.py`:
 - "Analyze Space 2"
 - "What's happening in Space 4?"
 - "Tell me about the coding space"
+
+### Multi-Monitor Queries
+- "What's on my second monitor?"
+- "Show me all my displays"
+- "What am I doing on monitor 2?"
+- "What's happening across all my screens?"
 
 ### Display Mirroring Commands
 
@@ -787,6 +802,11 @@ This fix accounts for macOS's memory management where high percentage usage is n
 8. ✅ Fast connection (~2 seconds, no vision APIs)
 9. ✅ Mode switching without reconnecting (~2.5 seconds)
 10. ✅ Natural language command processing
+11. ✅ Multi-monitor detection and awareness
+12. ✅ Space-to-display mapping via Yabai
+13. ✅ Per-monitor screenshot capture
+14. ✅ Display-aware query routing
+15. ✅ Comprehensive workspace analysis across all monitors
 
 ## License
 
