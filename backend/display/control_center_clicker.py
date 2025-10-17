@@ -13,11 +13,15 @@ logger = logging.getLogger(__name__)
 
 
 class ControlCenterClicker:
-    """Click Control Center icon at verified coordinates"""
+    """Click Control Center icon and Screen Mirroring at verified coordinates"""
 
     # Verified Control Center coordinates for 1440x900 screen
     CONTROL_CENTER_X = 1245
     CONTROL_CENTER_Y = 12
+
+    # Verified Screen Mirroring icon coordinates (inside Control Center menu)
+    SCREEN_MIRRORING_X = 1393
+    SCREEN_MIRRORING_Y = 177
 
     def __init__(self):
         self.logger = logger
@@ -85,6 +89,81 @@ class ControlCenterClicker:
                 "error": str(e)
             }
 
+    def open_screen_mirroring(self, wait_after_click: float = 0.5) -> Dict[str, Any]:
+        """
+        Click Screen Mirroring icon in Control Center menu
+
+        Args:
+            wait_after_click: Seconds to wait after clicking (for submenu to open)
+
+        Returns:
+            Dict with success status and message
+        """
+        try:
+            self.logger.info(f"Clicking Screen Mirroring at ({self.SCREEN_MIRRORING_X}, {self.SCREEN_MIRRORING_Y})")
+
+            # Move to Screen Mirroring icon
+            pyautogui.moveTo(self.SCREEN_MIRRORING_X, self.SCREEN_MIRRORING_Y, duration=0.3)
+
+            # Click it
+            pyautogui.click(self.SCREEN_MIRRORING_X, self.SCREEN_MIRRORING_Y)
+
+            # Wait for submenu to open
+            time.sleep(wait_after_click)
+
+            self.logger.info("✓ Screen Mirroring menu opened")
+            return {
+                "success": True,
+                "message": "Screen Mirroring menu opened",
+                "coordinates": (self.SCREEN_MIRRORING_X, self.SCREEN_MIRRORING_Y)
+            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to open Screen Mirroring: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Failed to open Screen Mirroring: {str(e)}",
+                "error": str(e)
+            }
+
+    def open_control_center_and_screen_mirroring(self) -> Dict[str, Any]:
+        """
+        Complete flow: Open Control Center → Click Screen Mirroring
+
+        Returns:
+            Dict with success status and message
+        """
+        try:
+            # Step 1: Open Control Center
+            self.logger.info("Step 1: Opening Control Center...")
+            cc_result = self.open_control_center(wait_after_click=0.5)
+
+            if not cc_result.get('success'):
+                return cc_result
+
+            # Step 2: Click Screen Mirroring
+            self.logger.info("Step 2: Opening Screen Mirroring menu...")
+            sm_result = self.open_screen_mirroring(wait_after_click=0.5)
+
+            if not sm_result.get('success'):
+                return sm_result
+
+            self.logger.info("✓ Control Center → Screen Mirroring flow complete")
+            return {
+                "success": True,
+                "message": "Screen Mirroring menu is now open",
+                "control_center_coords": (self.CONTROL_CENTER_X, self.CONTROL_CENTER_Y),
+                "screen_mirroring_coords": (self.SCREEN_MIRRORING_X, self.SCREEN_MIRRORING_Y)
+            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to open Screen Mirroring flow: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Failed: {str(e)}",
+                "error": str(e)
+            }
+
     def click_control_center_icon(self, wait_for_menu: float = 0.5) -> Dict[str, Any]:
         """
         Convenience method: Open Control Center and return result
@@ -110,26 +189,31 @@ def get_control_center_clicker() -> ControlCenterClicker:
 
 
 def test_control_center_clicker():
-    """Test the Control Center clicker"""
+    """Test the Control Center clicker with Screen Mirroring"""
     clicker = get_control_center_clicker()
 
-    print("Testing Control Center Clicker\n")
-    print("=" * 50)
+    print("Testing Control Center → Screen Mirroring Flow\n")
+    print("=" * 60)
 
-    # Test opening Control Center
-    print("\n1. Opening Control Center...")
-    result = clicker.open_control_center()
+    # Test complete flow
+    print("\n1. Testing complete flow: Control Center → Screen Mirroring...")
+    result = clicker.open_control_center_and_screen_mirroring()
     print(f"Result: {result}")
 
     if result["success"]:
+        print("\n✓ Screen Mirroring menu is now open!")
+        print(f"   Control Center clicked at: {result['control_center_coords']}")
+        print(f"   Screen Mirroring clicked at: {result['screen_mirroring_coords']}")
+
         print("\n2. Waiting 3 seconds...")
         time.sleep(3)
 
-        print("\n3. Closing Control Center...")
-        result = clicker.close_control_center()
-        print(f"Result: {result}")
+        print("\n3. Closing menus...")
+        pyautogui.press('escape')
+        time.sleep(0.5)
+        pyautogui.press('escape')
 
-    print("\n" + "=" * 50)
+    print("\n" + "=" * 60)
     print("Test complete!")
 
 
