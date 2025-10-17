@@ -612,6 +612,9 @@ class UnifiedCommandProcessor:
         - "connect to Living Room TV"
         - "extend display to Sony TV"
         - "airplay to Living Room TV"
+        - "stop living room tv"
+        - "disconnect from living room tv"
+        - "stop screen mirroring"
         """
         score = 0.0
 
@@ -634,9 +637,15 @@ class UnifiedCommandProcessor:
         secondary_keywords = {"display", "screen", "tv", "television"}
         has_secondary = any(kw in clean_words for kw in secondary_keywords)
 
-        # Display action verbs
-        action_verbs = {"connect", "cast", "project", "stream", "share"}
+        # Display action verbs (both connection and disconnection)
+        action_verbs = {"connect", "cast", "project", "stream", "share", "stop", "disconnect", "turn", "disable"}
         has_action = any(verb in clean_words for verb in action_verbs)
+
+        # Disconnection indicators (boost score for disconnect commands)
+        disconnect_indicators = {"stop", "disconnect", "turn", "disable", "off"}
+        has_disconnect = any(indicator in clean_words for indicator in disconnect_indicators)
+        if has_disconnect and has_secondary:
+            score += 0.7
 
         # Boost if we have action verb + display keyword
         if has_action and has_secondary:
@@ -677,6 +686,19 @@ class UnifiedCommandProcessor:
 
         if "airplay" in command_lower and "to" in command_lower:
             score = max(score, 0.95)
+
+        # Disconnection phrases (high confidence)
+        disconnect_phrases = [
+            "stop screen mirror",
+            "stop mirroring",
+            "disconnect display",
+            "turn off screen mirror",
+            "stop airplay"
+        ]
+        for phrase in disconnect_phrases:
+            if phrase in command_lower:
+                score = max(score, 0.95)
+                break
 
         return min(score, 1.0)  # Cap at 1.0
 
@@ -1964,6 +1986,9 @@ class UnifiedCommandProcessor:
         - "connect to Living Room TV"
         - "extend display to Sony TV"
         - "airplay to Living Room TV"
+        - "stop living room tv"
+        - "disconnect from living room tv"
+        - "stop screen mirroring"
 
         Flow:
         1. TV is in standby mode (AirPlay chip active, broadcasts availability)
@@ -1979,20 +2004,64 @@ class UnifiedCommandProcessor:
         try:
             # Try to get the running display monitor instance
             monitor = None
-            
+
             # Check if we have app reference
             if hasattr(self, '_app') and self._app:
                 if hasattr(self._app.state, 'display_monitor'):
                     monitor = self._app.state.display_monitor
                     logger.info("[DISPLAY] Using running display monitor from app.state")
-            
+
             # Fallback: get singleton instance
             if monitor is None:
                 from display import get_display_monitor
                 monitor = get_display_monitor()
                 logger.info("[DISPLAY] Using display monitor singleton")
 
-            # Extract display name from command
+            # Check if this is a disconnection command
+            disconnect_keywords = ["stop", "disconnect", "turn off", "disable"]
+            is_disconnect = any(keyword in command_lower for keyword in disconnect_keywords)
+
+            if is_disconnect:
+                # Handle disconnection
+                logger.info(f"[DISPLAY] Detected disconnection command")
+
+                # Check config for monitored displays
+                status = monitor.get_status()
+                connected_displays = list(status.get('connected_displays', []))
+
+                logger.debug(f"[DISPLAY] Connected displays: {connected_displays}")
+
+                # If only one display is connected, disconnect it
+                if len(connected_displays) == 1:
+                    display_id = connected_displays[0]
+                    logger.info(f"[DISPLAY] Disconnecting from '{display_id}'...")
+
+                    result = await monitor.disconnect_display(display_id)
+
+                    if result.get("success"):
+                        return {
+                            "success": True,
+                            "response": "Display disconnected, sir.",
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "response": result.get("message", "Unable to disconnect display."),
+                        }
+                elif len(connected_displays) > 1:
+                    # Multiple displays connected, need to specify which one
+                    return {
+                        "success": False,
+                        "response": f"Multiple displays are connected. Please specify which one to disconnect: {', '.join(connected_displays)}",
+                        "connected_displays": connected_displays,
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "response": "No displays are currently connected.",
+                    }
+
+            # Extract display name from command (for connection)
             # Look for TV names, room names, or brand names
             display_name = None
 
