@@ -28,18 +28,45 @@
     "enabled": true,
     "voice_engine": "edge_tts",
     "voice_name": "en-US-GuyNeural",
-    "prompt_templates": [
-      "JARVIS online. Ready for your command, sir.",
-      "Systems initialized. At your service, sir.",
-      "Good to see you, sir. How may I assist?",
-      "JARVIS standing by.",
-      "All systems operational, sir.",
-      "Online and ready, sir.",
-      "At your service.",
-      "Systems ready. Awaiting instructions, sir.",
-      "JARVIS operational.",
-      "Ready when you are, sir."
-    ],
+    "prompt_templates": {
+      "generic": [
+        "JARVIS online. Ready for your command, sir.",
+        "Systems initialized. At your service, sir.",
+        "Good to see you, sir.",
+        "JARVIS standing by.",
+        "All systems operational, sir.",
+        "Online and ready, sir.",
+        "At your service.",
+        "Systems ready.",
+        "JARVIS operational.",
+        "Ready when you are, sir."
+      ],
+      "morning": [
+        "Good morning, sir. Systems ready.",
+        "Good morning. At your service, sir.",
+        "Morning, sir. How may I assist?",
+        "Good morning. All systems operational."
+      ],
+      "afternoon": [
+        "Good afternoon, sir. Ready for your command.",
+        "Good afternoon. At your service, sir.",
+        "Afternoon, sir. Systems ready.",
+        "Good afternoon. How may I assist?"
+      ],
+      "evening": [
+        "Good evening, sir. Ready for your command.",
+        "Good evening. At your service, sir.",
+        "Evening, sir. Systems standing by.",
+        "Good evening. How may I assist?"
+      ],
+      "night": [
+        "Working late, sir? At your service.",
+        "Good evening, sir. Systems ready.",
+        "Late night session, sir. Standing by.",
+        "Evening, sir. Ready when you are."
+      ]
+    },
+    "time_aware_greeting_probability": 0.35,
     "connection_success_message": "Connected to {display_name}, sir.",
     "connection_failure_message": "Unable to connect to {display_name}. {error_detail}",
     "disconnection_success_message": "Display disconnected, sir.",

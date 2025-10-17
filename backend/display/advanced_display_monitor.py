@@ -632,13 +632,8 @@ class AdvancedDisplayMonitor:
 
                 # Announce if displays were found on startup
                 if current_available and self.config['voice_integration']['speak_on_detection']:
-                    # Randomly select from available prompt templates for natural variety
-                    templates = self.config['voice_integration'].get('prompt_templates', [])
-                    if not templates:
-                        # Fallback to single template for backwards compatibility
-                        templates = [self.config['voice_integration'].get('prompt_template', 'JARVIS online.')]
-
-                    template = random.choice(templates)
+                    # Get time-aware greeting
+                    template = self._get_time_aware_greeting()
 
                     # Use first found display name if template needs it, otherwise just use the template as-is
                     if '{display_name}' in template:
@@ -751,19 +746,53 @@ class AdvancedDisplayMonitor:
             self.connected_displays.remove(monitored.id)
             await self._emit_event('display_disconnected', display=monitored)
 
+    def _get_time_aware_greeting(self) -> str:
+        """
+        Get a time-aware greeting that's contextual but not annoying
+
+        Returns time-specific greeting ~35% of the time, generic the rest
+        """
+        from datetime import datetime
+
+        prompt_config = self.config['voice_integration'].get('prompt_templates', {})
+
+        # Handle legacy format (simple list)
+        if isinstance(prompt_config, list):
+            return random.choice(prompt_config)
+
+        # Get probability for time-aware greetings (default 35%)
+        time_aware_prob = self.config['voice_integration'].get('time_aware_greeting_probability', 0.35)
+
+        # Decide whether to use time-aware or generic
+        use_time_aware = random.random() < time_aware_prob
+
+        if use_time_aware:
+            # Determine time of day
+            current_hour = datetime.now().hour
+
+            if 5 <= current_hour < 12:
+                time_period = 'morning'
+            elif 12 <= current_hour < 17:
+                time_period = 'afternoon'
+            elif 17 <= current_hour < 21:
+                time_period = 'evening'
+            else:
+                time_period = 'night'
+
+            templates = prompt_config.get(time_period, prompt_config.get('generic', ['JARVIS online.']))
+        else:
+            templates = prompt_config.get('generic', ['JARVIS online.'])
+
+        return random.choice(templates)
+
     async def _speak_detection_prompt(self, monitored: MonitoredDisplay):
         """Speak detection prompt"""
         if not self.config['voice_integration']['enabled']:
             return
 
-        # Randomly select from available prompt templates for natural variety
-        templates = self.config['voice_integration'].get('prompt_templates', [])
-        if not templates:
-            # Fallback to single template for backwards compatibility
-            templates = [self.config['voice_integration'].get('prompt_template', 'Display detected.')]
-
-        template = random.choice(templates)
-        message = template.format(display_name=monitored.name)
+        # Get time-aware greeting
+        template = self._get_time_aware_greeting()
+        message = template.format(display_name=monitored.name) if '{display_name}' in template else template
 
         logger.info(f"[DISPLAY MONITOR] Voice: {message}")
 
