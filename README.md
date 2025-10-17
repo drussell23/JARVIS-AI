@@ -91,12 +91,28 @@ JARVIS: "JARVIS online. Ready for your command, sir."
 JARVIS: "Connected to Living Room TV, sir."
 ```
 
-**Change Mirroring Mode:**
+**Change to Extended Display Mode:**
 ```
 You: "Change to extended display"
 
 JARVIS: "Changed to Extended Display mode, sir."
-[Switches from mirror to extended display in ~2.5 seconds]
+[Switches from current mode to extended display in ~2.5 seconds]
+```
+
+**Change to Entire Screen Mode:**
+```
+You: "Switch to entire screen"
+
+JARVIS: "Changed to Entire Screen mode, sir."
+[Mirrors your entire Mac screen to the TV]
+```
+
+**Change to Window or App Mode:**
+```
+You: "Set to window mode"
+
+JARVIS: "Changed to Window or App mode, sir."
+[Allows you to select a specific window to mirror]
 ```
 
 **Disconnect:**
@@ -611,11 +627,23 @@ Protected from unloading in `dynamic_component_manager.py`:
 - "Disconnect from Living Room TV"
 - "Turn off screen mirroring"
 
-**Change Mirroring Mode:**
+**Change to Entire Screen Mode:**
+- "Change to entire screen"
+- "Switch to entire"
+- "Set to entire screen"
+- "Entire screen mode"
+
+**Change to Window or App Mode:**
+- "Change to window mode"
+- "Switch to window or app"
+- "Set to window"
+- "Window mode"
+
+**Change to Extended Display Mode:**
 - "Change to extended display"
-- "Switch to entire screen"
-- "Set to window mode"
-- "Change to extended"
+- "Switch to extended"
+- "Set to extend"
+- "Extended display mode"
 
 ## Requirements
 
