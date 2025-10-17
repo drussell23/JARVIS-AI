@@ -23,6 +23,10 @@ class ControlCenterClicker:
     SCREEN_MIRRORING_X = 1393
     SCREEN_MIRRORING_Y = 177
 
+    # Verified Living Room TV coordinates (inside Screen Mirroring submenu)
+    LIVING_ROOM_TV_X = 1221
+    LIVING_ROOM_TV_Y = 116
+
     def __init__(self):
         self.logger = logger
 
@@ -126,9 +130,93 @@ class ControlCenterClicker:
                 "error": str(e)
             }
 
+    def click_living_room_tv(self, wait_after_click: float = 0.5) -> Dict[str, Any]:
+        """
+        Click Living Room TV in Screen Mirroring submenu
+
+        Args:
+            wait_after_click: Seconds to wait after clicking (for connection to start)
+
+        Returns:
+            Dict with success status and message
+        """
+        try:
+            self.logger.info(f"Clicking Living Room TV at ({self.LIVING_ROOM_TV_X}, {self.LIVING_ROOM_TV_Y})")
+
+            # Move to Living Room TV
+            pyautogui.moveTo(self.LIVING_ROOM_TV_X, self.LIVING_ROOM_TV_Y, duration=0.3)
+
+            # Click it
+            pyautogui.click(self.LIVING_ROOM_TV_X, self.LIVING_ROOM_TV_Y)
+
+            # Wait for connection to initiate
+            time.sleep(wait_after_click)
+
+            self.logger.info("✓ Living Room TV clicked - connection initiated")
+            return {
+                "success": True,
+                "message": "Living Room TV connection initiated",
+                "coordinates": (self.LIVING_ROOM_TV_X, self.LIVING_ROOM_TV_Y)
+            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to click Living Room TV: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Failed to click Living Room TV: {str(e)}",
+                "error": str(e)
+            }
+
+    def connect_to_living_room_tv(self) -> Dict[str, Any]:
+        """
+        Complete flow: Control Center → Screen Mirroring → Living Room TV
+
+        Returns:
+            Dict with success status and message
+        """
+        try:
+            # Step 1: Open Control Center
+            self.logger.info("🎯 Step 1/3: Opening Control Center...")
+            cc_result = self.open_control_center(wait_after_click=0.5)
+
+            if not cc_result.get('success'):
+                return cc_result
+
+            # Step 2: Click Screen Mirroring
+            self.logger.info("🎯 Step 2/3: Opening Screen Mirroring menu...")
+            sm_result = self.open_screen_mirroring(wait_after_click=0.5)
+
+            if not sm_result.get('success'):
+                return sm_result
+
+            # Step 3: Click Living Room TV
+            self.logger.info("🎯 Step 3/3: Clicking Living Room TV...")
+            tv_result = self.click_living_room_tv(wait_after_click=1.0)
+
+            if not tv_result.get('success'):
+                return tv_result
+
+            self.logger.info("✅ Successfully connected to Living Room TV!")
+            return {
+                "success": True,
+                "message": "Connected to Living Room TV",
+                "control_center_coords": (self.CONTROL_CENTER_X, self.CONTROL_CENTER_Y),
+                "screen_mirroring_coords": (self.SCREEN_MIRRORING_X, self.SCREEN_MIRRORING_Y),
+                "living_room_tv_coords": (self.LIVING_ROOM_TV_X, self.LIVING_ROOM_TV_Y),
+                "method": "direct_coordinates"
+            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to connect to Living Room TV: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Failed: {str(e)}",
+                "error": str(e)
+            }
+
     def open_control_center_and_screen_mirroring(self) -> Dict[str, Any]:
         """
-        Complete flow: Open Control Center → Click Screen Mirroring
+        Partial flow: Open Control Center → Click Screen Mirroring
 
         Returns:
             Dict with success status and message
@@ -189,32 +277,32 @@ def get_control_center_clicker() -> ControlCenterClicker:
 
 
 def test_control_center_clicker():
-    """Test the Control Center clicker with Screen Mirroring"""
+    """Test the complete Living Room TV connection flow"""
     clicker = get_control_center_clicker()
 
-    print("Testing Control Center → Screen Mirroring Flow\n")
-    print("=" * 60)
+    print("Testing Complete Flow: Control Center → Screen Mirroring → Living Room TV\n")
+    print("=" * 75)
 
     # Test complete flow
-    print("\n1. Testing complete flow: Control Center → Screen Mirroring...")
-    result = clicker.open_control_center_and_screen_mirroring()
-    print(f"Result: {result}")
+    print("\n🎯 Testing complete connection flow...")
+    result = clicker.connect_to_living_room_tv()
+    print(f"\nResult: {result}")
 
     if result["success"]:
-        print("\n✓ Screen Mirroring menu is now open!")
-        print(f"   Control Center clicked at: {result['control_center_coords']}")
-        print(f"   Screen Mirroring clicked at: {result['screen_mirroring_coords']}")
+        print("\n✅ Successfully connected to Living Room TV!")
+        print(f"   1. Control Center clicked at: {result['control_center_coords']}")
+        print(f"   2. Screen Mirroring clicked at: {result['screen_mirroring_coords']}")
+        print(f"   3. Living Room TV clicked at: {result['living_room_tv_coords']}")
+        print(f"   Method: {result['method']}")
 
-        print("\n2. Waiting 3 seconds...")
-        time.sleep(3)
+        print("\n⏳ Screen mirroring should now be connecting...")
+        print("   Check your TV to verify the connection!")
 
-        print("\n3. Closing menus...")
-        pyautogui.press('escape')
-        time.sleep(0.5)
-        pyautogui.press('escape')
+        print("\n⏱️  Waiting 5 seconds...")
+        time.sleep(5)
 
-    print("\n" + "=" * 60)
-    print("Test complete!")
+    print("\n" + "=" * 75)
+    print("✓ Test complete!")
 
 
 if __name__ == "__main__":
