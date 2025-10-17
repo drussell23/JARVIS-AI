@@ -193,56 +193,88 @@ Voice-Controlled Display Operations
 - "Analyze Space 2" (knows which monitor Space 2 is on)
 - "Show me the terminal" (finds it across all monitors)
 
-### 🧠 Contextual & Ambiguous Query Resolution
+### 🧠 Enhanced Contextual & Ambiguous Query Resolution
 
-JARVIS intelligently resolves ambiguous queries without requiring explicit space numbers:
+JARVIS uses a **two-stage resolution system** combining entity understanding with space/monitor detection:
 
-**Implicit Queries (auto-detects active space):**
+**Stage 1: Intent & Entity Resolution (Implicit Reference Resolver)**
+- **11 Intent Types**: EXPLAIN, DESCRIBE, FIX, DIAGNOSE, LOCATE, STATUS, RECALL, COMPARE, SUMMARIZE, PREVENT, CLARIFY
+- **Entity Resolution**: "it", "that", "the error" → Actual entity from visual attention or conversation
+- **Visual Memory**: Remembers what was on screen (50 events, 5-minute decay)
+- **Conversation Tracking**: Last 10 turns with entity extraction
+
+**Stage 2: Space & Monitor Resolution (Contextual Query Resolver)**
+- **Active Space Detection**: Uses Yabai to detect focused space
+- **Pronoun Resolution**: "that space", "them" → Specific space numbers
+- **Multi-Monitor Aware**: Knows which monitor each space is on
+- **Comparison Support**: "Compare them" → Last 2 queried spaces
+
+**Example Conversations:**
+
+**Intent-Aware Responses:**
 ```
-You: "What's happening?"
-JARVIS: [Analyzes current/active space from Yabai]
+[User sees error in Terminal on Space 3]
 
-You: "What's the error?"
-JARVIS: [Shows error on active space]
+You: "What does it say?"
+Intent: DESCRIBE
+Entity: error (from visual attention)
+Space: 3 (from visual attention event)
+JARVIS: "The error in Terminal (Space 3) is: FileNotFoundError..."
 
-You: "What IDE am I using?"
-JARVIS: [Detects IDE on current space]
+You: "How do I fix it?"
+Intent: FIX
+Entity: same error (remembered)
+Space: 3
+JARVIS: [Provides solution steps, not just explanation]
+
+You: "Why did it fail?"
+Intent: DIAGNOSE
+JARVIS: [Provides root cause analysis]
 ```
 
-**Pronoun Resolution (tracks conversation context):**
+**Cross-Space Comparison:**
 ```
 You: "What's in space 3?"
 JARVIS: [Shows space 3 contents]
 
-You: "What about that space?"
-JARVIS: [Remembers you mean space 3]
-
-You: "What's happening in space 5?"
+You: "What about space 5?"
 JARVIS: [Shows space 5]
 
 You: "Compare them"
-JARVIS: [Compares spaces 3 and 5 from conversation history]
+Intent: COMPARE
+Spaces: [3, 5] (from conversation history)
+JARVIS: [Side-by-side comparison with differences highlighted]
 ```
 
-**Smart Clarification (when ambiguous):**
+**Implicit Queries:**
 ```
-You: "Show me that screen"
-JARVIS: "Which space? (Currently on Space 2)"
+You: "What's happening?"
+Intent: STATUS
+Space: 2 (active space via Yabai)
+JARVIS: [Analyzes current active space]
+
+You: "What's wrong?"
+Intent: DIAGNOSE
+Entity: Most recent error (from visual attention)
+JARVIS: [Focuses on the error you just saw]
 ```
 
-**Resolution Strategies:**
-- **Active Space Detection**: Uses Yabai to detect focused space
-- **Conversation Tracking**: Remembers last 10 conversation turns
-- **Pronoun Resolution**: Resolves "it", "that", "them", "those"
-- **Comparison Detection**: Automatically compares recently queried spaces
-- **Fallback to Space 1**: When no context available
-- **Multi-Monitor Aware**: Knows which monitor each space is on
+**Capabilities:**
+- ✅ **Two-Stage Resolution**: Entity + Space combined
+- ✅ **Intent Classification**: 11 different query intents
+- ✅ **Visual Attention Tracking**: Remembers what was on screen
+- ✅ **Temporal Relevance**: Recent events prioritized (5-minute decay)
+- ✅ **Entity Types**: errors, files, commands, code, terminal output
+- ✅ **Combined Confidence**: Scores from both stages
+- ✅ **Smart Clarification**: Only asks when truly ambiguous
+- ✅ **Zero Hardcoding**: Fully dynamic and adaptive
 
 **Integration:**
-- Fully integrated with Unified Command Processor
-- Automatically resolves ambiguous vision queries before execution
-- Transparent to the user - works seamlessly in background
-- Zero hardcoding - fully dynamic and adaptive
+- Fully integrated with Unified Command Processor (lines 207-262)
+- Three-layer architecture: ContextGraph → ImplicitResolver → ContextualResolver
+- Automatic two-stage resolution for all vision queries
+- Visual attention feedback loop (vision analysis feeds back into resolver)
+- Graceful degradation if components unavailable
 
 ### 🔧 Display System Technical Details
 

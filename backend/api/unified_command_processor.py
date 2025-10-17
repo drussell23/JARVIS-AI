@@ -196,22 +196,70 @@ class UnifiedCommandProcessor:
         self._app = app  # Store app reference for accessing app.state
         self._load_learned_data()
 
-        # Initialize contextual query resolver
-        self.contextual_resolver = None  # Lazy load on first use
-        self._initialize_contextual_resolver()
+        # Initialize multi-space context graph for advanced context tracking
+        self.context_graph = None
 
-    def _initialize_contextual_resolver(self):
-        """Initialize the contextual query resolver for ambiguous query handling"""
+        # Initialize both resolver systems
+        self.contextual_resolver = None   # Space/monitor resolution
+        self.implicit_resolver = None     # Entity/intent resolution
+        self._initialize_resolvers()
+
+    def _initialize_resolvers(self):
+        """Initialize both resolver systems for comprehensive query understanding"""
+
+        # Step 1: Initialize MultiSpaceContextGraph (required for implicit resolver)
+        try:
+            from core.context.multi_space_context_graph import MultiSpaceContextGraph
+            self.context_graph = MultiSpaceContextGraph()
+            logger.info("[UNIFIED] ✅ MultiSpaceContextGraph initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] MultiSpaceContextGraph not available: {e}")
+            self.context_graph = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize context graph: {e}")
+            self.context_graph = None
+
+        # Step 2: Initialize ImplicitReferenceResolver (entity/intent resolution)
+        if self.context_graph:
+            try:
+                from core.nlp.implicit_reference_resolver import initialize_implicit_resolver
+                self.implicit_resolver = initialize_implicit_resolver(self.context_graph)
+                logger.info("[UNIFIED] ✅ ImplicitReferenceResolver initialized")
+            except ImportError as e:
+                logger.warning(f"[UNIFIED] ImplicitReferenceResolver not available: {e}")
+                self.implicit_resolver = None
+            except Exception as e:
+                logger.error(f"[UNIFIED] Failed to initialize implicit resolver: {e}")
+                self.implicit_resolver = None
+        else:
+            logger.info("[UNIFIED] Skipping implicit resolver (no context graph)")
+            self.implicit_resolver = None
+
+        # Step 3: Initialize ContextualQueryResolver (space/monitor resolution)
         try:
             from context_intelligence.resolvers import get_contextual_resolver
             self.contextual_resolver = get_contextual_resolver()
-            logger.info("[UNIFIED] Contextual query resolver initialized")
-        except ImportError:
-            logger.warning("[UNIFIED] Contextual query resolver not available")
+            logger.info("[UNIFIED] ✅ ContextualQueryResolver initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] ContextualQueryResolver not available: {e}")
             self.contextual_resolver = None
         except Exception as e:
             logger.error(f"[UNIFIED] Failed to initialize contextual resolver: {e}")
             self.contextual_resolver = None
+
+        # Log integration status
+        resolvers_active = []
+        if self.context_graph:
+            resolvers_active.append("ContextGraph")
+        if self.implicit_resolver:
+            resolvers_active.append("ImplicitResolver")
+        if self.contextual_resolver:
+            resolvers_active.append("ContextualResolver")
+
+        if resolvers_active:
+            logger.info(f"[UNIFIED] 🎯 Active resolvers: {', '.join(resolvers_active)}")
+        else:
+            logger.warning("[UNIFIED] ⚠️  No resolvers available - queries will use basic processing")
 
     def _load_learned_data(self):
         """Load previously learned patterns and statistics"""
@@ -981,94 +1029,187 @@ class UnifiedCommandProcessor:
 
     async def _resolve_vision_query(self, query: str) -> Dict[str, Any]:
         """
-        Resolve ambiguous vision queries using contextual query resolver
+        Two-stage resolution for comprehensive query understanding
 
-        Examples:
-        - "What's happening?" -> Resolves to active space
-        - "What about that space?" -> Resolves to last queried space
-        - "Compare them" -> Resolves to last 2 queried spaces
+        Stage 1 (Implicit Resolver): Entity & Intent Resolution
+        - "What does it say?" -> "it" = error in Terminal
+        - Intent: DESCRIBE
+        - Entity type: error
+        - May include space_id from visual attention
+
+        Stage 2 (Contextual Resolver): Space & Monitor Resolution
+        - If Stage 1 didn't find space, resolve it now
+        - "What's happening?" -> Space 2 (active space)
+        - "Compare them" -> Spaces [3, 5] (last queried)
 
         Returns:
-            Dict with:
-            - resolved: bool (whether resolution was needed)
-            - query: str (potentially enhanced query with space info)
+            Dict with comprehensive resolution including:
+            - intent: QueryIntent (from implicit resolver)
+            - entity: Resolved entity (error, file, etc.)
             - spaces: List[int] (resolved space IDs)
-            - strategy: str (resolution strategy used)
-            - confidence: float (confidence in resolution)
+            - confidence: Combined confidence score
         """
-        if not self.contextual_resolver:
-            # No resolver available, return original query
-            return {
-                "resolved": False,
-                "query": query,
-                "spaces": None,
-                "strategy": None,
-                "confidence": 0.0
-            }
+        resolution = {
+            "original_query": query,
+            "resolved": False,
+            "query": query,
+            "intent": None,
+            "entity_resolution": None,
+            "space_resolution": None,
+            "spaces": None,
+            "confidence": 0.0
+        }
+
+        # ============================================================
+        # STAGE 1: Implicit Reference Resolution (Entity & Intent)
+        # ============================================================
+        if self.implicit_resolver:
+            try:
+                logger.debug(f"[UNIFIED] Stage 1: Implicit resolution for '{query}'")
+                implicit_result = await self.implicit_resolver.resolve_query(query)
+
+                # Extract intent
+                resolution["intent"] = implicit_result.get("intent")
+
+                # Extract entity referent
+                referent = implicit_result.get("referent", {})
+                if referent and referent.get("source") != "none":
+                    resolution["entity_resolution"] = {
+                        "source": referent.get("source"),
+                        "type": referent.get("type"),
+                        "entity": referent.get("entity"),
+                        "confidence": referent.get("relevance", 0.0)
+                    }
+
+                    logger.info(
+                        f"[UNIFIED] Stage 1 ✅: Intent={resolution['intent']}, "
+                        f"Entity={referent.get('type')} from {referent.get('source')}"
+                    )
+
+                    # If implicit resolver found a specific space, use it (high confidence!)
+                    if referent.get("space_id"):
+                        resolution["spaces"] = [referent["space_id"]]
+                        resolution["space_resolution"] = {
+                            "strategy": "implicit_reference",
+                            "confidence": 1.0,
+                            "source": "visual_attention"
+                        }
+                        resolution["resolved"] = True
+                        resolution["confidence"] = implicit_result.get("confidence", 0.9)
+
+                        # Enhance query with entity and space info
+                        entity_desc = referent.get("entity", "")[:50]
+                        resolution["query"] = f"{query} [entity: {entity_desc}, space: {referent['space_id']}]"
+
+                        logger.info(
+                            f"[UNIFIED] Stage 1 complete: Space {referent['space_id']} from implicit resolver"
+                        )
+                        return resolution
+
+            except Exception as e:
+                logger.warning(f"[UNIFIED] Stage 1 error: {e}", exc_info=True)
+
+        # ============================================================
+        # STAGE 2: Contextual Space Resolution (if needed)
+        # ============================================================
+        if self.contextual_resolver:
+            try:
+                logger.debug(f"[UNIFIED] Stage 2: Contextual space resolution for '{query}'")
+                space_result = await self.contextual_resolver.resolve_query(query)
+
+                if space_result.requires_clarification:
+                    # Query is too ambiguous
+                    resolution["clarification_needed"] = True
+                    resolution["clarification_message"] = space_result.clarification_message
+                    logger.info(f"[UNIFIED] Stage 2: Clarification needed")
+                    return resolution
+
+                if space_result.success and space_result.resolved_spaces:
+                    # Successfully resolved spaces
+                    spaces = space_result.resolved_spaces
+                    strategy = space_result.strategy_used.value
+
+                    resolution["spaces"] = spaces
+                    resolution["space_resolution"] = {
+                        "strategy": strategy,
+                        "confidence": space_result.confidence,
+                        "monitors": space_result.resolved_monitors
+                    }
+                    resolution["resolved"] = True
+
+                    # Calculate combined confidence
+                    if resolution["entity_resolution"]:
+                        # Both stages succeeded
+                        entity_conf = resolution["entity_resolution"]["confidence"]
+                        space_conf = space_result.confidence
+                        resolution["confidence"] = (entity_conf + space_conf) / 2
+                    else:
+                        # Only space resolution
+                        resolution["confidence"] = space_result.confidence
+
+                    # Enhance query with space info (and entity if available)
+                    enhanced_query = query
+                    if resolution["entity_resolution"]:
+                        entity = resolution["entity_resolution"]["entity"][:50]
+                        enhanced_query = f"{query} [entity: {entity}]"
+
+                    if len(spaces) == 1:
+                        enhanced_query = f"{enhanced_query} [space {spaces[0]}]"
+                    elif len(spaces) > 1:
+                        enhanced_query = f"{enhanced_query} [spaces {', '.join(map(str, spaces))}]"
+
+                    resolution["query"] = enhanced_query
+
+                    logger.info(
+                        f"[UNIFIED] Stage 2 ✅: Resolved to spaces {spaces} "
+                        f"using {strategy} (confidence: {space_result.confidence})"
+                    )
+
+            except Exception as e:
+                logger.warning(f"[UNIFIED] Stage 2 error: {e}", exc_info=True)
+
+        # ============================================================
+        # FALLBACK: No resolution
+        # ============================================================
+        if not resolution["resolved"]:
+            logger.debug(f"[UNIFIED] No resolution available for '{query}' - using original query")
+            resolution["query"] = query
+            resolution["confidence"] = 0.0
+
+        return resolution
+
+    def record_visual_attention(self, space_id: int, app_name: str, ocr_text: str,
+                               content_type: str = "unknown", significance: str = "normal"):
+        """
+        Record visual attention for implicit reference resolution
+
+        This creates a feedback loop where vision analysis feeds into the
+        implicit resolver's visual attention tracker.
+
+        Args:
+            space_id: The space where content was seen
+            app_name: The application displaying the content
+            ocr_text: OCR text from the screen
+            content_type: Type of content (error, code, documentation, terminal_output)
+            significance: Importance level (critical, high, normal, low)
+        """
+        if not self.implicit_resolver:
+            return
 
         try:
-            # Use contextual resolver to handle ambiguous queries
-            resolution = await self.contextual_resolver.resolve_query(query)
-
-            if resolution.requires_clarification:
-                # Query is too ambiguous, return clarification message
-                return {
-                    "resolved": False,
-                    "query": query,
-                    "spaces": None,
-                    "clarification_needed": True,
-                    "clarification_message": resolution.clarification_message,
-                    "confidence": 0.0
-                }
-
-            if resolution.success and resolution.resolved_spaces:
-                # Successfully resolved - enhance query with space information
-                spaces = resolution.resolved_spaces
-                strategy = resolution.strategy_used.value
-
-                # Log the resolution
-                logger.info(
-                    f"[UNIFIED] Resolved '{query}' to spaces {spaces} "
-                    f"using {strategy} (confidence: {resolution.confidence})"
-                )
-
-                # Enhance query with space context for vision handler
-                # The vision handler can use this information
-                enhanced_query = query
-                if len(spaces) == 1:
-                    enhanced_query = f"{query} [space {spaces[0]}]"
-                elif len(spaces) > 1:
-                    enhanced_query = f"{query} [spaces {', '.join(map(str, spaces))}]"
-
-                return {
-                    "resolved": True,
-                    "query": enhanced_query,
-                    "spaces": spaces,
-                    "monitors": resolution.resolved_monitors,
-                    "strategy": strategy,
-                    "confidence": resolution.confidence,
-                    "metadata": resolution.metadata
-                }
-            else:
-                # No resolution needed (explicit query)
-                return {
-                    "resolved": False,
-                    "query": query,
-                    "spaces": resolution.resolved_spaces if resolution.success else None,
-                    "strategy": resolution.strategy_used.value if resolution.success else None,
-                    "confidence": resolution.confidence
-                }
-
+            self.implicit_resolver.record_visual_attention(
+                space_id=space_id,
+                app_name=app_name,
+                ocr_text=ocr_text,
+                content_type=content_type,
+                significance=significance
+            )
+            logger.debug(
+                f"[UNIFIED] Recorded visual attention: {content_type} in {app_name} "
+                f"(Space {space_id}, significance={significance})"
+            )
         except Exception as e:
-            logger.error(f"[UNIFIED] Error resolving vision query: {e}", exc_info=True)
-            # On error, return original query
-            return {
-                "resolved": False,
-                "query": query,
-                "spaces": None,
-                "error": str(e),
-                "confidence": 0.0
-            }
+            logger.warning(f"[UNIFIED] Failed to record visual attention: {e}")
 
     async def _get_full_system_context(self) -> Dict[str, Any]:
         """Get comprehensive system context for intelligent command processing"""
@@ -1157,20 +1298,40 @@ class UnifiedCommandProcessor:
                 ):
                     result = await handler.handle_command(command_text)
                 else:
-                    # It's a vision query - resolve ambiguous queries first
+                    # It's a vision query - use two-stage resolution
                     resolved_query = await self._resolve_vision_query(command_text)
 
-                    # Analyze the screen with the specific query
+                    # Check if clarification is needed
+                    if resolved_query.get("clarification_needed"):
+                        return {
+                            "success": False,
+                            "response": resolved_query.get("clarification_message"),
+                            "command_type": command_type.value,
+                            "clarification_needed": True
+                        }
+
+                    # Analyze the screen with the enhanced query
                     result = await handler.analyze_screen(resolved_query.get("query", command_text))
 
-                    # Add resolution context to result
+                    # Add comprehensive resolution context to result
                     if resolved_query.get("resolved"):
                         result["query_resolution"] = {
                             "original_query": command_text,
+                            "intent": resolved_query.get("intent"),
+                            "entity_resolution": resolved_query.get("entity_resolution"),
+                            "space_resolution": resolved_query.get("space_resolution"),
                             "resolved_spaces": resolved_query.get("spaces"),
-                            "strategy": resolved_query.get("strategy"),
-                            "confidence": resolved_query.get("confidence")
+                            "confidence": resolved_query.get("confidence"),
+                            "two_stage": True  # Indicates both resolvers were used
                         }
+
+                        # Log the comprehensive resolution
+                        logger.info(
+                            f"[UNIFIED] Vision query resolved - "
+                            f"Intent: {resolved_query.get('intent')}, "
+                            f"Spaces: {resolved_query.get('spaces')}, "
+                            f"Confidence: {resolved_query.get('confidence')}"
+                        )
 
                 return {
                     "success": result.get("handled", False),
