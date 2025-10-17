@@ -1147,6 +1147,98 @@ class AdvancedDisplayMonitor:
             "tier": 6
         }
 
+    async def change_display_mode(self, display_id: str, mode: str = "extended") -> Dict[str, Any]:
+        """
+        Change the screen mirroring mode
+
+        Args:
+            display_id: Display ID from configuration
+            mode: Mirroring mode - "entire", "window", or "extended"
+
+        Returns:
+            Mode change result dictionary
+        """
+        # Find monitored display
+        monitored = next((d for d in self.monitored_displays if d.id == display_id), None)
+        if not monitored:
+            return {"success": False, "message": f"Display {display_id} not found in configuration"}
+
+        logger.info(f"[DISPLAY MONITOR] ========================================")
+        logger.info(f"[DISPLAY MONITOR] Changing {monitored.name} to {mode} mode...")
+        logger.info(f"[DISPLAY MONITOR] ========================================")
+
+        mode_start = asyncio.get_event_loop().time()
+
+        try:
+            from display.control_center_clicker import get_control_center_clicker
+
+            logger.info(f"[DISPLAY MONITOR] Using DIRECT COORDINATES to change mode")
+            logger.info(f"[DISPLAY MONITOR] Flow: Control Center → Screen Mirroring → {mode} → Start")
+
+            # Get Control Center clicker
+            cc_clicker = get_control_center_clicker()
+
+            # Execute mode change flow
+            logger.info(f"[DISPLAY MONITOR] Executing 4-click mode change flow...")
+            result = cc_clicker.change_mirroring_mode(mode)
+
+            if result.get('success'):
+                total_duration = asyncio.get_event_loop().time() - mode_start
+
+                # Speak mode change confirmation
+                if self.config['voice_integration'].get('speak_on_connection', True):
+                    template = self.config['voice_integration'].get('mode_change_success_message', 'Mode changed, sir.')
+                    message = template.format(mode=result['mode']) if '{mode}' in template else template
+
+                    if self.voice_handler:
+                        try:
+                            await self.voice_handler.speak(message)
+                        except:
+                            subprocess.Popen(['say', message])
+                    else:
+                        subprocess.Popen(['say', message])
+
+                logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS - Changed to {result['mode']} in {total_duration:.2f}s")
+                logger.info(f"[DISPLAY MONITOR] 1. Control Center: {result['control_center_coords']}")
+                logger.info(f"[DISPLAY MONITOR] 2. Screen Mirroring: {result['screen_mirroring_coords']}")
+                logger.info(f"[DISPLAY MONITOR] 3. Change Button: {result['change_button_coords']}")
+                logger.info(f"[DISPLAY MONITOR] 4. Mode: {result['mode_coords']}")
+                logger.info(f"[DISPLAY MONITOR] 5. Start Mirroring: {result['start_mirroring_coords']}")
+                logger.info(f"[DISPLAY MONITOR] Method: {result['method']}")
+                logger.info(f"[DISPLAY MONITOR] ========================================")
+
+                return {
+                    "success": True,
+                    "message": f"Changed to {result['mode']} mode",
+                    "mode": result['mode'],
+                    "method": "direct_coordinates",
+                    "duration": total_duration,
+                    "coordinates": {
+                        "control_center": result['control_center_coords'],
+                        "screen_mirroring": result['screen_mirroring_coords'],
+                        "change_button": result['change_button_coords'],
+                        "mode": result['mode_coords'],
+                        "start_mirroring": result['start_mirroring_coords']
+                    }
+                }
+            else:
+                logger.error(f"[DISPLAY MONITOR] ❌ Mode change failed: {result.get('message')}")
+                return result
+
+        except Exception as e:
+            total_duration = asyncio.get_event_loop().time() - mode_start
+            logger.error(f"[DISPLAY MONITOR] ❌ Mode change error: {e}", exc_info=True)
+            logger.error(f"[DISPLAY MONITOR] Total time: {total_duration:.2f}s")
+            logger.error(f"[DISPLAY MONITOR] ========================================")
+
+            return {
+                "success": False,
+                "message": f"Failed to change mode: {str(e)}",
+                "method": "none",
+                "duration": total_duration,
+                "error": str(e)
+            }
+
     async def disconnect_display(self, display_id: str) -> Dict[str, Any]:
         """
         Disconnect from a display using direct coordinates

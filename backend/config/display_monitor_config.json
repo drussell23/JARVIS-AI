@@ -70,6 +70,7 @@
     "connection_success_message": "Connected to {display_name}, sir.",
     "connection_failure_message": "Unable to connect to {display_name}. {error_detail}",
     "disconnection_success_message": "Display disconnected, sir.",
+    "mode_change_success_message": "Changed to {mode} mode, sir.",
     "speak_on_detection": true,
     "speak_on_connection": true,
     "speak_on_disconnection": true

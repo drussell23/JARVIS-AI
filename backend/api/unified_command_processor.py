@@ -700,6 +700,25 @@ class UnifiedCommandProcessor:
                 score = max(score, 0.95)
                 break
 
+        # Mode change phrases (high confidence)
+        mode_change_phrases = [
+            "change to extended",
+            "change to entire",
+            "change to window",
+            "switch to extended",
+            "switch to entire",
+            "switch to window",
+            "set to extended",
+            "set to entire",
+            "extended display",
+            "entire screen",
+            "window or app"
+        ]
+        for phrase in mode_change_phrases:
+            if phrase in command_lower:
+                score = max(score, 0.95)
+                break
+
         return min(score, 1.0)  # Cap at 1.0
 
     def _calculate_vision_score(self, words: List[str], command_lower: str) -> float:
@@ -1989,6 +2008,9 @@ class UnifiedCommandProcessor:
         - "stop living room tv"
         - "disconnect from living room tv"
         - "stop screen mirroring"
+        - "change to extended display"
+        - "switch to entire screen"
+        - "set to window mode"
 
         Flow:
         1. TV is in standby mode (AirPlay chip active, broadcasts availability)
@@ -2017,11 +2039,72 @@ class UnifiedCommandProcessor:
                 monitor = get_display_monitor()
                 logger.info("[DISPLAY] Using display monitor singleton")
 
+            # Check if this is a mode change command
+            mode_keywords = ["change", "switch", "set"]
+            mode_types = {
+                "entire": ["entire", "entire screen", "full screen"],
+                "window": ["window", "window or app", "app"],
+                "extended": ["extended", "extend", "extended display"]
+            }
+
+            is_mode_change = any(keyword in command_lower for keyword in mode_keywords)
+            detected_mode = None
+
+            if is_mode_change:
+                # Detect which mode the user wants
+                for mode_key, mode_phrases in mode_types.items():
+                    if any(phrase in command_lower for phrase in mode_phrases):
+                        detected_mode = mode_key
+                        break
+
+            if is_mode_change and detected_mode:
+                # Handle mode change
+                logger.info(f"[DISPLAY] Detected mode change command to '{detected_mode}'")
+
+                # Check config for connected displays
+                status = monitor.get_status()
+                connected_displays = list(status.get('connected_displays', []))
+
+                logger.debug(f"[DISPLAY] Connected displays: {connected_displays}")
+
+                # If only one display is connected, change its mode
+                if len(connected_displays) == 1:
+                    display_id = connected_displays[0]
+                    logger.info(f"[DISPLAY] Changing '{display_id}' to {detected_mode} mode...")
+
+                    result = await monitor.change_display_mode(display_id, detected_mode)
+
+                    if result.get("success"):
+                        mode_name = result.get("mode", detected_mode)
+                        return {
+                            "success": True,
+                            "response": f"Changed to {mode_name} mode, sir.",
+                            "mode": mode_name,
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "response": result.get("message", f"Unable to change to {detected_mode} mode."),
+                        }
+                elif len(connected_displays) > 1:
+                    # Multiple displays connected, need to specify which one
+                    return {
+                        "success": False,
+                        "response": f"Multiple displays are connected. Please specify which display to change: {', '.join(connected_displays)}",
+                        "connected_displays": connected_displays,
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "response": "No displays are currently connected.",
+                    }
+
             # Check if this is a disconnection command
             disconnect_keywords = ["stop", "disconnect", "turn off", "disable"]
             is_disconnect = any(keyword in command_lower for keyword in disconnect_keywords)
 
-            if is_disconnect:
+            # Make sure it's not a mode change command being misdetected
+            if is_disconnect and not is_mode_change:
                 # Handle disconnection
                 logger.info(f"[DISPLAY] Detected disconnection command")
 

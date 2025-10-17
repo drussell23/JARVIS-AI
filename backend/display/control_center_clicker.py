@@ -31,6 +31,23 @@ class ControlCenterClicker:
     STOP_MIRRORING_X = 1346
     STOP_MIRRORING_Y = 345
 
+    # Change button (opens mode selection menu)
+    CHANGE_BUTTON_X = 1218
+    CHANGE_BUTTON_Y = 345
+
+    # Mirroring mode options (after clicking Change button)
+    ENTIRE_SCREEN_X = 553
+    ENTIRE_SCREEN_Y = 285
+
+    WINDOW_OR_APP_X = 723
+    WINDOW_OR_APP_Y = 285
+
+    EXTENDED_DISPLAY_X = 889
+    EXTENDED_DISPLAY_Y = 283
+
+    START_MIRRORING_X = 930
+    START_MIRRORING_Y = 457
+
     def __init__(self):
         self.logger = logger
 
@@ -346,6 +363,167 @@ class ControlCenterClicker:
 
         except Exception as e:
             self.logger.error(f"Failed to disconnect from Living Room TV: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Failed: {str(e)}",
+                "error": str(e)
+            }
+
+    def change_mirroring_mode(self, mode: str = "extended") -> Dict[str, Any]:
+        """
+        Change screen mirroring mode
+
+        Args:
+            mode: Mirroring mode - "entire", "window", or "extended"
+
+        Returns:
+            Dict with success status and message
+        """
+        try:
+            # Step 1: Open Control Center
+            self.logger.info("🎯 Step 1/5: Opening Control Center...")
+            cc_result = self.open_control_center(wait_after_click=0.5)
+
+            if not cc_result.get('success'):
+                return cc_result
+
+            # Step 2: Click Screen Mirroring
+            self.logger.info("🎯 Step 2/5: Opening Screen Mirroring menu...")
+            sm_result = self.open_screen_mirroring(wait_after_click=0.5)
+
+            if not sm_result.get('success'):
+                return sm_result
+
+            # Step 3: Click Change button to open mode selection
+            self.logger.info(f"🎯 Step 3/5: Clicking Change button at ({self.CHANGE_BUTTON_X}, {self.CHANGE_BUTTON_Y})...")
+            pyautogui.moveTo(self.CHANGE_BUTTON_X, self.CHANGE_BUTTON_Y, duration=0.3)
+            pyautogui.click(self.CHANGE_BUTTON_X, self.CHANGE_BUTTON_Y)
+            time.sleep(0.5)
+
+            # Step 4: Select mirroring mode
+            mode_lower = mode.lower()
+            if mode_lower in ["entire", "entire screen"]:
+                mode_x, mode_y = self.ENTIRE_SCREEN_X, self.ENTIRE_SCREEN_Y
+                mode_name = "Entire Screen"
+            elif mode_lower in ["window", "window or app", "app"]:
+                mode_x, mode_y = self.WINDOW_OR_APP_X, self.WINDOW_OR_APP_Y
+                mode_name = "Window or App"
+            elif mode_lower in ["extended", "extended display", "extend"]:
+                mode_x, mode_y = self.EXTENDED_DISPLAY_X, self.EXTENDED_DISPLAY_Y
+                mode_name = "Extended Display"
+            else:
+                return {
+                    "success": False,
+                    "message": f"Invalid mode: {mode}. Use 'entire', 'window', or 'extended'.",
+                    "error": "Invalid mode"
+                }
+
+            self.logger.info(f"🎯 Step 4/5: Selecting {mode_name} mode at ({mode_x}, {mode_y})...")
+            pyautogui.moveTo(mode_x, mode_y, duration=0.3)
+            pyautogui.click(mode_x, mode_y)
+            time.sleep(0.5)
+
+            # Step 5: Click Start Mirroring
+            self.logger.info(f"🎯 Step 5/5: Clicking Start Mirroring at ({self.START_MIRRORING_X}, {self.START_MIRRORING_Y})...")
+            pyautogui.moveTo(self.START_MIRRORING_X, self.START_MIRRORING_Y, duration=0.3)
+            pyautogui.click(self.START_MIRRORING_X, self.START_MIRRORING_Y)
+            time.sleep(1.0)
+
+            self.logger.info(f"✅ Successfully changed to {mode_name} mode!")
+            return {
+                "success": True,
+                "message": f"Changed to {mode_name} mode",
+                "mode": mode_name,
+                "control_center_coords": (self.CONTROL_CENTER_X, self.CONTROL_CENTER_Y),
+                "screen_mirroring_coords": (self.SCREEN_MIRRORING_X, self.SCREEN_MIRRORING_Y),
+                "change_button_coords": (self.CHANGE_BUTTON_X, self.CHANGE_BUTTON_Y),
+                "mode_coords": (mode_x, mode_y),
+                "start_mirroring_coords": (self.START_MIRRORING_X, self.START_MIRRORING_Y),
+                "method": "direct_coordinates"
+            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to change mirroring mode: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Failed: {str(e)}",
+                "error": str(e)
+            }
+
+    def click_mirroring_mode(self, mode: str, wait_after_click: float = 0.5) -> Dict[str, Any]:
+        """
+        Click a specific mirroring mode option
+
+        Args:
+            mode: "entire", "window", or "extended"
+            wait_after_click: Seconds to wait after clicking
+
+        Returns:
+            Dict with success status and message
+        """
+        try:
+            mode_lower = mode.lower()
+            if mode_lower in ["entire", "entire screen"]:
+                x, y = self.ENTIRE_SCREEN_X, self.ENTIRE_SCREEN_Y
+                mode_name = "Entire Screen"
+            elif mode_lower in ["window", "window or app", "app"]:
+                x, y = self.WINDOW_OR_APP_X, self.WINDOW_OR_APP_Y
+                mode_name = "Window or App"
+            elif mode_lower in ["extended", "extended display", "extend"]:
+                x, y = self.EXTENDED_DISPLAY_X, self.EXTENDED_DISPLAY_Y
+                mode_name = "Extended Display"
+            else:
+                return {
+                    "success": False,
+                    "message": f"Invalid mode: {mode}",
+                    "error": "Invalid mode"
+                }
+
+            self.logger.info(f"Clicking {mode_name} at ({x}, {y})")
+            pyautogui.moveTo(x, y, duration=0.3)
+            pyautogui.click(x, y)
+            time.sleep(wait_after_click)
+
+            self.logger.info(f"✓ {mode_name} selected")
+            return {
+                "success": True,
+                "message": f"{mode_name} selected",
+                "coordinates": (x, y)
+            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to click mirroring mode: {e}", exc_info=True)
+            return {
+                "success": False,
+                "message": f"Failed: {str(e)}",
+                "error": str(e)
+            }
+
+    def click_start_mirroring(self, wait_after_click: float = 1.0) -> Dict[str, Any]:
+        """
+        Click Start Mirroring button
+
+        Args:
+            wait_after_click: Seconds to wait after clicking
+
+        Returns:
+            Dict with success status and message
+        """
+        try:
+            self.logger.info(f"Clicking Start Mirroring at ({self.START_MIRRORING_X}, {self.START_MIRRORING_Y})")
+            pyautogui.moveTo(self.START_MIRRORING_X, self.START_MIRRORING_Y, duration=0.3)
+            pyautogui.click(self.START_MIRRORING_X, self.START_MIRRORING_Y)
+            time.sleep(wait_after_click)
+
+            self.logger.info("✓ Start Mirroring clicked")
+            return {
+                "success": True,
+                "message": "Start Mirroring clicked",
+                "coordinates": (self.START_MIRRORING_X, self.START_MIRRORING_Y)
+            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to click Start Mirroring: {e}", exc_info=True)
             return {
                 "success": False,
                 "message": f"Failed: {str(e)}",
