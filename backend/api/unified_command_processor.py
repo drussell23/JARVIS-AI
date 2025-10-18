@@ -203,6 +203,7 @@ class UnifiedCommandProcessor:
         self.contextual_resolver = None   # Space/monitor resolution
         self.implicit_resolver = None     # Entity/intent resolution
         self.multi_space_handler = None   # Multi-space query handler
+        self.temporal_handler = None      # Temporal query handler (change detection, error tracking, timeline)
         self._initialize_resolvers()
 
     def _initialize_resolvers(self):
@@ -268,6 +269,23 @@ class UnifiedCommandProcessor:
             logger.info("[UNIFIED] Skipping multi-space handler (no context graph)")
             self.multi_space_handler = None
 
+        # Step 5: Initialize TemporalQueryHandler (change detection, error tracking, timeline)
+        try:
+            from context_intelligence.handlers import initialize_temporal_handler
+            from vision.intelligence.temporal_context_engine import get_temporal_engine
+
+            self.temporal_handler = initialize_temporal_handler(
+                implicit_resolver=self.implicit_resolver,
+                temporal_engine=get_temporal_engine()
+            )
+            logger.info("[UNIFIED] ✅ TemporalQueryHandler initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] TemporalQueryHandler not available: {e}")
+            self.temporal_handler = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize temporal handler: {e}")
+            self.temporal_handler = None
+
         # Log integration status
         resolvers_active = []
         if self.context_graph:
@@ -278,6 +296,8 @@ class UnifiedCommandProcessor:
             resolvers_active.append("ContextualResolver")
         if self.multi_space_handler:
             resolvers_active.append("MultiSpaceHandler")
+        if self.temporal_handler:
+            resolvers_active.append("TemporalHandler")
 
         if resolvers_active:
             logger.info(f"[UNIFIED] 🎯 Active resolvers: {', '.join(resolvers_active)}")
@@ -1348,6 +1368,125 @@ class UnifiedCommandProcessor:
                 "error": str(e)
             }
 
+    def _is_temporal_query(self, query: str) -> bool:
+        """
+        Detect if a query is temporal (time-based, change detection, error tracking).
+
+        Examples:
+        - "What changed in space 3?"
+        - "Has the error been fixed?"
+        - "What's new in the last 5 minutes?"
+        - "When did this error first appear?"
+        """
+        query_lower = query.lower()
+
+        # Keywords that indicate temporal queries
+        temporal_keywords = [
+            "changed", "change", "different",
+            "fixed", "error", "bug", "issue",
+            "new", "recently", "last",
+            "when", "history", "timeline",
+            "appeared", "first", "started",
+            "ago", "since", "before", "after",
+            "latest", "recent", "past"
+        ]
+
+        # Check for keywords
+        if any(keyword in query_lower for keyword in temporal_keywords):
+            return True
+
+        # Check for time expressions
+        import re
+        time_patterns = [
+            r'\d+\s+(minute|hour|day|second)s?\s+ago',
+            r'last\s+\d+\s+(minute|hour|day|second)s?',
+            r'in\s+the\s+last',
+            r'(today|yesterday|recently|just now)'
+        ]
+
+        for pattern in time_patterns:
+            if re.search(pattern, query_lower):
+                return True
+
+        return False
+
+    async def _handle_temporal_query(self, query: str) -> Dict[str, Any]:
+        """
+        Handle temporal queries using the TemporalQueryHandler.
+
+        Args:
+            query: User's temporal query
+
+        Returns:
+            Dict with temporal analysis results
+        """
+        if not self.temporal_handler:
+            # Fallback: treat as regular query
+            logger.warning("[UNIFIED] Temporal query detected but handler not available")
+            return {
+                "success": False,
+                "response": "Temporal analysis not available. Cannot track changes over time.",
+                "temporal": False
+            }
+
+        try:
+            logger.info(f"[UNIFIED] Handling temporal query: '{query}'")
+
+            # Get current space (or from query)
+            space_id = None
+            import re
+            space_match = re.search(r'space\s+(\d+)', query.lower())
+            if space_match:
+                space_id = int(space_match.group(1))
+
+            # Use the temporal handler
+            result = await self.temporal_handler.handle_query(query, space_id)
+
+            # Build response
+            response = {
+                "success": True,
+                "response": result.summary,
+                "temporal": True,
+                "query_type": result.query_type.name,
+                "time_range": {
+                    "start": result.time_range.start.isoformat(),
+                    "end": result.time_range.end.isoformat(),
+                    "duration_seconds": result.time_range.duration_seconds
+                },
+                "changes": [
+                    {
+                        "type": change.change_type.value,
+                        "description": change.description,
+                        "confidence": change.confidence,
+                        "timestamp": change.timestamp.isoformat(),
+                        "space_id": change.space_id
+                    }
+                    for change in result.changes
+                ],
+                "timeline": result.timeline,
+                "screenshot_count": len(result.screenshots)
+            }
+
+            # Add metadata if available
+            if result.metadata:
+                response["metadata"] = result.metadata
+
+            logger.info(
+                f"[UNIFIED] Temporal query completed: "
+                f"{len(result.changes)} changes detected over {result.time_range.duration_seconds:.0f}s"
+            )
+
+            return response
+
+        except Exception as e:
+            logger.error(f"[UNIFIED] Temporal query failed: {e}", exc_info=True)
+            return {
+                "success": False,
+                "response": f"Temporal analysis failed: {str(e)}",
+                "temporal": True,
+                "error": str(e)
+            }
+
     async def _get_full_system_context(self) -> Dict[str, Any]:
         """Get comprehensive system context for intelligent command processing"""
         try:
@@ -1435,7 +1574,12 @@ class UnifiedCommandProcessor:
                 ):
                     result = await handler.handle_command(command_text)
                 else:
-                    # Check if this is a multi-space query first
+                    # Check if this is a temporal query first (change detection, error tracking, timeline)
+                    if self._is_temporal_query(command_text):
+                        logger.info(f"[UNIFIED] Detected temporal query: '{command_text}'")
+                        return await self._handle_temporal_query(command_text)
+
+                    # Check if this is a multi-space query
                     if self._is_multi_space_query(command_text):
                         logger.info(f"[UNIFIED] Detected multi-space query: '{command_text}'")
                         return await self._handle_multi_space_query(command_text)

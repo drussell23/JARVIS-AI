@@ -14,11 +14,28 @@ from .multi_space_query_handler import (
     MultiSpaceQueryResult
 )
 
+from .temporal_query_handler import (
+    TemporalQueryHandler,
+    get_temporal_query_handler,
+    initialize_temporal_handler,
+    TemporalQueryType,
+    TemporalQueryResult,
+    ScreenshotManager,
+    ImageDiffer
+)
+
 __all__ = [
     'MultiSpaceQueryHandler',
     'get_multi_space_handler',
     'initialize_multi_space_handler',
     'MultiSpaceQueryType',
     'SpaceAnalysisResult',
-    'MultiSpaceQueryResult'
+    'MultiSpaceQueryResult',
+    'TemporalQueryHandler',
+    'get_temporal_query_handler',
+    'initialize_temporal_handler',
+    'TemporalQueryType',
+    'TemporalQueryResult',
+    'ScreenshotManager',
+    'ImageDiffer',
 ]
