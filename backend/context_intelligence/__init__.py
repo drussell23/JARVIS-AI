@@ -49,6 +49,15 @@ from .managers import (
     CachedOCR,
     OCRResult,
 )
+from .managers import (
+    get_response_strategy_manager,
+    initialize_response_strategy_manager,
+    ResponseStrategyManager,
+    ResponseQuality,
+    ExtractedDetail,
+    ResponseAnalysis,
+    EnhancedResponse,
+)
 from .handlers import (
     get_query_complexity_manager,
     initialize_query_complexity_manager,
@@ -124,6 +133,13 @@ __all__ = [
     "OCRCache",
     "CachedOCR",
     "OCRResult",
+    "get_response_strategy_manager",
+    "initialize_response_strategy_manager",
+    "ResponseStrategyManager",
+    "ResponseQuality",
+    "ExtractedDetail",
+    "ResponseAnalysis",
+    "EnhancedResponse",
     "get_query_complexity_manager",
     "initialize_query_complexity_manager",
     "QueryComplexityManager",

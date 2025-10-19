@@ -99,6 +99,20 @@ from .ocr_strategy_manager import (
     initialize_ocr_strategy_manager
 )
 
+from .response_strategy_manager import (
+    ResponseStrategyManager,
+    ResponseQuality,
+    ExtractedDetail,
+    ResponseAnalysis,
+    EnhancedResponse,
+    DetailExtractor,
+    SpecificityScorer,
+    ActionableFormatter,
+    ResponseEnhancer,
+    get_response_strategy_manager,
+    initialize_response_strategy_manager
+)
+
 __all__ = [
     # Space State Management
     'SpaceStateManager',
@@ -186,4 +200,17 @@ __all__ = [
     'ImageMetadataExtractor',
     'get_ocr_strategy_manager',
     'initialize_ocr_strategy_manager',
+
+    # Response Strategy Management
+    'ResponseStrategyManager',
+    'ResponseQuality',
+    'ExtractedDetail',
+    'ResponseAnalysis',
+    'EnhancedResponse',
+    'DetailExtractor',
+    'SpecificityScorer',
+    'ActionableFormatter',
+    'ResponseEnhancer',
+    'get_response_strategy_manager',
+    'initialize_response_strategy_manager',
 ]

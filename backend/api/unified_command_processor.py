@@ -303,6 +303,25 @@ class UnifiedCommandProcessor:
             logger.error(f"[UNIFIED] Failed to initialize query complexity manager: {e}")
             self.query_complexity_manager = None
 
+        # Step 6.5: Initialize ResponseStrategyManager (response quality enhancement)
+        try:
+            from context_intelligence.managers import (
+                initialize_response_strategy_manager,
+                ResponseQuality
+            )
+
+            self.response_strategy_manager = initialize_response_strategy_manager(
+                vision_client=None,  # Will be set if vision client available
+                min_quality=ResponseQuality.SPECIFIC
+            )
+            logger.info("[UNIFIED] ✅ ResponseStrategyManager initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] ResponseStrategyManager not available: {e}")
+            self.response_strategy_manager = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize response strategy manager: {e}")
+            self.response_strategy_manager = None
+
         # Step 7: Initialize MediumComplexityHandler (Level 2 query execution)
         try:
             from context_intelligence.handlers import initialize_medium_complexity_handler
@@ -314,6 +333,7 @@ class UnifiedCommandProcessor:
             self.medium_complexity_handler = initialize_medium_complexity_handler(
                 capture_manager=get_capture_strategy_manager(),
                 ocr_manager=get_ocr_strategy_manager(),
+                response_manager=self.response_strategy_manager,
                 implicit_resolver=self.implicit_resolver
             )
             logger.info("[UNIFIED] ✅ MediumComplexityHandler initialized")
@@ -368,6 +388,8 @@ class UnifiedCommandProcessor:
             resolvers_active.append("TemporalHandler")
         if self.query_complexity_manager:
             resolvers_active.append("QueryComplexityManager")
+        if self.response_strategy_manager:
+            resolvers_active.append("ResponseStrategyManager")
         if self.medium_complexity_handler:
             resolvers_active.append("MediumComplexityHandler")
         if self.complex_complexity_handler:

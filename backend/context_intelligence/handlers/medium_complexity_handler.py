@@ -47,16 +47,21 @@ try:
     from context_intelligence.managers import (
         get_capture_strategy_manager,
         get_ocr_strategy_manager,
+        get_response_strategy_manager,
         CaptureStrategyManager,
-        OCRStrategyManager
+        OCRStrategyManager,
+        ResponseStrategyManager
     )
     CAPTURE_STRATEGY_AVAILABLE = True
     OCR_STRATEGY_AVAILABLE = True
+    RESPONSE_STRATEGY_AVAILABLE = True
 except ImportError:
     CAPTURE_STRATEGY_AVAILABLE = False
     OCR_STRATEGY_AVAILABLE = False
+    RESPONSE_STRATEGY_AVAILABLE = False
     get_capture_strategy_manager = lambda: None
     get_ocr_strategy_manager = lambda: None
+    get_response_strategy_manager = lambda: None
     logger.warning("Strategy managers not available")
 
 try:
@@ -128,6 +133,7 @@ class MediumComplexityHandler:
         self,
         capture_manager: Optional[CaptureStrategyManager] = None,
         ocr_manager: Optional[OCRStrategyManager] = None,
+        response_manager: Optional[ResponseStrategyManager] = None,
         implicit_resolver: Optional[Any] = None
     ):
         """
@@ -136,15 +142,18 @@ class MediumComplexityHandler:
         Args:
             capture_manager: CaptureStrategyManager instance
             ocr_manager: OCRStrategyManager instance
+            response_manager: ResponseStrategyManager instance
             implicit_resolver: ImplicitReferenceResolver instance
         """
         self.capture_manager = capture_manager or get_capture_strategy_manager()
         self.ocr_manager = ocr_manager or get_ocr_strategy_manager()
+        self.response_manager = response_manager or get_response_strategy_manager()
         self.implicit_resolver = implicit_resolver or get_implicit_reference_resolver()
 
         logger.info("[MEDIUM-HANDLER] Initialized")
         logger.info(f"  Capture Manager: {'✅' if self.capture_manager else '❌'}")
         logger.info(f"  OCR Manager: {'✅' if self.ocr_manager else '❌'}")
+        logger.info(f"  Response Manager: {'✅' if self.response_manager else '❌'}")
         logger.info(f"  Implicit Resolver: {'✅' if self.implicit_resolver else '❌'}")
 
     async def process_query(
@@ -202,6 +211,49 @@ class MediumComplexityHandler:
             context
         )
 
+        # Step 5: Enhance response quality to be clear and actionable
+        final_synthesis = synthesis
+        if self.response_manager:
+            try:
+                # Build context for response enhancement
+                response_context = {
+                    "space_ids": space_ids,
+                    "query_type": query_type.value,
+                    "captures_count": len(captures_with_ocr)
+                }
+
+                # Get first successful capture's image for vision enhancement
+                first_image = next(
+                    (c.image for c in captures_with_ocr if c.success and c.image),
+                    None
+                )
+
+                # Get all OCR text for detail extraction
+                all_ocr_text = "\n".join(
+                    c.ocr_text for c in captures_with_ocr if c.ocr_text
+                )
+
+                # Enhance response
+                enhanced = await self.response_manager.improve_response(
+                    response=synthesis,
+                    context=response_context,
+                    image_path=first_image,
+                    ocr_text=all_ocr_text
+                )
+
+                # Use enhanced response if improved
+                if enhanced.improvements:
+                    final_synthesis = enhanced.enhanced_response
+                    logger.info(
+                        f"[MEDIUM-HANDLER] Response enhanced "
+                        f"(quality: {enhanced.analysis.quality.value}, "
+                        f"score: {enhanced.analysis.specificity_score:.2f})"
+                    )
+
+            except Exception as e:
+                logger.warning(f"[MEDIUM-HANDLER] Response enhancement failed: {e}")
+                # Keep original synthesis
+
         execution_time = time.time() - start_time
 
         logger.info(
@@ -214,7 +266,7 @@ class MediumComplexityHandler:
             query_type=query_type,
             spaces_processed=space_ids,
             captures=captures_with_ocr,
-            synthesis=synthesis,
+            synthesis=final_synthesis,
             execution_time=execution_time,
             total_api_calls=int(api_calls),
             metadata={
@@ -608,6 +660,7 @@ def get_medium_complexity_handler() -> Optional[MediumComplexityHandler]:
 def initialize_medium_complexity_handler(
     capture_manager: Optional[CaptureStrategyManager] = None,
     ocr_manager: Optional[OCRStrategyManager] = None,
+    response_manager: Optional[ResponseStrategyManager] = None,
     implicit_resolver: Optional[Any] = None
 ) -> MediumComplexityHandler:
     """Initialize the global medium complexity handler"""
@@ -615,6 +668,7 @@ def initialize_medium_complexity_handler(
     _global_handler = MediumComplexityHandler(
         capture_manager=capture_manager,
         ocr_manager=ocr_manager,
+        response_manager=response_manager,
         implicit_resolver=implicit_resolver
     )
     logger.info("[MEDIUM-HANDLER] Global instance initialized")
