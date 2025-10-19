@@ -165,6 +165,16 @@ from .multi_monitor_manager import (
     initialize_multi_monitor_manager
 )
 
+from .change_detection_manager import (
+    ChangeDetectionManager,
+    ChangeType,
+    CachedSnapshot,
+    ChangeDetectionResult,
+    EntityState,
+    get_change_detection_manager,
+    initialize_change_detection_manager
+)
+
 __all__ = [
     # Space State Management
     'SpaceStateManager',
@@ -313,4 +323,13 @@ __all__ = [
     'SpaceMonitorMapping',
     'get_multi_monitor_manager',
     'initialize_multi_monitor_manager',
+
+    # Change Detection Management
+    'ChangeDetectionManager',
+    'ChangeType',
+    'CachedSnapshot',
+    'ChangeDetectionResult',
+    'EntityState',
+    'get_change_detection_manager',
+    'initialize_change_detection_manager',
 ]

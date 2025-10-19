@@ -424,6 +424,31 @@ class UnifiedCommandProcessor:
             logger.error(f"[UNIFIED] Failed to initialize multi-monitor query handler: {e}")
             self.multi_monitor_query_handler = None
 
+        # Step 6.11: Initialize ChangeDetectionManager (temporal & state-based change detection)
+        try:
+            from context_intelligence.managers import initialize_change_detection_manager
+            from pathlib import Path
+
+            # Get conversation tracker from context-aware manager
+            conversation_tracker = None
+            if self.context_aware_manager:
+                conversation_tracker = self.context_aware_manager.conversation_tracker
+
+            self.change_detection_manager = initialize_change_detection_manager(
+                cache_dir=Path.home() / ".jarvis" / "change_cache",
+                cache_ttl=3600.0,  # 1 hour
+                max_cache_size=100,
+                implicit_resolver=self.implicit_resolver,
+                conversation_tracker=conversation_tracker
+            )
+            logger.info("[UNIFIED] ✅ ChangeDetectionManager initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] ChangeDetectionManager not available: {e}")
+            self.change_detection_manager = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize change detection manager: {e}")
+            self.change_detection_manager = None
+
         # Step 7: Initialize MediumComplexityHandler (Level 2 query execution)
         try:
             from context_intelligence.handlers import initialize_medium_complexity_handler
@@ -508,6 +533,8 @@ class UnifiedCommandProcessor:
             resolvers_active.append("MultiMonitorManager")
         if self.multi_monitor_query_handler:
             resolvers_active.append("MultiMonitorQueryHandler")
+        if self.change_detection_manager:
+            resolvers_active.append("ChangeDetectionManager")
         if self.medium_complexity_handler:
             resolvers_active.append("MediumComplexityHandler")
         if self.complex_complexity_handler:

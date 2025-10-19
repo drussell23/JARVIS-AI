@@ -95,6 +95,15 @@ from .managers import (
     MonitorLayout,
     SpaceMonitorMapping,
 )
+from .managers import (
+    get_change_detection_manager,
+    initialize_change_detection_manager,
+    ChangeDetectionManager,
+    ChangeType,
+    CachedSnapshot,
+    ChangeDetectionResult,
+    EntityState,
+)
 from .handlers import (
     get_query_complexity_manager,
     initialize_query_complexity_manager,
@@ -218,6 +227,13 @@ __all__ = [
     "MonitorInfo",
     "MonitorLayout",
     "SpaceMonitorMapping",
+    "get_change_detection_manager",
+    "initialize_change_detection_manager",
+    "ChangeDetectionManager",
+    "ChangeType",
+    "CachedSnapshot",
+    "ChangeDetectionResult",
+    "EntityState",
     "get_query_complexity_manager",
     "initialize_query_complexity_manager",
     "QueryComplexityManager",
