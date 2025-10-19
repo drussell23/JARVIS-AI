@@ -51,6 +51,7 @@ try:
         get_context_aware_response_manager,
         get_proactive_suggestion_manager,
         get_confidence_manager,
+        get_multi_monitor_manager,
         CaptureStrategyManager,
         OCRStrategyManager,
         ResponseStrategyManager,
@@ -64,6 +65,7 @@ try:
     CONTEXT_AWARE_AVAILABLE = True
     PROACTIVE_SUGGESTION_AVAILABLE = True
     CONFIDENCE_AVAILABLE = True
+    MULTI_MONITOR_AVAILABLE = True
 except ImportError:
     CAPTURE_STRATEGY_AVAILABLE = False
     OCR_STRATEGY_AVAILABLE = False
@@ -71,12 +73,14 @@ except ImportError:
     CONTEXT_AWARE_AVAILABLE = False
     PROACTIVE_SUGGESTION_AVAILABLE = False
     CONFIDENCE_AVAILABLE = False
+    MULTI_MONITOR_AVAILABLE = False
     get_capture_strategy_manager = lambda: None
     get_ocr_strategy_manager = lambda: None
     get_response_strategy_manager = lambda: None
     get_context_aware_response_manager = lambda: None
     get_proactive_suggestion_manager = lambda: None
     get_confidence_manager = lambda: None
+    get_multi_monitor_manager = lambda: None
     logger.warning("Strategy managers not available")
 
 try:
@@ -152,6 +156,7 @@ class MediumComplexityHandler:
         context_aware_manager: Optional[ContextAwareResponseManager] = None,
         proactive_suggestion_manager: Optional[ProactiveSuggestionManager] = None,
         confidence_manager: Optional[ConfidenceManager] = None,
+        multi_monitor_manager: Optional[Any] = None,
         implicit_resolver: Optional[Any] = None
     ):
         """
@@ -164,6 +169,7 @@ class MediumComplexityHandler:
             context_aware_manager: ContextAwareResponseManager instance
             proactive_suggestion_manager: ProactiveSuggestionManager instance
             confidence_manager: ConfidenceManager instance
+            multi_monitor_manager: MultiMonitorManager instance
             implicit_resolver: ImplicitReferenceResolver instance
         """
         self.capture_manager = capture_manager or get_capture_strategy_manager()
@@ -172,6 +178,7 @@ class MediumComplexityHandler:
         self.context_aware_manager = context_aware_manager or get_context_aware_response_manager()
         self.proactive_suggestion_manager = proactive_suggestion_manager or get_proactive_suggestion_manager()
         self.confidence_manager = confidence_manager or get_confidence_manager()
+        self.multi_monitor_manager = multi_monitor_manager or get_multi_monitor_manager()
         self.implicit_resolver = implicit_resolver or get_implicit_reference_resolver()
 
         logger.info("[MEDIUM-HANDLER] Initialized")
@@ -181,6 +188,7 @@ class MediumComplexityHandler:
         logger.info(f"  Context-Aware Manager: {'✅' if self.context_aware_manager else '❌'}")
         logger.info(f"  Proactive Suggestion Manager: {'✅' if self.proactive_suggestion_manager else '❌'}")
         logger.info(f"  Confidence Manager: {'✅' if self.confidence_manager else '❌'}")
+        logger.info(f"  Multi-Monitor Manager: {'✅' if self.multi_monitor_manager else '❌'}")
         logger.info(f"  Implicit Resolver: {'✅' if self.implicit_resolver else '❌'}")
 
     async def process_query(
@@ -803,6 +811,7 @@ def initialize_medium_complexity_handler(
     context_aware_manager: Optional[ContextAwareResponseManager] = None,
     proactive_suggestion_manager: Optional[ProactiveSuggestionManager] = None,
     confidence_manager: Optional[ConfidenceManager] = None,
+    multi_monitor_manager: Optional[Any] = None,
     implicit_resolver: Optional[Any] = None
 ) -> MediumComplexityHandler:
     """Initialize the global medium complexity handler"""
@@ -814,6 +823,7 @@ def initialize_medium_complexity_handler(
         context_aware_manager=context_aware_manager,
         proactive_suggestion_manager=proactive_suggestion_manager,
         confidence_manager=confidence_manager,
+        multi_monitor_manager=multi_monitor_manager,
         implicit_resolver=implicit_resolver
     )
     logger.info("[MEDIUM-HANDLER] Global instance initialized")

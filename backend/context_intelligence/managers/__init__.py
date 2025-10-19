@@ -152,6 +152,19 @@ from .confidence_manager import (
     initialize_confidence_manager
 )
 
+from .multi_monitor_manager import (
+    MultiMonitorManager,
+    MonitorDetector,
+    MonitorSpaceMapper,
+    MonitorReferenceResolver,
+    MonitorPosition,
+    MonitorInfo,
+    MonitorLayout,
+    SpaceMonitorMapping,
+    get_multi_monitor_manager,
+    initialize_multi_monitor_manager
+)
+
 __all__ = [
     # Space State Management
     'SpaceStateManager',
@@ -288,4 +301,16 @@ __all__ = [
     'ConfidenceFormattedResponse',
     'get_confidence_manager',
     'initialize_confidence_manager',
+
+    # Multi-Monitor Management
+    'MultiMonitorManager',
+    'MonitorDetector',
+    'MonitorSpaceMapper',
+    'MonitorReferenceResolver',
+    'MonitorPosition',
+    'MonitorInfo',
+    'MonitorLayout',
+    'SpaceMonitorMapping',
+    'get_multi_monitor_manager',
+    'initialize_multi_monitor_manager',
 ]

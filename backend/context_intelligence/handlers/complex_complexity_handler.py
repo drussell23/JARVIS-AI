@@ -134,6 +134,7 @@ class ComplexComplexityHandler:
         predictive_handler: Optional[PredictiveQueryHandler] = None,
         capture_manager: Optional[CaptureStrategyManager] = None,
         ocr_manager: Optional[OCRStrategyManager] = None,
+        multi_monitor_manager: Optional[Any] = None,
         implicit_resolver: Optional[Any] = None,
         cache_ttl: float = 60.0,
         max_concurrent_captures: int = 5
@@ -147,6 +148,7 @@ class ComplexComplexityHandler:
             predictive_handler: Handler for predictive queries
             capture_manager: Manager for intelligent capture
             ocr_manager: Manager for intelligent OCR
+            multi_monitor_manager: Manager for multi-monitor support
             implicit_resolver: Resolver for implicit references
             cache_ttl: Cache TTL in seconds
             max_concurrent_captures: Max parallel captures
@@ -156,6 +158,7 @@ class ComplexComplexityHandler:
         self.predictive_handler = predictive_handler
         self.capture_manager = capture_manager
         self.ocr_manager = ocr_manager
+        self.multi_monitor_manager = multi_monitor_manager
         self.implicit_resolver = implicit_resolver
         self.cache_ttl = cache_ttl
         self.max_concurrent_captures = max_concurrent_captures
@@ -868,6 +871,7 @@ def initialize_complex_complexity_handler(
     predictive_handler: Optional[PredictiveQueryHandler] = None,
     capture_manager: Optional[CaptureStrategyManager] = None,
     ocr_manager: Optional[OCRStrategyManager] = None,
+    multi_monitor_manager: Optional[Any] = None,
     implicit_resolver: Optional[Any] = None,
     cache_ttl: float = 60.0,
     max_concurrent_captures: int = 5
@@ -881,6 +885,7 @@ def initialize_complex_complexity_handler(
         predictive_handler: Handler for predictive queries
         capture_manager: Manager for intelligent capture
         ocr_manager: Manager for intelligent OCR
+        multi_monitor_manager: Manager for multi-monitor support
         implicit_resolver: Resolver for implicit references
         cache_ttl: Cache TTL in seconds
         max_concurrent_captures: Max parallel captures
@@ -896,6 +901,7 @@ def initialize_complex_complexity_handler(
         predictive_handler=predictive_handler,
         capture_manager=capture_manager,
         ocr_manager=ocr_manager,
+        multi_monitor_manager=multi_monitor_manager,
         implicit_resolver=implicit_resolver,
         cache_ttl=cache_ttl,
         max_concurrent_captures=max_concurrent_captures
