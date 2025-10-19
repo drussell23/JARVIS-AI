@@ -93,6 +93,14 @@ except ImportError:
     get_implicit_reference_resolver = lambda: None
     logger.warning("ImplicitReferenceResolver not available")
 
+try:
+    from context_intelligence.handlers import get_multi_monitor_query_handler
+    MULTI_MONITOR_QUERY_HANDLER_AVAILABLE = True
+except ImportError:
+    MULTI_MONITOR_QUERY_HANDLER_AVAILABLE = False
+    get_multi_monitor_query_handler = lambda: None
+    logger.warning("MultiMonitorQueryHandler not available")
+
 
 # ============================================================================
 # DATA STRUCTURES
@@ -103,6 +111,7 @@ class MediumQueryType(Enum):
     COMPARISON = "comparison"          # Compare multiple spaces
     MULTI_SPACE = "multi_space"       # Show multiple spaces
     CROSS_SPACE_SEARCH = "cross_space_search"  # Find entity across spaces
+    MULTI_MONITOR = "multi_monitor"   # Multi-monitor queries
 
 
 @dataclass
@@ -157,6 +166,7 @@ class MediumComplexityHandler:
         proactive_suggestion_manager: Optional[ProactiveSuggestionManager] = None,
         confidence_manager: Optional[ConfidenceManager] = None,
         multi_monitor_manager: Optional[Any] = None,
+        multi_monitor_query_handler: Optional[Any] = None,
         implicit_resolver: Optional[Any] = None
     ):
         """
@@ -170,6 +180,7 @@ class MediumComplexityHandler:
             proactive_suggestion_manager: ProactiveSuggestionManager instance
             confidence_manager: ConfidenceManager instance
             multi_monitor_manager: MultiMonitorManager instance
+            multi_monitor_query_handler: MultiMonitorQueryHandler instance
             implicit_resolver: ImplicitReferenceResolver instance
         """
         self.capture_manager = capture_manager or get_capture_strategy_manager()
@@ -179,6 +190,7 @@ class MediumComplexityHandler:
         self.proactive_suggestion_manager = proactive_suggestion_manager or get_proactive_suggestion_manager()
         self.confidence_manager = confidence_manager or get_confidence_manager()
         self.multi_monitor_manager = multi_monitor_manager or get_multi_monitor_manager()
+        self.multi_monitor_query_handler = multi_monitor_query_handler or get_multi_monitor_query_handler()
         self.implicit_resolver = implicit_resolver or get_implicit_reference_resolver()
 
         logger.info("[MEDIUM-HANDLER] Initialized")
@@ -189,6 +201,7 @@ class MediumComplexityHandler:
         logger.info(f"  Proactive Suggestion Manager: {'✅' if self.proactive_suggestion_manager else '❌'}")
         logger.info(f"  Confidence Manager: {'✅' if self.confidence_manager else '❌'}")
         logger.info(f"  Multi-Monitor Manager: {'✅' if self.multi_monitor_manager else '❌'}")
+        logger.info(f"  Multi-Monitor Query Handler: {'✅' if self.multi_monitor_query_handler else '❌'}")
         logger.info(f"  Implicit Resolver: {'✅' if self.implicit_resolver else '❌'}")
 
     async def process_query(
@@ -215,6 +228,15 @@ class MediumComplexityHandler:
 
         logger.info(f"[MEDIUM-HANDLER] Processing {query_type.value} query: '{query}'")
         logger.info(f"  Spaces: {space_ids}")
+
+        # Special handling for MULTI_MONITOR queries
+        if query_type == MediumQueryType.MULTI_MONITOR:
+            if self.multi_monitor_query_handler:
+                return await self._handle_multi_monitor_query(query, context, start_time)
+            else:
+                logger.warning("[MEDIUM-HANDLER] Multi-monitor query handler not available")
+                # Fall back to regular processing
+                pass
 
         # Step 1: Resolve references if needed
         resolved_query = await self._resolve_references(query, context)
@@ -423,6 +445,80 @@ class MediumComplexityHandler:
                 }
             }
         )
+
+    async def _handle_multi_monitor_query(
+        self,
+        query: str,
+        context: Optional[Dict[str, Any]],
+        start_time: float
+    ) -> MediumQueryResult:
+        """
+        Handle multi-monitor specific queries by routing to MultiMonitorQueryHandler.
+
+        Args:
+            query: User query
+            context: Optional context
+            start_time: Query start time
+
+        Returns:
+            MediumQueryResult with multi-monitor results
+        """
+        from context_intelligence.handlers import MultiMonitorQueryType
+
+        logger.info(f"[MEDIUM-HANDLER] Routing to multi-monitor query handler")
+
+        # Determine multi-monitor query sub-type based on keywords
+        query_lower = query.lower()
+        multi_monitor_type = None
+
+        if any(phrase in query_lower for phrase in ["what's on", "show me", "content of"]):
+            multi_monitor_type = MultiMonitorQueryType.MONITOR_CONTENT
+        elif any(phrase in query_lower for phrase in ["all displays", "all monitors", "list displays"]):
+            multi_monitor_type = MultiMonitorQueryType.LIST_DISPLAYS
+        elif any(phrase in query_lower for phrase in ["which monitor", "where is", "find", "locate"]):
+            multi_monitor_type = MultiMonitorQueryType.FIND_WINDOW
+        elif any(phrase in query_lower for phrase in ["move space", "move to"]):
+            multi_monitor_type = MultiMonitorQueryType.MOVE_SPACE
+        else:
+            # Default to LIST_DISPLAYS if can't determine
+            multi_monitor_type = MultiMonitorQueryType.LIST_DISPLAYS
+
+        # Process query with multi-monitor handler
+        try:
+            result = await self.multi_monitor_query_handler.process_query(
+                query=query,
+                query_type=multi_monitor_type,
+                context=context
+            )
+
+            # Convert result to MediumQueryResult format
+            latency = time.time() - start_time
+
+            return MediumQueryResult(
+                success=getattr(result, 'success', True),
+                query_type=MediumQueryType.MULTI_MONITOR,
+                captures=[],  # Multi-monitor results don't use traditional captures
+                synthesis=getattr(result, 'summary', str(result)),
+                latency=latency,
+                api_calls=1,  # Estimated
+                metadata={
+                    "multi_monitor_type": multi_monitor_type.value,
+                    "result": result
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"[MEDIUM-HANDLER] Multi-monitor query failed: {e}")
+            latency = time.time() - start_time
+            return MediumQueryResult(
+                success=False,
+                query_type=MediumQueryType.MULTI_MONITOR,
+                captures=[],
+                synthesis=f"Error processing multi-monitor query: {str(e)}",
+                latency=latency,
+                api_calls=0,
+                metadata={"error": str(e)}
+            )
 
     async def _resolve_references(
         self,
@@ -812,6 +908,7 @@ def initialize_medium_complexity_handler(
     proactive_suggestion_manager: Optional[ProactiveSuggestionManager] = None,
     confidence_manager: Optional[ConfidenceManager] = None,
     multi_monitor_manager: Optional[Any] = None,
+    multi_monitor_query_handler: Optional[Any] = None,
     implicit_resolver: Optional[Any] = None
 ) -> MediumComplexityHandler:
     """Initialize the global medium complexity handler"""
@@ -824,6 +921,7 @@ def initialize_medium_complexity_handler(
         proactive_suggestion_manager=proactive_suggestion_manager,
         confidence_manager=confidence_manager,
         multi_monitor_manager=multi_monitor_manager,
+        multi_monitor_query_handler=multi_monitor_query_handler,
         implicit_resolver=implicit_resolver
     )
     logger.info("[MEDIUM-HANDLER] Global instance initialized")

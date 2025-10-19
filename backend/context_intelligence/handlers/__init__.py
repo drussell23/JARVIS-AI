@@ -74,6 +74,18 @@ from .complex_complexity_handler import (
     initialize_complex_complexity_handler
 )
 
+from .multi_monitor_query_handler import (
+    MultiMonitorQueryHandler,
+    MultiMonitorQueryType,
+    MonitorContentResult,
+    DisplayListResult,
+    WindowLocationResult,
+    MoveSpaceResult,
+    SpaceContent,
+    get_multi_monitor_query_handler,
+    initialize_multi_monitor_query_handler
+)
+
 __all__ = [
     'MultiSpaceQueryHandler',
     'get_multi_space_handler',
@@ -123,4 +135,13 @@ __all__ = [
     'ComplexQueryResult',
     'get_complex_complexity_handler',
     'initialize_complex_complexity_handler',
+    'MultiMonitorQueryHandler',
+    'MultiMonitorQueryType',
+    'MonitorContentResult',
+    'DisplayListResult',
+    'WindowLocationResult',
+    'MoveSpaceResult',
+    'SpaceContent',
+    'get_multi_monitor_query_handler',
+    'initialize_multi_monitor_query_handler',
 ]

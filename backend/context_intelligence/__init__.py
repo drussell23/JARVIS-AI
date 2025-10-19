@@ -124,6 +124,16 @@ from .handlers import (
     PredictiveAnalysis,
     ComplexQueryResult,
 )
+from .handlers import (
+    get_multi_monitor_query_handler,
+    initialize_multi_monitor_query_handler,
+    MultiMonitorQueryHandler,
+    MultiMonitorQueryType,
+    MonitorContentResult,
+    DisplayListResult,
+    WindowLocationResult,
+    MoveSpaceResult,
+)
 
 __all__ = [
     "get_document_writer",
@@ -229,4 +239,12 @@ __all__ = [
     "CrossSpaceAnalysis",
     "PredictiveAnalysis",
     "ComplexQueryResult",
+    "get_multi_monitor_query_handler",
+    "initialize_multi_monitor_query_handler",
+    "MultiMonitorQueryHandler",
+    "MultiMonitorQueryType",
+    "MonitorContentResult",
+    "DisplayListResult",
+    "WindowLocationResult",
+    "MoveSpaceResult",
 ]

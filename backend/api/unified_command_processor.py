@@ -402,6 +402,28 @@ class UnifiedCommandProcessor:
             logger.error(f"[UNIFIED] Failed to initialize multi-monitor manager: {e}")
             self.multi_monitor_manager = None
 
+        # Step 6.10: Initialize MultiMonitorQueryHandler (multi-monitor query processing)
+        try:
+            from context_intelligence.handlers import initialize_multi_monitor_query_handler
+            from context_intelligence.managers import (
+                get_capture_strategy_manager,
+                get_ocr_strategy_manager
+            )
+
+            self.multi_monitor_query_handler = initialize_multi_monitor_query_handler(
+                multi_monitor_manager=self.multi_monitor_manager,
+                capture_manager=get_capture_strategy_manager(),
+                ocr_manager=get_ocr_strategy_manager(),
+                implicit_resolver=self.implicit_resolver
+            )
+            logger.info("[UNIFIED] ✅ MultiMonitorQueryHandler initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] MultiMonitorQueryHandler not available: {e}")
+            self.multi_monitor_query_handler = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize multi-monitor query handler: {e}")
+            self.multi_monitor_query_handler = None
+
         # Step 7: Initialize MediumComplexityHandler (Level 2 query execution)
         try:
             from context_intelligence.handlers import initialize_medium_complexity_handler
@@ -418,6 +440,7 @@ class UnifiedCommandProcessor:
                 proactive_suggestion_manager=self.proactive_suggestion_manager,
                 confidence_manager=self.confidence_manager,
                 multi_monitor_manager=self.multi_monitor_manager,
+                multi_monitor_query_handler=self.multi_monitor_query_handler,
                 implicit_resolver=self.implicit_resolver
             )
             logger.info("[UNIFIED] ✅ MediumComplexityHandler initialized")
@@ -483,6 +506,8 @@ class UnifiedCommandProcessor:
             resolvers_active.append("ConfidenceManager")
         if self.multi_monitor_manager:
             resolvers_active.append("MultiMonitorManager")
+        if self.multi_monitor_query_handler:
+            resolvers_active.append("MultiMonitorQueryHandler")
         if self.medium_complexity_handler:
             resolvers_active.append("MediumComplexityHandler")
         if self.complex_complexity_handler:
