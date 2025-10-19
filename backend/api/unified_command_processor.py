@@ -271,22 +271,11 @@ class UnifiedCommandProcessor:
             logger.info("[UNIFIED] Skipping multi-space handler (no context graph)")
             self.multi_space_handler = None
 
-        # Step 5: Initialize TemporalQueryHandler (change detection, error tracking, timeline)
-        try:
-            from context_intelligence.handlers import initialize_temporal_handler
-            from vision.intelligence.temporal_context_engine import get_temporal_engine
-
-            self.temporal_handler = initialize_temporal_handler(
-                implicit_resolver=self.implicit_resolver,
-                temporal_engine=get_temporal_engine()
-            )
-            logger.info("[UNIFIED] ✅ TemporalQueryHandler initialized")
-        except ImportError as e:
-            logger.warning(f"[UNIFIED] TemporalQueryHandler not available: {e}")
-            self.temporal_handler = None
-        except Exception as e:
-            logger.error(f"[UNIFIED] Failed to initialize temporal handler: {e}")
-            self.temporal_handler = None
+        # Step 5: Initialize TemporalQueryHandler (PLACEHOLDER - will be initialized after dependencies in Step 6.13)
+        # This is a placeholder to maintain backward compatibility with old code
+        # The actual initialization happens in Step 6.13 after ProactiveMonitoringManager and ChangeDetectionManager are ready
+        self.temporal_handler = None
+        logger.info("[UNIFIED] TemporalQueryHandler initialization deferred to Step 6.13")
 
         # Step 6: Initialize QueryComplexityManager (query classification and routing)
         try:
@@ -479,6 +468,57 @@ class UnifiedCommandProcessor:
         except Exception as e:
             logger.error(f"[UNIFIED] Failed to initialize proactive monitoring manager: {e}")
             self.proactive_monitoring_manager = None
+
+        # Step 6.13: Initialize Enhanced TemporalQueryHandler (v2.0 with ProactiveMonitoring integration)
+        try:
+            from context_intelligence.handlers import initialize_temporal_query_handler
+
+            # Get conversation tracker from context-aware manager
+            conversation_tracker = None
+            if self.context_aware_manager:
+                conversation_tracker = self.context_aware_manager.conversation_tracker
+
+            self.temporal_handler = initialize_temporal_query_handler(
+                proactive_monitoring_manager=self.proactive_monitoring_manager,
+                change_detection_manager=self.change_detection_manager,
+                implicit_resolver=self.implicit_resolver,
+                conversation_tracker=conversation_tracker
+            )
+
+            # Register alert callback for ProactiveMonitoringManager to feed alerts to TemporalHandler
+            if self.proactive_monitoring_manager and self.temporal_handler:
+                # Update alert callback to also register alerts with TemporalHandler
+                original_callback = alert_callback
+
+                def enhanced_alert_callback(alert):
+                    original_callback(alert)  # Log to console
+                    self.temporal_handler.register_monitoring_alert({
+                        'space_id': alert.space_id,
+                        'event_type': alert.event_type.value,
+                        'message': alert.message,
+                        'priority': alert.priority.value,
+                        'timestamp': alert.timestamp,
+                        'metadata': alert.metadata
+                    })
+
+                # Re-initialize ProactiveMonitoringManager with enhanced callback
+                self.proactive_monitoring_manager = initialize_proactive_monitoring_manager(
+                    change_detection_manager=self.change_detection_manager,
+                    capture_manager=get_capture_strategy_manager(),
+                    ocr_manager=get_ocr_strategy_manager(),
+                    implicit_resolver=self.implicit_resolver,
+                    conversation_tracker=conversation_tracker,
+                    default_interval=10.0,
+                    alert_callback=enhanced_alert_callback
+                )
+
+            logger.info("[UNIFIED] ✅ Enhanced TemporalQueryHandler v2.0 initialized with ProactiveMonitoring integration")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] Enhanced TemporalQueryHandler not available: {e}")
+            self.temporal_handler = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize enhanced temporal handler: {e}")
+            self.temporal_handler = None
 
         # Step 7: Initialize MediumComplexityHandler (Level 2 query execution)
         try:

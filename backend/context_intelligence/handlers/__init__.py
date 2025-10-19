@@ -17,11 +17,12 @@ from .multi_space_query_handler import (
 from .temporal_query_handler import (
     TemporalQueryHandler,
     get_temporal_query_handler,
-    initialize_temporal_handler,
+    initialize_temporal_query_handler,
     TemporalQueryType,
     TemporalQueryResult,
-    ScreenshotManager,
-    ImageDiffer
+    TimeRange,
+    DetectedChange,
+    ChangeType
 )
 
 from .predictive_query_handler import (
@@ -97,11 +98,12 @@ __all__ = [
     'MultiSpaceQueryResult',
     'TemporalQueryHandler',
     'get_temporal_query_handler',
-    'initialize_temporal_handler',
+    'initialize_temporal_query_handler',
     'TemporalQueryType',
     'TemporalQueryResult',
-    'ScreenshotManager',
-    'ImageDiffer',
+    'TimeRange',
+    'DetectedChange',
+    'ChangeType',
     'PredictiveQueryHandler',
     'PredictiveQueryRequest',
     'PredictiveQueryResponse',
