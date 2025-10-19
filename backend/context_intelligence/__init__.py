@@ -49,6 +49,16 @@ from .managers import (
     CachedOCR,
     OCRResult,
 )
+from .handlers import (
+    get_query_complexity_manager,
+    initialize_query_complexity_manager,
+    QueryComplexityManager,
+    QueryComplexityClassifier,
+    QueryRouter,
+    ClassifiedQuery,
+    ComplexityMetrics,
+    QueryComplexity,
+)
 
 __all__ = [
     "get_document_writer",
@@ -95,4 +105,12 @@ __all__ = [
     "OCRCache",
     "CachedOCR",
     "OCRResult",
+    "get_query_complexity_manager",
+    "initialize_query_complexity_manager",
+    "QueryComplexityManager",
+    "QueryComplexityClassifier",
+    "QueryRouter",
+    "ClassifiedQuery",
+    "ComplexityMetrics",
+    "QueryComplexity",
 ]

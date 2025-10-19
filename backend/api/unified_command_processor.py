@@ -204,6 +204,7 @@ class UnifiedCommandProcessor:
         self.implicit_resolver = None     # Entity/intent resolution
         self.multi_space_handler = None   # Multi-space query handler
         self.temporal_handler = None      # Temporal query handler (change detection, error tracking, timeline)
+        self.query_complexity_manager = None  # Query complexity classification and routing
         self._initialize_resolvers()
 
     def _initialize_resolvers(self):
@@ -286,6 +287,21 @@ class UnifiedCommandProcessor:
             logger.error(f"[UNIFIED] Failed to initialize temporal handler: {e}")
             self.temporal_handler = None
 
+        # Step 6: Initialize QueryComplexityManager (query classification and routing)
+        try:
+            from context_intelligence.handlers import initialize_query_complexity_manager
+
+            self.query_complexity_manager = initialize_query_complexity_manager(
+                implicit_resolver=self.implicit_resolver
+            )
+            logger.info("[UNIFIED] ✅ QueryComplexityManager initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] QueryComplexityManager not available: {e}")
+            self.query_complexity_manager = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize query complexity manager: {e}")
+            self.query_complexity_manager = None
+
         # Log integration status
         resolvers_active = []
         if self.context_graph:
@@ -298,6 +314,8 @@ class UnifiedCommandProcessor:
             resolvers_active.append("MultiSpaceHandler")
         if self.temporal_handler:
             resolvers_active.append("TemporalHandler")
+        if self.query_complexity_manager:
+            resolvers_active.append("QueryComplexityManager")
 
         if resolvers_active:
             logger.info(f"[UNIFIED] 🎯 Active resolvers: {', '.join(resolvers_active)}")
@@ -366,30 +384,49 @@ class UnifiedCommandProcessor:
 
         context_handler = get_context_aware_handler()
 
-        # Step 1: Classify command intent
+        # Step 1: Classify query complexity (if available)
+        classified_query = None
+        if self.query_complexity_manager:
+            try:
+                context = {"recent_commands": list(self.context.conversation_history)[-5:]}
+                classified_query = await self.query_complexity_manager.process_query(
+                    command_text, context=context
+                )
+                logger.info(
+                    f"[UNIFIED] Query complexity: {classified_query.complexity.level.name} "
+                    f"(type={classified_query.query_type}, intent={classified_query.intent}, "
+                    f"latency={classified_query.complexity.estimated_latency[0]:.1f}-"
+                    f"{classified_query.complexity.estimated_latency[1]:.1f}s, "
+                    f"api_calls={classified_query.complexity.estimated_api_calls[0]}-"
+                    f"{classified_query.complexity.estimated_api_calls[1]})"
+                )
+            except Exception as e:
+                logger.warning(f"[UNIFIED] Query complexity classification failed: {e}")
+
+        # Step 2: Classify command intent
         command_type, confidence = await self._classify_command(command_text)
         logger.info(
             f"[UNIFIED] Classified as {command_type.value} (confidence: {confidence})"
         )
 
-        # Step 2: Check system context FIRST (screen lock, active apps, etc.)
+        # Step 3: Check system context FIRST (screen lock, active apps, etc.)
         system_context = await self._get_full_system_context()
         logger.info(
             f"[UNIFIED] System context: screen_locked={system_context.get('screen_locked')}, active_apps={len(system_context.get('active_apps', []))}"
         )
 
-        # Step 3: Resolve references with context
-        resolved_text = command_text
-        reference, ref_confidence = self.context.resolve_reference(command_text)
+        # Step 4: Resolve references with context (use resolved query if available)
+        resolved_text = classified_query.resolved_query if classified_query else command_text
+        reference, ref_confidence = self.context.resolve_reference(resolved_text)
         if reference and ref_confidence > 0.5:
             # Replace reference with resolved entity
             for word in ["it", "that", "this"]:
-                if word in command_text.lower():
-                    resolved_text = command_text.lower().replace(word, reference)
+                if word in resolved_text.lower():
+                    resolved_text = resolved_text.lower().replace(word, reference)
                     logger.info(f"[UNIFIED] Resolved '{word}' to '{reference}'")
                     break
 
-        # Step 4: Define command execution callback
+        # Step 5: Define command execution callback
         async def execute_with_context(cmd: str, context: Dict[str, Any] = None):
             """Execute command with full context awareness"""
             if command_type == CommandType.COMPOUND:
@@ -399,13 +436,13 @@ class UnifiedCommandProcessor:
                     command_type, cmd, websocket, context=context
                 )
 
-        # Step 5: Process through context-aware handler
+        # Step 6: Process through context-aware handler
         logger.info(f"[UNIFIED] Processing through context-aware handler...")
         result = await context_handler.handle_command_with_context(
             resolved_text, execute_callback=execute_with_context
         )
 
-        # Step 6: Extract actual result from context handler response
+        # Step 7: Extract actual result from context handler response
         if result.get("result"):
             # Use the nested result from context handler
             actual_result = result["result"]
@@ -413,7 +450,7 @@ class UnifiedCommandProcessor:
             # Fallback to the full result
             actual_result = result
 
-        # Step 7: Learn from the result
+        # Step 8: Learn from the result
         if actual_result.get("success", False):
             self.pattern_learner.learn_pattern(command_text, command_type.value, True)
             self.success_patterns[command_type.value].append(
@@ -429,7 +466,7 @@ class UnifiedCommandProcessor:
                     command_type.value
                 ][-100:]
 
-        # Step 8: Update context with result
+        # Step 9: Update context with result
         self.context.update_from_command(command_type, actual_result)
         self.context.system_state = system_context  # Update system state
 
@@ -437,8 +474,8 @@ class UnifiedCommandProcessor:
         if sum(self.command_stats.values()) % 10 == 0:
             self._save_learned_data()
 
-        # Return the formatted result
-        return {
+        # Return the formatted result with complexity information
+        result_dict = {
             "success": actual_result.get("success", False),
             "response": result.get("summary", actual_result.get("response", "")),
             "command_type": command_type.value,
@@ -446,6 +483,21 @@ class UnifiedCommandProcessor:
             "system_context": system_context,
             **actual_result,
         }
+
+        # Add query complexity information if available
+        if classified_query:
+            result_dict["query_complexity"] = {
+                "level": classified_query.complexity.level.name,
+                "query_type": classified_query.query_type,
+                "intent": classified_query.intent,
+                "estimated_latency": classified_query.complexity.estimated_latency,
+                "estimated_api_calls": classified_query.complexity.estimated_api_calls,
+                "spaces_involved": classified_query.complexity.spaces_involved,
+                "confidence": classified_query.complexity.confidence,
+                "resolved_query": classified_query.resolved_query,
+            }
+
+        return result_dict
 
     async def _classify_command(self, command_text: str) -> Tuple[CommandType, float]:
         """Dynamically classify command using learned patterns"""

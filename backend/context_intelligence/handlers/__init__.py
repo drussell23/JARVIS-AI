@@ -42,6 +42,17 @@ from .action_query_handler import (
     handle_action_query
 )
 
+from .query_complexity_manager import (
+    QueryComplexityManager,
+    QueryComplexityClassifier,
+    QueryRouter,
+    ClassifiedQuery,
+    ComplexityMetrics,
+    QueryComplexity,
+    get_query_complexity_manager,
+    initialize_query_complexity_manager
+)
+
 __all__ = [
     'MultiSpaceQueryHandler',
     'get_multi_space_handler',
@@ -68,4 +79,12 @@ __all__ = [
     'get_action_query_handler',
     'initialize_action_query_handler',
     'handle_action_query',
+    'QueryComplexityManager',
+    'QueryComplexityClassifier',
+    'QueryRouter',
+    'ClassifiedQuery',
+    'ComplexityMetrics',
+    'QueryComplexity',
+    'get_query_complexity_manager',
+    'initialize_query_complexity_manager',
 ]
