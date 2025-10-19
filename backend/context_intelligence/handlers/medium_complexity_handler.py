@@ -49,24 +49,29 @@ try:
         get_ocr_strategy_manager,
         get_response_strategy_manager,
         get_context_aware_response_manager,
+        get_proactive_suggestion_manager,
         CaptureStrategyManager,
         OCRStrategyManager,
         ResponseStrategyManager,
-        ContextAwareResponseManager
+        ContextAwareResponseManager,
+        ProactiveSuggestionManager
     )
     CAPTURE_STRATEGY_AVAILABLE = True
     OCR_STRATEGY_AVAILABLE = True
     RESPONSE_STRATEGY_AVAILABLE = True
     CONTEXT_AWARE_AVAILABLE = True
+    PROACTIVE_SUGGESTION_AVAILABLE = True
 except ImportError:
     CAPTURE_STRATEGY_AVAILABLE = False
     OCR_STRATEGY_AVAILABLE = False
     RESPONSE_STRATEGY_AVAILABLE = False
     CONTEXT_AWARE_AVAILABLE = False
+    PROACTIVE_SUGGESTION_AVAILABLE = False
     get_capture_strategy_manager = lambda: None
     get_ocr_strategy_manager = lambda: None
     get_response_strategy_manager = lambda: None
     get_context_aware_response_manager = lambda: None
+    get_proactive_suggestion_manager = lambda: None
     logger.warning("Strategy managers not available")
 
 try:
@@ -140,6 +145,7 @@ class MediumComplexityHandler:
         ocr_manager: Optional[OCRStrategyManager] = None,
         response_manager: Optional[ResponseStrategyManager] = None,
         context_aware_manager: Optional[ContextAwareResponseManager] = None,
+        proactive_suggestion_manager: Optional[ProactiveSuggestionManager] = None,
         implicit_resolver: Optional[Any] = None
     ):
         """
@@ -150,12 +156,14 @@ class MediumComplexityHandler:
             ocr_manager: OCRStrategyManager instance
             response_manager: ResponseStrategyManager instance
             context_aware_manager: ContextAwareResponseManager instance
+            proactive_suggestion_manager: ProactiveSuggestionManager instance
             implicit_resolver: ImplicitReferenceResolver instance
         """
         self.capture_manager = capture_manager or get_capture_strategy_manager()
         self.ocr_manager = ocr_manager or get_ocr_strategy_manager()
         self.response_manager = response_manager or get_response_strategy_manager()
         self.context_aware_manager = context_aware_manager or get_context_aware_response_manager()
+        self.proactive_suggestion_manager = proactive_suggestion_manager or get_proactive_suggestion_manager()
         self.implicit_resolver = implicit_resolver or get_implicit_reference_resolver()
 
         logger.info("[MEDIUM-HANDLER] Initialized")
@@ -163,6 +171,7 @@ class MediumComplexityHandler:
         logger.info(f"  OCR Manager: {'✅' if self.ocr_manager else '❌'}")
         logger.info(f"  Response Manager: {'✅' if self.response_manager else '❌'}")
         logger.info(f"  Context-Aware Manager: {'✅' if self.context_aware_manager else '❌'}")
+        logger.info(f"  Proactive Suggestion Manager: {'✅' if self.proactive_suggestion_manager else '❌'}")
         logger.info(f"  Implicit Resolver: {'✅' if self.implicit_resolver else '❌'}")
 
     async def process_query(
@@ -310,6 +319,30 @@ class MediumComplexityHandler:
                 logger.warning(f"[MEDIUM-HANDLER] Context-aware enrichment failed: {e}")
                 # Keep enhanced synthesis
 
+        # Step 7: Generate proactive suggestions
+        final_response_with_suggestions = final_response
+        suggestion_result = None
+        if self.proactive_suggestion_manager:
+            try:
+                # Generate suggestions based on query and response
+                suggestion_result = await self.proactive_suggestion_manager.generate_suggestions(
+                    query=query,
+                    response=final_response,
+                    context={"space_ids": space_ids, "query_type": query_type.value}
+                )
+
+                # Append suggestions if any were generated
+                if suggestion_result.suggestions:
+                    final_response_with_suggestions = final_response + suggestion_result.formatted_text
+                    logger.info(
+                        f"[MEDIUM-HANDLER] Generated {len(suggestion_result.suggestions)} suggestions "
+                        f"(top: {suggestion_result.top_suggestion.type.value if suggestion_result.top_suggestion else 'none'})"
+                    )
+
+            except Exception as e:
+                logger.warning(f"[MEDIUM-HANDLER] Proactive suggestion generation failed: {e}")
+                # Keep response without suggestions
+
         execution_time = time.time() - start_time
 
         logger.info(
@@ -322,7 +355,7 @@ class MediumComplexityHandler:
             query_type=query_type,
             spaces_processed=space_ids,
             captures=captures_with_ocr,
-            synthesis=final_response,
+            synthesis=final_response_with_suggestions,
             execution_time=execution_time,
             total_api_calls=int(api_calls),
             metadata={
@@ -334,6 +367,11 @@ class MediumComplexityHandler:
                     "enabled": context_enrichment is not None,
                     "context_added": context_enrichment.context_added if context_enrichment else {},
                     "confidence": context_enrichment.confidence if context_enrichment else 0.0
+                },
+                "proactive_suggestions": {
+                    "enabled": suggestion_result is not None,
+                    "count": len(suggestion_result.suggestions) if suggestion_result else 0,
+                    "top_type": suggestion_result.top_suggestion.type.value if (suggestion_result and suggestion_result.top_suggestion) else None
                 }
             }
         )
@@ -723,6 +761,7 @@ def initialize_medium_complexity_handler(
     ocr_manager: Optional[OCRStrategyManager] = None,
     response_manager: Optional[ResponseStrategyManager] = None,
     context_aware_manager: Optional[ContextAwareResponseManager] = None,
+    proactive_suggestion_manager: Optional[ProactiveSuggestionManager] = None,
     implicit_resolver: Optional[Any] = None
 ) -> MediumComplexityHandler:
     """Initialize the global medium complexity handler"""
@@ -732,6 +771,7 @@ def initialize_medium_complexity_handler(
         ocr_manager=ocr_manager,
         response_manager=response_manager,
         context_aware_manager=context_aware_manager,
+        proactive_suggestion_manager=proactive_suggestion_manager,
         implicit_resolver=implicit_resolver
     )
     logger.info("[MEDIUM-HANDLER] Global instance initialized")

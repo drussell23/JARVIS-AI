@@ -67,6 +67,14 @@ from .managers import (
     ConversationContext,
     ContextEnrichment,
 )
+from .managers import (
+    get_proactive_suggestion_manager,
+    initialize_proactive_suggestion_manager,
+    ProactiveSuggestionManager,
+    SuggestionType,
+    Suggestion,
+    SuggestionResult,
+)
 from .handlers import (
     get_query_complexity_manager,
     initialize_query_complexity_manager,
@@ -156,6 +164,12 @@ __all__ = [
     "ContextType",
     "ConversationContext",
     "ContextEnrichment",
+    "get_proactive_suggestion_manager",
+    "initialize_proactive_suggestion_manager",
+    "ProactiveSuggestionManager",
+    "SuggestionType",
+    "Suggestion",
+    "SuggestionResult",
     "get_query_complexity_manager",
     "initialize_query_complexity_manager",
     "QueryComplexityManager",

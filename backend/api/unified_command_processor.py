@@ -339,6 +339,29 @@ class UnifiedCommandProcessor:
             logger.error(f"[UNIFIED] Failed to initialize context-aware manager: {e}")
             self.context_aware_manager = None
 
+        # Step 6.7: Initialize ProactiveSuggestionManager (next-step suggestions)
+        try:
+            from context_intelligence.managers import initialize_proactive_suggestion_manager
+
+            # Get conversation tracker from context-aware manager
+            conversation_tracker = None
+            if self.context_aware_manager:
+                conversation_tracker = self.context_aware_manager.conversation_tracker
+
+            self.proactive_suggestion_manager = initialize_proactive_suggestion_manager(
+                conversation_tracker=conversation_tracker,
+                implicit_resolver=self.implicit_resolver,
+                max_suggestions=2,
+                confidence_threshold=0.5
+            )
+            logger.info("[UNIFIED] ✅ ProactiveSuggestionManager initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] ProactiveSuggestionManager not available: {e}")
+            self.proactive_suggestion_manager = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize proactive suggestion manager: {e}")
+            self.proactive_suggestion_manager = None
+
         # Step 7: Initialize MediumComplexityHandler (Level 2 query execution)
         try:
             from context_intelligence.handlers import initialize_medium_complexity_handler
@@ -352,6 +375,7 @@ class UnifiedCommandProcessor:
                 ocr_manager=get_ocr_strategy_manager(),
                 response_manager=self.response_strategy_manager,
                 context_aware_manager=self.context_aware_manager,
+                proactive_suggestion_manager=self.proactive_suggestion_manager,
                 implicit_resolver=self.implicit_resolver
             )
             logger.info("[UNIFIED] ✅ MediumComplexityHandler initialized")
@@ -410,6 +434,8 @@ class UnifiedCommandProcessor:
             resolvers_active.append("ResponseStrategyManager")
         if self.context_aware_manager:
             resolvers_active.append("ContextAwareManager")
+        if self.proactive_suggestion_manager:
+            resolvers_active.append("ProactiveSuggestionManager")
         if self.medium_complexity_handler:
             resolvers_active.append("MediumComplexityHandler")
         if self.complex_complexity_handler:

@@ -127,6 +127,19 @@ from .context_aware_response_manager import (
     initialize_context_aware_response_manager
 )
 
+from .proactive_suggestion_manager import (
+    ProactiveSuggestionManager,
+    PatternAnalyzer,
+    SuggestionGenerator,
+    SuggestionRanker,
+    SuggestionFormatter,
+    SuggestionType,
+    Suggestion,
+    SuggestionResult,
+    get_proactive_suggestion_manager,
+    initialize_proactive_suggestion_manager
+)
+
 __all__ = [
     # Space State Management
     'SpaceStateManager',
@@ -240,4 +253,16 @@ __all__ = [
     'ContextEnrichment',
     'get_context_aware_response_manager',
     'initialize_context_aware_response_manager',
+
+    # Proactive Suggestion Management
+    'ProactiveSuggestionManager',
+    'PatternAnalyzer',
+    'SuggestionGenerator',
+    'SuggestionRanker',
+    'SuggestionFormatter',
+    'SuggestionType',
+    'Suggestion',
+    'SuggestionResult',
+    'get_proactive_suggestion_manager',
+    'initialize_proactive_suggestion_manager',
 ]
