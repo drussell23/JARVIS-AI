@@ -53,6 +53,15 @@ from .query_complexity_manager import (
     initialize_query_complexity_manager
 )
 
+from .medium_complexity_handler import (
+    MediumComplexityHandler,
+    MediumQueryType,
+    SpaceCapture,
+    MediumQueryResult,
+    get_medium_complexity_handler,
+    initialize_medium_complexity_handler
+)
+
 __all__ = [
     'MultiSpaceQueryHandler',
     'get_multi_space_handler',
@@ -87,4 +96,10 @@ __all__ = [
     'QueryComplexity',
     'get_query_complexity_manager',
     'initialize_query_complexity_manager',
+    'MediumComplexityHandler',
+    'MediumQueryType',
+    'SpaceCapture',
+    'MediumQueryResult',
+    'get_medium_complexity_handler',
+    'initialize_medium_complexity_handler',
 ]

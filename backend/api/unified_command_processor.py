@@ -205,6 +205,7 @@ class UnifiedCommandProcessor:
         self.multi_space_handler = None   # Multi-space query handler
         self.temporal_handler = None      # Temporal query handler (change detection, error tracking, timeline)
         self.query_complexity_manager = None  # Query complexity classification and routing
+        self.medium_complexity_handler = None  # Medium complexity (Level 2) query execution
         self._initialize_resolvers()
 
     def _initialize_resolvers(self):
@@ -302,6 +303,27 @@ class UnifiedCommandProcessor:
             logger.error(f"[UNIFIED] Failed to initialize query complexity manager: {e}")
             self.query_complexity_manager = None
 
+        # Step 7: Initialize MediumComplexityHandler (Level 2 query execution)
+        try:
+            from context_intelligence.handlers import initialize_medium_complexity_handler
+            from context_intelligence.managers import (
+                get_capture_strategy_manager,
+                get_ocr_strategy_manager
+            )
+
+            self.medium_complexity_handler = initialize_medium_complexity_handler(
+                capture_manager=get_capture_strategy_manager(),
+                ocr_manager=get_ocr_strategy_manager(),
+                implicit_resolver=self.implicit_resolver
+            )
+            logger.info("[UNIFIED] ✅ MediumComplexityHandler initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] MediumComplexityHandler not available: {e}")
+            self.medium_complexity_handler = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize medium complexity handler: {e}")
+            self.medium_complexity_handler = None
+
         # Log integration status
         resolvers_active = []
         if self.context_graph:
@@ -316,6 +338,8 @@ class UnifiedCommandProcessor:
             resolvers_active.append("TemporalHandler")
         if self.query_complexity_manager:
             resolvers_active.append("QueryComplexityManager")
+        if self.medium_complexity_handler:
+            resolvers_active.append("MediumComplexityHandler")
 
         if resolvers_active:
             logger.info(f"[UNIFIED] 🎯 Active resolvers: {', '.join(resolvers_active)}")
@@ -415,7 +439,62 @@ class UnifiedCommandProcessor:
             f"[UNIFIED] System context: screen_locked={system_context.get('screen_locked')}, active_apps={len(system_context.get('active_apps', []))}"
         )
 
-        # Step 4: Resolve references with context (use resolved query if available)
+        # Step 4: Route to Medium Complexity Handler if appropriate
+        if (classified_query and
+            classified_query.complexity.level.name == "MODERATE" and
+            self.medium_complexity_handler and
+            classified_query.entities.get("spaces")):
+
+            try:
+                from context_intelligence.handlers import MediumQueryType
+
+                # Determine medium query type
+                if classified_query.query_type == "comparison":
+                    medium_type = MediumQueryType.COMPARISON
+                elif classified_query.intent == "find":
+                    medium_type = MediumQueryType.CROSS_SPACE_SEARCH
+                else:
+                    medium_type = MediumQueryType.MULTI_SPACE
+
+                logger.info(f"[UNIFIED] Routing to MediumComplexityHandler ({medium_type.value})")
+
+                # Execute medium complexity query
+                result = await self.medium_complexity_handler.process_query(
+                    query=command_text,
+                    space_ids=classified_query.entities["spaces"],
+                    query_type=medium_type,
+                    context={"system_context": system_context}
+                )
+
+                # Return formatted result
+                return {
+                    "success": result.success,
+                    "response": result.synthesis,
+                    "command_type": "medium_complexity_query",
+                    "query_complexity": {
+                        "level": "MODERATE",
+                        "query_type": classified_query.query_type,
+                        "spaces_processed": result.spaces_processed,
+                        "execution_time": result.execution_time,
+                        "api_calls": result.total_api_calls
+                    },
+                    "captures": [
+                        {
+                            "space_id": c.space_id,
+                            "success": c.success,
+                            "text_length": len(c.ocr_text) if c.ocr_text else 0,
+                            "confidence": c.ocr_confidence,
+                            "method": f"{c.capture_method} + {c.ocr_method}"
+                        }
+                        for c in result.captures
+                    ]
+                }
+
+            except Exception as e:
+                logger.error(f"[UNIFIED] Medium complexity handler failed: {e}")
+                # Fall through to regular processing
+
+        # Step 5: Resolve references with context (use resolved query if available)
         resolved_text = classified_query.resolved_query if classified_query else command_text
         reference, ref_confidence = self.context.resolve_reference(resolved_text)
         if reference and ref_confidence > 0.5:
@@ -426,7 +505,7 @@ class UnifiedCommandProcessor:
                     logger.info(f"[UNIFIED] Resolved '{word}' to '{reference}'")
                     break
 
-        # Step 5: Define command execution callback
+        # Step 6: Define command execution callback
         async def execute_with_context(cmd: str, context: Dict[str, Any] = None):
             """Execute command with full context awareness"""
             if command_type == CommandType.COMPOUND:
@@ -436,13 +515,13 @@ class UnifiedCommandProcessor:
                     command_type, cmd, websocket, context=context
                 )
 
-        # Step 6: Process through context-aware handler
+        # Step 7: Process through context-aware handler
         logger.info(f"[UNIFIED] Processing through context-aware handler...")
         result = await context_handler.handle_command_with_context(
             resolved_text, execute_callback=execute_with_context
         )
 
-        # Step 7: Extract actual result from context handler response
+        # Step 8: Extract actual result from context handler response
         if result.get("result"):
             # Use the nested result from context handler
             actual_result = result["result"]
@@ -450,7 +529,7 @@ class UnifiedCommandProcessor:
             # Fallback to the full result
             actual_result = result
 
-        # Step 8: Learn from the result
+        # Step 9: Learn from the result
         if actual_result.get("success", False):
             self.pattern_learner.learn_pattern(command_text, command_type.value, True)
             self.success_patterns[command_type.value].append(
@@ -466,7 +545,7 @@ class UnifiedCommandProcessor:
                     command_type.value
                 ][-100:]
 
-        # Step 9: Update context with result
+        # Step 10: Update context with result
         self.context.update_from_command(command_type, actual_result)
         self.context.system_state = system_context  # Update system state
 
