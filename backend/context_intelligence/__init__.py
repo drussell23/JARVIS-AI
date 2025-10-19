@@ -67,6 +67,17 @@ from .handlers import (
     SpaceCapture,
     MediumQueryResult,
 )
+from .handlers import (
+    get_complex_complexity_handler,
+    initialize_complex_complexity_handler,
+    ComplexComplexityHandler,
+    ComplexQueryType,
+    SpaceSnapshot,
+    TemporalAnalysis,
+    CrossSpaceAnalysis,
+    PredictiveAnalysis,
+    ComplexQueryResult,
+)
 
 __all__ = [
     "get_document_writer",
@@ -127,4 +138,13 @@ __all__ = [
     "MediumQueryType",
     "SpaceCapture",
     "MediumQueryResult",
+    "get_complex_complexity_handler",
+    "initialize_complex_complexity_handler",
+    "ComplexComplexityHandler",
+    "ComplexQueryType",
+    "SpaceSnapshot",
+    "TemporalAnalysis",
+    "CrossSpaceAnalysis",
+    "PredictiveAnalysis",
+    "ComplexQueryResult",
 ]

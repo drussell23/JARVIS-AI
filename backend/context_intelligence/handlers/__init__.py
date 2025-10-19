@@ -62,6 +62,18 @@ from .medium_complexity_handler import (
     initialize_medium_complexity_handler
 )
 
+from .complex_complexity_handler import (
+    ComplexComplexityHandler,
+    ComplexQueryType,
+    SpaceSnapshot,
+    TemporalAnalysis,
+    CrossSpaceAnalysis,
+    PredictiveAnalysis,
+    ComplexQueryResult,
+    get_complex_complexity_handler,
+    initialize_complex_complexity_handler
+)
+
 __all__ = [
     'MultiSpaceQueryHandler',
     'get_multi_space_handler',
@@ -102,4 +114,13 @@ __all__ = [
     'MediumQueryResult',
     'get_medium_complexity_handler',
     'initialize_medium_complexity_handler',
+    'ComplexComplexityHandler',
+    'ComplexQueryType',
+    'SpaceSnapshot',
+    'TemporalAnalysis',
+    'CrossSpaceAnalysis',
+    'PredictiveAnalysis',
+    'ComplexQueryResult',
+    'get_complex_complexity_handler',
+    'initialize_complex_complexity_handler',
 ]

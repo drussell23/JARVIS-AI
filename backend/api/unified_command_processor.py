@@ -324,6 +324,36 @@ class UnifiedCommandProcessor:
             logger.error(f"[UNIFIED] Failed to initialize medium complexity handler: {e}")
             self.medium_complexity_handler = None
 
+        # Step 8: Initialize ComplexComplexityHandler (Level 3 query execution)
+        try:
+            from context_intelligence.handlers import (
+                initialize_complex_complexity_handler,
+                get_predictive_handler,
+                get_action_query_handler
+            )
+            from context_intelligence.managers import (
+                get_capture_strategy_manager,
+                get_ocr_strategy_manager
+            )
+
+            self.complex_complexity_handler = initialize_complex_complexity_handler(
+                temporal_handler=self.temporal_handler,
+                multi_space_handler=self.multi_space_handler,
+                predictive_handler=get_predictive_handler(),
+                capture_manager=get_capture_strategy_manager(),
+                ocr_manager=get_ocr_strategy_manager(),
+                implicit_resolver=self.implicit_resolver,
+                cache_ttl=60.0,
+                max_concurrent_captures=5
+            )
+            logger.info("[UNIFIED] ✅ ComplexComplexityHandler initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] ComplexComplexityHandler not available: {e}")
+            self.complex_complexity_handler = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize complex complexity handler: {e}")
+            self.complex_complexity_handler = None
+
         # Log integration status
         resolvers_active = []
         if self.context_graph:
@@ -340,6 +370,8 @@ class UnifiedCommandProcessor:
             resolvers_active.append("QueryComplexityManager")
         if self.medium_complexity_handler:
             resolvers_active.append("MediumComplexityHandler")
+        if self.complex_complexity_handler:
+            resolvers_active.append("ComplexComplexityHandler")
 
         if resolvers_active:
             logger.info(f"[UNIFIED] 🎯 Active resolvers: {', '.join(resolvers_active)}")
@@ -492,6 +524,101 @@ class UnifiedCommandProcessor:
 
             except Exception as e:
                 logger.error(f"[UNIFIED] Medium complexity handler failed: {e}")
+                # Fall through to regular processing
+
+        # Step 4.5: Route to Complex Complexity Handler if appropriate
+        if (classified_query and
+            classified_query.complexity.level.name == "COMPLEX" and
+            self.complex_complexity_handler):
+
+            try:
+                from context_intelligence.handlers import ComplexQueryType
+
+                # Determine complex query type
+                if any(word in command_text.lower() for word in ["changed", "change", "different", "history"]):
+                    complex_type = ComplexQueryType.TEMPORAL
+                elif any(word in command_text.lower() for word in ["find", "search", "all", "across", "every"]):
+                    complex_type = ComplexQueryType.CROSS_SPACE
+                elif any(word in command_text.lower() for word in ["progress", "predict", "will", "going"]):
+                    complex_type = ComplexQueryType.PREDICTIVE
+                else:
+                    complex_type = ComplexQueryType.ANALYTICAL
+
+                logger.info(f"[UNIFIED] Routing to ComplexComplexityHandler ({complex_type.value})")
+
+                # Determine space IDs (all spaces if not specified)
+                space_ids = classified_query.entities.get("spaces") if classified_query.entities else None
+
+                # Determine time range for temporal queries
+                time_range = None
+                if complex_type == ComplexQueryType.TEMPORAL:
+                    # Extract time range from query
+                    import re
+                    minutes_match = re.search(r'(\d+)\s*minute', command_text.lower())
+                    hours_match = re.search(r'(\d+)\s*hour', command_text.lower())
+                    if minutes_match:
+                        time_range = {"minutes": int(minutes_match.group(1))}
+                    elif hours_match:
+                        time_range = {"hours": int(hours_match.group(1))}
+                    else:
+                        time_range = {"minutes": 5}  # Default to 5 minutes
+
+                # Execute complex query
+                result = await self.complex_complexity_handler.process_query(
+                    query=command_text,
+                    query_type=complex_type,
+                    space_ids=space_ids,
+                    time_range=time_range,
+                    context={"system_context": system_context}
+                )
+
+                # Return formatted result
+                response_parts = [result.synthesis]
+
+                # Add temporal analysis if available
+                if result.temporal_analysis:
+                    ta = result.temporal_analysis
+                    response_parts.append(f"\n\n**Temporal Analysis:**")
+                    response_parts.append(f"- Changes detected: {ta.changes_detected}")
+                    response_parts.append(f"- Changed spaces: {', '.join(map(str, ta.changed_spaces)) if ta.changed_spaces else 'none'}")
+
+                # Add cross-space analysis if available
+                if result.cross_space_analysis:
+                    csa = result.cross_space_analysis
+                    response_parts.append(f"\n\n**Cross-Space Analysis:**")
+                    response_parts.append(f"- Spaces scanned: {csa.total_spaces_scanned}")
+                    response_parts.append(f"- Matches found: {csa.matches_found}")
+
+                # Add predictive analysis if available
+                if result.predictive_analysis:
+                    pa = result.predictive_analysis
+                    response_parts.append(f"\n\n**Confidence:** {pa.confidence:.1%}")
+
+                return {
+                    "success": result.success,
+                    "response": "\n".join(response_parts),
+                    "command_type": "complex_complexity_query",
+                    "query_complexity": {
+                        "level": "COMPLEX",
+                        "query_type": complex_type.value,
+                        "spaces_processed": result.spaces_processed,
+                        "execution_time": result.execution_time,
+                        "api_calls": result.api_calls
+                    },
+                    "snapshots": [
+                        {
+                            "space_id": s.space_id,
+                            "success": s.ocr_text is not None and not s.error,
+                            "text_length": len(s.ocr_text) if s.ocr_text else 0,
+                            "confidence": s.ocr_confidence,
+                            "error": s.error
+                        }
+                        for s in result.snapshots
+                    ]
+                }
+
+            except Exception as e:
+                logger.error(f"[UNIFIED] Complex complexity handler failed: {e}")
                 # Fall through to regular processing
 
         # Step 5: Resolve references with context (use resolved query if available)
