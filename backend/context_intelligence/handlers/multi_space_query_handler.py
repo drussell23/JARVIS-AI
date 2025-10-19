@@ -36,6 +36,11 @@ from datetime import datetime
 from enum import Enum
 import re
 
+from backend.context_intelligence.managers.space_state_manager import (
+    get_space_state_manager,
+    SpaceState
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -111,6 +116,7 @@ class MultiSpaceQueryHandler:
         self.context_graph = context_graph
         self.implicit_resolver = implicit_resolver
         self.contextual_resolver = contextual_resolver
+        self.space_manager = get_space_state_manager()
 
         # Query patterns (dynamic - no hardcoding)
         self._initialize_patterns()
@@ -347,6 +353,46 @@ class MultiSpaceQueryHandler:
         This integrates with vision systems and context graph.
         """
         start_time = datetime.now()
+
+        # Validate space state first
+        edge_case_result = await self.space_manager.handle_edge_case(space_id)
+
+        # Handle edge cases
+        if edge_case_result.edge_case == "not_exist":
+            return SpaceAnalysisResult(
+                space_id=space_id,
+                success=False,
+                content_summary=edge_case_result.message,
+                analysis_time=(datetime.now() - start_time).total_seconds()
+            )
+        elif edge_case_result.edge_case == "empty":
+            return SpaceAnalysisResult(
+                space_id=space_id,
+                success=True,
+                content_summary=f"Space {space_id} is empty (no windows)",
+                analysis_time=(datetime.now() - start_time).total_seconds()
+            )
+        elif edge_case_result.edge_case == "minimized_only":
+            # Get apps from state info
+            apps = edge_case_result.state_info.applications if edge_case_result.state_info else []
+            app_list = ", ".join(apps[:2])
+            return SpaceAnalysisResult(
+                space_id=space_id,
+                success=True,
+                app_name=apps[0] if apps else "Unknown",
+                content_summary=f"Space {space_id} has minimized windows only ({app_list})",
+                significance="low",
+                analysis_time=(datetime.now() - start_time).total_seconds()
+            )
+        elif edge_case_result.edge_case == "transitioning":
+            if not edge_case_result.success:
+                return SpaceAnalysisResult(
+                    space_id=space_id,
+                    success=False,
+                    content_summary=edge_case_result.message,
+                    analysis_time=(datetime.now() - start_time).total_seconds()
+                )
+            logger.info(f"[MULTI-SPACE] Space {space_id} stabilized after transition")
 
         try:
             # Get context from context graph if available

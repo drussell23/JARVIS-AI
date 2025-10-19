@@ -14,6 +14,7 @@ Date: 2025-10-19
 import asyncio
 import logging
 import subprocess
+import re
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -23,6 +24,10 @@ from backend.context_intelligence.planners.action_planner import (
     ExecutionPlan,
     ExecutionStep,
     StepStatus
+)
+from backend.context_intelligence.managers.space_state_manager import (
+    get_space_state_manager,
+    SpaceState
 )
 
 logger = logging.getLogger(__name__)
@@ -77,17 +82,20 @@ class ActionExecutor:
     - suggestion: Provide suggestions (v1.0)
     """
 
-    def __init__(self, dry_run: bool = False):
+    def __init__(self, dry_run: bool = False, validate_spaces: bool = True):
         """
         Initialize the action executor
 
         Args:
             dry_run: If True, don't actually execute commands (for testing)
+            validate_spaces: If True, validate space state before execution
         """
         self.dry_run = dry_run
+        self.validate_spaces = validate_spaces
         self.timeout_seconds = 30  # Default timeout
+        self.space_manager = get_space_state_manager() if validate_spaces else None
 
-        logger.info(f"[ACTION-EXECUTOR] Initialized (dry_run={dry_run})")
+        logger.info(f"[ACTION-EXECUTOR] Initialized (dry_run={dry_run}, validate_spaces={validate_spaces})")
 
     async def execute_plan(self, plan: ExecutionPlan) -> ExecutionResult:
         """
@@ -200,6 +208,37 @@ class ActionExecutor:
                 output="[DRY-RUN] Command not executed",
                 metadata={"dry_run": True}
             )
+
+        # Validate space if command involves a space
+        if self.validate_spaces and self.space_manager:
+            space_id = self._extract_space_id(step.command)
+            if space_id is not None:
+                logger.info(f"[ACTION-EXECUTOR] Validating space {space_id} before execution")
+                edge_case_result = await self.space_manager.handle_edge_case(space_id)
+
+                # Handle edge cases
+                if edge_case_result.edge_case == "not_exist":
+                    return StepResult(
+                        step_id=step.step_id,
+                        success=False,
+                        error=edge_case_result.message,
+                        metadata={"edge_case": "not_exist"}
+                    )
+                elif edge_case_result.edge_case == "empty":
+                    logger.warning(f"[ACTION-EXECUTOR] {edge_case_result.message}")
+                    # Continue execution - empty space is valid for some operations
+                elif edge_case_result.edge_case == "minimized_only":
+                    logger.warning(f"[ACTION-EXECUTOR] {edge_case_result.message}")
+                    # Continue execution - might be switching to the space
+                elif edge_case_result.edge_case == "transitioning":
+                    if not edge_case_result.success:
+                        return StepResult(
+                            step_id=step.step_id,
+                            success=False,
+                            error=edge_case_result.message,
+                            metadata={"edge_case": "transitioning"}
+                        )
+                    logger.info(f"[ACTION-EXECUTOR] Space stabilized after transition")
 
         try:
             process = await asyncio.create_subprocess_shell(
@@ -368,6 +407,34 @@ class ActionExecutor:
                 "suggestion_type": step.parameters.get("error", "general")
             }
         )
+
+    def _extract_space_id(self, command: str) -> Optional[int]:
+        """
+        Extract space ID from a yabai command.
+
+        Args:
+            command: The yabai command string
+
+        Returns:
+            Space ID if found, None otherwise
+        """
+        # Patterns for space commands:
+        # yabai -m space --focus 3
+        # yabai -m window --space 5
+        # yabai -m query --spaces --space 2
+
+        patterns = [
+            r'--focus\s+(\d+)',
+            r'--space\s+(\d+)',
+            r'space\s+(\d+)',
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, command)
+            if match:
+                return int(match.group(1))
+
+        return None
 
     def _dependencies_satisfied(self, step: ExecutionStep, completed_steps: List[StepResult]) -> bool:
         """Check if step dependencies are satisfied"""
