@@ -322,6 +322,23 @@ class UnifiedCommandProcessor:
             logger.error(f"[UNIFIED] Failed to initialize response strategy manager: {e}")
             self.response_strategy_manager = None
 
+        # Step 6.6: Initialize ContextAwareResponseManager (conversation context tracking)
+        try:
+            from context_intelligence.managers import initialize_context_aware_response_manager
+
+            self.context_aware_manager = initialize_context_aware_response_manager(
+                implicit_resolver=self.implicit_resolver,
+                max_history=10,
+                context_ttl=300.0  # 5 minutes
+            )
+            logger.info("[UNIFIED] ✅ ContextAwareResponseManager initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] ContextAwareResponseManager not available: {e}")
+            self.context_aware_manager = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize context-aware manager: {e}")
+            self.context_aware_manager = None
+
         # Step 7: Initialize MediumComplexityHandler (Level 2 query execution)
         try:
             from context_intelligence.handlers import initialize_medium_complexity_handler
@@ -334,6 +351,7 @@ class UnifiedCommandProcessor:
                 capture_manager=get_capture_strategy_manager(),
                 ocr_manager=get_ocr_strategy_manager(),
                 response_manager=self.response_strategy_manager,
+                context_aware_manager=self.context_aware_manager,
                 implicit_resolver=self.implicit_resolver
             )
             logger.info("[UNIFIED] ✅ MediumComplexityHandler initialized")
@@ -390,6 +408,8 @@ class UnifiedCommandProcessor:
             resolvers_active.append("QueryComplexityManager")
         if self.response_strategy_manager:
             resolvers_active.append("ResponseStrategyManager")
+        if self.context_aware_manager:
+            resolvers_active.append("ContextAwareManager")
         if self.medium_complexity_handler:
             resolvers_active.append("MediumComplexityHandler")
         if self.complex_complexity_handler:

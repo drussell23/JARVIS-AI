@@ -48,20 +48,25 @@ try:
         get_capture_strategy_manager,
         get_ocr_strategy_manager,
         get_response_strategy_manager,
+        get_context_aware_response_manager,
         CaptureStrategyManager,
         OCRStrategyManager,
-        ResponseStrategyManager
+        ResponseStrategyManager,
+        ContextAwareResponseManager
     )
     CAPTURE_STRATEGY_AVAILABLE = True
     OCR_STRATEGY_AVAILABLE = True
     RESPONSE_STRATEGY_AVAILABLE = True
+    CONTEXT_AWARE_AVAILABLE = True
 except ImportError:
     CAPTURE_STRATEGY_AVAILABLE = False
     OCR_STRATEGY_AVAILABLE = False
     RESPONSE_STRATEGY_AVAILABLE = False
+    CONTEXT_AWARE_AVAILABLE = False
     get_capture_strategy_manager = lambda: None
     get_ocr_strategy_manager = lambda: None
     get_response_strategy_manager = lambda: None
+    get_context_aware_response_manager = lambda: None
     logger.warning("Strategy managers not available")
 
 try:
@@ -134,6 +139,7 @@ class MediumComplexityHandler:
         capture_manager: Optional[CaptureStrategyManager] = None,
         ocr_manager: Optional[OCRStrategyManager] = None,
         response_manager: Optional[ResponseStrategyManager] = None,
+        context_aware_manager: Optional[ContextAwareResponseManager] = None,
         implicit_resolver: Optional[Any] = None
     ):
         """
@@ -143,17 +149,20 @@ class MediumComplexityHandler:
             capture_manager: CaptureStrategyManager instance
             ocr_manager: OCRStrategyManager instance
             response_manager: ResponseStrategyManager instance
+            context_aware_manager: ContextAwareResponseManager instance
             implicit_resolver: ImplicitReferenceResolver instance
         """
         self.capture_manager = capture_manager or get_capture_strategy_manager()
         self.ocr_manager = ocr_manager or get_ocr_strategy_manager()
         self.response_manager = response_manager or get_response_strategy_manager()
+        self.context_aware_manager = context_aware_manager or get_context_aware_response_manager()
         self.implicit_resolver = implicit_resolver or get_implicit_reference_resolver()
 
         logger.info("[MEDIUM-HANDLER] Initialized")
         logger.info(f"  Capture Manager: {'✅' if self.capture_manager else '❌'}")
         logger.info(f"  OCR Manager: {'✅' if self.ocr_manager else '❌'}")
         logger.info(f"  Response Manager: {'✅' if self.response_manager else '❌'}")
+        logger.info(f"  Context-Aware Manager: {'✅' if self.context_aware_manager else '❌'}")
         logger.info(f"  Implicit Resolver: {'✅' if self.implicit_resolver else '❌'}")
 
     async def process_query(
@@ -254,6 +263,53 @@ class MediumComplexityHandler:
                 logger.warning(f"[MEDIUM-HANDLER] Response enhancement failed: {e}")
                 # Keep original synthesis
 
+        # Step 6: Enrich with conversation context
+        final_response = final_synthesis
+        context_enrichment = None
+        if self.context_aware_manager:
+            try:
+                # Extract entities from this query for tracking
+                extracted_entities = {
+                    "space": space_ids,
+                    "query_type": query_type.value
+                }
+
+                # Add file/error entities if found in OCR text
+                for capture in captures_with_ocr:
+                    if capture.ocr_text:
+                        # Simple entity extraction (can be enhanced)
+                        if ".py" in capture.ocr_text or ".js" in capture.ocr_text:
+                            # Track file mentions
+                            import re
+                            files = re.findall(r'[\w\-]+\.(?:py|js|ts|java|cpp)', capture.ocr_text)
+                            if files:
+                                extracted_entities["file"] = files
+
+                        if "Error" in capture.ocr_text or "Exception" in capture.ocr_text:
+                            errors = re.findall(r'(\w+Error|\w+Exception)', capture.ocr_text)
+                            if errors:
+                                extracted_entities["error"] = errors
+
+                # Enrich response with conversation context
+                context_enrichment = await self.context_aware_manager.enrich_response(
+                    query=query,
+                    response=final_synthesis,
+                    extracted_entities=extracted_entities
+                )
+
+                # Use enriched response if context was added
+                if context_enrichment.context_added:
+                    final_response = context_enrichment.enriched_response
+                    logger.info(
+                        f"[MEDIUM-HANDLER] Response enriched with context "
+                        f"(confidence: {context_enrichment.confidence:.2f}, "
+                        f"context: {list(context_enrichment.context_added.keys())})"
+                    )
+
+            except Exception as e:
+                logger.warning(f"[MEDIUM-HANDLER] Context-aware enrichment failed: {e}")
+                # Keep enhanced synthesis
+
         execution_time = time.time() - start_time
 
         logger.info(
@@ -266,14 +322,19 @@ class MediumComplexityHandler:
             query_type=query_type,
             spaces_processed=space_ids,
             captures=captures_with_ocr,
-            synthesis=final_synthesis,
+            synthesis=final_response,
             execution_time=execution_time,
             total_api_calls=int(api_calls),
             metadata={
                 "original_query": query,
                 "resolved_query": resolved_query,
                 "successful_captures": len(successful_captures),
-                "failed_captures": len(space_ids) - len(successful_captures)
+                "failed_captures": len(space_ids) - len(successful_captures),
+                "context_enrichment": {
+                    "enabled": context_enrichment is not None,
+                    "context_added": context_enrichment.context_added if context_enrichment else {},
+                    "confidence": context_enrichment.confidence if context_enrichment else 0.0
+                }
             }
         )
 
@@ -661,6 +722,7 @@ def initialize_medium_complexity_handler(
     capture_manager: Optional[CaptureStrategyManager] = None,
     ocr_manager: Optional[OCRStrategyManager] = None,
     response_manager: Optional[ResponseStrategyManager] = None,
+    context_aware_manager: Optional[ContextAwareResponseManager] = None,
     implicit_resolver: Optional[Any] = None
 ) -> MediumComplexityHandler:
     """Initialize the global medium complexity handler"""
@@ -669,6 +731,7 @@ def initialize_medium_complexity_handler(
         capture_manager=capture_manager,
         ocr_manager=ocr_manager,
         response_manager=response_manager,
+        context_aware_manager=context_aware_manager,
         implicit_resolver=implicit_resolver
     )
     logger.info("[MEDIUM-HANDLER] Global instance initialized")

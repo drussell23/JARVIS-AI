@@ -113,6 +113,20 @@ from .response_strategy_manager import (
     initialize_response_strategy_manager
 )
 
+from .context_aware_response_manager import (
+    ContextAwareResponseManager,
+    ConversationTracker,
+    ContextInjector,
+    ImplicitContextResolver,
+    ContextType,
+    ConversationTurn,
+    EntityReference,
+    ConversationContext,
+    ContextEnrichment,
+    get_context_aware_response_manager,
+    initialize_context_aware_response_manager
+)
+
 __all__ = [
     # Space State Management
     'SpaceStateManager',
@@ -213,4 +227,17 @@ __all__ = [
     'ResponseEnhancer',
     'get_response_strategy_manager',
     'initialize_response_strategy_manager',
+
+    # Context-Aware Response Management
+    'ContextAwareResponseManager',
+    'ConversationTracker',
+    'ContextInjector',
+    'ImplicitContextResolver',
+    'ContextType',
+    'ConversationTurn',
+    'EntityReference',
+    'ConversationContext',
+    'ContextEnrichment',
+    'get_context_aware_response_manager',
+    'initialize_context_aware_response_manager',
 ]

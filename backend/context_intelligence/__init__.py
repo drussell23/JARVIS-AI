@@ -58,6 +58,15 @@ from .managers import (
     ResponseAnalysis,
     EnhancedResponse,
 )
+from .managers import (
+    get_context_aware_response_manager,
+    initialize_context_aware_response_manager,
+    ContextAwareResponseManager,
+    ConversationTracker,
+    ContextType,
+    ConversationContext,
+    ContextEnrichment,
+)
 from .handlers import (
     get_query_complexity_manager,
     initialize_query_complexity_manager,
@@ -140,6 +149,13 @@ __all__ = [
     "ExtractedDetail",
     "ResponseAnalysis",
     "EnhancedResponse",
+    "get_context_aware_response_manager",
+    "initialize_context_aware_response_manager",
+    "ContextAwareResponseManager",
+    "ConversationTracker",
+    "ContextType",
+    "ConversationContext",
+    "ContextEnrichment",
     "get_query_complexity_manager",
     "initialize_query_complexity_manager",
     "QueryComplexityManager",
