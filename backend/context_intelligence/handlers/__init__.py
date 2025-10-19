@@ -34,6 +34,14 @@ from .predictive_query_handler import (
     handle_predictive_query
 )
 
+from .action_query_handler import (
+    ActionQueryHandler,
+    ActionQueryResponse,
+    get_action_query_handler,
+    initialize_action_query_handler,
+    handle_action_query
+)
+
 __all__ = [
     'MultiSpaceQueryHandler',
     'get_multi_space_handler',
@@ -55,4 +63,9 @@ __all__ = [
     'get_predictive_handler',
     'initialize_predictive_handler',
     'handle_predictive_query',
+    'ActionQueryHandler',
+    'ActionQueryResponse',
+    'get_action_query_handler',
+    'initialize_action_query_handler',
+    'handle_action_query',
 ]

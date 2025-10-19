@@ -24,6 +24,7 @@ class IntentType(Enum):
     SYSTEM_QUERY = "system_query"          # System info queries
     TIME_WEATHER = "time_weather"          # Time/weather queries
     PREDICTIVE_QUERY = "predictive_query"  # Predictive/analytical queries
+    ACTION_QUERY = "action_query"          # Action-oriented queries (switch, close, fix, run)
     GENERAL_CHAT = "general_chat"          # General conversation
     UNKNOWN = "unknown"                    # Unknown intent
 
@@ -92,7 +93,6 @@ class IntentAnalyzer:
                 # Bug detection
                 re.compile(r'\b(are there|any|find)\s+(any\s+)?(bugs|errors|issues|problems)\b', re.I),
                 re.compile(r'\bpotential\s+(bugs|issues)\b', re.I),
-                re.compile(r'\bwhat\'?s\s+wrong\b', re.I),
                 # Code explanation
                 re.compile(r'\bexplain\s+(this|that|the)\s+code\b', re.I),
                 re.compile(r'\bwhat\s+does\s+(this|that|the)\s+code\s+do\b', re.I),
@@ -107,6 +107,24 @@ class IntentAnalyzer:
                 # Quality assessment
                 re.compile(r'\bhow\'?s\s+my\s+code\s+quality\b', re.I),
                 re.compile(r'\bcode\s+quality\s+(assessment|check)\b', re.I),
+            ],
+            IntentType.ACTION_QUERY: [
+                # Space/window actions
+                re.compile(r'\b(switch|go|move|jump)\s+(to\s+)?space\s+\d+\b', re.I),
+                re.compile(r'\b(close|quit|kill)\s+(the\s+)?(\w+|it|that|this)', re.I),
+                re.compile(r'\bmove\s+\w+\s+to\s+space\s+\d+', re.I),
+                re.compile(r'\b(focus|show)\s+(the\s+)?(\w+|it|that)', re.I),
+                # Fix/solve actions
+                re.compile(r'\bfix\s+(the\s+)?(error|bug|issue|problem|it|that)', re.I),
+                re.compile(r'\bsolve\s+(the\s+)?(error|issue|problem|it|that)', re.I),
+                # Run/execute actions
+                re.compile(r'\b(run|execute)\s+(the\s+)?(tests|test suite|build)', re.I),
+                re.compile(r'\btest\s+(it|this|that)', re.I),
+                re.compile(r'\bbuild\s+(it|this|the project)', re.I),
+                # App control
+                re.compile(r'\b(launch|start|open|restart)\s+\w+', re.I),
+                # URL opening
+                re.compile(r'\bopen\s+(https?://|[\w-]+\.(com|org|net))', re.I),
             ],
         }
         
