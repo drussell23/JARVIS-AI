@@ -51,11 +51,15 @@ try:
     if str(backend_path) not in sys.path:
         sys.path.insert(0, str(backend_path))
     from context_intelligence.managers.window_capture_manager import get_window_capture_manager
+    from context_intelligence.managers.system_state_manager import get_system_state_manager, SystemHealth
     WINDOW_CAPTURE_AVAILABLE = True
+    SYSTEM_STATE_AVAILABLE = True
 except ImportError as e:
-    logger.warning(f"Window capture manager not available: {e}")
+    logger.warning(f"Context intelligence managers not available: {e}")
     get_window_capture_manager = None
+    get_system_state_manager = None
     WINDOW_CAPTURE_AVAILABLE = False
+    SYSTEM_STATE_AVAILABLE = False
 
 
 class CaptureMethod(Enum):
@@ -240,6 +244,7 @@ class MultiSpaceCaptureEngine:
         self.optimizer = None  # Will be set by vision intelligence
         self.monitoring_active = False  # Track if monitoring is active
         self.direct_capture = get_direct_capture() if get_direct_capture else None
+        self.system_state_manager = get_system_state_manager() if SYSTEM_STATE_AVAILABLE else None
 
     def _initialize_capture_methods(self) -> Dict[CaptureMethod, bool]:
         """Check available capture methods"""
@@ -267,6 +272,48 @@ class MultiSpaceCaptureEngine:
         )
         return methods
 
+    async def check_system_health(self) -> Tuple[bool, str, Optional[Any]]:
+        """
+        Check system health before capture operations.
+
+        Returns:
+            Tuple of (is_healthy, message, state_info)
+        """
+        if not SYSTEM_STATE_AVAILABLE or not self.system_state_manager:
+            # System state manager not available, assume healthy
+            return True, "System state checking not available", None
+
+        try:
+            state_info = await self.system_state_manager.check_system_state()
+
+            if state_info.health == SystemHealth.HEALTHY:
+                return True, "System is healthy", state_info
+
+            elif state_info.health == SystemHealth.DEGRADED:
+                # System degraded but usable
+                warnings = "; ".join(state_info.warnings)
+                logger.warning(f"[SYSTEM-HEALTH] System degraded: {warnings}")
+                return True, f"System degraded: {warnings}", state_info
+
+            else:
+                # System unhealthy or critical
+                failures = "; ".join(state_info.checks_failed)
+                logger.error(f"[SYSTEM-HEALTH] System unhealthy: {failures}")
+
+                # Generate helpful error message
+                if not state_info.can_use_vision:
+                    error_msg = state_info.display_status.message
+                elif not state_info.can_use_spaces:
+                    error_msg = state_info.yabai_status.message
+                else:
+                    error_msg = f"System unhealthy: {failures}"
+
+                return False, error_msg, state_info
+
+        except Exception as e:
+            logger.error(f"[SYSTEM-HEALTH] Error checking system health: {e}")
+            return True, "Health check failed, proceeding anyway", None
+
     async def capture_all_spaces(
         self, request: SpaceCaptureRequest
     ) -> SpaceCaptureResult:
@@ -275,6 +322,24 @@ class MultiSpaceCaptureEngine:
         Implements PRD FR-1.1: Capture screenshots from any desktop space
         """
         start_time = time.time()
+
+        # Check system health first
+        is_healthy, health_message, state_info = await self.check_system_health()
+
+        if not is_healthy:
+            logger.error(f"[MULTI-SPACE] System health check failed: {health_message}")
+            # Return error result
+            return SpaceCaptureResult(
+                screenshots={},
+                metadata={},
+                success=False,
+                total_duration=time.time() - start_time,
+                errors={-1: health_message}  # Use -1 as system-level error
+            )
+
+        if state_info and state_info.health == SystemHealth.DEGRADED:
+            logger.warning(f"[MULTI-SPACE] System degraded: {health_message}")
+            # Continue but log warnings
 
         # If monitoring is active with purple indicator, use that for better performance
         if self.monitoring_active and is_direct_capturing():

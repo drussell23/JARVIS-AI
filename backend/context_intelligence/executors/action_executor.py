@@ -29,6 +29,10 @@ from backend.context_intelligence.managers.space_state_manager import (
     get_space_state_manager,
     SpaceState
 )
+from backend.context_intelligence.managers.system_state_manager import (
+    get_system_state_manager,
+    SystemHealth
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,20 +86,23 @@ class ActionExecutor:
     - suggestion: Provide suggestions (v1.0)
     """
 
-    def __init__(self, dry_run: bool = False, validate_spaces: bool = True):
+    def __init__(self, dry_run: bool = False, validate_spaces: bool = True, check_system_health: bool = True):
         """
         Initialize the action executor
 
         Args:
             dry_run: If True, don't actually execute commands (for testing)
             validate_spaces: If True, validate space state before execution
+            check_system_health: If True, check system health before execution
         """
         self.dry_run = dry_run
         self.validate_spaces = validate_spaces
+        self.check_system_health = check_system_health
         self.timeout_seconds = 30  # Default timeout
         self.space_manager = get_space_state_manager() if validate_spaces else None
+        self.system_state_manager = get_system_state_manager() if check_system_health else None
 
-        logger.info(f"[ACTION-EXECUTOR] Initialized (dry_run={dry_run}, validate_spaces={validate_spaces})")
+        logger.info(f"[ACTION-EXECUTOR] Initialized (dry_run={dry_run}, validate_spaces={validate_spaces}, check_system_health={check_system_health})")
 
     async def execute_plan(self, plan: ExecutionPlan) -> ExecutionResult:
         """
@@ -208,6 +215,22 @@ class ActionExecutor:
                 output="[DRY-RUN] Command not executed",
                 metadata={"dry_run": True}
             )
+
+        # Check system health first
+        if self.check_system_health and self.system_state_manager:
+            logger.info(f"[ACTION-EXECUTOR] Checking system health before yabai command")
+            system_state = await self.system_state_manager.check_system_state()
+
+            if not system_state.can_use_spaces:
+                return StepResult(
+                    step_id=step.step_id,
+                    success=False,
+                    error=system_state.yabai_status.message,
+                    metadata={"system_health": system_state.health.value}
+                )
+
+            if system_state.health == SystemHealth.DEGRADED:
+                logger.warning(f"[ACTION-EXECUTOR] System degraded: {'; '.join(system_state.warnings)}")
 
         # Validate space if command involves a space
         if self.validate_spaces and self.space_manager:

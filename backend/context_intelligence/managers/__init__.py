@@ -30,6 +30,21 @@ from .window_capture_manager import (
     initialize_window_capture_manager
 )
 
+from .system_state_manager import (
+    SystemStateManager,
+    YabaiHealthChecker,
+    DisplayStateDetector,
+    SystemRecoveryHandler,
+    YabaiState,
+    DisplayState,
+    SystemHealth,
+    YabaiStatus,
+    DisplayStatus,
+    SystemStateInfo,
+    get_system_state_manager,
+    initialize_system_state_manager
+)
+
 __all__ = [
     # Space State Management
     'SpaceStateManager',
@@ -53,4 +68,18 @@ __all__ = [
     'WindowBounds',
     'get_window_capture_manager',
     'initialize_window_capture_manager',
+
+    # System State Management
+    'SystemStateManager',
+    'YabaiHealthChecker',
+    'DisplayStateDetector',
+    'SystemRecoveryHandler',
+    'YabaiState',
+    'DisplayState',
+    'SystemHealth',
+    'YabaiStatus',
+    'DisplayStatus',
+    'SystemStateInfo',
+    'get_system_state_manager',
+    'initialize_system_state_manager',
 ]

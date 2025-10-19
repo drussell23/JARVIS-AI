@@ -1,6 +1,6 @@
 # Edge Case Handling System - Complete Documentation
 
-**Version:** 1.0
+**Version:** 1.1
 **Last Updated:** 2025-10-19
 **Status:** ✅ Production Ready
 
@@ -11,16 +11,17 @@
 1. [Overview](#overview)
 2. [Space-Related Edge Cases](#space-related-edge-cases)
 3. [Window Capture Edge Cases](#window-capture-edge-cases)
-4. [Integration Points](#integration-points)
-5. [Usage Examples](#usage-examples)
-6. [API Reference](#api-reference)
-7. [Troubleshooting](#troubleshooting)
+4. [System State Edge Cases](#system-state-edge-cases)
+5. [Integration Points](#integration-points)
+6. [Usage Examples](#usage-examples)
+7. [API Reference](#api-reference)
+8. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Overview
 
-The Edge Case Handling System provides comprehensive, robust handling for all macOS space and window capture edge cases. It ensures JARVIS can gracefully handle failures, provide helpful error messages, and automatically retry or fallback when needed.
+The Edge Case Handling System provides comprehensive, robust handling for all macOS space, window capture, and system state edge cases. It ensures JARVIS can gracefully handle failures, provide helpful error messages, and automatically retry or fallback when needed.
 
 ### Key Features
 
@@ -30,6 +31,8 @@ The Edge Case Handling System provides comprehensive, robust handling for all ma
 ✅ **Natural Language Responses** - User-friendly error messages
 ✅ **Comprehensive Metadata** - Detailed information about what happened
 ✅ **Zero Dependencies** - Uses native macOS tools (yabai, screencapture, sips)
+✅ **Auto-Recovery** - Automatic service restart and recovery attempts
+✅ **System Health Monitoring** - Continuous health checks for critical services
 
 ### Architecture
 
@@ -38,11 +41,12 @@ User Request
     ↓
 Intent Analyzer
     ↓
-┌─────────────────────────────────────────────┐
-│  Edge Case Validation                       │
-│  ├── SpaceStateManager (space validation)   │
-│  └── WindowCaptureManager (window capture)  │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│  Edge Case Validation                            │
+│  ├── SystemStateManager (system health)          │
+│  ├── SpaceStateManager (space validation)        │
+│  └── WindowCaptureManager (window capture)       │
+└──────────────────────────────────────────────────┘
     ↓
 Action Execution / Vision Processing
     ↓
@@ -246,6 +250,179 @@ if result.success:
         print("   ⚠️ Image was resized (4K/5K display)")
 else:
     print(f"❌ Failed: {result.error}")
+```
+
+---
+
+## System State Edge Cases
+
+### SystemStateManager
+
+**Location:** `backend/context_intelligence/managers/system_state_manager.py`
+
+Handles all system-level health checks and edge cases before operations.
+
+### Supported Edge Cases
+
+| State | Detection | Response |
+|-------|-----------|----------|
+| **Yabai not running** | `yabai -m query` fails | `"Yabai not detected. Install: brew install koekeishiya/formulae/yabai"` |
+| **Yabai crashed** | Command hangs/timeout | `"Yabai crashed or hung. Restart: brew services restart yabai"` |
+| **Display sleep** | Screen off, no capture possible | `"Display is sleeping. Wake to use vision."` |
+| **Screen locked** | Login screen active | `"Screen is locked. Unlock to capture."` |
+| **No displays** | Headless/SSH session | `"No displays detected. Vision requires GUI session."` |
+
+### Components
+
+#### 1. YabaiHealthChecker
+
+Monitors yabai service health and detects issues.
+
+```python
+from context_intelligence.managers import get_system_state_manager
+
+manager = get_system_state_manager()
+
+# Check yabai status
+yabai_status = await manager.yabai_checker.check_yabai_status()
+
+if yabai_status.state.value == "not_installed":
+    print(yabai_status.message)  # "Yabai not detected. Install: brew install..."
+    print(f"Recovery: {yabai_status.recovery_command}")
+elif yabai_status.state.value == "timeout":
+    print(yabai_status.message)  # "Yabai crashed or hung. Restart: brew services..."
+    print(f"Can recover: {yabai_status.can_recover}")
+```
+
+#### 2. DisplayStateDetector
+
+Detects display state (awake, sleeping, locked, headless).
+
+```python
+# Check display state
+display_status = await manager.display_detector.check_display_state()
+
+if display_status.state.value == "locked":
+    print(display_status.message)  # "Screen is locked. Unlock to capture."
+elif display_status.state.value == "sleeping":
+    print(display_status.message)  # "Display is sleeping. Wake to use vision."
+elif display_status.state.value == "no_displays":
+    print(display_status.message)  # "No displays detected. Vision requires GUI session."
+    print(f"Headless: {display_status.is_headless}")
+```
+
+#### 3. SystemRecoveryHandler
+
+Attempts automatic recovery from system state issues.
+
+```python
+# Enable auto-recovery
+manager = initialize_system_state_manager(auto_recover=True)
+
+# Check system state (will auto-recover if possible)
+state_info = await manager.check_system_state()
+
+if state_info.health.value == "healthy":
+    print("✅ System healthy!")
+else:
+    print(f"System: {state_info.health.value}")
+    for suggestion in state_info.recovery_suggestions:
+        print(f"  - {suggestion}")
+```
+
+#### 4. SystemStateManager (Main)
+
+Main coordinator for system health monitoring.
+
+```python
+# Comprehensive system check
+state_info = await manager.check_system_state()
+
+print(f"Health: {state_info.health.value}")
+print(f"Can use vision: {state_info.can_use_vision}")
+print(f"Can use spaces: {state_info.can_use_spaces}")
+
+print("\nChecks passed:")
+for check in state_info.checks_passed:
+    print(f"  ✅ {check}")
+
+print("\nChecks failed:")
+for check in state_info.checks_failed:
+    print(f"  ❌ {check}")
+
+print("\nWarnings:")
+for warning in state_info.warnings:
+    print(f"  ⚠️ {warning}")
+```
+
+### Auto-Recovery Example
+
+```python
+# Initialize with auto-recovery enabled
+manager = initialize_system_state_manager(
+    auto_recover=True,  # Enable automatic recovery
+    yabai_timeout=5.0,   # Timeout for yabai commands
+    cache_ttl=5.0        # Cache TTL for health checks
+)
+
+# Check system state - will attempt recovery if needed
+state_info = await manager.check_system_state()
+
+if state_info.yabai_status.state.value == "running":
+    print("✅ Yabai running (auto-recovered if needed)")
+else:
+    print(f"Yabai status: {state_info.yabai_status.state.value}")
+    if state_info.yabai_status.can_recover:
+        print(f"Can recover with: {state_info.yabai_status.recovery_command}")
+```
+
+### Wait for Healthy State
+
+```python
+# Wait for system to become healthy (useful after recovery attempts)
+became_healthy, final_state = await manager.wait_for_healthy_state(
+    timeout=30.0,         # Maximum time to wait
+    check_interval=2.0    # Time between checks
+)
+
+if became_healthy:
+    print("✅ System is now healthy!")
+else:
+    print(f"❌ System did not become healthy: {final_state.health.value}")
+    for failure in final_state.checks_failed:
+        print(f"  - {failure}")
+```
+
+### Integration Example
+
+**In multi_space_capture_engine.py:**
+
+```python
+# Check system health before capture
+is_healthy, health_message, state_info = await engine.check_system_health()
+
+if not is_healthy:
+    logger.error(f"System health check failed: {health_message}")
+    return SpaceCaptureResult(
+        screenshots={},
+        metadata={},
+        success=False,
+        errors={-1: health_message}  # System-level error
+    )
+```
+
+**In action_executor.py:**
+
+```python
+# Check system health before yabai command
+if self.check_system_health and self.system_state_manager:
+    system_state = await self.system_state_manager.check_system_state()
+
+    if not system_state.can_use_spaces:
+        return StepResult(
+            success=False,
+            error=system_state.yabai_status.message  # Helpful error message
+        )
 ```
 
 ---
@@ -633,6 +810,105 @@ class CaptureStatus(Enum):
     FALLBACK_USED = "fallback_used"
 ```
 
+### SystemStateManager
+
+```python
+from context_intelligence.managers import get_system_state_manager, initialize_system_state_manager
+
+# Get singleton instance
+manager = get_system_state_manager()
+
+# Or initialize with custom settings
+manager = initialize_system_state_manager(
+    auto_recover=True,      # Enable automatic recovery
+    yabai_timeout=5.0,      # Timeout for yabai commands
+    cache_ttl=5.0           # Cache TTL for system state checks
+)
+
+# Check system state
+state_info: SystemStateInfo = await manager.check_system_state(use_cache: bool = True)
+
+# Wait for system to become healthy
+became_healthy, final_state = await manager.wait_for_healthy_state(
+    timeout: float = 30.0,
+    check_interval: float = 2.0
+)
+
+# Force cache refresh
+await manager.refresh_state()
+```
+
+#### SystemStateInfo
+
+```python
+@dataclass
+class SystemStateInfo:
+    health: SystemHealth  # HEALTHY, DEGRADED, UNHEALTHY
+    can_use_vision: bool
+    can_use_spaces: bool
+    yabai_status: YabaiStatus
+    display_status: DisplayStatus
+    checks_passed: List[str]
+    checks_failed: List[str]
+    warnings: List[str]
+    recovery_suggestions: List[str]
+    check_time: float
+```
+
+#### YabaiStatus
+
+```python
+@dataclass
+class YabaiStatus:
+    state: YabaiState  # RUNNING, NOT_INSTALLED, CRASHED, TIMEOUT
+    is_running: bool
+    can_recover: bool
+    message: str
+    recovery_command: Optional[str]
+    metadata: Dict[str, Any]
+```
+
+#### DisplayStatus
+
+```python
+@dataclass
+class DisplayStatus:
+    state: DisplayState  # AWAKE, SLEEPING, LOCKED, NO_DISPLAYS
+    is_available: bool
+    is_headless: bool
+    message: str
+    metadata: Dict[str, Any]
+```
+
+#### SystemHealth
+
+```python
+class SystemHealth(Enum):
+    HEALTHY = "healthy"        # All systems operational
+    DEGRADED = "degraded"      # Some warnings but functional
+    UNHEALTHY = "unhealthy"    # Critical issues, cannot operate
+```
+
+#### YabaiState
+
+```python
+class YabaiState(Enum):
+    RUNNING = "running"             # Yabai is running normally
+    NOT_INSTALLED = "not_installed" # Yabai not found
+    CRASHED = "crashed"             # Yabai process crashed
+    TIMEOUT = "timeout"             # Yabai command timed out
+```
+
+#### DisplayState
+
+```python
+class DisplayState(Enum):
+    AWAKE = "awake"             # Display is on and unlocked
+    SLEEPING = "sleeping"       # Display is asleep
+    LOCKED = "locked"           # Screen is locked
+    NO_DISPLAYS = "no_displays" # No displays detected (headless)
+```
+
 ---
 
 ## Troubleshooting
@@ -708,6 +984,66 @@ result = await manager.capture_window(
 )
 ```
 
+#### 6. Yabai Not Running
+
+**Symptom:** `YabaiState.NOT_INSTALLED` or `YabaiState.CRASHED`
+
+**Solution:**
+
+For not installed:
+```bash
+brew install koekeishiya/formulae/yabai
+brew services start yabai
+```
+
+For crashed:
+```bash
+brew services restart yabai
+```
+
+**Auto-recovery enabled:**
+```python
+# Initialize with auto-recovery
+manager = initialize_system_state_manager(auto_recover=True)
+
+# Will automatically attempt recovery
+state_info = await manager.check_system_state()
+if state_info.yabai_status.state.value == "running":
+    print("✅ Yabai recovered automatically")
+```
+
+#### 7. Display Sleeping or Locked
+
+**Symptom:** `DisplayState.SLEEPING` or `DisplayState.LOCKED`
+
+**Solution:** Wake the display or unlock the screen
+
+**Detect this condition:**
+```python
+manager = get_system_state_manager()
+state_info = await manager.check_system_state()
+
+if state_info.display_status.state.value == "locked":
+    print("Screen is locked. Unlock to continue.")
+elif state_info.display_status.state.value == "sleeping":
+    print("Display is sleeping. Wake to continue.")
+```
+
+#### 8. Headless Session (No Displays)
+
+**Symptom:** `DisplayState.NO_DISPLAYS`
+
+**Solution:** Vision features require a GUI session with displays attached
+
+**Detect this condition:**
+```python
+state_info = await manager.check_system_state()
+
+if state_info.display_status.is_headless:
+    print("No displays detected. Vision requires GUI session.")
+    print("Cannot use: screenshots, window capture, space management")
+```
+
 ### Debugging
 
 Enable detailed logging:
@@ -722,6 +1058,7 @@ logging.getLogger("vision").setLevel(logging.DEBUG)
 # Or for specific components
 logging.getLogger("context_intelligence.managers.space_state_manager").setLevel(logging.DEBUG)
 logging.getLogger("context_intelligence.managers.window_capture_manager").setLevel(logging.DEBUG)
+logging.getLogger("context_intelligence.managers.system_state_manager").setLevel(logging.DEBUG)
 ```
 
 Check metadata for detailed information:
@@ -751,6 +1088,7 @@ print(f"Metadata: {result.metadata}")
 - **Permission checks:** Cached for 60 seconds
 - **Space state:** Not cached (always fresh)
 - **Window validation:** Not cached (always fresh)
+- **System state:** Cached with configurable TTL (default 5 seconds)
 
 ### Async Operations
 
@@ -779,6 +1117,16 @@ for space_id in [1, 2, 3]:
 ---
 
 ## Version History
+
+### v1.1 (2025-10-19)
+- ✅ SystemStateManager with 5 system state edge cases
+- ✅ YabaiHealthChecker for yabai service monitoring
+- ✅ DisplayStateDetector for display state detection
+- ✅ SystemRecoveryHandler with automatic recovery
+- ✅ Integration with multi_space_capture_engine (health checks)
+- ✅ Integration with action_executor (health checks)
+- ✅ Enhanced documentation with system state API reference
+- ✅ New troubleshooting guides for system state issues
 
 ### v1.0 (2025-10-19)
 - ✅ Initial release
