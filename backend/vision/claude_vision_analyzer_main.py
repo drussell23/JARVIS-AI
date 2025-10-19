@@ -55,6 +55,20 @@ except ImportError:
     initialize_api_network_manager = lambda **kwargs: None
     logger.warning("APINetworkManager not available - edge case handling disabled")
 
+# Import OCR Strategy Manager for intelligent OCR fallbacks
+try:
+    from backend.context_intelligence.managers import (
+        get_ocr_strategy_manager,
+        initialize_ocr_strategy_manager,
+        OCRResult
+    )
+    OCR_STRATEGY_MANAGER_AVAILABLE = True
+except ImportError:
+    OCR_STRATEGY_MANAGER_AVAILABLE = False
+    get_ocr_strategy_manager = lambda: None
+    initialize_ocr_strategy_manager = lambda **kwargs: None
+    logger.warning("OCRStrategyManager not available - OCR fallbacks disabled")
+
 # Import Vision Intelligence System
 try:
     from .intelligence import (
@@ -950,6 +964,24 @@ class ClaudeVisionAnalyzer:
                 logger.info("✅ API/Network manager available for edge case handling")
             except Exception as e:
                 logger.warning(f"Failed to initialize API/Network manager: {e}")
+
+        # Initialize OCR Strategy Manager for intelligent OCR fallbacks
+        self.ocr_strategy_manager = None
+        if OCR_STRATEGY_MANAGER_AVAILABLE and self.client:
+            try:
+                # Try to get existing instance first
+                self.ocr_strategy_manager = get_ocr_strategy_manager()
+                if not self.ocr_strategy_manager:
+                    # Initialize with Claude API client
+                    self.ocr_strategy_manager = initialize_ocr_strategy_manager(
+                        api_client=self.client,
+                        cache_ttl=300.0,  # 5 minutes
+                        max_cache_entries=200,
+                        enable_error_matrix=True
+                    )
+                logger.info("✅ OCR Strategy Manager available for intelligent OCR with fallbacks")
+            except Exception as e:
+                logger.warning(f"Failed to initialize OCR Strategy Manager: {e}")
 
         # Initialize components based on config
         self.cache = (

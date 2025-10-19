@@ -15,10 +15,11 @@
 5. [API & Network Edge Cases](#api--network-edge-cases)
 6. [Error Handling Matrix](#error-handling-matrix)
 7. [Capture Fallbacks](#capture-fallbacks)
-8. [Integration Points](#integration-points)
-9. [Usage Examples](#usage-examples)
-10. [API Reference](#api-reference)
-11. [Troubleshooting](#troubleshooting)
+8. [OCR Fallbacks](#ocr-fallbacks)
+9. [Integration Points](#integration-points)
+10. [Usage Examples](#usage-examples)
+11. [API Reference](#api-reference)
+12. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -1504,6 +1505,635 @@ def initialize_capture_strategy_manager(
 
 ---
 
+## OCR Fallbacks
+
+### Overview
+
+**Location:** `backend/context_intelligence/managers/ocr_strategy_manager.py`
+
+The OCR Strategy Manager implements intelligent OCR text extraction with a 4-step fallback sequence:
+
+```
+1. Primary: Claude Vision API
+       ↓ (fails)
+2. Fallback 1: Use cached OCR (if <5min old)
+       ↓ (fails)
+3. Fallback 2: Local OCR (Tesseract)
+       ↓ (fails)
+4. Fallback 3: Return image metadata only
+```
+
+Uses the Error Handling Matrix for graceful degradation and cache management with TTL.
+
+### Components
+
+#### 1. OCRCache
+
+Manages cached OCR results with time-based expiration.
+
+```python
+from context_intelligence.managers import OCRCache, CachedOCR
+from datetime import datetime
+
+# Create cache
+cache = OCRCache(default_ttl=300.0, max_entries=200)  # 5 minutes
+
+# Store OCR result
+cached = CachedOCR(
+    text="Extracted text here",
+    image_hash="abc123def456",
+    timestamp=datetime.now(),
+    method="claude_vision",
+    confidence=0.95,
+    metadata={"source": "primary"}
+)
+cache.store(cached)
+
+# Retrieve by image hash
+cached_ocr = cache.get(image_hash="abc123def456", max_age=300.0)
+if cached_ocr:
+    print(f"Cache hit! Age: {cached_ocr.age_seconds():.1f}s")
+    print(f"Text: {cached_ocr.text}")
+    print(f"Confidence: {cached_ocr.confidence:.2f}")
+
+# Get stats
+stats = cache.get_stats()
+print(f"Total entries: {stats['total_entries']}")
+
+# Clear cache
+cache.clear()
+```
+
+**Features:**
+- Time-based expiration (default 5 minutes)
+- Image hash-based caching (MD5)
+- Automatic cleanup when max_entries exceeded
+- Cache validity checking
+- Confidence scoring
+
+#### 2. CachedOCR
+
+Data class representing a cached OCR result.
+
+```python
+@dataclass
+class CachedOCR:
+    text: str                     # Extracted text
+    image_hash: str               # Image hash (MD5)
+    timestamp: datetime           # Extraction time
+    method: str                   # Method used ("claude_vision", "tesseract", "metadata")
+    confidence: float             # Confidence score (0.0-1.0)
+    metadata: Dict[str, Any]      # Additional metadata
+
+    def is_valid(self, max_age_seconds: float = 300.0) -> bool:
+        """Check if cache is still valid"""
+
+    def age_seconds(self) -> float:
+        """Get age in seconds"""
+```
+
+#### 3. ClaudeVisionOCR
+
+Primary OCR engine using Claude Vision API.
+
+```python
+from context_intelligence.managers import ClaudeVisionOCR
+
+# Initialize with Anthropic client
+ocr_engine = ClaudeVisionOCR(api_client=anthropic_client)
+
+# Extract text
+text, confidence = await ocr_engine.extract_text(
+    image_path="/path/to/screenshot.png",
+    prompt="Extract all text from this image"  # Optional custom prompt
+)
+
+print(f"Extracted: {text}")
+print(f"Confidence: {confidence:.2f}")
+```
+
+**Features:**
+- Uses Claude 3.5 Sonnet for highest accuracy
+- Custom prompts supported
+- Automatic confidence scoring (0.95 for successful extractions)
+- Base64 image encoding
+- Async execution
+
+#### 4. TesseractOCR
+
+Fallback local OCR engine.
+
+```python
+from context_intelligence.managers import TesseractOCR
+
+# Initialize
+ocr_engine = TesseractOCR()
+
+# Check availability
+if ocr_engine.is_available:
+    # Extract text
+    text, confidence = await ocr_engine.extract_text("/path/to/screenshot.png")
+    print(f"Extracted: {text}")
+    print(f"Confidence: {confidence:.2f}")
+else:
+    print("Tesseract not installed. Install with: brew install tesseract")
+```
+
+**Features:**
+- Uses Tesseract OCR engine (local, no API needed)
+- Automatic confidence parsing from TSV output
+- Async execution (runs in thread pool)
+- OEM 3 (best OCR engine mode)
+- PSM 6 (uniform text block)
+
+#### 5. ImageHasher & ImageMetadataExtractor
+
+Utilities for image processing.
+
+```python
+from context_intelligence.managers import ImageHasher, ImageMetadataExtractor
+
+# Compute image hash
+hasher = ImageHasher()
+image_hash = hasher.compute_hash("/path/to/image.png")
+print(f"Hash: {image_hash}")
+
+# Extract metadata
+extractor = ImageMetadataExtractor()
+metadata = await extractor.extract_metadata("/path/to/image.png")
+print(f"Size: {metadata['width']}x{metadata['height']}")
+print(f"Format: {metadata['format']}")
+print(f"File size: {metadata['size_bytes']} bytes")
+```
+
+#### 6. OCRStrategyManager (Main)
+
+Main coordinator for intelligent OCR with fallbacks.
+
+```python
+from context_intelligence.managers import (
+    initialize_ocr_strategy_manager,
+    get_ocr_strategy_manager
+)
+from anthropic import Anthropic
+
+# Initialize manager
+client = Anthropic(api_key="your-api-key")
+manager = initialize_ocr_strategy_manager(
+    api_client=client,
+    cache_ttl=300.0,              # Cache time-to-live (5 minutes)
+    max_cache_entries=200,        # Maximum cache entries
+    enable_error_matrix=True      # Use Error Handling Matrix
+)
+
+# Or get existing instance
+manager = get_ocr_strategy_manager()
+
+# Extract text with full fallback chain
+result = await manager.extract_text_with_fallbacks(
+    image_path="/path/to/screenshot.png",
+    prompt=None,                  # Optional custom prompt
+    cache_max_age=300.0,          # Optional: max cache age
+    skip_cache=False              # Optional: skip cache lookup
+)
+
+if result.success:
+    print(f"✅ Extracted {len(result.text)} characters")
+    print(f"   Method: {result.method}")
+    print(f"   Confidence: {result.confidence:.2f}")
+    print(f"   Execution time: {result.execution_time:.2f}s")
+    print(f"   Text: {result.text}")
+else:
+    print(f"❌ OCR failed: {result.error}")
+
+# Get cache stats
+stats = manager.get_cache_stats()
+print(f"Cache entries: {stats['total_entries']}")
+
+# Clear cache
+manager.clear_cache()
+```
+
+### Fallback Sequence
+
+#### Step 1: Claude Vision API (Primary)
+
+If Claude API client is available, attempts OCR using Claude Vision.
+
+```python
+# Automatic with manager
+result = await manager.extract_text_with_fallbacks(
+    image_path="/path/to/screenshot.png"
+)
+
+# result.method will be "claude_vision" if successful
+```
+
+**Behavior:**
+- Timeout: 60 seconds
+- Priority: PRIMARY
+- Confidence: 0.95 (high)
+- On success: Caches result and returns immediately
+- On failure: Proceeds to Step 2
+
+**Handles:**
+- Rate limits (429) → Fallback to cache or Tesseract
+- Network errors → Fallback to cache or Tesseract
+- API timeouts → Fallback to cache or Tesseract
+- Invalid API key → Fallback to cache or Tesseract
+
+#### Step 2: Cached OCR (Fallback 1)
+
+If primary fails, checks cache for recent OCR results.
+
+```python
+# Cache is checked automatically
+result = await manager.extract_text_with_fallbacks(
+    image_path="/path/to/screenshot.png",
+    cache_max_age=300.0  # Use cache if <5 minutes old
+)
+
+# result.method will be "cached_claude_vision" or "cached_tesseract" if from cache
+```
+
+**Behavior:**
+- Timeout: 1 second (fast lookup)
+- Priority: FALLBACK
+- Uses image hash (MD5) for cache lookup
+- Returns cached result if valid
+- On failure: Proceeds to Step 3
+
+#### Step 3: Tesseract OCR (Fallback 2)
+
+If cache misses, uses local Tesseract OCR.
+
+```python
+# Automatic fallback to Tesseract
+result = await manager.extract_text_with_fallbacks(
+    image_path="/path/to/screenshot.png"
+)
+
+# result.method will be "tesseract" if Tesseract was used
+```
+
+**Behavior:**
+- Timeout: 30 seconds
+- Priority: SECONDARY
+- Requires Tesseract installed (`brew install tesseract`)
+- On success: Caches result for future use
+- On failure: Proceeds to Step 4
+
+**Installation:**
+```bash
+brew install tesseract
+```
+
+#### Step 4: Image Metadata (Fallback 3)
+
+If all OCR methods fail, returns basic image metadata.
+
+```python
+# Final fallback
+result = await manager.extract_text_with_fallbacks(
+    image_path="/path/to/screenshot.png"
+)
+
+# If all methods fail, result.method will be "metadata"
+# result.text will contain: "Image: 1920x1080, screenshot.png"
+```
+
+**Behavior:**
+- Timeout: 5 seconds
+- Priority: LAST_RESORT
+- Always succeeds (unless file doesn't exist)
+- Returns formatted metadata string
+
+### Integration Examples
+
+**In vision/adapters/ocr.py:**
+
+```python
+from context_intelligence.managers import get_ocr_strategy_manager
+
+async def ocr_text_from_snapshot(snapshot_id: str, use_claude: bool = True) -> str:
+    """Extract OCR text with intelligent fallbacks"""
+
+    # Resolve snapshot path
+    snapshot_path = _resolve_snapshot_path(snapshot_id)
+
+    if not snapshot_path:
+        return ""
+
+    # Use OCR Strategy Manager
+    manager = get_ocr_strategy_manager()
+
+    if manager and use_claude:
+        # Extract with full fallback chain
+        result = await manager.extract_text_with_fallbacks(
+            image_path=str(snapshot_path),
+            cache_max_age=300.0,
+            skip_cache=False
+        )
+
+        if result.success:
+            logger.info(f"✅ OCR: {result.method} (confidence={result.confidence:.2f})")
+            return result.text
+
+    # Fallback to legacy Tesseract-only
+    return await legacy_ocr(snapshot_path)
+```
+
+**In claude_vision_analyzer_main.py:**
+
+```python
+from backend.context_intelligence.managers import (
+    get_ocr_strategy_manager,
+    initialize_ocr_strategy_manager
+)
+
+class EnhancedClaudeVisionAnalyzer:
+    def __init__(self, api_key: str, config: VisionConfig):
+        # Initialize Anthropic client
+        self.client = Anthropic(api_key=api_key)
+
+        # Initialize OCR Strategy Manager
+        self.ocr_strategy_manager = get_ocr_strategy_manager()
+        if not self.ocr_strategy_manager:
+            self.ocr_strategy_manager = initialize_ocr_strategy_manager(
+                api_client=self.client,
+                cache_ttl=300.0,
+                max_cache_entries=200,
+                enable_error_matrix=True
+            )
+        logger.info("✅ OCR Strategy Manager initialized")
+
+    async def extract_text_from_image(self, image_path: str) -> str:
+        """Extract text using OCR Strategy Manager"""
+        if self.ocr_strategy_manager:
+            result = await self.ocr_strategy_manager.extract_text_with_fallbacks(
+                image_path=image_path
+            )
+            return result.text if result.success else ""
+        return ""
+```
+
+### Usage Examples
+
+#### Example 1: Simple Text Extraction
+
+```python
+from context_intelligence.managers import get_ocr_strategy_manager
+
+async def extract_text_smart(image_path: str):
+    manager = get_ocr_strategy_manager()
+
+    # Extract with automatic fallbacks
+    result = await manager.extract_text_with_fallbacks(image_path)
+
+    if result.success:
+        print(f"✅ Extracted {len(result.text)} characters")
+        print(f"   Method: {result.method}")
+        print(f"   Confidence: {result.confidence:.2f}")
+        return result.text
+    else:
+        print(f"❌ Failed: {result.error}")
+        return ""
+```
+
+#### Example 2: Custom Prompt for Specific Extraction
+
+```python
+async def extract_code_from_screenshot(image_path: str):
+    manager = get_ocr_strategy_manager()
+
+    # Custom prompt for code extraction
+    result = await manager.extract_text_with_fallbacks(
+        image_path=image_path,
+        prompt=(
+            "Extract all code from this screenshot. "
+            "Preserve indentation and formatting. "
+            "Return ONLY the code, nothing else."
+        )
+    )
+
+    if result.success and result.method == "claude_vision":
+        # Claude Vision was used (best for code)
+        return result.text
+    elif result.success:
+        # Fallback method was used
+        print(f"⚠️ Using fallback: {result.method}")
+        return result.text
+    else:
+        return ""
+```
+
+#### Example 3: Batch Text Extraction with Caching
+
+```python
+async def extract_text_from_multiple_images(image_paths: List[str]):
+    manager = get_ocr_strategy_manager()
+
+    results = []
+
+    for path in image_paths:
+        # First call: Extracts and caches
+        result = await manager.extract_text_with_fallbacks(path)
+
+        if result.success:
+            results.append({
+                "path": path,
+                "text": result.text,
+                "method": result.method,
+                "confidence": result.confidence,
+                "cached": "cached" in result.method
+            })
+
+    # Second pass through same images: Uses cache
+    for path in image_paths:
+        result = await manager.extract_text_with_fallbacks(path)
+        # Will use cache (very fast)
+
+    return results
+```
+
+#### Example 4: Skip Cache for Fresh Extraction
+
+```python
+async def force_fresh_ocr(image_path: str):
+    manager = get_ocr_strategy_manager()
+
+    # Force fresh extraction (skip cache)
+    result = await manager.extract_text_with_fallbacks(
+        image_path=image_path,
+        skip_cache=True  # Always extract fresh
+    )
+
+    return result.text if result.success else ""
+```
+
+#### Example 5: Adjust Cache TTL
+
+```python
+async def extract_with_short_cache(image_path: str):
+    manager = get_ocr_strategy_manager()
+
+    # Use cache only if <60 seconds old (instead of default 5 minutes)
+    result = await manager.extract_text_with_fallbacks(
+        image_path=image_path,
+        cache_max_age=60.0  # 60 seconds
+    )
+
+    return result.text if result.success else ""
+```
+
+### Result Quality Reporting
+
+The manager reports result quality based on which method succeeded:
+
+```python
+result = await manager.extract_text_with_fallbacks(image_path)
+
+# Check method used:
+if result.method == "claude_vision":
+    # FULL quality - Primary method
+    quality = "FULL"
+elif result.method.startswith("cached_"):
+    # PARTIAL quality - Using cache
+    quality = "PARTIAL"
+elif result.method == "tesseract":
+    # DEGRADED quality - Fallback method
+    quality = "DEGRADED"
+elif result.method == "metadata":
+    # MINIMAL quality - Last resort
+    quality = "MINIMAL"
+else:
+    # FAILED - All methods failed
+    quality = "FAILED"
+
+print(f"Quality: {quality} (method={result.method}, confidence={result.confidence:.2f})")
+```
+
+### Benefits
+
+✅ **Intelligent Fallbacks** - Automatic progression through OCR methods
+✅ **Cache Management** - Reduces API calls and cost for repeated extractions
+✅ **Error Matrix Integration** - Leverages existing error handling infrastructure
+✅ **Result Quality Tracking** - Know which method was used and confidence level
+✅ **User-Friendly Errors** - Helpful messages when all methods fail
+✅ **Flexible Configuration** - Configurable TTL and cache size
+✅ **Async Support** - Fully async with timeout support
+✅ **Cost Optimization** - Uses cached results when possible, falls back to free Tesseract
+✅ **High Accuracy** - Claude Vision provides best-in-class OCR accuracy
+
+### API Reference
+
+#### OCRStrategyManager
+
+```python
+class OCRStrategyManager:
+    def __init__(
+        self,
+        api_client: Any = None,
+        cache_ttl: float = 300.0,
+        max_cache_entries: int = 200,
+        enable_error_matrix: bool = True
+    )
+
+    async def extract_text_with_fallbacks(
+        self,
+        image_path: str,
+        prompt: Optional[str] = None,
+        cache_max_age: Optional[float] = None,
+        skip_cache: bool = False
+    ) -> OCRResult:
+        """
+        Extract text with intelligent fallbacks
+
+        Returns:
+            OCRResult with extracted text and metadata
+        """
+
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Get cache statistics"""
+
+    def clear_cache(self):
+        """Clear all cache"""
+```
+
+#### OCRResult
+
+```python
+@dataclass
+class OCRResult:
+    success: bool                 # Whether extraction succeeded
+    text: str                     # Extracted text
+    confidence: float             # Confidence score (0.0-1.0)
+    method: str                   # Method used
+    image_hash: str               # Image hash (MD5)
+    metadata: Dict[str, Any]      # Additional metadata
+    error: Optional[str]          # Error message if failed
+    execution_time: float         # Execution time in seconds
+```
+
+#### OCRCache
+
+```python
+class OCRCache:
+    def __init__(self, default_ttl: float = 300.0, max_entries: int = 200)
+
+    def get(
+        self,
+        image_hash: str,
+        max_age: Optional[float] = None
+    ) -> Optional[CachedOCR]:
+        """Get cached OCR result by image hash"""
+
+    def store(self, ocr_result: CachedOCR):
+        """Store OCR result in cache"""
+
+    def clear(self):
+        """Clear all cache"""
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get cache statistics"""
+```
+
+#### CachedOCR
+
+```python
+@dataclass
+class CachedOCR:
+    text: str                     # Extracted text
+    image_hash: str               # Image hash
+    timestamp: datetime           # Extraction time
+    method: str                   # Method used
+    confidence: float             # Confidence score
+    metadata: Dict[str, Any]      # Additional metadata
+
+    def is_valid(self, max_age_seconds: float = 300.0) -> bool:
+        """Check if cache is still valid"""
+
+    def age_seconds(self) -> float:
+        """Get age in seconds since extraction"""
+```
+
+#### Global Functions
+
+```python
+def get_ocr_strategy_manager() -> Optional[OCRStrategyManager]:
+    """Get the global OCR strategy manager instance"""
+
+def initialize_ocr_strategy_manager(
+    api_client: Any = None,
+    cache_ttl: float = 300.0,
+    max_cache_entries: int = 200,
+    enable_error_matrix: bool = True
+) -> OCRStrategyManager:
+    """Initialize the global OCR strategy manager"""
+```
+
+---
+
 ## Integration Points
 
 ### 1. Temporal Query Handler
@@ -2318,9 +2948,14 @@ for space_id in [1, 2, 3]:
 - ✅ ErrorMessageGenerator for user-friendly messages with suggestions
 - ✅ Result quality levels (FULL, DEGRADED, PARTIAL, MINIMAL, FAILED)
 - ✅ CaptureStrategyManager for intelligent capture fallbacks (window→space→cache→error)
-- ✅ CaptureCache with TTL-based screenshot caching
+- ✅ CaptureCache with TTL-based screenshot caching (60 seconds)
+- ✅ OCRStrategyManager for intelligent OCR fallbacks (Claude→cache→Tesseract→metadata)
+- ✅ OCRCache with TTL-based OCR result caching (5 minutes)
+- ✅ ClaudeVisionOCR and TesseractOCR engines
 - ✅ Integration with reliable_screenshot_capture.py
 - ✅ Integration with multi_space_capture_engine.py
+- ✅ Integration with vision/adapters/ocr.py
+- ✅ Integration with claude_vision_analyzer_main.py
 - ✅ Comprehensive documentation with examples and flow diagrams
 
 ### v1.2 (2025-10-19)

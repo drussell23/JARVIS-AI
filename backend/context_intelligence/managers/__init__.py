@@ -86,6 +86,19 @@ from .capture_strategy_manager import (
     initialize_capture_strategy_manager
 )
 
+from .ocr_strategy_manager import (
+    OCRStrategyManager,
+    OCRCache,
+    CachedOCR,
+    OCRResult,
+    ClaudeVisionOCR,
+    TesseractOCR,
+    ImageHasher,
+    ImageMetadataExtractor,
+    get_ocr_strategy_manager,
+    initialize_ocr_strategy_manager
+)
+
 __all__ = [
     # Space State Management
     'SpaceStateManager',
@@ -161,4 +174,16 @@ __all__ = [
     'CachedCapture',
     'get_capture_strategy_manager',
     'initialize_capture_strategy_manager',
+
+    # OCR Strategy Management
+    'OCRStrategyManager',
+    'OCRCache',
+    'CachedOCR',
+    'OCRResult',
+    'ClaudeVisionOCR',
+    'TesseractOCR',
+    'ImageHasher',
+    'ImageMetadataExtractor',
+    'get_ocr_strategy_manager',
+    'initialize_ocr_strategy_manager',
 ]

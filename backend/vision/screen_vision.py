@@ -37,6 +37,19 @@ except ImportError:
     except ImportError:
         ClaudeVisionAnalyzer = None
 
+# Import OCR Strategy Manager for intelligent OCR fallbacks
+try:
+    from backend.context_intelligence.managers import (
+        get_ocr_strategy_manager,
+        initialize_ocr_strategy_manager
+    )
+    OCR_STRATEGY_AVAILABLE = True
+except ImportError:
+    OCR_STRATEGY_AVAILABLE = False
+    get_ocr_strategy_manager = lambda: None
+    initialize_ocr_strategy_manager = lambda **kwargs: None
+    logger.warning("OCRStrategyManager not available - using legacy Tesseract only")
+
 
 class UpdateType(Enum):
     """Types of software updates that can be detected"""
@@ -90,6 +103,25 @@ class ScreenVisionSystem:
                 self.claude_analyzer = ClaudeVisionAnalyzer(api_key)
             except Exception as e:
                 print(f"Failed to initialize Claude Vision Analyzer: {e}")
+
+        # Initialize OCR Strategy Manager for intelligent OCR with fallbacks
+        self.ocr_strategy_manager = None
+        if OCR_STRATEGY_AVAILABLE and self.claude_analyzer:
+            try:
+                # Get Claude API client from analyzer if available
+                client = getattr(self.claude_analyzer, 'client', None)
+                if client:
+                    self.ocr_strategy_manager = get_ocr_strategy_manager()
+                    if not self.ocr_strategy_manager:
+                        self.ocr_strategy_manager = initialize_ocr_strategy_manager(
+                            api_client=client,
+                            cache_ttl=300.0,  # 5 minutes
+                            max_cache_entries=200,
+                            enable_error_matrix=True
+                        )
+                    logger.info("✅ OCR Strategy Manager initialized for intelligent OCR")
+            except Exception as e:
+                logger.warning(f"Failed to initialize OCR Strategy Manager: {e}")
 
     def _initialize_update_patterns(self) -> Dict[str, List[re.Pattern]]:
         """Initialize patterns for detecting software updates"""
@@ -228,8 +260,51 @@ class ScreenVisionSystem:
             print(f"Data size: {len(pixel_data) if pixel_data else 'None'}")
             return None
 
+    async def extract_text_from_image(self, image_path: str) -> Tuple[str, float]:
+        """
+        Extract all text from an image using intelligent OCR with fallbacks
+
+        Args:
+            image_path: Path to image file
+
+        Returns:
+            (extracted_text, confidence)
+        """
+        if self.ocr_strategy_manager:
+            try:
+                result = await self.ocr_strategy_manager.extract_text_with_fallbacks(
+                    image_path=image_path,
+                    cache_max_age=300.0
+                )
+
+                if result.success:
+                    logger.info(
+                        f"✅ OCR: extracted {len(result.text)} chars via {result.method} "
+                        f"(confidence={result.confidence:.2f})"
+                    )
+                    return result.text, result.confidence
+                else:
+                    logger.warning(f"OCR Strategy Manager failed: {result.error}")
+            except Exception as e:
+                logger.error(f"OCR Strategy Manager error: {e}")
+
+        # Fallback to legacy pytesseract
+        try:
+            from PIL import Image as PILImage
+            img = PILImage.open(image_path)
+            text = pytesseract.image_to_string(img).strip()
+            return text, 0.5  # Default medium confidence
+        except Exception as e:
+            logger.error(f"Legacy OCR failed: {e}")
+            return "", 0.0
+
     async def detect_text_regions(self, image: np.ndarray) -> List[ScreenElement]:
-        """Detect and extract text regions from screen image"""
+        """
+        Detect and extract text regions from screen image
+
+        Note: This method uses pytesseract directly for ROI-based detection.
+        For full-image OCR with intelligent fallbacks, use extract_text_from_image()
+        """
         elements = []
 
         # Convert to grayscale for better OCR
@@ -250,7 +325,7 @@ class ScreenVisionSystem:
             if w < 20 or h < 10:
                 continue
 
-            # Extract region and perform OCR
+            # Extract region and perform OCR (using pytesseract for small ROIs)
             roi = image[y : y + h, x : x + w]
             text = pytesseract.image_to_string(roi, config="--psm 8").strip()
 

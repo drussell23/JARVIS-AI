@@ -41,6 +41,14 @@ from .managers import (
     initialize_capture_strategy_manager,
     CaptureStrategyManager,
 )
+from .managers import (
+    get_ocr_strategy_manager,
+    initialize_ocr_strategy_manager,
+    OCRStrategyManager,
+    OCRCache,
+    CachedOCR,
+    OCRResult,
+)
 
 __all__ = [
     "get_document_writer",
@@ -81,4 +89,10 @@ __all__ = [
     "get_capture_strategy_manager",
     "initialize_capture_strategy_manager",
     "CaptureStrategyManager",
+    "get_ocr_strategy_manager",
+    "initialize_ocr_strategy_manager",
+    "OCRStrategyManager",
+    "OCRCache",
+    "CachedOCR",
+    "OCRResult",
 ]
