@@ -1,6 +1,6 @@
 # Edge Case Handling System - Complete Documentation
 
-**Version:** 1.1
+**Version:** 1.2
 **Last Updated:** 2025-10-19
 **Status:** ✅ Production Ready
 
@@ -12,16 +12,17 @@
 2. [Space-Related Edge Cases](#space-related-edge-cases)
 3. [Window Capture Edge Cases](#window-capture-edge-cases)
 4. [System State Edge Cases](#system-state-edge-cases)
-5. [Integration Points](#integration-points)
-6. [Usage Examples](#usage-examples)
-7. [API Reference](#api-reference)
-8. [Troubleshooting](#troubleshooting)
+5. [API & Network Edge Cases](#api--network-edge-cases)
+6. [Integration Points](#integration-points)
+7. [Usage Examples](#usage-examples)
+8. [API Reference](#api-reference)
+9. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Overview
 
-The Edge Case Handling System provides comprehensive, robust handling for all macOS space, window capture, and system state edge cases. It ensures JARVIS can gracefully handle failures, provide helpful error messages, and automatically retry or fallback when needed.
+The Edge Case Handling System provides comprehensive, robust handling for all macOS space, window capture, system state, and API/network edge cases. It ensures JARVIS can gracefully handle failures, provide helpful error messages, and automatically retry or fallback when needed.
 
 ### Key Features
 
@@ -33,6 +34,9 @@ The Edge Case Handling System provides comprehensive, robust handling for all ma
 ✅ **Zero Dependencies** - Uses native macOS tools (yabai, screencapture, sips)
 ✅ **Auto-Recovery** - Automatic service restart and recovery attempts
 ✅ **System Health Monitoring** - Continuous health checks for critical services
+✅ **Network Detection** - Real-time network connectivity monitoring
+✅ **Image Optimization** - Automatic image resizing and compression for API limits
+✅ **Circuit Breaker** - Prevents API overload with intelligent request throttling
 
 ### Architecture
 
@@ -45,7 +49,8 @@ Intent Analyzer
 │  Edge Case Validation                            │
 │  ├── SystemStateManager (system health)          │
 │  ├── SpaceStateManager (space validation)        │
-│  └── WindowCaptureManager (window capture)       │
+│  ├── WindowCaptureManager (window capture)       │
+│  └── APINetworkManager (API/network readiness)   │
 └──────────────────────────────────────────────────┘
     ↓
 Action Execution / Vision Processing
@@ -423,6 +428,272 @@ if self.check_system_health and self.system_state_manager:
             success=False,
             error=system_state.yabai_status.message  # Helpful error message
         )
+```
+
+---
+
+## API & Network Edge Cases
+
+### APINetworkManager
+
+**Location:** `backend/context_intelligence/managers/api_network_manager.py`
+
+Handles all Claude API and network-related edge cases before making API calls.
+
+### Supported Edge Cases
+
+| Edge Case | Cause | Handling |
+|-----------|-------|----------|
+| **Claude API timeout** | Network issues, slow response | Retry 3x with exponential backoff (1s, 2s, 4s) |
+| **Rate limit (429)** | Too many requests | Wait & retry, use cached results if available |
+| **Invalid API key** | Expired/wrong key | `"Claude API key invalid. Check .env"` |
+| **Image too large** | Screenshot >5MB | Resize to max 2560px width, compress to JPEG 85% |
+| **Network offline** | No internet | `"Offline. Vision requires internet for Claude API."` |
+
+### Components
+
+#### 1. APIHealthChecker
+
+Monitors Claude API health and detects issues.
+
+```python
+from context_intelligence.managers import get_api_network_manager
+
+manager = get_api_network_manager()
+
+# Check API status
+api_status = await manager.api_health_checker.check_api_status()
+
+if api_status.state.value == "invalid_key":
+    print(api_status.message)  # "Claude API key invalid. Check .env file."
+elif api_status.state.value == "rate_limited":
+    print(f"Rate limited. Wait {api_status.retry_after_seconds}s")
+elif api_status.state.value == "available":
+    print("API ready for calls")
+```
+
+**Features:**
+- API key format validation
+- Rate limit detection (429 responses)
+- Circuit breaker pattern (opens after 5 consecutive failures)
+- Automatic rate limit tracking
+
+#### 2. NetworkDetector
+
+Detects network connectivity in real-time.
+
+```python
+# Check network status
+network_status = await manager.network_detector.check_network_status()
+
+if network_status.state.value == "offline":
+    print(network_status.message)  # "Offline. Vision requires internet for Claude API."
+elif network_status.state.value == "online":
+    print(f"Online (latency: {network_status.latency_ms:.1f}ms)")
+elif network_status.state.value == "degraded":
+    print(f"Slow connection (latency: {network_status.latency_ms:.1f}ms)")
+```
+
+**Features:**
+- Ping-based connectivity test (Cloudflare DNS 1.1.1.1)
+- Latency measurement
+- Connection quality assessment (online vs degraded)
+- 5-second cache for status checks
+
+#### 3. ImageOptimizer
+
+Optimizes images for Claude API size limits.
+
+```python
+# Optimize image before sending to API
+opt_result = await manager.image_optimizer.optimize_image(
+    image_path="/tmp/screenshot.png"
+)
+
+if opt_result.success:
+    print(f"✅ {opt_result.message}")
+    print(f"   Original: {opt_result.original_size_bytes // 1024}KB")
+    print(f"   Optimized: {opt_result.optimized_size_bytes // 1024}KB")
+    print(f"   Reduction: {opt_result.size_reduction_percent:.1f}%")
+
+    # Use optimized image
+    image_to_send = opt_result.optimized_path
+```
+
+**Features:**
+- Automatic resize to max 2560px width (configurable)
+- JPEG compression at 85% quality (configurable)
+- PNG → JPEG conversion for smaller size
+- 5MB size limit enforcement
+- Uses native macOS `sips` tool (no PIL dependency)
+
+#### 4. RetryHandler
+
+Handles retry logic with exponential backoff.
+
+```python
+# Execute API call with retry
+async def make_api_call():
+    return await client.messages.create(...)
+
+retry_result = await manager.retry_handler.retry_with_backoff(
+    make_api_call,
+    cache_key="analysis_123"  # Optional caching
+)
+
+if retry_result.success:
+    print(f"✅ Success after {retry_result.attempts} attempt(s)")
+    print(f"   Total delay: {retry_result.total_delay:.1f}s")
+    result = retry_result.result
+else:
+    print(f"❌ Failed after {retry_result.attempts} attempts")
+    print(f"   Error: {retry_result.final_error}")
+```
+
+**Features:**
+- Exponential backoff (1s, 2s, 4s, 8s, ...)
+- Configurable max retries (default: 3)
+- Result caching with TTL (default: 5 minutes)
+- Automatic cache key generation
+
+#### 5. APINetworkManager (Main)
+
+Main coordinator for all API/network edge cases.
+
+```python
+from context_intelligence.managers import initialize_api_network_manager
+
+# Initialize manager
+manager = initialize_api_network_manager(
+    api_key=os.getenv("ANTHROPIC_API_KEY"),
+    max_retries=3,
+    initial_retry_delay=1.0,
+    max_image_width=2560,
+    max_image_size_mb=5.0
+)
+
+# Check readiness before API call
+is_ready, message, status_info = await manager.check_ready_for_api_call()
+
+if not is_ready:
+    print(f"❌ Not ready: {message}")
+    # Handle specific issues
+    if "network" in status_info:
+        print(f"   Network: {status_info['network'].state.value}")
+    if "api" in status_info:
+        print(f"   API: {status_info['api'].state.value}")
+else:
+    print("✅ Ready for API call")
+    # Proceed with API call
+```
+
+**Comprehensive API call with all edge cases:**
+
+```python
+# Execute API call with full edge case handling
+async def my_api_call(prompt, image_path):
+    response = await client.messages.create(
+        model="claude-3-5-sonnet-20241022",
+        max_tokens=1500,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "image", "source": {"type": "path", "path": image_path}},
+                {"type": "text", "text": prompt}
+            ]
+        }]
+    )
+    return response
+
+# Let manager handle all edge cases
+result = await manager.execute_api_call_with_retry(
+    my_api_call,
+    prompt="Analyze this screenshot",
+    optimize_image="/tmp/large_screenshot.png",  # Will optimize before call
+    cache_key="screenshot_analysis_123"  # Cache successful result
+)
+
+if result.success:
+    print(f"✅ API call succeeded")
+    print(f"   Attempts: {result.attempts}")
+    print(f"   Total delay: {result.total_delay:.1f}s")
+    response = result.result
+else:
+    print(f"❌ API call failed: {result.final_error}")
+    # Helpful error message with specific issue
+```
+
+### Integration Examples
+
+**In claude_streamer.py:**
+
+```python
+# Check API/Network readiness before streaming
+if self._api_network_manager:
+    is_ready, message, status_info = await self._api_network_manager.check_ready_for_api_call()
+
+    if not is_ready:
+        # Return helpful error to user
+        yield f"\n⚠️  {message}\n"
+        return
+
+    # Proceed with streaming
+    async for chunk in self._stream_with_model(...):
+        yield chunk
+```
+
+**In claude_vision_analyzer_main.py:**
+
+```python
+# Initialize with API/Network manager
+self.api_network_manager = initialize_api_network_manager(
+    api_key=api_key,
+    max_image_width=self.config.max_image_dimension,
+    max_image_size_mb=5.0
+)
+
+# Before making vision API call
+if self.api_network_manager:
+    # Optimize image first
+    opt_result = await self.api_network_manager.image_optimizer.optimize_image(image_path)
+
+    if opt_result.success:
+        # Use optimized image
+        image_to_send = opt_result.optimized_path
+```
+
+### Wait for Ready State
+
+```python
+# Wait for system to become ready (e.g., after network outage)
+became_ready, message = await manager.wait_for_ready(timeout=60.0)
+
+if became_ready:
+    print("✅ System is now ready for API calls")
+    # Proceed with API calls
+else:
+    print(f"❌ Timeout: {message}")
+    # Still not ready after 60s
+```
+
+### Circuit Breaker Example
+
+```python
+# Circuit breaker prevents overload after failures
+for i in range(10):
+    api_status = await manager.api_health_checker.check_api_status()
+
+    if api_status.state.value == "unavailable" and api_status.metadata.get("circuit_breaker") == "open":
+        print(f"Circuit breaker open. Wait {api_status.retry_after_seconds}s")
+        await asyncio.sleep(api_status.retry_after_seconds)
+        continue
+
+    # Make API call
+    try:
+        result = await make_api_call()
+        manager.api_health_checker.record_success()  # Reset circuit breaker
+    except Exception as e:
+        manager.api_health_checker.record_failure()  # Increment failure count
 ```
 
 ---
@@ -909,6 +1180,121 @@ class DisplayState(Enum):
     NO_DISPLAYS = "no_displays" # No displays detected (headless)
 ```
 
+### APINetworkManager
+
+```python
+from context_intelligence.managers import get_api_network_manager, initialize_api_network_manager
+
+# Get singleton instance
+manager = get_api_network_manager()
+
+# Or initialize with custom settings
+manager = initialize_api_network_manager(
+    api_key=os.getenv("ANTHROPIC_API_KEY"),
+    max_retries=3,              # Maximum retry attempts
+    initial_retry_delay=1.0,    # Initial retry delay in seconds
+    max_image_width=2560,       # Maximum image width before resizing
+    max_image_size_mb=5.0       # Maximum image size before compression
+)
+
+# Check readiness for API call
+is_ready, message, status_info = await manager.check_ready_for_api_call()
+
+# Execute API call with full edge case handling
+result = await manager.execute_api_call_with_retry(
+    func=api_function,
+    optimize_image="/path/to/image.png",  # Optional image optimization
+    cache_key="unique_cache_key"          # Optional caching
+)
+
+# Wait for system to become ready
+became_ready, message = await manager.wait_for_ready(timeout=60.0)
+```
+
+#### APIStatus
+
+```python
+@dataclass
+class APIStatus:
+    state: APIState  # AVAILABLE, RATE_LIMITED, INVALID_KEY, TIMEOUT, UNAVAILABLE
+    is_available: bool
+    can_retry: bool
+    message: str
+    rate_limit_reset: Optional[datetime]
+    retry_after_seconds: Optional[int]
+    last_success: Optional[datetime]
+    consecutive_failures: int
+    metadata: Dict[str, Any]
+```
+
+#### NetworkStatus
+
+```python
+@dataclass
+class NetworkStatus:
+    state: NetworkState  # ONLINE, OFFLINE, DEGRADED
+    is_online: bool
+    latency_ms: Optional[float]
+    message: str
+    last_check: datetime
+    metadata: Dict[str, Any]
+```
+
+#### ImageOptimizationResult
+
+```python
+@dataclass
+class ImageOptimizationResult:
+    status: ImageOptimizationStatus  # ALREADY_OPTIMIZED, RESIZED, COMPRESSED, CONVERTED, FAILED
+    success: bool
+    original_path: str
+    optimized_path: str
+    original_size_bytes: int
+    optimized_size_bytes: int
+    original_dimensions: Tuple[int, int]
+    optimized_dimensions: Tuple[int, int]
+    format_changed: bool
+    message: str
+    metadata: Dict[str, Any]
+
+    @property
+    def size_reduction_percent(self) -> float:
+        """Calculate size reduction percentage"""
+```
+
+#### RetryResult
+
+```python
+@dataclass
+class RetryResult:
+    success: bool
+    attempts: int
+    total_delay: float
+    final_error: Optional[str]
+    result: Any  # The actual result if successful
+    metadata: Dict[str, Any]
+```
+
+#### APIState
+
+```python
+class APIState(Enum):
+    AVAILABLE = "available"          # API is available and working
+    RATE_LIMITED = "rate_limited"    # Hit rate limit (429)
+    INVALID_KEY = "invalid_key"      # API key is invalid/expired
+    TIMEOUT = "timeout"              # Request timed out
+    UNAVAILABLE = "unavailable"      # API is down/unreachable
+```
+
+#### NetworkState
+
+```python
+class NetworkState(Enum):
+    ONLINE = "online"      # Connected to internet
+    OFFLINE = "offline"    # No internet connection
+    DEGRADED = "degraded"  # Slow/unstable connection
+```
+
 ---
 
 ## Troubleshooting
@@ -1117,6 +1503,17 @@ for space_id in [1, 2, 3]:
 ---
 
 ## Version History
+
+### v1.2 (2025-10-19)
+- ✅ APINetworkManager with 5 API & network edge cases
+- ✅ APIHealthChecker for Claude API status and circuit breaker
+- ✅ NetworkDetector for real-time connectivity monitoring
+- ✅ ImageOptimizer for automatic image resizing and compression
+- ✅ RetryHandler with exponential backoff and result caching
+- ✅ Integration with claude_streamer.py (readiness checks)
+- ✅ Integration with claude_vision_analyzer_main.py (image optimization)
+- ✅ Enhanced documentation with API/Network API reference
+- ✅ New troubleshooting guides for API/network issues
 
 ### v1.1 (2025-10-19)
 - ✅ SystemStateManager with 5 system state edge cases

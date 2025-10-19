@@ -40,6 +40,21 @@ import random
 
 logger = logging.getLogger(__name__)
 
+# Import API/Network manager for edge case handling
+try:
+    from backend.context_intelligence.managers import (
+        get_api_network_manager,
+        initialize_api_network_manager,
+        APIStatus,
+        NetworkStatus
+    )
+    API_NETWORK_MANAGER_AVAILABLE = True
+except ImportError:
+    API_NETWORK_MANAGER_AVAILABLE = False
+    get_api_network_manager = lambda: None
+    initialize_api_network_manager = lambda **kwargs: None
+    logger.warning("APINetworkManager not available - edge case handling disabled")
+
 # Import Vision Intelligence System
 try:
     from .intelligence import (
@@ -916,6 +931,25 @@ class ClaudeVisionAnalyzer:
 
         # Initialize memory safety monitor
         self.memory_monitor = MemorySafetyMonitor(self.config)
+
+        # Initialize API/Network manager for edge case handling
+        self.api_network_manager = None
+        if API_NETWORK_MANAGER_AVAILABLE and api_key:
+            try:
+                # Try to get existing instance first
+                self.api_network_manager = get_api_network_manager()
+                if not self.api_network_manager:
+                    # Initialize with config settings
+                    self.api_network_manager = initialize_api_network_manager(
+                        api_key=api_key,
+                        max_retries=3,
+                        initial_retry_delay=1.0,
+                        max_image_width=self.config.max_image_dimension,
+                        max_image_size_mb=5.0
+                    )
+                logger.info("✅ API/Network manager available for edge case handling")
+            except Exception as e:
+                logger.warning(f"Failed to initialize API/Network manager: {e}")
 
         # Initialize components based on config
         self.cache = (

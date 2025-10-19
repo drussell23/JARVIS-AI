@@ -31,6 +31,21 @@ except ImportError:
     ANTHROPIC_AVAILABLE = False
     logger.warning("anthropic package not available - install with: pip install anthropic")
 
+# Import API/Network manager for edge case handling
+try:
+    from backend.context_intelligence.managers import (
+        get_api_network_manager,
+        initialize_api_network_manager,
+        APIStatus,
+        NetworkStatus
+    )
+    API_NETWORK_MANAGER_AVAILABLE = True
+except ImportError:
+    API_NETWORK_MANAGER_AVAILABLE = False
+    get_api_network_manager = lambda: None
+    initialize_api_network_manager = lambda **kwargs: None
+    logger.warning("APINetworkManager not available - edge case handling disabled")
+
 
 @dataclass
 class StreamingStats:
@@ -93,6 +108,19 @@ class ClaudeContentStreamer:
         self._request_times: List[float] = []
         self._token_counts: List[int] = []
         self._session_stats: List[StreamingStats] = []
+
+        # Initialize API/Network manager for edge case handling
+        self._api_network_manager = None
+        if API_NETWORK_MANAGER_AVAILABLE:
+            try:
+                # Try to get existing instance first
+                self._api_network_manager = get_api_network_manager()
+                if not self._api_network_manager:
+                    # Initialize if not exists
+                    self._api_network_manager = initialize_api_network_manager(api_key=self.api_key)
+                logger.info("✅ API/Network manager available for edge case handling")
+            except Exception as e:
+                logger.warning(f"Failed to initialize API/Network manager: {e}")
 
         if not self.api_key:
             logger.warning("No Anthropic API key provided - streaming will use mock data")
@@ -273,6 +301,25 @@ class ClaudeContentStreamer:
         stats = StreamingStats()
         model = model or self.MODELS["primary"]
         stats.model_used = model
+
+        # Check API/Network readiness before streaming
+        if self._api_network_manager:
+            logger.debug("[CLAUDE-STREAMER] Checking API/Network readiness")
+            is_ready, message, status_info = await self._api_network_manager.check_ready_for_api_call()
+
+            if not is_ready:
+                logger.error(f"[CLAUDE-STREAMER] Not ready for API call: {message}")
+                # Yield error message as single chunk
+                error_chunk = f"\n⚠️  {message}\n"
+                stats.errors_encountered += 1
+                if chunk_callback:
+                    chunk_callback(error_chunk)
+                if stats_callback:
+                    stats_callback(stats)
+                yield error_chunk
+                return
+
+            logger.info("[CLAUDE-STREAMER] API/Network check passed, proceeding with stream")
 
         if not self._ensure_client():
             logger.warning("⚠️ Using DEMO mode - No valid Claude API key configured")

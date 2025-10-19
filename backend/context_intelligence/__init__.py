@@ -23,6 +23,14 @@ from .managers import (
     DisplayState,
     SystemHealth,
     SystemStateInfo,
+    get_api_network_manager,
+    initialize_api_network_manager,
+    APIState,
+    NetworkState,
+    APIStatus,
+    NetworkStatus,
+    ImageOptimizationResult,
+    RetryResult,
 )
 
 __all__ = [
@@ -47,4 +55,12 @@ __all__ = [
     "DisplayState",
     "SystemHealth",
     "SystemStateInfo",
+    "get_api_network_manager",
+    "initialize_api_network_manager",
+    "APIState",
+    "NetworkState",
+    "APIStatus",
+    "NetworkStatus",
+    "ImageOptimizationResult",
+    "RetryResult",
 ]

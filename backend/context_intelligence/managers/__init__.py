@@ -45,6 +45,23 @@ from .system_state_manager import (
     initialize_system_state_manager
 )
 
+from .api_network_manager import (
+    APINetworkManager,
+    APIHealthChecker,
+    NetworkDetector,
+    ImageOptimizer,
+    RetryHandler,
+    APIState,
+    NetworkState,
+    ImageOptimizationStatus,
+    APIStatus,
+    NetworkStatus,
+    ImageOptimizationResult,
+    RetryResult,
+    get_api_network_manager,
+    initialize_api_network_manager
+)
+
 __all__ = [
     # Space State Management
     'SpaceStateManager',
@@ -82,4 +99,20 @@ __all__ = [
     'SystemStateInfo',
     'get_system_state_manager',
     'initialize_system_state_manager',
+
+    # API & Network Management
+    'APINetworkManager',
+    'APIHealthChecker',
+    'NetworkDetector',
+    'ImageOptimizer',
+    'RetryHandler',
+    'APIState',
+    'NetworkState',
+    'ImageOptimizationStatus',
+    'APIStatus',
+    'NetworkStatus',
+    'ImageOptimizationResult',
+    'RetryResult',
+    'get_api_network_manager',
+    'initialize_api_network_manager',
 ]
