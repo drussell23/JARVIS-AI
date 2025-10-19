@@ -140,6 +140,18 @@ from .proactive_suggestion_manager import (
     initialize_proactive_suggestion_manager
 )
 
+from .confidence_manager import (
+    ConfidenceManager,
+    ConfidenceCalculator,
+    UncertaintyFormatter,
+    ConfidenceVisualIndicator,
+    ConfidenceLevel,
+    ConfidenceScore,
+    ConfidenceFormattedResponse,
+    get_confidence_manager,
+    initialize_confidence_manager
+)
+
 __all__ = [
     # Space State Management
     'SpaceStateManager',
@@ -265,4 +277,15 @@ __all__ = [
     'SuggestionResult',
     'get_proactive_suggestion_manager',
     'initialize_proactive_suggestion_manager',
+
+    # Confidence Management
+    'ConfidenceManager',
+    'ConfidenceCalculator',
+    'UncertaintyFormatter',
+    'ConfidenceVisualIndicator',
+    'ConfidenceLevel',
+    'ConfidenceScore',
+    'ConfidenceFormattedResponse',
+    'get_confidence_manager',
+    'initialize_confidence_manager',
 ]

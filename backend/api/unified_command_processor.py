@@ -362,6 +362,24 @@ class UnifiedCommandProcessor:
             logger.error(f"[UNIFIED] Failed to initialize proactive suggestion manager: {e}")
             self.proactive_suggestion_manager = None
 
+        # Step 6.8: Initialize ConfidenceManager (confidence-based response formatting)
+        try:
+            from context_intelligence.managers import initialize_confidence_manager
+
+            self.confidence_manager = initialize_confidence_manager(
+                include_visual_indicators=True,  # Include ✅ ⚠️ ❓
+                include_reasoning=True,  # Include reasoning for non-high confidence
+                min_confidence_for_high=0.8,
+                min_confidence_for_medium=0.5
+            )
+            logger.info("[UNIFIED] ✅ ConfidenceManager initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] ConfidenceManager not available: {e}")
+            self.confidence_manager = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize confidence manager: {e}")
+            self.confidence_manager = None
+
         # Step 7: Initialize MediumComplexityHandler (Level 2 query execution)
         try:
             from context_intelligence.handlers import initialize_medium_complexity_handler
@@ -376,6 +394,7 @@ class UnifiedCommandProcessor:
                 response_manager=self.response_strategy_manager,
                 context_aware_manager=self.context_aware_manager,
                 proactive_suggestion_manager=self.proactive_suggestion_manager,
+                confidence_manager=self.confidence_manager,
                 implicit_resolver=self.implicit_resolver
             )
             logger.info("[UNIFIED] ✅ MediumComplexityHandler initialized")
@@ -436,6 +455,8 @@ class UnifiedCommandProcessor:
             resolvers_active.append("ContextAwareManager")
         if self.proactive_suggestion_manager:
             resolvers_active.append("ProactiveSuggestionManager")
+        if self.confidence_manager:
+            resolvers_active.append("ConfidenceManager")
         if self.medium_complexity_handler:
             resolvers_active.append("MediumComplexityHandler")
         if self.complex_complexity_handler:

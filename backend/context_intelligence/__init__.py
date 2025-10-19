@@ -75,6 +75,14 @@ from .managers import (
     Suggestion,
     SuggestionResult,
 )
+from .managers import (
+    get_confidence_manager,
+    initialize_confidence_manager,
+    ConfidenceManager,
+    ConfidenceLevel,
+    ConfidenceScore,
+    ConfidenceFormattedResponse,
+)
 from .handlers import (
     get_query_complexity_manager,
     initialize_query_complexity_manager,
@@ -170,6 +178,12 @@ __all__ = [
     "SuggestionType",
     "Suggestion",
     "SuggestionResult",
+    "get_confidence_manager",
+    "initialize_confidence_manager",
+    "ConfidenceManager",
+    "ConfidenceLevel",
+    "ConfidenceScore",
+    "ConfidenceFormattedResponse",
     "get_query_complexity_manager",
     "initialize_query_complexity_manager",
     "QueryComplexityManager",

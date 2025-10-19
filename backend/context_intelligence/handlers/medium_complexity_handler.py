@@ -50,28 +50,33 @@ try:
         get_response_strategy_manager,
         get_context_aware_response_manager,
         get_proactive_suggestion_manager,
+        get_confidence_manager,
         CaptureStrategyManager,
         OCRStrategyManager,
         ResponseStrategyManager,
         ContextAwareResponseManager,
-        ProactiveSuggestionManager
+        ProactiveSuggestionManager,
+        ConfidenceManager
     )
     CAPTURE_STRATEGY_AVAILABLE = True
     OCR_STRATEGY_AVAILABLE = True
     RESPONSE_STRATEGY_AVAILABLE = True
     CONTEXT_AWARE_AVAILABLE = True
     PROACTIVE_SUGGESTION_AVAILABLE = True
+    CONFIDENCE_AVAILABLE = True
 except ImportError:
     CAPTURE_STRATEGY_AVAILABLE = False
     OCR_STRATEGY_AVAILABLE = False
     RESPONSE_STRATEGY_AVAILABLE = False
     CONTEXT_AWARE_AVAILABLE = False
     PROACTIVE_SUGGESTION_AVAILABLE = False
+    CONFIDENCE_AVAILABLE = False
     get_capture_strategy_manager = lambda: None
     get_ocr_strategy_manager = lambda: None
     get_response_strategy_manager = lambda: None
     get_context_aware_response_manager = lambda: None
     get_proactive_suggestion_manager = lambda: None
+    get_confidence_manager = lambda: None
     logger.warning("Strategy managers not available")
 
 try:
@@ -146,6 +151,7 @@ class MediumComplexityHandler:
         response_manager: Optional[ResponseStrategyManager] = None,
         context_aware_manager: Optional[ContextAwareResponseManager] = None,
         proactive_suggestion_manager: Optional[ProactiveSuggestionManager] = None,
+        confidence_manager: Optional[ConfidenceManager] = None,
         implicit_resolver: Optional[Any] = None
     ):
         """
@@ -157,6 +163,7 @@ class MediumComplexityHandler:
             response_manager: ResponseStrategyManager instance
             context_aware_manager: ContextAwareResponseManager instance
             proactive_suggestion_manager: ProactiveSuggestionManager instance
+            confidence_manager: ConfidenceManager instance
             implicit_resolver: ImplicitReferenceResolver instance
         """
         self.capture_manager = capture_manager or get_capture_strategy_manager()
@@ -164,6 +171,7 @@ class MediumComplexityHandler:
         self.response_manager = response_manager or get_response_strategy_manager()
         self.context_aware_manager = context_aware_manager or get_context_aware_response_manager()
         self.proactive_suggestion_manager = proactive_suggestion_manager or get_proactive_suggestion_manager()
+        self.confidence_manager = confidence_manager or get_confidence_manager()
         self.implicit_resolver = implicit_resolver or get_implicit_reference_resolver()
 
         logger.info("[MEDIUM-HANDLER] Initialized")
@@ -172,6 +180,7 @@ class MediumComplexityHandler:
         logger.info(f"  Response Manager: {'✅' if self.response_manager else '❌'}")
         logger.info(f"  Context-Aware Manager: {'✅' if self.context_aware_manager else '❌'}")
         logger.info(f"  Proactive Suggestion Manager: {'✅' if self.proactive_suggestion_manager else '❌'}")
+        logger.info(f"  Confidence Manager: {'✅' if self.confidence_manager else '❌'}")
         logger.info(f"  Implicit Resolver: {'✅' if self.implicit_resolver else '❌'}")
 
     async def process_query(
@@ -343,6 +352,31 @@ class MediumComplexityHandler:
                 logger.warning(f"[MEDIUM-HANDLER] Proactive suggestion generation failed: {e}")
                 # Keep response without suggestions
 
+        # Step 8: Apply confidence formatting based on capture quality
+        final_response_with_confidence = final_response_with_suggestions
+        confidence_result = None
+        if self.confidence_manager:
+            try:
+                # Format response with confidence indicators
+                confidence_result = self.confidence_manager.format_multiple_captures(
+                    response=final_response_with_suggestions,
+                    captures=captures_with_ocr
+                )
+
+                # Use confidence-formatted response
+                final_response_with_confidence = confidence_result.formatted_response
+
+                logger.info(
+                    f"[MEDIUM-HANDLER] Confidence applied "
+                    f"(level: {confidence_result.confidence_score.level.value}, "
+                    f"score: {confidence_result.confidence_score.overall:.2f}, "
+                    f"indicator: {confidence_result.visual_indicator})"
+                )
+
+            except Exception as e:
+                logger.warning(f"[MEDIUM-HANDLER] Confidence formatting failed: {e}")
+                # Keep response without confidence formatting
+
         execution_time = time.time() - start_time
 
         logger.info(
@@ -355,7 +389,7 @@ class MediumComplexityHandler:
             query_type=query_type,
             spaces_processed=space_ids,
             captures=captures_with_ocr,
-            synthesis=final_response_with_suggestions,
+            synthesis=final_response_with_confidence,
             execution_time=execution_time,
             total_api_calls=int(api_calls),
             metadata={
@@ -372,6 +406,12 @@ class MediumComplexityHandler:
                     "enabled": suggestion_result is not None,
                     "count": len(suggestion_result.suggestions) if suggestion_result else 0,
                     "top_type": suggestion_result.top_suggestion.type.value if (suggestion_result and suggestion_result.top_suggestion) else None
+                },
+                "confidence_level": {
+                    "enabled": confidence_result is not None,
+                    "level": confidence_result.confidence_score.level.value if confidence_result else None,
+                    "score": confidence_result.confidence_score.overall if confidence_result else None,
+                    "hedging_applied": confidence_result.hedging_applied if confidence_result else False
                 }
             }
         )
@@ -762,6 +802,7 @@ def initialize_medium_complexity_handler(
     response_manager: Optional[ResponseStrategyManager] = None,
     context_aware_manager: Optional[ContextAwareResponseManager] = None,
     proactive_suggestion_manager: Optional[ProactiveSuggestionManager] = None,
+    confidence_manager: Optional[ConfidenceManager] = None,
     implicit_resolver: Optional[Any] = None
 ) -> MediumComplexityHandler:
     """Initialize the global medium complexity handler"""
@@ -772,6 +813,7 @@ def initialize_medium_complexity_handler(
         response_manager=response_manager,
         context_aware_manager=context_aware_manager,
         proactive_suggestion_manager=proactive_suggestion_manager,
+        confidence_manager=confidence_manager,
         implicit_resolver=implicit_resolver
     )
     logger.info("[MEDIUM-HANDLER] Global instance initialized")
