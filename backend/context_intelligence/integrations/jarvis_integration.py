@@ -102,10 +102,29 @@ class JARVISContextIntegration:
             }
             
             intent = await self.intent_analyzer.analyze(command, full_context)
-            
+
+            # Check if this is a predictive query - handle differently
+            if intent.type.value == "predictive_query":
+                logger.info(f"[JARVIS-INTEGRATION] Routing predictive query to specialized handler")
+                from ..handlers.context_aware_handler import get_context_aware_handler
+                handler = get_context_aware_handler()
+                result = await handler.handle_command_with_context(
+                    command,
+                    execute_callback=None,
+                    intent_type="predictive_query"
+                )
+                # Add intent information
+                result["intent"] = {
+                    "type": intent.type.value,
+                    "entities": intent.entities,
+                    "confidence": intent.confidence,
+                    "requires_screen": intent.requires_screen
+                }
+                return result
+
             # Determine priority based on voice context
             priority = self._determine_priority(voice_context)
-            
+
             # Process through context manager
             result = await self.context_manager.process_command(
                 command_text=command,

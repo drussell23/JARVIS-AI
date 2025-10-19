@@ -11,6 +11,12 @@ from typing import Dict, Any, Optional, Tuple, List
 from datetime import datetime
 
 from context_intelligence.detectors.screen_lock_detector import get_screen_lock_detector
+from context_intelligence.analyzers.intent_analyzer import IntentType
+from context_intelligence.handlers.predictive_query_handler import (
+    get_predictive_handler,
+    initialize_predictive_handler,
+    PredictiveQueryRequest
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +29,10 @@ class ContextAwareCommandHandler:
     def __init__(self):
         self.screen_lock_detector = get_screen_lock_detector()
         self.execution_steps = []
+        self.predictive_handler = None  # Lazy initialize
 
     async def handle_command_with_context(
-        self, command: str, execute_callback=None
+        self, command: str, execute_callback=None, intent_type: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Handle a command with full context awareness
@@ -33,6 +40,7 @@ class ContextAwareCommandHandler:
         Args:
             command: The command to execute
             execute_callback: Callback to execute the actual command
+            intent_type: Optional intent type for routing
 
         Returns:
             Response dict with status and messages
@@ -49,6 +57,11 @@ class ContextAwareCommandHandler:
         }
 
         try:
+            # Check if this is a predictive query
+            if intent_type == "predictive_query" or self._is_predictive_query(command):
+                logger.info("[CONTEXT AWARE] Detected predictive query - routing to predictive handler")
+                return await self._handle_predictive_query(command)
+
             # Step 1: Get system context
             logger.info("[CONTEXT AWARE] Getting system context...")
             system_context = await self._get_system_context()
@@ -193,6 +206,100 @@ class ContextAwareCommandHandler:
             self._add_step("Error occurred", {"error": str(e)})
 
         return self._finalize_response(response)
+
+    def _is_predictive_query(self, command: str) -> bool:
+        """Check if command is a predictive/analytical query"""
+        predictive_keywords = [
+            "making progress", "am i doing", "my progress",
+            "what should i", "what to do next", "next steps",
+            "any bugs", "any errors", "any issues", "potential bugs",
+            "explain", "what does", "how does",
+            "what patterns", "analyze patterns",
+            "improve my workflow", "optimize", "work more efficiently",
+            "code quality"
+        ]
+        command_lower = command.lower()
+        return any(keyword in command_lower for keyword in predictive_keywords)
+
+    async def _handle_predictive_query(self, command: str) -> Dict[str, Any]:
+        """Handle a predictive/analytical query"""
+        try:
+            # Lazy initialize predictive handler
+            if self.predictive_handler is None:
+                self.predictive_handler = get_predictive_handler()
+                if self.predictive_handler is None:
+                    self.predictive_handler = initialize_predictive_handler()
+
+            logger.info(f"[CONTEXT AWARE] Processing predictive query: {command}")
+
+            # Determine if visual analysis is needed
+            use_vision = any(keyword in command.lower() for keyword in ["explain", "code", "this", "that"])
+
+            # Create request
+            request = PredictiveQueryRequest(
+                query=command,
+                use_vision=use_vision,
+                capture_screen=use_vision,
+                repo_path=".",
+                additional_context={}
+            )
+
+            # Execute query
+            result = await self.predictive_handler.handle_query(request)
+
+            # Format response
+            response = {
+                "success": result.success,
+                "command": command,
+                "messages": [result.response_text] if result.response_text else [],
+                "steps_taken": [
+                    {
+                        "step": 1,
+                        "description": "Analyzed query with predictive engine",
+                        "details": {
+                            "query_type": result.analytics.query_type.value if result.analytics else "unknown",
+                            "confidence": result.confidence,
+                            "used_vision": result.vision_analysis is not None
+                        },
+                        "timestamp": datetime.now().isoformat()
+                    }
+                ],
+                "context": {
+                    "query_type": result.analytics.query_type.value if result.analytics else "unknown",
+                    "confidence": result.confidence,
+                    "insights": result.analytics.insights if result.analytics else []
+                },
+                "timestamp": result.timestamp.isoformat(),
+                "result": {
+                    "analytics": {
+                        "metrics": result.analytics.metrics.__dict__ if result.analytics and result.analytics.metrics else None,
+                        "bug_patterns": [bp.__dict__ for bp in result.analytics.bug_patterns] if result.analytics else [],
+                        "recommendations": [rec.__dict__ for rec in result.analytics.recommendations] if result.analytics else []
+                    } if result.analytics else None,
+                    "vision_analysis": result.vision_analysis
+                }
+            }
+
+            if response["success"]:
+                response["summary"] = result.response_text if result.response_text else "Analysis complete"
+            else:
+                response["summary"] = "Predictive query failed"
+
+            logger.info(f"[CONTEXT AWARE] Predictive query completed: success={result.success}, confidence={result.confidence:.2%}")
+
+            return response
+
+        except Exception as e:
+            logger.error(f"[CONTEXT AWARE] Error handling predictive query: {e}", exc_info=True)
+            return {
+                "success": False,
+                "command": command,
+                "messages": [f"Error processing predictive query: {str(e)}"],
+                "steps_taken": [],
+                "context": {},
+                "timestamp": datetime.now().isoformat(),
+                "summary": f"Error: {str(e)}"
+            }
 
     async def _get_system_context(self) -> Dict[str, Any]:
         """Get current system context"""

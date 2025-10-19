@@ -24,6 +24,16 @@ from .temporal_query_handler import (
     ImageDiffer
 )
 
+from .predictive_query_handler import (
+    PredictiveQueryHandler,
+    PredictiveQueryRequest,
+    PredictiveQueryResponse,
+    ClaudeVisionAnalyzer,
+    get_predictive_handler,
+    initialize_predictive_handler,
+    handle_predictive_query
+)
+
 __all__ = [
     'MultiSpaceQueryHandler',
     'get_multi_space_handler',
@@ -38,4 +48,11 @@ __all__ = [
     'TemporalQueryResult',
     'ScreenshotManager',
     'ImageDiffer',
+    'PredictiveQueryHandler',
+    'PredictiveQueryRequest',
+    'PredictiveQueryResponse',
+    'ClaudeVisionAnalyzer',
+    'get_predictive_handler',
+    'initialize_predictive_handler',
+    'handle_predictive_query',
 ]
