@@ -45,6 +45,21 @@ except ImportError as e:
     get_window_capture_manager = None
     WINDOW_CAPTURE_AVAILABLE = False
 
+# Import Error Handling Matrix for graceful degradation
+try:
+    from context_intelligence.managers.error_handling_matrix import (
+        get_error_handling_matrix,
+        initialize_error_handling_matrix,
+        FallbackChain,
+        ErrorMessageGenerator
+    )
+    ERROR_MATRIX_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Error Handling Matrix not available: {e}")
+    get_error_handling_matrix = None
+    initialize_error_handling_matrix = None
+    ERROR_MATRIX_AVAILABLE = False
+
 @dataclass
 class ScreenshotResult:
     """Result of a screenshot capture attempt"""
@@ -75,6 +90,23 @@ class ReliableScreenshotCapture:
             ('screencapture_cli', self._capture_screencapture_cli),
             ('window_server', self._capture_window_server)
         ])
+
+        # Initialize Error Handling Matrix for graceful degradation
+        self.error_matrix = None
+        if ERROR_MATRIX_AVAILABLE:
+            try:
+                # Try to get existing instance
+                self.error_matrix = get_error_handling_matrix() # If not available, initialize with default settings
+                if not self.error_matrix: # No existing instance
+                    # Initialize with default settings
+                    self.error_matrix = initialize_error_handling_matrix(
+                        default_timeout=10.0,
+                        aggregation_strategy="first_success", # Aggregation strategy for partial results
+                        recovery_strategy="continue" # Recovery strategy for errors
+                    )
+                logger.info("✅ Error Handling Matrix available for screenshot capture")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Error Handling Matrix: {e}")
 
         self._init_capture_cache()
         logger.info(f"Reliable Screenshot Capture initialized with {len(self.methods)} methods")
@@ -130,6 +162,81 @@ class ReliableScreenshotCapture:
             timestamp=datetime.now(),
             metadata={}
         )
+
+    async def capture_space_with_matrix(self, space_id: int) -> ScreenshotResult:
+        """
+        Capture a specific space using Error Handling Matrix for graceful degradation
+
+        This async version uses the Error Handling Matrix for:
+        - Priority-based fallback execution
+        - Partial result aggregation
+        - User-friendly error messages
+        """
+        # Check cache first
+        cached = self._get_cached(space_id)
+        if cached:
+            logger.info(f"[MATRIX-CAPTURE] Using cached result for space {space_id}")
+            return cached
+
+        # Use Error Handling Matrix if available
+        if self.error_matrix:
+            logger.info(f"[MATRIX-CAPTURE] Using Error Handling Matrix for space {space_id}")
+
+            # Build fallback chain
+            chain = FallbackChain(f"capture_space_{space_id}") # Use space_id as fallback chain name
+
+            # Add methods in priority order
+            for i, (method_name, method_func) in enumerate(self.methods):
+                # Wrap sync method in async
+                async def async_wrapper(func=method_func, sid=space_id):
+                    return func(sid) # Call the sync method
+
+                if i == 0 and WINDOW_CAPTURE_AVAILABLE: # Highest priority (if available)
+                    chain.add_primary(async_wrapper, name=method_name, timeout=5.0) # Capture with window_capture_manager first if available 
+                elif i == 1: # Second highest priority
+                    chain.add_fallback(async_wrapper, name=method_name, timeout=8.0) # Fallback to other methods next if primary fails 
+                elif i == len(self.methods) - 1: # Lowest priority (last resort)
+                    chain.add_last_resort(async_wrapper, name=method_name, timeout=10.0) # Last resort method with longer timeout 
+                else: 
+                    # All other methods
+                    chain.add_secondary(async_wrapper, name=method_name, timeout=7.0) 
+
+            # Execute chain
+            report = await self.error_matrix.execute_chain(chain, stop_on_success=True)
+
+            # Convert ExecutionReport to ScreenshotResult
+            if report.success and report.final_result:
+                # Cache and return the result
+                self._cache_result(space_id, report.final_result)
+                logger.info(f"[MATRIX-CAPTURE] ✅ Captured space {space_id} - {report.message}")
+                return report.final_result
+            else:
+                # Generate user-friendly error message
+                error_msg = ErrorMessageGenerator.generate_message(
+                    report,
+                    include_technical=True,
+                    include_suggestions=True
+                )
+
+                logger.error(f"[MATRIX-CAPTURE] ❌ Failed to capture space {space_id}:\n{error_msg}")
+
+                return ScreenshotResult(
+                    success=False,
+                    image=None,
+                    method='matrix_fallback',
+                    space_id=space_id,
+                    error=error_msg,
+                    timestamp=datetime.now(),
+                    metadata={
+                        "execution_report": report,
+                        "methods_attempted": len(report.methods_attempted),
+                        "total_duration": report.total_duration
+                    }
+                )
+
+        # Fallback to regular capture if matrix not available
+        logger.warning(f"[MATRIX-CAPTURE] Error Handling Matrix not available, using standard capture")
+        return self.capture_space(space_id) # Fallback to regular capture
 
     def _capture_with_window_manager(self, space_id: int) -> ScreenshotResult:
         """

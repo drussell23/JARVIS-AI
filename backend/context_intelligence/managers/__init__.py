@@ -62,6 +62,22 @@ from .api_network_manager import (
     initialize_api_network_manager
 )
 
+from .error_handling_matrix import (
+    ErrorHandlingMatrix,
+    FallbackChain,
+    PartialResultAggregator,
+    ErrorRecoveryStrategy,
+    ErrorMessageGenerator,
+    ExecutionPriority,
+    ExecutionStatus,
+    ResultQuality,
+    MethodResult,
+    ExecutionReport,
+    MethodDefinition,
+    get_error_handling_matrix,
+    initialize_error_handling_matrix
+)
+
 __all__ = [
     # Space State Management
     'SpaceStateManager',
@@ -115,4 +131,19 @@ __all__ = [
     'RetryResult',
     'get_api_network_manager',
     'initialize_api_network_manager',
+
+    # Error Handling Matrix
+    'ErrorHandlingMatrix',
+    'FallbackChain',
+    'PartialResultAggregator',
+    'ErrorRecoveryStrategy',
+    'ErrorMessageGenerator',
+    'ExecutionPriority',
+    'ExecutionStatus',
+    'ResultQuality',
+    'MethodResult',
+    'ExecutionReport',
+    'MethodDefinition',
+    'get_error_handling_matrix',
+    'initialize_error_handling_matrix',
 ]

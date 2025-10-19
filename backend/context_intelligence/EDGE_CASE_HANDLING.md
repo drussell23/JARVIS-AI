@@ -1,6 +1,6 @@
 # Edge Case Handling System - Complete Documentation
 
-**Version:** 1.2
+**Version:** 1.3
 **Last Updated:** 2025-10-19
 **Status:** ✅ Production Ready
 
@@ -13,10 +13,11 @@
 3. [Window Capture Edge Cases](#window-capture-edge-cases)
 4. [System State Edge Cases](#system-state-edge-cases)
 5. [API & Network Edge Cases](#api--network-edge-cases)
-6. [Integration Points](#integration-points)
-7. [Usage Examples](#usage-examples)
-8. [API Reference](#api-reference)
-9. [Troubleshooting](#troubleshooting)
+6. [Error Handling Matrix](#error-handling-matrix)
+7. [Integration Points](#integration-points)
+8. [Usage Examples](#usage-examples)
+9. [API Reference](#api-reference)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -695,6 +696,272 @@ for i in range(10):
     except Exception as e:
         manager.api_health_checker.record_failure()  # Increment failure count
 ```
+
+---
+
+## Error Handling Matrix
+
+### Overview
+
+**Location:** `backend/context_intelligence/managers/error_handling_matrix.py`
+
+The Error Handling Matrix provides comprehensive error handling with graceful degradation following a priority-based strategy:
+
+```
+Priority 1: Try primary method
+   ↓ (fails)
+Priority 2: Try fallback method
+   ↓ (fails)
+Priority 3: Return partial results + warning
+   ↓ (fails)
+Priority 4: Return user-friendly error message
+```
+
+### Components
+
+#### 1. FallbackChain
+
+Defines the execution order for methods with priority levels.
+
+```python
+from context_intelligence.managers import FallbackChain, ExecutionPriority
+
+# Create a fallback chain
+chain = FallbackChain("screenshot_capture")
+
+# Add methods in priority order
+chain.add_primary(capture_with_cg, timeout=5.0)
+chain.add_fallback(capture_with_screencapture, timeout=10.0)
+chain.add_secondary(capture_with_pyautogui, timeout=15.0)
+chain.add_last_resort(capture_with_cli, timeout=20.0)
+```
+
+**Priority Levels:**
+- `PRIMARY (1)`: Main method (fastest/best quality)
+- `FALLBACK (2)`: First fallback
+- `SECONDARY (3)`: Second fallback
+- `TERTIARY (4)`: Third fallback
+- `LAST_RESORT (5)`: Final attempt
+
+#### 2. ErrorHandlingMatrix (Main)
+
+Executes fallback chains with graceful degradation.
+
+```python
+from context_intelligence.managers import (
+    initialize_error_handling_matrix,
+    FallbackChain
+)
+
+# Initialize matrix
+matrix = initialize_error_handling_matrix(
+    default_timeout=30.0,
+    aggregation_strategy="first_success",  # or "best_result", "merge", "union"
+    recovery_strategy="continue"            # or "retry", "abort"
+)
+
+# Create fallback chain
+chain = FallbackChain("api_call")
+chain.add_primary(call_primary_api, timeout=5.0)
+chain.add_fallback(call_backup_api, timeout=10.0)
+chain.add_last_resort(use_cached_result, timeout=1.0)
+
+# Execute with graceful degradation
+report = await matrix.execute_chain(chain, stop_on_success=True)
+
+if report.success:
+    print(f"✅ {report.message}")
+    result = report.final_result
+else:
+    print(f"❌ {report.message}")
+    for error in report.errors:
+        print(f"  • {error}")
+```
+
+#### 3. PartialResultAggregator
+
+Aggregates partial results when multiple methods succeed.
+
+**Strategies:**
+- `first_success`: Use first successful result
+- `best_result`: Use best result based on quality metric
+- `merge`: Merge all results (for dicts)
+- `union`: Union of all results (for lists/sets)
+
+```python
+# Example: Merge results from multiple sources
+chain = FallbackChain("data_fetch")
+chain.add_primary(fetch_from_primary_db)
+chain.add_fallback(fetch_from_backup_db)
+chain.add_secondary(fetch_from_cache)
+
+# Initialize with merge strategy
+matrix = initialize_error_handling_matrix(aggregation_strategy="merge")
+
+# Execute - will merge results from all successful sources
+report = await matrix.execute_chain(chain, collect_partial=True)
+
+if report.success:
+    # Get merged result
+    merged_data = report.final_result
+    print(f"Merged data from {len(report.methods_attempted)} sources")
+```
+
+#### 4. ErrorRecoveryStrategy
+
+Defines how to recover from errors.
+
+**Strategies:**
+- `continue`: Continue to next method (default)
+- `retry`: Retry the same method (with max_retries)
+- `abort`: Stop execution immediately
+
+```python
+# Initialize with retry strategy
+matrix = initialize_error_handling_matrix(
+    recovery_strategy="retry",
+    max_retries=2
+)
+
+# Methods will be retried up to 2 times before moving to fallback
+```
+
+#### 5. ErrorMessageGenerator
+
+Generates user-friendly error messages with suggestions.
+
+```python
+from context_intelligence.managers import ErrorMessageGenerator
+
+# Generate message from execution report
+message = ErrorMessageGenerator.generate_message(
+    report,
+    include_technical=True,    # Include technical details
+    include_suggestions=True    # Include actionable suggestions
+)
+
+print(message)
+```
+
+**Example output:**
+```
+❌ screenshot_capture failed
+
+Errors encountered:
+  • capture_with_cg: Timeout after 5.2s
+  • capture_with_screencapture: Permission denied
+
+💡 Suggestions:
+  • Check system permissions in Settings > Privacy & Security
+  • Try increasing the timeout value
+
+🔧 Technical Details:
+  • Attempted 3 method(s)
+  • Duration: 15.3s
+  ✅ capture_with_cli: success
+  ❌ capture_with_cg: timeout
+  ❌ capture_with_screencapture: failed
+```
+
+### Execution Flow
+
+```
+1. Check cache (if applicable)
+        ↓
+2. Execute Primary Method (Priority 1)
+        ↓
+   Success? → Stop and return result
+        ↓ No
+3. Apply Recovery Strategy
+   • Continue → Try Fallback
+   • Retry → Retry Primary (up to max_retries)
+   • Abort → Stop and return error
+        ↓
+4. Execute Fallback Method (Priority 2)
+        ↓
+   Success? → Stop and return result
+        ↓ No
+5. Execute Secondary/Tertiary (Priority 3-4)
+        ↓
+6. Execute Last Resort (Priority 5)
+        ↓
+7. Aggregate Partial Results (if any)
+        ↓
+8. Generate User-Friendly Error Message
+```
+
+### Result Quality Levels
+
+The matrix determines result quality based on which methods succeeded:
+
+| Quality | Condition | Meaning |
+|---------|-----------|---------|
+| **FULL** | Primary succeeded | Best result, no degradation |
+| **DEGRADED** | Fallback succeeded | Good result, used fallback |
+| **PARTIAL** | Multiple methods succeeded | Partial data, some methods failed |
+| **MINIMAL** | Only last resort succeeded | Minimal result, most methods failed |
+| **FAILED** | All methods failed | No result available |
+
+### Integration Example: Screenshot Capture
+
+```python
+# In reliable_screenshot_capture.py
+async def capture_space_with_matrix(self, space_id: int) -> ScreenshotResult:
+    """Capture screenshot using Error Handling Matrix"""
+
+    # Build fallback chain
+    chain = FallbackChain(f"capture_space_{space_id}")
+
+    chain.add_primary(capture_with_cg, timeout=5.0)
+    chain.add_fallback(capture_with_screencapture, timeout=8.0)
+    chain.add_secondary(capture_with_quartz, timeout=10.0)
+    chain.add_last_resort(capture_with_cli, timeout=15.0)
+
+    # Execute with matrix
+    report = await self.error_matrix.execute_chain(chain, stop_on_success=True)
+
+    if report.success:
+        logger.info(f"✅ Captured space {space_id} - {report.message}")
+        return report.final_result
+    else:
+        # Generate helpful error message
+        error_msg = ErrorMessageGenerator.generate_message(
+            report,
+            include_technical=True,
+            include_suggestions=True
+        )
+        logger.error(f"❌ Failed to capture space {space_id}:\n{error_msg}")
+
+        return ScreenshotResult(
+            success=False,
+            error=error_msg,
+            metadata={"execution_report": report}
+        )
+```
+
+### Convenience Method
+
+For simple fallback scenarios, use `execute_with_fallbacks`:
+
+```python
+# Execute with simple fallback list
+report = await matrix.execute_with_fallbacks(
+    operation_name="fetch_data",
+    primary=fetch_from_api,
+    fallbacks=[fetch_from_cache, fetch_from_file],
+    arg1="value1",
+    kwarg1="value2"
+)
+```
+
+### Benefits
+
+✅ **Automatic Fallback** - Seamless transition between methods
+✅ **Partial Results** - Return something useful even when primary fails
+✅ **User-Friendly Errors** - Helpful messages with actionable suggestions
+✅ **Detailed Reporting** - Know exactly what happened
+✅ **Configurable Recovery** - Retry, continue, or abort strategies
+✅ **Async Support** - Fully async with timeout support
 
 ---
 
@@ -1503,6 +1770,16 @@ for space_id in [1, 2, 3]:
 ---
 
 ## Version History
+
+### v1.3 (2025-10-19)
+- ✅ ErrorHandlingMatrix for graceful degradation with priority-based fallbacks
+- ✅ FallbackChain for defining method execution order
+- ✅ PartialResultAggregator with 4 strategies (first_success, best_result, merge, union)
+- ✅ ErrorRecoveryStrategy with 3 modes (continue, retry, abort)
+- ✅ ErrorMessageGenerator for user-friendly messages with suggestions
+- ✅ Result quality levels (FULL, DEGRADED, PARTIAL, MINIMAL, FAILED)
+- ✅ Integration with reliable_screenshot_capture.py
+- ✅ Comprehensive documentation with examples and flow diagrams
 
 ### v1.2 (2025-10-19)
 - ✅ APINetworkManager with 5 API & network edge cases

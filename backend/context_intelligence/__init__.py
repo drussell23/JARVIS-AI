@@ -31,6 +31,12 @@ from .managers import (
     NetworkStatus,
     ImageOptimizationResult,
     RetryResult,
+    get_error_handling_matrix,
+    initialize_error_handling_matrix,
+    FallbackChain,
+    ExecutionReport,
+    ResultQuality,
+    ErrorMessageGenerator,
 )
 
 __all__ = [
@@ -63,4 +69,10 @@ __all__ = [
     "NetworkStatus",
     "ImageOptimizationResult",
     "RetryResult",
+    "get_error_handling_matrix",
+    "initialize_error_handling_matrix",
+    "FallbackChain",
+    "ExecutionReport",
+    "ResultQuality",
+    "ErrorMessageGenerator",
 ]
