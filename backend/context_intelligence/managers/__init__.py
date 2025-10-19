@@ -18,7 +18,20 @@ from .space_state_manager import (
     initialize_space_state_manager
 )
 
+from .window_capture_manager import (
+    WindowCaptureManager,
+    PermissionChecker,
+    ImageProcessor,
+    CaptureRetryHandler,
+    CaptureStatus,
+    CaptureResult,
+    WindowBounds,
+    get_window_capture_manager,
+    initialize_window_capture_manager
+)
+
 __all__ = [
+    # Space State Management
     'SpaceStateManager',
     'SpaceValidator',
     'SpaceTransitionHandler',
@@ -29,4 +42,15 @@ __all__ = [
     'EdgeCaseResult',
     'get_space_state_manager',
     'initialize_space_state_manager',
+
+    # Window Capture Management
+    'WindowCaptureManager',
+    'PermissionChecker',
+    'ImageProcessor',
+    'CaptureRetryHandler',
+    'CaptureStatus',
+    'CaptureResult',
+    'WindowBounds',
+    'get_window_capture_manager',
+    'initialize_window_capture_manager',
 ]

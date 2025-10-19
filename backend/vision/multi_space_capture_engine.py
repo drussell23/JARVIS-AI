@@ -43,6 +43,20 @@ except ImportError:
     logger.warning("Vision status manager not available")
     get_vision_status_manager = None
 
+# Import window capture manager for robust edge case handling
+try:
+    import sys
+    from pathlib import Path as PathLib
+    backend_path = PathLib(__file__).parent.parent
+    if str(backend_path) not in sys.path:
+        sys.path.insert(0, str(backend_path))
+    from context_intelligence.managers.window_capture_manager import get_window_capture_manager
+    WINDOW_CAPTURE_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Window capture manager not available: {e}")
+    get_window_capture_manager = None
+    WINDOW_CAPTURE_AVAILABLE = False
+
 
 class CaptureMethod(Enum):
     """Available capture methods with fallback hierarchy"""
@@ -746,16 +760,54 @@ class MultiSpaceCaptureEngine:
                             f"[CG_CAPTURE] Found {app_name} '{window_title}' in space {space_id}, capturing..."
                         )
 
-                        # Find window ID
-                        window_id = CGWindowCapture.find_window_by_name(
-                            app_name, window_title
-                        )
+                        # Find window ID (try yabai first for more reliable ID)
+                        if hasattr(window, "window_id"):
+                            window_id = window.window_id
+                        else:
+                            window_id = CGWindowCapture.find_window_by_name(
+                                app_name, window_title
+                            )
+
                         if window_id:
-                            # Capture it!
+                            # Try WindowCaptureManager first for robust edge case handling
+                            if WINDOW_CAPTURE_AVAILABLE:
+                                logger.info(
+                                    f"[CG_CAPTURE] Using WindowCaptureManager for window {window_id} in space {space_id}"
+                                )
+                                try:
+                                    capture_manager = get_window_capture_manager()
+                                    capture_result = await capture_manager.capture_window(
+                                        window_id=window_id,
+                                        space_id=space_id,
+                                        use_fallback=True
+                                    )
+
+                                    if capture_result.success:
+                                        # Load image as numpy array
+                                        img = Image.open(capture_result.image_path)
+                                        screenshot = np.array(img)
+                                        logger.info(
+                                            f"[CG_CAPTURE] Successfully captured {app_name} (ID: {window_id}) from space {space_id} using WindowCaptureManager!"
+                                        )
+                                        if capture_result.status.value == "fallback_used":
+                                            logger.info(
+                                                f"[CG_CAPTURE] Used fallback window {capture_result.fallback_window_id}"
+                                            )
+                                        return screenshot
+                                    else:
+                                        logger.warning(
+                                            f"[CG_CAPTURE] WindowCaptureManager failed: {capture_result.error}, falling back to CGWindowCapture"
+                                        )
+                                except Exception as e:
+                                    logger.warning(
+                                        f"[CG_CAPTURE] WindowCaptureManager exception: {e}, falling back to CGWindowCapture"
+                                    )
+
+                            # Fallback to CGWindowCapture
                             screenshot = CGWindowCapture.capture_window_by_id(window_id)
                             if screenshot is not None:
                                 logger.info(
-                                    f"[CG_CAPTURE] Successfully captured {app_name} (ID: {window_id}) from space {space_id} WITHOUT switching!"
+                                    f"[CG_CAPTURE] Successfully captured {app_name} (ID: {window_id}) from space {space_id} using CGWindowCapture!"
                                 )
                                 return screenshot
 

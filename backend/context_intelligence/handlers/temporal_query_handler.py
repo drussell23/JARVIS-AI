@@ -46,6 +46,12 @@ from collections import deque, defaultdict
 import hashlib
 import json
 
+# Window capture manager
+from backend.context_intelligence.managers.window_capture_manager import (
+    get_window_capture_manager,
+    CaptureStatus
+)
+
 # Image processing
 try:
     from PIL import Image
@@ -224,36 +230,94 @@ class ScreenshotManager:
         # Space-based index
         self.space_screenshots: Dict[int, List[str]] = defaultdict(list)
 
+        # Window capture manager integration
+        self.window_capture_manager = get_window_capture_manager()
+
         # Load existing cache
         self._load_cache_index()
 
     async def capture_screenshot(
         self,
         space_id: Optional[int] = None,
+        window_id: Optional[int] = None,
         app_id: Optional[str] = None,
         ocr_text: Optional[str] = None,
         detected_errors: Optional[List[str]] = None
-    ) -> ScreenshotCache:
-        """Capture and cache a screenshot"""
+    ) -> Optional[ScreenshotCache]:
+        """
+        Capture and cache a screenshot with robust edge case handling.
+
+        Args:
+            space_id: Optional space ID for context
+            window_id: Optional specific window ID to capture
+            app_id: Optional app ID
+            ocr_text: Optional OCR text
+            detected_errors: Optional list of detected errors
+
+        Returns:
+            ScreenshotCache entry or None if capture failed
+        """
         import uuid
-        import pyautogui
 
         screenshot_id = str(uuid.uuid4())
         timestamp = datetime.now()
 
-        # Capture screenshot
-        screenshot = pyautogui.screenshot()
+        # Determine output path
+        output_path = str(self.cache_dir / f"{screenshot_id}.png")
 
-        # Save to disk
-        image_path = self.cache_dir / f"{screenshot_id}.png"
-        screenshot.save(image_path)
+        # Capture using WindowCaptureManager if window_id provided
+        if window_id is not None:
+            logger.info(f"[SCREENSHOT-MANAGER] Capturing window {window_id}")
+            capture_result = await self.window_capture_manager.capture_window(
+                window_id=window_id,
+                output_path=output_path,
+                space_id=space_id,
+                use_fallback=True
+            )
+
+            if not capture_result.success:
+                logger.error(f"[SCREENSHOT-MANAGER] Window capture failed: {capture_result.error}")
+                return None
+
+            image_path = Path(capture_result.image_path)
+
+            # Add capture metadata
+            metadata = {
+                "capture_status": capture_result.status.value,
+                "original_size": capture_result.original_size,
+                "resized_size": capture_result.resized_size,
+                "window_id": window_id,
+                "fallback_used": capture_result.fallback_window_id is not None
+            }
+            if capture_result.fallback_window_id:
+                metadata["fallback_window_id"] = capture_result.fallback_window_id
+
+        else:
+            # Fallback to full screen capture (legacy behavior)
+            logger.info(f"[SCREENSHOT-MANAGER] Capturing full screen for space {space_id}")
+            try:
+                import pyautogui
+                screenshot = pyautogui.screenshot()
+                screenshot.save(output_path)
+                image_path = Path(output_path)
+                metadata = {"capture_type": "full_screen"}
+            except Exception as e:
+                logger.error(f"[SCREENSHOT-MANAGER] Full screen capture failed: {e}")
+                return None
 
         # Calculate perceptual hash
         if PILLOW_AVAILABLE:
-            image_hash = str(imagehash.average_hash(screenshot))
+            try:
+                img = Image.open(image_path)
+                image_hash = str(imagehash.average_hash(img))
+            except Exception as e:
+                logger.warning(f"[SCREENSHOT-MANAGER] Failed to calculate perceptual hash: {e}")
+                with open(image_path, 'rb') as f:
+                    image_hash = hashlib.md5(f.read()).hexdigest()
         else:
             # Fallback to simple hash
-            image_hash = hashlib.md5(screenshot.tobytes()).hexdigest()
+            with open(image_path, 'rb') as f:
+                image_hash = hashlib.md5(f.read()).hexdigest()
 
         # Create cache entry
         cache_entry = ScreenshotCache(
@@ -265,7 +329,7 @@ class ScreenshotManager:
             image_hash=image_hash,
             ocr_text=ocr_text,
             detected_errors=detected_errors or [],
-            metadata={}
+            metadata=metadata
         )
 
         # Add to cache
@@ -277,7 +341,7 @@ class ScreenshotManager:
             # Keep only last 20 per space
             self.space_screenshots[space_id] = self.space_screenshots[space_id][-20:]
 
-        logger.debug(f"Captured screenshot {screenshot_id} for space {space_id}")
+        logger.debug(f"[SCREENSHOT-MANAGER] Captured screenshot {screenshot_id} for space {space_id}")
 
         return cache_entry
 

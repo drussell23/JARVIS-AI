@@ -12,7 +12,11 @@ from .managers import (
     initialize_space_state_manager,
     SpaceState,
     SpaceStateInfo,
-    EdgeCaseResult
+    EdgeCaseResult,
+    get_window_capture_manager,
+    initialize_window_capture_manager,
+    CaptureStatus,
+    CaptureResult,
 )
 
 __all__ = [
@@ -27,4 +31,8 @@ __all__ = [
     "SpaceState",
     "SpaceStateInfo",
     "EdgeCaseResult",
+    "get_window_capture_manager",
+    "initialize_window_capture_manager",
+    "CaptureStatus",
+    "CaptureResult",
 ]

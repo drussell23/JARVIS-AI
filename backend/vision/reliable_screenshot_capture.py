@@ -31,6 +31,20 @@ from AppKit import NSScreen, NSBitmapImageRep, NSImage
 
 logger = logging.getLogger(__name__)
 
+# Import window capture manager for robust edge case handling
+try:
+    import sys
+    from pathlib import Path as PathLib
+    backend_path = PathLib(__file__).parent.parent
+    if str(backend_path) not in sys.path:
+        sys.path.insert(0, str(backend_path))
+    from context_intelligence.managers.window_capture_manager import get_window_capture_manager
+    WINDOW_CAPTURE_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Window capture manager not available: {e}")
+    get_window_capture_manager = None
+    WINDOW_CAPTURE_AVAILABLE = False
+
 @dataclass
 class ScreenshotResult:
     """Result of a screenshot capture attempt"""
@@ -48,15 +62,22 @@ class ReliableScreenshotCapture:
     """
 
     def __init__(self):
-        self.methods = [
+        # Build methods list with window_capture_manager as first choice (if available)
+        self.methods = []
+
+        if WINDOW_CAPTURE_AVAILABLE:
+            self.methods.append(('window_capture_manager', self._capture_with_window_manager))
+
+        self.methods.extend([
             ('quartz_composite', self._capture_quartz_composite),
             ('quartz_windows', self._capture_quartz_windows),
             ('appkit_screen', self._capture_appkit_screen),
             ('screencapture_cli', self._capture_screencapture_cli),
             ('window_server', self._capture_window_server)
-        ]
+        ])
+
         self._init_capture_cache()
-        logger.info("Reliable Screenshot Capture initialized")
+        logger.info(f"Reliable Screenshot Capture initialized with {len(self.methods)} methods")
 
     def _init_capture_cache(self):
         """Initialize cache for recent captures"""
@@ -109,6 +130,90 @@ class ReliableScreenshotCapture:
             timestamp=datetime.now(),
             metadata={}
         )
+
+    def _capture_with_window_manager(self, space_id: int) -> ScreenshotResult:
+        """
+        Use WindowCaptureManager for robust window capture with edge case handling.
+
+        This method attempts to capture windows from the specified space using
+        the WindowCaptureManager which handles permissions, off-screen windows,
+        4K/5K resizing, transparency, and fallback windows automatically.
+        """
+        try:
+            import asyncio
+
+            # Get window manager
+            window_manager = get_window_capture_manager()
+
+            # Find windows in the target space
+            try:
+                from .multi_space_window_detector import MultiSpaceWindowDetector
+                detector = MultiSpaceWindowDetector()
+                window_data = detector.get_all_windows_across_spaces()
+
+                # Find windows in target space
+                target_windows = []
+                for window in window_data.get("windows", []):
+                    if hasattr(window, "space_id"):
+                        if window.space_id == space_id:
+                            target_windows.append(window)
+                    elif isinstance(window, dict) and window.get("space") == space_id:
+                        target_windows.append(window)
+
+                if not target_windows:
+                    raise Exception(f"No windows found in space {space_id}")
+
+                # Try to capture the first non-minimized window
+                for window in target_windows:
+                    window_id = None
+                    if hasattr(window, "window_id"):
+                        window_id = window.window_id
+                    elif isinstance(window, dict):
+                        window_id = window.get("id")
+
+                    if window_id:
+                        # Create async event loop if needed
+                        try:
+                            loop = asyncio.get_event_loop()
+                        except RuntimeError:
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+
+                        # Capture using window manager
+                        capture_result = loop.run_until_complete(
+                            window_manager.capture_window(
+                                window_id=window_id,
+                                space_id=space_id,
+                                use_fallback=True
+                            )
+                        )
+
+                        if capture_result.success:
+                            # Load image
+                            image = Image.open(capture_result.image_path)
+
+                            return ScreenshotResult(
+                                success=True,
+                                image=image,
+                                method='window_capture_manager',
+                                space_id=space_id,
+                                error=None,
+                                timestamp=datetime.now(),
+                                metadata={
+                                    'window_id': window_id,
+                                    'capture_status': capture_result.status.value,
+                                    'original_size': capture_result.original_size,
+                                    'resized_size': capture_result.resized_size,
+                                    'fallback_used': capture_result.fallback_window_id is not None
+                                }
+                            )
+
+            except Exception as e:
+                logger.debug(f"Window detection failed: {e}, trying next method")
+                raise Exception(f"Window manager capture failed: {e}")
+
+        except Exception as e:
+            raise Exception(f"Window manager capture failed: {e}")
 
     def _capture_quartz_composite(self, space_id: int) -> ScreenshotResult:
         """
