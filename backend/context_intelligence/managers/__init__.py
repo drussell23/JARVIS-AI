@@ -175,6 +175,16 @@ from .change_detection_manager import (
     initialize_change_detection_manager
 )
 
+from .proactive_monitoring_manager import (
+    ProactiveMonitoringManager,
+    AlertPriority,
+    MonitoringEventType,
+    MonitoringAlert,
+    MonitoredSpace,
+    get_proactive_monitoring_manager,
+    initialize_proactive_monitoring_manager
+)
+
 __all__ = [
     # Space State Management
     'SpaceStateManager',
@@ -332,4 +342,13 @@ __all__ = [
     'EntityState',
     'get_change_detection_manager',
     'initialize_change_detection_manager',
+
+    # Proactive Monitoring Management
+    'ProactiveMonitoringManager',
+    'AlertPriority',
+    'MonitoringEventType',
+    'MonitoringAlert',
+    'MonitoredSpace',
+    'get_proactive_monitoring_manager',
+    'initialize_proactive_monitoring_manager',
 ]

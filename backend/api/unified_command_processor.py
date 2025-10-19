@@ -449,6 +449,37 @@ class UnifiedCommandProcessor:
             logger.error(f"[UNIFIED] Failed to initialize change detection manager: {e}")
             self.change_detection_manager = None
 
+        # Step 6.12: Initialize ProactiveMonitoringManager (autonomous monitoring & alerts)
+        try:
+            from context_intelligence.managers import initialize_proactive_monitoring_manager, get_capture_strategy_manager, get_ocr_strategy_manager
+
+            # Get conversation tracker from context-aware manager
+            conversation_tracker = None
+            if self.context_aware_manager:
+                conversation_tracker = self.context_aware_manager.conversation_tracker
+
+            # Alert callback to display alerts to user
+            def alert_callback(alert):
+                logger.info(f"[ALERT] {alert.message}")
+                # Could be extended to notify user via TTS, notifications, etc.
+
+            self.proactive_monitoring_manager = initialize_proactive_monitoring_manager(
+                change_detection_manager=self.change_detection_manager,
+                capture_manager=get_capture_strategy_manager(),
+                ocr_manager=get_ocr_strategy_manager(),
+                implicit_resolver=self.implicit_resolver,
+                conversation_tracker=conversation_tracker,
+                default_interval=10.0,  # Check every 10 seconds
+                alert_callback=alert_callback
+            )
+            logger.info("[UNIFIED] ✅ ProactiveMonitoringManager initialized (not started - use start_monitoring())")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] ProactiveMonitoringManager not available: {e}")
+            self.proactive_monitoring_manager = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize proactive monitoring manager: {e}")
+            self.proactive_monitoring_manager = None
+
         # Step 7: Initialize MediumComplexityHandler (Level 2 query execution)
         try:
             from context_intelligence.handlers import initialize_medium_complexity_handler
@@ -535,6 +566,8 @@ class UnifiedCommandProcessor:
             resolvers_active.append("MultiMonitorQueryHandler")
         if self.change_detection_manager:
             resolvers_active.append("ChangeDetectionManager")
+        if self.proactive_monitoring_manager:
+            resolvers_active.append("ProactiveMonitoringManager")
         if self.medium_complexity_handler:
             resolvers_active.append("MediumComplexityHandler")
         if self.complex_complexity_handler:

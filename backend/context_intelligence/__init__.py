@@ -104,6 +104,15 @@ from .managers import (
     ChangeDetectionResult,
     EntityState,
 )
+from .managers import (
+    get_proactive_monitoring_manager,
+    initialize_proactive_monitoring_manager,
+    ProactiveMonitoringManager,
+    AlertPriority,
+    MonitoringEventType,
+    MonitoringAlert,
+    MonitoredSpace,
+)
 from .handlers import (
     get_query_complexity_manager,
     initialize_query_complexity_manager,
@@ -234,6 +243,13 @@ __all__ = [
     "CachedSnapshot",
     "ChangeDetectionResult",
     "EntityState",
+    "get_proactive_monitoring_manager",
+    "initialize_proactive_monitoring_manager",
+    "ProactiveMonitoringManager",
+    "AlertPriority",
+    "MonitoringEventType",
+    "MonitoringAlert",
+    "MonitoredSpace",
     "get_query_complexity_manager",
     "initialize_query_complexity_manager",
     "QueryComplexityManager",
