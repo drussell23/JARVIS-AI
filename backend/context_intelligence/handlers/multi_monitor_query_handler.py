@@ -63,6 +63,7 @@ class MultiMonitorQueryType(Enum):
     LIST_DISPLAYS = "list_displays"      # "Show me all my displays"
     FIND_WINDOW = "find_window"          # "Which monitor has the terminal?"
     MOVE_SPACE = "move_space"            # "Move space 3 to the left monitor"
+    COMPARE_MONITORS = "compare_monitors"  # "Compare left and right monitors" (v2.0)
 
 
 @dataclass
@@ -124,6 +125,26 @@ class MoveSpaceResult:
     error: Optional[str] = None
 
 
+@dataclass
+class MonitorComparison:
+    """Comparison of two monitors"""
+    monitor: MonitorInfo
+    spaces: List[SpaceContent]
+    total_spaces: int
+
+
+@dataclass
+class CompareMonitorsResult:
+    """Result of monitor comparison query (v2.0)"""
+    success: bool
+    monitor1: Optional[MonitorComparison] = None
+    monitor2: Optional[MonitorComparison] = None
+    differences: List[str] = field(default_factory=list)
+    similarities: List[str] = field(default_factory=list)
+    summary: str = ""
+    error: Optional[str] = None
+
+
 # ============================================================================
 # MULTI-MONITOR QUERY HANDLER
 # ============================================================================
@@ -132,11 +153,12 @@ class MultiMonitorQueryHandler:
     """
     Handler for multi-monitor specific queries.
 
-    Handles 4 query types:
+    Handles 5 query types:
     1. MONITOR_CONTENT: Show content of a specific monitor
     2. LIST_DISPLAYS: List all displays with info
     3. FIND_WINDOW: Find which monitor/space has a window
     4. MOVE_SPACE: Move a space to a different monitor
+    5. COMPARE_MONITORS: Compare content of two monitors (v2.0)
     """
 
     def __init__(
@@ -201,6 +223,8 @@ class MultiMonitorQueryHandler:
             return await self.handle_find_window(query, context)
         elif query_type == MultiMonitorQueryType.MOVE_SPACE:
             return await self.handle_move_space(query, context)
+        elif query_type == MultiMonitorQueryType.COMPARE_MONITORS:
+            return await self.handle_compare_monitors(query, context)
         else:
             logger.error(f"[MULTI-MONITOR-HANDLER] Unknown query type: {query_type}")
             return None
@@ -447,6 +471,92 @@ class MultiMonitorQueryHandler:
                 error=str(e)
             )
 
+    async def handle_compare_monitors(
+        self,
+        query: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> CompareMonitorsResult:
+        """
+        Handle "Compare left and right monitors" queries (v2.0).
+
+        Args:
+            query: User query
+            context: Optional context
+
+        Returns:
+            CompareMonitorsResult with comparison data
+        """
+        logger.info(f"[MULTI-MONITOR-HANDLER] Handling compare monitors query: {query}")
+
+        try:
+            # Step 1: Get monitor layout
+            layout = await self.multi_monitor_manager.get_current_layout()
+
+            if len(layout.monitors) < 2:
+                return CompareMonitorsResult(
+                    success=False,
+                    summary="Need at least 2 monitors to compare",
+                    error="Only 1 monitor detected"
+                )
+
+            # Step 2: Extract monitor references from query
+            monitor1, monitor2 = await self._extract_monitor_references_for_comparison(
+                query, layout.monitors, context
+            )
+
+            if not monitor1 or not monitor2:
+                return CompareMonitorsResult(
+                    success=False,
+                    summary="Could not determine which monitors to compare",
+                    error="Monitor references not found in query"
+                )
+
+            # Step 3: Capture content from both monitors
+            logger.info(f"[MULTI-MONITOR-HANDLER] Comparing {monitor1.name} and {monitor2.name}")
+
+            spaces1 = await self._capture_monitor_spaces(monitor1)
+            spaces2 = await self._capture_monitor_spaces(monitor2)
+
+            # Step 4: Create comparisons
+            comparison1 = MonitorComparison(
+                monitor=monitor1,
+                spaces=spaces1,
+                total_spaces=len(spaces1)
+            )
+
+            comparison2 = MonitorComparison(
+                monitor=monitor2,
+                spaces=spaces2,
+                total_spaces=len(spaces2)
+            )
+
+            # Step 5: Analyze differences and similarities
+            differences, similarities = self._analyze_monitor_differences(
+                comparison1, comparison2
+            )
+
+            # Step 6: Generate summary
+            summary = self._generate_comparison_summary(
+                comparison1, comparison2, differences, similarities
+            )
+
+            return CompareMonitorsResult(
+                success=True,
+                monitor1=comparison1,
+                monitor2=comparison2,
+                differences=differences,
+                similarities=similarities,
+                summary=summary
+            )
+
+        except Exception as e:
+            logger.error(f"[MULTI-MONITOR-HANDLER] Error in handle_compare_monitors: {e}")
+            return CompareMonitorsResult(
+                success=False,
+                summary=f"Error: {str(e)}",
+                error=str(e)
+            )
+
     # ========================================================================
     # HELPER METHODS
     # ========================================================================
@@ -677,6 +787,178 @@ class MultiMonitorQueryHandler:
                 lines.append(f"   Relative: {positions}")
 
             lines.append("")
+
+        return "\n".join(lines)
+
+    async def _extract_monitor_references_for_comparison(
+        self,
+        query: str,
+        monitors: List[MonitorInfo],
+        context: Optional[Dict[str, Any]]
+    ) -> Tuple[Optional[MonitorInfo], Optional[MonitorInfo]]:
+        """
+        Extract two monitor references from comparison query.
+        e.g., "Compare left and right monitors" -> (left_monitor, right_monitor)
+        """
+        query_lower = query.lower()
+
+        # Try to extract two monitor references
+        monitor_refs = []
+
+        # Common comparison patterns
+        patterns = [
+            (r'compare\s+(\w+)\s+and\s+(\w+)', 2),  # "compare left and right"
+            (r'(\w+)\s+vs\s+(\w+)', 2),  # "left vs right"
+            (r'(\w+)\s+versus\s+(\w+)', 2),  # "left versus right"
+        ]
+
+        import re
+        for pattern, num_groups in patterns:
+            match = re.search(pattern, query_lower)
+            if match:
+                for i in range(1, num_groups + 1):
+                    ref = match.group(i)
+                    monitor = await self._resolve_monitor_reference_from_string(
+                        ref, monitors, context
+                    )
+                    if monitor:
+                        monitor_refs.append(monitor)
+
+                if len(monitor_refs) >= 2:
+                    return monitor_refs[0], monitor_refs[1]
+
+        # Fallback: use first two monitors if we can't extract references
+        if len(monitors) >= 2:
+            logger.info("[MULTI-MONITOR-HANDLER] Could not extract monitor references, using first two monitors")
+            return monitors[0], monitors[1]
+
+        return None, None
+
+    async def _resolve_monitor_reference_from_string(
+        self,
+        ref: str,
+        monitors: List[MonitorInfo],
+        context: Optional[Dict[str, Any]]
+    ) -> Optional[MonitorInfo]:
+        """Resolve a monitor reference string to a MonitorInfo"""
+        from context_intelligence.managers import MonitorPosition
+
+        ref_lower = ref.lower()
+
+        # Check for position references
+        for monitor in monitors:
+            if MonitorPosition.LEFT.value in ref_lower and MonitorPosition.LEFT in monitor.relative_positions:
+                return monitor
+            if MonitorPosition.RIGHT.value in ref_lower and MonitorPosition.RIGHT in monitor.relative_positions:
+                return monitor
+            if MonitorPosition.TOP.value in ref_lower and MonitorPosition.TOP in monitor.relative_positions:
+                return monitor
+            if MonitorPosition.BOTTOM.value in ref_lower and MonitorPosition.BOTTOM in monitor.relative_positions:
+                return monitor
+            if "main" in ref_lower and monitor.is_main:
+                return monitor
+
+        # Check for ordinal references
+        if "first" in ref_lower or "1st" in ref_lower:
+            return monitors[0] if monitors else None
+        if "second" in ref_lower or "2nd" in ref_lower:
+            return monitors[1] if len(monitors) > 1 else None
+        if "third" in ref_lower or "3rd" in ref_lower:
+            return monitors[2] if len(monitors) > 2 else None
+
+        return None
+
+    def _analyze_monitor_differences(
+        self,
+        comparison1: MonitorComparison,
+        comparison2: MonitorComparison
+    ) -> Tuple[List[str], List[str]]:
+        """Analyze differences and similarities between two monitors"""
+        differences = []
+        similarities = []
+
+        # Compare space counts
+        if comparison1.total_spaces != comparison2.total_spaces:
+            differences.append(
+                f"{comparison1.monitor.name} has {comparison1.total_spaces} spaces, "
+                f"{comparison2.monitor.name} has {comparison2.total_spaces} spaces"
+            )
+        else:
+            similarities.append(f"Both have {comparison1.total_spaces} spaces")
+
+        # Compare resolutions
+        if comparison1.monitor.resolution != comparison2.monitor.resolution:
+            differences.append(
+                f"{comparison1.monitor.name}: {comparison1.monitor.resolution[0]}x{comparison1.monitor.resolution[1]}, "
+                f"{comparison2.monitor.name}: {comparison2.monitor.resolution[0]}x{comparison2.monitor.resolution[1]}"
+            )
+        else:
+            similarities.append(f"Same resolution: {comparison1.monitor.resolution[0]}x{comparison1.monitor.resolution[1]}")
+
+        # Compare content (basic OCR text comparison)
+        text1 = "\n".join(s.ocr_text for s in comparison1.spaces if s.ocr_text)
+        text2 = "\n".join(s.ocr_text for s in comparison2.spaces if s.ocr_text)
+
+        if text1 and text2:
+            # Simple similarity check
+            words1 = set(text1.lower().split())
+            words2 = set(text2.lower().split())
+            common_words = words1 & words2
+            similarity_ratio = len(common_words) / max(len(words1), len(words2)) if words1 or words2 else 0
+
+            if similarity_ratio < 0.3:
+                differences.append("Content appears significantly different")
+            elif similarity_ratio > 0.7:
+                similarities.append("Content appears similar")
+
+        return differences, similarities
+
+    def _generate_comparison_summary(
+        self,
+        comparison1: MonitorComparison,
+        comparison2: MonitorComparison,
+        differences: List[str],
+        similarities: List[str]
+    ) -> str:
+        """Generate summary of monitor comparison"""
+        lines = [
+            f"Comparing {comparison1.monitor.name} and {comparison2.monitor.name}",
+            "",
+            "Similarities:",
+        ]
+
+        if similarities:
+            for sim in similarities:
+                lines.append(f"  ✓ {sim}")
+        else:
+            lines.append("  (None detected)")
+
+        lines.append("")
+        lines.append("Differences:")
+
+        if differences:
+            for diff in differences:
+                lines.append(f"  • {diff}")
+        else:
+            lines.append("  (None detected)")
+
+        lines.append("")
+        lines.append(f"{comparison1.monitor.name}:")
+        for space in comparison1.spaces:
+            if space.error:
+                lines.append(f"  Space {space.space_id}: ❌ {space.error}")
+            else:
+                preview = space.ocr_text[:80] + "..." if space.ocr_text and len(space.ocr_text) > 80 else space.ocr_text or ""
+                lines.append(f"  Space {space.space_id}: {preview}")
+
+        lines.append("")
+        lines.append(f"{comparison2.monitor.name}:")
+        for space in comparison2.spaces:
+            if space.error:
+                lines.append(f"  Space {space.space_id}: ❌ {space.error}")
+            else:
+                preview = space.ocr_text[:80] + "..." if space.ocr_text and len(space.ocr_text) > 80 else space.ocr_text or ""
+                lines.append(f"  Space {space.space_id}: {preview}")
 
         return "\n".join(lines)
 

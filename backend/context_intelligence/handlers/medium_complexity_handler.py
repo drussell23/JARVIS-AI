@@ -471,7 +471,9 @@ class MediumComplexityHandler:
         query_lower = query.lower()
         multi_monitor_type = None
 
-        if any(phrase in query_lower for phrase in ["what's on", "show me", "content of"]):
+        if any(phrase in query_lower for phrase in ["compare", " vs ", " versus "]):
+            multi_monitor_type = MultiMonitorQueryType.COMPARE_MONITORS
+        elif any(phrase in query_lower for phrase in ["what's on", "show me", "content of"]):
             multi_monitor_type = MultiMonitorQueryType.MONITOR_CONTENT
         elif any(phrase in query_lower for phrase in ["all displays", "all monitors", "list displays"]):
             multi_monitor_type = MultiMonitorQueryType.LIST_DISPLAYS

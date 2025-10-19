@@ -81,6 +81,8 @@ from .multi_monitor_query_handler import (
     DisplayListResult,
     WindowLocationResult,
     MoveSpaceResult,
+    CompareMonitorsResult,
+    MonitorComparison,
     SpaceContent,
     get_multi_monitor_query_handler,
     initialize_multi_monitor_query_handler
@@ -141,6 +143,8 @@ __all__ = [
     'DisplayListResult',
     'WindowLocationResult',
     'MoveSpaceResult',
+    'CompareMonitorsResult',
+    'MonitorComparison',
     'SpaceContent',
     'get_multi_monitor_query_handler',
     'initialize_multi_monitor_query_handler',

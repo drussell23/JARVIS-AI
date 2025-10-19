@@ -93,12 +93,13 @@ class MonitorDetector:
         self._cache: Optional[List[MonitorInfo]] = None
         self._cache_time: Optional[float] = None
 
-    async def detect_monitors(self, use_cache: bool = True) -> List[MonitorInfo]:
+    async def detect_monitors(self, use_cache: bool = True, use_core_graphics: bool = True) -> List[MonitorInfo]:
         """
-        Detect all connected monitors.
+        Detect all connected monitors using Core Graphics or system_profiler.
 
         Args:
             use_cache: Use cached results if available
+            use_core_graphics: Try Core Graphics first, fallback to system_profiler
 
         Returns:
             List of MonitorInfo objects
@@ -113,20 +114,30 @@ class MonitorDetector:
         monitors = []
 
         try:
-            # Get display information from system_profiler
-            displays = await self._get_display_info()
+            # Try Core Graphics first (v2.0 method)
+            if use_core_graphics:
+                displays = await self._get_displays_via_core_graphics()
+                if not displays:
+                    # Fallback to system_profiler
+                    displays = await self._get_display_info()
+            else:
+                # Use system_profiler directly
+                displays = await self._get_display_info()
 
             # Get display arrangement from defaults
             arrangement = await self._get_display_arrangement()
 
             # Combine information
             for i, display in enumerate(displays):
+                # Use position from Core Graphics if available, otherwise from arrangement
+                position = display.get('position', arrangement.get(i, {}).get('position', (0, 0)))
+
                 monitor = MonitorInfo(
-                    id=i + 1,
+                    id=display.get('display_id', i + 1),  # Use Core Graphics display_id if available
                     uuid=display.get('uuid', f'display_{i}'),
                     name=display.get('name', f'Display {i+1}'),
                     resolution=(display.get('width', 1920), display.get('height', 1080)),
-                    position=arrangement.get(i, {}).get('position', (0, 0)),
+                    position=position,
                     is_main=display.get('main', i == 0),
                     spaces=[],
                     relative_positions=set()
@@ -197,6 +208,89 @@ class MonitorDetector:
         except Exception as e:
             logger.warning(f"Failed to get display info: {e}")
             return [{'uuid': 'default', 'name': 'Main Display', 'width': 1920, 'height': 1080, 'main': True}]
+
+    async def _get_displays_via_core_graphics(self) -> List[Dict[str, Any]]:
+        """
+        Get display information via Core Graphics (v2.0 method).
+        Uses Python script with Quartz bindings (PyObjC).
+        """
+        try:
+            # Try importing Quartz for Core Graphics access
+            script = '''
+import sys
+try:
+    from Quartz import CGGetActiveDisplayList, CGDisplayBounds, CGMainDisplayID
+    import json
+
+    # Get all active displays (CGGetActiveDisplayList)
+    max_displays = 16
+    (err, active_displays, num_displays) = CGGetActiveDisplayList(max_displays, None, None)
+
+    if err != 0:
+        print(json.dumps([]))
+        sys.exit(0)
+
+    displays = []
+    main_display_id = CGMainDisplayID()
+
+    for i, display_id in enumerate(active_displays[:num_displays]):
+        bounds = CGDisplayBounds(display_id)
+
+        displays.append({
+            "display_id": int(display_id),
+            "uuid": f"display_{display_id}",
+            "name": f"Display {i+1}",
+            "width": int(bounds.size.width),
+            "height": int(bounds.size.height),
+            "x": int(bounds.origin.x),
+            "y": int(bounds.origin.y),
+            "main": display_id == main_display_id
+        })
+
+    print(json.dumps(displays))
+except ImportError:
+    # PyObjC not available
+    print(json.dumps([]))
+except Exception as e:
+    print(json.dumps([]), file=sys.stderr)
+'''
+
+            # Execute Python script
+            result = await asyncio.create_subprocess_exec(
+                'python3', '-c', script,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await result.communicate()
+
+            if result.returncode != 0 or not stdout:
+                logger.debug("Core Graphics detection not available (PyObjC not installed)")
+                return []
+
+            displays_data = json.loads(stdout.decode())
+
+            if not displays_data:
+                return []
+
+            # Convert to standard format
+            displays = []
+            for display in displays_data:
+                displays.append({
+                    'uuid': display['uuid'],
+                    'name': display['name'],
+                    'width': display['width'],
+                    'height': display['height'],
+                    'position': (display['x'], display['y']),
+                    'main': display['main'],
+                    'display_id': display['display_id']
+                })
+
+            logger.info(f"[MONITOR-DETECTOR] Detected {len(displays)} displays via Core Graphics")
+            return displays
+
+        except Exception as e:
+            logger.debug(f"Core Graphics detection failed: {e}")
+            return []
 
     def _parse_resolution(self, resolution_str: str) -> Tuple[int, int]:
         """Parse resolution string like '1920 x 1080'"""

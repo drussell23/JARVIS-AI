@@ -133,6 +133,8 @@ from .handlers import (
     DisplayListResult,
     WindowLocationResult,
     MoveSpaceResult,
+    CompareMonitorsResult,
+    MonitorComparison,
 )
 
 __all__ = [
@@ -247,4 +249,6 @@ __all__ = [
     "DisplayListResult",
     "WindowLocationResult",
     "MoveSpaceResult",
+    "CompareMonitorsResult",
+    "MonitorComparison",
 ]
