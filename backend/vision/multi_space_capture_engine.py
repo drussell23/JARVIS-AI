@@ -52,14 +52,22 @@ try:
         sys.path.insert(0, str(backend_path))
     from context_intelligence.managers.window_capture_manager import get_window_capture_manager
     from context_intelligence.managers.system_state_manager import get_system_state_manager, SystemHealth
+    from context_intelligence.managers.capture_strategy_manager import (
+        get_capture_strategy_manager,
+        initialize_capture_strategy_manager
+    )
     WINDOW_CAPTURE_AVAILABLE = True
     SYSTEM_STATE_AVAILABLE = True
+    CAPTURE_STRATEGY_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Context intelligence managers not available: {e}")
     get_window_capture_manager = None
     get_system_state_manager = None
+    get_capture_strategy_manager = None
+    initialize_capture_strategy_manager = None
     WINDOW_CAPTURE_AVAILABLE = False
     SYSTEM_STATE_AVAILABLE = False
+    CAPTURE_STRATEGY_AVAILABLE = False
 
 
 class CaptureMethod(Enum):
@@ -245,6 +253,23 @@ class MultiSpaceCaptureEngine:
         self.monitoring_active = False  # Track if monitoring is active
         self.direct_capture = get_direct_capture() if get_direct_capture else None
         self.system_state_manager = get_system_state_manager() if SYSTEM_STATE_AVAILABLE else None
+
+        # Initialize Capture Strategy Manager for intelligent fallbacks
+        self.capture_strategy_manager = None
+        if CAPTURE_STRATEGY_AVAILABLE:
+            try:
+                # Try to get existing instance
+                self.capture_strategy_manager = get_capture_strategy_manager()
+                if not self.capture_strategy_manager:
+                    # Initialize with default settings
+                    self.capture_strategy_manager = initialize_capture_strategy_manager(
+                        cache_ttl=60.0,  # 60-second cache
+                        max_cache_entries=100,
+                        enable_error_matrix=True
+                    )
+                logger.info("✅ Capture Strategy Manager available for intelligent fallbacks")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Capture Strategy Manager: {e}")
 
     def _initialize_capture_methods(self) -> Dict[CaptureMethod, bool]:
         """Check available capture methods"""

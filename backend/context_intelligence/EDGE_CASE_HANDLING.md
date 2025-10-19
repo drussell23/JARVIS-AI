@@ -14,10 +14,11 @@
 4. [System State Edge Cases](#system-state-edge-cases)
 5. [API & Network Edge Cases](#api--network-edge-cases)
 6. [Error Handling Matrix](#error-handling-matrix)
-7. [Integration Points](#integration-points)
-8. [Usage Examples](#usage-examples)
-9. [API Reference](#api-reference)
-10. [Troubleshooting](#troubleshooting)
+7. [Capture Fallbacks](#capture-fallbacks)
+8. [Integration Points](#integration-points)
+9. [Usage Examples](#usage-examples)
+10. [API Reference](#api-reference)
+11. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -965,6 +966,544 @@ report = await matrix.execute_with_fallbacks(
 
 ---
 
+## Capture Fallbacks
+
+### Overview
+
+**Location:** `backend/context_intelligence/managers/capture_strategy_manager.py`
+
+The Capture Strategy Manager implements intelligent screenshot capture with a 4-step fallback sequence:
+
+```
+1. Primary: Capture specific window
+       ↓ (fails)
+2. Fallback 1: Capture entire space
+       ↓ (fails)
+3. Fallback 2: Use cached screenshot (if <60s old)
+       ↓ (fails)
+4. Fallback 3: Return user-friendly error message
+```
+
+Uses the Error Handling Matrix for graceful degradation and cache management with TTL.
+
+### Components
+
+#### 1. CaptureCache
+
+Manages cached screenshots with time-based expiration.
+
+```python
+from context_intelligence.managers import CaptureCache, CachedCapture
+from datetime import datetime
+
+# Create cache
+cache = CaptureCache(default_ttl=60.0, max_entries=100)
+
+# Store capture
+cached = CachedCapture(
+    image=screenshot_data,
+    window_id=12345,
+    space_id=3,
+    timestamp=datetime.now(),
+    method="window_capture",
+    metadata={"source": "primary"}
+)
+cache.store(cached)
+
+# Retrieve by space
+cached_capture = cache.get_by_space(space_id=3, max_age=60.0)
+if cached_capture:
+    print(f"Cache hit! Age: {cached_capture.age_seconds():.1f}s")
+    image = cached_capture.image
+
+# Retrieve by window
+cached_capture = cache.get_by_window(window_id=12345, max_age=60.0)
+
+# Get stats
+stats = cache.get_stats()
+print(f"Space entries: {stats['space_entries']}")
+print(f"Window entries: {stats['window_entries']}")
+
+# Clear cache
+cache.clear()
+```
+
+**Features:**
+- Time-based expiration (configurable TTL)
+- Space-based caching
+- Window-based caching
+- Automatic cleanup when max_entries exceeded
+- Cache validity checking
+
+#### 2. CachedCapture
+
+Data class representing a cached screenshot.
+
+```python
+@dataclass
+class CachedCapture:
+    image: Any                    # Image data (PIL, numpy, etc.)
+    window_id: Optional[int]      # Window ID (if window capture)
+    space_id: int                 # Space ID
+    timestamp: datetime           # Capture time
+    method: str                   # Capture method used
+    metadata: Dict[str, Any]      # Additional metadata
+
+    def is_valid(self, max_age_seconds: float = 60.0) -> bool:
+        """Check if cache is still valid"""
+
+    def age_seconds(self) -> float:
+        """Get age in seconds"""
+```
+
+#### 3. CaptureStrategyManager (Main)
+
+Main coordinator for intelligent capture with fallbacks.
+
+```python
+from context_intelligence.managers import (
+    initialize_capture_strategy_manager,
+    get_capture_strategy_manager
+)
+
+# Initialize manager
+manager = initialize_capture_strategy_manager(
+    cache_ttl=60.0,              # Cache time-to-live in seconds
+    max_cache_entries=100,       # Maximum cache entries
+    enable_error_matrix=True     # Use Error Handling Matrix
+)
+
+# Or get existing instance
+manager = get_capture_strategy_manager()
+
+# Capture with full fallback chain
+success, image, message = await manager.capture_with_fallbacks(
+    space_id=3,
+    window_id=12345,                    # Optional: specific window
+    window_capture_func=capture_window, # Async function to capture window
+    space_capture_func=capture_space,   # Async function to capture space
+    cache_max_age=60.0                  # Optional: max cache age
+)
+
+if success:
+    print(f"✅ {message}")
+    # Use image
+    process_screenshot(image)
+else:
+    print(f"❌ {message}")
+
+# Get cache stats
+stats = manager.get_cache_stats()
+print(f"Cache entries: {stats['total_entries']}")
+
+# Clear cache
+manager.clear_cache()
+```
+
+### Fallback Sequence
+
+#### Step 1: Capture Specific Window (Primary)
+
+If `window_id` is provided, attempts to capture the specific window.
+
+```python
+async def capture_window(window_id: int, space_id: int):
+    """Capture specific window"""
+    # Your window capture logic
+    return screenshot_image
+
+# Capture with window fallback
+success, image, message = await manager.capture_with_fallbacks(
+    space_id=3,
+    window_id=12345,
+    window_capture_func=capture_window,
+    space_capture_func=capture_space
+)
+```
+
+**Behavior:**
+- Timeout: 10 seconds
+- Priority: PRIMARY
+- On success: Caches result and returns immediately
+- On failure: Proceeds to Step 2
+
+#### Step 2: Capture Entire Space (Fallback 1)
+
+If window capture fails, captures the entire space.
+
+```python
+async def capture_space(space_id: int):
+    """Capture entire space"""
+    # Your space capture logic
+    return screenshot_image
+
+# Capture with space fallback
+success, image, message = await manager.capture_with_fallbacks(
+    space_id=3,
+    space_capture_func=capture_space
+)
+```
+
+**Behavior:**
+- Timeout: 15 seconds
+- Priority: FALLBACK
+- On success: Caches result and returns immediately
+- On failure: Proceeds to Step 3
+
+#### Step 3: Use Cached Screenshot (Fallback 2)
+
+If both capture methods fail, uses cached screenshot if available and valid.
+
+```python
+# Cache is checked automatically
+success, image, message = await manager.capture_with_fallbacks(
+    space_id=3,
+    window_id=12345,
+    window_capture_func=capture_window,
+    space_capture_func=capture_space,
+    cache_max_age=60.0  # Use cache if <60s old
+)
+
+if success and "cached" in message.lower():
+    print(f"Using cached capture: {message}")
+```
+
+**Behavior:**
+- Timeout: 1 second (fast lookup)
+- Priority: SECONDARY
+- Checks window cache first (if window_id provided)
+- Then checks space cache
+- Returns cached image if valid
+- On failure: Proceeds to Step 4
+
+#### Step 4: Return Error Message (Fallback 3)
+
+If all methods fail, generates user-friendly error message.
+
+```python
+success, image, message = await manager.capture_with_fallbacks(
+    space_id=3,
+    window_id=12345,
+    window_capture_func=capture_window,
+    space_capture_func=capture_space
+)
+
+if not success:
+    # User-friendly error message
+    print(f"❌ {message}")
+    # Example: "Unable to capture Space 3"
+```
+
+**Behavior:**
+- Generated by ErrorMessageGenerator
+- Includes helpful suggestions if available
+- Provides context about what failed
+
+### Integration Example
+
+**In multi_space_capture_engine.py:**
+
+```python
+from context_intelligence.managers import (
+    get_capture_strategy_manager,
+    initialize_capture_strategy_manager
+)
+
+class MultiSpaceCaptureEngine:
+    def __init__(self):
+        # Initialize Capture Strategy Manager
+        self.capture_strategy_manager = get_capture_strategy_manager()
+        if not self.capture_strategy_manager:
+            self.capture_strategy_manager = initialize_capture_strategy_manager(
+                cache_ttl=60.0,
+                max_cache_entries=100,
+                enable_error_matrix=True
+            )
+        logger.info("✅ Capture Strategy Manager initialized")
+
+    async def capture_space_intelligent(self, space_id: int, window_id: Optional[int] = None):
+        """Capture with intelligent fallbacks"""
+
+        if not self.capture_strategy_manager:
+            # Fallback to legacy capture
+            return await self._legacy_capture(space_id)
+
+        # Use intelligent capture with fallbacks
+        success, image, message = await self.capture_strategy_manager.capture_with_fallbacks(
+            space_id=space_id,
+            window_id=window_id,
+            window_capture_func=self._capture_window,
+            space_capture_func=self._capture_space,
+            cache_max_age=60.0
+        )
+
+        if success:
+            logger.info(f"✅ Capture successful: {message}")
+            return image
+        else:
+            logger.error(f"❌ Capture failed: {message}")
+            return None
+
+    async def _capture_window(self, window_id: int, space_id: int):
+        """Capture specific window"""
+        # Implementation using WindowCaptureManager or CGWindowCapture
+        return screenshot_image
+
+    async def _capture_space(self, space_id: int):
+        """Capture entire space"""
+        # Implementation using screencapture or other method
+        return screenshot_image
+```
+
+### Usage Examples
+
+#### Example 1: Simple Window Capture with Fallbacks
+
+```python
+from context_intelligence.managers import get_capture_strategy_manager
+
+async def capture_window_smart(window_id: int, space_id: int):
+    manager = get_capture_strategy_manager()
+
+    # Capture with automatic fallbacks
+    success, image, message = await manager.capture_with_fallbacks(
+        space_id=space_id,
+        window_id=window_id,
+        window_capture_func=my_window_capture,
+        space_capture_func=my_space_capture
+    )
+
+    if success:
+        print(f"✅ {message}")
+        return image
+    else:
+        print(f"❌ {message}")
+        return None
+```
+
+#### Example 2: Space Capture with Cache
+
+```python
+from context_intelligence.managers import initialize_capture_strategy_manager
+
+async def capture_space_cached(space_id: int):
+    # Initialize with 30-second cache
+    manager = initialize_capture_strategy_manager(
+        cache_ttl=30.0,
+        max_cache_entries=50
+    )
+
+    # First call: Captures and caches
+    success, image1, msg1 = await manager.capture_with_fallbacks(
+        space_id=space_id,
+        space_capture_func=my_space_capture,
+        cache_max_age=30.0
+    )
+    print(f"First call: {msg1}")  # "Captured space 3"
+
+    # Second call within 30s: Uses cache
+    success, image2, msg2 = await manager.capture_with_fallbacks(
+        space_id=space_id,
+        space_capture_func=my_space_capture,
+        cache_max_age=30.0
+    )
+    print(f"Second call: {msg2}")  # "Using cached capture (age=2.3s)"
+
+    return image2
+```
+
+#### Example 3: Multiple Spaces with Parallel Capture
+
+```python
+import asyncio
+from context_intelligence.managers import get_capture_strategy_manager
+
+async def capture_multiple_spaces(space_ids: List[int]):
+    manager = get_capture_strategy_manager()
+
+    # Capture all spaces in parallel
+    tasks = [
+        manager.capture_with_fallbacks(
+            space_id=sid,
+            space_capture_func=my_space_capture
+        )
+        for sid in space_ids
+    ]
+
+    results = await asyncio.gather(*tasks)
+
+    # Process results
+    successful_captures = {}
+    failed_captures = {}
+
+    for space_id, (success, image, message) in zip(space_ids, results):
+        if success:
+            successful_captures[space_id] = image
+            logger.info(f"✅ Space {space_id}: {message}")
+        else:
+            failed_captures[space_id] = message
+            logger.error(f"❌ Space {space_id}: {message}")
+
+    return successful_captures, failed_captures
+```
+
+#### Example 4: Custom Cache Behavior
+
+```python
+from context_intelligence.managers import CaptureStrategyManager
+
+# Create manager with custom settings
+manager = CaptureStrategyManager(
+    cache_ttl=120.0,        # 2-minute cache
+    max_cache_entries=200,  # More cache entries
+    enable_error_matrix=True
+)
+
+# Capture with short cache validity
+success, image, message = await manager.capture_with_fallbacks(
+    space_id=3,
+    space_capture_func=my_space_capture,
+    cache_max_age=30.0  # Override default TTL (only use cache if <30s old)
+)
+
+# Check cache stats
+stats = manager.get_cache_stats()
+print(f"Cache: {stats['total_entries']}/{stats['max_entries']} entries")
+
+# Clear cache when needed
+manager.clear_cache()
+```
+
+### Result Quality Reporting
+
+The manager reports result quality based on which method succeeded:
+
+```python
+success, image, message = await manager.capture_with_fallbacks(
+    space_id=3,
+    window_id=12345,
+    window_capture_func=capture_window,
+    space_capture_func=capture_space
+)
+
+# Message indicates quality:
+# - "Captured window 12345 in space 3"           → FULL quality (window capture)
+# - "Captured space 3 using fallback method"     → DEGRADED quality (space capture)
+# - "Using cached capture for space 3"           → PARTIAL quality (cache used)
+# - "Unable to capture Space 3"                  → FAILED (all methods failed)
+```
+
+### Benefits
+
+✅ **Intelligent Fallbacks** - Automatic progression through capture methods
+✅ **Cache Management** - Reduces capture overhead for recent screenshots
+✅ **Error Matrix Integration** - Leverages existing error handling infrastructure
+✅ **Result Quality Tracking** - Know which method was used
+✅ **User-Friendly Errors** - Helpful messages when all methods fail
+✅ **Flexible Configuration** - Configurable TTL and cache size
+✅ **Async Support** - Fully async with timeout support
+✅ **Parallel Capture** - Capture multiple spaces concurrently
+
+### API Reference
+
+#### CaptureStrategyManager
+
+```python
+class CaptureStrategyManager:
+    def __init__(
+        self,
+        cache_ttl: float = 60.0,
+        max_cache_entries: int = 100,
+        enable_error_matrix: bool = True
+    )
+
+    async def capture_with_fallbacks(
+        self,
+        space_id: int,
+        window_id: Optional[int] = None,
+        window_capture_func: Optional[Callable] = None,
+        space_capture_func: Optional[Callable] = None,
+        cache_max_age: Optional[float] = None
+    ) -> Tuple[bool, Any, str]:
+        """
+        Capture with intelligent fallbacks
+
+        Returns:
+            (success, image_data, message)
+        """
+
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Get cache statistics"""
+
+    def clear_cache(self):
+        """Clear all cache"""
+```
+
+#### CaptureCache
+
+```python
+class CaptureCache:
+    def __init__(self, default_ttl: float = 60.0, max_entries: int = 100)
+
+    def get_by_space(
+        self,
+        space_id: int,
+        max_age: Optional[float] = None
+    ) -> Optional[CachedCapture]:
+        """Get cached capture by space ID"""
+
+    def get_by_window(
+        self,
+        window_id: int,
+        max_age: Optional[float] = None
+    ) -> Optional[CachedCapture]:
+        """Get cached capture by window ID"""
+
+    def store(self, capture: CachedCapture):
+        """Store capture in cache"""
+
+    def clear(self):
+        """Clear all cache"""
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get cache statistics"""
+```
+
+#### CachedCapture
+
+```python
+@dataclass
+class CachedCapture:
+    image: Any                    # Image data
+    window_id: Optional[int]      # Window ID (if window capture)
+    space_id: int                 # Space ID
+    timestamp: datetime           # Capture time
+    method: str                   # Capture method ("window_capture", "space_capture", etc.)
+    metadata: Dict[str, Any]      # Additional metadata
+
+    def is_valid(self, max_age_seconds: float = 60.0) -> bool:
+        """Check if cache is still valid"""
+
+    def age_seconds(self) -> float:
+        """Get age in seconds since capture"""
+```
+
+#### Global Functions
+
+```python
+def get_capture_strategy_manager() -> Optional[CaptureStrategyManager]:
+    """Get the global capture strategy manager instance"""
+
+def initialize_capture_strategy_manager(
+    cache_ttl: float = 60.0,
+    max_cache_entries: int = 100,
+    enable_error_matrix: bool = True
+) -> CaptureStrategyManager:
+    """Initialize the global capture strategy manager"""
+```
+
+---
+
 ## Integration Points
 
 ### 1. Temporal Query Handler
@@ -1778,7 +2317,10 @@ for space_id in [1, 2, 3]:
 - ✅ ErrorRecoveryStrategy with 3 modes (continue, retry, abort)
 - ✅ ErrorMessageGenerator for user-friendly messages with suggestions
 - ✅ Result quality levels (FULL, DEGRADED, PARTIAL, MINIMAL, FAILED)
+- ✅ CaptureStrategyManager for intelligent capture fallbacks (window→space→cache→error)
+- ✅ CaptureCache with TTL-based screenshot caching
 - ✅ Integration with reliable_screenshot_capture.py
+- ✅ Integration with multi_space_capture_engine.py
 - ✅ Comprehensive documentation with examples and flow diagrams
 
 ### v1.2 (2025-10-19)

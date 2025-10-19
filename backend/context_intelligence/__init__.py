@@ -37,6 +37,9 @@ from .managers import (
     ExecutionReport,
     ResultQuality,
     ErrorMessageGenerator,
+    get_capture_strategy_manager,
+    initialize_capture_strategy_manager,
+    CaptureStrategyManager,
 )
 
 __all__ = [
@@ -75,4 +78,7 @@ __all__ = [
     "ExecutionReport",
     "ResultQuality",
     "ErrorMessageGenerator",
+    "get_capture_strategy_manager",
+    "initialize_capture_strategy_manager",
+    "CaptureStrategyManager",
 ]

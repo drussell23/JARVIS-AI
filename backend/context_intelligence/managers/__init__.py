@@ -78,6 +78,14 @@ from .error_handling_matrix import (
     initialize_error_handling_matrix
 )
 
+from .capture_strategy_manager import (
+    CaptureStrategyManager,
+    CaptureCache,
+    CachedCapture,
+    get_capture_strategy_manager,
+    initialize_capture_strategy_manager
+)
+
 __all__ = [
     # Space State Management
     'SpaceStateManager',
@@ -146,4 +154,11 @@ __all__ = [
     'MethodDefinition',
     'get_error_handling_matrix',
     'initialize_error_handling_matrix',
+
+    # Capture Strategy Management
+    'CaptureStrategyManager',
+    'CaptureCache',
+    'CachedCapture',
+    'get_capture_strategy_manager',
+    'initialize_capture_strategy_manager',
 ]
