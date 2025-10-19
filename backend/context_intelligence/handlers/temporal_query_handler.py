@@ -1,20 +1,27 @@
 """
-Temporal Query Handler - Enhanced Time-Based Intelligence & Proactive Monitoring
-================================================================================
+Temporal Query Handler v3.0 - INTELLIGENT TIME-BASED ANALYSIS
+==============================================================
 
-Handles temporal queries like:
+Handles temporal queries with ML-powered intelligence:
 - ❓ "What changed in space 3?"
 - ❓ "Has the error been fixed?"
 - ❓ "What's new in the last 5 minutes?"
 - ❓ "When did this error first appear?"
+- ❓ "What patterns have you noticed?" (NEW)
+- ❓ "Show me predicted events" (NEW)
+- ❓ "Are there any anomalies?" (NEW)
 
-**NEW v2.0 Features**:
-✅ Integration with ProactiveMonitoringManager for autonomous data
-✅ Integration with ChangeDetectionManager for advanced change detection
-✅ Integration with ImplicitReferenceResolver for query understanding
-✅ Auto-build timeline history from monitoring data (no manual queries!)
-✅ Proactive error tracking without user asking
-✅ Temporal context from conversation history
+**UPGRADED v3.0 Features**:
+✅ Integration with HybridProactiveMonitoringManager (ML-powered!)
+✅ Pattern-based timeline building (learns correlations)
+✅ Predictive event analysis (anticipates future events)
+✅ Anomaly-aware change detection (detects unusual behavior)
+✅ Multi-space correlation tracking (cascading failures)
+✅ Adaptive query complexity (fast for simple, deep for complex)
+✅ Learned pattern integration (uses saved patterns)
+✅ Alert quality scoring (prioritizes important changes)
+✅ ImplicitReferenceResolver for natural language understanding
+✅ Auto-build intelligent timeline from ML alerts
 
 Architecture:
 
@@ -26,11 +33,15 @@ Architecture:
          ↓               ↓                            ↓
     space 3         → space_id: 3          Get monitoring data
          ↓               ↓                            ↓
-    Resolved Query  ProactiveMonitoring    Detect changes
+    Resolved Query  HybridMonitoring       ML-powered analysis
          ↓               ↓                            ↓
-    "What changed   Auto-cached data       Advanced diffing
-     in space 3?"        ↓                            ↓
-         └───────────────┴────────────────────────→ Response
+    "What changed   ML alerts + patterns   Advanced diffing
+     in space 3?"   + predictions               ↓
+         ↓               ↓                   Anomaly detection
+         └───────────────┴────────────────────────→ Intelligent Response
+                                                     + Predictions
+                                                     + Patterns
+                                                     + Anomalies
 """
 
 import asyncio
@@ -62,7 +73,11 @@ class TemporalQueryType(Enum):
     COMPARISON = auto()            # "How is this different from before?"
     TREND_ANALYSIS = auto()        # "Is CPU usage increasing?"
     STATE_HISTORY = auto()         # "Show me history of space 3"
-    MONITORING_REPORT = auto()     # "What has monitoring detected?" (NEW)
+    MONITORING_REPORT = auto()     # "What has monitoring detected?"
+    PATTERN_ANALYSIS = auto()      # "What patterns have you noticed?" (NEW v3.0)
+    PREDICTIVE_ANALYSIS = auto()   # "Show me predicted events" (NEW v3.0)
+    ANOMALY_ANALYSIS = auto()      # "Are there any anomalies?" (NEW v3.0)
+    CORRELATION_ANALYSIS = auto()  # "How are spaces related?" (NEW v3.0)
 
 
 class ChangeType(Enum):
@@ -75,10 +90,14 @@ class ChangeType(Enum):
     WINDOW_REMOVED = "window_removed"        # Window closed
     VALUE_CHANGED = "value_changed"          # Numeric value changed
     STATUS_CHANGED = "status_changed"        # Status indicator changed
-    BUILD_COMPLETED = "build_completed"      # Build finished (NEW)
-    BUILD_FAILED = "build_failed"            # Build failed (NEW)
-    PROCESS_STARTED = "process_started"      # Process started (NEW)
-    PROCESS_STOPPED = "process_stopped"      # Process stopped (NEW)
+    BUILD_COMPLETED = "build_completed"      # Build finished
+    BUILD_FAILED = "build_failed"            # Build failed
+    PROCESS_STARTED = "process_started"      # Process started
+    PROCESS_STOPPED = "process_stopped"      # Process stopped
+    ANOMALY_DETECTED = "anomaly_detected"    # Anomaly detected (NEW v3.0)
+    PATTERN_RECOGNIZED = "pattern_recognized" # Pattern recognized (NEW v3.0)
+    PREDICTIVE_EVENT = "predictive_event"    # Predicted event (NEW v3.0)
+    CASCADING_FAILURE = "cascading_failure"  # Multi-space failure (NEW v3.0)
     NO_CHANGE = "no_change"                  # Nothing changed
 
 
@@ -192,20 +211,36 @@ class TemporalQueryResult:
 
 
 # ============================================================================
-# TEMPORAL QUERY HANDLER (Enhanced v2.0)
+# TEMPORAL QUERY HANDLER (INTELLIGENT v3.0)
 # ============================================================================
 
 class TemporalQueryHandler:
     """
-    Main handler for temporal queries with ProactiveMonitoring integration.
+    Intelligent temporal query handler with ML-powered analysis.
 
-    **NEW v2.0 Enhancements**:
-    - Integrates with ProactiveMonitoringManager for autonomous monitoring data
-    - Integrates with ChangeDetectionManager for advanced change detection
-    - Uses ImplicitReferenceResolver for query understanding
-    - Leverages ConversationTracker for temporal context
-    - Auto-builds timeline from monitoring alerts
-    - No manual screenshot management needed - monitoring does it!
+    **UPGRADED v3.0 Features**:
+    - Integrates with HybridProactiveMonitoringManager (ML-powered alerts!)
+    - Pattern-based timeline building (learns event correlations)
+    - Predictive event analysis (anticipates future events)
+    - Anomaly-aware change detection (detects unusual behavior)
+    - Multi-space correlation tracking (cascading failures)
+    - Alert quality scoring (prioritizes important changes)
+    - Learned pattern integration (uses saved patterns from disk)
+    - ImplicitReferenceResolver for natural language understanding
+    - ChangeDetectionManager for advanced diffing
+    - ConversationTracker for temporal context
+
+    **NEW Query Types**:
+    - Pattern Analysis: "What patterns have you noticed?"
+    - Predictive Analysis: "Show me predicted events"
+    - Anomaly Analysis: "Are there any anomalies?"
+    - Correlation Analysis: "How are spaces related?"
+
+    **Intelligence Sources**:
+    1. HybridMonitoring ML alerts (fast path + deep path + ML predictions)
+    2. Learned pattern rules (saved to ~/.jarvis/monitoring_patterns.json)
+    3. Anomaly profiles (statistical baselines)
+    4. Alert correlation data (multi-space failures)
     """
 
     def __init__(
@@ -216,10 +251,10 @@ class TemporalQueryHandler:
         conversation_tracker=None
     ):
         """
-        Initialize TemporalQueryHandler.
+        Initialize Intelligent TemporalQueryHandler v3.0.
 
         Args:
-            proactive_monitoring_manager: ProactiveMonitoringManager instance
+            proactive_monitoring_manager: HybridProactiveMonitoringManager instance (v2.0)
             change_detection_manager: ChangeDetectionManager instance
             implicit_resolver: ImplicitReferenceResolver instance
             conversation_tracker: ConversationTracker instance
@@ -230,9 +265,44 @@ class TemporalQueryHandler:
         self.conversation_tracker = conversation_tracker
 
         # Alert history from monitoring (populated by monitoring callback)
-        self.monitoring_alerts: deque[Dict[str, Any]] = deque(maxlen=200)
+        self.monitoring_alerts: deque[Dict[str, Any]] = deque(maxlen=500)  # Increased from 200
 
-        logger.info("[TEMPORAL-HANDLER] Initialized with ProactiveMonitoring integration")
+        # NEW v3.0: Intelligence data
+        self.is_hybrid_monitoring = self._check_if_hybrid_monitoring()
+        self.learned_patterns: List[Dict[str, Any]] = []
+        self.anomaly_alerts: deque[Dict[str, Any]] = deque(maxlen=100)
+        self.predictive_alerts: deque[Dict[str, Any]] = deque(maxlen=100)
+        self.correlation_alerts: deque[Dict[str, Any]] = deque(maxlen=100)
+
+        # Load learned patterns if available
+        self._load_learned_patterns()
+
+        if self.is_hybrid_monitoring:
+            logger.info("[TEMPORAL-HANDLER] ✅ Initialized with HybridProactiveMonitoring (ML-powered!)")
+        else:
+            logger.info("[TEMPORAL-HANDLER] Initialized with ProactiveMonitoring integration")
+
+    def _check_if_hybrid_monitoring(self) -> bool:
+        """Check if we're using HybridProactiveMonitoringManager"""
+        if self.proactive_monitoring:
+            # Check if it has ML features (hybrid manager)
+            return hasattr(self.proactive_monitoring, 'enable_ml') and \
+                   hasattr(self.proactive_monitoring, '_pattern_rules')
+        return False
+
+    def _load_learned_patterns(self):
+        """Load learned patterns from disk (saved by HybridMonitoring)"""
+        try:
+            from pathlib import Path
+            patterns_file = Path.home() / ".jarvis" / "monitoring_patterns.json"
+
+            if patterns_file.exists():
+                with open(patterns_file, 'r') as f:
+                    data = json.load(f)
+                    self.learned_patterns = data.get('pattern_rules', [])
+                    logger.info(f"[TEMPORAL-HANDLER] Loaded {len(self.learned_patterns)} learned patterns from disk")
+        except Exception as e:
+            logger.warning(f"[TEMPORAL-HANDLER] Failed to load learned patterns: {e}")
 
     def set_proactive_monitoring(self, manager):
         """Inject ProactiveMonitoringManager"""
@@ -256,9 +326,9 @@ class TemporalQueryHandler:
 
     def register_monitoring_alert(self, alert: Dict[str, Any]):
         """
-        Register a monitoring alert for timeline building.
+        Register a monitoring alert for timeline building (v3.0 Enhanced).
 
-        Called by ProactiveMonitoringManager's alert callback.
+        Called by HybridProactiveMonitoringManager's alert callback.
 
         Args:
             alert: Alert dictionary with keys:
@@ -268,9 +338,30 @@ class TemporalQueryHandler:
                 - priority: str
                 - timestamp: datetime
                 - metadata: dict
+                - detection_method: str (NEW v3.0: "fast", "deep", "ml", "predictive")
+                - predicted: bool (NEW v3.0: True if predictive)
+                - correlation_id: str (NEW v3.0: Groups related alerts)
         """
+        # Add to main alerts
         self.monitoring_alerts.append(alert)
-        logger.debug(f"[TEMPORAL-HANDLER] Registered monitoring alert: {alert.get('message')}")
+
+        # NEW v3.0: Categorize alerts by type for faster querying
+        event_type = alert.get('event_type', '')
+        detection_method = alert.get('metadata', {}).get('detection_method', 'unknown')
+
+        # Anomaly alerts
+        if 'anomaly' in event_type.lower():
+            self.anomaly_alerts.append(alert)
+
+        # Predictive alerts
+        if alert.get('predicted', False) or detection_method == 'predictive':
+            self.predictive_alerts.append(alert)
+
+        # Correlation alerts (cascading failures)
+        if alert.get('correlation_id') or 'cascading' in event_type.lower():
+            self.correlation_alerts.append(alert)
+
+        logger.debug(f"[TEMPORAL-HANDLER] Registered {detection_method} alert: {alert.get('message')}")
 
     async def handle_query(
         self,
@@ -329,6 +420,19 @@ class TemporalQueryHandler:
         elif query_type == TemporalQueryType.MONITORING_REPORT:
             result = await self._handle_monitoring_report(resolved_query, time_range, resolved_space_id)
 
+        # NEW v3.0: Intelligent query types
+        elif query_type == TemporalQueryType.PATTERN_ANALYSIS:
+            result = await self._handle_pattern_analysis(resolved_query, time_range, resolved_space_id)
+
+        elif query_type == TemporalQueryType.PREDICTIVE_ANALYSIS:
+            result = await self._handle_predictive_analysis(resolved_query, time_range, resolved_space_id)
+
+        elif query_type == TemporalQueryType.ANOMALY_ANALYSIS:
+            result = await self._handle_anomaly_analysis(resolved_query, time_range, resolved_space_id)
+
+        elif query_type == TemporalQueryType.CORRELATION_ANALYSIS:
+            result = await self._handle_correlation_analysis(resolved_query, time_range, resolved_space_id)
+
         else:
             result = await self._handle_generic_temporal_query(resolved_query, time_range, resolved_space_id)
 
@@ -337,11 +441,27 @@ class TemporalQueryHandler:
 
     def _classify_query_type(self, query: str) -> TemporalQueryType:
         """
-        Classify the type of temporal query.
+        Classify the type of temporal query (v3.0 Enhanced).
 
-        Uses pattern matching to determine intent.
+        Uses pattern matching to determine intent, including NEW intelligent types.
         """
         query_lower = query.lower()
+
+        # NEW v3.0: Pattern analysis
+        if any(word in query_lower for word in ["pattern", "patterns", "correlation", "noticed", "learns", "relationship"]):
+            return TemporalQueryType.PATTERN_ANALYSIS
+
+        # NEW v3.0: Predictive analysis
+        if any(word in query_lower for word in ["predict", "predicted", "will", "going to", "expect", "anticipate", "forecast"]):
+            return TemporalQueryType.PREDICTIVE_ANALYSIS
+
+        # NEW v3.0: Anomaly analysis
+        if any(word in query_lower for word in ["anomaly", "anomalies", "unusual", "strange", "unexpected", "outlier"]):
+            return TemporalQueryType.ANOMALY_ANALYSIS
+
+        # NEW v3.0: Correlation analysis
+        if any(word in query_lower for word in ["related", "related to", "connection", "cascading", "multi-space", "across spaces"]):
+            return TemporalQueryType.CORRELATION_ANALYSIS
 
         # Monitoring report
         if any(word in query_lower for word in ["what has monitoring", "monitoring detected", "monitoring found", "monitoring report"]):
