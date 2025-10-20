@@ -20,7 +20,14 @@ from enum import Enum
 from datetime import datetime
 
 # Import async pipeline for non-blocking document operations
-from core.async_pipeline import get_async_pipeline, AdvancedAsyncPipeline
+try:
+    from core.async_pipeline import get_async_pipeline, AdvancedAsyncPipeline
+except ImportError:
+    # Fallback - define stub functions
+    def get_async_pipeline():
+        return None
+    class AdvancedAsyncPipeline:
+        pass
 
 logger = logging.getLogger(__name__)
 

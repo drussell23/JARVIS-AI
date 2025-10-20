@@ -36,7 +36,7 @@ from datetime import datetime
 from enum import Enum
 import re
 
-from backend.context_intelligence.managers.space_state_manager import (
+from context_intelligence.managers.space_state_manager import (
     get_space_state_manager,
     SpaceState
 )

@@ -22,8 +22,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
-from backend.context_intelligence.analyzers.action_analyzer import ActionSafety
-from backend.context_intelligence.planners.action_planner import ExecutionPlan, ExecutionStep
+from context_intelligence.analyzers.action_analyzer import ActionSafety
+from context_intelligence.planners.action_planner import ExecutionPlan, ExecutionStep
 
 logger = logging.getLogger(__name__)
 

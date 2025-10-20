@@ -46,7 +46,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from collections import defaultdict, Counter
 
-from backend.context_intelligence.analyzers.predictive_analyzer import (
+from context_intelligence.analyzers.predictive_analyzer import (
     PredictiveAnalyzer,
     AnalyticsResult,
     PredictiveQueryType,

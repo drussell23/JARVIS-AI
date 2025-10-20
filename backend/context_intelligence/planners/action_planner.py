@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
-from backend.context_intelligence.analyzers.action_analyzer import (
+from context_intelligence.analyzers.action_analyzer import (
     ActionIntent,
     ActionType,
     ActionTarget,

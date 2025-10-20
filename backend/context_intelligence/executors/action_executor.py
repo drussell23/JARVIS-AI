@@ -20,19 +20,33 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 
-from backend.context_intelligence.planners.action_planner import (
-    ExecutionPlan,
-    ExecutionStep,
-    StepStatus
-)
-from backend.context_intelligence.managers.space_state_manager import (
-    get_space_state_manager,
-    SpaceState
-)
-from backend.context_intelligence.managers.system_state_manager import (
-    get_system_state_manager,
-    SystemHealth
-)
+# Lazy imports to avoid circular dependencies
+def _lazy_import_planners():
+    """Lazy import planners to avoid circular imports"""
+    try:
+        from backend.context_intelligence.planners.action_planner import (
+            ExecutionPlan,
+            ExecutionStep,
+            StepStatus
+        )
+        return ExecutionPlan, ExecutionStep, StepStatus
+    except ImportError:
+        return None, None, None
+
+def _lazy_import_managers():
+    """Lazy import managers to avoid circular imports"""
+    try:
+        from backend.context_intelligence.managers.space_state_manager import (
+            get_space_state_manager,
+            SpaceState
+        )
+        from backend.context_intelligence.managers.system_state_manager import (
+            get_system_state_manager,
+            SystemHealth
+        )
+        return get_space_state_manager, SpaceState, get_system_state_manager, SystemHealth
+    except ImportError:
+        return None, None, None, None
 
 logger = logging.getLogger(__name__)
 
@@ -99,12 +113,16 @@ class ActionExecutor:
         self.validate_spaces = validate_spaces
         self.check_system_health = check_system_health
         self.timeout_seconds = 30  # Default timeout
-        self.space_manager = get_space_state_manager() if validate_spaces else None
-        self.system_state_manager = get_system_state_manager() if check_system_health else None
+
+        # Lazy import managers
+        get_space_state_manager, _, get_system_state_manager, _ = _lazy_import_managers()
+
+        self.space_manager = get_space_state_manager() if (validate_spaces and get_space_state_manager) else None
+        self.system_state_manager = get_system_state_manager() if (check_system_health and get_system_state_manager) else None
 
         logger.info(f"[ACTION-EXECUTOR] Initialized (dry_run={dry_run}, validate_spaces={validate_spaces}, check_system_health={check_system_health})")
 
-    async def execute_plan(self, plan: ExecutionPlan) -> ExecutionResult:
+    async def execute_plan(self, plan) -> ExecutionResult:
         """
         Execute an entire execution plan
 
@@ -153,7 +171,7 @@ class ActionExecutor:
             message=message
         )
 
-    async def execute_step(self, step: ExecutionStep) -> StepResult:
+    async def execute_step(self, step: 'ExecutionStep') -> StepResult:
         """
         Execute a single step
 
@@ -205,7 +223,7 @@ class ActionExecutor:
                 duration=(datetime.now() - start_time).total_seconds()
             )
 
-    async def _execute_yabai(self, step: ExecutionStep) -> StepResult:
+    async def _execute_yabai(self, step: "ExecutionStep") -> StepResult:
         """Execute a yabai command"""
         if self.dry_run:
             logger.info(f"[ACTION-EXECUTOR] [DRY-RUN] Would execute yabai: {step.command}")
@@ -300,7 +318,7 @@ class ActionExecutor:
                 error=f"Yabai execution failed: {str(e)}"
             )
 
-    async def _execute_applescript(self, step: ExecutionStep) -> StepResult:
+    async def _execute_applescript(self, step: "ExecutionStep") -> StepResult:
         """Execute an AppleScript command"""
         if self.dry_run:
             logger.info(f"[ACTION-EXECUTOR] [DRY-RUN] Would execute AppleScript: {step.command}")
@@ -352,7 +370,7 @@ class ActionExecutor:
                 error=f"AppleScript execution failed: {str(e)}"
             )
 
-    async def _execute_shell(self, step: ExecutionStep) -> StepResult:
+    async def _execute_shell(self, step: "ExecutionStep") -> StepResult:
         """Execute a shell command"""
         if self.dry_run:
             logger.info(f"[ACTION-EXECUTOR] [DRY-RUN] Would execute shell: {step.command}")
@@ -414,7 +432,7 @@ class ActionExecutor:
                 error=f"Shell execution failed: {str(e)}"
             )
 
-    async def _provide_suggestion(self, step: ExecutionStep) -> StepResult:
+    async def _provide_suggestion(self, step: "ExecutionStep") -> StepResult:
         """Provide a suggestion (v1.0 - read-only mode)"""
         suggestion = step.parameters.get("suggestion", "No suggestion available")
 
@@ -459,7 +477,7 @@ class ActionExecutor:
 
         return None
 
-    def _dependencies_satisfied(self, step: ExecutionStep, completed_steps: List[StepResult]) -> bool:
+    def _dependencies_satisfied(self, step: "ExecutionStep", completed_steps: List[StepResult]) -> bool:
         """Check if step dependencies are satisfied"""
         if not step.depends_on:
             return True
@@ -484,7 +502,7 @@ class ActionExecutor:
 
     def _generate_message(
         self,
-        plan: ExecutionPlan,
+        plan: "ExecutionPlan",
         step_results: List[StepResult],
         status: ExecutionStatus
     ) -> str:

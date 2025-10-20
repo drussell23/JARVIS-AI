@@ -83,8 +83,8 @@ class NetworkStatus:
     """Network connectivity status"""
     state: NetworkState
     is_online: bool
-    latency_ms: Optional[float] = None
     message: str
+    latency_ms: Optional[float] = None
     last_check: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
 

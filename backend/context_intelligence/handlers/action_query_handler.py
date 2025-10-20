@@ -26,22 +26,22 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from backend.context_intelligence.analyzers.action_analyzer import (
+from context_intelligence.analyzers.action_analyzer import (
     get_action_analyzer,
     initialize_action_analyzer,
     ActionIntent
 )
-from backend.context_intelligence.planners.action_planner import (
+from context_intelligence.planners.action_planner import (
     get_action_planner,
     initialize_action_planner,
     ExecutionPlan
 )
-from backend.context_intelligence.executors.action_executor import (
+from context_intelligence.executors.action_executor import (
     get_action_executor,
     initialize_action_executor,
     ExecutionResult
 )
-from backend.context_intelligence.safety.action_safety_manager import (
+from context_intelligence.safety.action_safety_manager import (
     get_action_safety_manager,
     initialize_action_safety_manager,
     ConfirmationResult
