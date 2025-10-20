@@ -206,6 +206,7 @@ class UnifiedCommandProcessor:
         self.temporal_handler = None      # Temporal query handler (change detection, error tracking, timeline)
         self.query_complexity_manager = None  # Query complexity classification and routing
         self.medium_complexity_handler = None  # Medium complexity (Level 2) query execution
+        self.display_reference_handler = None  # Display voice command resolution
         self._initialize_resolvers()
 
     def _initialize_resolvers(self):
@@ -546,6 +547,22 @@ class UnifiedCommandProcessor:
         except Exception as e:
             logger.error(f"[UNIFIED] Failed to initialize medium complexity handler: {e}")
             self.medium_complexity_handler = None
+
+        # Step 8: Initialize DisplayReferenceHandler (voice command → display connection)
+        try:
+            from context_intelligence.handlers.display_reference_handler import initialize_display_reference_handler
+
+            self.display_reference_handler = initialize_display_reference_handler(
+                implicit_resolver=self.implicit_resolver,
+                display_monitor=None  # Will be integrated with advanced_display_monitor later
+            )
+            logger.info("[UNIFIED] ✅ DisplayReferenceHandler initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] DisplayReferenceHandler not available: {e}")
+            self.display_reference_handler = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize display reference handler: {e}")
+            self.display_reference_handler = None
 
         # Step 8: Initialize ComplexComplexityHandler (Level 3 query execution)
         try:
@@ -3066,12 +3083,15 @@ class UnifiedCommandProcessor:
         Execute display/screen mirroring commands
 
         Handles commands like:
+        - "Living Room TV" (implicit: connect to Living Room TV)
         - "screen mirror my Mac to the Living Room TV"
         - "connect to Living Room TV"
+        - "connect to the TV" (uses context to resolve "the TV")
         - "extend display to Sony TV"
         - "airplay to Living Room TV"
         - "stop living room tv"
         - "disconnect from living room tv"
+        - "disconnect from that display" (uses context)
         - "stop screen mirroring"
         - "change to extended display"
         - "switch to entire screen"
@@ -3087,6 +3107,34 @@ class UnifiedCommandProcessor:
         """
         command_lower = command_text.lower()
         logger.info(f"[DISPLAY] Processing display command: '{command_text}'")
+
+        # NEW: Try display reference handler first for intelligent voice command resolution
+        if self.display_reference_handler:
+            try:
+                display_ref = await self.display_reference_handler.handle_voice_command(command_text)
+
+                if display_ref:
+                    logger.info(
+                        f"[DISPLAY] Display reference resolved: {display_ref.display_name} "
+                        f"(action={display_ref.action}, mode={display_ref.mode}, "
+                        f"confidence={display_ref.confidence:.2f})"
+                    )
+
+                    # Route to appropriate action based on display_ref.action
+                    # This will be integrated with control_center_clicker below
+                    # For now, we'll let it fall through to the existing logic
+                    # but we have the resolved display name and action
+
+                    # Override command_text to ensure display name matching works
+                    if display_ref.display_name and display_ref.display_name not in command_lower:
+                        # Inject display name into command for matching below
+                        command_text = f"{command_text} {display_ref.display_name}"
+                        command_lower = command_text.lower()
+                        logger.debug(f"[DISPLAY] Enhanced command with resolved display: '{command_text}'")
+
+            except Exception as e:
+                logger.warning(f"[DISPLAY] Display reference handler error (continuing with fallback): {e}")
+                # Continue with existing logic if handler fails
 
         try:
             # Try to get the running display monitor instance

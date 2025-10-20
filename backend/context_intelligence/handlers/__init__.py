@@ -89,6 +89,13 @@ from .multi_monitor_query_handler import (
     initialize_multi_monitor_query_handler
 )
 
+from .display_reference_handler import (
+    DisplayReferenceHandler,
+    DisplayReference,
+    get_display_reference_handler,
+    initialize_display_reference_handler
+)
+
 __all__ = [
     'MultiSpaceQueryHandler',
     'get_multi_space_handler',
@@ -150,4 +157,8 @@ __all__ = [
     'SpaceContent',
     'get_multi_monitor_query_handler',
     'initialize_multi_monitor_query_handler',
+    'DisplayReferenceHandler',
+    'DisplayReference',
+    'get_display_reference_handler',
+    'initialize_display_reference_handler',
 ]
