@@ -291,15 +291,14 @@ class TemporalQueryHandler:
         return False
 
     def _load_learned_patterns(self):
-        """Load learned patterns from disk (saved by HybridMonitoring)"""
+        """Load learned patterns from disk (v3.0)"""
         try:
-            from pathlib import Path
-            patterns_file = Path.home() / ".jarvis" / "monitoring_patterns.json"
+            import os
+            patterns_file = os.path.expanduser('~/.jarvis/learned_patterns.json')
 
-            if patterns_file.exists():
+            if os.path.exists(patterns_file):
                 with open(patterns_file, 'r') as f:
-                    data = json.load(f)
-                    self.learned_patterns = data.get('pattern_rules', [])
+                    self.learned_patterns = json.load(f)
                     logger.info(f"[TEMPORAL-HANDLER] Loaded {len(self.learned_patterns)} learned patterns from disk")
         except Exception as e:
             logger.warning(f"[TEMPORAL-HANDLER] Failed to load learned patterns: {e}")
@@ -1061,6 +1060,448 @@ class TemporalQueryHandler:
                 return ChangeType.PROCESS_STOPPED
 
         return None
+
+    # ========================================
+    # NEW v3.0: PATTERN ANALYSIS METHODS
+    # ========================================
+
+    async def analyze_temporal_changes(
+        self,
+        query_type: TemporalQueryType,
+        time_window_minutes: int = 60,
+        space_ids: Optional[List[int]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Analyze temporal changes based on query type (v3.0 main entry point).
+
+        Args:
+            query_type: Type of temporal analysis to perform
+            time_window_minutes: Time window to analyze
+            space_ids: Optional list of space IDs to analyze
+
+        Returns:
+            List of temporal changes/patterns detected
+        """
+        logger.info(f"[TEMPORAL-HANDLER] analyze_temporal_changes: {query_type}, window={time_window_minutes}min")
+
+        if query_type == TemporalQueryType.PATTERN_ANALYSIS:
+            return await self._analyze_patterns_from_monitoring(time_window_minutes, space_ids)
+
+        elif query_type == TemporalQueryType.PREDICTIVE_ANALYSIS:
+            return await self._generate_predictions(time_window_minutes, space_ids)
+
+        elif query_type == TemporalQueryType.ANOMALY_ANALYSIS:
+            return await self._detect_anomalies(time_window_minutes, space_ids)
+
+        elif query_type == TemporalQueryType.CORRELATION_ANALYSIS:
+            return await self._analyze_correlations(time_window_minutes, space_ids)
+
+        else:
+            # Fallback to change detection
+            return await self._detect_recent_changes(time_window_minutes, space_ids)
+
+    async def _analyze_patterns_from_monitoring(
+        self,
+        time_window_minutes: int = 60,
+        space_ids: Optional[List[int]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Analyze patterns from monitoring data (v3.0).
+
+        Detects correlations like "Build in Space 5 → Error in Space 3".
+
+        Returns:
+            List of detected patterns with confidence scores
+        """
+        if not self.is_hybrid_monitoring:
+            return []
+
+        patterns = []
+
+        try:
+            # Get monitoring alerts in time window
+            cutoff_time = datetime.now().timestamp() - (time_window_minutes * 60)
+            recent_alerts = [a for a in self.monitoring_alerts if a['timestamp'] >= cutoff_time]
+
+            if space_ids:
+                recent_alerts = [a for a in recent_alerts if a.get('space_id') in space_ids]
+
+            # Group alerts by type and space
+            from collections import defaultdict
+            events_by_space = defaultdict(list)
+
+            for alert in recent_alerts:
+                space_id = alert.get('space_id')
+                event_type = alert.get('alert_type', 'UNKNOWN')
+                timestamp = alert.get('timestamp')
+
+                events_by_space[space_id].append({
+                    'type': event_type,
+                    'timestamp': timestamp,
+                    'message': alert.get('message', '')
+                })
+
+            # Detect sequential patterns (Event A → Event B within time delta)
+            for space_a, events_a in events_by_space.items():
+                for space_b, events_b in events_by_space.items():
+                    if space_a == space_b:
+                        continue
+
+                    # Look for A followed by B within 120 seconds
+                    correlations = []
+                    for event_a in events_a:
+                        for event_b in events_b:
+                            time_delta = event_b['timestamp'] - event_a['timestamp']
+                            if 0 < time_delta <= 120:  # B happens 0-120s after A
+                                correlations.append({
+                                    'trigger': event_a,
+                                    'outcome': event_b,
+                                    'delay': time_delta
+                                })
+
+                    if len(correlations) >= 2:  # Pattern must occur at least twice
+                        avg_delay = sum(c['delay'] for c in correlations) / len(correlations)
+                        confidence = min(0.95, 0.5 + (len(correlations) * 0.1))  # Higher for more occurrences
+
+                        pattern = {
+                            'pattern_id': f"pattern_{space_a}_to_{space_b}",
+                            'trigger': correlations[0]['trigger']['type'],
+                            'trigger_space': space_a,
+                            'outcome': correlations[0]['outcome']['type'],
+                            'outcome_space': space_b,
+                            'occurrences': len(correlations),
+                            'confidence': round(confidence, 2),
+                            'avg_delay_seconds': round(avg_delay, 1),
+                            'spaces': [space_a, space_b],
+                            'description': f"{correlations[0]['trigger']['type']} in Space {space_a} → {correlations[0]['outcome']['type']} in Space {space_b}"
+                        }
+
+                        patterns.append(pattern)
+
+            # Add to learned patterns
+            self.learned_patterns.extend(patterns)
+            self._save_learned_patterns()
+
+            logger.info(f"[TEMPORAL-HANDLER] Detected {len(patterns)} patterns")
+
+        except Exception as e:
+            logger.error(f"[TEMPORAL-HANDLER] Error analyzing patterns: {e}", exc_info=True)
+
+        return patterns
+
+    async def _generate_predictions(
+        self,
+        time_window_minutes: int = 60,
+        space_ids: Optional[List[int]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate predictions based on learned patterns (v3.0).
+
+        Returns:
+            List of predicted events
+        """
+        predictions = []
+
+        try:
+            # Get recent events
+            cutoff_time = datetime.now().timestamp() - (time_window_minutes * 60)
+            recent_alerts = [a for a in self.monitoring_alerts if a['timestamp'] >= cutoff_time]
+
+            if space_ids:
+                recent_alerts = [a for a in recent_alerts if a.get('space_id') in space_ids]
+
+            # Check learned patterns
+            for pattern in self.learned_patterns:
+                # See if trigger event happened recently
+                trigger_type = pattern.get('trigger')
+                trigger_space = pattern.get('trigger_space')
+
+                for alert in recent_alerts:
+                    if (alert.get('alert_type') == trigger_type and
+                        alert.get('space_id') == trigger_space):
+
+                        # Predict outcome
+                        prediction = {
+                            'prediction_id': f"pred_{pattern['pattern_id']}_{alert['timestamp']}",
+                            'trigger_event': trigger_type,
+                            'predicted_event': pattern['outcome'],
+                            'predicted_space': pattern['outcome_space'],
+                            'confidence': pattern['confidence'],
+                            'expected_delay_seconds': pattern['avg_delay_seconds'],
+                            'based_on_pattern': pattern['pattern_id'],
+                            'description': f"Predicting {pattern['outcome']} in Space {pattern['outcome_space']} within {pattern['avg_delay_seconds']:.0f}s"
+                        }
+
+                        predictions.append(prediction)
+
+            logger.info(f"[TEMPORAL-HANDLER] Generated {len(predictions)} predictions")
+
+        except Exception as e:
+            logger.error(f"[TEMPORAL-HANDLER] Error generating predictions: {e}", exc_info=True)
+
+        return predictions
+
+    async def _detect_anomalies(
+        self,
+        time_window_minutes: int = 60,
+        space_ids: Optional[List[int]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Detect anomalies in monitoring data (v3.0).
+
+        Returns:
+            List of detected anomalies
+        """
+        anomalies = []
+
+        try:
+            cutoff_time = datetime.now().timestamp() - (time_window_minutes * 60)
+            recent_alerts = [a for a in self.monitoring_alerts if a['timestamp'] >= cutoff_time]
+
+            if space_ids:
+                recent_alerts = [a for a in recent_alerts if a.get('space_id') in space_ids]
+
+            # Detect unusual spaces (spaces that rarely have activity)
+            from collections import Counter
+            space_frequency = Counter(a.get('space_id') for a in self.monitoring_alerts)
+            total_alerts = len(self.monitoring_alerts)
+
+            for alert in recent_alerts:
+                space_id = alert.get('space_id')
+                frequency = space_frequency.get(space_id, 0)
+                frequency_ratio = frequency / total_alerts if total_alerts > 0 else 0
+
+                # Anomaly: Space with <5% of total activity suddenly has an alert
+                if frequency_ratio < 0.05 and alert.get('severity') in ['ERROR', 'CRITICAL']:
+                    anomaly = {
+                        'anomaly_id': f"anomaly_{space_id}_{alert['timestamp']}",
+                        'space_id': space_id,
+                        'alert_type': alert.get('alert_type'),
+                        'severity': alert.get('severity'),
+                        'message': alert.get('message'),
+                        'reason': f"Unusual activity in Space {space_id} (only {frequency_ratio:.1%} of total alerts)",
+                        'confidence': 0.7 + (0.3 * (1 - frequency_ratio))  # Higher confidence for rarer spaces
+                    }
+
+                    anomalies.append(anomaly)
+
+            logger.info(f"[TEMPORAL-HANDLER] Detected {len(anomalies)} anomalies")
+
+        except Exception as e:
+            logger.error(f"[TEMPORAL-HANDLER] Error detecting anomalies: {e}", exc_info=True)
+
+        return anomalies
+
+    async def _analyze_correlations(
+        self,
+        time_window_minutes: int = 60,
+        space_ids: Optional[List[int]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Analyze correlations between spaces (v3.0).
+
+        Returns:
+            List of space correlations
+        """
+        correlations = []
+
+        try:
+            cutoff_time = datetime.now().timestamp() - (time_window_minutes * 60)
+            recent_alerts = [a for a in self.monitoring_alerts if a['timestamp'] >= cutoff_time]
+
+            if space_ids:
+                recent_alerts = [a for a in recent_alerts if a.get('space_id') in space_ids]
+
+            # Count co-occurrences between spaces
+            from collections import defaultdict
+            space_pairs = defaultdict(int)
+
+            for i, alert_a in enumerate(recent_alerts):
+                for alert_b in recent_alerts[i+1:]:
+                    space_a = alert_a.get('space_id')
+                    space_b = alert_b.get('space_id')
+
+                    if space_a != space_b:
+                        # Check if events happen close in time (within 60 seconds)
+                        time_diff = abs(alert_b['timestamp'] - alert_a['timestamp'])
+                        if time_diff <= 60:
+                            pair = tuple(sorted([space_a, space_b]))
+                            space_pairs[pair] += 1
+
+            # Report significant correlations (>= 3 co-occurrences)
+            for (space_a, space_b), count in space_pairs.items():
+                if count >= 3:
+                    correlation = {
+                        'correlation_id': f"corr_{space_a}_{space_b}",
+                        'spaces': [space_a, space_b],
+                        'co_occurrences': count,
+                        'confidence': min(0.95, 0.4 + (count * 0.1)),
+                        'description': f"Space {space_a} and Space {space_b} have correlated activity ({count} co-occurrences)"
+                    }
+
+                    correlations.append(correlation)
+
+            logger.info(f"[TEMPORAL-HANDLER] Found {len(correlations)} correlations")
+
+        except Exception as e:
+            logger.error(f"[TEMPORAL-HANDLER] Error analyzing correlations: {e}", exc_info=True)
+
+        return correlations
+
+    async def _detect_cascading_failures(
+        self,
+        time_window_minutes: int = 60,
+        space_ids: Optional[List[int]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Detect cascading failures across spaces (v3.0).
+
+        Returns:
+            List of detected cascading failure chains
+        """
+        cascades = []
+
+        try:
+            cutoff_time = datetime.now().timestamp() - (time_window_minutes * 60)
+            error_alerts = [
+                a for a in self.monitoring_alerts
+                if a['timestamp'] >= cutoff_time and a.get('severity') in ['ERROR', 'CRITICAL']
+            ]
+
+            if space_ids:
+                error_alerts = [a for a in error_alerts if a.get('space_id') in space_ids]
+
+            # Sort by timestamp
+            error_alerts.sort(key=lambda x: x['timestamp'])
+
+            # Detect chains (errors in different spaces within 30 seconds)
+            chains = []
+            current_chain = []
+
+            for alert in error_alerts:
+                if not current_chain:
+                    current_chain.append(alert)
+                else:
+                    time_since_last = alert['timestamp'] - current_chain[-1]['timestamp']
+                    if time_since_last <= 30 and alert.get('space_id') != current_chain[-1].get('space_id'):
+                        current_chain.append(alert)
+                    else:
+                        if len(current_chain) >= 2:
+                            chains.append(current_chain)
+                        current_chain = [alert]
+
+            # Add last chain if valid
+            if len(current_chain) >= 2:
+                chains.append(current_chain)
+
+            # Create cascade objects
+            for chain in chains:
+                cascade = {
+                    'cascade_id': f"cascade_{chain[0]['timestamp']}",
+                    'chain': [
+                        {
+                            'space_id': alert.get('space_id'),
+                            'message': alert.get('message'),
+                            'timestamp': alert['timestamp']
+                        }
+                        for alert in chain
+                    ],
+                    'spaces_affected': [alert.get('space_id') for alert in chain],
+                    'duration_seconds': chain[-1]['timestamp'] - chain[0]['timestamp'],
+                    'description': f"Cascading failure across {len(chain)} spaces"
+                }
+
+                cascades.append(cascade)
+
+            logger.info(f"[TEMPORAL-HANDLER] Detected {len(cascades)} cascading failures")
+
+        except Exception as e:
+            logger.error(f"[TEMPORAL-HANDLER] Error detecting cascades: {e}", exc_info=True)
+
+        return cascades
+
+    async def _categorize_monitoring_alerts(self):
+        """
+        Categorize monitoring alerts into different queues (v3.0).
+        """
+        try:
+            for alert in list(self.monitoring_alerts):
+                alert_type = alert.get('alert_type', '')
+                severity = alert.get('severity', 'INFO')
+
+                # Categorize based on type
+                if 'ANOMALY' in alert_type or severity == 'CRITICAL':
+                    self.anomaly_alerts.append(alert)
+
+                elif 'PREDICTIVE' in alert_type or 'PATTERN' in alert_type:
+                    self.predictive_alerts.append(alert)
+
+                elif 'CORRELATION' in alert_type:
+                    self.correlation_alerts.append(alert)
+
+            logger.debug(f"[TEMPORAL-HANDLER] Categorized alerts: {len(self.anomaly_alerts)} anomalies, "
+                        f"{len(self.predictive_alerts)} predictive, {len(self.correlation_alerts)} correlations")
+
+        except Exception as e:
+            logger.error(f"[TEMPORAL-HANDLER] Error categorizing alerts: {e}", exc_info=True)
+
+    async def _detect_recent_changes(
+        self,
+        time_window_minutes: int = 60,
+        space_ids: Optional[List[int]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Detect recent changes (fallback for non-pattern queries).
+
+        Returns:
+            List of recent changes
+        """
+        changes = []
+
+        try:
+            cutoff_time = datetime.now().timestamp() - (time_window_minutes * 60)
+            recent_alerts = [a for a in self.monitoring_alerts if a['timestamp'] >= cutoff_time]
+
+            if space_ids:
+                recent_alerts = [a for a in recent_alerts if a.get('space_id') in space_ids]
+
+            for alert in recent_alerts:
+                change = {
+                    'space_id': alert.get('space_id'),
+                    'change_type': alert.get('alert_type'),
+                    'message': alert.get('message'),
+                    'timestamp': alert['timestamp'],
+                    'severity': alert.get('severity')
+                }
+                changes.append(change)
+
+            logger.info(f"[TEMPORAL-HANDLER] Detected {len(changes)} recent changes")
+
+        except Exception as e:
+            logger.error(f"[TEMPORAL-HANDLER] Error detecting changes: {e}", exc_info=True)
+
+        return changes
+
+    def _save_learned_patterns(self):
+        """Save learned patterns to disk (v3.0)."""
+        try:
+            import json
+            import os
+
+            pattern_file = os.path.expanduser('~/.jarvis/learned_patterns.json')
+            os.makedirs(os.path.dirname(pattern_file), exist_ok=True)
+
+            with open(pattern_file, 'w') as f:
+                json.dump(self.learned_patterns, f, indent=2)
+
+            logger.info(f"[TEMPORAL-HANDLER] Saved {len(self.learned_patterns)} patterns to {pattern_file}")
+
+        except Exception as e:
+            logger.warning(f"[TEMPORAL-HANDLER] Could not save patterns: {e}")
+
+    # ========================================
+    # END v3.0 PATTERN ANALYSIS METHODS
+    # ========================================
 
 
 # ============================================================================
