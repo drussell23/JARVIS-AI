@@ -3078,6 +3078,266 @@ class UnifiedCommandProcessor:
         # Default fallback
         return "safari"
 
+    async def _execute_display_action(self, display_ref, original_command: str) -> Dict[str, Any]:
+        """
+        Execute display action based on resolved DisplayReference
+
+        This is the new direct routing system that uses display_ref.action
+        instead of pattern matching.
+
+        Args:
+            display_ref: DisplayReference from display_reference_handler
+            original_command: Original user command (for context)
+
+        Returns:
+            Dict with success status and response
+        """
+        from context_intelligence.handlers.display_reference_handler import ActionType, ModeType
+
+        logger.info(
+            f"[DISPLAY-ACTION] Executing: action={display_ref.action.value}, "
+            f"display={display_ref.display_name}, mode={display_ref.mode.value if display_ref.mode else 'auto'}"
+        )
+
+        try:
+            # Get display monitor instance
+            monitor = None
+            if hasattr(self, '_app') and self._app:
+                if hasattr(self._app.state, 'display_monitor'):
+                    monitor = self._app.state.display_monitor
+
+            if monitor is None:
+                from display import get_display_monitor
+                monitor = get_display_monitor()
+
+            # Route based on action type
+            if display_ref.action == ActionType.CONNECT:
+                return await self._action_connect_display(monitor, display_ref, original_command)
+
+            elif display_ref.action == ActionType.DISCONNECT:
+                return await self._action_disconnect_display(monitor, display_ref, original_command)
+
+            elif display_ref.action == ActionType.CHANGE_MODE:
+                return await self._action_change_mode(monitor, display_ref, original_command)
+
+            elif display_ref.action == ActionType.QUERY_STATUS:
+                return await self._action_query_status(monitor, display_ref, original_command)
+
+            elif display_ref.action == ActionType.LIST_DISPLAYS:
+                return await self._action_list_displays(monitor, display_ref, original_command)
+
+            else:
+                logger.warning(f"[DISPLAY-ACTION] Unknown action: {display_ref.action.value}")
+                return {
+                    "success": False,
+                    "response": f"I don't know how to perform action: {display_ref.action.value}",
+                }
+
+        except Exception as e:
+            logger.error(f"[DISPLAY-ACTION] Error: {e}", exc_info=True)
+            return {
+                "success": False,
+                "response": f"Error executing display action: {str(e)}",
+            }
+
+    async def _action_connect_display(self, monitor, display_ref, original_command: str) -> Dict[str, Any]:
+        """Execute CONNECT action"""
+        from context_intelligence.handlers.display_reference_handler import ModeType
+
+        display_name = display_ref.display_name
+        display_id = display_ref.display_id or display_name.lower().replace(" ", "-")
+        mode = display_ref.mode
+
+        logger.info(f"[DISPLAY-ACTION] Connecting to '{display_name}' (id={display_id})")
+
+        # Determine mode string for monitor.connect_display
+        mode_str = "extended" if mode == ModeType.EXTENDED else \
+                   "entire" if mode == ModeType.ENTIRE_SCREEN else \
+                   "window" if mode == ModeType.WINDOW else \
+                   "mirror"  # Default
+
+        try:
+            # Connect using display monitor
+            result = await monitor.connect_display(display_id)
+
+            if result.get("success"):
+                # Generate time-aware response
+                from datetime import datetime
+                hour = datetime.now().hour
+                greeting = "Good morning" if 5 <= hour < 12 else \
+                          "Good afternoon" if 12 <= hour < 17 else \
+                          "Good evening" if 17 <= hour < 21 else \
+                          "Good night"
+
+                response = f"{greeting}! Connected to {display_name}, sir."
+
+                # Add mode info if specified
+                if mode:
+                    response += f" Display mode: {mode.value}."
+
+                return {
+                    "success": True,
+                    "response": response,
+                    "display_name": display_name,
+                    "display_id": display_id,
+                    "mode": mode_str,
+                    "action": "connect",
+                    "resolution_strategy": display_ref.resolution_strategy.value,
+                    "confidence": display_ref.confidence
+                }
+            else:
+                return {
+                    "success": False,
+                    "response": result.get("message", f"Unable to connect to {display_name}."),
+                    "display_name": display_name,
+                }
+
+        except Exception as e:
+            logger.error(f"[DISPLAY-ACTION] Connect error: {e}", exc_info=True)
+            return {
+                "success": False,
+                "response": f"Error connecting to {display_name}: {str(e)}",
+            }
+
+    async def _action_disconnect_display(self, monitor, display_ref, original_command: str) -> Dict[str, Any]:
+        """Execute DISCONNECT action"""
+        display_name = display_ref.display_name
+        display_id = display_ref.display_id or display_name.lower().replace(" ", "-")
+
+        logger.info(f"[DISPLAY-ACTION] Disconnecting from '{display_name}' (id={display_id})")
+
+        try:
+            result = await monitor.disconnect_display(display_id)
+
+            if result.get("success"):
+                return {
+                    "success": True,
+                    "response": f"Disconnected from {display_name}, sir.",
+                    "display_name": display_name,
+                    "display_id": display_id,
+                    "action": "disconnect"
+                }
+            else:
+                return {
+                    "success": False,
+                    "response": result.get("message", f"Unable to disconnect from {display_name}."),
+                    "display_name": display_name,
+                }
+
+        except Exception as e:
+            logger.error(f"[DISPLAY-ACTION] Disconnect error: {e}", exc_info=True)
+            return {
+                "success": False,
+                "response": f"Error disconnecting from {display_name}: {str(e)}",
+            }
+
+    async def _action_change_mode(self, monitor, display_ref, original_command: str) -> Dict[str, Any]:
+        """Execute CHANGE_MODE action"""
+        from context_intelligence.handlers.display_reference_handler import ModeType
+
+        display_name = display_ref.display_name
+        display_id = display_ref.display_id or display_name.lower().replace(" ", "-")
+        mode = display_ref.mode
+
+        if not mode:
+            return {
+                "success": False,
+                "response": "Please specify which mode you'd like: entire screen, window, or extended display.",
+            }
+
+        logger.info(f"[DISPLAY-ACTION] Changing '{display_name}' to {mode.value} mode")
+
+        # Map ModeType to mode string
+        mode_str = "entire" if mode == ModeType.ENTIRE_SCREEN else \
+                   "window" if mode == ModeType.WINDOW else \
+                   "extended" if mode == ModeType.EXTENDED else \
+                   "mirror"
+
+        try:
+            result = await monitor.change_display_mode(display_id, mode_str)
+
+            if result.get("success"):
+                return {
+                    "success": True,
+                    "response": f"Changed {display_name} to {mode.value} mode, sir.",
+                    "display_name": display_name,
+                    "mode": mode_str,
+                    "action": "change_mode"
+                }
+            else:
+                return {
+                    "success": False,
+                    "response": result.get("message", f"Unable to change {display_name} to {mode.value} mode."),
+                }
+
+        except Exception as e:
+            logger.error(f"[DISPLAY-ACTION] Change mode error: {e}", exc_info=True)
+            return {
+                "success": False,
+                "response": f"Error changing mode: {str(e)}",
+            }
+
+    async def _action_query_status(self, monitor, display_ref, original_command: str) -> Dict[str, Any]:
+        """Execute QUERY_STATUS action"""
+        logger.info(f"[DISPLAY-ACTION] Querying display status")
+
+        try:
+            status = monitor.get_status()
+            connected = status.get('connected_displays', [])
+            available = monitor.get_available_display_details()
+
+            if connected:
+                display_names = [d.get('display_name', d) for d in connected]
+                response = f"You have {len(connected)} display(s) connected: {', '.join(display_names)}."
+            else:
+                response = "No displays are currently connected."
+
+            if available:
+                avail_names = [d['display_name'] for d in available]
+                response += f" Available displays: {', '.join(avail_names)}."
+
+            return {
+                "success": True,
+                "response": response,
+                "connected_displays": connected,
+                "available_displays": available,
+                "action": "query_status"
+            }
+
+        except Exception as e:
+            logger.error(f"[DISPLAY-ACTION] Query status error: {e}", exc_info=True)
+            return {
+                "success": False,
+                "response": f"Error querying display status: {str(e)}",
+            }
+
+    async def _action_list_displays(self, monitor, display_ref, original_command: str) -> Dict[str, Any]:
+        """Execute LIST_DISPLAYS action"""
+        logger.info(f"[DISPLAY-ACTION] Listing available displays")
+
+        try:
+            available = monitor.get_available_display_details()
+
+            if available:
+                names = [d['display_name'] for d in available]
+                response = f"Available displays: {', '.join(names)}."
+            else:
+                response = "No displays are currently available."
+
+            return {
+                "success": True,
+                "response": response,
+                "available_displays": available,
+                "action": "list_displays"
+            }
+
+        except Exception as e:
+            logger.error(f"[DISPLAY-ACTION] List displays error: {e}", exc_info=True)
+            return {
+                "success": False,
+                "response": f"Error listing displays: {str(e)}",
+            }
+
     async def _execute_display_command(self, command_text: str) -> Dict[str, Any]:
         """
         Execute display/screen mirroring commands
@@ -3109,6 +3369,7 @@ class UnifiedCommandProcessor:
         logger.info(f"[DISPLAY] Processing display command: '{command_text}'")
 
         # NEW: Try display reference handler first for intelligent voice command resolution
+        display_ref = None
         if self.display_reference_handler:
             try:
                 display_ref = await self.display_reference_handler.handle_voice_command(command_text)
@@ -3116,21 +3377,31 @@ class UnifiedCommandProcessor:
                 if display_ref:
                     logger.info(
                         f"[DISPLAY] Display reference resolved: {display_ref.display_name} "
-                        f"(action={display_ref.action}, mode={display_ref.mode}, "
-                        f"confidence={display_ref.confidence:.2f})"
+                        f"(action={display_ref.action.value}, mode={display_ref.mode.value if display_ref.mode else None}, "
+                        f"confidence={display_ref.confidence:.2f}, strategy={display_ref.resolution_strategy.value})"
                     )
 
-                    # Route to appropriate action based on display_ref.action
-                    # This will be integrated with control_center_clicker below
-                    # For now, we'll let it fall through to the existing logic
-                    # but we have the resolved display name and action
+                    # NEW: Direct action routing based on display_ref.action
+                    # This bypasses the old pattern matching logic and goes straight to execution
+                    try:
+                        result = await self._execute_display_action(display_ref, command_text)
 
-                    # Override command_text to ensure display name matching works
-                    if display_ref.display_name and display_ref.display_name not in command_lower:
-                        # Inject display name into command for matching below
-                        command_text = f"{command_text} {display_ref.display_name}"
-                        command_lower = command_text.lower()
-                        logger.debug(f"[DISPLAY] Enhanced command with resolved display: '{command_text}'")
+                        # Learn from success/failure
+                        if result.get("success"):
+                            self.display_reference_handler.learn_from_success(command_text, display_ref)
+                            logger.info(f"[DISPLAY] ✅ Action completed successfully - learned from: '{command_text}'")
+                        else:
+                            self.display_reference_handler.learn_from_failure(command_text, display_ref)
+                            logger.warning(f"[DISPLAY] ❌ Action failed - learned from: '{command_text}'")
+
+                        return result
+
+                    except Exception as e:
+                        logger.error(f"[DISPLAY] Error executing display action: {e}", exc_info=True)
+                        # Learn from failure
+                        self.display_reference_handler.learn_from_failure(command_text, display_ref)
+                        # Fall through to legacy logic as fallback
+                        logger.warning("[DISPLAY] Falling back to legacy display command logic")
 
             except Exception as e:
                 logger.warning(f"[DISPLAY] Display reference handler error (continuing with fallback): {e}")
