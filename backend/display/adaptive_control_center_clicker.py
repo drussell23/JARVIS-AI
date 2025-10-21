@@ -1083,7 +1083,7 @@ class VerificationEngine:
         """
         try:
             # Wait for UI to update
-            await asyncio.sleep(0.2)  # Reduced from 0.5s
+            await asyncio.sleep(0.05)  # Ultra-minimal UI wait
 
             # Take after screenshot
             after_screenshot = pyautogui.screenshot()
@@ -1351,8 +1351,8 @@ class AdaptiveControlCenterClicker:
 
                     # Execute click
                     x, y = result.coordinates
-                    pyautogui.moveTo(x, y, duration=0.2)  # Faster mouse movement
-                    await asyncio.sleep(0.05)  # Reduced from 0.1s
+                    pyautogui.moveTo(x, y, duration=0.1)  # Ultra-fast mouse movement
+                    await asyncio.sleep(0.01)  # Minimal delay
                     logger.info(f"[ADAPTIVE] 🖱️  CLICKING at ({x}, {y}) for target: {target}")
                     pyautogui.click()
                     logger.info(f"[ADAPTIVE] ✅ Click completed for target: {target}")
@@ -1508,7 +1508,7 @@ class AdaptiveControlCenterClicker:
                 "duration": time.time() - start_time
             }
 
-        await asyncio.sleep(0.2)  # Wait for menu to open (optimized)
+        await asyncio.sleep(0.1)  # Ultra-fast menu wait
 
         # Step 2: Click Screen Mirroring
         logger.info("[ADAPTIVE] Step 2/3: Clicking Screen Mirroring...")
@@ -1524,7 +1524,7 @@ class AdaptiveControlCenterClicker:
                 "duration": time.time() - start_time
             }
 
-        await asyncio.sleep(0.2)  # Wait for submenu to open (optimized)
+        await asyncio.sleep(0.1)  # Ultra-fast submenu wait
 
         # Step 3: Click device
         logger.info(f"[ADAPTIVE] Step 3/3: Clicking {device_name}...")
@@ -1545,7 +1545,7 @@ class AdaptiveControlCenterClicker:
         # CRITICAL: Wait for connection to complete and close UI
         # This prevents JARVIS from continuing to click after task completion
         logger.info("[ADAPTIVE] ⏳ Waiting for connection to complete...")
-        await asyncio.sleep(0.5)  # Wait for connection animation (optimized from 2.0s)
+        await asyncio.sleep(0.2)  # Ultra-fast connection wait
 
         # Close Control Center to ensure clean state
         logger.info("[ADAPTIVE] 🧹 Closing Control Center to clean up UI...")

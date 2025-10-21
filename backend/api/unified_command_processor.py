@@ -3598,9 +3598,9 @@ class UnifiedCommandProcessor:
                 if result.get("cached"):
                     response = f"Your screen is already being {mode}ed to {display_name}, sir."
                 elif result.get("in_progress"):
-                    response = f"Connecting to {display_name} now, sir."
+                    response = f"Already establishing connection to {display_name}, sir."
                 else:
-                    response = f"Connected to {display_name}, sir. Your screen is now being {mode}ed."
+                    response = f"Successfully connected to {display_name}, sir. Your screen is now being {mode}ed."
 
                 return {
                     "success": True,

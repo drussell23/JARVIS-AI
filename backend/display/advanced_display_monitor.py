@@ -856,6 +856,10 @@ class AdvancedDisplayMonitor:
         self.connecting_displays.add(display_id)
         logger.info(f"[DISPLAY MONITOR] 🔒 Marked {monitored.name} as connecting (circuit breaker engaged)")
 
+        # Immediate voice feedback
+        if self.voice_handler:
+            await self.voice_handler.speak_async(f"Connecting to {monitored.name} now, sir.")
+
         logger.info(f"[DISPLAY MONITOR] ========================================")
         logger.info(f"[DISPLAY MONITOR] Connecting to {monitored.name}...")
         logger.info(f"[DISPLAY MONITOR] Starting 6-tier connection waterfall")
