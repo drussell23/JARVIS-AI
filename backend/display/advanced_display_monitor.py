@@ -444,6 +444,7 @@ class AdvancedDisplayMonitor:
         self.monitoring_task: Optional[asyncio.Task] = None
         self.available_displays: Set[str] = set()
         self.connected_displays: Set[str] = set()
+        self.connecting_displays: Set[str] = set()  # Circuit breaker: displays currently being connected
         self.initial_scan_complete = False  # Track if initial scan is done
 
         # Event callbacks
@@ -731,12 +732,14 @@ class AdvancedDisplayMonitor:
         if monitored.auto_prompt and self.config['voice_integration']['speak_on_detection']:
             await self._speak_detection_prompt(monitored)
 
-        # Auto-connect if enabled AND not already connected
-        if monitored.auto_connect and monitored.id not in self.connected_displays:
+        # Auto-connect if enabled AND not already connected/connecting
+        if monitored.auto_connect and monitored.id not in self.connected_displays and monitored.id not in self.connecting_displays:
             logger.info(f"[DISPLAY MONITOR] Auto-connecting to {monitored.name}...")
             await self.connect_display(monitored.id)
         elif monitored.id in self.connected_displays:
             logger.debug(f"[DISPLAY MONITOR] {monitored.name} already connected, skipping auto-connect")
+        elif monitored.id in self.connecting_displays:
+            logger.debug(f"[DISPLAY MONITOR] {monitored.name} connection already in progress, skipping auto-connect")
 
     async def _handle_display_lost(self, monitored: MonitoredDisplay):
         """Handle lost display"""
@@ -835,6 +838,19 @@ class AdvancedDisplayMonitor:
         if not monitored:
             return {"success": False, "message": f"Display {display_id} not found in configuration"}
 
+        # Circuit breaker: Check if already connected or connecting
+        if display_id in self.connected_displays:
+            logger.info(f"[DISPLAY MONITOR] {monitored.name} already connected, skipping")
+            return {"success": True, "message": f"{monitored.name} already connected", "cached": True}
+
+        if display_id in self.connecting_displays:
+            logger.warning(f"[DISPLAY MONITOR] {monitored.name} connection already in progress, blocking duplicate request")
+            return {"success": False, "message": f"{monitored.name} connection already in progress", "blocked": True}
+
+        # Mark as connecting IMMEDIATELY to prevent race conditions
+        self.connecting_displays.add(display_id)
+        logger.info(f"[DISPLAY MONITOR] 🔒 Marked {monitored.name} as connecting (circuit breaker engaged)")
+
         logger.info(f"[DISPLAY MONITOR] ========================================")
         logger.info(f"[DISPLAY MONITOR] Connecting to {monitored.name}...")
         logger.info(f"[DISPLAY MONITOR] Starting 6-tier connection waterfall")
@@ -887,6 +903,11 @@ class AdvancedDisplayMonitor:
                 logger.info(f"[DISPLAY MONITOR] 3. {monitored.name}: {result['living_room_tv_coords']}")
                 logger.info(f"[DISPLAY MONITOR] Method: {result['method']}")
                 logger.info(f"[DISPLAY MONITOR] ========================================")
+
+                # Release circuit breaker
+                if display_id in self.connecting_displays:
+                    self.connecting_displays.remove(display_id)
+                    logger.info(f"[DISPLAY MONITOR] 🔓 Circuit breaker released for {monitored.name}")
 
                 return {
                     "success": True,
@@ -949,6 +970,11 @@ class AdvancedDisplayMonitor:
 
                 logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via Protocol-Level AirPlay in {duration:.2f}s")
                 logger.info(f"[DISPLAY MONITOR] ========================================")
+
+                # Release circuit breaker
+                if display_id in self.connecting_displays:
+                    self.connecting_displays.remove(display_id)
+                    logger.info(f"[DISPLAY MONITOR] 🔓 Circuit breaker released for {monitored.name}")
 
                 return {
                     "success": True,
@@ -1016,6 +1042,11 @@ class AdvancedDisplayMonitor:
                     logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via Vision Navigation in {duration:.2f}s")
                     logger.info(f"[DISPLAY MONITOR] ========================================")
 
+                    # Release circuit breaker
+                    if display_id in self.connecting_displays:
+                        self.connecting_displays.remove(display_id)
+                        logger.info(f"[DISPLAY MONITOR] 🔓 Circuit breaker released for {monitored.name}")
+
                     return {
                         "success": True,
                         "message": f"Connected via vision navigation in {result.duration:.1f}s",
@@ -1069,6 +1100,11 @@ class AdvancedDisplayMonitor:
                     logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via Native Swift Bridge in {duration:.2f}s")
                     logger.info(f"[DISPLAY MONITOR] ========================================")
 
+                    # Release circuit breaker
+                    if display_id in self.connecting_displays:
+                        self.connecting_displays.remove(display_id)
+                        logger.info(f"[DISPLAY MONITOR] 🔓 Circuit breaker released for {monitored.name}")
+
                     return {
                         "success": True,
                         "message": result.message,
@@ -1115,6 +1151,11 @@ class AdvancedDisplayMonitor:
                 logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via AppleScript in {duration:.2f}s")
                 logger.info(f"[DISPLAY MONITOR] ========================================")
 
+                # Release circuit breaker
+                if display_id in self.connecting_displays:
+                    self.connecting_displays.remove(display_id)
+                    logger.info(f"[DISPLAY MONITOR] 🔓 Circuit breaker released for {monitored.name}")
+
                 result['duration'] = duration
                 result['strategies_attempted'] = strategies_attempted
                 result['tier'] = 5
@@ -1139,6 +1180,11 @@ class AdvancedDisplayMonitor:
                 await self.voice_handler.speak(guidance_message)
             except:
                 subprocess.Popen(['say', guidance_message])
+
+        # Release circuit breaker on failure
+        if display_id in self.connecting_displays:
+            self.connecting_displays.remove(display_id)
+            logger.info(f"[DISPLAY MONITOR] 🔓 Circuit breaker released (all strategies failed)")
 
         return {
             "success": False,
