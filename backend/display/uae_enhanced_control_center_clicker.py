@@ -568,6 +568,33 @@ class UAEEnhancedControlCenterClicker(AdaptiveControlCenterClicker):
                     step_result={'phase': 'success', 'success': True}
                 )
 
+            # CRITICAL: Wait for connection to complete and UI to close
+            # This prevents JARVIS from continuing to click after the task is done
+            logger.info("[UAE-CLICKER] ⏳ Waiting for connection to complete...")
+
+            # Wait longer to ensure:
+            # 1. Connection animation completes
+            # 2. Control Center UI closes
+            # 3. Screen Mirroring menu disappears
+            # 4. macOS establishes the AirPlay connection
+            await asyncio.sleep(2.0)  # Increased wait time for full connection cycle
+
+            # Close Control Center to ensure clean state
+            # This prevents any lingering UI elements from being detected
+            logger.info("[UAE-CLICKER] 🧹 Closing Control Center to clean up UI...")
+            try:
+                import pyautogui
+                # Press Escape to close any open menus
+                pyautogui.press('escape')
+                await asyncio.sleep(0.3)
+                pyautogui.press('escape')  # Press twice to ensure closure
+            except Exception as e:
+                logger.warning(f"[UAE-CLICKER] Could not close UI: {e}")
+
+            # Verify task completion
+            logger.info(f"[UAE-CLICKER] ✅ Task complete: Connected to {device_name}")
+            logger.info("[UAE-CLICKER] 🛑 Stopping all click actions - device connection flow finished")
+
             # Success - communicate completion
             if self.communicator:
                 await self.communicator.on_device_connection(
@@ -576,12 +603,14 @@ class UAEEnhancedControlCenterClicker(AdaptiveControlCenterClicker):
                     step_result={'phase': 'success', 'success': True, 'duration': time.time() - start_time}
                 )
 
+            # Mark task as fully complete - no further actions needed
             return {
                 'success': True,
                 'message': f'Connected to {device_name}',
                 'device': device_name,
                 'steps': steps,
-                'duration': time.time() - start_time
+                'duration': time.time() - start_time,
+                'task_complete': True  # Explicitly mark task as complete
             }
 
         except Exception as e:

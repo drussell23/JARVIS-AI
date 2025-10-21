@@ -1531,15 +1531,31 @@ class AdaptiveControlCenterClicker:
                 "duration": time.time() - start_time
             }
 
+        # CRITICAL: Wait for connection to complete and close UI
+        # This prevents JARVIS from continuing to click after task completion
+        logger.info("[ADAPTIVE] ⏳ Waiting for connection to complete...")
+        await asyncio.sleep(2.0)  # Wait for connection animation and UI closure
+
+        # Close Control Center to ensure clean state
+        logger.info("[ADAPTIVE] 🧹 Closing Control Center to clean up UI...")
+        try:
+            pyautogui.press('escape')
+            await asyncio.sleep(0.3)
+            pyautogui.press('escape')  # Press twice to ensure full closure
+        except Exception as e:
+            logger.warning(f"[ADAPTIVE] Could not close UI: {e}")
+
         duration = time.time() - start_time
 
         logger.info(f"[ADAPTIVE] ✅ Successfully connected to {device_name} in {duration:.2f}s!")
+        logger.info(f"[ADAPTIVE] 🛑 Task complete - stopping all click actions")
         logger.info(f"[ADAPTIVE] ========================================")
 
         return {
             "success": True,
             "message": f"Connected to {device_name}",
             "duration": duration,
+            "task_complete": True,  # Explicitly mark task as complete
             "steps": {
                 "control_center": cc_result.to_dict() if hasattr(cc_result, 'to_dict') else asdict(cc_result),
                 "screen_mirroring": sm_result.to_dict() if hasattr(sm_result, 'to_dict') else asdict(sm_result),
