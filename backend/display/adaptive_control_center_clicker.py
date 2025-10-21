@@ -1353,11 +1353,18 @@ class AdaptiveControlCenterClicker:
                     x, y = result.coordinates
                     pyautogui.moveTo(x, y, duration=0.3)
                     await asyncio.sleep(0.1)
+                    logger.info(f"[ADAPTIVE] 🖱️  CLICKING at ({x}, {y}) for target: {target}")
                     pyautogui.click()
+                    logger.info(f"[ADAPTIVE] ✅ Click completed for target: {target}")
 
                     # Verify click (if enabled)
+                    # CRITICAL: Skip verification for device names (Living Room TV, etc.)
+                    # because clicking a device closes all menus immediately, making verification
+                    # impossible and causing retry clicks that toggle the connection on/off
+                    skip_verification = target not in ["control_center", "screen_mirroring"]
+
                     verification_passed = True
-                    if self.enable_verification:
+                    if self.enable_verification and not skip_verification:
                         verification_passed = await self.verification.verify_click(
                             target,
                             result.coordinates,
@@ -1368,6 +1375,8 @@ class AdaptiveControlCenterClicker:
                             self.metrics["verification_passes"] += 1
                         else:
                             self.metrics["verification_failures"] += 1
+                    elif skip_verification:
+                        logger.info(f"[ADAPTIVE] ⏭️  Skipping verification for '{target}' (device click closes UI immediately)")
 
                     # Update cache if verification passed
                     if verification_passed:
