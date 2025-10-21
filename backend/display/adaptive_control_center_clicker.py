@@ -403,80 +403,39 @@ class CachedDetection:
         )
 
 
-class EnhancedVisionPipelineDetection:
-    """Detection using Enhanced Vision Pipeline (5-stage multi-model system)"""
+class SimpleHeuristicDetection:
+    """Detection using simple screen position heuristics (FAST!)"""
 
-    name = "enhanced_vision_pipeline"
-    priority = 2  # Run after cache, before OCR
+    name = "simple_heuristic"
+    priority = 2  # Run after cache, before complex methods
 
     def __init__(self):
-        self._pipeline = None
-        self._pipeline_available = None
+        self._detector = None
 
     async def is_available(self) -> bool:
-        """Check if Enhanced Vision Pipeline is available"""
-        if self._pipeline_available is not None:
-            return self._pipeline_available
-
-        try:
-            from vision.enhanced_vision_pipeline import get_vision_pipeline
-            self._pipeline = get_vision_pipeline()
-            await self._pipeline.initialize()
-            self._pipeline_available = True
-            logger.info("[ENHANCED PIPELINE] Initialized successfully")
-            return True
-        except Exception as e:
-            logger.debug(f"[ENHANCED PIPELINE] Not available: {e}")
-            self._pipeline_available = False
-            return False
+        """Always available"""
+        return True
 
     async def detect(
         self,
         target: str,
         context: Optional[Dict[str, Any]] = None
     ) -> DetectionResult:
-        """Detect using Enhanced Vision Pipeline"""
+        """Detect using simple position heuristics"""
         start_time = time.time()
 
         try:
-            if not self._pipeline:
-                return DetectionResult(
-                    success=False,
-                    method=self.name,
-                    coordinates=None,
-                    confidence=0.0,
-                    duration=time.time() - start_time,
-                    metadata={},
-                    error="Enhanced Vision Pipeline not initialized"
-                )
+            if self._detector is None:
+                from display.simple_menubar_detector import get_simple_menubar_detector
+                self._detector = get_simple_menubar_detector()
 
-            logger.info(f"[ENHANCED PIPELINE] Detecting '{target}' using 5-stage pipeline...")
+            logger.info(f"[SIMPLE HEURISTIC] Detecting '{target}' using position math...")
 
-            # Run the full pipeline
-            result = await self._pipeline.detect_and_click(
-                target_element=target,
-                dry_run=True  # Don't actually click, just detect
-            )
-
-            if result.success and result.final_coordinates:
-                x, y = result.final_coordinates
-                logger.info(
-                    f"[ENHANCED PIPELINE] ✅ Found '{target}' at ({x}, {y}) "
-                    f"with confidence {result.confidence:.2%}"
-                )
-
-                return DetectionResult(
-                    success=True,
-                    method=self.name,
-                    coordinates=(x, y),
-                    confidence=result.confidence,
-                    duration=time.time() - start_time,
-                    metadata={
-                        "validation_method": result.validation_method,
-                        "models_agreed": result.models_agreed,
-                        "pipeline_stages": len(result.stage_results)
-                    }
-                )
+            # Get position based on target
+            if target == "control_center":
+                x, y = self._detector.get_control_center_position()
+            elif target == "screen_mirroring":
+                x, y = self._detector.get_menu_item_below_control_center("Screen Mirroring")
             else:
                 return DetectionResult(
                     success=False,
@@ -485,11 +444,23 @@ class EnhancedVisionPipelineDetection:
                     confidence=0.0,
                     duration=time.time() - start_time,
                     metadata={},
-                    error=result.error or "Enhanced Pipeline detection failed"
+                    error=f"No heuristic available for target: {target}"
                 )
 
+            logger.info(f"[SIMPLE HEURISTIC] ✅ Found '{target}' at ({x}, {y}) (estimated)")
+
+            # Medium confidence since it's an estimate
+            return DetectionResult(
+                success=True,
+                method=self.name,
+                coordinates=(x, y),
+                confidence=0.7,  # Will be verified by post-click verification
+                duration=time.time() - start_time,
+                metadata={"method": "position_heuristic"}
+            )
+
         except Exception as e:
-            logger.error(f"[ENHANCED PIPELINE] Detection failed: {e}", exc_info=True)
+            logger.error(f"[SIMPLE HEURISTIC] Detection failed: {e}", exc_info=True)
             return DetectionResult(
                 success=False,
                 method=self.name,
@@ -1293,13 +1264,13 @@ class AdaptiveControlCenterClicker:
 
         # Detection methods (in priority order)
         self.detection_methods: List[DetectionMethod] = [
-            CachedDetection(self.cache),                    # Priority 1: Instant (10ms)
-            EnhancedVisionPipelineDetection(),              # Priority 2: Fast & Accurate (300-500ms) ⭐ NEW
-            OCRDetection(vision_analyzer),                  # Priority 3: Medium (500ms - 2s)
-            TemplateMatchingDetection(),                    # Priority 4: Fast (300ms)
-            EdgeDetection(),                                # Priority 5: Medium (400ms)
-            AccessibilityAPIDetection(),                    # Priority 6: Future
-            AppleScriptDetection(),                         # Priority 7: Future
+            CachedDetection(self.cache),                    # Priority 1: Instant (10ms) - Learned coordinates
+            SimpleHeuristicDetection(),                     # Priority 2: Instant (5ms) - Simple math ⭐ FAST
+            OCRDetection(vision_analyzer),                  # Priority 3: Slow (500ms-2s) - Text detection
+            TemplateMatchingDetection(),                    # Priority 4: Medium (300ms) - Pattern matching
+            EdgeDetection(),                                # Priority 5: Medium (400ms) - Shape detection
+            AccessibilityAPIDetection(),                    # Priority 6: Future - System API
+            AppleScriptDetection(),                         # Priority 7: Future - Script fallback
         ]
 
         # Metrics
