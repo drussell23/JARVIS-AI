@@ -1358,13 +1358,8 @@ class AdaptiveControlCenterClicker:
                     logger.info(f"[ADAPTIVE] ✅ Click completed for target: {target}")
 
                     # Verify click (if enabled)
-                    # CRITICAL: Skip verification for device names (Living Room TV, etc.)
-                    # because clicking a device closes all menus immediately, making verification
-                    # impossible and causing retry clicks that toggle the connection on/off
-                    skip_verification = target not in ["control_center", "screen_mirroring"]
-
                     verification_passed = True
-                    if self.enable_verification and not skip_verification:
+                    if self.enable_verification:
                         verification_passed = await self.verification.verify_click(
                             target,
                             result.coordinates,
@@ -1375,8 +1370,15 @@ class AdaptiveControlCenterClicker:
                             self.metrics["verification_passes"] += 1
                         else:
                             self.metrics["verification_failures"] += 1
-                    elif skip_verification:
-                        logger.info(f"[ADAPTIVE] ⏭️  Skipping verification for '{target}' (device click closes UI immediately)")
+
+                    # CRITICAL: For device names (Living Room TV, etc.), accept the first click
+                    # even if verification fails, because clicking a device closes all menus
+                    # immediately, making verification unreliable. Retrying would toggle the
+                    # connection on/off.
+                    is_device_click = target not in ["control_center", "screen_mirroring"]
+                    if is_device_click and not verification_passed:
+                        logger.info(f"[ADAPTIVE] ⏭️  Accepting '{target}' click despite verification failure (device toggles connection)")
+                        verification_passed = True  # Force success to prevent retries
 
                     # Update cache if verification passed
                     if verification_passed:
