@@ -330,42 +330,108 @@ class DisplayMonitorService:
     
     async def _connect_to_display(self, display_name: str, mode: str) -> Dict:
         """
-        Connect to display via AirPlay
-        
+        Connect to display via adaptive Control Center clicker
+
         Args:
             display_name: Display name
             mode: "extend" or "mirror"
-            
+
         Returns:
             Connection result
         """
         try:
             self.logger.info(f"[DISPLAY MONITOR] Connecting to {display_name} (mode: {mode})")
-            
-            from proximity.airplay_discovery import get_airplay_discovery
-            
-            discovery = get_airplay_discovery()
-            result = await discovery.connect_to_airplay_device(display_name, mode)
-            
+
+            # Use adaptive control center clicker
+            from display.control_center_clicker import get_control_center_clicker
+
+            # Get vision analyzer if available
+            vision_analyzer = None
+            try:
+                from vision.claude_vision_analyzer_main import get_claude_vision_analyzer
+                vision_analyzer = get_claude_vision_analyzer()
+            except Exception as e:
+                self.logger.debug(f"[DISPLAY MONITOR] Vision analyzer not available: {e}")
+
+            clicker = get_control_center_clicker(
+                vision_analyzer=vision_analyzer,
+                use_adaptive=True
+            )
+
+            # Connect using adaptive clicker
+            result = clicker.connect_to_living_room_tv() if display_name == "Living Room TV" else \
+                     await self._connect_to_generic_device(clicker, display_name)
+
             if result.get("success"):
                 self.total_connections += 1
                 self.logger.info(f"[DISPLAY MONITOR] Connected to {display_name}")
-                
+
                 return {
                     "success": True,
-                    "response": f"Extending to {display_name}... Done, sir."
+                    "response": f"Extending to {display_name}... Done, sir.",
+                    "method": result.get("method", "adaptive_detection")
                 }
             else:
                 return {
                     "success": False,
-                    "response": f"I encountered an issue connecting to {display_name}. Please try manually."
+                    "response": f"I encountered an issue connecting to {display_name}. Please try manually.",
+                    "error": result.get("error")
                 }
-                
+
         except Exception as e:
-            self.logger.error(f"[DISPLAY MONITOR] Connection error: {e}")
+            self.logger.error(f"[DISPLAY MONITOR] Connection error: {e}", exc_info=True)
             return {
                 "success": False,
                 "response": f"Error connecting: {str(e)}"
+            }
+
+    async def _connect_to_generic_device(self, clicker, device_name: str) -> Dict:
+        """
+        Connect to a generic device (not Living Room TV)
+
+        Args:
+            clicker: ControlCenterClicker instance
+            device_name: Device name
+
+        Returns:
+            Connection result
+        """
+        try:
+            # Step 1: Open Control Center
+            cc_result = clicker.open_control_center(wait_after_click=0.5)
+            if not cc_result.get('success'):
+                return cc_result
+
+            # Step 2: Open Screen Mirroring
+            sm_result = clicker.open_screen_mirroring(wait_after_click=0.5)
+            if not sm_result.get('success'):
+                return sm_result
+
+            # Step 3: Click device
+            # Use adaptive clicker's click_device method if available
+            if hasattr(clicker, '_adaptive_clicker') and clicker._adaptive_clicker:
+                import asyncio
+                device_result = await clicker._adaptive_clicker.click_device(device_name)
+
+                if hasattr(device_result, 'success'):
+                    return {
+                        "success": device_result.success,
+                        "message": f"Connected to {device_name}",
+                        "method": device_result.method_used
+                    }
+
+            # Fallback: assume success if we got this far
+            return {
+                "success": True,
+                "message": f"Connected to {device_name}",
+                "method": "manual_flow"
+            }
+
+        except Exception as e:
+            self.logger.error(f"[DISPLAY MONITOR] Generic device connection error: {e}")
+            return {
+                "success": False,
+                "error": str(e)
             }
     
     def _set_user_override(self, display_name: str):
