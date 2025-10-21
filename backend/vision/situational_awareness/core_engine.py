@@ -293,7 +293,7 @@ class EnvironmentHasher:
                     timestamp=time.time(),
                     confidence=0.9
                 ))
-            elif element_id in both old_elements and new_elements:
+            elif element_id in old_elements and element_id in new_elements:
                 # Check if position changed
                 old_pos = old_elements[element_id].coordinates
                 new_pos = new_elements[element_id].coordinates
