@@ -3594,11 +3594,20 @@ class UnifiedCommandProcessor:
             result = await monitor.connect_display(display_id)
 
             if result.get("success"):
+                # Check if already connected (cached) or connection in progress
+                if result.get("cached"):
+                    response = f"Your screen is already being {mode}ed to {display_name}, sir."
+                elif result.get("in_progress"):
+                    response = f"Connecting to {display_name} now, sir."
+                else:
+                    response = f"Connected to {display_name}, sir. Your screen is now being {mode}ed."
+
                 return {
                     "success": True,
-                    "response": f"Connected to {display_name}, sir. Your screen is now being {mode}ed.",
+                    "response": response,
                     "display_name": display_name,
                     "mode": mode,
+                    "already_connected": result.get("cached", False)
                 }
             else:
                 return {
