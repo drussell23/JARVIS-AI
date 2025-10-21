@@ -444,7 +444,6 @@ class AdvancedDisplayMonitor:
         self.monitoring_task: Optional[asyncio.Task] = None
         self.available_displays: Set[str] = set()
         self.connected_displays: Set[str] = set()
-        self.connecting_displays: Set[str] = set()  # Track displays currently being connected (prevents duplicates)
         self.initial_scan_complete = False  # Track if initial scan is done
 
         # Event callbacks
@@ -732,16 +731,12 @@ class AdvancedDisplayMonitor:
         if monitored.auto_prompt and self.config['voice_integration']['speak_on_detection']:
             await self._speak_detection_prompt(monitored)
 
-        # Auto-connect if enabled AND not already connected/connecting
-        if (monitored.auto_connect and
-            monitored.id not in self.connected_displays and
-            monitored.id not in self.connecting_displays):
+        # Auto-connect if enabled AND not already connected
+        if monitored.auto_connect and monitored.id not in self.connected_displays:
             logger.info(f"[DISPLAY MONITOR] Auto-connecting to {monitored.name}...")
             await self.connect_display(monitored.id)
         elif monitored.id in self.connected_displays:
             logger.debug(f"[DISPLAY MONITOR] {monitored.name} already connected, skipping auto-connect")
-        elif monitored.id in self.connecting_displays:
-            logger.debug(f"[DISPLAY MONITOR] {monitored.name} connection in progress, skipping duplicate auto-connect")
 
     async def _handle_display_lost(self, monitored: MonitoredDisplay):
         """Handle lost display"""
@@ -840,27 +835,13 @@ class AdvancedDisplayMonitor:
         if not monitored:
             return {"success": False, "message": f"Display {display_id} not found in configuration"}
 
-        # CRITICAL: Check if already connected or currently connecting
-        if display_id in self.connected_displays:
-            logger.info(f"[DISPLAY MONITOR] {monitored.name} is already connected, skipping connection")
-            return {"success": True, "message": f"Already connected to {monitored.name}", "already_connected": True}
+        logger.info(f"[DISPLAY MONITOR] ========================================")
+        logger.info(f"[DISPLAY MONITOR] Connecting to {monitored.name}...")
+        logger.info(f"[DISPLAY MONITOR] Starting 6-tier connection waterfall")
+        logger.info(f"[DISPLAY MONITOR] ========================================")
 
-        if display_id in self.connecting_displays:
-            logger.warning(f"[DISPLAY MONITOR] {monitored.name} connection already in progress, skipping duplicate request")
-            return {"success": False, "message": f"Connection to {monitored.name} already in progress", "duplicate_request": True}
-
-        # Mark as connecting to prevent duplicate connection attempts
-        self.connecting_displays.add(display_id)
-        logger.info(f"[DISPLAY MONITOR] Marked {monitored.name} as connecting (prevents duplicates)")
-
-        try:
-            logger.info(f"[DISPLAY MONITOR] ========================================")
-            logger.info(f"[DISPLAY MONITOR] Connecting to {monitored.name}...")
-            logger.info(f"[DISPLAY MONITOR] Starting 6-tier connection waterfall")
-            logger.info(f"[DISPLAY MONITOR] ========================================")
-
-            connection_start = asyncio.get_event_loop().time()
-            strategies_attempted = []
+        connection_start = asyncio.get_event_loop().time()
+        strategies_attempted = []
 
         # Strategy 1: DIRECT COORDINATES - Complete flow with no vision!
         # Control Center (1245, 12) → Screen Mirroring (1393, 177) → Living Room TV (1221, 116)
@@ -1139,41 +1120,35 @@ class AdvancedDisplayMonitor:
                 result['tier'] = 5
                 return result
 
-            # Strategy 6: All automated methods failed - provide voice guidance
-            duration = asyncio.get_event_loop().time() - connection_start
+        # Strategy 6: All automated methods failed - provide voice guidance
+        duration = asyncio.get_event_loop().time() - connection_start
 
-            guidance_message = (
-                f"I can see {monitored.name} is available, but all automated connection methods failed. "
-                f"Please click the Screen Mirroring icon in your menu bar and select {monitored.name} manually."
-            )
+        guidance_message = (
+            f"I can see {monitored.name} is available, but all automated connection methods failed. "
+            f"Please click the Screen Mirroring icon in your menu bar and select {monitored.name} manually."
+        )
 
-            logger.error(f"[DISPLAY MONITOR] ❌ ALL 6 STRATEGIES FAILED for {monitored.name}")
-            logger.error(f"[DISPLAY MONITOR] Strategies attempted: {', '.join(strategies_attempted)}")
-            logger.error(f"[DISPLAY MONITOR] Total time: {duration:.2f}s")
-            logger.error(f"[DISPLAY MONITOR] ========================================")
+        logger.error(f"[DISPLAY MONITOR] ❌ ALL 6 STRATEGIES FAILED for {monitored.name}")
+        logger.error(f"[DISPLAY MONITOR] Strategies attempted: {', '.join(strategies_attempted)}")
+        logger.error(f"[DISPLAY MONITOR] Total time: {duration:.2f}s")
+        logger.error(f"[DISPLAY MONITOR] ========================================")
 
-            # Speak guidance
-            if self.voice_handler:
-                try:
-                    await self.voice_handler.speak(guidance_message)
-                except:
-                    subprocess.Popen(['say', guidance_message])
+        # Speak guidance
+        if self.voice_handler:
+            try:
+                await self.voice_handler.speak(guidance_message)
+            except:
+                subprocess.Popen(['say', guidance_message])
 
-            return {
-                "success": False,
-                "message": guidance_message,
-                "method": "none",
-                "duration": duration,
-                "strategies_attempted": strategies_attempted,
-                "guidance_provided": True,
-                "tier": 6
-            }
-
-        finally:
-            # CRITICAL: Always remove from connecting_displays to allow future connection attempts
-            if display_id in self.connecting_displays:
-                self.connecting_displays.remove(display_id)
-                logger.info(f"[DISPLAY MONITOR] Removed {monitored.name} from connecting state")
+        return {
+            "success": False,
+            "message": guidance_message,
+            "method": "none",
+            "duration": duration,
+            "strategies_attempted": strategies_attempted,
+            "guidance_provided": True,
+            "tier": 6
+        }
 
     async def change_display_mode(self, display_id: str, mode: str = "extended") -> Dict[str, Any]:
         """
