@@ -839,12 +839,15 @@ class AdvancedDisplayMonitor:
             return {"success": False, "message": f"Display {display_id} not found in configuration"}
 
         # Circuit breaker: Check if already connected or connecting
+        logger.info(f"[DISPLAY MONITOR] 🔍 Circuit breaker check for {monitored.name}")
+        logger.info(f"[DISPLAY MONITOR] Current state: connecting={list(self.connecting_displays)}, connected={list(self.connected_displays)}")
+
         if display_id in self.connected_displays:
-            logger.info(f"[DISPLAY MONITOR] {monitored.name} already connected, skipping")
+            logger.info(f"[DISPLAY MONITOR] ✅ {monitored.name} already connected, returning cached response")
             return {"success": True, "message": f"{monitored.name} already connected", "cached": True}
 
         if display_id in self.connecting_displays:
-            logger.info(f"[DISPLAY MONITOR] {monitored.name} connection already in progress, returning success (task will complete)")
+            logger.info(f"[DISPLAY MONITOR] ⏳ {monitored.name} connection already in progress, returning in_progress response")
             return {"success": True, "message": f"Connecting to {monitored.name}...", "in_progress": True}
 
         # Mark as connecting IMMEDIATELY to prevent race conditions
@@ -905,9 +908,14 @@ class AdvancedDisplayMonitor:
                 logger.info(f"[DISPLAY MONITOR] ========================================")
 
                 # Release circuit breaker
+                logger.info(f"[DISPLAY MONITOR] 🔓 Releasing circuit breaker for {monitored.name}")
+                logger.info(f"[DISPLAY MONITOR] State before release: connecting={list(self.connecting_displays)}, connected={list(self.connected_displays)}")
                 if display_id in self.connecting_displays:
                     self.connecting_displays.remove(display_id)
-                    logger.info(f"[DISPLAY MONITOR] 🔓 Circuit breaker released for {monitored.name}")
+                    logger.info(f"[DISPLAY MONITOR] ✅ Removed {display_id} from connecting_displays")
+                else:
+                    logger.warning(f"[DISPLAY MONITOR] ⚠️  {display_id} was NOT in connecting_displays!")
+                logger.info(f"[DISPLAY MONITOR] State after release: connecting={list(self.connecting_displays)}, connected={list(self.connected_displays)}")
 
                 return {
                     "success": True,
@@ -928,6 +936,7 @@ class AdvancedDisplayMonitor:
 
         except Exception as e:
             logger.warning(f"[DISPLAY MONITOR] Direct coordinates error: {e}", exc_info=True)
+            # Note: Don't release circuit breaker here - let it continue to other strategies
 
         # Strategy 2: Protocol-Level AirPlay (Bonjour/mDNS + RAOP)
         try:
