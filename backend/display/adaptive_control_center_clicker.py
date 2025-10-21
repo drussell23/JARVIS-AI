@@ -948,7 +948,7 @@ class VerificationEngine:
         before_screenshot: Optional[Image.Image] = None
     ) -> bool:
         """
-        Verify that a click had an effect
+        Verify that a click had the CORRECT effect (context-aware verification)
 
         Args:
             target: What was clicked
@@ -973,20 +973,101 @@ class VerificationEngine:
             # Compare screenshots
             difference = self._compare_screenshots(before_screenshot, after_screenshot)
 
-            # If there's significant difference, click likely worked
+            # If there's significant difference, check if CORRECT thing opened
             threshold = 0.01  # 1% of pixels changed
-            success = difference > threshold
+            if difference < threshold:
+                logger.info(f"[VERIFY] ❌ FAILED - No UI change detected for {target}")
+                return False
+
+            # Context-aware verification: Check if the correct menu opened
+            content_verified = await self._verify_expected_content(target, after_screenshot)
+
+            if not content_verified:
+                logger.warning(
+                    f"[VERIFY] ⚠️  UI changed but WRONG menu opened for {target}! "
+                    f"(difference={difference:.2%})"
+                )
+                return False
 
             logger.info(
                 f"[VERIFY] Verification for {target}: "
-                f"{'✅ PASSED' if success else '❌ FAILED'} "
-                f"(difference={difference:.2%})"
+                f"✅ PASSED (difference={difference:.2%}, content verified)"
             )
 
-            return success
+            return True
 
         except Exception as e:
             logger.error(f"[VERIFY] Verification failed: {e}", exc_info=True)
+            # On error, assume success to avoid false negatives
+            return True
+
+    async def _verify_expected_content(
+        self,
+        target: str,
+        screenshot: Image.Image
+    ) -> bool:
+        """
+        Verify that the correct menu/content opened (context-aware)
+
+        Args:
+            target: What we expected to click
+            screenshot: Screenshot after click
+
+        Returns:
+            True if expected content is visible, False otherwise
+        """
+        try:
+            # Define expected content for each target
+            expected_content_map = {
+                "control_center": [
+                    "Screen Mirroring",  # Control Center has "Screen Mirroring"
+                    "Display",            # macOS Sonoma/Sequoia may say "Display"
+                    "AirPlay"             # Older macOS versions
+                ],
+                "screen_mirroring": [
+                    "Living Room TV",     # Should see available devices
+                    "Bedroom TV",
+                    "Apple TV",
+                    "AirPlay"
+                ],
+                "battery": [
+                    "Battery",            # Battery menu has "Battery" text
+                    "%",                  # Percentage indicator
+                    "Low Power Mode"      # Battery settings option
+                ]
+            }
+
+            expected_texts = expected_content_map.get(target, [])
+            if not expected_texts:
+                # No verification available for this target, assume success
+                logger.debug(f"[VERIFY] No content verification defined for {target}")
+                return True
+
+            # Use OCR to check for expected text
+            try:
+                import pytesseract
+                screenshot_cv = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2BGR)
+                ocr_text = pytesseract.image_to_string(screenshot_cv)
+
+                # Check if any expected text is present
+                for expected in expected_texts:
+                    if expected.lower() in ocr_text.lower():
+                        logger.info(f"[VERIFY] ✅ Found expected text '{expected}' for {target}")
+                        return True
+
+                logger.warning(
+                    f"[VERIFY] ⚠️  Expected text not found for {target}. "
+                    f"Looking for: {expected_texts}, OCR found: {ocr_text[:100]}..."
+                )
+                return False
+
+            except ImportError:
+                # pytesseract not available, skip content verification
+                logger.debug("[VERIFY] pytesseract not available, skipping content verification")
+                return True
+
+        except Exception as e:
+            logger.error(f"[VERIFY] Content verification failed: {e}", exc_info=True)
             # On error, assume success to avoid false negatives
             return True
 
