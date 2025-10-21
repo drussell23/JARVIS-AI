@@ -844,8 +844,8 @@ class AdvancedDisplayMonitor:
             return {"success": True, "message": f"{monitored.name} already connected", "cached": True}
 
         if display_id in self.connecting_displays:
-            logger.warning(f"[DISPLAY MONITOR] {monitored.name} connection already in progress, blocking duplicate request")
-            return {"success": False, "message": f"{monitored.name} connection already in progress", "blocked": True}
+            logger.info(f"[DISPLAY MONITOR] {monitored.name} connection already in progress, returning success (task will complete)")
+            return {"success": True, "message": f"Connecting to {monitored.name}...", "in_progress": True}
 
         # Mark as connecting IMMEDIATELY to prevent race conditions
         self.connecting_displays.add(display_id)
