@@ -33,59 +33,48 @@ class SimpleMenuBarDetector:
 
     def get_control_center_position(self) -> Tuple[int, int]:
         """
-        Get Control Center icon position using simple heuristics
+        Get Control Center icon position using KNOWN coordinates
 
         Returns:
             (x, y) coordinates of Control Center icon
         """
-        # Menu bar is at top of screen (y = 12 is vertical center)
+        # Known correct coordinates (verified by user)
+        x = 1236
         y = 12
 
-        # Control Center is typically:
-        # - 3rd icon from right edge
-        # - Icons are ~30px wide
-        # - Right edge padding is ~10px
-
-        # Common layouts:
-        # 1440px width: Control Center at ~1387
-        # 1920px width: Control Center at ~1867
-        # 2560px width: Control Center at ~2507
-
-        # Simple formula: screen_width - (3 icons * 30px) - 10px padding
-        x = self.screen_width - (3 * 30) - 10
-
-        logger.info(f"[SIMPLE MENUBAR] Control Center estimated at ({x}, {y})")
+        logger.info(f"[SIMPLE MENUBAR] Control Center at ({x}, {y})")
 
         return (x, y)
 
-    def get_menu_item_below_control_center(self, item_name: str) -> Tuple[int, int]:
+    def get_screen_mirroring_position(self) -> Tuple[int, int]:
         """
-        Get position of menu item in Control Center dropdown
-
-        Args:
-            item_name: Name of menu item (e.g., "Screen Mirroring", "Display")
+        Get Screen Mirroring menu item position
 
         Returns:
-            (x, y) coordinates of menu item
+            (x, y) coordinates of Screen Mirroring item
         """
-        # Control Center menu appears below the icon
-        # Menu items are typically:
-        # - Same x position as icon (centered)
-        # - First item starts at y=60
-        # - Each item is ~40px tall
+        # Known correct coordinates (verified by user)
+        x = 1396
+        y = 177
 
-        cc_x, cc_y = self.get_control_center_position()
+        logger.info(f"[SIMPLE MENUBAR] Screen Mirroring at ({x}, {y})")
 
-        # Screen Mirroring is typically 2nd or 3rd item
-        # Let's use y=100 (after Wi-Fi/Bluetooth)
-        menu_y = 100
+        return (x, y)
 
-        # X position: slight offset to the left
-        menu_x = cc_x + 50
+    def get_living_room_tv_position(self) -> Tuple[int, int]:
+        """
+        Get Living Room TV position
 
-        logger.info(f"[SIMPLE MENUBAR] {item_name} estimated at ({menu_x}, {menu_y})")
+        Returns:
+            (x, y) coordinates of Living Room TV
+        """
+        # Known correct coordinates (verified by user)
+        x = 1223
+        y = 115
 
-        return (menu_x, menu_y)
+        logger.info(f"[SIMPLE MENUBAR] Living Room TV at ({x}, {y})")
+
+        return (x, y)
 
 
 def get_simple_menubar_detector() -> SimpleMenuBarDetector:

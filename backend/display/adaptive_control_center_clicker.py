@@ -431,11 +431,13 @@ class SimpleHeuristicDetection:
 
             logger.info(f"[SIMPLE HEURISTIC] Detecting '{target}' using position math...")
 
-            # Get position based on target
+            # Get position based on target (KNOWN CORRECT COORDINATES)
             if target == "control_center":
-                x, y = self._detector.get_control_center_position()
+                x, y = self._detector.get_control_center_position()  # (1236, 12)
             elif target == "screen_mirroring":
-                x, y = self._detector.get_menu_item_below_control_center("Screen Mirroring")
+                x, y = self._detector.get_screen_mirroring_position()  # (1396, 177)
+            elif target == "Living Room TV":
+                x, y = self._detector.get_living_room_tv_position()  # (1223, 115)
             else:
                 return DetectionResult(
                     success=False,
@@ -444,19 +446,19 @@ class SimpleHeuristicDetection:
                     confidence=0.0,
                     duration=time.time() - start_time,
                     metadata={},
-                    error=f"No heuristic available for target: {target}"
+                    error=f"No known coordinates for target: {target}"
                 )
 
-            logger.info(f"[SIMPLE HEURISTIC] ✅ Found '{target}' at ({x}, {y}) (estimated)")
+            logger.info(f"[SIMPLE HEURISTIC] ✅ Found '{target}' at ({x}, {y}) (known coordinates)")
 
-            # Medium confidence since it's an estimate
+            # High confidence since these are known correct coordinates
             return DetectionResult(
                 success=True,
                 method=self.name,
                 coordinates=(x, y),
-                confidence=0.7,  # Will be verified by post-click verification
+                confidence=0.95,  # High confidence, will be verified anyway
                 duration=time.time() - start_time,
-                metadata={"method": "position_heuristic"}
+                metadata={"method": "known_coordinates"}
             )
 
         except Exception as e:
