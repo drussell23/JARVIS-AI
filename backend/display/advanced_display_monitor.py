@@ -415,16 +415,18 @@ class AdvancedDisplayMonitor:
     - Zero hardcoding
     """
 
-    def __init__(self, config_path: Optional[str] = None, voice_handler = None):
+    def __init__(self, config_path: Optional[str] = None, voice_handler = None, vision_analyzer=None):
         """
         Initialize advanced display monitor
 
         Args:
             config_path: Path to configuration JSON file
             voice_handler: Voice integration handler for TTS
+            vision_analyzer: Vision analyzer for AI-powered UI detection
         """
         self.config = self._load_config(config_path)
         self.voice_handler = voice_handler
+        self.vision_analyzer = vision_analyzer  # Store vision analyzer for UAE integration
         self.websocket_manager = None  # Will be set by main.py
 
         # Initialize components
@@ -874,8 +876,9 @@ class AdvancedDisplayMonitor:
 
             strategies_attempted.append("direct_coordinates")
 
-            # Get Control Center clicker
-            cc_clicker = get_control_center_clicker()
+            # Get Control Center clicker with vision analyzer for UAE intelligence
+            cc_clicker = get_control_center_clicker(vision_analyzer=self.vision_analyzer)
+            logger.info(f"[DISPLAY MONITOR] Clicker initialized with vision: {self.vision_analyzer is not None}")
 
             # Execute complete flow: Control Center → Screen Mirroring → Living Room TV
             logger.info(f"[DISPLAY MONITOR] Executing 3-click flow...")
