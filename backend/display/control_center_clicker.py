@@ -336,7 +336,36 @@ class ControlCenterClicker:
         try:
             if self.use_adaptive:
                 # Use adaptive end-to-end flow
-                result = self._run_async(self._adaptive_clicker.connect_to_device("Living Room TV"))
+                # CRITICAL: Run in thread to avoid event loop deadlock
+                import threading
+                result = None
+                error = None
+
+                def run_in_thread():
+                    nonlocal result, error
+                    try:
+                        # Create new event loop for this thread
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        result = loop.run_until_complete(self._adaptive_clicker.connect_to_device("Living Room TV"))
+                    except Exception as e:
+                        error = e
+                    finally:
+                        loop.close()
+
+                # Run in thread with timeout
+                thread = threading.Thread(target=run_in_thread)
+                thread.start()
+                thread.join(timeout=30)  # 30 second timeout
+
+                if thread.is_alive():
+                    self.logger.error("[CONTROL CENTER] Connection timed out after 30 seconds")
+                    return {"success": False, "message": "Connection timed out"}
+
+                if error:
+                    raise error
+
+                result = result or {"success": False, "message": "No result returned"}
 
                 # Result is already a dict, just ensure legacy format
                 if result.get("success"):
