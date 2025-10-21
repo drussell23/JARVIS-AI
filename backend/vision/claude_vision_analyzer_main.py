@@ -9092,3 +9092,35 @@ Provide a clear summary of the current state."""
                 )
 
         return results
+
+
+# Singleton instance
+_claude_vision_analyzer_instance = None
+
+
+def get_claude_vision_analyzer(api_key: Optional[str] = None) -> ClaudeVisionAnalyzer:
+    """
+    Get singleton Claude Vision Analyzer instance
+
+    Args:
+        api_key: Optional Anthropic API key (reads from ANTHROPIC_API_KEY env var if not provided)
+
+    Returns:
+        ClaudeVisionAnalyzer instance
+    """
+    global _claude_vision_analyzer_instance
+    if _claude_vision_analyzer_instance is None:
+        import os
+
+        # Get API key from parameter or environment
+        if api_key is None:
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+
+        if not api_key:
+            raise ValueError(
+                "Anthropic API key required. Set ANTHROPIC_API_KEY environment variable "
+                "or pass api_key parameter."
+            )
+
+        _claude_vision_analyzer_instance = ClaudeVisionAnalyzer(api_key=api_key)
+    return _claude_vision_analyzer_instance

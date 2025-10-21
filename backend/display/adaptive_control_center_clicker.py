@@ -403,11 +403,109 @@ class CachedDetection:
         )
 
 
+class EnhancedVisionPipelineDetection:
+    """Detection using Enhanced Vision Pipeline (5-stage multi-model system)"""
+
+    name = "enhanced_vision_pipeline"
+    priority = 2  # Run after cache, before OCR
+
+    def __init__(self):
+        self._pipeline = None
+        self._pipeline_available = None
+
+    async def is_available(self) -> bool:
+        """Check if Enhanced Vision Pipeline is available"""
+        if self._pipeline_available is not None:
+            return self._pipeline_available
+
+        try:
+            from vision.enhanced_vision_pipeline import get_vision_pipeline
+            self._pipeline = get_vision_pipeline()
+            await self._pipeline.initialize()
+            self._pipeline_available = True
+            logger.info("[ENHANCED PIPELINE] Initialized successfully")
+            return True
+        except Exception as e:
+            logger.debug(f"[ENHANCED PIPELINE] Not available: {e}")
+            self._pipeline_available = False
+            return False
+
+    async def detect(
+        self,
+        target: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> DetectionResult:
+        """Detect using Enhanced Vision Pipeline"""
+        start_time = time.time()
+
+        try:
+            if not self._pipeline:
+                return DetectionResult(
+                    success=False,
+                    method=self.name,
+                    coordinates=None,
+                    confidence=0.0,
+                    duration=time.time() - start_time,
+                    metadata={},
+                    error="Enhanced Vision Pipeline not initialized"
+                )
+
+            logger.info(f"[ENHANCED PIPELINE] Detecting '{target}' using 5-stage pipeline...")
+
+            # Run the full pipeline
+            result = await self._pipeline.detect_and_click(
+                target_element=target,
+                dry_run=True  # Don't actually click, just detect
+            )
+
+            if result.success and result.final_coordinates:
+                x, y = result.final_coordinates
+                logger.info(
+                    f"[ENHANCED PIPELINE] ✅ Found '{target}' at ({x}, {y}) "
+                    f"with confidence {result.confidence:.2%}"
+                )
+
+                return DetectionResult(
+                    success=True,
+                    method=self.name,
+                    coordinates=(x, y),
+                    confidence=result.confidence,
+                    duration=time.time() - start_time,
+                    metadata={
+                        "validation_method": result.validation_method,
+                        "models_agreed": result.models_agreed,
+                        "pipeline_stages": len(result.stage_results)
+                    }
+                )
+            else:
+                return DetectionResult(
+                    success=False,
+                    method=self.name,
+                    coordinates=None,
+                    confidence=0.0,
+                    duration=time.time() - start_time,
+                    metadata={},
+                    error=result.error or "Enhanced Pipeline detection failed"
+                )
+
+        except Exception as e:
+            logger.error(f"[ENHANCED PIPELINE] Detection failed: {e}", exc_info=True)
+            return DetectionResult(
+                success=False,
+                method=self.name,
+                coordinates=None,
+                confidence=0.0,
+                duration=time.time() - start_time,
+                metadata={},
+                error=str(e)
+            )
+
+
 class OCRDetection:
     """Detection using OCR (pytesseract + Claude Vision fallback)"""
 
     name = "ocr"
-    priority = 2
+    priority = 3  # After Enhanced Vision Pipeline
 
     def __init__(self, vision_analyzer=None):
         self.vision_analyzer = vision_analyzer
@@ -430,24 +528,42 @@ class OCRDetection:
         target: str,
         context: Optional[Dict[str, Any]] = None
     ) -> DetectionResult:
-        """Detect using OCR"""
+        """Detect using OCR/Visual Recognition"""
         start_time = time.time()
 
         try:
-            # Take screenshot of menu bar (top 100 pixels)
-            screenshot = pyautogui.screenshot(region=(0, 0, 2000, 100))
+            # Determine screenshot region based on target
+            if target == "control_center":
+                # Menu bar only (top 50 pixels)
+                screenshot = pyautogui.screenshot(region=(0, 0, 2000, 50))
+            elif target == "screen_mirroring":
+                # Control Center menu area (top-right, larger region)
+                screenshot = pyautogui.screenshot(region=(800, 0, 800, 400))
+            else:
+                # Generic: capture larger area
+                screenshot = pyautogui.screenshot(region=(0, 0, 2000, 500))
 
-            # Try pytesseract first
-            if self._tesseract_available:
-                result = await self._ocr_with_tesseract(screenshot, target)
-                if result.success:
-                    return result
+            # For icon-based targets (Control Center), skip pytesseract and use Claude Vision
+            if target == "control_center":
+                # Skip pytesseract (can't detect icons), go straight to Claude Vision
+                if self.vision_analyzer:
+                    result = await self._ocr_with_claude(screenshot, target)
+                    if result.success:
+                        return result
+                else:
+                    logger.warning("[OCR] Control Center requires Claude Vision for icon detection")
+            else:
+                # For text-based targets, try pytesseract first
+                if self._tesseract_available:
+                    result = await self._ocr_with_tesseract(screenshot, target)
+                    if result.success:
+                        return result
 
-            # Fallback to Claude Vision
-            if self.vision_analyzer:
-                result = await self._ocr_with_claude(screenshot, target)
-                if result.success:
-                    return result
+                # Fallback to Claude Vision
+                if self.vision_analyzer:
+                    result = await self._ocr_with_claude(screenshot, target)
+                    if result.success:
+                        return result
 
             return DetectionResult(
                 success=False,
@@ -539,7 +655,7 @@ class OCRDetection:
         screenshot: Image.Image,
         target: str
     ) -> DetectionResult:
-        """Use Claude Vision for OCR"""
+        """Use Claude Vision for visual recognition (icons + text)"""
         start_time = time.time()
 
         try:
@@ -556,7 +672,41 @@ class OCRDetection:
 
             width, height = screenshot.size
 
-            prompt = f"""Find the text or icon labeled "{target}" in this screenshot.
+            # Build context-aware prompt based on target
+            if target == "control_center":
+                prompt = """Find the Control Center icon in this macOS menu bar screenshot.
+
+The Control Center icon looks like:
+- Two toggle switches (circles on lines) stacked vertically
+- Located in the top-right menu bar area
+- Usually near the battery, Wi-Fi, and clock icons
+- Dark icon on light background (or light icon on dark mode)
+
+Return ONLY the coordinates in this EXACT format:
+COORDINATES: x=<number>, y=<number>
+
+Where x and y are pixel positions from the top-left corner of this image.
+
+If not found, respond with: NOT_FOUND"""
+
+            elif target == "screen_mirroring":
+                prompt = """Find the "Screen Mirroring" text or "Display" menu item in this Control Center menu screenshot.
+
+Look for:
+- Text that says "Screen Mirroring" OR "Display"
+- Usually appears as a menu item with an icon
+- May have a right-pointing arrow (›) next to it
+
+Return ONLY the coordinates in this EXACT format:
+COORDINATES: x=<number>, y=<number>
+
+Where x and y are pixel positions from the top-left corner of this image.
+
+If not found, respond with: NOT_FOUND"""
+
+            else:
+                # Generic text/icon search
+                prompt = f"""Find the text or icon labeled "{target}" in this screenshot.
 
 Return ONLY the coordinates in this EXACT format:
 COORDINATES: x=<number>, y=<number>
@@ -1143,12 +1293,13 @@ class AdaptiveControlCenterClicker:
 
         # Detection methods (in priority order)
         self.detection_methods: List[DetectionMethod] = [
-            CachedDetection(self.cache),
-            OCRDetection(vision_analyzer),
-            TemplateMatchingDetection(),
-            EdgeDetection(),
-            AccessibilityAPIDetection(),
-            AppleScriptDetection(),
+            CachedDetection(self.cache),                    # Priority 1: Instant (10ms)
+            EnhancedVisionPipelineDetection(),              # Priority 2: Fast & Accurate (300-500ms) ⭐ NEW
+            OCRDetection(vision_analyzer),                  # Priority 3: Medium (500ms - 2s)
+            TemplateMatchingDetection(),                    # Priority 4: Fast (300ms)
+            EdgeDetection(),                                # Priority 5: Medium (400ms)
+            AccessibilityAPIDetection(),                    # Priority 6: Future
+            AppleScriptDetection(),                         # Priority 7: Future
         ]
 
         # Metrics
