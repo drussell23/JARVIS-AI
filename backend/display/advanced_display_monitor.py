@@ -849,8 +849,10 @@ class AdvancedDisplayMonitor:
             return {"success": True, "message": f"{monitored.name} already connected", "cached": True}
 
         if display_id in self.connecting_displays:
-            logger.info(f"[DISPLAY MONITOR] ⏳ {monitored.name} connection already in progress, returning in_progress response")
-            return {"success": True, "message": f"Connecting to {monitored.name}...", "in_progress": True}
+            logger.info(f"[DISPLAY MONITOR] ⚠️ {monitored.name} was stuck in connecting state, resetting and retrying...")
+            # Remove from connecting state to allow retry
+            self.connecting_displays.discard(display_id)
+            logger.info(f"[DISPLAY MONITOR] 🔄 Reset circuit breaker, proceeding with connection")
 
         # Mark as connecting IMMEDIATELY to prevent race conditions
         self.connecting_displays.add(display_id)

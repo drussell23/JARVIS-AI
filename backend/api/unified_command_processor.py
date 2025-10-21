@@ -3598,9 +3598,10 @@ class UnifiedCommandProcessor:
                 if result.get("cached"):
                     response = f"Your screen is already being {mode}ed to {display_name}, sir."
                 elif result.get("in_progress"):
-                    response = f"Already establishing connection to {display_name}, sir."
+                    # This should not happen anymore with the fix, but keep as fallback
+                    response = f"Connecting to {display_name} now, sir."
                 else:
-                    response = f"Successfully connected to {display_name}, sir. Your screen is now being {mode}ed."
+                    response = f"Connected to {display_name}, sir."
 
                 return {
                     "success": True,
