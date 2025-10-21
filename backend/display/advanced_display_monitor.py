@@ -843,6 +843,7 @@ class AdvancedDisplayMonitor:
         # Circuit breaker: Check if already connected or connecting
         logger.info(f"[DISPLAY MONITOR] 🔍 Circuit breaker check for {monitored.name}")
         logger.info(f"[DISPLAY MONITOR] Current state: connecting={list(self.connecting_displays)}, connected={list(self.connected_displays)}")
+        logger.info(f"[DISPLAY MONITOR] Checking: {display_id} in connected={display_id in self.connected_displays}, in connecting={display_id in self.connecting_displays}")
 
         if display_id in self.connected_displays:
             logger.info(f"[DISPLAY MONITOR] ✅ {monitored.name} already connected, returning cached response")
@@ -1441,7 +1442,7 @@ def set_app_display_monitor(monitor: AdvancedDisplayMonitor):
     _app_monitor_instance = monitor
 
 
-def get_display_monitor(config_path: Optional[str] = None, voice_handler = None) -> AdvancedDisplayMonitor:
+def get_display_monitor(config_path: Optional[str] = None, voice_handler = None, vision_analyzer = None) -> AdvancedDisplayMonitor:
     """
     Get singleton display monitor instance
 
@@ -1454,15 +1455,21 @@ def get_display_monitor(config_path: Optional[str] = None, voice_handler = None)
 
     # Always prefer the app monitor if available (the one that's actually running)
     if _app_monitor_instance is not None:
-        monitor = _app_monitor_instance
-    elif _monitor_instance is None:
-        _monitor_instance = AdvancedDisplayMonitor(config_path, voice_handler)
-        monitor = _monitor_instance
-    else:
-        monitor = _monitor_instance
+        logger.debug(f"[DISPLAY MONITOR] Using app monitor instance with state: connected={list(_app_monitor_instance.connected_displays)}, connecting={list(_app_monitor_instance.connecting_displays)}")
+        return _app_monitor_instance
+
+    # Use existing singleton if available
+    if _monitor_instance is not None:
+        logger.debug(f"[DISPLAY MONITOR] Using singleton instance with state: connected={list(_monitor_instance.connected_displays)}, connecting={list(_monitor_instance.connecting_displays)}")
+        return _monitor_instance
+
+    # Create new singleton instance
+    logger.info("[DISPLAY MONITOR] Creating new singleton instance")
+    _monitor_instance = AdvancedDisplayMonitor(config_path, voice_handler, vision_analyzer)
+    monitor = _monitor_instance
 
     # Ensure vision analyzer is connected if available and not already set
-    if not hasattr(monitor, 'vision_analyzer') or monitor.vision_analyzer is None:
+    if vision_analyzer is None and (not hasattr(monitor, 'vision_analyzer') or monitor.vision_analyzer is None):
         try:
             import sys
             if hasattr(sys.modules.get('__main__'), 'app'):
