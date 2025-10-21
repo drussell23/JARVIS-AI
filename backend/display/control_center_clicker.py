@@ -112,8 +112,23 @@ class ControlCenterClicker:
             # Try to get existing event loop
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                # If loop is already running, create a new task
-                return asyncio.create_task(coro)
+                # If loop is already running, we need to schedule and wait for the coroutine
+                # Create a future to hold the result
+                import concurrent.futures
+                future = concurrent.futures.Future()
+
+                async def run_and_set_result():
+                    try:
+                        result = await coro
+                        future.set_result(result)
+                    except Exception as e:
+                        future.set_exception(e)
+
+                # Schedule the coroutine
+                asyncio.create_task(run_and_set_result())
+
+                # Wait for result with timeout
+                return future.result(timeout=60)
             else:
                 return loop.run_until_complete(coro)
         except RuntimeError:
