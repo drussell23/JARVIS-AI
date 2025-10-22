@@ -2,93 +2,65 @@
 
 ## Quick Reference Guide
 
-All Goal Inference configuration is now **fully integrated into start_system.py**!
+All Goal Inference configuration is now **fully automatic and intelligent**!
 
-**Just run:** `python start_system.py` and you'll get an interactive menu! 🎯
+**Just run:** `python start_system.py` - No menu, no questions, pure intelligence! 🤖
 
 ---
 
-## 🎯 Method 1: Interactive Menu (Recommended)
+## 🤖 Method 1: Fully Automatic (Recommended)
 
 ### Scenario 1: First Time User
-**Goal**: Get JARVIS running with interactive configuration
+**Goal**: Get JARVIS running with zero configuration
 
 ```bash
 python start_system.py
 ```
 
 **What happens:**
-- 🎯 **Interactive menu appears** with 5 preset options + skip
-- 🔧 Select a preset (or press Enter for default 'balanced')
-- ⚙️ Choose automation on/off (smart defaults per preset)
-- ✅ Auto-creates configuration if first run
+- 🤖 **Auto-detects** this is your first run (no database)
+- 🎯 **Automatically selects** 'learning' preset for fast adaptation
+- ⚠️ **Automation disabled** - you're new, JARVIS needs to learn first
+- ✅ Auto-creates configuration
 - ✅ Initializes SQLite + ChromaDB databases
 - ✅ Starts JARVIS with all 10 components + Goal Inference
 
-**Interactive Menu:**
+**Startup Output:**
 ```
-╔════════════════════════════════════════════════════════════════╗
-║                   🤖 JARVIS AI ASSISTANT                       ║
-║              Goal Inference & Learning System                  ║
-╚════════════════════════════════════════════════════════════════╝
-
-Available Configuration Presets:
-
-  1. aggressive   - Highly proactive, learns quickly, suggests often
-                 (Goal Confidence: 0.65, Automation: ON)
-
-  2. balanced     - Default balanced settings (recommended)
-                 (Goal Confidence: 0.75, Automation: OFF)
-
-  3. conservative - Cautious, requires high confidence
-                 (Goal Confidence: 0.85, Automation: OFF)
-
-  4. learning     - Optimized for learning your patterns quickly
-                 (Min Patterns: 2, High Boost, Exploration: ON)
-
-  5. performance  - Maximum speed, aggressive caching
-                 (Cache: 200 entries, TTL: 600s, Preload: ON)
-
-  6. skip         - Use existing/default configuration
-
-Select preset [1-6] (or press Enter for default 'balanced'):
-```
-
-**After Selection:**
-```
-🎯 Goal Inference Preset: balanced
-
-Enable Goal Inference Automation?
-  • Automation allows JARVIS to auto-execute high-confidence actions (>95%)
-  • Without automation, JARVIS only makes suggestions
-Enable automation? [y/N]: n
-
-✓ Goal Inference Automation: DISABLED
+🎯 Auto-detected Goal Inference Preset: learning
+   → First run detected, using 'learning' preset for fast adaptation
+   (Override with --goal-preset or JARVIS_GOAL_PRESET environment variable)
+⚠️ Goal Inference Automation: DISABLED
 
 🚀 Starting JARVIS...
 ✅ Goal Inference + Learning Database loaded
    • Goal Confidence: 0.75
    • Proactive Suggestions: True
    • Automation: False
-   • Learning: True
+   • Learning: True (rapid pattern learning enabled)
 ```
+
+**Best for:**
+- First-time users
+- Zero configuration needed
+- Automatic adaptation to your workflow
 
 ---
 
-## 🎯 Method 2: Command-Line Arguments (Skip Interactive Menu)
+## 🎯 Method 2: Manual Override (Advanced Users)
 
-When you specify `--goal-preset`, the interactive menu is skipped!
+When you specify `--goal-preset`, auto-detection is skipped and your choice is used!
 
-### Scenario 2: Quick Learning Mode
-**Goal**: Quickly teach JARVIS your patterns (skip menu)
+### Scenario 2: Force Learning Mode
+**Goal**: Manually force learning preset (override auto-detection)
 
 ```bash
 python start_system.py --goal-preset learning
 ```
 
 **What happens:**
-- ⏩ **Skips interactive menu** (preset specified)
-- 🎯 Applies `learning` preset directly
+- ⏩ **Skips auto-detection** (manual preset specified)
+- 🎯 Forces `learning` preset regardless of experience
 - 🔥 Lowers pattern threshold to 2 (vs 3)
 - 📈 Increases pattern boost to 0.10 (vs 0.05)
 - 🚀 Faster adaptation to your routines
@@ -100,16 +72,16 @@ python start_system.py --goal-preset learning
 
 ---
 
-### Scenario 3: Aggressive + Automation
-**Goal**: Maximum proactivity and automation (skip menu)
+### Scenario 3: Force Aggressive + Automation
+**Goal**: Maximum proactivity and automation (override auto-detection)
 
 ```bash
 python start_system.py --goal-preset aggressive --enable-automation
 ```
 
 **What happens:**
-- ⏩ **Skips interactive menu** (preset + automation specified)
-- ⚡ Lowers confidence thresholds (0.65 vs 0.75)
+- ⏩ **Skips auto-detection** (manual preset + automation specified)
+- ⚡ Forces aggressive mode regardless of experience
 - 🤖 Enables automatic execution of high-confidence actions
 - 🔥 Highly proactive suggestions
 - ⚠️ **WARNING**: Will auto-execute actions with >95% confidence

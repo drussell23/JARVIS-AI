@@ -6,38 +6,56 @@
 python start_system.py
 ```
 
-**That's it!** An interactive menu will guide you through:
-1. 🎯 Selecting a Goal Inference preset (or press Enter for default)
-2. ⚙️ Enabling/disabling automation (smart defaults)
-3. 🚀 Starting JARVIS with your configuration
+**That's it!** JARVIS automatically:
+1. 🤖 **Detects the best preset** based on your usage history
+2. 🧠 **Learns from your patterns** and adapts over time
+3. ⚙️ **Smart automation** - enables when you're ready (80%+ success rate)
+4. 🚀 **No configuration needed** - works perfectly out of the box!
 
 ---
 
-## Interactive Menu Preview
+## How Auto-Detection Works
 
+JARVIS intelligently chooses the best configuration for you:
+
+### 🆕 First Run (No Database)
 ```
-╔════════════════════════════════════════════════════════════════╗
-║                   🤖 JARVIS AI ASSISTANT                       ║
-║              Goal Inference & Learning System                  ║
-╚════════════════════════════════════════════════════════════════╝
-
-Available Configuration Presets:
-
-  1. aggressive   - Highly proactive, learns quickly, suggests often
-  2. balanced     - Default balanced settings (recommended)
-  3. conservative - Cautious, requires high confidence
-  4. learning     - Optimized for learning your patterns quickly
-  5. performance  - Maximum speed, aggressive caching
-  6. skip         - Use existing/default configuration
-
-Select preset [1-6] (or press Enter for default 'balanced'):
+🎯 Auto-detected Goal Inference Preset: learning
+   → First run detected, using 'learning' preset for fast adaptation
+⚠️ Goal Inference Automation: DISABLED
 ```
+**Why?** You're new - JARVIS needs to learn your patterns first!
+
+### 📚 Early Learning Phase (< 50 goals)
+```
+🎯 Auto-detected Goal Inference Preset: learning
+   → Early learning phase (27 goals), using 'learning' preset
+⚠️ Goal Inference Automation: DISABLED
+```
+**Why?** Still learning - fast adaptation mode for quick pattern recognition.
+
+### ⚖️ Building Patterns (50-200 goals, < 10 patterns)
+```
+🎯 Auto-detected Goal Inference Preset: balanced
+   → Building patterns (7 patterns), using 'balanced' preset
+⚠️ Goal Inference Automation: DISABLED
+```
+**Why?** Patterns emerging - balanced mode for reliability.
+
+### 🔥 Experienced User (20+ patterns)
+```
+🎯 Auto-detected Goal Inference Preset: aggressive
+   → Experienced user (23 patterns), using 'aggressive' preset
+   → High pattern success (87%), automation recommended
+✓ Goal Inference Automation: ENABLED
+```
+**Why?** You're experienced - JARVIS trusts your patterns and enables automation!
 
 ---
 
-## Skip the Menu (Advanced Users)
+## Override Auto-Detection (Advanced Users)
 
-If you already know which preset you want:
+Want to manually choose a preset? Just use flags:
 
 ```bash
 # Specific preset
@@ -141,36 +159,36 @@ JARVIS includes **10 core components** + **6 intelligent systems**:
 
 ## All Methods in One Place
 
-### Method 1: Interactive Menu (Recommended)
+### Method 1: Automatic (Recommended) 🤖
 ```bash
 python start_system.py
 ```
-✅ **Shows menu** → Select preset → Choose automation
+✅ **Auto-detects best preset** → Smart automation → Zero configuration
 
-### Method 2: Command-Line Arguments
+### Method 2: Command-Line Override
 ```bash
 python start_system.py --goal-preset learning --enable-automation
 ```
-✅ **Skips menu** → Uses specified preset
+✅ **Manual override** → Uses specified preset → Skips auto-detection
 
-### Method 3: Environment Variables
+### Method 3: Environment Variables (Permanent Override)
 ```bash
 export JARVIS_GOAL_PRESET=balanced
 python start_system.py
 ```
-✅ **Skips menu** → Uses environment variable
+✅ **Permanent setting** → Skips auto-detection every time
 
 ---
 
-## Everything is Unified! 🎉
+## Everything is Intelligent & Automatic! 🎉
 
-No more multiple scripts or manual configuration files!
+No configuration needed - JARVIS adapts to YOU!
 
-- ✅ One command: `python start_system.py`
-- ✅ Interactive menu when needed
-- ✅ Skip menu with `--goal-preset`
-- ✅ Auto-configuration on first run
-- ✅ Environment variable support
-- ✅ All features in one place
+- 🤖 **Fully automatic** - Detects best preset from your usage
+- 🧠 **Self-learning** - Adapts as you use it more
+- ⚙️ **Smart automation** - Enables when you're ready (80%+ success)
+- 🔧 **Manual override** - Use `--goal-preset` if you want control
+- 📊 **Experience-based** - Different presets as you progress
+- ✅ **Zero configuration** - Works perfectly out of the box
 
-**Simple. Powerful. Unified.** 🚀
+**Intelligent. Adaptive. Autonomous.** 🚀
