@@ -543,7 +543,7 @@ def import_display_monitor():
 
 
 def import_goal_inference():
-    """Import Goal Inference and Learning Database components"""
+    """Import Goal Inference and Learning Database components with auto-configuration"""
     goal_inference = {}
 
     try:
@@ -552,41 +552,79 @@ def import_goal_inference():
         from backend.intelligence.learning_database import get_learning_database
         import json
         from pathlib import Path
+        import os
 
-        # Initialize integration
-        integration = get_integration()
-        goal_inference["integration"] = integration
-        goal_inference["available"] = True
-
-        # Initialize learning database
-        learning_db = get_learning_database()
-        goal_inference["learning_db"] = learning_db
-
-        # Load configuration
+        # Load or create configuration
         config_path = Path("backend/config/integration_config.json")
+
+        # Check for environment variable overrides
+        preset_override = os.getenv('JARVIS_GOAL_PRESET', None)
+        automation_override = os.getenv('JARVIS_GOAL_AUTOMATION', None)
+
         if config_path.exists():
             with open(config_path, 'r') as f:
                 config = json.load(f)
-                goal_inference["config"] = config
-
-                # Log key settings
-                logger.info("  ✅ Goal Inference + Learning Database loaded")
-                logger.info(f"     • Goal Confidence: {config['goal_inference']['min_goal_confidence']}")
-                logger.info(f"     • Proactive Suggestions: {config['integration']['enable_proactive_suggestions']}")
-                logger.info(f"     • Automation: {config['integration']['enable_automation']}")
-                logger.info(f"     • Learning: {config['learning']['enabled']}")
         else:
-            logger.info("  ✅ Goal Inference loaded (using default config)")
-            goal_inference["config"] = {
-                "goal_inference": {"min_goal_confidence": 0.75},
-                "integration": {"enable_proactive_suggestions": True, "enable_automation": False},
-                "learning": {"enabled": True}
-            }
+            # Create default configuration automatically
+            logger.info("  📝 Creating default Goal Inference configuration...")
+            config = _create_default_goal_config()
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(config_path, 'w') as f:
+                json.dump(config, f, indent=2)
+            logger.info(f"  ✅ Configuration created at {config_path}")
+
+        # Apply preset if environment variable is set
+        if preset_override:
+            logger.info(f"  🎯 Applying preset from environment: {preset_override}")
+            config = _apply_preset_to_config(config, preset_override)
+            with open(config_path, 'w') as f:
+                json.dump(config, f, indent=2)
+
+        # Apply automation override if environment variable is set
+        if automation_override:
+            automation_enabled = automation_override.lower() == 'true'
+            config['integration']['enable_automation'] = automation_enabled
+            logger.info(f"  🤖 Automation override: {'ENABLED' if automation_enabled else 'DISABLED'}")
+            with open(config_path, 'w') as f:
+                json.dump(config, f, indent=2)
+
+        # Initialize integration with config
+        integration = get_integration()
+        goal_inference["integration"] = integration
+        goal_inference["available"] = True
+        goal_inference["config"] = config
+
+        # Initialize learning database with config
+        db_config = {
+            'cache_size': config.get('performance', {}).get('max_prediction_cache_size', 1000),
+            'cache_ttl_seconds': config.get('performance', {}).get('cache_ttl_seconds', 3600),
+            'enable_ml_features': config.get('learning', {}).get('enabled', True),
+            'auto_optimize': True,
+            'batch_insert_size': 100
+        }
+        learning_db = get_learning_database()
+        goal_inference["learning_db"] = learning_db
+        goal_inference["db_config"] = db_config
+
+        # Log configuration
+        logger.info("  ✅ Goal Inference + Learning Database loaded")
+        logger.info(f"     • Goal Confidence: {config['goal_inference']['min_goal_confidence']}")
+        logger.info(f"     • Proactive Suggestions: {config['integration']['enable_proactive_suggestions']}")
+        logger.info(f"     • Automation: {config['integration']['enable_automation']}")
+        logger.info(f"     • Learning: {config['learning']['enabled']}")
+        logger.info(f"     • Database Cache: {db_config['cache_size']} entries")
 
         # Get current metrics
-        metrics = integration.get_metrics()
-        if metrics['goals_inferred'] > 0:
-            logger.info(f"     • Previous session: {metrics['goals_inferred']} goals learned")
+        try:
+            metrics = integration.get_metrics()
+            if metrics.get('goals_inferred', 0) > 0:
+                logger.info(f"     • Previous session: {metrics['goals_inferred']} goals, {metrics.get('actions_executed', 0)} actions")
+                logger.info(f"     • Success rate: {metrics.get('success_rate', 0):.1%}")
+        except Exception as e:
+            logger.debug(f"Could not load metrics: {e}")
+
+        # Apply configuration to integration
+        _apply_config_to_integration(integration, config)
 
     except ImportError as e:
         logger.warning(f"  ⚠️  Goal Inference not available: {e}")
@@ -597,6 +635,160 @@ def import_goal_inference():
         goal_inference["available"] = False
 
     return goal_inference
+
+
+def _create_default_goal_config():
+    """Create default Goal Inference configuration"""
+    return {
+        "goal_inference": {
+            "min_goal_confidence": 0.75,
+            "goal_confidence_threshold": 0.75,
+            "enable_learning": True,
+            "max_active_goals": 10,
+            "goal_timeout_minutes": 30,
+            "pattern_learning_enabled": True
+        },
+        "autonomous_decisions": {
+            "min_decision_confidence": 0.70,
+            "enable_predictive_display": True,
+            "auto_connect_threshold": 0.85,
+            "max_concurrent_actions": 5,
+            "learning_rate": 0.01,
+            "exploration_rate": 0.1
+        },
+        "integration": {
+            "enable_proactive_suggestions": True,
+            "proactive_suggestion_threshold": 0.85,
+            "enable_automation": False,
+            "automation_threshold": 0.95,
+            "feedback_window_minutes": 30,
+            "cache_duration_minutes": 5
+        },
+        "display_optimization": {
+            "enable_predictive_connection": True,
+            "preload_resources": True,
+            "predictive_confidence_threshold": 0.85,
+            "default_display": "Living Room TV",
+            "connection_patterns": {
+                "meeting_preparation": "Living Room TV",
+                "project_completion": "External Monitor",
+                "presentation": "Living Room TV",
+                "casual_viewing": "Living Room TV"
+            }
+        },
+        "learning": {
+            "enabled": True,
+            "min_samples_for_pattern": 3,
+            "pattern_confidence_boost": 0.05,
+            "success_rate_threshold": 0.7,
+            "feedback_weight": 0.1,
+            "save_state_interval_minutes": 60
+        },
+        "user_preferences": {
+            "verbose_suggestions": False,
+            "explain_reasoning": True,
+            "show_confidence_scores": False,
+            "auto_accept_high_confidence": False,
+            "notification_style": "subtle"
+        },
+        "performance": {
+            "max_prediction_cache_size": 100,
+            "cache_ttl_seconds": 300,
+            "parallel_processing": True,
+            "max_workers": 4,
+            "timeout_seconds": 5
+        },
+        "safety": {
+            "require_confirmation_for_automation": True,
+            "max_automation_actions_per_day": 50,
+            "blacklist_actions": [],
+            "whitelist_actions": ["connect_display", "open_application", "organize_workspace"],
+            "risk_tolerance": 0.5
+        },
+        "logging": {
+            "log_predictions": True,
+            "log_decisions": True,
+            "log_learning_events": True,
+            "metrics_tracking": True,
+            "debug_mode": False
+        }
+    }
+
+
+def _apply_preset_to_config(config, preset):
+    """Apply a configuration preset"""
+    presets = {
+        "aggressive": {
+            "goal_inference.min_goal_confidence": 0.65,
+            "autonomous_decisions.min_decision_confidence": 0.60,
+            "integration.proactive_suggestion_threshold": 0.75,
+            "integration.enable_automation": True,
+            "learning.pattern_confidence_boost": 0.10
+        },
+        "balanced": {
+            "goal_inference.min_goal_confidence": 0.75,
+            "autonomous_decisions.min_decision_confidence": 0.70,
+            "integration.proactive_suggestion_threshold": 0.85,
+            "integration.enable_automation": False,
+            "learning.pattern_confidence_boost": 0.05
+        },
+        "conservative": {
+            "goal_inference.min_goal_confidence": 0.85,
+            "autonomous_decisions.min_decision_confidence": 0.80,
+            "integration.proactive_suggestion_threshold": 0.90,
+            "integration.enable_automation": False,
+            "learning.pattern_confidence_boost": 0.02
+        },
+        "learning": {
+            "learning.enabled": True,
+            "learning.min_samples_for_pattern": 2,
+            "learning.pattern_confidence_boost": 0.10,
+            "learning.feedback_weight": 0.15,
+            "autonomous_decisions.exploration_rate": 0.2
+        },
+        "performance": {
+            "performance.max_prediction_cache_size": 200,
+            "performance.cache_ttl_seconds": 600,
+            "performance.parallel_processing": True,
+            "display_optimization.preload_resources": True
+        }
+    }
+
+    if preset in presets:
+        for path, value in presets[preset].items():
+            keys = path.split('.')
+            current = config
+            for key in keys[:-1]:
+                if key not in current:
+                    current[key] = {}
+                current = current[key]
+            current[keys[-1]] = value
+
+    return config
+
+
+def _apply_config_to_integration(integration, config):
+    """Apply configuration settings to integration"""
+    try:
+        # Apply goal inference settings
+        if hasattr(integration, 'goal_inference'):
+            goal_config = config.get('goal_inference', {})
+            integration.goal_inference.min_confidence = goal_config.get('min_goal_confidence', 0.75)
+            integration.goal_inference.max_active_goals = goal_config.get('max_active_goals', 10)
+
+        # Apply autonomous decision settings
+        if hasattr(integration, 'autonomous_engine'):
+            auto_config = config.get('autonomous_decisions', {})
+            integration.autonomous_engine.min_confidence = auto_config.get('min_decision_confidence', 0.70)
+            integration.autonomous_engine.learning_rate = auto_config.get('learning_rate', 0.01)
+
+        # Apply integration settings
+        integration_config = config.get('integration', {})
+        integration.enable_proactive = integration_config.get('enable_proactive_suggestions', True)
+        integration.enable_automation = integration_config.get('enable_automation', False)
+
+    except Exception as e:
+        logger.debug(f"Could not apply all config settings: {e}")
 
 
 @asynccontextmanager

@@ -1281,9 +1281,157 @@ class JARVISLearningDatabase:
             await self.db.commit()
 
     async def _flush_pattern_batch(self):
-        """Flush pending patterns"""
-        # Similar to flush_action_batch
-        pass
+        """Flush pending patterns with intelligent deduplication and merging"""
+        if not self.pending_patterns:
+            return
+
+        patterns_to_process = list(self.pending_patterns)
+        self.pending_patterns.clear()
+
+        # Group patterns by hash for intelligent merging
+        pattern_groups: Dict[str, List[Tuple[str, Dict]]] = defaultdict(list)
+
+        for pattern_id, pattern in patterns_to_process:
+            pattern_hash = self._hash_pattern(pattern)
+            pattern_groups[pattern_hash].append((pattern_id, pattern))
+
+        async with self._db_lock:
+            async with self.db.cursor() as cursor:
+                # Process each group
+                for pattern_hash, group in pattern_groups.items():
+                    if len(group) == 1:
+                        # Single pattern - insert directly
+                        pattern_id, pattern = group[0]
+
+                        await cursor.execute("""
+                            INSERT OR REPLACE INTO patterns
+                            (pattern_id, pattern_type, pattern_hash, pattern_data, confidence,
+                             success_rate, occurrence_count, first_seen, last_seen, metadata)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            pattern_id,
+                            pattern['pattern_type'],
+                            pattern_hash,
+                            json.dumps(pattern.get('pattern_data', {})),
+                            pattern.get('confidence', 0.5),
+                            pattern.get('success_rate', 0.5),
+                            1,
+                            datetime.now(),
+                            datetime.now(),
+                            json.dumps(pattern.get('metadata', {}))
+                        ))
+
+                        # Store embedding if available
+                        if self.pattern_collection and 'embedding' in pattern:
+                            await self._store_embedding_async(
+                                self.pattern_collection,
+                                pattern_id,
+                                pattern['embedding'],
+                                {
+                                    'pattern_type': pattern['pattern_type'],
+                                    'confidence': pattern.get('confidence', 0.5),
+                                    'timestamp': datetime.now().isoformat()
+                                }
+                            )
+                    else:
+                        # Multiple patterns with same hash - merge intelligently
+                        # Use the first pattern as base
+                        base_pattern_id, base_pattern = group[0]
+
+                        # Calculate merged confidence (weighted average)
+                        total_confidence = sum(p.get('confidence', 0.5) for _, p in group)
+                        avg_confidence = total_confidence / len(group)
+
+                        # Calculate merged success rate
+                        total_success_rate = sum(p.get('success_rate', 0.5) for _, p in group)
+                        avg_success_rate = total_success_rate / len(group)
+
+                        # Merge metadata intelligently
+                        merged_metadata = {}
+                        for _, pattern in group:
+                            pattern_meta = pattern.get('metadata', {})
+                            for key, value in pattern_meta.items():
+                                if key not in merged_metadata:
+                                    merged_metadata[key] = []
+                                if value not in merged_metadata[key]:
+                                    merged_metadata[key].append(value)
+
+                        # Flatten single-value lists
+                        for key in merged_metadata:
+                            if len(merged_metadata[key]) == 1:
+                                merged_metadata[key] = merged_metadata[key][0]
+
+                        # Insert merged pattern
+                        await cursor.execute("""
+                            INSERT OR REPLACE INTO patterns
+                            (pattern_id, pattern_type, pattern_hash, pattern_data, confidence,
+                             success_rate, occurrence_count, first_seen, last_seen, boost_count, metadata)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            base_pattern_id,
+                            base_pattern['pattern_type'],
+                            pattern_hash,
+                            json.dumps(base_pattern.get('pattern_data', {})),
+                            avg_confidence,
+                            avg_success_rate,
+                            len(group),  # Number of merged patterns
+                            datetime.now(),
+                            datetime.now(),
+                            len(group) - 1,  # Boost count from merging
+                            json.dumps(merged_metadata)
+                        ))
+
+                        # Store embedding for merged pattern
+                        if self.pattern_collection and 'embedding' in base_pattern:
+                            # Average all embeddings if multiple available
+                            embeddings_to_merge = [
+                                p.get('embedding') for _, p in group
+                                if 'embedding' in p
+                            ]
+
+                            if embeddings_to_merge and NUMPY_AVAILABLE:
+                                # Average embeddings
+                                import numpy as np
+                                avg_embedding = np.mean(embeddings_to_merge, axis=0).tolist()
+
+                                await self._store_embedding_async(
+                                    self.pattern_collection,
+                                    base_pattern_id,
+                                    avg_embedding,
+                                    {
+                                        'pattern_type': base_pattern['pattern_type'],
+                                        'confidence': avg_confidence,
+                                        'merged_count': len(group),
+                                        'timestamp': datetime.now().isoformat()
+                                    }
+                                )
+                            elif embeddings_to_merge:
+                                # Use first embedding if numpy not available
+                                await self._store_embedding_async(
+                                    self.pattern_collection,
+                                    base_pattern_id,
+                                    embeddings_to_merge[0],
+                                    {
+                                        'pattern_type': base_pattern['pattern_type'],
+                                        'confidence': avg_confidence,
+                                        'merged_count': len(group),
+                                        'timestamp': datetime.now().isoformat()
+                                    }
+                                )
+
+                        # Update cache with merged pattern
+                        self.pattern_cache.set(pattern_hash, {
+                            'pattern_id': base_pattern_id,
+                            'confidence': avg_confidence,
+                            'success_rate': avg_success_rate,
+                            'occurrence_count': len(group)
+                        })
+
+                        logger.debug(f"🔀 Merged {len(group)} similar patterns into {base_pattern_id}")
+
+            await self.db.commit()
+
+        logger.debug(f"✅ Flushed {len(patterns_to_process)} patterns ({len(pattern_groups)} unique)")
 
     async def _auto_optimize_task(self):
         """Auto-optimize database periodically"""

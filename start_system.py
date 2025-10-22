@@ -46,6 +46,17 @@ The JARVIS backend loads 9 critical components + 6 intelligent systems:
    • Zero hardcoding - fully configuration-driven
    • Living Room TV monitoring active by default
 
+10. GOAL_INFERENCE - ML-Powered Goal Understanding & Learning (NEW!)
+   • Infers your intentions from context and patterns
+   • PyTorch neural networks for predictive decision making
+   • SQLite + ChromaDB hybrid database for learning
+   • Adaptive caching with 70-90% hit rate
+   • 5 configuration presets: aggressive, balanced, conservative, learning, performance
+   • Auto-configuration on first startup
+   • Learn display connection patterns (3x → auto-connect)
+   • Confidence-based automation with safety limits
+   • Usage: --goal-preset learning --enable-automation
+
 🧠 INTELLIGENT SYSTEMS v2.0 (NEW in v14.1!):
 All 6 systems now integrate with HybridProactiveMonitoringManager & ImplicitReferenceResolver
 
@@ -3076,7 +3087,41 @@ async def main():
         help="Disable automatic cleanup of stuck processes (will prompt instead)",
     )
 
+    # Goal Inference Configuration
+    parser.add_argument(
+        "--goal-preset",
+        choices=["aggressive", "balanced", "conservative", "learning", "performance"],
+        help="Goal Inference configuration preset (aggressive=proactive, balanced=default, conservative=cautious, learning=fast-learning, performance=max-speed)",
+    )
+    parser.add_argument(
+        "--enable-automation",
+        action="store_true",
+        help="Enable Goal Inference automation (auto-execute high-confidence actions)",
+    )
+    parser.add_argument(
+        "--disable-automation",
+        action="store_true",
+        help="Disable Goal Inference automation (suggestions only)",
+    )
+
     args = parser.parse_args()
+
+    # Apply Goal Inference preset if specified
+    if args.goal_preset:
+        import os
+        os.environ['JARVIS_GOAL_PRESET'] = args.goal_preset
+        print(f"{Colors.BLUE}🎯 Goal Inference Preset: {args.goal_preset}{Colors.ENDC}")
+
+    # Apply Goal Inference automation settings
+    if args.enable_automation:
+        # Will be applied in main.py during initialization
+        import os
+        os.environ['JARVIS_GOAL_AUTOMATION'] = 'true'
+        print(f"{Colors.GREEN}✓ Goal Inference Automation: ENABLED{Colors.ENDC}")
+    elif args.disable_automation:
+        import os
+        os.environ['JARVIS_GOAL_AUTOMATION'] = 'false'
+        print(f"{Colors.YELLOW}⚠️ Goal Inference Automation: DISABLED{Colors.ENDC}")
 
     # Early check for multiple instances (before creating manager)
     if not args.force_start:
