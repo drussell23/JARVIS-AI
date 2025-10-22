@@ -166,15 +166,21 @@ class CoordinateCalculator:
         """Apply DPI/Retina scaling correction"""
         if dpi_scale == 1.0:
             return coords
-        
-        # NOTE: On macOS, PyAutoGUI coordinates are already in logical pixels
-        # The DPI scaling is handled by the system, so we don't need to divide
-        # The coordinates from detection are already correct for clicking
-        
+
+        # CRITICAL FIX: Screenshots on Retina displays are captured at physical pixel resolution
+        # (e.g., 2880x1800), but PyAutoGUI uses logical pixels (e.g., 1440x900).
+        # We MUST divide coordinates by the DPI scale to convert from physical to logical pixels.
+
         x, y = coords
-        logger.info(f"[COORD CALC] No DPI correction needed - coordinates already in logical pixels: ({x:.1f}, {y:.1f})")
-        
-        return (x, y)
+        logical_x = x / dpi_scale
+        logical_y = y / dpi_scale
+
+        logger.info(
+            f"[COORD CALC] DPI correction: Physical pixels ({x:.1f}, {y:.1f}) "
+            f"-> Logical pixels ({logical_x:.1f}, {logical_y:.1f}) [scale={dpi_scale}]"
+        )
+
+        return (logical_x, logical_y)
     
     def _to_global_coordinates(
         self,
