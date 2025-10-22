@@ -168,10 +168,18 @@ class GoalActionPredictor(nn.Module):
         self.batch_norm2 = nn.BatchNorm1d(hidden_dim)
 
     def forward(self, x):
-        x = F.relu(self.batch_norm1(self.fc1(x)))
-        x = self.dropout1(x)
-        x = F.relu(self.batch_norm2(self.fc2(x)))
-        x = self.dropout2(x)
+        # Handle both training and eval mode for batch norm
+        if self.training and x.size(0) == 1:
+            # Skip batch norm for single samples during training
+            x = F.relu(self.fc1(x))
+            x = self.dropout1(x)
+            x = F.relu(self.fc2(x))
+            x = self.dropout2(x)
+        else:
+            x = F.relu(self.batch_norm1(self.fc1(x)))
+            x = self.dropout1(x)
+            x = F.relu(self.batch_norm2(self.fc2(x)))
+            x = self.dropout2(x)
         x = F.softmax(self.fc3(x), dim=-1)
         return x
 
@@ -258,6 +266,7 @@ class AdvancedAutonomousEngine:
 
         # ML Models
         self.action_predictor = GoalActionPredictor(input_dim=20)
+        self.action_predictor.eval()  # Set to eval mode by default
         self.risk_assessor = self._initialize_risk_model()
         self.outcome_predictor = self._initialize_outcome_model()
 

@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 from pathlib import Path
 import json
+import numpy as np
 
 # Import Goal Inference System
 from backend.vision.intelligence.goal_inference_system import (

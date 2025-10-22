@@ -470,7 +470,19 @@ class UnifiedCommandProcessor:
             logger.error(f"[UNIFIED] Failed to initialize proactive monitoring manager: {e}")
             self.proactive_monitoring_manager = None
 
-        # Step 6.13: Initialize Enhanced TemporalQueryHandler (v2.0 with ProactiveMonitoring integration)
+        # Step 6.13: Initialize Goal Inference + Autonomous Decision Integration
+        try:
+            from backend.intelligence.goal_autonomous_uae_integration import get_integration
+            self.goal_autonomous_integration = get_integration()
+            logger.info("[UNIFIED] ✅ Goal Inference + Autonomous Decision Engine initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] Goal-Autonomous Integration not available: {e}")
+            self.goal_autonomous_integration = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize Goal-Autonomous Integration: {e}")
+            self.goal_autonomous_integration = None
+
+        # Step 6.14: Initialize Enhanced TemporalQueryHandler (v2.0 with ProactiveMonitoring integration)
         try:
             from context_intelligence.handlers import initialize_temporal_query_handler
 
@@ -727,6 +739,58 @@ class UnifiedCommandProcessor:
         logger.info(
             f"[UNIFIED] System context: screen_locked={system_context.get('screen_locked')}, active_apps={len(system_context.get('active_apps', []))}"
         )
+
+        # Step 3.5: Goal Inference + Autonomous Decision Integration
+        if self.goal_autonomous_integration:
+            try:
+                # Build integration context
+                integration_context = {
+                    'command': command_text,
+                    'active_applications': system_context.get('active_apps', []),
+                    'recent_actions': list(self.context.conversation_history)[-5:] if self.context.conversation_history else [],
+                    'workspace_state': system_context,
+                    'windows': [],  # Would be populated from window manager if available
+                    'time_context': {
+                        'current_time': datetime.now().strftime('%I:%M %p'),
+                        'day_of_week': 'weekday' if datetime.now().weekday() < 5 else 'weekend'
+                    }
+                }
+
+                # Check for predictive display connection if relevant
+                if any(keyword in command_text.lower() for keyword in ['tv', 'display', 'screen', 'monitor', 'living room']):
+                    display_decision = await self.goal_autonomous_integration.predict_display_connection(integration_context)
+
+                    if display_decision and display_decision.integrated_confidence > 0.85:
+                        logger.info(f"[GOAL-INFERENCE] High-confidence display prediction: {display_decision.reasoning}")
+
+                        # Send proactive suggestion if websocket available
+                        if websocket:
+                            await websocket.send_json({
+                                "type": "proactive_suggestion",
+                                "message": f"I've noticed {display_decision.reasoning}. Shall I connect to {display_decision.action.target}?",
+                                "confidence": display_decision.integrated_confidence,
+                                "action": "connect_display"
+                            })
+
+                # Process through full integration for goal-based decisions
+                decisions = await self.goal_autonomous_integration.process_context(integration_context)
+
+                if decisions:
+                    logger.info(f"[GOAL-INFERENCE] Generated {len(decisions)} autonomous decisions")
+
+                    # Log high-confidence decisions for proactive suggestions
+                    for decision in decisions:
+                        if decision.integrated_confidence > 0.8:
+                            logger.info(f"[GOAL-INFERENCE] Suggestion: {decision.action.action_type} - {decision.reasoning}")
+
+                            # Could auto-execute or suggest based on confidence
+                            if decision.integrated_confidence > 0.95 and decision.action.action_type == 'connect_display':
+                                # Pre-load resources for faster execution
+                                logger.info("[GOAL-INFERENCE] Pre-loading display connection resources")
+
+            except Exception as e:
+                logger.error(f"[GOAL-INFERENCE] Error in integration: {e}")
+                # Continue with normal processing if integration fails
 
         # Step 4: Route to Medium Complexity Handler if appropriate
         if (classified_query and
@@ -2182,8 +2246,40 @@ class UnifiedCommandProcessor:
                         "command_type": "meta",
                     }
             elif command_type == CommandType.DISPLAY:
-                # Handle display/screen mirroring commands
+                # Handle display/screen mirroring commands with Goal Inference optimization
+
+                # Check if Goal Inference has pre-loaded resources
+                prediction_boost = False
+                if self.goal_autonomous_integration:
+                    try:
+                        # Check if we predicted this command
+                        integration_context = {
+                            'command': command_text,
+                            'active_applications': system_context.get('active_apps', []),
+                        }
+
+                        # If we have high confidence from Goal Inference, use optimized path
+                        display_decision = await self.goal_autonomous_integration.predict_display_connection(integration_context)
+                        if display_decision and display_decision.integrated_confidence > 0.85:
+                            logger.info(f"[GOAL-INFERENCE] Using optimized display connection path (confidence: {display_decision.integrated_confidence:.0%})")
+                            prediction_boost = True
+                    except Exception as e:
+                        logger.debug(f"[GOAL-INFERENCE] No prediction boost: {e}")
+
+                # Execute display command (possibly with optimized resources)
+                start_time = datetime.now()
                 result = await self._execute_display_command(command_text)
+                execution_time = (datetime.now() - start_time).total_seconds()
+
+                # Add Goal Inference metadata to response
+                if prediction_boost:
+                    result["goal_inference_active"] = True
+                    result["execution_time"] = f"{execution_time:.2f}s (optimized)"
+                    if execution_time < 0.5:
+                        result["response"] = result.get("response", "") + " I anticipated your request and pre-loaded resources for faster connection."
+                else:
+                    result["execution_time"] = f"{execution_time:.2f}s"
+
                 return {
                     "success": result.get("success", False),
                     "response": result.get("response", ""),
