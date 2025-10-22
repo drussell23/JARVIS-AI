@@ -66,6 +66,16 @@ class DisplayVoiceHandler:
         # This ensures the announcement is heard right when the TV is detected
         await self._speak_with_say(message)
 
+    async def speak_async(self, message: str, priority: str = "normal"):
+        """
+        Alias for speak method - for backward compatibility with AdvancedDisplayMonitor
+
+        Args:
+            message: Message to speak
+            priority: Priority level (low, normal, high, urgent)
+        """
+        await self.speak(message, priority)
+
     async def _try_jarvis_voice(self, message: str, priority: str) -> bool:
         """
         Try to use JARVIS voice systems
