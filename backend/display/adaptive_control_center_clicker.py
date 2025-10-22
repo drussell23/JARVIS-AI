@@ -426,7 +426,7 @@ class SimpleHeuristicDetection:
 
         try:
             if self._detector is None:
-                from display.simple_menubar_detector import get_simple_menubar_detector
+                from backend.display.simple_menubar_detector import get_simple_menubar_detector
                 self._detector = get_simple_menubar_detector()
 
             logger.info(f"[SIMPLE HEURISTIC] Detecting '{target}' using position math...")

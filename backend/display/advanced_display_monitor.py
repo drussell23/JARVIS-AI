@@ -888,25 +888,43 @@ class AdvancedDisplayMonitor:
         connection_start = asyncio.get_event_loop().time()
         strategies_attempted = []
 
-        # Strategy 1: DIRECT COORDINATES - Complete flow with no vision!
-        # Control Center (1245, 12) → Screen Mirroring (1393, 177) → Living Room TV (1221, 116)
-        # Total: ~2 seconds, 100% reliable, no API calls
+        # Strategy 1: INTELLIGENT HYBRID - Coordinates + Vision + UAE Adaptation
+        # Uses best available clicker: UAE > SAI > Adaptive > Basic
+        # Total: ~2 seconds, 100% reliable, adapts when UI changes
         try:
-            from display.control_center_clicker import get_control_center_clicker
+            # Use factory to get the BEST available clicker
+            from backend.display.control_center_clicker_factory import get_best_clicker
 
-            logger.info(f"[DISPLAY MONITOR] 🥇 STRATEGY 1: DIRECT COORDINATES")
+            logger.info(f"[DISPLAY MONITOR] 🥇 STRATEGY 1: INTELLIGENT HYBRID CLICKING")
             logger.info(f"[DISPLAY MONITOR] Complete flow: Control Center → Screen Mirroring → {monitored.name}")
-            logger.info(f"[DISPLAY MONITOR] No vision, no APIs - just verified coordinates!")
+            logger.info(f"[DISPLAY MONITOR] Using coordinates + vision + UAE for dynamic adaptation!")
 
-            strategies_attempted.append("direct_coordinates")
+            strategies_attempted.append("intelligent_hybrid")
 
-            # Get Control Center clicker with vision analyzer for UAE intelligence
-            cc_clicker = get_control_center_clicker(vision_analyzer=self.vision_analyzer)
-            logger.info(f"[DISPLAY MONITOR] Clicker initialized with vision: {self.vision_analyzer is not None}")
+            # Get best available clicker (will use UAE-enhanced if available)
+            cc_clicker = get_best_clicker(
+                vision_analyzer=self.vision_analyzer,
+                enable_verification=True,
+                prefer_uae=True  # Prefer UAE for dynamic adaptation
+            )
+            logger.info(f"[DISPLAY MONITOR] Using clicker: {cc_clicker.__class__.__name__}")
+            logger.info(f"[DISPLAY MONITOR] Vision analyzer: {self.vision_analyzer is not None}")
 
-            # Execute complete flow: Control Center → Screen Mirroring → Living Room TV
+            # Execute complete flow: Control Center → Screen Mirroring → Device
             logger.info(f"[DISPLAY MONITOR] Executing 3-click flow...")
-            result = cc_clicker.connect_to_living_room_tv()
+            # Use connect_to_device method which exists in AdaptiveControlCenterClicker
+            if hasattr(cc_clicker, 'connect_to_device'):
+                result = await cc_clicker.connect_to_device(monitored.name)
+            else:
+                # Fallback for basic clicker
+                logger.warning(f"[DISPLAY MONITOR] Clicker doesn't support connect_to_device, using manual flow")
+                result = await cc_clicker.click("control_center")
+                if result.get('success'):
+                    await asyncio.sleep(0.5)
+                    result = await cc_clicker.click("screen_mirroring")
+                    if result.get('success'):
+                        await asyncio.sleep(0.5)
+                        result = await cc_clicker.click(monitored.name)
 
             if result.get('success'):
                 total_duration = asyncio.get_event_loop().time() - connection_start
@@ -1255,13 +1273,17 @@ class AdvancedDisplayMonitor:
         mode_start = asyncio.get_event_loop().time()
 
         try:
-            from display.control_center_clicker import get_control_center_clicker
+            from display.control_center_clicker_factory import get_best_clicker
 
             logger.info(f"[DISPLAY MONITOR] Using DIRECT COORDINATES to change mode")
             logger.info(f"[DISPLAY MONITOR] Flow: Control Center → Screen Mirroring → {mode} → Start")
 
             # Get Control Center clicker
-            cc_clicker = get_control_center_clicker()
+            cc_clicker = get_best_clicker(
+                vision_analyzer=self.vision_analyzer,
+                enable_verification=True,
+                prefer_uae=True
+            )
 
             # Execute mode change flow
             logger.info(f"[DISPLAY MONITOR] Executing 4-click mode change flow...")
@@ -1346,13 +1368,17 @@ class AdvancedDisplayMonitor:
         disconnect_start = asyncio.get_event_loop().time()
 
         try:
-            from display.control_center_clicker import get_control_center_clicker
+            from display.control_center_clicker_factory import get_best_clicker
 
             logger.info(f"[DISPLAY MONITOR] Using DIRECT COORDINATES to disconnect")
             logger.info(f"[DISPLAY MONITOR] Flow: Control Center → Screen Mirroring → Stop")
 
             # Get Control Center clicker
-            cc_clicker = get_control_center_clicker()
+            cc_clicker = get_best_clicker(
+                vision_analyzer=self.vision_analyzer,
+                enable_verification=True,
+                prefer_uae=True
+            )
 
             # Execute disconnect flow: Control Center → Screen Mirroring → Stop
             logger.info(f"[DISPLAY MONITOR] Executing 3-click disconnect flow...")

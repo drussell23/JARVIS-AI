@@ -24,7 +24,7 @@ Version: 3.0.0
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Callable
 from pathlib import Path
 
 # Import base clicker

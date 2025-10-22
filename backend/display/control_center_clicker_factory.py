@@ -56,8 +56,8 @@ def get_best_clicker(
     # Try UAE-Enhanced (best option)
     if prefer_uae:
         try:
-            from display.uae_enhanced_control_center_clicker import get_uae_clicker
-            from intelligence.uae_integration import get_uae
+            from backend.display.uae_enhanced_control_center_clicker import get_uae_clicker
+            from backend.intelligence.uae_integration import get_uae
 
             # Check if UAE is initialized
             uae = get_uae()
@@ -82,8 +82,8 @@ def get_best_clicker(
     # Try SAI-Enhanced (good option)
     if clicker is None:
         try:
-            from display.sai_enhanced_control_center_clicker import get_sai_clicker
-            from vision.situational_awareness import get_sai_engine
+            from backend.display.sai_enhanced_control_center_clicker import get_sai_clicker
+            from backend.vision.situational_awareness import get_sai_engine
 
             # Check if SAI is available
             try:
@@ -108,7 +108,7 @@ def get_best_clicker(
     # Try Adaptive Clicker (fallback)
     if clicker is None:
         try:
-            from display.adaptive_control_center_clicker import AdaptiveControlCenterClicker
+            from backend.display.adaptive_control_center_clicker import AdaptiveControlCenterClicker
 
             logger.info("[CLICKER-FACTORY] ✅ Using Adaptive Clicker")
             clicker = AdaptiveControlCenterClicker(
@@ -127,7 +127,7 @@ def get_best_clicker(
     # Final fallback to basic clicker
     if clicker is None:
         try:
-            from display.control_center_clicker import ControlCenterClicker
+            from backend.display.control_center_clicker import ControlCenterClicker
 
             logger.warning("[CLICKER-FACTORY] ⚠️  Using Basic Clicker (fallback)")
             clicker = ControlCenterClicker(vision_analyzer=vision_analyzer)
@@ -158,7 +158,7 @@ def get_clicker_info() -> dict:
 
     # Check UAE
     try:
-        from intelligence.uae_integration import get_uae
+        from backend.intelligence.uae_integration import get_uae
         uae = get_uae()
         info['uae_available'] = uae is not None and uae.is_active
         if info['uae_available']:
@@ -168,7 +168,7 @@ def get_clicker_info() -> dict:
 
     # Check SAI
     try:
-        from vision.situational_awareness import get_sai_engine
+        from backend.vision.situational_awareness import get_sai_engine
         sai = get_sai_engine()
         info['sai_available'] = True
         if not info['uae_available']:
@@ -178,7 +178,7 @@ def get_clicker_info() -> dict:
 
     # Check Adaptive
     try:
-        from display.adaptive_control_center_clicker import AdaptiveControlCenterClicker
+        from backend.display.adaptive_control_center_clicker import AdaptiveControlCenterClicker
         info['adaptive_available'] = True
         if not info['uae_available'] and not info['sai_available']:
             info['recommended'] = 'adaptive'
@@ -187,7 +187,7 @@ def get_clicker_info() -> dict:
 
     # Check Basic
     try:
-        from display.control_center_clicker import ControlCenterClicker
+        from backend.display.control_center_clicker import ControlCenterClicker
         info['basic_available'] = True
         if info['recommended'] == 'unknown':
             info['recommended'] = 'basic'
