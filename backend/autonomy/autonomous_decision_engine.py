@@ -22,6 +22,12 @@ from vision.workspace_analyzer import WorkspaceAnalysis
 from vision.window_detector import WindowInfo
 from vision.smart_query_router import SmartQueryRouter, QueryIntent
 
+# Import Goal Inference System for predictive automation
+from vision.intelligence.goal_inference_system import (
+    GoalInferenceEngine, Goal, GoalLevel,
+    get_goal_inference_engine
+)
+
 logger = logging.getLogger(__name__)
 
 class ActionPriority(Enum):
@@ -190,27 +196,36 @@ class PatternMatcher:
         return any(pattern in text_lower for pattern in self.security_patterns)
 
 class AutonomousDecisionEngine:
-    """Makes autonomous decisions based on workspace state"""
-    
+    """Makes autonomous decisions based on workspace state with Goal Inference integration"""
+
     def __init__(self):
         self.pattern_matcher = PatternMatcher()
         self.action_history = []
         self.learned_patterns = self._load_learned_patterns()
         self.query_router = SmartQueryRouter()
-        
+
+        # Initialize Goal Inference Engine for predictive automation
+        self.goal_inference = get_goal_inference_engine()
+
         # Decision handlers for different contexts
         self.decision_handlers = {}
-        
+
+        # Goal-based action predictors
+        self.goal_action_mappings = self._initialize_goal_action_mappings()
+
         # Decision thresholds (can be adjusted based on learning)
         self.thresholds = {
             'notification_action': 3,      # Act on 3+ notifications
             'urgency_threshold': 0.6,      # Urgency score for high priority
             'meeting_prep_time': 5,        # Minutes before meeting to prepare
             'pattern_confidence': 0.7,     # Confidence needed for learned patterns
+            'goal_confidence': 0.75,       # Confidence needed for goal-based actions
         }
-        
+
         # Action templates (dynamically expandable)
         self.action_templates = self._load_action_templates()
+
+        logger.info("Autonomous Decision Engine initialized with Goal Inference")
     
     def register_decision_handler(self, handler_name: str, handler_func):
         """Register a decision handler for specific contexts"""
@@ -249,6 +264,34 @@ class AutonomousDecisionEngine:
             'timing_patterns': {}
         }
     
+    def _initialize_goal_action_mappings(self) -> Dict[str, List[str]]:
+        """Initialize mappings between goals and potential actions"""
+        return {
+            # High-level goal mappings
+            'project_completion': ['open_application', 'organize_workspace', 'connect_display'],
+            'problem_solving': ['open_application', 'search_information', 'organize_workspace'],
+            'information_gathering': ['search_information', 'open_browser', 'take_notes'],
+            'communication': ['handle_notifications', 'respond_message', 'open_communication_app'],
+            'learning_research': ['open_browser', 'take_notes', 'organize_workspace'],
+
+            # Intermediate goal mappings
+            'feature_implementation': ['open_application', 'connect_display', 'organize_workspace'],
+            'bug_fixing': ['open_debugger', 'search_error', 'view_logs'],
+            'document_preparation': ['open_document', 'organize_workspace', 'connect_display'],
+            'meeting_preparation': ['prepare_meeting', 'open_calendar', 'connect_display'],
+            'response_composition': ['respond_message', 'open_communication_app'],
+
+            # Immediate goal mappings
+            'find_information': ['search_information', 'open_browser'],
+            'fix_error': ['view_logs', 'open_debugger', 'search_error'],
+            'complete_form': ['open_browser', 'fill_form'],
+            'send_message': ['respond_message', 'open_communication_app'],
+            'review_content': ['open_document', 'organize_workspace'],
+
+            # Display-specific goal (primary focus for integration)
+            'connect_display': ['connect_display', 'configure_display_mode']
+        }
+
     def _load_action_templates(self) -> Dict[str, Dict[str, Any]]:
         """Load action templates (can be extended dynamically)"""
         return {
@@ -281,45 +324,70 @@ class AutonomousDecisionEngine:
                 'description': 'Clean up {type} windows',
                 'params': ['type', 'window_ids'],
                 'category': ActionCategory.MAINTENANCE
+            },
+            'connect_display': {
+                'description': 'Connect to {display_name}',
+                'params': ['display_name', 'connection_type', 'mode'],
+                'category': ActionCategory.WORKFLOW
+            },
+            'open_application': {
+                'description': 'Open {app_name}',
+                'params': ['app_name', 'reason'],
+                'category': ActionCategory.WORKFLOW
             }
         }
     
-    async def analyze_and_decide(self, workspace_state: WorkspaceAnalysis, 
+    async def analyze_and_decide(self, workspace_state: WorkspaceAnalysis,
                                  windows: List[WindowInfo]) -> List[AutonomousAction]:
-        """Analyze workspace and determine autonomous actions"""
+        """Analyze workspace and determine autonomous actions with Goal Inference"""
         actions = []
-        
-        # Analyze each window for actionable situations
+
+        # STEP 1: Infer user goals from context
+        goal_context = self._create_goal_context(workspace_state, windows)
+        inferred_goals = await self.goal_inference.infer_goals(goal_context)
+
+        # STEP 2: Generate goal-based autonomous actions
+        goal_actions = await self._generate_goal_based_actions(inferred_goals, workspace_state)
+        actions.extend(goal_actions)
+
+        # STEP 3: Analyze each window for actionable situations
         for window in windows:
             window_actions = await self._analyze_window(window, workspace_state)
             actions.extend(window_actions)
-        
-        # Analyze overall workspace patterns
+
+        # STEP 4: Analyze overall workspace patterns
         workspace_actions = await self._analyze_workspace_patterns(workspace_state, windows)
         actions.extend(workspace_actions)
-        
-        # Analyze temporal patterns (time-based actions)
+
+        # STEP 5: Analyze temporal patterns (time-based actions)
         temporal_actions = await self._analyze_temporal_patterns(workspace_state, windows)
         actions.extend(temporal_actions)
-        
-        # Process registered decision handlers
+
+        # STEP 6: Process registered decision handlers with goals
         context = {
             'workspace_state': workspace_state,
             'windows': windows,
+            'inferred_goals': inferred_goals,
             'detected_notifications': []  # Will be populated by handlers
         }
         handler_actions = await self.process_decision_handlers(context)
         actions.extend(handler_actions)
-        
-        # Apply learned optimizations
+
+        # STEP 7: Apply learned optimizations
         actions = self._apply_learned_optimizations(actions)
-        
+
+        # STEP 8: Deduplicate and prioritize actions
+        actions = self._deduplicate_actions(actions)
+
         # Sort by priority and confidence
         actions.sort(key=lambda a: (a.priority.value, -a.confidence))
-        
+
         # Record decisions for learning
         self._record_decisions(actions)
-        
+
+        # Update goal progress based on actions
+        await self._update_goal_progress(actions, inferred_goals)
+
         return actions
     
     async def _analyze_window(self, window: WindowInfo, 
@@ -602,6 +670,266 @@ class AutonomousDecisionEngine:
         if len(self.action_history) > 1000:
             self.action_history = self.action_history[-1000:]
     
+    def _create_goal_context(self, workspace_state: WorkspaceAnalysis,
+                           windows: List[WindowInfo]) -> Dict[str, Any]:
+        """Create context for goal inference"""
+        # Extract application names
+        active_apps = list(set(w.app_name for w in windows if w.app_name))
+
+        # Extract recent actions from workspace state
+        recent_actions = []
+        if hasattr(workspace_state, 'suggestions'):
+            recent_actions = workspace_state.suggestions[:5]
+
+        # Build context for goal inference
+        return {
+            'active_applications': active_apps,
+            'recent_actions': recent_actions,
+            'content': {
+                'type': self._infer_content_type(windows),
+                'focused_task': workspace_state.focused_task if workspace_state else None
+            },
+            'time_context': {
+                'time_of_day': self._get_time_period(),
+                'day_of_week': 'weekday' if datetime.now().weekday() < 5 else 'weekend'
+            },
+            'workspace_context': workspace_state.workspace_context if workspace_state else None
+        }
+
+    def _infer_content_type(self, windows: List[WindowInfo]) -> str:
+        """Infer content type from window titles"""
+        titles = ' '.join(w.window_title for w in windows if w.window_title)
+        titles_lower = titles.lower()
+
+        if any(term in titles_lower for term in ['code', '.py', '.js', '.cpp', 'vscode']):
+            return 'code'
+        elif any(term in titles_lower for term in ['doc', 'presentation', 'slides']):
+            return 'document'
+        elif any(term in titles_lower for term in ['email', 'message', 'chat']):
+            return 'communication'
+        else:
+            return 'general'
+
+    def _get_time_period(self) -> str:
+        """Get current time period"""
+        hour = datetime.now().hour
+        if 6 <= hour < 12:
+            return 'morning'
+        elif 12 <= hour < 18:
+            return 'afternoon'
+        elif 18 <= hour < 22:
+            return 'evening'
+        else:
+            return 'night'
+
+    async def _generate_goal_based_actions(self, inferred_goals: Dict[GoalLevel, List[Goal]],
+                                          workspace_state: WorkspaceAnalysis) -> List[AutonomousAction]:
+        """Generate autonomous actions based on inferred goals"""
+        actions = []
+
+        # Process goals at each level
+        for level, goals in inferred_goals.items():
+            for goal in goals:
+                # Only act on high-confidence goals
+                if goal.confidence < self.thresholds['goal_confidence']:
+                    continue
+
+                # Get potential actions for this goal type
+                potential_actions = self.goal_action_mappings.get(goal.goal_type, [])
+
+                for action_type in potential_actions:
+                    # Special handling for display connection (our primary focus)
+                    if action_type == 'connect_display':
+                        action = await self._create_display_action_from_goal(goal, workspace_state)
+                        if action:
+                            actions.append(action)
+
+                    # Handle other action types
+                    elif action_type in self.action_templates:
+                        action = self._create_action_from_goal(goal, action_type, workspace_state)
+                        if action:
+                            actions.append(action)
+
+        return actions
+
+    async def _create_display_action_from_goal(self, goal: Goal,
+                                              workspace_state: WorkspaceAnalysis) -> Optional[AutonomousAction]:
+        """Create display connection action based on goal"""
+        # Check if display connection is relevant to the goal
+        display_relevant_goals = [
+            'project_completion', 'feature_implementation',
+            'document_preparation', 'meeting_preparation'
+        ]
+
+        if goal.goal_type not in display_relevant_goals:
+            return None
+
+        # Determine display target dynamically
+        display_name = await self._predict_display_target(goal, workspace_state)
+
+        if not display_name:
+            display_name = "Living Room TV"  # Default fallback
+
+        # Calculate confidence based on goal and context
+        confidence = goal.confidence * 0.9  # Slightly reduce confidence
+
+        # Check if it's a good time to connect
+        if await self._should_auto_connect_display(goal, workspace_state):
+            return AutonomousAction(
+                action_type='connect_display',
+                target=display_name,
+                params={
+                    'display_name': display_name,
+                    'connection_type': 'auto',
+                    'mode': 'extend',  # or 'mirror' based on goal
+                    'goal_id': goal.goal_id,
+                    'goal_type': goal.goal_type
+                },
+                priority=ActionPriority.MEDIUM,
+                confidence=confidence,
+                category=ActionCategory.WORKFLOW,
+                reasoning=f"Goal '{goal.description}' suggests connecting to {display_name}"
+            )
+
+        return None
+
+    async def _predict_display_target(self, goal: Goal,
+                                     workspace_state: WorkspaceAnalysis) -> Optional[str]:
+        """Predict which display to connect to based on goal"""
+        # Check for display references in goal evidence
+        for evidence in goal.evidence:
+            if 'display' in str(evidence.get('data', '')).lower():
+                # Extract display name from evidence
+                data_str = str(evidence['data'])
+                if 'Living Room TV' in data_str:
+                    return 'Living Room TV'
+                elif 'monitor' in data_str.lower():
+                    return 'External Monitor'
+
+        # Check workspace state for display hints
+        if workspace_state and workspace_state.workspace_context:
+            context_lower = workspace_state.workspace_context.lower()
+            if 'presentation' in context_lower or 'meeting' in context_lower:
+                return 'Living Room TV'
+            elif 'coding' in context_lower or 'development' in context_lower:
+                return 'External Monitor'
+
+        # Use learned patterns
+        if goal.goal_type in self.learned_patterns.get('display_preferences', {}):
+            return self.learned_patterns['display_preferences'][goal.goal_type]
+
+        return None
+
+    async def _should_auto_connect_display(self, goal: Goal,
+                                          workspace_state: WorkspaceAnalysis) -> bool:
+        """Determine if display should be auto-connected based on goal"""
+        # High confidence immediate goals should trigger auto-connect
+        if goal.level == GoalLevel.IMMEDIATE and goal.confidence > 0.85:
+            return True
+
+        # Meeting preparation goals with time pressure
+        if goal.goal_type == 'meeting_preparation':
+            # Check for meeting timing in evidence
+            for evidence in goal.evidence:
+                if 'time' in evidence.get('source', ''):
+                    return True
+
+        # Project completion with high progress
+        if goal.goal_type == 'project_completion' and goal.progress > 0.7:
+            return True
+
+        # Check learned patterns for this goal type
+        pattern_key = f"auto_connect_{goal.goal_type}"
+        if pattern_key in self.learned_patterns.get('user_preferences', {}):
+            return self.learned_patterns['user_preferences'][pattern_key]
+
+        return False
+
+    def _create_action_from_goal(self, goal: Goal, action_type: str,
+                                workspace_state: WorkspaceAnalysis) -> Optional[AutonomousAction]:
+        """Create generic action from goal"""
+        if action_type not in self.action_templates:
+            return None
+
+        template = self.action_templates[action_type]
+
+        # Build parameters based on goal and template
+        params = {}
+        for param in template['params']:
+            if param == 'app' or param == 'app_name':
+                params[param] = self._infer_app_from_goal(goal)
+            elif param == 'task':
+                params[param] = goal.description
+            elif param == 'reason':
+                params[param] = f"Supporting goal: {goal.description}"
+            else:
+                params[param] = 'auto'
+
+        return AutonomousAction(
+            action_type=action_type,
+            target=params.get('app', 'system'),
+            params=params,
+            priority=self._goal_to_priority(goal),
+            confidence=goal.confidence * 0.8,
+            category=template['category'],
+            reasoning=f"Goal-driven action for: {goal.description}"
+        )
+
+    def _infer_app_from_goal(self, goal: Goal) -> str:
+        """Infer application from goal context"""
+        app_mappings = {
+            'project_completion': 'VSCode',
+            'communication': 'Slack',
+            'document_preparation': 'Word',
+            'meeting_preparation': 'Calendar',
+            'information_gathering': 'Chrome'
+        }
+        return app_mappings.get(goal.goal_type, 'System')
+
+    def _goal_to_priority(self, goal: Goal) -> ActionPriority:
+        """Convert goal level and confidence to action priority"""
+        if goal.level == GoalLevel.IMMEDIATE:
+            if goal.confidence > 0.9:
+                return ActionPriority.HIGH
+            else:
+                return ActionPriority.MEDIUM
+        elif goal.level == GoalLevel.INTERMEDIATE:
+            return ActionPriority.MEDIUM
+        else:
+            return ActionPriority.LOW
+
+    def _deduplicate_actions(self, actions: List[AutonomousAction]) -> List[AutonomousAction]:
+        """Remove duplicate actions"""
+        seen = set()
+        unique_actions = []
+
+        for action in actions:
+            # Create unique key for action
+            key = f"{action.action_type}_{action.target}_{action.category.value}"
+
+            if key not in seen:
+                seen.add(key)
+                unique_actions.append(action)
+            else:
+                # Keep the one with higher confidence
+                for i, existing in enumerate(unique_actions):
+                    existing_key = f"{existing.action_type}_{existing.target}_{existing.category.value}"
+                    if existing_key == key and action.confidence > existing.confidence:
+                        unique_actions[i] = action
+                        break
+
+        return unique_actions
+
+    async def _update_goal_progress(self, actions: List[AutonomousAction],
+                                   inferred_goals: Dict[GoalLevel, List[Goal]]):
+        """Update goal progress based on actions taken"""
+        for action in actions:
+            # Check if action is related to a goal
+            if 'goal_id' in action.params:
+                goal_id = action.params['goal_id']
+                # Update progress (simplified - would track actual execution)
+                self.goal_inference.track_goal_progress(goal_id, 0.1)
+
     def learn_from_feedback(self, action: AutonomousAction, success: bool, user_feedback: Optional[str] = None):
         """Learn from action execution feedback"""
         action_key = f"{action.action_type}:{action.category.value}"
