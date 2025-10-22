@@ -24,7 +24,7 @@ Version: 3.0.0
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any, Optional, Callable, Tuple
 from pathlib import Path
 
 # Import base clicker
@@ -384,10 +384,23 @@ class UAEEnhancedControlCenterClicker(AdaptiveControlCenterClicker):
 
             x, y = coordinates
 
-            # Move and click
-            pyautogui.moveTo(x, y, duration=0.2)
-            await asyncio.sleep(0.1)
-            pyautogui.click(x, y)
+            # CRITICAL: Use dragTo for Control Center to ensure proper activation
+            if target == "control_center":
+                logger.info(f"[UAE-CLICKER] 🎯 DRAGGING to Control Center at ({x}, {y})")
+                # Get current position
+                current_x, current_y = pyautogui.position()
+                logger.info(f"[UAE-CLICKER] 📍 Current mouse position: ({current_x}, {current_y})")
+
+                # Use dragTo to simulate the drag motion that activates Control Center
+                pyautogui.dragTo(x, y, duration=0.4, button='left')
+                logger.info(f"[UAE-CLICKER] ✅ Drag completed to Control Center")
+                await asyncio.sleep(0.1)
+            else:
+                # For other targets, use normal moveTo and click
+                logger.info(f"[UAE-CLICKER] 🎯 Moving to ({x}, {y}) for {target}")
+                pyautogui.moveTo(x, y, duration=0.2)
+                await asyncio.sleep(0.1)
+                pyautogui.click(x, y)
 
             return {
                 'success': True,
