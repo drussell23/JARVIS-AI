@@ -6,34 +6,44 @@ The Goal Inference system enables JARVIS to understand your intentions, learn yo
 
 ## 🚀 Quick Start
 
-### Simple Startup (Automatic Configuration)
+### Interactive Startup (Recommended)
 
 ```bash
-# Start with default balanced configuration
-./start_jarvis.sh
-
-# Start with aggressive learning mode
-./start_jarvis.sh aggressive
-
-# Start in learning mode to quickly adapt to your patterns
-./start_jarvis.sh learning
+# Interactive menu - choose your preset
+python start_system.py
 ```
 
-The system will automatically:
-- ✅ Create default configuration on first run
-- ✅ Load learning database with your patterns
-- ✅ Apply the preset if specified
-- ✅ Display previous session metrics
+**What happens:**
+- 🎯 Shows interactive menu with all 5 presets
+- 🔧 Select preset (or press Enter for 'balanced')
+- ⚙️ Choose automation on/off
+- ✅ Automatically creates configuration on first run
+- ✅ Loads learning database with your patterns
+- ✅ Displays previous session metrics
+
+### Quick Start (Skip Interactive Menu)
+
+```bash
+# Start with specific preset (skips menu)
+python start_system.py --goal-preset learning
+
+# Start with aggressive mode + automation (skips menu)
+python start_system.py --goal-preset aggressive --enable-automation
+
+# Start with balanced mode (skips menu)
+python start_system.py --goal-preset balanced
+```
 
 ### Environment Variable Configuration
 
 ```bash
-# Set preset via environment variable
+# Set preset via environment variable (skips menu)
 export JARVIS_GOAL_PRESET=aggressive
-python backend/main.py
+export JARVIS_GOAL_AUTOMATION=true
+python start_system.py
 
-# Or one-liner
-JARVIS_GOAL_PRESET=learning python backend/main.py
+# Or one-liner (skips menu)
+JARVIS_GOAL_PRESET=learning python start_system.py
 ```
 
 ## 📊 Configuration Presets
@@ -42,7 +52,7 @@ JARVIS_GOAL_PRESET=learning python backend/main.py
 **Best for**: Quick learning and high productivity
 
 ```bash
-./start_jarvis.sh aggressive
+python start_system.py --goal-preset aggressive
 ```
 
 - Goal Confidence: **0.65** (lower threshold = more suggestions)
@@ -56,7 +66,8 @@ JARVIS_GOAL_PRESET=learning python backend/main.py
 **Best for**: Daily use with reliable suggestions
 
 ```bash
-./start_jarvis.sh balanced
+python start_system.py --goal-preset balanced
+# Or just: python start_system.py (then press Enter for default)
 ```
 
 - Goal Confidence: **0.75**
@@ -70,7 +81,7 @@ JARVIS_GOAL_PRESET=learning python backend/main.py
 **Best for**: High-stakes environments requiring certainty
 
 ```bash
-./start_jarvis.sh conservative
+python start_system.py --goal-preset conservative
 ```
 
 - Goal Confidence: **0.85** (high threshold = only very confident suggestions)
@@ -84,7 +95,7 @@ JARVIS_GOAL_PRESET=learning python backend/main.py
 **Best for**: First-time setup or teaching JARVIS new patterns
 
 ```bash
-./start_jarvis.sh learning
+python start_system.py --goal-preset learning
 ```
 
 - Min Samples for Pattern: **2** (learns from fewer examples)
@@ -98,7 +109,7 @@ JARVIS_GOAL_PRESET=learning python backend/main.py
 **Best for**: Maximum speed and responsiveness
 
 ```bash
-./start_jarvis.sh performance
+python start_system.py --goal-preset performance
 ```
 
 - Cache Size: **200 entries** (vs 100 default)
@@ -365,7 +376,7 @@ print(f"Suggested action: {result['action']}")
 **Solution**:
 ```bash
 # Use learning preset with lower thresholds
-./start_jarvis.sh learning
+python start_system.py --goal-preset learning
 
 # Or manually lower min_samples
 python configure_goal_inference.py --set learning.min_samples_for_pattern 2
@@ -376,7 +387,7 @@ python configure_goal_inference.py --set learning.min_samples_for_pattern 2
 **Solution**:
 ```bash
 # Use conservative preset
-./start_jarvis.sh conservative
+python start_system.py --goal-preset conservative
 
 # Or increase threshold
 python configure_goal_inference.py --set integration.proactive_suggestion_threshold 0.90

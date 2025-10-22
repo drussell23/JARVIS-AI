@@ -2,26 +2,30 @@
 
 ## Quick Reference Guide
 
-All these examples are now **integrated into start_system.py** and work automatically!
+All Goal Inference configuration is now **fully integrated into start_system.py**!
+
+**Just run:** `python start_system.py` and you'll get an interactive menu! 🎯
 
 ---
 
-## 🎯 Method 1: Simple Startup Script (Recommended)
+## 🎯 Method 1: Interactive Menu (Recommended)
 
 ### Scenario 1: First Time User
-**Goal**: Get JARVIS running with zero configuration
+**Goal**: Get JARVIS running with interactive configuration
 
 ```bash
-./start_jarvis.sh
+python start_system.py
 ```
 
 **What happens:**
-- ✅ Creates default `balanced` configuration automatically
+- 🎯 **Interactive menu appears** with 5 preset options + skip
+- 🔧 Select a preset (or press Enter for default 'balanced')
+- ⚙️ Choose automation on/off (smart defaults per preset)
+- ✅ Auto-creates configuration if first run
 - ✅ Initializes SQLite + ChromaDB databases
-- ✅ Starts JARVIS with all 10 components
-- ✅ Displays configuration summary on startup
+- ✅ Starts JARVIS with all 10 components + Goal Inference
 
-**Output:**
+**Interactive Menu:**
 ```
 ╔════════════════════════════════════════════════════════════════╗
 ║                   🤖 JARVIS AI ASSISTANT                       ║
@@ -29,7 +33,37 @@ All these examples are now **integrated into start_system.py** and work automati
 ╚════════════════════════════════════════════════════════════════╝
 
 Available Configuration Presets:
-  [Shows preset options...]
+
+  1. aggressive   - Highly proactive, learns quickly, suggests often
+                 (Goal Confidence: 0.65, Automation: ON)
+
+  2. balanced     - Default balanced settings (recommended)
+                 (Goal Confidence: 0.75, Automation: OFF)
+
+  3. conservative - Cautious, requires high confidence
+                 (Goal Confidence: 0.85, Automation: OFF)
+
+  4. learning     - Optimized for learning your patterns quickly
+                 (Min Patterns: 2, High Boost, Exploration: ON)
+
+  5. performance  - Maximum speed, aggressive caching
+                 (Cache: 200 entries, TTL: 600s, Preload: ON)
+
+  6. skip         - Use existing/default configuration
+
+Select preset [1-6] (or press Enter for default 'balanced'):
+```
+
+**After Selection:**
+```
+🎯 Goal Inference Preset: balanced
+
+Enable Goal Inference Automation?
+  • Automation allows JARVIS to auto-execute high-confidence actions (>95%)
+  • Without automation, JARVIS only makes suggestions
+Enable automation? [y/N]: n
+
+✓ Goal Inference Automation: DISABLED
 
 🚀 Starting JARVIS...
 ✅ Goal Inference + Learning Database loaded
@@ -41,15 +75,20 @@ Available Configuration Presets:
 
 ---
 
+## 🎯 Method 2: Command-Line Arguments (Skip Interactive Menu)
+
+When you specify `--goal-preset`, the interactive menu is skipped!
+
 ### Scenario 2: Quick Learning Mode
-**Goal**: Quickly teach JARVIS your patterns
+**Goal**: Quickly teach JARVIS your patterns (skip menu)
 
 ```bash
-./start_jarvis.sh learning
+python start_system.py --goal-preset learning
 ```
 
 **What happens:**
-- 🎯 Applies `learning` preset
+- ⏩ **Skips interactive menu** (preset specified)
+- 🎯 Applies `learning` preset directly
 - 🔥 Lowers pattern threshold to 2 (vs 3)
 - 📈 Increases pattern boost to 0.10 (vs 0.05)
 - 🚀 Faster adaptation to your routines
@@ -62,18 +101,14 @@ Available Configuration Presets:
 ---
 
 ### Scenario 3: Aggressive + Automation
-**Goal**: Maximum proactivity and automation
+**Goal**: Maximum proactivity and automation (skip menu)
 
 ```bash
-./start_jarvis.sh aggressive --enable-automation
-```
-
-Or shorter:
-```bash
-./start_jarvis.sh aggressive -a
+python start_system.py --goal-preset aggressive --enable-automation
 ```
 
 **What happens:**
+- ⏩ **Skips interactive menu** (preset + automation specified)
 - ⚡ Lowers confidence thresholds (0.65 vs 0.75)
 - 🤖 Enables automatic execution of high-confidence actions
 - 🔥 Highly proactive suggestions
@@ -87,13 +122,14 @@ Or shorter:
 ---
 
 ### Scenario 4: Conservative Mode
-**Goal**: Only the most confident predictions
+**Goal**: Only the most confident predictions (skip menu)
 
 ```bash
-./start_jarvis.sh conservative
+python start_system.py --goal-preset conservative
 ```
 
 **What happens:**
+- ⏩ **Skips interactive menu** (preset specified)
 - 🛡️ High confidence thresholds (0.85 vs 0.75)
 - 🐌 Slower learning (0.02 boost vs 0.05)
 - 📊 Only suggests when very certain
@@ -107,13 +143,14 @@ Or shorter:
 ---
 
 ### Scenario 5: Maximum Performance
-**Goal**: Fastest possible responses
+**Goal**: Fastest possible responses (skip menu)
 
 ```bash
-./start_jarvis.sh performance
+python start_system.py --goal-preset performance
 ```
 
 **What happens:**
+- ⏩ **Skips interactive menu** (preset specified)
 - 💾 Larger cache (200 entries vs 100)
 - ⏱️ Longer TTL (600s vs 300s)
 - ⚡ Parallel processing enabled
@@ -126,40 +163,33 @@ Or shorter:
 
 ---
 
-## 🎯 Method 2: Direct start_system.py (Advanced)
+## 🎯 Method 3: Advanced Command-Line Combinations
 
-### Example 1: Basic with Preset
+### Example 1: Learning Mode + No Browser
 ```bash
-python start_system.py --goal-preset learning
+python start_system.py --goal-preset learning --no-browser
 ```
 
-### Example 2: Preset + Automation
+### Example 2: Aggressive + Automation + Verbose
 ```bash
-python start_system.py --goal-preset aggressive --enable-automation
+python start_system.py --goal-preset aggressive --enable-automation --verbose
 ```
 
-### Example 3: Multiple Flags
+### Example 3: Backend Only + Performance Preset
 ```bash
-python start_system.py \
-    --goal-preset learning \
-    --enable-automation \
-    --no-browser \
-    --verbose
+python start_system.py --backend-only --goal-preset performance --port 8000
 ```
 
-### Example 4: Backend Only + Goal Inference
+### Example 4: Conservative + Debug Mode
 ```bash
-python start_system.py \
-    --backend-only \
-    --goal-preset performance \
-    --port 8000
+python start_system.py --goal-preset conservative --debug
 ```
 
 ---
 
-## 🎯 Method 3: Environment Variables
+## 🎯 Method 4: Environment Variables (Advanced)
 
-### Scenario 4: Set Default Preset
+### Scenario: Set Default Preset
 **Goal**: Always use same preset without typing it
 
 Add to `~/.bashrc` or `~/.zshrc`:
@@ -171,53 +201,38 @@ export JARVIS_GOAL_AUTOMATION=true
 Then just run:
 ```bash
 python start_system.py
-# or
-./start_jarvis.sh
 ```
 
 **What happens:**
+- ⏩ **Skips interactive menu** (environment variable set)
 - ✅ Automatically uses `aggressive` preset every time
 - ✅ Automation enabled by default
 - ✅ No need to specify flags
 
 ---
 
-### Scenario 5: One-Time Override
+### Scenario: One-Time Override
 **Goal**: Use different preset for this session only
 
 ```bash
 JARVIS_GOAL_PRESET=learning python start_system.py
 ```
 
-Or:
+Or override both preset and automation:
 ```bash
 JARVIS_GOAL_PRESET=conservative JARVIS_GOAL_AUTOMATION=false python start_system.py
 ```
+
+**What happens:**
+- ⏩ **Skips interactive menu** (environment variable set)
+- 🔧 Uses specified preset for this session only
+- 📝 Doesn't modify your shell config
 
 ---
 
 ## 📊 All Command Options
 
-### start_jarvis.sh Options
-
-```bash
-./start_jarvis.sh [preset] [automation_flag]
-```
-
-**Presets:**
-- `aggressive` - Proactive learning and suggestions
-- `balanced` - Default, recommended for most users
-- `conservative` - High confidence required
-- `learning` - Fast pattern learning
-- `performance` - Maximum speed
-
-**Automation Flags:**
-- `--enable-automation` or `-a` - Enable auto-execution
-- `--disable-automation` or `-d` - Suggestions only
-
----
-
-### start_system.py Options
+### start_system.py - Unified Startup (All-in-One)
 
 ```bash
 python start_system.py [flags]
@@ -329,33 +344,34 @@ rm backend/config/integration_config.json
 
 | Scenario | Command | Learning Speed | Suggestions | Automation | Best For |
 |----------|---------|---------------|-------------|------------|----------|
-| **First Time** | `./start_jarvis.sh` | Normal | Moderate | ❌ | Getting started |
-| **Quick Learn** | `./start_jarvis.sh learning` | Fast ⚡ | Many | ❌ | First week |
-| **Daily Use** | `./start_jarvis.sh balanced` | Normal | Balanced | ❌ | Most users |
-| **Power User** | `./start_jarvis.sh aggressive -a` | Fast ⚡ | Many | ✅ | Trusted workflows |
-| **Important Work** | `./start_jarvis.sh conservative` | Slow 🐌 | Few | ❌ | High stakes |
-| **Speed Demon** | `./start_jarvis.sh performance` | Normal | Moderate | ❌ | Performance critical |
+| **Interactive** | `python start_system.py` | Configurable | Configurable | Configurable | First time / Flexibility |
+| **Quick Learn** | `python start_system.py --goal-preset learning` | Fast ⚡ | Many | ❌ | First week |
+| **Daily Use** | `python start_system.py --goal-preset balanced` | Normal | Balanced | ❌ | Most users |
+| **Power User** | `python start_system.py --goal-preset aggressive --enable-automation` | Fast ⚡ | Many | ✅ | Trusted workflows |
+| **Important Work** | `python start_system.py --goal-preset conservative` | Slow 🐌 | Few | ❌ | High stakes |
+| **Speed Demon** | `python start_system.py --goal-preset performance` | Normal | Moderate | ❌ | Performance critical |
 
 ---
 
 ## 🎯 Summary
 
-**Simplest way to start:**
+**🌟 Simplest way to start (Interactive Menu):**
 ```bash
-./start_jarvis.sh
+python start_system.py
+# Shows menu → Select preset → Choose automation → Done!
 ```
 
-**Fastest learning:**
+**⚡ Quick start with preset (Skip Menu):**
 ```bash
-./start_jarvis.sh learning
+python start_system.py --goal-preset learning
 ```
 
-**Maximum automation:**
+**🚀 Maximum automation (Skip Menu):**
 ```bash
-./start_jarvis.sh aggressive --enable-automation
+python start_system.py --goal-preset aggressive --enable-automation
 ```
 
-**Production ready:**
+**🔧 Production ready (Environment Variables):**
 ```bash
 # Add to .bashrc/.zshrc
 export JARVIS_GOAL_PRESET=balanced
@@ -364,4 +380,11 @@ export JARVIS_GOAL_PRESET=balanced
 python start_system.py
 ```
 
-Everything is now **fully integrated** - no manual configuration needed! 🎉
+**✨ Key Features:**
+- ✅ **Interactive menu** when run without arguments
+- ✅ **Skip menu** with `--goal-preset` flag
+- ✅ **Environment variables** for permanent defaults
+- ✅ **Auto-configuration** on first run
+- ✅ **No manual setup** required
+
+Everything is **fully unified into start_system.py** - one script to rule them all! 🎉

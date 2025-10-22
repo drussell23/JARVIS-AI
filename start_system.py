@@ -52,10 +52,11 @@ The JARVIS backend loads 9 critical components + 6 intelligent systems:
    • SQLite + ChromaDB hybrid database for learning
    • Adaptive caching with 70-90% hit rate
    • 5 configuration presets: aggressive, balanced, conservative, learning, performance
+   • Interactive menu on startup - just run: python start_system.py
    • Auto-configuration on first startup
    • Learn display connection patterns (3x → auto-connect)
    • Confidence-based automation with safety limits
-   • Usage: --goal-preset learning --enable-automation
+   • Usage: python start_system.py (interactive) OR --goal-preset learning --enable-automation
 
 🧠 INTELLIGENT SYSTEMS v2.0 (NEW in v14.1!):
 All 6 systems now integrate with HybridProactiveMonitoringManager & ImplicitReferenceResolver
@@ -2991,6 +2992,98 @@ except Exception as e:
 _manager = None
 
 
+def _show_goal_inference_menu():
+    """Display Goal Inference configuration preset menu"""
+    print(f"\n{Colors.BLUE}╔════════════════════════════════════════════════════════════════╗{Colors.ENDC}")
+    print(f"{Colors.BLUE}║                   🤖 JARVIS AI ASSISTANT                       ║{Colors.ENDC}")
+    print(f"{Colors.BLUE}║              Goal Inference & Learning System                  ║{Colors.ENDC}")
+    print(f"{Colors.BLUE}╚════════════════════════════════════════════════════════════════╝{Colors.ENDC}\n")
+
+    print(f"{Colors.GREEN}Available Configuration Presets:{Colors.ENDC}\n")
+
+    print(f"  {Colors.BLUE}1. aggressive{Colors.ENDC}   - Highly proactive, learns quickly, suggests often")
+    print(f"                 {Colors.OKBLUE}(Goal Confidence: 0.65, Automation: ON){Colors.ENDC}\n")
+
+    print(f"  {Colors.BLUE}2. balanced{Colors.ENDC}     - Default balanced settings (recommended)")
+    print(f"                 {Colors.OKBLUE}(Goal Confidence: 0.75, Automation: OFF){Colors.ENDC}\n")
+
+    print(f"  {Colors.BLUE}3. conservative{Colors.ENDC} - Cautious, requires high confidence")
+    print(f"                 {Colors.OKBLUE}(Goal Confidence: 0.85, Automation: OFF){Colors.ENDC}\n")
+
+    print(f"  {Colors.BLUE}4. learning{Colors.ENDC}     - Optimized for learning your patterns quickly")
+    print(f"                 {Colors.OKBLUE}(Min Patterns: 2, High Boost, Exploration: ON){Colors.ENDC}\n")
+
+    print(f"  {Colors.BLUE}5. performance{Colors.ENDC}  - Maximum speed, aggressive caching")
+    print(f"                 {Colors.OKBLUE}(Cache: 200 entries, TTL: 600s, Preload: ON){Colors.ENDC}\n")
+
+    print(f"  {Colors.BLUE}6. skip{Colors.ENDC}         - Use existing/default configuration\n")
+
+
+def _get_preset_choice():
+    """Get user's preset choice"""
+    presets = {
+        '1': 'aggressive',
+        '2': 'balanced',
+        '3': 'conservative',
+        '4': 'learning',
+        '5': 'performance',
+        '6': 'skip'
+    }
+
+    while True:
+        try:
+            choice = input(f"{Colors.YELLOW}Select preset [1-6] (or press Enter for default 'balanced'): {Colors.ENDC}").strip()
+
+            if not choice:  # Enter pressed - use default
+                return 'balanced'
+
+            if choice in presets:
+                if presets[choice] == 'skip':
+                    print(f"{Colors.OKBLUE}Using existing/default configuration{Colors.ENDC}")
+                    return None
+                return presets[choice]
+            else:
+                print(f"{Colors.WARNING}Invalid choice. Please enter 1-6.{Colors.ENDC}")
+        except (EOFError, KeyboardInterrupt):
+            print(f"\n{Colors.WARNING}Cancelled. Using default 'balanced' preset.{Colors.ENDC}")
+            return 'balanced'
+
+
+def _get_automation_choice(preset):
+    """Get automation enable/disable choice"""
+    default_automation = {
+        'aggressive': True,
+        'balanced': False,
+        'conservative': False,
+        'learning': False,
+        'performance': False
+    }
+
+    default = default_automation.get(preset, False)
+    default_str = 'Y/n' if default else 'y/N'
+
+    print(f"\n{Colors.YELLOW}Enable Goal Inference Automation?{Colors.ENDC}")
+    print(f"  {Colors.OKBLUE}• Automation allows JARVIS to auto-execute high-confidence actions (>95%){Colors.ENDC}")
+    print(f"  {Colors.OKBLUE}• Without automation, JARVIS only makes suggestions{Colors.ENDC}")
+
+    while True:
+        try:
+            choice = input(f"{Colors.YELLOW}Enable automation? [{default_str}]: {Colors.ENDC}").strip().lower()
+
+            if not choice:  # Enter pressed - use default
+                return 'enable' if default else 'disable'
+
+            if choice in ['y', 'yes']:
+                return 'enable'
+            elif choice in ['n', 'no']:
+                return 'disable'
+            else:
+                print(f"{Colors.WARNING}Invalid choice. Please enter 'y' or 'n'.{Colors.ENDC}")
+        except (EOFError, KeyboardInterrupt):
+            print(f"\n{Colors.WARNING}Cancelled. Using default.{Colors.ENDC}")
+            return 'enable' if default else 'disable'
+
+
 async def shutdown_handler():
     """Handle shutdown gracefully"""
     global _manager
@@ -3106,11 +3199,26 @@ async def main():
 
     args = parser.parse_args()
 
+    # Interactive Goal Inference Preset Menu (if not specified via command line)
+    if not args.goal_preset and not args.backend_only and not args.frontend_only and not args.emergency_cleanup and not args.cleanup_only and not args.check_only:
+        _show_goal_inference_menu()
+        # Get user choice
+        preset_choice = _get_preset_choice()
+        if preset_choice:
+            args.goal_preset = preset_choice
+            # Get automation choice if preset is selected
+            if preset_choice != 'skip':
+                automation_choice = _get_automation_choice(preset_choice)
+                if automation_choice == 'enable':
+                    args.enable_automation = True
+                elif automation_choice == 'disable':
+                    args.disable_automation = True
+
     # Apply Goal Inference preset if specified
     if args.goal_preset:
         import os
         os.environ['JARVIS_GOAL_PRESET'] = args.goal_preset
-        print(f"{Colors.BLUE}🎯 Goal Inference Preset: {args.goal_preset}{Colors.ENDC}")
+        print(f"\n{Colors.BLUE}🎯 Goal Inference Preset: {args.goal_preset}{Colors.ENDC}")
 
     # Apply Goal Inference automation settings
     if args.enable_automation:
