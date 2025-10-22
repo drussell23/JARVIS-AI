@@ -1082,8 +1082,8 @@ class VerificationEngine:
             True if verification passed, False otherwise
         """
         try:
-            # Wait for UI to update
-            await asyncio.sleep(0.05)  # Ultra-minimal UI wait
+            # Wait for UI to update (Control Center needs more time to open)
+            await asyncio.sleep(0.3)  # Increased wait for menu animations
 
             # Take after screenshot
             after_screenshot = pyautogui.screenshot()
@@ -1349,12 +1349,25 @@ class AdaptiveControlCenterClicker:
                         f"at {result.coordinates} (confidence={result.confidence:.2%})"
                     )
 
-                    # Execute click
+                    # Execute click with improved timing
                     x, y = result.coordinates
-                    pyautogui.moveTo(x, y, duration=0.1)  # Ultra-fast mouse movement
-                    await asyncio.sleep(0.01)  # Minimal delay
+
+                    # Move mouse with slightly longer duration for accuracy
+                    pyautogui.moveTo(x, y, duration=0.2)
+                    await asyncio.sleep(0.1)  # Give UI time to register mouse position
+
                     logger.info(f"[ADAPTIVE] 🖱️  CLICKING at ({x}, {y}) for target: {target}")
-                    pyautogui.click()
+
+                    # Try double-click for menu bar items (often more reliable)
+                    if target == "control_center":
+                        # For Control Center, try a more deliberate click
+                        pyautogui.mouseDown()
+                        await asyncio.sleep(0.05)  # Hold for 50ms
+                        pyautogui.mouseUp()
+                    else:
+                        # Normal click for other targets
+                        pyautogui.click()
+
                     logger.info(f"[ADAPTIVE] ✅ Click completed for target: {target}")
 
                     # Verify click (if enabled)
@@ -1508,7 +1521,7 @@ class AdaptiveControlCenterClicker:
                 "duration": time.time() - start_time
             }
 
-        await asyncio.sleep(0.1)  # Ultra-fast menu wait
+        await asyncio.sleep(0.5)  # Wait for Control Center menu to fully open
 
         # Step 2: Click Screen Mirroring
         logger.info("[ADAPTIVE] Step 2/3: Clicking Screen Mirroring...")
@@ -1524,7 +1537,7 @@ class AdaptiveControlCenterClicker:
                 "duration": time.time() - start_time
             }
 
-        await asyncio.sleep(0.1)  # Ultra-fast submenu wait
+        await asyncio.sleep(0.5)  # Wait for submenu to fully open
 
         # Step 3: Click device
         logger.info(f"[ADAPTIVE] Step 3/3: Clicking {device_name}...")
