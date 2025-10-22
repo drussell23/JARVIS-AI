@@ -64,12 +64,13 @@ class GoalInferenceConfigurator:
                 }
             },
             "balanced": {
-                "description": "Default balanced settings",
+                "description": "Default balanced settings with automation enabled",
                 "changes": {
-                    "goal_inference.min_goal_confidence": 0.75,
+                    "goal_inference.min_goal_confidence": 0.65,
                     "autonomous_decisions.min_decision_confidence": 0.70,
                     "integration.proactive_suggestion_threshold": 0.85,
-                    "integration.enable_automation": False,
+                    "integration.enable_automation": True,
+                    "integration.automation_threshold": 0.90,
                     "learning.pattern_confidence_boost": 0.05
                 }
             },
@@ -84,13 +85,15 @@ class GoalInferenceConfigurator:
                 }
             },
             "learning": {
-                "description": "Optimized for learning your patterns",
+                "description": "Optimized for learning your patterns with automation",
                 "changes": {
                     "learning.enabled": True,
                     "learning.min_samples_for_pattern": 2,
                     "learning.pattern_confidence_boost": 0.10,
                     "learning.feedback_weight": 0.15,
-                    "autonomous_decisions.exploration_rate": 0.2
+                    "autonomous_decisions.exploration_rate": 0.2,
+                    "integration.enable_automation": True,
+                    "integration.automation_threshold": 0.92
                 }
             },
             "performance": {

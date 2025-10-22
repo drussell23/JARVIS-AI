@@ -3028,7 +3028,10 @@ def _auto_detect_preset():
         conn.close()
 
         # Decision logic based on learning progress
-        if goal_count < 50:  # Very new user (< ~5-10 sessions)
+        if goal_count == 0:  # Empty database, use balanced with automation
+            print(f"{Colors.CYAN}   → Fresh start, using 'balanced' preset with automation{Colors.ENDC}")
+            return 'balanced'
+        elif goal_count < 50:  # Very new user (< ~5-10 sessions)
             print(f"{Colors.CYAN}   → Early learning phase ({goal_count} goals), using 'learning' preset{Colors.ENDC}")
             return 'learning'
         elif goal_count < 200 and pattern_count < 10:  # Still learning patterns
@@ -3052,16 +3055,19 @@ def _auto_detect_automation(preset):
     import os
     from pathlib import Path
 
-    # Aggressive preset has automation by default
-    if preset == 'aggressive':
-        print(f"{Colors.CYAN}   → Aggressive preset: Automation recommended{Colors.ENDC}")
+    # Aggressive, balanced, and learning presets have automation by default
+    if preset in ['aggressive', 'balanced', 'learning']:
+        if preset == 'learning':
+            print(f"{Colors.CYAN}   → Learning preset: Automation enabled for faster adaptation{Colors.ENDC}")
+        else:
+            print(f"{Colors.CYAN}   → {preset.capitalize()} preset: Automation enabled by default{Colors.ENDC}")
         return True
 
-    # Conservative and learning should not auto-enable
-    if preset in ['conservative', 'learning']:
+    # Only conservative should not auto-enable
+    if preset == 'conservative':
         return False
 
-    # For balanced and performance, check user experience
+    # For performance preset, check user experience
     learning_db_path = Path.home() / '.jarvis' / 'learning' / 'jarvis_learning.db'
 
     if not learning_db_path.exists():

@@ -52,7 +52,7 @@ if [ -z "$PRESET" ]; then
     echo "                 (Goal Confidence: 0.85, Automation: OFF)"
     echo ""
     echo "  ${BLUE}learning${NC}     - Optimized for learning your patterns quickly"
-    echo "                 (Min Patterns: 2, High Boost, Exploration: ON)"
+    echo "                 (Min Patterns: 2, High Boost, Automation: ON)"
     echo ""
     echo "  ${BLUE}performance${NC}  - Maximum speed, aggressive caching"
     echo "                 (Cache: 200 entries, TTL: 600s, Preload: ON)"
