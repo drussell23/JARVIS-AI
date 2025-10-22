@@ -1,7 +1,7 @@
 {
   "goal_inference": {
-    "min_goal_confidence": 0.75,
-    "goal_confidence_threshold": 0.75,
+    "min_goal_confidence": 0.65,
+    "goal_confidence_threshold": 0.65,
     "enable_learning": true,
     "max_active_goals": 10,
     "goal_timeout_minutes": 30,
@@ -20,8 +20,8 @@
   "integration": {
     "enable_proactive_suggestions": true,
     "proactive_suggestion_threshold": 0.85,
-    "enable_automation": false,
-    "automation_threshold": 0.95,
+    "enable_automation": true,
+    "automation_threshold": 0.90,
     "feedback_window_minutes": 30,
     "cache_duration_minutes": 5
   },

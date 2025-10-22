@@ -9,6 +9,10 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Set default optimal settings if not already set
+export JARVIS_GOAL_PRESET="${JARVIS_GOAL_PRESET:-balanced}"
+export JARVIS_GOAL_AUTOMATION="${JARVIS_GOAL_AUTOMATION:-true}"
+
 echo -e "${BLUE}╔════════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║                   🤖 JARVIS AI ASSISTANT                       ║${NC}"
 echo -e "${BLUE}║              Goal Inference & Learning System                  ║${NC}"
@@ -42,7 +46,7 @@ if [ -z "$PRESET" ]; then
     echo "                 (Goal Confidence: 0.65, Automation: ON)"
     echo ""
     echo "  ${BLUE}balanced${NC}     - Default balanced settings (recommended)"
-    echo "                 (Goal Confidence: 0.75, Automation: OFF)"
+    echo "                 (Goal Confidence: 0.65, Automation: ON by default)"
     echo ""
     echo "  ${BLUE}conservative${NC} - Cautious, requires high confidence"
     echo "                 (Goal Confidence: 0.85, Automation: OFF)"
