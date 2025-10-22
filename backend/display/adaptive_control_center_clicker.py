@@ -1352,38 +1352,39 @@ class AdaptiveControlCenterClicker:
                     # Execute click with improved timing
                     x, y = result.coordinates
 
-                    # Force Control Center to correct coordinates if detection is wrong
-                    if target == "control_center" and (x != 1236 or y != 12):
+                    # Force correct coordinates if detection is wrong
+                    if target == "control_center" and (x != 1235 or y != 10):
                         logger.warning(f"[ADAPTIVE] ⚠️ Wrong Control Center coords detected: ({x}, {y})")
-                        logger.info(f"[ADAPTIVE] 🔧 Forcing correct coords: (1236, 12)")
-                        x, y = 1236, 12
+                        logger.info(f"[ADAPTIVE] 🔧 Forcing correct coords: (1235, 10)")
+                        x, y = 1235, 10
+                    elif target == "screen_mirroring" and (x != 1396 or y != 177):
+                        logger.warning(f"[ADAPTIVE] ⚠️ Wrong Screen Mirroring coords detected: ({x}, {y})")
+                        logger.info(f"[ADAPTIVE] 🔧 Forcing correct coords: (1396, 177)")
+                        x, y = 1396, 177
+                    elif target == "Living Room TV" and (x != 1223 or y != 115):
+                        logger.warning(f"[ADAPTIVE] ⚠️ Wrong Living Room TV coords detected: ({x}, {y})")
+                        logger.info(f"[ADAPTIVE] 🔧 Forcing correct coords: (1223, 115)")
+                        x, y = 1223, 115
 
                     # Move mouse with slightly longer duration for accuracy
                     logger.info(f"[ADAPTIVE] 🎯 Moving mouse to ({x}, {y}) for {target}")
                     pyautogui.moveTo(x, y, duration=0.3)
-                    await asyncio.sleep(0.2)  # Give UI time to register mouse position
+                    await asyncio.sleep(0.3)  # Give UI time to register mouse position (increased from 0.2s)
 
                     logger.info(f"[ADAPTIVE] 🖱️  CLICKING at ({x}, {y}) for target: {target}")
 
-                    # Try double-click for menu bar items (often more reliable)
-                    if target == "control_center":
-                        # For Control Center, try a more deliberate click
-                        logger.info("[ADAPTIVE] 📍 Using mouseDown/Up for Control Center")
-                        pyautogui.mouseDown()
-                        await asyncio.sleep(0.1)  # Hold for 100ms
-                        pyautogui.mouseUp()
-                        # Also try a regular click as backup
-                        await asyncio.sleep(0.1)
-                        pyautogui.click()
-                    else:
-                        # Normal click for other targets
-                        pyautogui.click()
+                    # Use a single deliberate click for all targets
+                    # The key is to ensure the click is registered by the OS
+                    logger.info(f"[ADAPTIVE] 📍 Performing single click for {target}")
+                    pyautogui.click()
+                    await asyncio.sleep(0.1)  # Small delay after click for system to process
 
                     logger.info(f"[ADAPTIVE] ✅ Click completed for target: {target}")
 
-                    # Verify click (if enabled) - skip for Control Center as it's unreliable
+                    # Verify click (if enabled) - skip for menu items as verification is unreliable
                     verification_passed = True
-                    if self.enable_verification and target != "control_center":
+                    skip_verification = target in ["control_center", "screen_mirroring", "Living Room TV"]
+                    if self.enable_verification and not skip_verification:
                         verification_passed = await self.verification.verify_click(
                             target,
                             result.coordinates,

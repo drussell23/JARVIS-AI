@@ -38,9 +38,9 @@ class SimpleMenuBarDetector:
         Returns:
             (x, y) coordinates of Control Center icon
         """
-        # Known correct coordinates (verified by user)
-        x = 1236
-        y = 12
+        # Known correct coordinates (verified by user hovering)
+        x = 1235
+        y = 10
 
         logger.info(f"[SIMPLE MENUBAR] Control Center at ({x}, {y})")
 
