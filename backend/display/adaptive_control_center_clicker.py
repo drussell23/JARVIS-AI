@@ -1351,20 +1351,27 @@ class AdaptiveControlCenterClicker:
 
                     # Execute click with improved timing
                     x, y = result.coordinates
+                    logger.info(f"[ADAPTIVE] 🔍 Detection returned coords: ({x}, {y}) for {target}")
 
-                    # Force correct coordinates if detection is wrong
-                    if target == "control_center" and (x != 1235 or y != 10):
-                        logger.warning(f"[ADAPTIVE] ⚠️ Wrong Control Center coords detected: ({x}, {y})")
-                        logger.info(f"[ADAPTIVE] 🔧 Forcing correct coords: (1235, 10)")
+                    # ALWAYS force correct coordinates - detection is unreliable
+                    # This is the ONLY way to guarantee correct clicking
+                    if target == "control_center":
+                        if x != 1235 or y != 10:
+                            logger.warning(f"[ADAPTIVE] ⚠️ Wrong Control Center coords detected: ({x}, {y})")
+                        logger.info(f"[ADAPTIVE] 🔧 FORCING correct coords: (1235, 10)")
                         x, y = 1235, 10
-                    elif target == "screen_mirroring" and (x != 1396 or y != 177):
-                        logger.warning(f"[ADAPTIVE] ⚠️ Wrong Screen Mirroring coords detected: ({x}, {y})")
-                        logger.info(f"[ADAPTIVE] 🔧 Forcing correct coords: (1396, 177)")
+                    elif target == "screen_mirroring":
+                        if x != 1396 or y != 177:
+                            logger.warning(f"[ADAPTIVE] ⚠️ Wrong Screen Mirroring coords detected: ({x}, {y})")
+                        logger.info(f"[ADAPTIVE] 🔧 FORCING correct coords: (1396, 177)")
                         x, y = 1396, 177
-                    elif target == "Living Room TV" and (x != 1223 or y != 115):
-                        logger.warning(f"[ADAPTIVE] ⚠️ Wrong Living Room TV coords detected: ({x}, {y})")
-                        logger.info(f"[ADAPTIVE] 🔧 Forcing correct coords: (1223, 115)")
+                    elif target == "Living Room TV":
+                        if x != 1223 or y != 115:
+                            logger.warning(f"[ADAPTIVE] ⚠️ Wrong Living Room TV coords detected: ({x}, {y})")
+                        logger.info(f"[ADAPTIVE] 🔧 FORCING correct coords: (1223, 115)")
                         x, y = 1223, 115
+
+                    logger.info(f"[ADAPTIVE] ✅ Final coords after forcing: ({x}, {y})")
 
                     # Move mouse with slightly longer duration for accuracy
                     logger.info(f"[ADAPTIVE] 🎯 Moving mouse to ({x}, {y}) for {target}")
@@ -1587,11 +1594,21 @@ class AdaptiveControlCenterClicker:
         logger.info(f"[ADAPTIVE] 🛑 Task complete - stopping all click actions")
         logger.info(f"[ADAPTIVE] ========================================")
 
+        # Extract coordinates from results for display monitor logging
+        cc_coords = cc_result.coordinates if hasattr(cc_result, 'coordinates') else (1235, 10)
+        sm_coords = sm_result.coordinates if hasattr(sm_result, 'coordinates') else (1396, 177)
+        device_coords = device_result.coordinates if hasattr(device_result, 'coordinates') else (1223, 115)
+
         return {
             "success": True,
             "message": f"Connected to {device_name}",
             "duration": duration,
             "task_complete": True,  # Explicitly mark task as complete
+            "method": "adaptive_clicker",
+            # Coordinates for display monitor logging (expected keys)
+            "control_center_coords": cc_coords,
+            "screen_mirroring_coords": sm_coords,
+            "living_room_tv_coords": device_coords,
             "steps": {
                 "control_center": cc_result.to_dict() if hasattr(cc_result, 'to_dict') else asdict(cc_result),
                 "screen_mirroring": sm_result.to_dict() if hasattr(sm_result, 'to_dict') else asdict(sm_result),
