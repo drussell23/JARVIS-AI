@@ -843,11 +843,28 @@ class AdvancedDisplayMonitor:
         # Circuit breaker: Check if already connected or connecting
         logger.info(f"[DISPLAY MONITOR] 🔍 Circuit breaker check for {monitored.name}")
         logger.info(f"[DISPLAY MONITOR] Current state: connecting={list(self.connecting_displays)}, connected={list(self.connected_displays)}")
-        logger.info(f"[DISPLAY MONITOR] Checking: {display_id} in connected={display_id in self.connected_displays}, in connecting={display_id in self.connecting_displays}")
 
-        if display_id in self.connected_displays:
-            logger.info(f"[DISPLAY MONITOR] ✅ {monitored.name} already connected, returning cached response")
-            return {"success": True, "message": f"{monitored.name} already connected", "cached": True}
+        # REAL-TIME VERIFICATION: Don't trust cached state - verify actual connection
+        from .display_state_verifier import get_display_verifier
+        verifier = get_display_verifier()
+        actual_state = await verifier.verify_actual_connection(monitored.name)
+
+        logger.info(f"[DISPLAY MONITOR] Real-time verification for {monitored.name}: is_connected={actual_state['is_connected']}, confidence={actual_state['confidence']:.2f}")
+
+        # Update our cached state based on actual verification
+        if actual_state['is_connected'] and display_id not in self.connected_displays:
+            logger.info(f"[DISPLAY MONITOR] 📊 Updating cache: {monitored.name} is actually connected")
+            self.connected_displays.add(display_id)
+        elif not actual_state['is_connected'] and display_id in self.connected_displays:
+            logger.info(f"[DISPLAY MONITOR] 📊 Updating cache: {monitored.name} is NOT actually connected")
+            self.connected_displays.discard(display_id)
+
+        # Store learning pattern for future predictions
+        await self._store_display_pattern(monitored, actual_state)
+
+        if actual_state['is_connected'] and actual_state['confidence'] > 0.7:
+            logger.info(f"[DISPLAY MONITOR] ✅ {monitored.name} verified as connected (method: {actual_state['method']})")
+            return {"success": True, "message": f"{monitored.name} already connected", "cached": True, "verified": True}
 
         if display_id in self.connecting_displays:
             logger.info(f"[DISPLAY MONITOR] ⚠️ {monitored.name} was stuck in connecting state, resetting and retrying...")
@@ -1397,6 +1414,57 @@ class AdvancedDisplayMonitor:
                 "duration": total_duration,
                 "error": str(e)
             }
+
+    async def _store_display_pattern(self, monitored: 'MonitoredDisplay', actual_state: Dict[str, Any]):
+        """
+        Store display connection patterns in learning database for future predictions
+        """
+        try:
+            # Get learning database instance
+            from backend.intelligence.learning_database import get_learning_database
+            db = await get_learning_database()
+
+            # Create pattern data
+            pattern_data = {
+                'pattern_type': 'display_connection',
+                'display_id': monitored.id,
+                'display_name': monitored.name,
+                'is_connected': actual_state['is_connected'],
+                'connection_mode': actual_state.get('connection_mode'),
+                'verification_method': actual_state.get('method'),
+                'confidence': actual_state.get('confidence', 0.5),
+                'context': {
+                    'time_of_day': datetime.now().hour,
+                    'day_of_week': datetime.now().weekday(),
+                    'is_auto_connect': monitored.auto_connect,
+                    'available_displays': len(self.available_displays),
+                    'active_apps': []  # Could be enhanced with actual app context
+                },
+                'success_rate': 1.0 if actual_state['is_connected'] else 0.0,
+                'frequency': 1  # Will be incremented by database if pattern exists
+            }
+
+            # Store the pattern (database handles deduplication and aggregation)
+            await db.store_pattern(pattern_data, batch=True)
+
+            # Store user interaction as an action
+            action_data = {
+                'action_type': 'display_query',
+                'action_detail': f"Query about {monitored.name}",
+                'timestamp': datetime.now().isoformat(),
+                'context': pattern_data['context'],
+                'result': 'connected' if actual_state['is_connected'] else 'not_connected',
+                'confidence': actual_state.get('confidence', 0.5)
+            }
+
+            await db.store_action(action_data, batch=True)
+
+            logger.debug(f"[DISPLAY MONITOR] Stored learning pattern for {monitored.name}")
+
+        except ImportError:
+            logger.debug("[DISPLAY MONITOR] Learning database not available, skipping pattern storage")
+        except Exception as e:
+            logger.error(f"[DISPLAY MONITOR] Failed to store learning pattern: {e}")
 
     def get_status(self) -> Dict[str, Any]:
         """Get current monitor status"""
