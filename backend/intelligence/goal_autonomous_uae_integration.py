@@ -86,6 +86,10 @@ class GoalAutonomousUAEIntegration:
         self.recent_decisions = []
         self.learning_data = []
 
+        # Initialize learning database
+        from backend.intelligence.learning_database import get_learning_database
+        self.learning_db = get_learning_database()
+
         # Configuration
         self.config = self._load_configuration()
 
@@ -132,6 +136,20 @@ class GoalAutonomousUAEIntegration:
             # Step 1: Infer goals from context
             goals = await self.goal_inference.infer_goals(context)
             self.metrics['goals_inferred'] += len(self._flatten_goals(goals))
+
+            # Store inferred goals in database
+            for level, level_goals in goals.items():
+                for goal in level_goals:
+                    await self.learning_db.store_goal({
+                        'goal_id': goal.goal_id,
+                        'goal_type': goal.goal_type,
+                        'goal_level': level.name,
+                        'description': goal.description,
+                        'confidence': goal.confidence,
+                        'progress': goal.progress,
+                        'evidence': goal.evidence,
+                        'created_at': goal.created_at
+                    })
 
             # Step 2: Get UAE's unified awareness
             uae_decision = await self.uae.get_element_position(

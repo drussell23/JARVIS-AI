@@ -250,6 +250,7 @@ async def parallel_import_components():
         "voice_unlock": import_voice_unlock,
         "wake_word": import_wake_word,
         "display_monitor": import_display_monitor,
+        "goal_inference": import_goal_inference,
     }
 
     # Use thread pool for imports
@@ -541,6 +542,63 @@ def import_display_monitor():
     return display_monitor
 
 
+def import_goal_inference():
+    """Import Goal Inference and Learning Database components"""
+    goal_inference = {}
+
+    try:
+        # Import Goal Inference + Autonomous Engine Integration
+        from backend.intelligence.goal_autonomous_uae_integration import get_integration
+        from backend.intelligence.learning_database import get_learning_database
+        import json
+        from pathlib import Path
+
+        # Initialize integration
+        integration = get_integration()
+        goal_inference["integration"] = integration
+        goal_inference["available"] = True
+
+        # Initialize learning database
+        learning_db = get_learning_database()
+        goal_inference["learning_db"] = learning_db
+
+        # Load configuration
+        config_path = Path("backend/config/integration_config.json")
+        if config_path.exists():
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+                goal_inference["config"] = config
+
+                # Log key settings
+                logger.info("  ✅ Goal Inference + Learning Database loaded")
+                logger.info(f"     • Goal Confidence: {config['goal_inference']['min_goal_confidence']}")
+                logger.info(f"     • Proactive Suggestions: {config['integration']['enable_proactive_suggestions']}")
+                logger.info(f"     • Automation: {config['integration']['enable_automation']}")
+                logger.info(f"     • Learning: {config['learning']['enabled']}")
+        else:
+            logger.info("  ✅ Goal Inference loaded (using default config)")
+            goal_inference["config"] = {
+                "goal_inference": {"min_goal_confidence": 0.75},
+                "integration": {"enable_proactive_suggestions": True, "enable_automation": False},
+                "learning": {"enabled": True}
+            }
+
+        # Get current metrics
+        metrics = integration.get_metrics()
+        if metrics['goals_inferred'] > 0:
+            logger.info(f"     • Previous session: {metrics['goals_inferred']} goals learned")
+
+    except ImportError as e:
+        logger.warning(f"  ⚠️  Goal Inference not available: {e}")
+        goal_inference["available"] = False
+
+    except Exception as e:
+        logger.warning(f"  ⚠️  Goal Inference initialization failed: {e}")
+        goal_inference["available"] = False
+
+    return goal_inference
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Optimized lifespan handler with parallel initialization"""
@@ -629,6 +687,7 @@ async def lifespan(app: FastAPI):
             components["voice_unlock"] = import_voice_unlock()
             components["wake_word"] = import_wake_word()
             components["display_monitor"] = import_display_monitor()
+            components["goal_inference"] = import_goal_inference()
 
     # Initialize memory manager
     memory_class = components.get("memory", {}).get("manager_class")
@@ -636,6 +695,57 @@ async def lifespan(app: FastAPI):
         app.state.memory_manager = memory_class()
         await app.state.memory_manager.start_monitoring()
         logger.info("✅ Memory manager initialized")
+
+    # Initialize Goal Inference and start background tasks
+    goal_inference = components.get("goal_inference", {})
+    if goal_inference and goal_inference.get("integration"):
+        try:
+            integration = goal_inference["integration"]
+            app.state.goal_inference_integration = integration
+
+            # Start background tasks for learning and pattern optimization
+            async def periodic_database_cleanup():
+                """Clean up old patterns and optimize database"""
+                while True:
+                    try:
+                        await asyncio.sleep(3600)  # Run every hour
+                        if hasattr(integration, 'learning_db'):
+                            # Clean up old patterns
+                            integration.learning_db.cleanup_old_patterns(days=30)
+                            # Optimize database
+                            integration.learning_db.optimize()
+                            logger.debug("✅ Goal Inference database cleanup completed")
+                    except Exception as e:
+                        logger.error(f"Database cleanup error: {e}")
+
+            async def periodic_pattern_analysis():
+                """Analyze patterns and update confidence scores"""
+                while True:
+                    try:
+                        await asyncio.sleep(1800)  # Run every 30 minutes
+                        if hasattr(integration, 'learning_db'):
+                            # Analyze patterns
+                            patterns = integration.learning_db.analyze_patterns()
+                            # Update confidence scores based on success rates
+                            for pattern in patterns:
+                                if pattern.get('success_rate', 0) > 0.9:
+                                    integration.learning_db.boost_pattern_confidence(
+                                        pattern['id'], boost=0.05
+                                    )
+                            logger.debug("✅ Pattern analysis completed")
+                    except Exception as e:
+                        logger.error(f"Pattern analysis error: {e}")
+
+            # Start background tasks
+            asyncio.create_task(periodic_database_cleanup())
+            asyncio.create_task(periodic_pattern_analysis())
+
+            logger.info("✅ Goal Inference background tasks started")
+            logger.info("   • Database cleanup: every 1 hour")
+            logger.info("   • Pattern analysis: every 30 minutes")
+
+        except Exception as e:
+            logger.warning(f"⚠️ Could not start Goal Inference tasks: {e}")
 
     # Discover running services (if dynamic CORS is available)
     try:
@@ -1260,6 +1370,17 @@ async def lifespan(app: FastAPI):
             logger.info("✅ Unified Context Bridge stopped")
         except Exception as e:
             logger.error(f"Failed to stop Context Bridge: {e}")
+
+    # Shutdown Goal Inference Integration
+    if hasattr(app.state, "goal_inference_integration"):
+        try:
+            integration = app.state.goal_inference_integration
+            if hasattr(integration, 'learning_db'):
+                # Save final state and close connections
+                integration.learning_db.close()
+            logger.info("✅ Goal Inference Integration stopped")
+        except Exception as e:
+            logger.error(f"Failed to stop Goal Inference: {e}")
 
     # Stop Voice Unlock system
     voice_unlock = components.get("voice_unlock") or {}
