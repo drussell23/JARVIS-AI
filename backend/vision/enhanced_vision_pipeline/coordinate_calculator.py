@@ -104,12 +104,20 @@ class CoordinateCalculator:
             # Apply DPI correction if needed
             dpi_scale = context.get('dpi_scale', 1.0) if context else 1.0
             corrected = self._apply_dpi_correction(center, dpi_scale)
-            
+
             # Convert to global coordinates
+            # CRITICAL: region_offset is also in physical pixels, must be corrected too!
             region_offset = context.get('region_offset', (0, 0)) if context else (0, 0)
+
+            # Apply DPI correction to region offset as well
+            if dpi_scale != 1.0:
+                corrected_offset = (region_offset[0] / dpi_scale, region_offset[1] / dpi_scale)
+                logger.info(f"[COORD CALC] Region offset corrected: {region_offset} -> {corrected_offset} (DPI scale={dpi_scale})")
+                region_offset = corrected_offset
+
             logger.info(f"[COORD CALC] Region offset: {region_offset}")
             logger.info(f"[COORD CALC] Local coords: {corrected}")
-            
+
             global_coords = self._to_global_coordinates(corrected, region_offset)
             logger.info(f"[COORD CALC] Global coords: {global_coords}")
             
