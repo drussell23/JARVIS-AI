@@ -1343,6 +1343,16 @@ class AdaptiveControlCenterClicker:
                 detection_results.append(result)
 
                 if result.success:
+                    # DEBUG: Which method is returning wrong coordinates
+                    if target == "control_center" and result.coordinates:
+                        x, y = result.coordinates
+                        if (x, y) != (1235, 10):
+                            logger.error(
+                                f"[ADAPTIVE] 🚨 WRONG CONTROL CENTER COORDS! "
+                                f"Method '{result.method}' returned ({x}, {y}) instead of (1235, 10)"
+                            )
+                            logger.error(f"[ADAPTIVE] 🚨 Detection method class: {method.__class__.__name__}")
+
                     # Found coordinates!
                     logger.info(
                         f"[ADAPTIVE] ✅ Found '{target}' using {result.method} "
@@ -1353,8 +1363,8 @@ class AdaptiveControlCenterClicker:
                     x, y = result.coordinates
                     logger.info(f"[ADAPTIVE] 🔍 Detection returned coords: ({x}, {y}) for {target}")
 
-                    # Use hardcoded coordinates for known problematic targets when detection is off
-                    # but ONLY if detection is significantly wrong (>50px off)
+                    # CRITICAL: Control Center MUST use exact coordinates (1235, 10)
+                    # Detection often returns wrong coords like (1439, 20) which don't work
                     known_coords = {
                         "control_center": (1235, 10),
                         "screen_mirroring": (1396, 177),
@@ -1363,29 +1373,54 @@ class AdaptiveControlCenterClicker:
 
                     if target in known_coords:
                         expected_x, expected_y = known_coords[target]
-                        distance = ((x - expected_x) ** 2 + (y - expected_y) ** 2) ** 0.5
 
-                        if distance > 50:  # Detection is significantly off
-                            logger.warning(f"[ADAPTIVE] ⚠️ Detection off by {distance:.0f}px for {target}: ({x}, {y}) vs expected ({expected_x}, {expected_y})")
-                            logger.info(f"[ADAPTIVE] 🔧 Using known good coords: ({expected_x}, {expected_y})")
-                            x, y = expected_x, expected_y
+                        # For Control Center, ALWAYS use the correct coordinates
+                        # Detection is unreliable and often returns wrong positions
+                        if target == "control_center":
+                            if x != expected_x or y != expected_y:
+                                logger.warning(f"[ADAPTIVE] ⚠️ Wrong Control Center coords detected: ({x}, {y})")
+                                logger.info(f"[ADAPTIVE] 🔧 FORCING correct coords: ({expected_x}, {expected_y})")
+                                x, y = expected_x, expected_y
+                            else:
+                                logger.info(f"[ADAPTIVE] ✅ Control Center coords already correct")
                         else:
-                            logger.info(f"[ADAPTIVE] ✅ Detection within tolerance for {target}, using detected coords")
+                            # For other targets, use tolerance-based checking
+                            distance = ((x - expected_x) ** 2 + (y - expected_y) ** 2) ** 0.5
+                            if distance > 50:  # Detection is significantly off
+                                logger.warning(f"[ADAPTIVE] ⚠️ Detection off by {distance:.0f}px for {target}: ({x}, {y}) vs expected ({expected_x}, {expected_y})")
+                                logger.info(f"[ADAPTIVE] 🔧 Using known good coords: ({expected_x}, {expected_y})")
+                                x, y = expected_x, expected_y
+                            else:
+                                logger.info(f"[ADAPTIVE] ✅ Detection within tolerance for {target}, using detected coords")
 
                     logger.info(f"[ADAPTIVE] ✅ Final coords: ({x}, {y})")
 
                     # CRITICAL: Use dragTo for Control Center to ensure proper activation
                     # Control Center requires a drag motion, not just a moveTo
                     if target == "control_center":
+                        # DOUBLE-CHECK: Force correct coordinates again right before dragging
+                        if x != 1235 or y != 10:
+                            logger.error(f"[ADAPTIVE] 🚨 COORDINATES CHANGED! Was ({x}, {y}), forcing to (1235, 10)")
+                            x, y = 1235, 10
+
                         logger.info(f"[ADAPTIVE] 🎯 DRAGGING mouse to Control Center at ({x}, {y})")
 
                         # Get current position
                         current_x, current_y = pyautogui.position()
                         logger.info(f"[ADAPTIVE] 📍 Current mouse position: ({current_x}, {current_y})")
 
-                        # Use dragTo to simulate the drag motion that activates Control Center
-                        pyautogui.dragTo(x, y, duration=0.4, button='left')
-                        logger.info(f"[ADAPTIVE] ✅ Drag completed to Control Center")
+                        # CRITICAL: Pass exact coordinates to dragTo
+                        logger.info(f"[ADAPTIVE] 📌 Calling pyautogui.dragTo({x}, {y}, duration=0.4, button='left')")
+                        pyautogui.dragTo(1235, 10, duration=0.4, button='left')  # Hardcode directly in the call
+
+                        # Verify where the mouse actually went
+                        final_x, final_y = pyautogui.position()
+                        logger.info(f"[ADAPTIVE] 📍 Final mouse position after drag: ({final_x}, {final_y})")
+
+                        if final_x != 1235 or final_y != 10:
+                            logger.error(f"[ADAPTIVE] ❌ Mouse went to wrong position! Expected (1235, 10), got ({final_x}, {final_y})")
+                        else:
+                            logger.info(f"[ADAPTIVE] ✅ Drag completed to correct Control Center position")
                     else:
                         # For other targets, use normal moveTo
                         logger.info(f"[ADAPTIVE] 🎯 Moving mouse to ({x}, {y}) for {target}")

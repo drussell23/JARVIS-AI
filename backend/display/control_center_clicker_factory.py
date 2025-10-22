@@ -36,7 +36,8 @@ def get_best_clicker(
     vision_analyzer=None,
     cache_ttl: int = 86400,
     enable_verification: bool = True,
-    prefer_uae: bool = True
+    prefer_uae: bool = True,
+    force_new: bool = False
 ):
     """
     Get the best available Control Center clicker
@@ -46,12 +47,32 @@ def get_best_clicker(
         cache_ttl: Cache TTL in seconds
         enable_verification: Enable click verification
         prefer_uae: Prefer UAE if available
+        force_new: Force creation of new instance (bypass singleton)
 
     Returns:
         Best available clicker instance
     """
     clicker = None
     clicker_type = "unknown"
+
+    # If force_new is True, clear singletons to ensure fresh instances
+    if force_new:
+        logger.info("[CLICKER-FACTORY] Force new instance requested, clearing singletons")
+        try:
+            import backend.display.adaptive_control_center_clicker as acc
+            acc._adaptive_clicker = None
+        except:
+            pass
+        try:
+            import backend.display.sai_enhanced_control_center_clicker as sai
+            sai._sai_clicker = None
+        except:
+            pass
+        try:
+            import backend.display.uae_enhanced_control_center_clicker as uae_mod
+            uae_mod._uae_clicker = None
+        except:
+            pass
 
     # Try UAE-Enhanced (best option)
     if prefer_uae:

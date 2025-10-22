@@ -905,7 +905,8 @@ class AdvancedDisplayMonitor:
             cc_clicker = get_best_clicker(
                 vision_analyzer=self.vision_analyzer,
                 enable_verification=True,
-                prefer_uae=True  # Prefer UAE for dynamic adaptation
+                prefer_uae=True,  # Prefer UAE for dynamic adaptation
+                force_new=True  # Force fresh instance to ensure drag fix is used
             )
             logger.info(f"[DISPLAY MONITOR] Using clicker: {cc_clicker.__class__.__name__}")
             logger.info(f"[DISPLAY MONITOR] Vision analyzer: {self.vision_analyzer is not None}")
