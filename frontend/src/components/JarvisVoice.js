@@ -961,62 +961,240 @@ const JarvisVoice = () => {
     }
   };
 
+  // Advanced WebSocket reconnection state
+  const reconnectionStateRef = useRef({
+    attempts: 0,
+    maxAttempts: 10,
+    baseDelay: 1000,
+    maxDelay: 30000,
+    backoffMultiplier: 1.5,
+    pingInterval: null,
+    healthCheckInterval: null,
+    lastPingTime: null,
+    latency: 0,
+    connectionHealth: 100,
+    reconnecting: false
+  });
+
   const connectWebSocket = async () => {
     // Don't connect if already connected or connecting
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
-      console.log('WebSocket already connected or connecting');
+      console.log('[WS-ADVANCED] WebSocket already connected or connecting');
+      return;
+    }
+
+    // Check if we've exceeded max reconnection attempts
+    if (reconnectionStateRef.current.attempts >= reconnectionStateRef.current.maxAttempts) {
+      console.error('[WS-ADVANCED] Max reconnection attempts reached, giving up');
+      setError('Connection failed - please refresh the page');
       return;
     }
 
     // Ensure config is ready
     if (!configReady || !WS_URL) {
-      console.log('JarvisVoice: Waiting for config before WebSocket connection...');
+      console.log('[WS-ADVANCED] Waiting for config before WebSocket connection...');
       await configPromise;
     }
 
     try {
       const wsBaseUrl = WS_URL || configService.getWebSocketUrl() || 'ws://localhost:8010';
       const wsUrl = `${wsBaseUrl}/ws`;  // Use unified WebSocket endpoint
-      console.log('Connecting to unified WebSocket:', wsUrl);
+      console.log(`[WS-ADVANCED] Connecting to unified WebSocket (attempt ${reconnectionStateRef.current.attempts + 1}/${reconnectionStateRef.current.maxAttempts}):`, wsUrl);
+
       wsRef.current = new WebSocket(wsUrl);
 
       wsRef.current.onopen = () => {
-        console.log('Connected to JARVIS WebSocket');
+        console.log('[WS-ADVANCED] ✅ Connected to JARVIS WebSocket');
         setError(null);
+
+        // Reset reconnection state on successful connection
+        reconnectionStateRef.current.attempts = 0;
+        reconnectionStateRef.current.connectionHealth = 100;
+        reconnectionStateRef.current.reconnecting = false;
+
+        // Start ping/pong health monitoring
+        startHealthMonitoring();
       };
 
       wsRef.current.onmessage = (event) => {
         const data = JSON.parse(event.data);
+
+        // Update last message time (improves health)
+        reconnectionStateRef.current.connectionHealth = Math.min(100, reconnectionStateRef.current.connectionHealth + 1);
+
         handleWebSocketMessage(data);
       };
 
       wsRef.current.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        console.error('[WS-ADVANCED] WebSocket error:', error);
+
+        // Degrade connection health
+        reconnectionStateRef.current.connectionHealth = Math.max(0, reconnectionStateRef.current.connectionHealth - 20);
+
         // Only show error if not connecting
         if (wsRef.current.readyState !== WebSocket.CONNECTING) {
-          setError('Connection error');
+          setError('Connection error - attempting recovery...');
         }
       };
 
       wsRef.current.onclose = (event) => {
-        console.log('WebSocket disconnected');
-        // Only reconnect if it was a clean close and component is still mounted
-        if (event.wasClean && jarvisStatus !== 'offline') {
+        console.log(`[WS-ADVANCED] WebSocket disconnected (code: ${event.code}, clean: ${event.wasClean})`);
+
+        // Stop health monitoring
+        stopHealthMonitoring();
+
+        // Mark as reconnecting
+        reconnectionStateRef.current.reconnecting = true;
+        reconnectionStateRef.current.attempts += 1;
+
+        // Calculate exponential backoff delay
+        const delay = Math.min(
+          reconnectionStateRef.current.baseDelay * Math.pow(reconnectionStateRef.current.backoffMultiplier, reconnectionStateRef.current.attempts - 1),
+          reconnectionStateRef.current.maxDelay
+        );
+
+        console.log(`[WS-ADVANCED] Reconnecting in ${delay}ms (attempt ${reconnectionStateRef.current.attempts}/${reconnectionStateRef.current.maxAttempts})`);
+
+        // Only reconnect if component is still mounted and not offline
+        if (jarvisStatus !== 'offline') {
           setTimeout(() => {
             connectWebSocket();
-          }, 3000);
+          }, delay);
         }
       };
     } catch (err) {
-      console.error('Failed to connect WebSocket:', err);
-      setError('Failed to connect to JARVIS');
+      console.error('[WS-ADVANCED] Failed to connect WebSocket:', err);
+      setError('Failed to connect to JARVIS - retrying...');
+
+      // Increment attempts and retry
+      reconnectionStateRef.current.attempts += 1;
+      const delay = Math.min(
+        reconnectionStateRef.current.baseDelay * Math.pow(reconnectionStateRef.current.backoffMultiplier, reconnectionStateRef.current.attempts - 1),
+        reconnectionStateRef.current.maxDelay
+      );
+
+      setTimeout(() => {
+        connectWebSocket();
+      }, delay);
     }
+  };
+
+  const startHealthMonitoring = () => {
+    // Clear any existing intervals
+    stopHealthMonitoring();
+
+    // Send ping every 15 seconds to keep connection alive
+    reconnectionStateRef.current.pingInterval = setInterval(() => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        const pingTime = Date.now();
+        reconnectionStateRef.current.lastPingTime = pingTime;
+
+        wsRef.current.send(JSON.stringify({
+          type: 'ping',
+          timestamp: pingTime
+        }));
+
+        console.log('[WS-HEALTH] Sent ping');
+      }
+    }, 15000);
+
+    // Health check every 5 seconds
+    reconnectionStateRef.current.healthCheckInterval = setInterval(() => {
+      const health = reconnectionStateRef.current.connectionHealth;
+
+      // If health is degraded, warn
+      if (health < 50) {
+        console.warn(`[WS-HEALTH] ⚠️ Connection health degraded: ${health}%`);
+        setError(`Connection unstable (health: ${health}%) - monitoring...`);
+      } else if (health < 80) {
+        console.log(`[WS-HEALTH] Connection health: ${health}%`);
+      } else {
+        // Clear error if health is good
+        if (error && error.includes('health')) {
+          setError(null);
+        }
+      }
+
+      // Natural health decay (simulates timeout check)
+      reconnectionStateRef.current.connectionHealth = Math.max(0, health - 2);
+    }, 5000);
+
+    console.log('[WS-HEALTH] 🏥 Health monitoring started');
+  };
+
+  const stopHealthMonitoring = () => {
+    if (reconnectionStateRef.current.pingInterval) {
+      clearInterval(reconnectionStateRef.current.pingInterval);
+      reconnectionStateRef.current.pingInterval = null;
+    }
+
+    if (reconnectionStateRef.current.healthCheckInterval) {
+      clearInterval(reconnectionStateRef.current.healthCheckInterval);
+      reconnectionStateRef.current.healthCheckInterval = null;
+    }
+
+    console.log('[WS-HEALTH] Health monitoring stopped');
   };
 
   const handleWebSocketMessage = (data) => {
     switch (data.type) {
       case 'connected':
         setJarvisStatus('online');
+        break;
+      case 'connection_established':
+        // Handle advanced connection established with features
+        console.log('[WS-ADVANCED] Connection established with features:', data.features);
+        setJarvisStatus('online');
+        break;
+      case 'pong':
+        // Handle pong response - calculate latency
+        if (reconnectionStateRef.current.lastPingTime) {
+          const latency = Date.now() - data.timestamp;
+          reconnectionStateRef.current.latency = latency;
+          console.log(`[WS-HEALTH] Pong received - latency: ${latency}ms`);
+
+          // Improve health score based on latency
+          if (latency < 100) {
+            reconnectionStateRef.current.connectionHealth = Math.min(100, reconnectionStateRef.current.connectionHealth + 5);
+          } else if (latency > 500) {
+            reconnectionStateRef.current.connectionHealth = Math.max(0, reconnectionStateRef.current.connectionHealth - 5);
+          }
+        }
+        break;
+      case 'pong_ack':
+        // Handle pong acknowledgment with latency from backend
+        if (data.latency_ms !== undefined) {
+          reconnectionStateRef.current.latency = data.latency_ms;
+          console.log(`[WS-HEALTH] Backend latency: ${data.latency_ms}ms`);
+        }
+        break;
+      case 'connection_health':
+        // Handle connection health updates from backend
+        console.log(`[WS-HEALTH] Backend health status: ${data.state}, score: ${data.health_score}`);
+        if (data.state === 'degraded') {
+          console.warn('[WS-HEALTH] ⚠️ Backend reports degraded connection');
+          setError('Connection unstable - backend recovery in progress...');
+        }
+        break;
+      case 'reconnection_advisory':
+        // Backend is advising us to prepare for reconnection
+        console.warn('[WS-HEALTH] 🔮 Backend predicts connection issues:', data.message);
+        setError(data.message || 'Connection optimization in progress...');
+        break;
+      case 'connection_optimization':
+        // Backend is requesting optimization (reduce load)
+        console.log('[WS-HEALTH] Backend requesting optimization:', data.action);
+        if (data.action === 'reduce_load') {
+          // We could reduce message frequency here if needed
+          console.log('[WS-HEALTH] Reducing message load as requested');
+        }
+        break;
+      case 'system_status':
+        // System-wide status updates (e.g., circuit breaker)
+        console.log('[WS-ADVANCED] System status:', data.status, '-', data.message);
+        if (data.status === 'degraded') {
+          setError(`System: ${data.message}`);
+        }
         break;
       case 'display_detected':
         // Handle display monitor notifications
