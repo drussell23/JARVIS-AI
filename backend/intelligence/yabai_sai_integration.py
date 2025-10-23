@@ -478,7 +478,9 @@ class YabaiSAIBridge:
                 return {}
 
             # Get current SAI state
-            context = await self.sai.get_current_context()
+            # NOTE: get_current_context() method doesn't exist, returning default context
+            # TODO: Implement proper context retrieval from SAI
+            context = {}
 
             return {
                 'state': context.get('ui_state', {}),
