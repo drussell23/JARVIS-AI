@@ -132,7 +132,19 @@ class MultiSpaceQueryHandler:
             r'\bwhat\'?s\s+(?:different|the difference)\b',
         ]
 
-        # Search patterns
+        # Summary/Overview patterns (for "what's happening" type queries)
+        self.summary_patterns = [
+            r'\bwhat\'?s\s+happening\s+across\b',
+            r'\bwhat\s+is\s+happening\s+across\b',
+            r'\bshow\s+(?:me\s+)?all\s+(?:my\s+)?(?:desktop\s+)?spaces?\b',
+            r'\boverview\s+of\s+(?:all\s+)?(?:my\s+)?spaces?\b',
+            r'\bwhat\'?s\s+on\s+(?:all\s+)?(?:my\s+)?spaces?\b',
+            r'\bwhat\'?s\s+in\s+(?:all\s+)?(?:my\s+)?spaces?\b',
+            r'\bacross\s+(?:all\s+)?(?:my\s+)?(?:desktop\s+)?spaces?\b',
+            r'\ball\s+(?:my\s+)?(?:desktop\s+)?spaces?\b.*\bwhat\b',
+        ]
+
+        # Search patterns (looking for specific content)
         self.search_patterns = [
             r'\bfind\s+(?:the\s+)?(\w+)\s+across\b',
             r'\b(?:where|which\s+space)\s+(?:is|has)\b',
@@ -244,6 +256,11 @@ class MultiSpaceQueryHandler:
                 logger.debug(f"[MULTI-SPACE] Could not use implicit resolver intent: {e}")
 
         # Fallback to pattern matching
+        # Check for summary/overview patterns first
+        for pattern in self.summary_patterns:
+            if re.search(pattern, query_lower):
+                return MultiSpaceQueryType.SUMMARY
+
         for pattern in self.comparison_patterns:
             if re.search(pattern, query_lower):
                 # Check if it's asking for differences
