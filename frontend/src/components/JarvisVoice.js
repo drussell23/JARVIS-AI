@@ -776,10 +776,22 @@ const JarvisVoice = () => {
     }
 
     return () => {
+      // Stop health monitoring
+      stopHealthMonitoring();
+
       // Clean up WebSocket
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.close();
+      if (wsRef.current) {
+        console.log('[WS-CLEANUP] Closing WebSocket connection');
+        try {
+          if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) {
+            wsRef.current.close();
+          }
+        } catch (e) {
+          console.log('[WS-CLEANUP] Error closing WebSocket:', e);
+        }
+        wsRef.current = null;
       }
+
       // Stop speech recognition
       if (recognitionRef.current) {
         recognitionRef.current.stop();
@@ -811,7 +823,7 @@ const JarvisVoice = () => {
         styleElement.parentNode.removeChild(styleElement);
       }
     };
-  }, [autonomousMode]);
+  }, []);
 
   // Separate effect for auto-activation
   useEffect(() => {
@@ -981,6 +993,17 @@ const JarvisVoice = () => {
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
       console.log('[WS-ADVANCED] WebSocket already connected or connecting');
       return;
+    }
+
+    // Close any existing connection first to prevent duplicates
+    if (wsRef.current) {
+      console.log('[WS-ADVANCED] Closing existing WebSocket before reconnecting');
+      try {
+        wsRef.current.close();
+      } catch (e) {
+        console.log('[WS-ADVANCED] Error closing existing WebSocket:', e);
+      }
+      wsRef.current = null;
     }
 
     // Check if we've exceeded max reconnection attempts
