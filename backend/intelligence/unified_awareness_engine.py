@@ -44,20 +44,38 @@ from collections import defaultdict, deque
 import numpy as np
 
 # Import SAI components
-from backend.vision.situational_awareness import (
-    SituationalAwarenessEngine,
-    UIElementPosition,
-    ChangeEvent,
-    ChangeType,
-    get_sai_engine
-)
+try:
+    from backend.vision.situational_awareness import (
+        SituationalAwarenessEngine,
+        UIElementPosition,
+        ChangeEvent,
+        ChangeType,
+        get_sai_engine
+    )
+except ModuleNotFoundError:
+    # Try relative import
+    from vision.situational_awareness import (
+        SituationalAwarenessEngine,
+        UIElementPosition,
+        ChangeEvent,
+        ChangeType,
+        get_sai_engine
+    )
 
 # Import Learning Database
-from backend.intelligence.learning_database import (
-    JARVISLearningDatabase,
-    get_learning_database,
-    PatternType
-)
+try:
+    from backend.intelligence.learning_database import (
+        JARVISLearningDatabase,
+        get_learning_database,
+        PatternType
+    )
+except ModuleNotFoundError:
+    # Try relative import
+    from intelligence.learning_database import (
+        JARVISLearningDatabase,
+        get_learning_database,
+        PatternType
+    )
 
 logger = logging.getLogger(__name__)
 
