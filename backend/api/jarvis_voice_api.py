@@ -706,6 +706,50 @@ class JARVISVoiceAPI:
     async def process_command(self, command: JARVISCommand) -> Dict:
         """Process a JARVIS command"""
 
+        # CRITICAL: Check for TV/display prompt responses FIRST (highest priority)
+        try:
+            from display import get_display_monitor
+            monitor = get_display_monitor()
+
+            # Debug logging
+            logger.info(f"[JARVIS CMD] Display check - pending_prompt: {getattr(monitor, 'pending_prompt_display', None)}, has_pending: {monitor.has_pending_prompt()}")
+
+            # ALWAYS check for yes/no if it looks like a response
+            response_lower = command.text.lower().strip()
+            is_yes_no = any(word in response_lower for word in ["yes", "yeah", "yep", "no", "nope", "sure", "okay", "connect", "skip"])
+
+            if is_yes_no:
+                logger.info(f"[JARVIS CMD] Detected yes/no response: '{command.text}'")
+
+                # If there's a pending prompt OR if Living Room TV is available, handle it
+                has_pending = monitor.has_pending_prompt()
+                available_displays = list(getattr(monitor, 'available_displays', set()))
+                living_room_available = 'living_room_tv' in available_displays
+
+                logger.info(f"[JARVIS CMD] Has pending: {has_pending}, Living Room TV available: {living_room_available}, All available: {available_displays}")
+
+                if has_pending or living_room_available:
+                    logger.info(f"[JARVIS CMD] Handling display response (pending={has_pending}, tv_available={living_room_available})")
+
+                    # If no pending prompt but TV is available, set it now
+                    if not has_pending and living_room_available:
+                        monitor.pending_prompt_display = 'living_room_tv'
+                        logger.info(f"[JARVIS CMD] Set pending prompt for Living Room TV")
+
+                    display_result = await monitor.handle_user_response(command.text)
+
+                    if display_result.get("handled"):
+                        logger.info(f"[JARVIS CMD] Display handler processed the response successfully")
+                        return {
+                            "response": display_result.get("response", "Understood."),
+                            "status": "success" if display_result.get("success", True) else "error",
+                            "command_type": "display_response",
+                            "success": display_result.get("success", True)
+                        }
+        except Exception as e:
+            logger.error(f"[JARVIS CMD] Error checking display prompt: {e}")
+            # Continue to normal processing if this fails
+
         # DYNAMIC COMPONENT LOADING - Load required components based on command intent
         try:
             from api.jarvis_factory import get_app_state
