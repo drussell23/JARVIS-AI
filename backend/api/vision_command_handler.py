@@ -1869,20 +1869,15 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
             result = await monitor.handle_user_response(command_text)
             
             if result.get("handled"):
+                # Use the dynamic response from handle_user_response
                 response_text = result.get("response", "")
-                if result.get("action") == "connect":
-                    # Successfully connected
-                    connection_result = result.get("result", {})
-                    if connection_result.get("success"):
-                        response_text = connection_result.get("response", "Connected to Living Room TV")
-                    else:
-                        response_text = connection_result.get("response", "Connection failed")
-                
+
                 return {
                     "handled": True,
                     "response": response_text,
                     "action": result.get("action"),
-                    "monitoring_active": self.monitoring_active
+                    "monitoring_active": self.monitoring_active,
+                    "connection_result": result.get("result", {})
                 }
             else:
                 return {"handled": False}

@@ -448,6 +448,7 @@ class AdvancedDisplayMonitor:
         self.connected_displays: Set[str] = set()
         self.connecting_displays: Set[str] = set()  # Circuit breaker: displays currently being connected
         self.initial_scan_complete = False  # Track if initial scan is done
+        self.pending_prompt_display: Optional[str] = None  # Track which display has a pending prompt
 
         # Event callbacks
         self.callbacks: Dict[str, List[Callable]] = {
@@ -803,6 +804,10 @@ class AdvancedDisplayMonitor:
         message = template.format(display_name=monitored.name) if '{display_name}' in template else template
 
         logger.info(f"[DISPLAY MONITOR] Voice: {message}")
+
+        # Set pending prompt state so we can handle yes/no responses
+        self.pending_prompt_display = monitored.id
+        logger.info(f"[DISPLAY MONITOR] Set pending prompt for {monitored.name}")
 
         # Use voice handler if available
         if self.voice_handler:
@@ -1537,6 +1542,157 @@ class AdvancedDisplayMonitor:
                     "auto_prompt": monitored.auto_prompt
                 })
         return details
+
+    def has_pending_prompt(self) -> bool:
+        """
+        Check if there's a pending display prompt
+
+        This is used by the vision command handler to check if JARVIS
+        is waiting for a yes/no response about connecting to a display.
+
+        Returns:
+            True if waiting for user response, False otherwise
+        """
+        # Check if we have a pending prompt that hasn't been answered yet
+        return self.pending_prompt_display is not None
+
+    async def handle_user_response(self, response: str) -> Dict:
+        """
+        Handle user voice response to display prompt
+
+        When JARVIS asks "Would you like to extend your display to Living Room TV?"
+        this handles the user's "yes" or "no" response.
+
+        Args:
+            response: User's voice command (e.g., "yes", "no", "yes jarvis")
+
+        Returns:
+            Response result with action taken
+        """
+        try:
+            if not self.has_pending_prompt():
+                return {
+                    "handled": False,
+                    "reason": "No pending prompt"
+                }
+
+            # Get the display that has the pending prompt
+            display_id = self.pending_prompt_display
+            display_to_connect = next((d for d in self.monitored_displays if d.id == display_id), None)
+
+            if not display_to_connect:
+                logger.error(f"[DISPLAY MONITOR] Pending prompt display {display_id} not found in monitored displays")
+                self.pending_prompt_display = None  # Clear invalid state
+                return {
+                    "handled": False,
+                    "reason": "Display configuration not found"
+                }
+
+            # Parse response
+            response_lower = response.lower().strip()
+
+            # Affirmative responses
+            if any(word in response_lower for word in ["yes", "yeah", "yep", "sure", "connect", "extend", "mirror"]):
+                # Clear pending prompt state
+                self.pending_prompt_display = None
+                logger.info(f"[DISPLAY MONITOR] User said yes, connecting to {display_to_connect.name}")
+
+                # Determine mode
+                mode = "mirror" if "mirror" in response_lower else display_to_connect.connection_mode
+
+                # Connect to display
+                result = await self.connect_display(display_to_connect.id)
+
+                # Generate dynamic response
+                try:
+                    from api.vision_command_handler import vision_command_handler
+                    if vision_command_handler and hasattr(vision_command_handler, 'intelligence'):
+                        prompt = f"""The user asked you to connect to {display_to_connect.name}. You successfully connected.
+
+Generate a brief, natural JARVIS-style confirmation that:
+1. Confirms the connection is complete
+2. Is brief and conversational (1 sentence)
+3. Uses "sir" appropriately
+4. Sounds confident and efficient
+
+Respond ONLY with JARVIS's exact words, no quotes or formatting."""
+
+                        claude_response = await vision_command_handler.intelligence._get_claude_vision_response(
+                            None, prompt
+                        )
+                        success_response = claude_response.get("response", f"Connected to {display_to_connect.name}, sir.")
+                    else:
+                        success_response = f"Connected to {display_to_connect.name}, sir."
+                except Exception as e:
+                    logger.warning(f"Could not generate dynamic response: {e}")
+                    success_response = f"Connected to {display_to_connect.name}, sir."
+
+                return {
+                    "handled": True,
+                    "action": "connect",
+                    "display_name": display_to_connect.name,
+                    "mode": mode,
+                    "result": result,
+                    "response": success_response if result.get("success") else f"I encountered an issue connecting to {display_to_connect.name}, sir."
+                }
+
+            # Negative responses
+            elif any(word in response_lower for word in ["no", "nope", "don't", "skip", "not now"]):
+                # Clear pending prompt state
+                self.pending_prompt_display = None
+                logger.info(f"[DISPLAY MONITOR] User said no, skipping {display_to_connect.name}")
+
+                # Remove from available displays temporarily (user declined)
+                if display_to_connect.id in self.available_displays:
+                    self.available_displays.remove(display_to_connect.id)
+
+                # Generate dynamic response
+                try:
+                    from api.vision_command_handler import vision_command_handler
+                    if vision_command_handler and hasattr(vision_command_handler, 'intelligence'):
+                        prompt = f"""The user was asked: "Sir, I see your {display_to_connect.name} is now available. Would you like to extend your display to it?"
+
+They responded: "{response}"
+
+Generate a brief, natural JARVIS-style acknowledgment that:
+1. Confirms you understood they don't want to connect
+2. Is brief and conversational (1-2 sentences max)
+3. Uses "sir" appropriately
+4. Shows understanding without being verbose
+
+Respond ONLY with JARVIS's exact words, no quotes or formatting."""
+
+                        claude_response = await vision_command_handler.intelligence._get_claude_vision_response(
+                            None, prompt
+                        )
+                        decline_response = claude_response.get("response", "Understood, sir.")
+                    else:
+                        decline_response = "Understood, sir."
+                except Exception as e:
+                    logger.warning(f"Could not generate dynamic response: {e}")
+                    decline_response = "Understood, sir."
+
+                return {
+                    "handled": True,
+                    "action": "skip",
+                    "display_name": display_to_connect.name,
+                    "response": decline_response
+                }
+
+            else:
+                # Unclear response
+                return {
+                    "handled": True,
+                    "action": "clarify",
+                    "response": "Sir, I didn't quite catch that. Would you like to extend the display? Please say 'yes' or 'no'."
+                }
+
+        except Exception as e:
+            logger.error(f"[DISPLAY MONITOR] Error handling response: {e}", exc_info=True)
+            return {
+                "handled": False,
+                "error": str(e)
+            }
 
 
 # Singleton instance
