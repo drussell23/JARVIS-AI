@@ -1083,7 +1083,15 @@ const JarvisVoice = () => {
 
         // Check if this is an error response we should ignore
         const errorText = (data.text || data.response || '').toLowerCase();
-        const isError = errorText.includes("don't have a handler") || errorText.includes("error") || errorText.includes("failed");
+        // Only mark as error if response explicitly indicates failure, not if it contains these words in a successful response
+        const isError = (
+          errorText.includes("don't have a handler") ||
+          errorText.startsWith("error") ||
+          errorText.startsWith("sorry") ||
+          errorText.startsWith("command failed") ||
+          errorText.startsWith("i encountered an error") ||
+          (errorText.includes("error") && !errorText.includes("can see"))
+        );
 
         if (errorText.includes("don't have a handler for query commands")) {
           console.log('Ignoring query handler error, continuing to listen...');
