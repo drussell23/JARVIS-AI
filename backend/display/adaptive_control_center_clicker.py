@@ -392,8 +392,11 @@ class CachedDetection:
         """Detect using cached coordinates"""
         start_time = time.time()
 
+        logger.info(f"[CACHED DETECTION] 🔍 Checking cache for target: '{target}'")
+
         cached = self.cache.get(target)
         if not cached:
+            logger.warning(f"[CACHED DETECTION] ❌ No cached coordinates found for '{target}'")
             return DetectionResult(
                 success=False,
                 method=self.name,
@@ -403,6 +406,9 @@ class CachedDetection:
                 metadata={},
                 error="No cached coordinates found"
             )
+
+        logger.info(f"[CACHED DETECTION] ✅ Cache HIT for '{target}': coordinates={cached.coordinates}, confidence={cached.confidence}")
+        logger.info(f"[CACHED DETECTION] 📊 Cache stats: success_count={cached.success_count}, failure_count={cached.failure_count}, age={time.time() - cached.timestamp:.1f}s")
 
         return DetectionResult(
             success=True,
@@ -498,6 +504,49 @@ class OCRDetection:
     def __init__(self, vision_analyzer=None):
         self.vision_analyzer = vision_analyzer
         self._tesseract_available = None
+        self._dpi_scale = None
+
+    def _get_dpi_scale(self) -> float:
+        """Get DPI scale factor (cached)"""
+        if self._dpi_scale is None:
+            try:
+                from AppKit import NSScreen
+                main_screen = NSScreen.mainScreen()
+                self._dpi_scale = main_screen.backingScaleFactor()
+                logger.info(f"[OCR] Detected DPI scale: {self._dpi_scale}x")
+            except:
+                self._dpi_scale = 1.0
+                logger.warning("[OCR] Could not detect DPI scale, assuming 1.0x")
+        return self._dpi_scale
+
+    def _convert_to_logical_pixels(self, x: int, y: int, region_offset: tuple = (0, 0)) -> tuple:
+        """
+        Convert coordinates from physical pixels (screenshot space) to logical pixels (PyAutoGUI space)
+
+        Args:
+            x, y: Coordinates in physical pixels (from screenshot/vision)
+            region_offset: Offset of the screenshot region in logical pixels
+
+        Returns:
+            (x, y) tuple in logical pixels
+        """
+        dpi_scale = self._get_dpi_scale()
+
+        # Convert from physical to logical
+        logical_x = x / dpi_scale
+        logical_y = y / dpi_scale
+
+        # Add region offset (already in logical pixels)
+        final_x = int(round(logical_x + region_offset[0]))
+        final_y = int(round(logical_y + region_offset[1]))
+
+        logger.info(
+            f"[OCR] Coordinate conversion: "
+            f"Physical ({x}, {y}) -> Logical ({logical_x:.1f}, {logical_y:.1f}) "
+            f"+ Offset {region_offset} = Final ({final_x}, {final_y}) [DPI={dpi_scale}x]"
+        )
+
+        return (final_x, final_y)
 
     async def is_available(self) -> bool:
         """Check if OCR is available"""
@@ -597,23 +646,36 @@ class OCRDetection:
 
             for i, text in enumerate(data['text']):
                 if target_lower in text.lower():
-                    # Calculate center point
+                    # Calculate center point (in physical pixels from screenshot)
                     x = data['left'][i] + data['width'][i] // 2
                     y = data['top'][i] + data['height'][i] // 2
                     confidence = float(data['conf'][i]) / 100.0
 
                     logger.info(
-                        f"[OCR-TESSERACT] Found '{target}' at ({x}, {y}) "
+                        f"[OCR-TESSERACT] Found '{target}' at ({x}, {y}) in screenshot (physical pixels) "
                         f"with confidence {confidence:.2%}"
+                    )
+
+                    # CRITICAL: Convert to logical pixels
+                    # Tesseract coordinates are relative to screenshot, need to account for region offset
+                    region_offset = (0, 0)  # Tesseract is typically used on full screenshots
+                    logical_x, logical_y = self._convert_to_logical_pixels(x, y, region_offset)
+
+                    logger.info(
+                        f"[OCR-TESSERACT] Converted to logical pixels: ({logical_x}, {logical_y})"
                     )
 
                     return DetectionResult(
                         success=True,
                         method="ocr_tesseract",
-                        coordinates=(x, y),
+                        coordinates=(logical_x, logical_y),
                         confidence=confidence,
                         duration=time.time() - start_time,
-                        metadata={"text_found": text}
+                        metadata={
+                            "text_found": text,
+                            "physical_coords": (x, y),
+                            "logical_coords": (logical_x, logical_y)
+                        }
                     )
 
             return DetectionResult(
@@ -740,19 +802,40 @@ If not found, respond with: NOT_FOUND"""
                 x = int(coord_match.group(1))
                 y = int(coord_match.group(2))
 
-                # Validate bounds
+                # Validate bounds (in physical pixels)
                 if 0 <= x <= width and 0 <= y <= height:
                     logger.info(
-                        f"[OCR-CLAUDE] Found '{target}' at ({x}, {y})"
+                        f"[OCR-CLAUDE] Found '{target}' at ({x}, {y}) in screenshot (physical pixels)"
+                    )
+
+                    # CRITICAL: Determine region offset based on target
+                    # Screenshots are taken with pyautogui.screenshot(region=(...))
+                    # The region parameter is in LOGICAL pixels
+                    if target == "control_center":
+                        region_offset = (0, 0)  # Top-left corner
+                    elif target == "screen_mirroring":
+                        region_offset = (800, 0)  # Offset from line 535
+                    else:
+                        region_offset = (0, 0)  # Generic top-left
+
+                    # Convert from physical pixels (screenshot) to logical pixels (PyAutoGUI)
+                    logical_x, logical_y = self._convert_to_logical_pixels(x, y, region_offset)
+
+                    logger.info(
+                        f"[OCR-CLAUDE] Converted to logical pixels: ({logical_x}, {logical_y})"
                     )
 
                     return DetectionResult(
                         success=True,
                         method="ocr_claude",
-                        coordinates=(x, y),
+                        coordinates=(logical_x, logical_y),
                         confidence=0.9,  # Claude Vision is typically reliable
                         duration=time.time() - start_time,
-                        metadata={"response": response_text}
+                        metadata={
+                            "response": response_text,
+                            "physical_coords": (x, y),
+                            "logical_coords": (logical_x, logical_y)
+                        }
                     )
 
             return DetectionResult(
@@ -790,6 +873,29 @@ class TemplateMatchingDetection:
         )
         self.template_dir.mkdir(parents=True, exist_ok=True)
         self.templates: Dict[str, np.ndarray] = {}
+        self._dpi_scale = None
+
+    def _get_dpi_scale(self) -> float:
+        """Get DPI scale factor (cached)"""
+        if self._dpi_scale is None:
+            try:
+                from AppKit import NSScreen
+                main_screen = NSScreen.mainScreen()
+                self._dpi_scale = main_screen.backingScaleFactor()
+            except:
+                self._dpi_scale = 1.0
+        return self._dpi_scale
+
+    def _convert_to_logical_pixels(self, x: int, y: int) -> tuple:
+        """Convert coordinates from physical pixels to logical pixels"""
+        dpi_scale = self._get_dpi_scale()
+        logical_x = int(round(x / dpi_scale))
+        logical_y = int(round(y / dpi_scale))
+        logger.info(
+            f"[TEMPLATE] Coordinate conversion: "
+            f"Physical ({x}, {y}) -> Logical ({logical_x}, {logical_y}) [DPI={dpi_scale}x]"
+        )
+        return (logical_x, logical_y)
 
     async def is_available(self) -> bool:
         """Check if OpenCV is available"""
@@ -847,20 +953,27 @@ class TemplateMatchingDetection:
                     error=f"Template match confidence too low: {max_val:.2%}"
                 )
 
-            # Calculate center point
+            # Calculate center point (in physical pixels from screenshot)
             h, w = template.shape
             x = max_loc[0] + w // 2
             y = max_loc[1] + h // 2
 
             logger.info(
-                f"[TEMPLATE] Found '{target}' at ({x}, {y}) "
+                f"[TEMPLATE] Found '{target}' at ({x}, {y}) in screenshot (physical pixels) "
                 f"with confidence {max_val:.2%}"
+            )
+
+            # CRITICAL: Convert to logical pixels
+            logical_x, logical_y = self._convert_to_logical_pixels(x, y)
+
+            logger.info(
+                f"[TEMPLATE] Converted to logical pixels: ({logical_x}, {logical_y})"
             )
 
             return DetectionResult(
                 success=True,
                 method=self.name,
-                coordinates=(x, y),
+                coordinates=(logical_x, logical_y),
                 confidence=float(max_val),
                 duration=time.time() - start_time,
                 metadata={"template_size": (w, h)}
@@ -903,6 +1016,31 @@ class EdgeDetection:
 
     name = "edge_detection"
     priority = 4
+
+    def __init__(self):
+        self._dpi_scale = None
+
+    def _get_dpi_scale(self) -> float:
+        """Get DPI scale factor (cached)"""
+        if self._dpi_scale is None:
+            try:
+                from AppKit import NSScreen
+                main_screen = NSScreen.mainScreen()
+                self._dpi_scale = main_screen.backingScaleFactor()
+            except:
+                self._dpi_scale = 1.0
+        return self._dpi_scale
+
+    def _convert_to_logical_pixels(self, x: int, y: int) -> tuple:
+        """Convert coordinates from physical pixels to logical pixels"""
+        dpi_scale = self._get_dpi_scale()
+        logical_x = int(round(x / dpi_scale))
+        logical_y = int(round(y / dpi_scale))
+        logger.info(
+            f"[EDGE] Coordinate conversion: "
+            f"Physical ({x}, {y}) -> Logical ({logical_x}, {logical_y}) [DPI={dpi_scale}x]"
+        )
+        return (logical_x, logical_y)
 
     async def is_available(self) -> bool:
         """Check if OpenCV is available"""
@@ -948,16 +1086,28 @@ class EdgeDetection:
                     # Check if in right area of screen (Control Center is top-right)
                     if center_x > 1000:  # Adjust based on screen size
                         logger.info(
-                            f"[EDGE] Found potential '{target}' at ({center_x}, {center_y})"
+                            f"[EDGE] Found potential '{target}' at ({center_x}, {center_y}) in screenshot (physical pixels)"
+                        )
+
+                        # CRITICAL: Convert to logical pixels
+                        logical_x, logical_y = self._convert_to_logical_pixels(center_x, center_y)
+
+                        logger.info(
+                            f"[EDGE] Converted to logical pixels: ({logical_x}, {logical_y})"
                         )
 
                         return DetectionResult(
                             success=True,
                             method=self.name,
-                            coordinates=(center_x, center_y),
+                            coordinates=(logical_x, logical_y),
                             confidence=0.7,  # Lower confidence for heuristic
                             duration=time.time() - start_time,
-                            metadata={"area": area, "bounding_box": (x, y, w, h)}
+                            metadata={
+                                "area": area,
+                                "bounding_box": (x, y, w, h),
+                                "physical_coords": (center_x, center_y),
+                                "logical_coords": (logical_x, logical_y)
+                            }
                         )
 
             return DetectionResult(
@@ -1350,12 +1500,14 @@ class AdaptiveControlCenterClicker:
                 logger.debug(f"[ADAPTIVE] Method {method.name} not available, skipping")
                 continue
 
-            logger.info(f"[ADAPTIVE] Trying method: {method.name} (priority={method.priority})")
+            logger.info(f"[ADAPTIVE] 🔄 Trying method: {method.name} (priority={method.priority}, class={method.__class__.__name__})")
 
             try:
                 # Attempt detection
                 result = await method.detect(target, context)
                 detection_results.append(result)
+
+                logger.info(f"[ADAPTIVE] 📊 Method {method.name} result: success={result.success}, coords={result.coordinates}, confidence={result.confidence:.2%}")
 
                 if result.success:
                     # DEBUG: Which method is returning wrong coordinates

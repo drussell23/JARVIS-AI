@@ -179,18 +179,41 @@ Do not include any other text or explanation."""
         Click at the specified coordinates
 
         Args:
-            x: X coordinate
-            y: Y coordinate
+            x: X coordinate (in PHYSICAL pixels from screenshot)
+            y: Y coordinate (in PHYSICAL pixels from screenshot)
         """
         try:
-            logger.info(f"[DIRECT CLICKER] Clicking at ({x}, {y})")
+            logger.info(f"[DIRECT CLICKER] Received coordinates: ({x}, {y}) (physical pixels)")
 
-            # Move mouse and click
-            pyautogui.moveTo(x, y, duration=0.3)
+            # CRITICAL FIX: Screenshots are captured at physical pixel resolution (e.g., 2880x1800 on Retina)
+            # but PyAutoGUI works in logical pixels (e.g., 1440x900 on Retina).
+            # We MUST convert from physical to logical pixels!
+
+            try:
+                from AppKit import NSScreen
+                main_screen = NSScreen.mainScreen()
+                dpi_scale = main_screen.backingScaleFactor()
+            except:
+                dpi_scale = 1.0
+                logger.warning("[DIRECT CLICKER] Could not detect DPI scale, assuming 1.0x")
+
+            # Convert from physical to logical pixels
+            logical_x = int(round(x / dpi_scale))
+            logical_y = int(round(y / dpi_scale))
+
+            logger.info(
+                f"[DIRECT CLICKER] DPI correction: "
+                f"Physical ({x}, {y}) -> Logical ({logical_x}, {logical_y}) [scale={dpi_scale}x]"
+            )
+
+            logger.info(f"[DIRECT CLICKER] Clicking at ({logical_x}, {logical_y}) (logical pixels)")
+
+            # Move mouse and click using LOGICAL pixels
+            pyautogui.moveTo(logical_x, logical_y, duration=0.3)
             time.sleep(0.1)
             pyautogui.click()
 
-            logger.info(f"[DIRECT CLICKER] ✅ Click executed at ({x}, {y})")
+            logger.info(f"[DIRECT CLICKER] ✅ Click executed at ({logical_x}, {logical_y})")
 
         except Exception as e:
             logger.error(f"[DIRECT CLICKER] Click failed: {e}")

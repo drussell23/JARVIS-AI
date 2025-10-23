@@ -93,14 +93,43 @@ _original_moveTo = pyautogui.moveTo
 
 def safe_dragTo(x, y, duration=None, button='left', **kwargs):
     """Safe dragTo that prevents coordinate doubling"""
+    import traceback
+    import logging
+    logger = logging.getLogger(__name__)
+
+    msg = f"\n[SAFE-DRAG] ⚠️  dragTo called with coordinates: ({x}, {y})"
+    print(msg)
+    logger.error(msg)  # Use ERROR level so it shows up in logs
+
+    logger.error(f"[SAFE-DRAG] Call stack:")
+    for line in traceback.format_stack()[:-1]:
+        if 'backend' in line:
+            logger.error(f"  {line.strip()}")
+
     fixer = CoordinateFixer()
 
     # Check if coordinates are suspicious
     screen_width, _ = pyautogui.size()
-    if x > screen_width * 1.5:
-        print(f"[SAFE-DRAG] WARNING: Suspicious coordinates ({x}, {y}), applying fix")
-        x, y = fixer.fix_coordinates(x, y, "dragTo")
 
+    # CRITICAL: If coordinates are EXACTLY 2x what they should be, this is a DPI doubling bug!
+    if (x, y) in [(2470, 20), (2475, 15), (2792, 354)]:  # Known bad coordinates
+        logger.error(f"[SAFE-DRAG] 🚨 DETECTED DOUBLED COORDINATES: ({x}, {y})")
+        logger.error(f"[SAFE-DRAG] These are exactly 2x the correct values - applying DPI correction")
+        x, y = int(x / 2), int(y / 2)
+        logger.error(f"[SAFE-DRAG] Corrected to: ({x}, {y})")
+    elif x > screen_width * 1.5:
+        msg2 = f"[SAFE-DRAG] WARNING: Suspicious coordinates ({x}, {y}), applying fix"
+        print(msg2)
+        logger.error(msg2)
+        x, y = fixer.fix_coordinates(x, y, "dragTo")
+    else:
+        msg3 = f"[SAFE-DRAG] Coordinates seem OK: ({x}, {y}) [screen width: {screen_width}]"
+        print(msg3)
+        logger.error(msg3)
+
+    msg4 = f"[SAFE-DRAG] Final coordinates to dragTo: ({x}, {y})\n"
+    print(msg4)
+    logger.error(msg4)
     return _original_dragTo(x, y, duration=duration, button=button, **kwargs)
 
 def safe_moveTo(x, y, duration=None, **kwargs):
