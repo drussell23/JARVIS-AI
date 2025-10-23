@@ -2693,8 +2693,8 @@ const JarvisVoice = () => {
         </div>
       )}
 
-      {/* Transcript Display */}
-      {(transcript || response) && (
+      {/* Transcript Display - Always visible when there's activity */}
+      {(transcript || response || isProcessing || isJarvisSpeaking) && (
         <div className="jarvis-transcript">
           {transcript && (
             <div className="user-message">
@@ -2702,10 +2702,21 @@ const JarvisVoice = () => {
               <span className="message-text">{transcript}</span>
             </div>
           )}
-          {response && (
+          {(response || isProcessing || isJarvisSpeaking) && (
             <div className="jarvis-message">
               <span className="message-label">JARVIS:</span>
-              <span className="message-text" style={{ whiteSpace: 'pre-wrap' }}>{response}</span>
+              <span className="message-text" style={{ whiteSpace: 'pre-wrap' }}>
+                {isProcessing && !response && !isJarvisSpeaking ? (
+                  <span className="processing-indicator">Processing your request...</span>
+                ) : isJarvisSpeaking && response ? (
+                  <>
+                    {response}
+                    <span className="speaking-indicator"> 🎤</span>
+                  </>
+                ) : (
+                  response || ''
+                )}
+              </span>
             </div>
           )}
         </div>
