@@ -845,9 +845,19 @@ class AdvancedDisplayMonitor:
         logger.info(f"[DISPLAY MONITOR] Current state: connecting={list(self.connecting_displays)}, connected={list(self.connected_displays)}")
 
         # REAL-TIME VERIFICATION: Don't trust cached state - verify actual connection
+        with open("/tmp/jarvis_display_command.log", "a") as f:
+            f.write(f"[DISPLAY MONITOR] About to verify connection for {monitored.name}\n")
+
         from .display_state_verifier import get_display_verifier
         verifier = get_display_verifier()
+
+        with open("/tmp/jarvis_display_command.log", "a") as f:
+            f.write(f"[DISPLAY MONITOR] Calling verifier.verify_actual_connection...\n")
+
         actual_state = await verifier.verify_actual_connection(monitored.name)
+
+        with open("/tmp/jarvis_display_command.log", "a") as f:
+            f.write(f"[DISPLAY MONITOR] Verification complete: {actual_state.get('is_connected')}\n")
 
         logger.info(f"[DISPLAY MONITOR] Real-time verification for {monitored.name}: is_connected={actual_state['is_connected']}, confidence={actual_state['confidence']:.2f}")
 
@@ -892,23 +902,39 @@ class AdvancedDisplayMonitor:
         # Uses best available clicker: UAE > SAI > Adaptive > Basic
         # Total: ~2 seconds, 100% reliable, adapts when UI changes
         try:
-            # Use SIMPLE connector with hardcoded coordinates
-            from backend.display.simple_display_connector import get_simple_connector
+            with open("/tmp/jarvis_display_command.log", "a") as f:
+                f.write(f"[DISPLAY MONITOR] Attempting Strategy 1: Best available clicker\n")
 
-            logger.info(f"[DISPLAY MONITOR] 🥇 STRATEGY 1: SIMPLE HARDCODED COORDINATES")
-            logger.info(f"[DISPLAY MONITOR] Complete flow: Control Center → Screen Mirroring → {monitored.name}")
-            logger.info(f"[DISPLAY MONITOR] Using known logical pixel coordinates (fast & reliable!)")
+            # Use clicker factory to get best available clicker
+            from display.control_center_clicker_factory import get_best_clicker, get_clicker_info
 
-            strategies_attempted.append("simple_hardcoded")
+            # Log available clickers
+            clicker_info = get_clicker_info()
+            logger.info(f"[DISPLAY MONITOR] 🥇 STRATEGY 1: INTELLIGENT HYBRID")
+            logger.info(f"[DISPLAY MONITOR] Available clickers: UAE={clicker_info['uae_available']}, SAI={clicker_info['sai_available']}, Adaptive={clicker_info['adaptive_available']}, Basic={clicker_info['basic_available']}")
+            logger.info(f"[DISPLAY MONITOR] Recommended: {clicker_info['recommended'].upper()}")
 
-            # Get simple connector (hardcoded coordinates, no DPI confusion)
-            connector = get_simple_connector()
-            logger.info(f"[DISPLAY MONITOR] Using SimpleDisplayConnector")
-            logger.info(f"[DISPLAY MONITOR] Coordinates: (1235,10) → (1396,177) → (1223,115)")
+            strategies_attempted.append("intelligent_hybrid")
 
-            # Execute complete flow with hardcoded coordinates
-            logger.info(f"[DISPLAY MONITOR] Executing 3-click flow...")
-            result = await connector.connect_to_living_room_tv()
+            # Get best available clicker
+            clicker = get_best_clicker(vision_analyzer=None, enable_verification=True)
+            logger.info(f"[DISPLAY MONITOR] Using {clicker.__class__.__name__}")
+
+            # Execute connection flow
+            logger.info(f"[DISPLAY MONITOR] Connecting to {monitored.name}...")
+
+            with open("/tmp/jarvis_display_command.log", "a") as f:
+                f.write(f"[DISPLAY MONITOR] About to call clicker.connect_to_device('{monitored.name}')\n")
+
+            # Use async context manager if available, otherwise call directly
+            if hasattr(clicker, '__aenter__'):
+                async with clicker as c:
+                    result = await c.connect_to_device(monitored.name)
+            else:
+                result = await clicker.connect_to_device(monitored.name)
+
+            with open("/tmp/jarvis_display_command.log", "a") as f:
+                f.write(f"[DISPLAY MONITOR] connect_to_device() returned: {result}\n")
 
             if result.get('success'):
                 total_duration = result.get('duration', 0)
@@ -964,6 +990,10 @@ class AdvancedDisplayMonitor:
                 raise Exception(f"Could not connect to '{monitored.name}': {result.get('message')}")
 
         except Exception as e:
+            with open("/tmp/jarvis_display_command.log", "a") as f:
+                f.write(f"[DISPLAY MONITOR] Strategy 1 exception: {e}\n")
+                import traceback
+                f.write(f"{traceback.format_exc()}\n")
             logger.warning(f"[DISPLAY MONITOR] Direct coordinates error: {e}", exc_info=True)
             # Note: Don't release circuit breaker here - let it continue to other strategies
 

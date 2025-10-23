@@ -148,6 +148,28 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Optional, Dict, Any
 
+# DEBUG: Print location info
+print(f"[STARTUP-DEBUG] Running from: {os.path.abspath(__file__)}")
+print(f"[STARTUP-DEBUG] Working directory: {os.getcwd()}")
+print(f"[STARTUP-DEBUG] Python path: {sys.path[:3]}")  # First 3 entries
+
+# DEBUG: Run coordinate diagnostic
+try:
+    print("[STARTUP-DEBUG] Running coordinate diagnostic...")
+    exec(open('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/diagnose_coordinate_doubling.py').read())
+except Exception as e:
+    print(f"[STARTUP-DEBUG] Coordinate diagnostic failed: {e}")
+
+# DEBUG: Install PyAutoGUI intercept to track coordinate doubling
+try:
+    print("[STARTUP-DEBUG] Installing PyAutoGUI intercept...")
+    sys.path.insert(0, '/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent')
+    import pyautogui_intercept
+    pyautogui_intercept.install_intercept()
+    print("[STARTUP-DEBUG] ✅ PyAutoGUI intercept installed - logging to /tmp/pyautogui_intercept.log")
+except Exception as e:
+    print(f"[STARTUP-DEBUG] PyAutoGUI intercept failed: {e}")
+
 # Enable enhanced ML model logging
 try:
     from enable_ml_logging import configure_ml_logging

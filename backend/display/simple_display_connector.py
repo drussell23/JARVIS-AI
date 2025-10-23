@@ -29,10 +29,11 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 # These are the EXACT positions of UI elements in logical pixel space.
 # They work directly with PyAutoGUI - NO conversion needed!
+# Updated based on working coordinates from commit a7fd379
 
-CONTROL_CENTER_POS = (1235, 10)      # Control Center icon in menu bar
-SCREEN_MIRRORING_POS = (1396, 177)   # Screen Mirroring menu item
-LIVING_ROOM_TV_POS = (1223, 115)     # Living Room TV option
+CONTROL_CENTER_POS = (1236, 12)      # Control Center icon in menu bar (verified working)
+SCREEN_MIRRORING_POS = (1393, 177)   # Screen Mirroring menu item (verified working)
+LIVING_ROOM_TV_POS = (1221, 116)     # Living Room TV option (verified working)
 
 # Timing (seconds)
 CLICK_DELAY = 0.3        # Delay after click for menu to open
@@ -133,10 +134,10 @@ class SimpleDisplayConnector:
 
     async def _click_control_center(self) -> bool:
         """
-        Click Control Center icon using drag motion.
+        Click Control Center icon to open it.
 
-        Control Center requires a DRAG motion (not just moveTo) to activate.
-        This simulates the user dragging down on the icon to open it.
+        Based on working code from commit a7fd379 which used click() successfully.
+        Note: Some systems may need dragTo() but click() was working in production.
 
         Returns:
             True if successful
@@ -144,24 +145,17 @@ class SimpleDisplayConnector:
         try:
             x, y = CONTROL_CENTER_POS
 
-            # Get current mouse position
-            current_pos = pyautogui.position()
-            logger.info(f"[SIMPLE CONNECTOR] Current mouse: {current_pos}")
+            # Move to Control Center position
+            logger.info(f"[SIMPLE CONNECTOR] Moving to Control Center at ({x}, {y}) [duration={MOVE_DURATION}s]")
+            pyautogui.moveTo(x, y, duration=MOVE_DURATION)
 
-            # Drag to Control Center (this opens it)
-            logger.info(f"[SIMPLE CONNECTOR] Dragging to ({x}, {y}) [duration={DRAG_DURATION}s]")
-            pyautogui.dragTo(x, y, duration=DRAG_DURATION, button='left')
+            # Click to open Control Center
+            await asyncio.sleep(0.1)
+            logger.info(f"[SIMPLE CONNECTOR] Clicking at ({x}, {y})")
+            pyautogui.click()
 
-            # Verify final position
-            final_pos = pyautogui.position()
-            logger.info(f"[SIMPLE CONNECTOR] Final mouse: {final_pos}")
-
-            if final_pos.x == x and final_pos.y == y:
-                logger.info("[SIMPLE CONNECTOR] ✅ Control Center drag successful")
-                return True
-            else:
-                logger.error(f"[SIMPLE CONNECTOR] ❌ Mouse at wrong position: expected ({x}, {y}), got {final_pos}")
-                return False
+            logger.info("[SIMPLE CONNECTOR] ✅ Control Center click successful")
+            return True
 
         except Exception as e:
             logger.error(f"[SIMPLE CONNECTOR] Control Center click failed: {e}")

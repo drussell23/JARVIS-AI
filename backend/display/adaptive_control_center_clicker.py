@@ -29,20 +29,21 @@ Date: October 2025
 Version: 1.0.0
 """
 
-# CRITICAL: Apply Retina coordinate fix BEFORE any other imports
+# DISABLED: The coordinate fix is causing problems
+# It's not properly handling our coordinates and may be causing the doubling
 import sys
 from pathlib import Path
-try:
-    # Add backend to path if needed
-    backend_path = Path(__file__).parent.parent
-    if str(backend_path) not in sys.path:
-        sys.path.insert(0, str(backend_path))
-
-    from display.coordinate_fix import apply_coordinate_fix
-    apply_coordinate_fix()
-    print("[ADAPTIVE] ✅ Applied Retina coordinate fix globally")
-except Exception as e:
-    print(f"[ADAPTIVE] ⚠️ Could not apply coordinate fix: {e}")
+# try:
+#     # Add backend to path if needed
+#     backend_path = Path(__file__).parent.parent
+#     if str(backend_path) not in sys.path:
+#         sys.path.insert(0, str(backend_path))
+#
+#     from display.coordinate_fix import apply_coordinate_fix
+#     apply_coordinate_fix()
+#     print("[ADAPTIVE] ✅ Applied Retina coordinate fix globally")
+# except Exception as e:
+#     print(f"[ADAPTIVE] ⚠️ Could not apply coordinate fix: {e}")
 
 import asyncio
 import logging

@@ -38,6 +38,18 @@ import time
 import logging
 from typing import Dict, Any, Optional
 
+# DEBUG: Import coordinate debugging
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+try:
+    from debug_jarvis_coordinates import debug_inject
+    debug_inject()
+    logger = logging.getLogger(__name__)
+    logger.info("[DEBUG] Coordinate debugging enabled in control_center_clicker.py - logging to /tmp/jarvis_coordinate_debug.log")
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
 
@@ -79,13 +91,17 @@ class ControlCenterClicker:
     START_MIRRORING_X = 932
     START_MIRRORING_Y = 468
 
-    def __init__(self, vision_analyzer=None, use_adaptive: bool = True):
+    def __init__(self, vision_analyzer=None, use_adaptive: bool = False):
         """
         Initialize Control Center clicker
 
         Args:
             vision_analyzer: Optional Claude Vision analyzer for OCR detection
-            use_adaptive: Use adaptive detection (default: True)
+            use_adaptive: Use adaptive detection (default: FALSE - using simple working version)
+
+        IMPORTANT: Changed default to use_adaptive=False because the adaptive version
+        has coordinate issues (returns 2475,15 instead of 1237,7). Using simple version
+        from commit a7fd379 which was working.
         """
         self.logger = logger
         self.use_adaptive = use_adaptive
@@ -104,7 +120,17 @@ class ControlCenterClicker:
 
             self.logger.info("[CONTROL CENTER] Using adaptive detection (v2.0)")
         else:
-            self.logger.warning("[CONTROL CENTER] Using legacy hardcoded coordinates (not recommended)")
+            # Use the WORKING coordinates from commit a7fd379
+            # But something is doubling them somewhere...
+            self.CONTROL_CENTER_X = 1236
+            self.CONTROL_CENTER_Y = 12
+            self.SCREEN_MIRRORING_X = 1393
+            self.SCREEN_MIRRORING_Y = 177
+            self.LIVING_ROOM_TV_X = 1221
+            self.LIVING_ROOM_TV_Y = 116
+
+            self.logger.info("[CONTROL CENTER] Using simple hardcoded coordinates (but they're getting doubled somewhere)")
+            self.logger.info(f"[CONTROL CENTER] Sending ({self.CONTROL_CENTER_X},{self.CONTROL_CENTER_Y}) but mouse goes to ~(2475,15)")
 
     def _run_async(self, coro):
         """Helper to run async coroutine in sync context"""
@@ -737,13 +763,16 @@ class ControlCenterClicker:
 # Singleton instance
 _control_center_clicker = None
 
-def get_control_center_clicker(vision_analyzer=None, use_adaptive: bool = True) -> ControlCenterClicker:
+def get_control_center_clicker(vision_analyzer=None, use_adaptive: bool = False) -> ControlCenterClicker:
     """
     Get singleton Control Center clicker instance
 
     Args:
         vision_analyzer: Optional Claude Vision analyzer
-        use_adaptive: Use adaptive detection (default: True, RECOMMENDED)
+        use_adaptive: Use adaptive detection (default: False - using simple version)
+
+    IMPORTANT: Changed default to use_adaptive=False because adaptive version has
+    coordinate issues. Using simple hardcoded coordinates from commit a7fd379 which work.
 
     Returns:
         ControlCenterClicker instance

@@ -3464,6 +3464,14 @@ class UnifiedCommandProcessor:
         command_lower = command_text.lower()
         logger.info(f"[DISPLAY] Processing display command: '{command_text}'")
 
+        # DEBUG: Log to file
+        with open("/tmp/jarvis_display_command.log", "a") as f:
+            f.write(f"\n{'='*80}\n")
+            f.write(f"[DISPLAY] _execute_display_command called\n")
+            f.write(f"  Command: '{command_text}'\n")
+            import datetime
+            f.write(f"  Time: {datetime.datetime.now()}\n")
+
         # NEW: Try display reference handler first for intelligent voice command resolution
         display_ref = None
         if self.display_reference_handler:
@@ -3686,8 +3694,20 @@ class UnifiedCommandProcessor:
 
             logger.info(f"[DISPLAY] Connecting to '{display_name}' (id: {display_id}) in {mode} mode...")
 
+            # DEBUG: Log to file
+            with open("/tmp/jarvis_display_command.log", "a") as f:
+                f.write(f"\n{'='*60}\n")
+                f.write(f"[DISPLAY] About to call monitor.connect_display('{display_id}')\n")
+                f.write(f"  Display name: {display_name}\n")
+                f.write(f"  Mode: {mode}\n")
+
             # Connect to display using display_id
             result = await monitor.connect_display(display_id)
+
+            # DEBUG: Log result
+            with open("/tmp/jarvis_display_command.log", "a") as f:
+                f.write(f"[DISPLAY] Result: {result.get('success')}\n")
+                f.write(f"  Message: {result.get('message', 'none')}\n")
 
             if result.get("success"):
                 # Check if already connected (cached) or connection in progress
