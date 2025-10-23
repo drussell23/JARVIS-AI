@@ -608,15 +608,16 @@ class AdvancedDisplayMonitor:
                         current_available.add(monitored.id)
                         logger.debug(f"[DISPLAY MONITOR] Check: matched '{display_name}' to '{monitored.name}' (id: {monitored.id})")
 
-                        # New display detected - only announce if initial scan is complete
+                        # New display detected - announce and set pending prompt
                         if monitored.id not in self.available_displays:
                             if self.initial_scan_complete:
                                 # Display became available after initial scan - announce it!
                                 logger.info(f"[DISPLAY MONITOR] STATE CHANGE: {monitored.name} became AVAILABLE")
                                 await self._handle_display_detected(monitored, display_name)
                             else:
-                                # Initial scan - just log it quietly
-                                logger.info(f"[DISPLAY MONITOR] Initial scan found: {monitored.name} (no announcement)")
+                                # Initial scan - STILL announce it so user can respond!
+                                logger.info(f"[DISPLAY MONITOR] Initial scan found: {monitored.name} - will prompt user")
+                                await self._handle_display_detected(monitored, display_name)
 
             # Check for lost displays (only after initial scan)
             if self.initial_scan_complete:
