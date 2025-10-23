@@ -304,12 +304,38 @@ class DisplayMonitorService:
                 # Register user override
                 self._set_user_override(display_name)
                 self._clear_pending_prompt()
-                
+
+                # Generate dynamic response using Claude if available
+                try:
+                    from api.vision_command_handler import vision_command_handler
+                    if vision_command_handler and hasattr(vision_command_handler, 'intelligence'):
+                        prompt = f"""The user was asked: "Sir, I see your {display_name} is now available. Would you like to extend your display to it?"
+
+They responded: "{response}"
+
+Generate a brief, natural JARVIS-style acknowledgment that:
+1. Confirms you understood they don't want to connect
+2. Is brief and conversational (1-2 sentences max)
+3. Uses "sir" appropriately
+4. Shows understanding without being verbose
+
+Respond ONLY with JARVIS's exact words, no quotes or formatting."""
+
+                        claude_response = await vision_command_handler.intelligence._get_claude_vision_response(
+                            None, prompt
+                        )
+                        dynamic_response = claude_response.get("response", f"Understood, sir. I won't ask about {display_name} for the next hour.")
+                    else:
+                        dynamic_response = f"Understood, sir. I won't ask about {display_name} for the next hour."
+                except Exception as e:
+                    self.logger.warning(f"Could not generate dynamic response: {e}")
+                    dynamic_response = f"Understood, sir. I won't ask about {display_name} for the next hour."
+
                 return {
                     "handled": True,
                     "action": "skip",
                     "display_name": display_name,
-                    "response": f"Understood, sir. I won't ask about {display_name} for the next hour."
+                    "response": dynamic_response
                 }
             
             else:
@@ -366,9 +392,33 @@ class DisplayMonitorService:
                 self.total_connections += 1
                 self.logger.info(f"[DISPLAY MONITOR] Connected to {display_name}")
 
+                # Generate dynamic success response
+                try:
+                    from api.vision_command_handler import vision_command_handler
+                    if vision_command_handler and hasattr(vision_command_handler, 'intelligence'):
+                        prompt = f"""The user asked you to connect to {display_name}. You successfully connected.
+
+Generate a brief, natural JARVIS-style confirmation that:
+1. Confirms the connection is complete
+2. Is brief and conversational (1 sentence)
+3. Uses "sir" appropriately
+4. Sounds confident and efficient
+
+Respond ONLY with JARVIS's exact words, no quotes or formatting."""
+
+                        claude_response = await vision_command_handler.intelligence._get_claude_vision_response(
+                            None, prompt
+                        )
+                        success_response = claude_response.get("response", f"Extending to {display_name}... Done, sir.")
+                    else:
+                        success_response = f"Extending to {display_name}... Done, sir."
+                except Exception as e:
+                    self.logger.warning(f"Could not generate dynamic response: {e}")
+                    success_response = f"Extending to {display_name}... Done, sir."
+
                 return {
                     "success": True,
-                    "response": f"Extending to {display_name}... Done, sir.",
+                    "response": success_response,
                     "method": result.get("method", "adaptive_detection")
                 }
             else:

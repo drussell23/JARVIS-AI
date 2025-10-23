@@ -2176,7 +2176,26 @@ class UnifiedCommandProcessor:
                         }
 
                     # Analyze the screen with the enhanced query
-                    result = await handler.analyze_screen(resolved_query.get("query", command_text))
+                    try:
+                        result = await handler.analyze_screen(resolved_query.get("query", command_text))
+
+                        # Ensure result has proper format
+                        if not isinstance(result, dict):
+                            logger.error(f"[VISION] analyze_screen returned non-dict: {type(result)}")
+                            result = {"handled": True, "response": str(result)}
+
+                        # Ensure handled key exists
+                        if "handled" not in result:
+                            logger.warning("[VISION] analyze_screen missing 'handled' key, adding it")
+                            result["handled"] = True
+
+                    except Exception as e:
+                        logger.error(f"[VISION] analyze_screen failed: {e}", exc_info=True)
+                        result = {
+                            "handled": True,
+                            "response": f"I encountered an error analyzing your screen: {str(e)}",
+                            "error": True
+                        }
 
                     # Add comprehensive resolution context to result
                     if resolved_query.get("resolved"):
@@ -2198,12 +2217,14 @@ class UnifiedCommandProcessor:
                             f"Confidence: {resolved_query.get('confidence')}"
                         )
 
-                return {
+                vision_response = {
                     "success": result.get("handled", False),
                     "response": result.get("response", ""),
                     "command_type": command_type.value,
                     **result,
                 }
+                logger.info(f"[VISION] Returning response - success={vision_response['success']}, response_len={len(vision_response.get('response', ''))}")
+                return vision_response
             elif command_type == CommandType.WEATHER:
                 result = await handler.get_weather(command_text)
                 return {
