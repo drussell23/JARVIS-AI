@@ -1298,7 +1298,7 @@ def get_uae_engine(
         if sai_engine is None:
             sai_engine = get_sai_engine(
                 vision_analyzer=vision_analyzer,
-                monitoring_interval=10.0
+                monitoring_interval=5.0  # Enhanced 24/7 mode: 5s interval
             )
 
         _uae_instance = UnifiedAwarenessEngine(

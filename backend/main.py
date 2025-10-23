@@ -978,10 +978,10 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"⚠️ Could not start Goal Inference tasks: {e}")
 
-    # Initialize UAE (Unified Awareness Engine) with SAI + Learning Database integration
+    # Initialize UAE (Unified Awareness Engine) with SAI + Learning Database + Yabai integration
     try:
-        logger.info("🧠 Initializing UAE (Unified Awareness Engine) with Learning Database...")
-        from intelligence.uae_integration import initialize_uae, get_uae, get_learning_db
+        logger.info("🧠 Initializing UAE (Unified Awareness Engine) with Learning Database + Yabai...")
+        from intelligence.uae_integration import initialize_uae, get_uae, get_learning_db, get_yabai
 
         # Get vision analyzer if available
         vision_analyzer = None
@@ -989,18 +989,20 @@ async def lifespan(app: FastAPI):
         if chatbots and chatbots.get("vision_chatbot"):
             vision_analyzer = chatbots["vision_chatbot"]
 
-        # Initialize UAE with SAI + Learning Database integration
-        logger.info("🔧 Initializing full intelligence stack...")
-        logger.info("   Step 1/4: Learning Database initialization...")
-        logger.info("   Step 2/4: Situational Awareness Engine (SAI)...")
-        logger.info("   Step 3/4: Context Intelligence Layer...")
-        logger.info("   Step 4/4: Decision Fusion Engine...")
+        # Initialize UAE with SAI + Learning Database + Yabai integration
+        logger.info("🔧 Initializing FULL intelligence stack (24/7 mode)...")
+        logger.info("   Step 1/5: Learning Database initialization...")
+        logger.info("   Step 2/5: Yabai Spatial Intelligence (workspace monitoring)...")
+        logger.info("   Step 3/5: Situational Awareness Engine (SAI)...")
+        logger.info("   Step 4/5: Context Intelligence Layer...")
+        logger.info("   Step 5/5: Decision Fusion Engine + 24/7 monitoring...")
 
         uae = await initialize_uae(
             vision_analyzer=vision_analyzer,
-            sai_monitoring_interval=10.0,  # Monitor every 10 seconds
+            sai_monitoring_interval=5.0,  # Enhanced 24/7 mode: 5 seconds
             enable_auto_start=True,  # Start monitoring immediately
-            enable_learning_db=True  # Enable persistent memory
+            enable_learning_db=True,  # Enable persistent memory
+            enable_yabai=True  # Enable Yabai spatial intelligence
         )
 
         if uae and uae.is_active:
@@ -1014,16 +1016,23 @@ async def lifespan(app: FastAPI):
                 # Get Learning DB metrics
                 try:
                     metrics = await learning_db.get_learning_metrics()
-                    logger.info("✅ UAE + SAI + Learning Database initialized successfully")
+
+                    # Get Yabai instance and metrics
+                    yabai = get_yabai()
+                    yabai_active = yabai is not None and yabai.yabai_available
+
+                    logger.info("✅ UAE + SAI + Learning Database + Yabai initialized successfully")
                     logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-                    logger.info("   🧠 INTELLIGENCE STACK: FULLY OPERATIONAL")
+                    logger.info("   🧠 INTELLIGENCE STACK: FULLY OPERATIONAL (24/7 MODE)")
                     logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-                    logger.info("   • SAI (Situational Awareness): ✅ Active (10s monitoring)")
+                    logger.info("   • SAI (Situational Awareness): ✅ Active (5s monitoring - 24/7)")
                     logger.info("   • Context Intelligence: ✅ Active (with persistent memory)")
                     logger.info("   • Decision Fusion Engine: ✅ Active (confidence-weighted)")
                     logger.info("   • Learning Database: ✅ Active (async + ChromaDB)")
                     logger.info("   • Predictive Intelligence: ✅ Enabled (temporal patterns)")
                     logger.info("   • Cross-Session Memory: ✅ Enabled (survives restarts)")
+                    logger.info("   • 24/7 Behavioral Learning: ✅ Enabled (always watching)")
+                    logger.info(f"   • Yabai Spatial Intelligence: {'✅ Active (workspace monitoring)' if yabai_active else '⚠️  Not available'}")
                     logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                     logger.info("   📊 LEARNING DATABASE METRICS:")
                     logger.info(f"   • Total Patterns: {metrics['patterns']['total_patterns']}")
@@ -1688,10 +1697,10 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Failed to stop Goal Inference: {e}")
 
-    # Shutdown UAE (Unified Awareness Engine) + Learning Database
+    # Shutdown UAE (Unified Awareness Engine) + Learning Database + Yabai
     if hasattr(app.state, "uae_engine"):
         try:
-            from intelligence.uae_integration import shutdown_uae, get_learning_db
+            from intelligence.uae_integration import shutdown_uae, get_learning_db, get_yabai
 
             logger.info("🧠 Shutting down Intelligence Stack...")
 
@@ -1709,14 +1718,29 @@ async def lifespan(app: FastAPI):
                 except Exception as e:
                     logger.debug(f"Could not get final metrics: {e}")
 
-            # Shutdown UAE + Learning DB
+            # Get Yabai metrics before shutdown
+            yabai = get_yabai()
+            if yabai and yabai.is_monitoring:
+                try:
+                    yabai_metrics = yabai.get_metrics()
+                    logger.info("   📊 Final Yabai Spatial Intelligence Stats:")
+                    logger.info(f"   • Spaces Monitored: {yabai_metrics['spaces_monitored']}")
+                    logger.info(f"   • Windows Tracked: {yabai_metrics['windows_tracked']}")
+                    logger.info(f"   • Space Changes: {yabai_metrics['total_space_changes']}")
+                    logger.info(f"   • Monitoring Cycles: {yabai_metrics['monitoring_cycles']}")
+                    logger.info(f"   • Session Duration: {yabai_metrics['session_duration_minutes']:.1f} minutes")
+                except Exception as e:
+                    logger.debug(f"Could not get Yabai metrics: {e}")
+
+            # Shutdown UAE + Learning DB + Yabai
             await shutdown_uae()
 
             logger.info("✅ UAE (Unified Awareness Engine) stopped")
             logger.info("✅ SAI (Situational Awareness) stopped")
+            logger.info("✅ Yabai (Spatial Intelligence) stopped")
             logger.info("✅ Learning Database closed (all data persisted)")
         except Exception as e:
-            logger.error(f"Failed to stop UAE + Learning Database: {e}")
+            logger.error(f"Failed to stop UAE + Learning Database + Yabai: {e}")
 
     # Stop Voice Unlock system
     voice_unlock = components.get("voice_unlock") or {}

@@ -464,6 +464,137 @@ class JARVISLearningDatabase:
                 )
             """)
 
+            # ============================================================================
+            # 24/7 BEHAVIORAL LEARNING TABLES - Enhanced Workspace Tracking
+            # ============================================================================
+
+            # Workspace/Space tracking (Yabai integration)
+            await cursor.execute("""
+                CREATE TABLE IF NOT EXISTS workspace_usage (
+                    usage_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    space_id INTEGER NOT NULL,
+                    space_label TEXT,
+                    app_name TEXT NOT NULL,
+                    window_title TEXT,
+                    window_position JSON,
+                    focus_duration_seconds REAL,
+                    timestamp TIMESTAMP,
+                    day_of_week INTEGER,
+                    hour_of_day INTEGER,
+                    is_fullscreen BOOLEAN DEFAULT 0,
+                    metadata JSON
+                )
+            """)
+
+            # App usage patterns (24/7 tracking)
+            await cursor.execute("""
+                CREATE TABLE IF NOT EXISTS app_usage_patterns (
+                    pattern_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    app_name TEXT NOT NULL,
+                    space_id INTEGER,
+                    usage_frequency INTEGER DEFAULT 1,
+                    avg_session_duration REAL,
+                    total_usage_time REAL,
+                    typical_time_of_day INTEGER,
+                    typical_day_of_week INTEGER,
+                    last_used TIMESTAMP,
+                    confidence REAL DEFAULT 0.5,
+                    metadata JSON,
+                    UNIQUE(app_name, space_id, typical_time_of_day, typical_day_of_week)
+                )
+            """)
+
+            # User workflows (sequential action patterns)
+            await cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_workflows (
+                    workflow_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    workflow_name TEXT,
+                    action_sequence JSON NOT NULL,
+                    space_sequence JSON,
+                    app_sequence JSON,
+                    frequency INTEGER DEFAULT 1,
+                    avg_duration REAL,
+                    success_rate REAL DEFAULT 1.0,
+                    first_seen TIMESTAMP,
+                    last_seen TIMESTAMP,
+                    time_of_day_pattern JSON,
+                    confidence REAL DEFAULT 0.5,
+                    metadata JSON
+                )
+            """)
+
+            # Space transitions (movement between Spaces)
+            await cursor.execute("""
+                CREATE TABLE IF NOT EXISTS space_transitions (
+                    transition_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    from_space_id INTEGER NOT NULL,
+                    to_space_id INTEGER NOT NULL,
+                    trigger_app TEXT,
+                    trigger_action TEXT,
+                    frequency INTEGER DEFAULT 1,
+                    avg_time_between_seconds REAL,
+                    timestamp TIMESTAMP,
+                    hour_of_day INTEGER,
+                    day_of_week INTEGER,
+                    metadata JSON
+                )
+            """)
+
+            # Behavioral patterns (high-level user habits)
+            await cursor.execute("""
+                CREATE TABLE IF NOT EXISTS behavioral_patterns (
+                    behavior_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    behavior_type TEXT NOT NULL,
+                    behavior_description TEXT,
+                    pattern_data JSON NOT NULL,
+                    frequency INTEGER DEFAULT 1,
+                    confidence REAL DEFAULT 0.5,
+                    temporal_pattern JSON,
+                    contextual_triggers JSON,
+                    first_observed TIMESTAMP,
+                    last_observed TIMESTAMP,
+                    prediction_accuracy REAL,
+                    metadata JSON
+                )
+            """)
+
+            # Temporal patterns (time-based behaviors for leap years too!)
+            await cursor.execute("""
+                CREATE TABLE IF NOT EXISTS temporal_patterns (
+                    temporal_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    pattern_type TEXT NOT NULL,
+                    time_of_day INTEGER,
+                    day_of_week INTEGER,
+                    day_of_month INTEGER,
+                    month_of_year INTEGER,
+                    is_leap_year BOOLEAN DEFAULT 0,
+                    action_type TEXT NOT NULL,
+                    target TEXT,
+                    frequency INTEGER DEFAULT 1,
+                    confidence REAL DEFAULT 0.5,
+                    last_occurrence TIMESTAMP,
+                    metadata JSON
+                )
+            """)
+
+            # Proactive suggestions (what JARVIS should suggest)
+            await cursor.execute("""
+                CREATE TABLE IF NOT EXISTS proactive_suggestions (
+                    suggestion_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    suggestion_type TEXT NOT NULL,
+                    suggestion_text TEXT NOT NULL,
+                    trigger_pattern_id TEXT,
+                    confidence REAL NOT NULL,
+                    times_suggested INTEGER DEFAULT 0,
+                    times_accepted INTEGER DEFAULT 0,
+                    times_rejected INTEGER DEFAULT 0,
+                    acceptance_rate REAL,
+                    created_at TIMESTAMP,
+                    last_suggested TIMESTAMP,
+                    metadata JSON
+                )
+            """)
+
             # Performance indexes
             await cursor.execute("CREATE INDEX IF NOT EXISTS idx_goals_type ON goals(goal_type)")
             await cursor.execute("CREATE INDEX IF NOT EXISTS idx_goals_created ON goals(created_at)")
@@ -475,6 +606,21 @@ class JARVISLearningDatabase:
             await cursor.execute("CREATE INDEX IF NOT EXISTS idx_patterns_hash ON patterns(pattern_hash)")
             await cursor.execute("CREATE INDEX IF NOT EXISTS idx_display_patterns_context ON display_patterns(context_hash)")
             await cursor.execute("CREATE INDEX IF NOT EXISTS idx_display_patterns_time ON display_patterns(connection_time, day_of_week)")
+
+            # Indexes for 24/7 behavioral learning tables
+            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_workspace_usage_space ON workspace_usage(space_id, timestamp)")
+            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_workspace_usage_app ON workspace_usage(app_name, timestamp)")
+            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_workspace_usage_time ON workspace_usage(hour_of_day, day_of_week)")
+            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_app_usage_app ON app_usage_patterns(app_name)")
+            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_app_usage_space ON app_usage_patterns(space_id)")
+            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_app_usage_time ON app_usage_patterns(typical_time_of_day, typical_day_of_week)")
+            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_workflows_frequency ON user_workflows(frequency DESC)")
+            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_space_transitions_from ON space_transitions(from_space_id, timestamp)")
+            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_space_transitions_to ON space_transitions(to_space_id, timestamp)")
+            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_behavioral_patterns_type ON behavioral_patterns(behavior_type)")
+            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_temporal_patterns_time ON temporal_patterns(time_of_day, day_of_week)")
+            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_temporal_patterns_leap ON temporal_patterns(is_leap_year)")
+            await cursor.execute("CREATE INDEX IF NOT EXISTS idx_suggestions_confidence ON proactive_suggestions(confidence DESC)")
 
         await self.db.commit()
         logger.info("SQLite database initialized with enhanced async schema")
