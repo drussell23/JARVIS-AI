@@ -1718,26 +1718,67 @@ async def lifespan(app: FastAPI):
                 except Exception as e:
                     logger.debug(f"Could not get final metrics: {e}")
 
-            # Get Yabai metrics before shutdown
+            # Get Phase 2 metrics before shutdown
+            logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            logger.info("   📊 PHASE 2 INTELLIGENCE STACK - FINAL STATS")
+            logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+            # Yabai metrics
             yabai = get_yabai()
             if yabai and yabai.is_monitoring:
                 try:
                     yabai_metrics = yabai.get_metrics()
-                    logger.info("   📊 Final Yabai Spatial Intelligence Stats:")
-                    logger.info(f"   • Spaces Monitored: {yabai_metrics['spaces_monitored']}")
-                    logger.info(f"   • Windows Tracked: {yabai_metrics['windows_tracked']}")
-                    logger.info(f"   • Space Changes: {yabai_metrics['total_space_changes']}")
-                    logger.info(f"   • Monitoring Cycles: {yabai_metrics['monitoring_cycles']}")
-                    logger.info(f"   • Session Duration: {yabai_metrics['session_duration_minutes']:.1f} minutes")
+                    logger.info("   🗺️  Yabai Spatial Intelligence:")
+                    logger.info(f"      • Spaces Monitored: {yabai_metrics['spaces_monitored']}")
+                    logger.info(f"      • Windows Tracked: {yabai_metrics['windows_tracked']}")
+                    logger.info(f"      • Space Changes: {yabai_metrics['total_space_changes']}")
+                    logger.info(f"      • Monitoring Cycles: {yabai_metrics['monitoring_cycles']}")
+                    logger.info(f"      • Events Emitted: {yabai_metrics.get('events_emitted', 0)}")
+                    logger.info(f"      • Session Duration: {yabai_metrics['session_duration_minutes']:.1f} minutes")
                 except Exception as e:
                     logger.debug(f"Could not get Yabai metrics: {e}")
 
-            # Shutdown UAE + Learning DB + Yabai
+            # Pattern Learner metrics
+            from intelligence.uae_integration import get_pattern_learner_sync
+            pattern_learner = get_pattern_learner_sync()
+            if pattern_learner:
+                try:
+                    pl_stats = pattern_learner.get_statistics()
+                    logger.info("   🧠 Workspace Pattern Learner (ML):")
+                    logger.info(f"      • Total Patterns Learned: {pl_stats['total_patterns']}")
+                    logger.info(f"      • Workflows Detected: {pl_stats['workflows_detected']}")
+                    logger.info(f"      • Temporal Patterns: {pl_stats['temporal_patterns']}")
+                    logger.info(f"      • Spatial Preferences: {pl_stats['spatial_preferences']}")
+                    logger.info(f"      • Predictions Generated: {pl_stats['predictions_generated']}")
+                    logger.info(f"      • ML Clustering Runs: {pl_stats['clustering_runs']}")
+                except Exception as e:
+                    logger.debug(f"Could not get Pattern Learner stats: {e}")
+
+            # Bridge metrics
+            from intelligence.uae_integration import get_integration_bridge
+            bridge = get_integration_bridge()
+            if bridge and bridge.is_active:
+                try:
+                    bridge_metrics = bridge.get_metrics()
+                    logger.info("   🔗 Yabai ↔ SAI Integration Bridge:")
+                    logger.info(f"      • Events Bridged: {bridge_metrics['events_bridged']}")
+                    logger.info(f"      • Yabai → SAI: {bridge_metrics['yabai_to_sai']}")
+                    logger.info(f"      • SAI → Yabai: {bridge_metrics['sai_to_yabai']}")
+                    logger.info(f"      • Contexts Enriched: {bridge_metrics['contexts_enriched']}")
+                    logger.info(f"      • Actions Coordinated: {bridge_metrics['actions_coordinated']}")
+                except Exception as e:
+                    logger.debug(f"Could not get Bridge metrics: {e}")
+
+            logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+            # Shutdown UAE + Learning DB + Yabai + Phase 2
             await shutdown_uae()
 
             logger.info("✅ UAE (Unified Awareness Engine) stopped")
             logger.info("✅ SAI (Situational Awareness) stopped")
             logger.info("✅ Yabai (Spatial Intelligence) stopped")
+            logger.info("✅ Pattern Learner (ML) finalized")
+            logger.info("✅ Integration Bridge (Yabai↔SAI) stopped")
             logger.info("✅ Learning Database closed (all data persisted)")
         except Exception as e:
             logger.error(f"Failed to stop UAE + Learning Database + Yabai: {e}")

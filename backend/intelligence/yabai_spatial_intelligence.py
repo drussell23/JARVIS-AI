@@ -30,13 +30,46 @@ import subprocess
 import json
 import time
 from datetime import datetime
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, Callable
 from dataclasses import dataclass, asdict
 from collections import defaultdict, deque
 from pathlib import Path
+from enum import Enum
 import calendar
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Event System
+# ============================================================================
+
+class YabaiEventType(Enum):
+    """Yabai event types for event-driven monitoring"""
+    SPACE_CHANGED = "space_changed"
+    WINDOW_FOCUSED = "window_focused"
+    WINDOW_CREATED = "window_created"
+    WINDOW_DESTROYED = "window_destroyed"
+    WINDOW_MOVED = "window_moved"
+    WINDOW_RESIZED = "window_resized"
+    WINDOW_MINIMIZED = "window_minimized"
+    WINDOW_DEMINIMIZED = "window_deminimized"
+    APP_LAUNCHED = "app_launched"
+    APP_TERMINATED = "app_terminated"
+    DISPLAY_CHANGED = "display_changed"
+    MISSION_CONTROL_ENTER = "mission_control_enter"
+    MISSION_CONTROL_EXIT = "mission_control_exit"
+
+
+@dataclass
+class YabaiEvent:
+    """Event data from Yabai"""
+    event_type: YabaiEventType
+    timestamp: float
+    space_id: Optional[int]
+    window_id: Optional[int]
+    app_name: Optional[str]
+    metadata: Dict[str, Any]
 
 
 # ============================================================================
@@ -140,6 +173,16 @@ class YabaiSpatialIntelligence:
         # Space transition tracking
         self.space_transition_history: deque = deque(maxlen=500)
 
+        # Event-driven architecture (Phase 2)
+        self.event_listeners: Dict[YabaiEventType, List[Callable]] = defaultdict(list)
+        self.event_queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
+        self.event_processing_task: Optional[asyncio.Task] = None
+        self.event_history: deque = deque(maxlen=2000)
+
+        # Window state tracking for event detection
+        self.previous_window_state: Dict[int, Dict] = {}
+        self.previous_app_list: set = set()
+
         # Metrics
         self.metrics = {
             'total_space_changes': 0,
@@ -147,7 +190,9 @@ class YabaiSpatialIntelligence:
             'total_sessions_tracked': 0,
             'spaces_monitored': 0,
             'windows_tracked': 0,
-            'monitoring_cycles': 0
+            'monitoring_cycles': 0,
+            'events_processed': 0,
+            'events_emitted': 0
         }
 
         # Check Yabai availability
@@ -157,6 +202,7 @@ class YabaiSpatialIntelligence:
         logger.info(f"[YABAI-SI] Yabai available: {self.yabai_available}")
         logger.info(f"[YABAI-SI] 24/7 mode: {self.enable_24_7_mode}")
         logger.info(f"[YABAI-SI] Monitoring interval: {self.monitoring_interval}s")
+        logger.info(f"[YABAI-SI] Event-driven architecture: ENABLED")
 
     def _check_yabai(self) -> bool:
         """Check if Yabai is installed and accessible"""
@@ -172,8 +218,231 @@ class YabaiSpatialIntelligence:
             logger.warning(f"[YABAI-SI] Yabai not available: {e}")
             return False
 
+    # ========================================================================
+    # Event System Methods (Phase 2)
+    # ========================================================================
+
+    def register_event_listener(self, event_type: YabaiEventType, callback: Callable):
+        """
+        Register a callback for specific event types
+
+        Args:
+            event_type: Type of event to listen for
+            callback: Async function to call when event occurs
+        """
+        self.event_listeners[event_type].append(callback)
+        logger.info(f"[YABAI-SI] Registered listener for {event_type.value}")
+
+    def unregister_event_listener(self, event_type: YabaiEventType, callback: Callable):
+        """Remove an event listener"""
+        if callback in self.event_listeners[event_type]:
+            self.event_listeners[event_type].remove(callback)
+            logger.info(f"[YABAI-SI] Unregistered listener for {event_type.value}")
+
+    async def _emit_event(self, event: YabaiEvent):
+        """Emit an event to all registered listeners"""
+        try:
+            # Add to event queue
+            await self.event_queue.put(event)
+            self.event_history.append(event)
+            self.metrics['events_emitted'] += 1
+
+            logger.debug(f"[YABAI-SI] Event emitted: {event.event_type.value}")
+        except asyncio.QueueFull:
+            logger.warning(f"[YABAI-SI] Event queue full, dropping event: {event.event_type.value}")
+
+    async def _process_events(self):
+        """Process events from the queue"""
+        logger.info("[YABAI-SI] Event processing task started")
+
+        while self.is_monitoring:
+            try:
+                # Get event from queue with timeout
+                event = await asyncio.wait_for(self.event_queue.get(), timeout=1.0)
+
+                # Call all registered listeners for this event type
+                listeners = self.event_listeners.get(event.event_type, [])
+                for listener in listeners:
+                    try:
+                        if asyncio.iscoroutinefunction(listener):
+                            await listener(event)
+                        else:
+                            listener(event)
+                    except Exception as e:
+                        logger.error(f"[YABAI-SI] Error in event listener: {e}", exc_info=True)
+
+                self.metrics['events_processed'] += 1
+
+            except asyncio.TimeoutError:
+                continue
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"[YABAI-SI] Error processing event: {e}", exc_info=True)
+
+    async def _detect_and_emit_events(self):
+        """Detect changes and emit appropriate events"""
+        try:
+            # Detect space changes
+            if self.current_focused_space != self.previous_focused_space:
+                if self.previous_focused_space is not None:
+                    event = YabaiEvent(
+                        event_type=YabaiEventType.SPACE_CHANGED,
+                        timestamp=time.time(),
+                        space_id=self.current_focused_space,
+                        window_id=None,
+                        app_name=None,
+                        metadata={
+                            'from_space': self.previous_focused_space,
+                            'to_space': self.current_focused_space
+                        }
+                    )
+                    await self._emit_event(event)
+
+            # Detect window focus changes
+            current_focused = self._get_current_focused_window()
+            if current_focused:
+                event = YabaiEvent(
+                    event_type=YabaiEventType.WINDOW_FOCUSED,
+                    timestamp=time.time(),
+                    space_id=current_focused.space_id,
+                    window_id=current_focused.window_id,
+                    app_name=current_focused.app_name,
+                    metadata={'title': current_focused.title}
+                )
+                await self._emit_event(event)
+
+            # Detect app launches/terminations
+            await self._detect_app_events()
+
+            # Detect window state changes
+            await self._detect_window_events()
+
+        except Exception as e:
+            logger.error(f"[YABAI-SI] Error detecting events: {e}", exc_info=True)
+
+    async def _detect_app_events(self):
+        """Detect app launch and termination events"""
+        current_apps = set(win.app_name for space in self.current_spaces.values() for win in space.windows)
+
+        # Detect launches
+        new_apps = current_apps - self.previous_app_list
+        for app_name in new_apps:
+            event = YabaiEvent(
+                event_type=YabaiEventType.APP_LAUNCHED,
+                timestamp=time.time(),
+                space_id=None,
+                window_id=None,
+                app_name=app_name,
+                metadata={}
+            )
+            await self._emit_event(event)
+
+        # Detect terminations
+        terminated_apps = self.previous_app_list - current_apps
+        for app_name in terminated_apps:
+            event = YabaiEvent(
+                event_type=YabaiEventType.APP_TERMINATED,
+                timestamp=time.time(),
+                space_id=None,
+                window_id=None,
+                app_name=app_name,
+                metadata={}
+            )
+            await self._emit_event(event)
+
+        self.previous_app_list = current_apps
+
+    async def _detect_window_events(self):
+        """Detect window creation, destruction, moves, and resizes"""
+        current_windows = {}
+        for space in self.current_spaces.values():
+            for win in space.windows:
+                current_windows[win.window_id] = {
+                    'app': win.app_name,
+                    'space': win.space_id,
+                    'frame': win.frame,
+                    'fullscreen': win.is_fullscreen
+                }
+
+        # Detect new windows
+        new_window_ids = set(current_windows.keys()) - set(self.previous_window_state.keys())
+        for win_id in new_window_ids:
+            win_data = current_windows[win_id]
+            event = YabaiEvent(
+                event_type=YabaiEventType.WINDOW_CREATED,
+                timestamp=time.time(),
+                space_id=win_data['space'],
+                window_id=win_id,
+                app_name=win_data['app'],
+                metadata={'frame': win_data['frame']}
+            )
+            await self._emit_event(event)
+
+        # Detect destroyed windows
+        destroyed_ids = set(self.previous_window_state.keys()) - set(current_windows.keys())
+        for win_id in destroyed_ids:
+            prev_data = self.previous_window_state[win_id]
+            event = YabaiEvent(
+                event_type=YabaiEventType.WINDOW_DESTROYED,
+                timestamp=time.time(),
+                space_id=prev_data['space'],
+                window_id=win_id,
+                app_name=prev_data['app'],
+                metadata={}
+            )
+            await self._emit_event(event)
+
+        # Detect moves and resizes
+        for win_id in set(current_windows.keys()) & set(self.previous_window_state.keys()):
+            curr = current_windows[win_id]
+            prev = self.previous_window_state[win_id]
+
+            # Check if moved to different space
+            if curr['space'] != prev['space']:
+                event = YabaiEvent(
+                    event_type=YabaiEventType.WINDOW_MOVED,
+                    timestamp=time.time(),
+                    space_id=curr['space'],
+                    window_id=win_id,
+                    app_name=curr['app'],
+                    metadata={
+                        'from_space': prev['space'],
+                        'to_space': curr['space']
+                    }
+                )
+                await self._emit_event(event)
+
+            # Check if resized
+            if curr['frame'] != prev['frame']:
+                event = YabaiEvent(
+                    event_type=YabaiEventType.WINDOW_RESIZED,
+                    timestamp=time.time(),
+                    space_id=curr['space'],
+                    window_id=win_id,
+                    app_name=curr['app'],
+                    metadata={
+                        'old_frame': prev['frame'],
+                        'new_frame': curr['frame']
+                    }
+                )
+                await self._emit_event(event)
+
+        self.previous_window_state = current_windows
+
+    def _get_current_focused_window(self) -> Optional[WindowInfo]:
+        """Get currently focused window"""
+        if self.current_focused_space and self.current_focused_space in self.current_spaces:
+            space = self.current_spaces[self.current_focused_space]
+            return space.focused_window
+        return None
+
+    # ========================================================================
+    # Monitoring Methods
+    # ========================================================================
+
     async def start_monitoring(self):
-        """Start 24/7 spatial monitoring"""
+        """Start 24/7 spatial monitoring with event-driven architecture"""
         if self.is_monitoring:
             logger.warning("[YABAI-SI] Already monitoring")
             return
@@ -188,19 +457,32 @@ class YabaiSpatialIntelligence:
         # Initial scan
         await self._scan_workspace()
 
+        # Start event processing task
+        self.event_processing_task = asyncio.create_task(self._process_events())
+
         # Start continuous monitoring
         self.monitoring_task = asyncio.create_task(self._monitoring_loop())
 
-        logger.info("[YABAI-SI] ✅ 24/7 spatial monitoring active")
+        logger.info("[YABAI-SI] ✅ 24/7 spatial monitoring active (event-driven)")
+        logger.info(f"[YABAI-SI] ✅ Event processing task active")
 
     async def stop_monitoring(self):
-        """Stop spatial monitoring"""
+        """Stop spatial monitoring and event processing"""
         if not self.is_monitoring:
             return
 
         logger.info("[YABAI-SI] Stopping spatial monitoring...")
         self.is_monitoring = False
 
+        # Cancel event processing task
+        if self.event_processing_task:
+            self.event_processing_task.cancel()
+            try:
+                await self.event_processing_task
+            except asyncio.CancelledError:
+                pass
+
+        # Cancel monitoring task
         if self.monitoring_task:
             self.monitoring_task.cancel()
             try:
@@ -212,6 +494,7 @@ class YabaiSpatialIntelligence:
         await self._close_all_sessions()
 
         logger.info("[YABAI-SI] ✅ Spatial monitoring stopped")
+        logger.info(f"[YABAI-SI] ✅ Event processing stopped (processed {self.metrics['events_processed']} events)")
 
     async def _monitoring_loop(self):
         """Main 24/7 monitoring loop"""
@@ -221,6 +504,9 @@ class YabaiSpatialIntelligence:
             try:
                 # Scan workspace
                 await self._scan_workspace()
+
+                # Detect and emit events (Phase 2 event-driven)
+                await self._detect_and_emit_events()
 
                 # Track patterns
                 await self._track_patterns()

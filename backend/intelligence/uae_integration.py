@@ -49,6 +49,16 @@ from intelligence.yabai_spatial_intelligence import (
     get_yabai_intelligence,
     YabaiSpatialIntelligence
 )
+from intelligence.workspace_pattern_learner import (
+    get_pattern_learner,
+    WorkspacePatternLearner
+)
+from intelligence.yabai_sai_integration import (
+    initialize_bridge,
+    get_bridge,
+    shutdown_bridge,
+    YabaiSAIBridge
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +67,8 @@ _uae_instance: Optional[UnifiedAwarenessEngine] = None
 _uae_initialized = False
 _learning_db_instance: Optional[JARVISLearningDatabase] = None
 _yabai_instance: Optional[YabaiSpatialIntelligence] = None
+_pattern_learner_instance: Optional[WorkspacePatternLearner] = None
+_bridge_instance: Optional[YabaiSAIBridge] = None
 
 
 async def initialize_uae(
@@ -68,7 +80,11 @@ async def initialize_uae(
     enable_yabai: bool = True  # Enable Yabai spatial intelligence
 ) -> UnifiedAwarenessEngine:
     """
-    Initialize UAE system with Learning Database + Yabai Spatial Intelligence
+    Initialize UAE system with full Phase 2 intelligence stack:
+    - Learning Database
+    - Yabai Spatial Intelligence (event-driven)
+    - Workspace Pattern Learner (ML-powered)
+    - Yabai ↔ SAI Integration Bridge
 
     Args:
         vision_analyzer: Claude Vision analyzer instance
@@ -82,12 +98,15 @@ async def initialize_uae(
         Initialized UAE engine with persistent memory + spatial intelligence
     """
     global _uae_instance, _uae_initialized, _learning_db_instance, _yabai_instance
+    global _pattern_learner_instance, _bridge_instance
 
     if _uae_initialized and _uae_instance is not None:
         logger.info("[UAE-INIT] UAE already initialized")
         return _uae_instance
 
-    logger.info("[UAE-INIT] Initializing Unified Awareness Engine with Learning Database + Yabai...")
+    logger.info("[UAE-INIT] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    logger.info("[UAE-INIT] Initializing Phase 2 Intelligence Stack...")
+    logger.info("[UAE-INIT] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
     try:
         # Step 1: Initialize Learning Database (if enabled)
@@ -112,10 +131,10 @@ async def initialize_uae(
                 logger.warning(f"[UAE-INIT] ⚠️  Learning Database failed to initialize: {e}")
                 logger.info("[UAE-INIT]    • Continuing without persistent memory")
 
-        # Step 1.5: Initialize Yabai Spatial Intelligence (if enabled)
+        # Step 2: Initialize Yabai Spatial Intelligence (if enabled)
         yabai = None
         if enable_yabai:
-            logger.info("[UAE-INIT] Step 2/5: Initializing Yabai Spatial Intelligence...")
+            logger.info("[UAE-INIT] Step 2/7: Initializing Yabai Spatial Intelligence (Event-Driven)...")
             try:
                 yabai = await get_yabai_intelligence(
                     learning_db=learning_db,
@@ -128,6 +147,7 @@ async def initialize_uae(
                     logger.info("[UAE-INIT] ✅ Yabai Spatial Intelligence initialized")
                     logger.info(f"[UAE-INIT]    • Yabai integration: Active")
                     logger.info(f"[UAE-INIT]    • Workspace monitoring: 24/7")
+                    logger.info(f"[UAE-INIT]    • Event-driven architecture: Enabled")
                     logger.info(f"[UAE-INIT]    • Cross-Space learning: Enabled")
                 else:
                     logger.warning("[UAE-INIT] ⚠️  Yabai not available on system")
@@ -137,8 +157,28 @@ async def initialize_uae(
                 logger.warning(f"[UAE-INIT] ⚠️  Yabai initialization failed: {e}")
                 logger.info("[UAE-INIT]    • Continuing without spatial intelligence")
 
-        # Step 3: Create SAI engine
-        logger.info("[UAE-INIT] Step 3/5: Creating Situational Awareness Engine...")
+        # Step 3: Initialize Workspace Pattern Learner (ML-powered)
+        pattern_learner = None
+        if enable_yabai and yabai:  # Only if Yabai is available
+            logger.info("[UAE-INIT] Step 3/7: Initializing Workspace Pattern Learner (ML)...")
+            try:
+                pattern_learner = await get_pattern_learner(
+                    learning_db=learning_db,
+                    min_pattern_occurrences=3,
+                    confidence_threshold=0.6
+                )
+                _pattern_learner_instance = pattern_learner
+                logger.info("[UAE-INIT] ✅ Workspace Pattern Learner initialized")
+                logger.info(f"[UAE-INIT]    • ML clustering: Enabled")
+                logger.info(f"[UAE-INIT]    • Predictive engine: Enabled")
+                logger.info(f"[UAE-INIT]    • Confidence threshold: 0.6")
+                logger.info(f"[UAE-INIT]    • Behavioral vectors: Active")
+            except Exception as e:
+                logger.warning(f"[UAE-INIT] ⚠️  Pattern Learner failed to initialize: {e}")
+                logger.info("[UAE-INIT]    • Continuing without ML pattern learning")
+
+        # Step 4: Create SAI engine
+        logger.info("[UAE-INIT] Step 4/7: Creating Situational Awareness Engine...")
         sai_engine = get_sai_engine(
             vision_analyzer=vision_analyzer,
             monitoring_interval=sai_monitoring_interval,
@@ -146,8 +186,28 @@ async def initialize_uae(
         )
         logger.info("[UAE-INIT] ✅ SAI engine created")
 
-        # Step 4: Create UAE engine with Learning DB
-        logger.info("[UAE-INIT] Step 4/5: Creating Unified Awareness Engine...")
+        # Step 5: Initialize Yabai ↔ SAI Integration Bridge
+        bridge = None
+        if enable_yabai and yabai and sai_engine:
+            logger.info("[UAE-INIT] Step 5/7: Initializing Yabai ↔ SAI Integration Bridge...")
+            try:
+                bridge = await initialize_bridge(
+                    yabai_intelligence=yabai,
+                    sai_engine=sai_engine,
+                    pattern_learner=pattern_learner
+                )
+                _bridge_instance = bridge
+                logger.info("[UAE-INIT] ✅ Integration Bridge initialized")
+                logger.info(f"[UAE-INIT]    • Bidirectional communication: Enabled")
+                logger.info(f"[UAE-INIT]    • Context enrichment: Auto")
+                logger.info(f"[UAE-INIT]    • Action coordination: Enabled")
+                logger.info(f"[UAE-INIT]    • Cross-system learning: Active")
+            except Exception as e:
+                logger.warning(f"[UAE-INIT] ⚠️  Integration Bridge failed to initialize: {e}")
+                logger.info("[UAE-INIT]    • Continuing with isolated systems")
+
+        # Step 6: Create UAE engine with Learning DB
+        logger.info("[UAE-INIT] Step 6/7: Creating Unified Awareness Engine...")
         uae = get_uae_engine(
             sai_engine=sai_engine,
             vision_analyzer=vision_analyzer,
@@ -166,9 +226,9 @@ async def initialize_uae(
 
         logger.info("[UAE-INIT] ✅ UAE engine created")
 
-        # Step 5: Auto-start all monitoring systems
+        # Step 7: Auto-start all monitoring systems
         if enable_auto_start:
-            logger.info("[UAE-INIT] Step 5/5: Starting all monitoring systems...")
+            logger.info("[UAE-INIT] Step 7/7: Starting all monitoring systems...")
 
             # Start UAE
             await uae.start()
@@ -177,18 +237,25 @@ async def initialize_uae(
             # Start Yabai monitoring
             if yabai and yabai.yabai_available:
                 await yabai.start_monitoring()
-                logger.info("[UAE-INIT] ✅ Yabai 24/7 workspace monitoring started")
+                logger.info("[UAE-INIT] ✅ Yabai 24/7 workspace monitoring started (event-driven)")
 
         # Store global instance
         _uae_instance = uae
         _uae_initialized = True
 
-        logger.info("[UAE-INIT] ✅ UAE initialization complete with FULL intelligence stack")
-        logger.info("[UAE-INIT]    • Context Intelligence: Active (with Learning DB)")
-        logger.info("[UAE-INIT]    • Situational Awareness: Active (SAI - 5s monitoring)")
-        logger.info("[UAE-INIT]    • Decision Fusion: Active")
-        logger.info("[UAE-INIT]    • Persistent Memory: " + ("Enabled" if learning_db else "Disabled"))
-        logger.info("[UAE-INIT]    • Spatial Intelligence: " + ("Active (Yabai 24/7)" if (yabai and yabai.yabai_available) else "Disabled"))
+        logger.info("[UAE-INIT] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        logger.info("[UAE-INIT] ✅ Phase 2 Intelligence Stack: FULLY OPERATIONAL")
+        logger.info("[UAE-INIT] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        logger.info("[UAE-INIT] Core Systems:")
+        logger.info("[UAE-INIT]    • Context Intelligence: ✅ Active (with Learning DB)")
+        logger.info("[UAE-INIT]    • Situational Awareness (SAI): ✅ Active (5s monitoring)")
+        logger.info("[UAE-INIT]    • Decision Fusion: ✅ Active")
+        logger.info("[UAE-INIT]    • Persistent Memory: " + ("✅ Enabled" if learning_db else "⚠️  Disabled"))
+        logger.info("[UAE-INIT] Phase 2 Systems:")
+        logger.info("[UAE-INIT]    • Spatial Intelligence (Yabai): " + ("✅ Active (24/7 event-driven)" if (yabai and yabai.yabai_available) else "⚠️  Disabled"))
+        logger.info("[UAE-INIT]    • Pattern Learner (ML): " + ("✅ Active" if pattern_learner else "⚠️  Disabled"))
+        logger.info("[UAE-INIT]    • Integration Bridge (Yabai↔SAI): " + ("✅ Active" if bridge else "⚠️  Disabled"))
+        logger.info("[UAE-INIT] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
         return uae
 
@@ -212,21 +279,34 @@ def get_uae() -> Optional[UnifiedAwarenessEngine]:
 
 
 async def shutdown_uae():
-    """Shutdown UAE system, Yabai, and Learning Database"""
+    """Shutdown UAE system with full Phase 2 intelligence stack"""
     global _uae_instance, _uae_initialized, _learning_db_instance, _yabai_instance
+    global _pattern_learner_instance, _bridge_instance
 
     if not _uae_initialized or _uae_instance is None:
         return
 
-    logger.info("[UAE-SHUTDOWN] Shutting down intelligence stack...")
+    logger.info("[UAE-SHUTDOWN] Shutting down Phase 2 intelligence stack...")
 
     try:
-        # Stop Yabai monitoring first
+        # Stop Integration Bridge first
+        if _bridge_instance:
+            logger.info("[UAE-SHUTDOWN] Stopping Yabai ↔ SAI Integration Bridge...")
+            await shutdown_bridge()
+            logger.info("[UAE-SHUTDOWN] ✅ Integration Bridge stopped")
+            _bridge_instance = None
+
+        # Stop Yabai monitoring
         if _yabai_instance and _yabai_instance.is_monitoring:
             logger.info("[UAE-SHUTDOWN] Stopping Yabai spatial monitoring...")
             await _yabai_instance.stop_monitoring()
             logger.info("[UAE-SHUTDOWN] ✅ Yabai stopped")
             _yabai_instance = None
+
+        # Pattern Learner (no explicit stop needed - stateless)
+        if _pattern_learner_instance:
+            logger.info("[UAE-SHUTDOWN] ✅ Pattern Learner finalized")
+            _pattern_learner_instance = None
 
         # Stop UAE monitoring
         await _uae_instance.stop()
@@ -240,6 +320,7 @@ async def shutdown_uae():
             _learning_db_instance = None
 
         _uae_initialized = False
+        logger.info("[UAE-SHUTDOWN] ✅ Phase 2 intelligence stack shutdown complete")
         # Keep instance for potential restart
 
     except Exception as e:
@@ -266,6 +347,28 @@ def get_yabai() -> Optional[YabaiSpatialIntelligence]:
     """
     global _yabai_instance
     return _yabai_instance
+
+
+def get_pattern_learner_sync() -> Optional[WorkspacePatternLearner]:
+    """
+    Get global Workspace Pattern Learner instance
+
+    Returns:
+        Pattern Learner instance or None if not initialized
+    """
+    global _pattern_learner_instance
+    return _pattern_learner_instance
+
+
+def get_integration_bridge() -> Optional[YabaiSAIBridge]:
+    """
+    Get global Yabai ↔ SAI Integration Bridge instance
+
+    Returns:
+        Bridge instance or None if not initialized
+    """
+    global _bridge_instance
+    return _bridge_instance
 
 
 def get_uae_metrics() -> Dict[str, Any]:
