@@ -122,12 +122,12 @@ function App() {
 
   return (
     <div className="App">
-      <h1>J.A.R.V.I.S. Interface</h1>
+      {/* <h1>J.A.R.V.I.S. Interface</h1>
       <p className="app-subtitle">Just A Rather Very Intelligent System</p>
-      <div className="hud-divider" />
+      <div className="hud-divider" /> */}
 
-      {/* Autonomous Mode Toggle */}
-      <div className="autonomous-control">
+      {/* Autonomous Mode Toggle - REMOVED */}
+      {/* <div className="autonomous-control">
         <button
           onClick={toggleAutonomousMode}
           className={`autonomous-toggle ${autonomousMode ? 'active' : ''}`}
@@ -137,7 +137,7 @@ function App() {
         <span className={`vision-status ${visionStatus}`}>
           Vision: {visionStatus}
         </span>
-      </div>
+      </div> */}
 
       {/* Voice Control Section */}
       <JarvisVoice />
@@ -199,9 +199,9 @@ function App() {
       </div>
 
       <div className="status-strip" />
-      
-      {/* Config Diagnostic Tool */}
-      <ConfigDiagnostic />
+
+      {/* Config Diagnostic Tool - REMOVED */}
+      {/* <ConfigDiagnostic /> */}
     </div>
   );
 }

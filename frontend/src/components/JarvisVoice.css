@@ -1,197 +1,142 @@
 /* ============================================
-   JARVIS v16.0 - FUTURISTIC TECH EDITION
-   High-Tech Interface with Holographic Effects
-   Inspired by Iron Man's JARVIS UI
+   J.A.R.V.I.S. - CINEMATIC MINIMAL INTERFACE
+   Pure Black Background with Glowing Elements
    ============================================ */
 
 /* ==================== CSS VARIABLES ==================== */
 :root {
-  /* Futuristic Color Palette */
-  --color-tech-blue: #00D9FF;
-  --color-electric-cyan: #0EA5E9;
-  --color-neon-purple: #A855F7;
-  --color-purple-glow: #C084FC;
-  --color-gold: #FFD700;
-  --color-amber: #FFA500;
-  --color-matrix-green: #00FF41;
-  --color-matrix-dark: #00AA2E;
+  /* Cyan Glow Palette */
+  --glow-cyan: #00FFFF;
+  --glow-cyan-bright: #00D9FF;
+  --glow-blue: #0EA5E9;
+  --glow-soft: rgba(0, 255, 255, 0.3);
 
-  /* Dark Tech Backgrounds */
-  --bg-space-black: #000000;
-  --bg-dark-navy: #0A0E1A;
-  --bg-deep-blue: #0F1419;
-  --bg-panel: #151922;
+  /* Background */
+  --bg-pure-black: #000000;
+  --bg-transparent: rgba(0, 0, 0, 0.4);
 
-  /* Text Colors */
-  --text-primary: #E0F2FE;
-  --text-secondary: #7DD3FC;
-  --text-muted: #64748B;
-
-  /* Glows & Effects */
-  --glow-blue: rgba(0, 217, 255, 0.5);
-  --glow-purple: rgba(168, 85, 247, 0.5);
-  --glow-gold: rgba(255, 215, 0, 0.5);
+  /* Text */
+  --text-white: #FFFFFF;
+  --text-cyan: #00FFFF;
 
   /* Reactor States */
-  --reactor-idle: radial-gradient(circle, #00D9FF 0%, #0EA5E9 50%, #0369A1 100%);
+  --reactor-idle: radial-gradient(circle, #00FFFF 0%, #00D9FF 50%, #0EA5E9 100%);
   --reactor-listening: radial-gradient(circle, #FFD700 0%, #FFA500 50%, #FF8C00 100%);
   --reactor-processing: radial-gradient(circle, #C084FC 0%, #A855F7 50%, #7E22CE 100%);
   --reactor-continuous: radial-gradient(circle, #00FF41 0%, #00AA2E 50%, #008C25 100%);
+}
 
-  /* Shadows */
-  --shadow-tech: 0 0 20px rgba(0, 217, 255, 0.3);
-  --shadow-deep: 0 8px 32px rgba(0, 0, 0, 0.8);
+/* ==================== GLOBAL RESET ==================== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 /* ==================== MAIN CONTAINER ==================== */
 .jarvis-voice-container {
-  min-height: 100vh;
-  background:
-    radial-gradient(ellipse at 50% 20%, rgba(0, 217, 255, 0.05) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 80%, rgba(168, 85, 247, 0.03) 0%, transparent 50%),
-    linear-gradient(180deg, var(--bg-space-black) 0%, var(--bg-dark-navy) 100%);
-  padding: 40px 20px;
-  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  overflow-x: hidden;
+  justify-content: space-between;
+  /* This will space out the items */
+  height: 100vh;
+  width: 100%;
+  padding: 2rem;
+  box-sizing: border-box;
+  /* Ensures padding is included in height */
+  background: none;
+  position: relative;
+  overflow: hidden;
 }
 
-/* Animated circuit pattern background */
+/* Subtle radial glow from center */
 .jarvis-voice-container::before {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-image:
-    repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 217, 255, 0.03) 2px, rgba(0, 217, 255, 0.03) 4px),
-    repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(0, 217, 255, 0.03) 2px, rgba(0, 217, 255, 0.03) 4px),
-    radial-gradient(circle at 20% 30%, rgba(0, 217, 255, 0.1) 0%, transparent 30%),
-    radial-gradient(circle at 80% 70%, rgba(168, 85, 247, 0.08) 0%, transparent 30%);
-  background-size: 100px 100px, 100px 100px, 100% 100%, 100% 100%;
-  opacity: 0.4;
-  animation: circuitPulse 10s ease-in-out infinite;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 800px;
+  height: 800px;
+  background: radial-gradient(circle, rgba(0, 255, 255, 0.05) 0%, transparent 70%);
   pointer-events: none;
-}
-
-@keyframes circuitPulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.6; }
-}
-
-/* Scanline effect for futuristic feel */
-.jarvis-voice-container::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    rgba(0, 217, 255, 0.03) 0px,
-    transparent 1px,
-    transparent 2px,
-    rgba(0, 217, 255, 0.03) 3px
-  );
-  pointer-events: none;
-  animation: scanlines 8s linear infinite;
-  opacity: 0.3;
-}
-
-@keyframes scanlines {
-  0% { transform: translateY(0); }
-  100% { transform: translateY(50px); }
+  z-index: 0;
 }
 
 /* ==================== HEADER ==================== */
 .jarvis-header {
   text-align: center;
-  margin-bottom: 40px;
   z-index: 10;
-  animation: fadeInDown 1s cubic-bezier(0.4, 0, 0.2, 1);
+  width: 100%;
 }
 
 .jarvis-title {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
 }
 
 .jarvis-logo {
-  font-size: 4.5rem;
-  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-weight: 900;
-  letter-spacing: 0.3em;
-  background: linear-gradient(135deg, #00D9FF 0%, #0EA5E9 50%, #A855F7 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-size: 4rem;
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: #00ff41;
+  /* Matrix Green */
+  text-shadow:
+    0 0 3px rgba(0, 255, 65, 0.9),
+    0 0 8px rgba(0, 255, 65, 0.5);
   position: relative;
-  filter: drop-shadow(0 0 20px var(--glow-blue));
-  text-transform: uppercase;
-  animation: logoGlow 3s ease-in-out infinite;
+  animation: logoFlicker 3s ease-in-out infinite;
 }
 
-@keyframes logoGlow {
-  0%, 100% {
-    filter: drop-shadow(0 0 20px var(--glow-blue));
+@keyframes logoFlicker {
+
+  0%,
+  100% {
+    opacity: 1;
+    text-shadow:
+      0 0 3px rgba(0, 255, 65, 0.9),
+      0 0 8px rgba(0, 255, 65, 0.5);
   }
+
   50% {
-    filter: drop-shadow(0 0 40px var(--glow-blue)) drop-shadow(0 0 60px var(--glow-purple));
-  }
-}
-
-.jarvis-logo::after {
-  content: '';
-  position: absolute;
-  bottom: -15px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 80%;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--color-tech-blue), var(--color-neon-purple), transparent);
-  box-shadow: 0 0 20px var(--glow-blue);
-  animation: underlineGlow 2s ease-in-out infinite;
-}
-
-@keyframes underlineGlow {
-  0%, 100% {
-    box-shadow: 0 0 20px var(--glow-blue);
-  }
-  50% {
-    box-shadow: 0 0 30px var(--glow-blue), 0 0 40px var(--glow-purple);
+    opacity: 0.95;
+    text-shadow:
+      0 0 5px rgba(0, 255, 65, 1),
+      0 0 12px rgba(0, 255, 65, 0.6);
   }
 }
 
 .jarvis-subtitle {
-  font-size: 0.9rem;
-  color: var(--text-secondary);
+  font-size: 0.8rem;
+  color: #00aa2e;
+  /* Darker Matrix Green */
   font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.15em;
   font-weight: 600;
   text-transform: uppercase;
-  text-shadow: 0 0 10px var(--glow-blue);
-  animation: subtitleFlicker 5s ease-in-out infinite;
-}
-
-@keyframes subtitleFlicker {
-  0%, 100% { opacity: 0.9; }
-  50% { opacity: 1; }
+  text-shadow: 0 0 10px rgba(0, 255, 65, 0.5);
+  margin-top: 0.5rem;
 }
 
 /* ==================== ARC REACTOR ==================== */
 .arc-reactor {
   position: relative;
-  width: 220px;
-  height: 220px;
-  margin: 50px auto 60px;
+  width: 420px;
+  /* Increased from 360px */
+  height: 420px;
+  /* Increased from 360px */
+  margin: auto;
+  /* This will center it between the header and transcript */
   z-index: 10;
-  filter: drop-shadow(0 0 60px var(--glow-blue));
+  filter: drop-shadow(0 0 80px var(--glow-blue));
 }
 
 /* Core with holographic effect */
@@ -200,54 +145,93 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 70px;
-  height: 70px;
+  width: 135px;
+  /* Increased from 115px */
+  height: 135px;
+  /* Increased from 115px */
   background: var(--reactor-idle);
   border-radius: 50%;
   box-shadow:
-    0 0 40px var(--color-tech-blue),
-    0 0 80px var(--color-electric-cyan),
-    0 0 120px rgba(0, 217, 255, 0.3),
-    inset 0 0 30px rgba(0, 217, 255, 0.6);
+    0 0 50px var(--color-tech-blue),
+    0 0 100px var(--color-electric-cyan),
+    0 0 150px rgba(0, 217, 255, 0.3),
+    inset 0 0 40px rgba(0, 217, 255, 0.6);
   transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   animation: coreIdlePulse 4s ease-in-out infinite;
-  border: 2px solid rgba(0, 217, 255, 0.5);
+  border: 3px solid rgba(0, 217, 255, 0.5);
 }
 
-/* Listening State - Gold glow with intense vibration */
+@keyframes coreIdlePulse {
+
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    box-shadow:
+      0 0 50px var(--color-tech-blue),
+      0 0 100px var(--color-electric-cyan),
+      0 0 150px rgba(0, 217, 255, 0.3),
+      inset 0 0 40px rgba(0, 217, 255, 0.6);
+  }
+
+  50% {
+    transform: translate(-50%, -50%) scale(1.1);
+    box-shadow:
+      0 0 70px var(--color-tech-blue),
+      0 0 140px var(--color-electric-cyan),
+      0 0 210px rgba(0, 217, 255, 0.4),
+      inset 0 0 50px rgba(0, 217, 255, 0.8);
+  }
+}
+
+/* Listening State - Gold */
 .arc-reactor.listening .core {
   background: var(--reactor-listening);
   box-shadow:
-    0 0 60px var(--color-gold),
-    0 0 100px var(--color-amber),
-    0 0 140px rgba(255, 215, 0, 0.4),
-    inset 0 0 40px rgba(255, 215, 0, 0.7);
-  border-color: var(--color-gold);
-  animation: coreListeningVibrate 0.15s ease-in-out infinite;
+    0 0 60px 15px rgba(255, 215, 0, 0.6),
+    0 0 120px 25px rgba(255, 215, 0, 0.3),
+    inset 0 0 45px rgba(255, 215, 0, 0.7);
+  animation: reactorListeningPulse 0.8s ease-in-out infinite;
 }
 
-/* Processing State - Purple with holographic spin */
+@keyframes reactorListeningPulse {
+
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  50% {
+    transform: translate(-50%, -50%) scale(1.15);
+  }
+}
+
+/* Processing State - Purple */
 .arc-reactor.processing .core {
   background: var(--reactor-processing);
   box-shadow:
-    0 0 60px var(--color-neon-purple),
-    0 0 100px var(--color-purple-glow),
-    0 0 140px rgba(168, 85, 247, 0.4),
-    inset 0 0 40px rgba(192, 132, 252, 0.7);
-  border-color: var(--color-neon-purple);
-  animation: coreProcessingSpin 2s linear infinite;
+    0 0 60px 15px rgba(168, 85, 247, 0.6),
+    0 0 120px 25px rgba(168, 85, 247, 0.3),
+    inset 0 0 45px rgba(192, 132, 252, 0.7);
+  animation: reactorProcessingSpin 2s linear infinite;
 }
 
-/* Continuous/Active State - Matrix green */
+@keyframes reactorProcessingSpin {
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+/* Continuous State - Green */
 .arc-reactor.continuous .core {
   background: var(--reactor-continuous);
   box-shadow:
-    0 0 60px var(--color-matrix-green),
-    0 0 100px var(--color-matrix-dark),
-    0 0 140px rgba(0, 255, 65, 0.4),
-    inset 0 0 40px rgba(0, 255, 65, 0.7);
-  border-color: var(--color-matrix-green);
-  animation: coreContinuousPulse 3s ease-in-out infinite;
+    0 0 60px 15px rgba(0, 255, 65, 0.6),
+    0 0 120px 25px rgba(0, 255, 65, 0.3),
+    inset 0 0 45px rgba(0, 255, 65, 0.7);
 }
 
 /* Inner core with energy effect */
@@ -257,11 +241,27 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 35px;
-  height: 35px;
+  width: 70px;
+  /* Increased from 60px */
+  height: 70px;
+  /* Increased from 60px */
   background: radial-gradient(circle, rgba(255, 255, 255, 0.9) 0%, rgba(0, 217, 255, 0.5) 50%, transparent 100%);
   border-radius: 50%;
   animation: innerCoreShimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes innerCoreShimmer {
+
+  0%,
+  100% {
+    opacity: 0.8;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.3);
+  }
 }
 
 /* Holographic reactor rings */
@@ -269,614 +269,48 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  border: 2px solid;
+  border: 3px solid;
+  /* Increased border */
   border-radius: 50%;
   opacity: 0.4;
   transform: translate(-50%, -50%);
   transition: all 0.5s ease;
-  box-shadow: 0 0 20px currentColor;
+  box-shadow: 0 0 25px currentColor;
+  /* Enhanced glow */
 }
 
 .ring-1 {
-  width: 110px;
-  height: 110px;
+  width: 210px;
+  /* Increased from 180px */
+  height: 210px;
+  /* Increased from 180px */
   border-color: var(--color-tech-blue);
   animation: ringRotate1 20s linear infinite, ringPulse 3s ease-in-out infinite;
 }
 
 .ring-2 {
-  width: 150px;
-  height: 150px;
+  width: 285px;
+  /* Increased from 245px */
+  height: 285px;
+  /* Increased from 245px */
   border-color: var(--color-electric-cyan);
   animation: ringRotate2 15s linear infinite reverse, ringPulse 3s ease-in-out infinite 0.5s;
 }
 
 .ring-3 {
-  width: 190px;
-  height: 190px;
+  width: 360px;
+  /* Increased from 310px */
+  height: 360px;
+  /* Increased from 310px */
   border-color: var(--color-neon-purple);
   animation: ringRotate3 25s linear infinite, ringPulse 3s ease-in-out infinite 1s;
 }
 
-@keyframes ringPulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.7; }
-}
-
-/* Ring color changes based on state */
-.arc-reactor.listening .ring {
-  border-color: var(--color-gold);
-  opacity: 0.6;
-  animation-duration: 5s;
-}
-
-.arc-reactor.processing .ring {
-  border-color: var(--color-neon-purple);
-  opacity: 0.6;
-}
-
-.arc-reactor.continuous .ring {
-  border-color: var(--color-matrix-green);
-  opacity: 0.5;
-}
-
-/* Outer energy field */
-.arc-reactor::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 240px;
-  height: 240px;
-  border-radius: 50%;
-  border: 1px solid rgba(0, 217, 255, 0.2);
-  box-shadow:
-    0 0 30px rgba(0, 217, 255, 0.2),
-    inset 0 0 30px rgba(0, 217, 255, 0.1);
-  animation: outerFieldPulse 5s ease-in-out infinite;
-}
-
-@keyframes outerFieldPulse {
-  0%, 100% {
-    opacity: 0.3;
-    transform: translate(-50%, -50%) scale(1);
-  }
-  50% {
-    opacity: 0.6;
-    transform: translate(-50%, -50%) scale(1.05);
-  }
-}
-
-/* ==================== STATUS INDICATOR ==================== */
-.jarvis-status {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  margin-bottom: 40px;
-  padding: 18px 40px;
-  background: linear-gradient(135deg, rgba(15, 20, 25, 0.9) 0%, rgba(10, 14, 26, 0.8) 100%);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(0, 217, 255, 0.3);
-  border-radius: 50px;
-  z-index: 10;
-  box-shadow:
-    0 0 30px rgba(0, 217, 255, 0.2),
-    0 8px 32px rgba(0, 0, 0, 0.8),
-    inset 0 1px 0 rgba(0, 217, 255, 0.2);
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-}
-
-.jarvis-status::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 50px;
-  padding: 1px;
-  background: linear-gradient(135deg, var(--color-tech-blue), var(--color-neon-purple));
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  opacity: 0.5;
-  animation: borderGlow 3s ease-in-out infinite;
-}
-
-@keyframes borderGlow {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
-}
-
-.jarvis-status:hover {
-  border-color: rgba(0, 217, 255, 0.6);
-  box-shadow:
-    0 0 40px rgba(0, 217, 255, 0.4),
-    0 12px 40px rgba(0, 0, 0, 0.9);
-}
-
-.status-indicator {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  position: relative;
-  animation: statusPulse 2s ease-in-out infinite;
-}
-
-.status-indicator::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  background: inherit;
-  opacity: 0.6;
-  animation: statusRipple 2s ease-in-out infinite;
-}
-
-.status-indicator.online,
-.status-indicator.active {
-  background: var(--color-tech-blue);
-  box-shadow:
-    0 0 20px var(--color-tech-blue),
-    0 0 40px rgba(0, 217, 255, 0.5);
-}
-
-.status-indicator.offline {
-  background: var(--text-muted);
-  box-shadow: 0 0 10px rgba(100, 116, 139, 0.5);
-  animation: none;
-}
-
-.status-indicator.error {
-  background: #EF4444;
-  box-shadow:
-    0 0 20px #EF4444,
-    0 0 40px rgba(239, 68, 68, 0.5);
-}
-
-.status-text {
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  font-family: 'SF Mono', monospace;
-  text-shadow: 0 0 10px var(--glow-blue);
-}
-
-/* Mode badges */
-.mode-badge {
-  display: inline-block;
-  margin-left: 12px;
-  padding: 6px 16px;
-  border-radius: 20px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  border: 1px solid;
-  backdrop-filter: blur(10px);
-  animation: badgePulse 3s ease-in-out infinite;
-}
-
-.mode-badge.minimal {
-  background: linear-gradient(135deg, rgba(255, 165, 0, 0.2), rgba(255, 140, 0, 0.1));
-  border-color: var(--color-amber);
-  color: var(--color-amber);
-  box-shadow: 0 0 20px rgba(255, 165, 0, 0.3);
-  text-shadow: 0 0 10px var(--glow-gold);
-}
-
-.mode-badge.phase4 {
-  background: linear-gradient(135deg, rgba(0, 255, 65, 0.2), rgba(0, 170, 46, 0.1));
-  border-color: var(--color-matrix-green);
-  color: var(--color-matrix-green);
-  box-shadow: 0 0 20px rgba(0, 255, 65, 0.3);
-  text-shadow: 0 0 10px rgba(0, 255, 65, 0.5);
-}
-
-@keyframes badgePulse {
-  0%, 100% {
-    opacity: 0.9;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.02);
-  }
-}
-
-/* ==================== TRANSCRIPT DISPLAY ==================== */
-.jarvis-transcript {
-  width: 100%;
-  max-width: 1000px;
-  margin: 40px auto;
-  padding: 0 20px;
-  z-index: 10;
-  animation: fadeInUp 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.user-message,
-.jarvis-message {
-  margin: 28px 0;
-  padding: 28px 36px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, rgba(15, 20, 25, 0.8) 0%, rgba(10, 14, 26, 0.6) 100%);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(0, 217, 255, 0.2);
-  box-shadow:
-    0 0 20px rgba(0, 217, 255, 0.1),
-    0 8px 32px rgba(0, 0, 0, 0.6);
-  animation: messageSlideIn 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-  overflow: hidden;
-}
-
-.user-message::before,
-.jarvis-message::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 100%;
-  background: linear-gradient(180deg, transparent, currentColor, transparent);
-  animation: borderSlide 3s ease-in-out infinite;
-}
-
-@keyframes borderSlide {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
-}
-
-.user-message {
-  border-left: 3px solid var(--color-electric-cyan);
-  color: var(--color-electric-cyan);
-}
-
-.user-message:hover {
-  transform: translateX(8px);
-  border-left-color: var(--color-tech-blue);
-  box-shadow:
-    0 0 30px rgba(0, 217, 255, 0.3),
-    0 12px 40px rgba(0, 0, 0, 0.7);
-}
-
-.jarvis-message {
-  border-left: 3px solid var(--color-tech-blue);
-  color: var(--color-tech-blue);
-}
-
-.jarvis-message:hover {
-  transform: translateX(8px);
-  border-left-color: var(--color-neon-purple);
-  box-shadow:
-    0 0 30px rgba(168, 85, 247, 0.3),
-    0 12px 40px rgba(0, 0, 0, 0.7);
-}
-
-.message-label {
-  display: block;
-  font-size: 0.75rem;
-  font-weight: 800;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  margin-bottom: 16px;
-  opacity: 0.9;
-  font-family: 'SF Mono', monospace;
-  text-shadow: 0 0 10px currentColor;
-}
-
-.user-message .message-label {
-  color: var(--color-electric-cyan);
-}
-
-.jarvis-message .message-label {
-  color: var(--color-tech-blue);
-}
-
-.message-text {
-  color: var(--text-primary);
-  font-size: 1.1rem;
-  line-height: 1.8;
-  font-weight: 400;
-  text-shadow: 0 0 2px rgba(0, 217, 255, 0.1);
-}
-
-.processing-indicator {
-  color: var(--color-neon-purple);
-  font-style: italic;
-  opacity: 0.95;
-  animation: processingPulse 1.5s ease-in-out infinite;
-  text-shadow: 0 0 10px var(--glow-purple);
-}
-
-.speaking-indicator {
-  color: var(--color-tech-blue);
-  font-size: 1.3rem;
-  margin-left: 12px;
-  animation: speakingBounce 0.6s ease-in-out infinite;
-  filter: drop-shadow(0 0 5px var(--glow-blue));
-}
-
-/* ==================== INPUT SECTION ==================== */
-.jarvis-input-section {
-  width: 100%;
-  max-width: 1000px;
-  margin: 30px auto;
-  padding: 0 20px;
-  z-index: 10;
-}
-
-.jarvis-input-container {
-  display: flex;
-  gap: 14px;
-  background: linear-gradient(135deg, rgba(15, 20, 25, 0.9) 0%, rgba(10, 14, 26, 0.7) 100%);
-  backdrop-filter: blur(20px);
-  padding: 12px;
-  border-radius: 30px;
-  border: 1px solid rgba(0, 217, 255, 0.3);
-  box-shadow:
-    0 0 30px rgba(0, 217, 255, 0.2),
-    0 8px 32px rgba(0, 0, 0, 0.8),
-    inset 0 1px 0 rgba(0, 217, 255, 0.2);
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-}
-
-.jarvis-input-container::before {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: 30px;
-  padding: 1px;
-  background: linear-gradient(135deg, var(--color-tech-blue), var(--color-neon-purple));
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  opacity: 0;
-  transition: opacity 0.4s ease;
-}
-
-.jarvis-input-container:focus-within {
-  border-color: var(--color-tech-blue);
-  box-shadow:
-    0 0 40px rgba(0, 217, 255, 0.4),
-    0 0 0 3px rgba(0, 217, 255, 0.1),
-    0 12px 40px rgba(0, 0, 0, 0.9);
-}
-
-.jarvis-input-container:focus-within::before {
-  opacity: 1;
-}
-
-.jarvis-input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  outline: none;
-  padding: 18px 24px;
-  color: var(--text-primary);
-  font-size: 1.05rem;
-  font-family: 'SF Pro Display', -apple-system, sans-serif;
-  font-weight: 400;
-}
-
-.jarvis-input::placeholder {
-  color: var(--text-muted);
-  font-style: italic;
-  font-weight: 300;
-}
-
-.jarvis-input:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.jarvis-send-button {
-  width: 58px;
-  height: 58px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-tech-blue) 0%, var(--color-electric-cyan) 100%);
-  border: 1px solid rgba(0, 217, 255, 0.5);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow:
-    0 0 20px rgba(0, 217, 255, 0.4),
-    0 4px 16px rgba(0, 0, 0, 0.5);
-  position: relative;
-  overflow: hidden;
-}
-
-.jarvis-send-button::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 0;
-  height: 0;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.3);
-  transition: width 0.6s, height 0.6s;
-}
-
-.jarvis-send-button::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: linear-gradient(135deg, transparent, rgba(255, 255, 255, 0.2));
-  opacity: 0;
-  transition: opacity 0.3s;
-}
-
-.jarvis-send-button:hover:not(:disabled) {
-  transform: scale(1.15);
-  background: linear-gradient(135deg, var(--color-tech-blue) 0%, var(--color-neon-purple) 100%);
-  box-shadow:
-    0 0 40px rgba(0, 217, 255, 0.6),
-    0 0 60px rgba(168, 85, 247, 0.4),
-    0 6px 24px rgba(0, 0, 0, 0.6);
-}
-
-.jarvis-send-button:hover:not(:disabled)::before {
-  width: 100%;
-  height: 100%;
-}
-
-.jarvis-send-button:hover:not(:disabled)::after {
-  opacity: 1;
-}
-
-.jarvis-send-button:active:not(:disabled) {
-  transform: scale(1.05);
-}
-
-.jarvis-send-button:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-.send-icon {
-  font-size: 1.6rem;
-  color: #ffffff;
-  font-weight: 700;
-  z-index: 1;
-  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.5));
-}
-
-/* ==================== ANIMATIONS ==================== */
-
-/* Core Animations */
-@keyframes coreIdlePulse {
-  0%, 100% {
-    box-shadow:
-      0 0 40px var(--color-tech-blue),
-      0 0 80px var(--color-electric-cyan),
-      0 0 120px rgba(0, 217, 255, 0.3),
-      inset 0 0 30px rgba(0, 217, 255, 0.6);
-    transform: translate(-50%, -50%) scale(1);
-  }
-  50% {
-    box-shadow:
-      0 0 60px var(--color-tech-blue),
-      0 0 100px var(--color-electric-cyan),
-      0 0 140px rgba(0, 217, 255, 0.5),
-      inset 0 0 40px rgba(0, 217, 255, 0.8);
-    transform: translate(-50%, -50%) scale(1.08);
-  }
-}
-
-@keyframes coreListeningVibrate {
-  0%, 100% {
-    transform: translate(-50%, -50%) scale(1);
-  }
-  5% {
-    transform: translate(-48%, -51%) scale(1.12);
-  }
-  10% {
-    transform: translate(-52%, -49%) scale(1.1);
-  }
-  15% {
-    transform: translate(-49%, -52%) scale(1.14);
-  }
-  20% {
-    transform: translate(-51%, -48%) scale(1.11);
-  }
-  25% {
-    transform: translate(-48%, -50%) scale(1.15);
-  }
-  30% {
-    transform: translate(-52%, -50%) scale(1.13);
-  }
-  35% {
-    transform: translate(-50%, -48%) scale(1.12);
-  }
-  40% {
-    transform: translate(-50%, -52%) scale(1.14);
-  }
-  45% {
-    transform: translate(-49%, -49%) scale(1.1);
-  }
-  50% {
-    transform: translate(-51%, -51%) scale(1.16);
-  }
-  55% {
-    transform: translate(-48%, -50%) scale(1.13);
-  }
-  60% {
-    transform: translate(-52%, -50%) scale(1.11);
-  }
-  65% {
-    transform: translate(-50%, -49%) scale(1.14);
-  }
-  70% {
-    transform: translate(-50%, -51%) scale(1.12);
-  }
-  75% {
-    transform: translate(-49%, -50%) scale(1.1);
-  }
-  80% {
-    transform: translate(-51%, -50%) scale(1.13);
-  }
-  85% {
-    transform: translate(-50%, -48%) scale(1.11);
-  }
-  90% {
-    transform: translate(-50%, -52%) scale(1.09);
-  }
-  95% {
-    transform: translate(-50%, -50%) scale(1.08);
-  }
-}
-
-@keyframes coreProcessingSpin {
-  0% {
-    transform: translate(-50%, -50%) scale(1) rotate(0deg);
-  }
-  50% {
-    transform: translate(-50%, -50%) scale(1.2) rotate(180deg);
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(1) rotate(360deg);
-  }
-}
-
-@keyframes coreContinuousPulse {
-  0%, 100% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: translate(-50%, -50%) scale(1.1);
-    opacity: 0.95;
-  }
-}
-
-@keyframes innerCoreShimmer {
-  0%, 100% {
-    opacity: 0.9;
-    transform: translate(-50%, -50%) scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1.3);
-  }
-}
-
-/* Ring Animations */
 @keyframes ringRotate1 {
   from {
     transform: translate(-50%, -50%) rotate(0deg);
   }
+
   to {
     transform: translate(-50%, -50%) rotate(360deg);
   }
@@ -886,6 +320,7 @@
   from {
     transform: translate(-50%, -50%) rotate(0deg);
   }
+
   to {
     transform: translate(-50%, -50%) rotate(360deg);
   }
@@ -895,196 +330,400 @@
   from {
     transform: translate(-50%, -50%) rotate(0deg);
   }
+
   to {
     transform: translate(-50%, -50%) rotate(360deg);
   }
 }
 
-/* Status Animations */
-@keyframes statusPulse {
-  0%, 100% {
-    opacity: 1;
+@keyframes ringPulse {
+
+  0%,
+  100% {
+    opacity: 0.4;
   }
+
+  50% {
+    opacity: 0.8;
+  }
+}
+
+/* Outer energy field */
+.arc-reactor::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 440px;
+  /* Increased from 380px */
+  height: 440px;
+  /* Increased from 380px */
+  border-radius: 50%;
+  border: 1px solid rgba(0, 217, 255, 0.2);
+  box-shadow:
+    0 0 40px rgba(0, 217, 255, 0.2),
+    inset 0 0 40px rgba(0, 217, 255, 0.1);
+  animation: outerFieldPulse 5s ease-in-out infinite;
+}
+
+@keyframes outerFieldPulse {
+
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
   50% {
     opacity: 0.6;
   }
 }
 
-@keyframes statusRipple {
-  0% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 0.6;
-  }
+/* ==================== STATUS INDICATOR ==================== */
+.jarvis-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: -60px;
+  padding: 0;
+  background: none;
+  backdrop-filter: none;
+  border: none;
+  border-radius: 0;
+  z-index: 10;
+  box-shadow: none;
+  transition: none;
+  position: relative;
+}
+
+.status-indicator {
+  width: 16px;
+  /* Increased from 12px */
+  height: 16px;
+  /* Increased from 12px */
+  border-radius: 50%;
+  position: relative;
+  animation: statusPulse 2s ease-in-out infinite;
+}
+
+@keyframes statusPulse {
+
+  0%,
   100% {
-    transform: translate(-50%, -50%) scale(3.5);
-    opacity: 0;
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
   }
 }
 
-/* Message Animations */
-@keyframes fadeInDown {
+.status-text {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #00ff41;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  font-family: 'SF Mono', monospace;
+  text-shadow: 0 0 8px rgba(0, 255, 65, 0.6);
+}
+
+/* ==================== TRANSCRIPT DISPLAY ==================== */
+.jarvis-transcript {
+  width: 100%;
+  max-width: 1000px;
+  height: 450px;
+  /* Fixed height for the transcript window */
+  margin: 0 auto;
+  padding: 2rem;
+  box-sizing: border-box;
+  z-index: 10;
+  overflow-y: auto;
+  /* Allow internal scrolling */
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.user-message,
+.jarvis-message {
+  margin: 0 0 1rem 0;
+  padding: 0.5rem 0;
+  border-radius: 0;
+  background: none;
+  border-left: none;
+  animation: messageFadeIn 0.5s ease-out;
+}
+
+@keyframes messageFadeIn {
   from {
     opacity: 0;
-    transform: translateY(-50px);
+    transform: translateY(10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
   }
 }
 
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(50px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.user-message {
+  border-left-color: var(--color-electric-cyan);
 }
 
-@keyframes messageSlideIn {
-  from {
-    opacity: 0;
-    transform: translateX(-40px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+.jarvis-message {
+  border-left-color: var(--color-matrix-green);
+}
+
+.message-label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+  opacity: 0.7;
+}
+
+.user-message .message-label {
+  color: var(--color-electric-cyan);
+}
+
+.jarvis-message .message-label {
+  color: var(--color-matrix-green);
+}
+
+.message-text {
+  color: var(--text-primary);
+  font-size: 1.4rem;
+  line-height: 1.8;
+}
+
+.processing-indicator {
+  color: #A855F7;
+  font-style: italic;
+  animation: processingPulse 1.5s ease-in-out infinite;
 }
 
 @keyframes processingPulse {
-  0%, 100% {
+
+  0%,
+  100% {
     opacity: 0.7;
   }
+
   50% {
     opacity: 1;
   }
 }
 
+.speaking-indicator {
+  color: var(--glow-cyan);
+  margin-left: 8px;
+  animation: speakingBounce 0.6s ease-in-out infinite;
+}
+
 @keyframes speakingBounce {
-  0%, 100% {
-    transform: scale(1) translateY(0);
+
+  0%,
+  100% {
+    transform: translateY(0);
   }
+
   50% {
-    transform: scale(1.4) translateY(-4px);
+    transform: translateY(-3px);
   }
 }
 
-/* ==================== PROACTIVE SUGGESTIONS ==================== */
-.proactive-suggestions-container {
+/* ==================== COMMAND INPUT ==================== */
+.jarvis-input-section {
   width: 100%;
-  max-width: 1000px;
-  margin: 30px auto;
-  padding: 0 20px;
+  max-width: 700px;
   z-index: 10;
+  padding: 0 20px;
+  display: none;
 }
 
-/* ==================== RESPONSIVE DESIGN ==================== */
+.jarvis-input-container {
+  display: flex;
+  gap: 12px;
+  background: var(--bg-transparent);
+  backdrop-filter: blur(10px);
+  padding: 8px 8px 8px 24px;
+  border-radius: 50px;
+  border: 1px solid rgba(0, 255, 255, 0.2);
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.1);
+  transition: all 0.3s ease;
+}
+
+.jarvis-input-container:focus-within {
+  border-color: var(--glow-cyan);
+  box-shadow:
+    0 0 30px rgba(0, 255, 255, 0.3),
+    0 0 15px rgba(0, 255, 255, 0.2);
+}
+
+.jarvis-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 14px 0;
+  color: var(--text-white);
+  font-size: 1rem;
+  font-family: 'SF Pro Display', -apple-system, sans-serif;
+  font-weight: 400;
+}
+
+.jarvis-input::placeholder {
+  color: rgba(0, 255, 255, 0.4);
+  font-style: italic;
+}
+
+.jarvis-send-button {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--glow-cyan-bright) 0%, var(--glow-blue) 100%);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+  transition: all 0.3s ease;
+}
+
+.jarvis-send-button:hover:not(:disabled) {
+  transform: scale(1.1);
+  box-shadow: 0 0 30px rgba(0, 255, 255, 0.6);
+}
+
+.jarvis-send-button:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.jarvis-send-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.send-icon {
+  font-size: 1.5rem;
+  color: var(--bg-pure-black);
+  font-weight: 900;
+}
+
+/* ==================== HIDDEN ELEMENTS ==================== */
+/* Hide manual mode, vision status, and extra boxes */
+.vision-status-bar,
+.mode-toggle,
+.jarvis-controls,
+.minimal-mode-banner,
+.upgrade-success-banner,
+.status-indicator-bar,
+.jarvis-error,
+.proactive-suggestions-container,
+VoiceStatsDisplay,
+EnvironmentalStatsDisplay,
+AudioQualityStatsDisplay {
+  display: none !important;
+}
+
+/* ==================== ANIMATIONS ==================== */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-30px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ==================== SCROLLBAR ==================== */
+.jarvis-transcript::-webkit-scrollbar {
+  width: 8px;
+}
+
+.jarvis-transcript::-webkit-scrollbar-track {
+  background: rgba(0, 255, 65, 0.05);
+  border-radius: 4px;
+}
+
+.jarvis-transcript::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 65, 0.3);
+  border-radius: 4px;
+}
+
+.jarvis-transcript::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 65, 0.5);
+}
+
+/* ==================== RESPONSIVE ==================== */
 @media (max-width: 768px) {
   .jarvis-logo {
     font-size: 3rem;
-    letter-spacing: 0.2em;
   }
 
   .arc-reactor {
-    width: 180px;
-    height: 180px;
+    width: 250px;
+    height: 250px;
   }
 
   .arc-reactor .core {
-    width: 60px;
-    height: 60px;
+    width: 80px;
+    height: 80px;
   }
 
-  .jarvis-transcript,
-  .jarvis-input-section,
-  .proactive-suggestions-container {
-    padding: 0 16px;
-  }
-
-  .user-message,
-  .jarvis-message {
-    padding: 24px 28px;
-  }
-
-  .message-text {
-    font-size: 1rem;
-  }
-
-  .jarvis-status {
-    padding: 16px 32px;
+  .jarvis-transcript {
+    max-height: 150px;
   }
 }
 
 @media (max-width: 480px) {
+  .jarvis-voice-container {
+    gap: 30px;
+    padding: 30px 15px;
+  }
+
   .jarvis-logo {
     font-size: 2.5rem;
-    letter-spacing: 0.15em;
+    letter-spacing: 0.2em;
   }
 
   .arc-reactor {
-    width: 150px;
-    height: 150px;
-    margin: 40px auto 50px;
+    width: 200px;
+    height: 200px;
   }
 
   .arc-reactor .core {
-    width: 50px;
-    height: 50px;
+    width: 70px;
+    height: 70px;
   }
-
-  .jarvis-subtitle {
-    font-size: 0.75rem;
-  }
-}
-
-/* ==================== CUSTOM SCROLLBAR ==================== */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(0, 217, 255, 0.5) rgba(10, 14, 26, 0.5);
-}
-
-*::-webkit-scrollbar {
-  width: 12px;
-}
-
-*::-webkit-scrollbar-track {
-  background: rgba(10, 14, 26, 0.5);
-  border-radius: 6px;
-  border: 1px solid rgba(0, 217, 255, 0.1);
-}
-
-*::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, var(--color-tech-blue), var(--color-electric-cyan));
-  border-radius: 6px;
-  border: 1px solid rgba(0, 217, 255, 0.3);
-  box-shadow: 0 0 10px rgba(0, 217, 255, 0.5);
-  transition: all 0.3s ease;
-}
-
-*::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, var(--color-tech-blue), var(--color-neon-purple));
-  box-shadow: 0 0 20px rgba(0, 217, 255, 0.8);
 }
 
 /* ==================== ACCESSIBILITY ==================== */
 @media (prefers-reduced-motion: reduce) {
+
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
   }
-}
-
-/* Focus visible for keyboard navigation */
-button:focus-visible,
-input:focus-visible {
-  outline: 2px solid var(--color-tech-blue);
-  outline-offset: 3px;
-  box-shadow: 0 0 20px var(--glow-blue);
 }

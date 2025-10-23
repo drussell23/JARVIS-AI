@@ -2789,23 +2789,7 @@ const JarvisVoice = () => {
         />
       )}
 
-      {/* Vision Status */}
-      {autonomousMode && (
-        <div className="vision-status-bar">
-          <div className={`vision-connection ${visionConnected ? 'connected' : 'disconnected'}`}>
-            <span className="vision-icon">👁️</span>
-            <span>Vision: {visionConnected ? 'Connected' : 'Connecting...'}</span>
-          </div>
-          {workspaceData && workspaceData.workspace && (
-            <div className="workspace-summary">
-              <span>{workspaceData.workspace.window_count} windows</span>
-              {workspaceData.workspace.focused_app && (
-                <span> • Focused: {workspaceData.workspace.focused_app}</span>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+      {/* Vision Status - REMOVED */}
 
       {/* Simplified Control - Only show when needed */}
       {jarvisStatus === 'activating' && (
