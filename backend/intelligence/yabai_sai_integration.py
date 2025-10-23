@@ -472,21 +472,42 @@ class YabaiSAIBridge:
             return {}
 
     async def _get_sai_visual_context(self) -> Dict[str, Any]:
-        """Get visual context from SAI"""
+        """
+        Get comprehensive visual context from SAI
+
+        Returns rich contextual information including:
+        - UI state (resolution, active space, screen lock status)
+        - UI elements (tracked element positions and confidence)
+        - Screen state (display topology, resolution)
+        - Recent environmental changes
+        - Cache statistics
+        """
         try:
             if not self.sai:
+                logger.warning("[BRIDGE] SAI not initialized, returning empty context")
                 return {}
 
-            # Get current SAI state
-            # NOTE: get_current_context() method doesn't exist, returning default context
-            # TODO: Implement proper context retrieval from SAI
-            context = {}
+            # Get current comprehensive context from SAI
+            context = await self.sai.get_current_context()
+
+            logger.debug(
+                f"[BRIDGE] Retrieved SAI context: "
+                f"{len(context.get('ui_elements', []))} elements, "
+                f"confidence={context.get('confidence', 0):.2f}, "
+                f"monitoring={'active' if context.get('monitoring_active') else 'inactive'}"
+            )
 
             return {
                 'state': context.get('ui_state', {}),
                 'elements': context.get('ui_elements', []),
                 'screen_state': context.get('screen_state', {}),
-                'confidence': context.get('confidence', 0.5)
+                'confidence': context.get('confidence', 0.5),
+                'display_topology': context.get('display_topology', {}),
+                'tracked_elements': context.get('tracked_elements', {}),
+                'recent_changes': context.get('recent_changes', []),
+                'cache_stats': context.get('cache_stats', {}),
+                'environment_hash': context.get('environment_hash'),
+                'timestamp': context.get('timestamp')
             }
 
         except Exception as e:

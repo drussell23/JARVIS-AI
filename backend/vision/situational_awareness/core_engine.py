@@ -1191,6 +1191,115 @@ class SituationalAwarenessEngine:
 
         return position
 
+    async def get_current_context(self) -> Dict[str, Any]:
+        """
+        Get comprehensive current context from SAI
+
+        Returns rich contextual information about the current environment,
+        UI state, tracked elements, display topology, and recent changes.
+        """
+        context = {
+            'timestamp': time.time(),
+            'monitoring_active': self.is_monitoring,
+            'environment_hash': None,
+            'ui_state': {},
+            'ui_elements': [],
+            'screen_state': {},
+            'display_topology': {},
+            'tracked_elements': {},
+            'recent_changes': [],
+            'confidence': 0.0
+        }
+
+        # Current snapshot data
+        if self.current_snapshot:
+            context['environment_hash'] = self.current_snapshot.environment_hash
+            context['timestamp'] = self.current_snapshot.timestamp
+
+            # UI State
+            context['ui_state'] = {
+                'active_space': self.current_snapshot.active_space,
+                'screen_resolution': {
+                    'width': self.current_snapshot.screen_resolution[0],
+                    'height': self.current_snapshot.screen_resolution[1]
+                } if self.current_snapshot.screen_resolution else None,
+                'os_version': self.current_snapshot.system_metadata.get('os_version'),
+                'screen_locked': self.current_snapshot.system_metadata.get('screen_locked', False)
+            }
+
+            # Screen State
+            context['screen_state'] = {
+                'resolution': context['ui_state']['screen_resolution'],
+                'locked': context['ui_state']['screen_locked'],
+                'active_space': context['ui_state']['active_space']
+            }
+
+            # Display Topology
+            context['display_topology'] = self.current_snapshot.display_topology
+
+            # Element positions from snapshot
+            element_list = []
+            for element_id, position in self.current_snapshot.element_positions.items():
+                element_list.append({
+                    'id': element_id,
+                    'x': position.x,
+                    'y': position.y,
+                    'width': position.width,
+                    'height': position.height,
+                    'confidence': position.confidence,
+                    'display_id': position.display_id,
+                    'timestamp': position.timestamp
+                })
+            context['ui_elements'] = element_list
+
+            # Calculate overall confidence based on cached elements
+            if element_list:
+                avg_confidence = sum(e['confidence'] for e in element_list) / len(element_list)
+                context['confidence'] = min(avg_confidence, 0.95)  # Cap at 0.95
+            else:
+                context['confidence'] = 0.5  # Medium confidence with no elements
+
+        # Tracked elements with their current state
+        tracked = {}
+        for element_id in self.tracker.tracked_elements:
+            cached_pos = self.cache.get(
+                element_id,
+                self.current_snapshot.environment_hash if self.current_snapshot else None
+            )
+            if cached_pos:
+                tracked[element_id] = {
+                    'position': (cached_pos.x, cached_pos.y),
+                    'dimensions': (cached_pos.width, cached_pos.height),
+                    'confidence': cached_pos.confidence,
+                    'display_id': cached_pos.display_id,
+                    'last_seen': cached_pos.timestamp
+                }
+        context['tracked_elements'] = tracked
+
+        # Recent environmental changes
+        recent_changes = []
+        for change in list(self.change_history)[-5:]:  # Last 5 changes
+            recent_changes.append({
+                'type': change.change_type.value,
+                'element_id': change.element_id,
+                'timestamp': change.timestamp,
+                'confidence': change.confidence,
+                'old_value': str(change.old_value) if change.old_value else None,
+                'new_value': str(change.new_value) if change.new_value else None
+            })
+        context['recent_changes'] = recent_changes
+
+        # Cache statistics
+        cache_metrics = self.cache.get_metrics()
+        context['cache_stats'] = {
+            'size': cache_metrics.get('cache_size', 0),
+            'hit_rate': cache_metrics.get('hit_rate', 0.0),
+            'total_hits': cache_metrics.get('total_hits', 0),
+            'total_misses': cache_metrics.get('total_misses', 0)
+        }
+
+        return context
+
     def get_metrics(self) -> Dict[str, Any]:
         """Get comprehensive SAI metrics"""
         return {
