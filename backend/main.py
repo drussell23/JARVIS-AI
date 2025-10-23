@@ -978,16 +978,30 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"⚠️ Could not start Goal Inference tasks: {e}")
 
+    # Initialize vision analyzer BEFORE UAE (so UAE can use it)
+    logger.info("👁️  Initializing Claude Vision Analyzer...")
+    vision = components.get("vision", {})
+    vision_analyzer = None
+    if vision.get("available"):
+        analyzer_class = vision.get("analyzer")
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if analyzer_class and api_key:
+            vision_analyzer = analyzer_class(api_key)
+            app.state.vision_analyzer = vision_analyzer
+            logger.info("✅ Claude Vision Analyzer initialized and stored in app.state")
+        else:
+            logger.warning("⚠️  Vision analyzer available but no ANTHROPIC_API_KEY set")
+    else:
+        logger.warning("⚠️  Vision system not available")
+
     # Initialize UAE (Unified Awareness Engine) with SAI + Learning Database + Yabai integration
     try:
         logger.info("🧠 Initializing UAE (Unified Awareness Engine) with Learning Database + Yabai...")
         from intelligence.uae_integration import initialize_uae, get_uae, get_learning_db, get_yabai
 
-        # Get vision analyzer if available
-        vision_analyzer = None
-        chatbots = components.get("chatbots", {})
-        if chatbots and chatbots.get("vision_chatbot"):
-            vision_analyzer = chatbots["vision_chatbot"]
+        # Use the vision analyzer we just created
+        if vision_analyzer:
+            logger.info("✅ Connecting vision analyzer to UAE + SAI + Learning Database")
 
         # Create voice callback for Phase 4 Proactive Intelligence
         async def voice_callback(text: str):
@@ -1170,44 +1184,41 @@ async def lifespan(app: FastAPI):
         logger.warning(f"⚠️ Could not initialize Rust acceleration: {e}")
         app.state.rust_acceleration = {"available": False}
 
-    # Initialize vision analyzer if available
-    vision = components.get("vision", {})
-    if vision.get("available"):
-        analyzer_class = vision.get("analyzer")
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if analyzer_class and api_key:
-            app.state.vision_analyzer = analyzer_class(api_key)
-            logger.info("✅ Vision analyzer initialized")
-            
-            # Connect Vision Navigator to vision analyzer (for display connection)
-            try:
-                from display.vision_ui_navigator import get_vision_navigator
-                navigator = get_vision_navigator()
-                navigator.set_vision_analyzer(app.state.vision_analyzer)
-                logger.info("✅ Vision Navigator connected to Claude Vision analyzer")
-                logger.info("   👁️ JARVIS can now navigate Control Center using vision!")
-            except Exception as e:
-                logger.debug(f"Vision Navigator connection skipped: {e}")
+    # Connect vision analyzer to other components (analyzer already initialized earlier)
+    if hasattr(app.state, "vision_analyzer") and app.state.vision_analyzer:
+        logger.info("🔗 Connecting vision analyzer to other JARVIS components...")
 
-            # Set vision analyzer in vision websocket manager
-            try:
-                from api.vision_websocket import set_vision_analyzer
+        # Connect Vision Navigator to vision analyzer (for display connection)
+        try:
+            from display.vision_ui_navigator import get_vision_navigator
+            navigator = get_vision_navigator()
+            navigator.set_vision_analyzer(app.state.vision_analyzer)
+            logger.info("✅ Vision Navigator connected to Claude Vision analyzer")
+            logger.info("   👁️ JARVIS can now navigate Control Center using vision!")
+        except Exception as e:
+            logger.debug(f"Vision Navigator connection skipped: {e}")
 
-                set_vision_analyzer(app.state.vision_analyzer)
-                logger.info("✅ Vision analyzer set in vision websocket manager")
-            except ImportError as e:
-                logger.warning(f"⚠️ Could not set vision analyzer in websocket: {e}")
+        # Set vision analyzer in vision websocket manager
+        try:
+            from api.vision_websocket import set_vision_analyzer
 
-            # Set app state in JARVIS factory for dependency injection
-            try:
-                from api.jarvis_factory import set_app_state
+            set_vision_analyzer(app.state.vision_analyzer)
+            logger.info("✅ Vision analyzer set in vision websocket manager")
+        except ImportError as e:
+            logger.warning(f"⚠️ Could not set vision analyzer in websocket: {e}")
 
-                set_app_state(app.state)
-                logger.info("✅ App state set in JARVIS factory")
-            except ImportError:
-                logger.warning(
-                    "⚠️ JARVIS factory not available for dependency injection"
-                )
+        # Set app state in JARVIS factory for dependency injection
+        try:
+            from api.jarvis_factory import set_app_state
+
+            set_app_state(app.state)
+            logger.info("✅ App state set in JARVIS factory")
+        except ImportError:
+            logger.warning(
+                "⚠️ JARVIS factory not available for dependency injection"
+            )
+    else:
+        logger.warning("⚠️ Vision analyzer not available - vision features disabled")
 
             # Initialize proactive monitoring components
             try:
