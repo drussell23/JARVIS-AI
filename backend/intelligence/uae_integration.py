@@ -41,42 +41,70 @@ from vision.situational_awareness import (
     get_sai_engine,
     SituationalAwarenessEngine
 )
+from intelligence.learning_database import (
+    get_learning_database,
+    JARVISLearningDatabase
+)
 
 logger = logging.getLogger(__name__)
 
 # Global UAE instance
 _uae_instance: Optional[UnifiedAwarenessEngine] = None
 _uae_initialized = False
+_learning_db_instance: Optional[JARVISLearningDatabase] = None
 
 
 async def initialize_uae(
     vision_analyzer=None,
     sai_monitoring_interval: float = 10.0,
     enable_auto_start: bool = True,
-    knowledge_base_path: Optional[Path] = None
+    knowledge_base_path: Optional[Path] = None,
+    enable_learning_db: bool = True
 ) -> UnifiedAwarenessEngine:
     """
-    Initialize UAE system
+    Initialize UAE system with Learning Database integration
 
     Args:
         vision_analyzer: Claude Vision analyzer instance
         sai_monitoring_interval: SAI monitoring interval in seconds
         enable_auto_start: Whether to auto-start UAE
         knowledge_base_path: Path to knowledge base file
+        enable_learning_db: Enable Learning Database integration
 
     Returns:
-        Initialized UAE engine
+        Initialized UAE engine with persistent memory
     """
-    global _uae_instance, _uae_initialized
+    global _uae_instance, _uae_initialized, _learning_db_instance
 
     if _uae_initialized and _uae_instance is not None:
         logger.info("[UAE-INIT] UAE already initialized")
         return _uae_instance
 
-    logger.info("[UAE-INIT] Initializing Unified Awareness Engine...")
+    logger.info("[UAE-INIT] Initializing Unified Awareness Engine with Learning Database...")
 
     try:
-        # Step 1: Create SAI engine
+        # Step 1: Initialize Learning Database (if enabled)
+        learning_db = None
+        if enable_learning_db:
+            logger.info("[UAE-INIT] Initializing Learning Database...")
+            try:
+                learning_db = await get_learning_database(config={
+                    'cache_size': 2000,
+                    'cache_ttl_seconds': 7200,
+                    'enable_ml_features': True,
+                    'auto_optimize': True,
+                    'batch_insert_size': 100
+                })
+                _learning_db_instance = learning_db
+                logger.info("[UAE-INIT] ✅ Learning Database initialized")
+                logger.info(f"[UAE-INIT]    • Cache: 2000 entries, 2hr TTL")
+                logger.info(f"[UAE-INIT]    • ML features: Enabled")
+                logger.info(f"[UAE-INIT]    • Auto-optimize: Enabled")
+            except Exception as e:
+                logger.warning(f"[UAE-INIT] ⚠️  Learning Database failed to initialize: {e}")
+                logger.info("[UAE-INIT]    • Continuing without persistent memory")
+
+        # Step 2: Create SAI engine
         logger.info("[UAE-INIT] Creating Situational Awareness Engine...")
         sai_engine = get_sai_engine(
             vision_analyzer=vision_analyzer,
@@ -85,11 +113,12 @@ async def initialize_uae(
         )
         logger.info("[UAE-INIT] ✅ SAI engine created")
 
-        # Step 2: Create UAE engine
+        # Step 3: Create UAE engine with Learning DB
         logger.info("[UAE-INIT] Creating Unified Awareness Engine...")
         uae = get_uae_engine(
             sai_engine=sai_engine,
-            vision_analyzer=vision_analyzer
+            vision_analyzer=vision_analyzer,
+            learning_db=learning_db
         )
 
         # Set custom knowledge base path if provided
@@ -97,9 +126,14 @@ async def initialize_uae(
             uae.context_layer.knowledge_base_path = knowledge_base_path
             uae.context_layer._load_knowledge_base()
 
+        # Initialize Learning DB connection in Context Layer
+        if learning_db:
+            await uae.context_layer.initialize_db(learning_db)
+            logger.info("[UAE-INIT] ✅ Learning Database integrated with Context Intelligence")
+
         logger.info("[UAE-INIT] ✅ UAE engine created")
 
-        # Step 3: Auto-start if enabled
+        # Step 4: Auto-start if enabled
         if enable_auto_start:
             logger.info("[UAE-INIT] Starting UAE...")
             await uae.start()
@@ -109,7 +143,11 @@ async def initialize_uae(
         _uae_instance = uae
         _uae_initialized = True
 
-        logger.info("[UAE-INIT] ✅ UAE initialization complete")
+        logger.info("[UAE-INIT] ✅ UAE initialization complete with full intelligence stack")
+        logger.info("[UAE-INIT]    • Context Intelligence: Active (with Learning DB)")
+        logger.info("[UAE-INIT]    • Situational Awareness: Active (SAI)")
+        logger.info("[UAE-INIT]    • Decision Fusion: Active")
+        logger.info("[UAE-INIT]    • Persistent Memory: " + ("Enabled" if learning_db else "Disabled"))
 
         return uae
 
@@ -133,8 +171,8 @@ def get_uae() -> Optional[UnifiedAwarenessEngine]:
 
 
 async def shutdown_uae():
-    """Shutdown UAE system"""
-    global _uae_instance, _uae_initialized
+    """Shutdown UAE system and Learning Database"""
+    global _uae_instance, _uae_initialized, _learning_db_instance
 
     if not _uae_initialized or _uae_instance is None:
         return
@@ -142,14 +180,33 @@ async def shutdown_uae():
     logger.info("[UAE-SHUTDOWN] Shutting down UAE...")
 
     try:
+        # Stop UAE monitoring
         await _uae_instance.stop()
         logger.info("[UAE-SHUTDOWN] ✅ UAE stopped")
+
+        # Close Learning Database
+        if _learning_db_instance:
+            logger.info("[UAE-SHUTDOWN] Closing Learning Database...")
+            await _learning_db_instance.close()
+            logger.info("[UAE-SHUTDOWN] ✅ Learning Database closed")
+            _learning_db_instance = None
 
         _uae_initialized = False
         # Keep instance for potential restart
 
     except Exception as e:
         logger.error(f"[UAE-SHUTDOWN] Error during shutdown: {e}", exc_info=True)
+
+
+def get_learning_db() -> Optional[JARVISLearningDatabase]:
+    """
+    Get global Learning Database instance
+
+    Returns:
+        Learning Database instance or None if not initialized
+    """
+    global _learning_db_instance
+    return _learning_db_instance
 
 
 def get_uae_metrics() -> Dict[str, Any]:

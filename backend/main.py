@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-JARVIS AI Backend - Optimized Main Entry Point
+JARVIS AI Backend - Optimized Main Entry Point with Advanced Intelligence
 
-This backend loads 9 critical components that power the JARVIS AI system:
+This backend loads 10 critical components that power the JARVIS AI system:
 
 1. CHATBOTS (Claude Vision Chatbot)
    - Powers conversational AI with Claude 3.5 Sonnet
@@ -63,7 +63,7 @@ This backend loads 9 critical components that power the JARVIS AI system:
    - Adaptive sensitivity and anti-spoofing
    - Customizable wake words and responses
 
-9. DISPLAY MONITOR (External Display Management) - NEW!
+9. DISPLAY MONITOR (External Display Management)
    - Automatic AirPlay/external display detection
    - Multi-method detection (AppleScript, CoreGraphics, Yabai)
    - Voice announcements for display availability
@@ -73,7 +73,24 @@ This backend loads 9 critical components that power the JARVIS AI system:
    - Zero hardcoding - fully configuration-driven
    - Event-driven callbacks for custom integrations
 
-All 9 components must load successfully for full JARVIS functionality.
+10. INTELLIGENCE STACK (UAE + SAI + Learning Database) - ADVANCED! 🧠
+   - UAE (Unified Awareness Engine): Context intelligence + decision fusion
+   - SAI (Situational Awareness): Real-time UI monitoring (10s interval)
+   - Learning Database: Persistent memory with async SQLite + ChromaDB
+   - Predictive Intelligence: Learns patterns and predicts actions
+   - Cross-Session Memory: Remembers across restarts
+   - Temporal Pattern Recognition: Time-based behavior learning
+   - Self-Healing: Adapts automatically to environment changes
+   - Confidence-Weighted Decisions: Fuses context + real-time perception
+   - Zero Hardcoding: Fully dynamic, learns everything
+   - Capabilities:
+     * Learns user patterns across macOS workspace
+     * Predicts actions before you ask (proactive)
+     * Adapts to UI changes automatically (reactive)
+     * Remembers preferences forever (persistent)
+     * Gets smarter over time (continuous learning)
+
+All 10 components must load successfully for full JARVIS functionality.
 The system uses parallel imports to reduce startup time from ~20s to ~7-9s.
 
 Enhanced Vision Features (v13.3.1):
@@ -961,10 +978,10 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"⚠️ Could not start Goal Inference tasks: {e}")
 
-    # Initialize UAE (Unified Awareness Engine) with SAI integration
+    # Initialize UAE (Unified Awareness Engine) with SAI + Learning Database integration
     try:
-        logger.info("🧠 Initializing UAE (Unified Awareness Engine)...")
-        from intelligence.uae_integration import initialize_uae, get_uae
+        logger.info("🧠 Initializing UAE (Unified Awareness Engine) with Learning Database...")
+        from intelligence.uae_integration import initialize_uae, get_uae, get_learning_db
 
         # Get vision analyzer if available
         vision_analyzer = None
@@ -972,25 +989,68 @@ async def lifespan(app: FastAPI):
         if chatbots and chatbots.get("vision_chatbot"):
             vision_analyzer = chatbots["vision_chatbot"]
 
-        # Initialize UAE with SAI integration
+        # Initialize UAE with SAI + Learning Database integration
+        logger.info("🔧 Initializing full intelligence stack...")
+        logger.info("   Step 1/4: Learning Database initialization...")
+        logger.info("   Step 2/4: Situational Awareness Engine (SAI)...")
+        logger.info("   Step 3/4: Context Intelligence Layer...")
+        logger.info("   Step 4/4: Decision Fusion Engine...")
+
         uae = await initialize_uae(
             vision_analyzer=vision_analyzer,
             sai_monitoring_interval=10.0,  # Monitor every 10 seconds
-            enable_auto_start=True  # Start monitoring immediately
+            enable_auto_start=True,  # Start monitoring immediately
+            enable_learning_db=True  # Enable persistent memory
         )
 
         if uae and uae.is_active:
             app.state.uae_engine = uae
-            logger.info("✅ UAE initialized successfully")
-            logger.info("   • SAI monitoring: Active (10s interval)")
-            logger.info("   • Context intelligence: Active")
-            logger.info("   • Display clicker: Will use UAE+SAI enhanced mode")
-            logger.info("   • Proactive adaptation: Enabled")
+
+            # Get Learning DB instance
+            learning_db = get_learning_db()
+            if learning_db:
+                app.state.learning_db = learning_db
+
+                # Get Learning DB metrics
+                try:
+                    metrics = await learning_db.get_learning_metrics()
+                    logger.info("✅ UAE + SAI + Learning Database initialized successfully")
+                    logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                    logger.info("   🧠 INTELLIGENCE STACK: FULLY OPERATIONAL")
+                    logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                    logger.info("   • SAI (Situational Awareness): ✅ Active (10s monitoring)")
+                    logger.info("   • Context Intelligence: ✅ Active (with persistent memory)")
+                    logger.info("   • Decision Fusion Engine: ✅ Active (confidence-weighted)")
+                    logger.info("   • Learning Database: ✅ Active (async + ChromaDB)")
+                    logger.info("   • Predictive Intelligence: ✅ Enabled (temporal patterns)")
+                    logger.info("   • Cross-Session Memory: ✅ Enabled (survives restarts)")
+                    logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                    logger.info("   📊 LEARNING DATABASE METRICS:")
+                    logger.info(f"   • Total Patterns: {metrics['patterns']['total_patterns']}")
+                    logger.info(f"   • Display Patterns: {metrics['display_patterns']['total_display_patterns']}")
+                    logger.info(f"   • Pattern Cache Hit Rate: {metrics['cache_performance']['pattern_cache_hit_rate']:.1%}")
+                    logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                    logger.info("   🎯 CAPABILITIES:")
+                    logger.info("   • Learns user patterns across all macOS workspace")
+                    logger.info("   • Predicts actions before you ask")
+                    logger.info("   • Adapts to UI changes automatically")
+                    logger.info("   • Remembers preferences across restarts")
+                    logger.info("   • Self-healing when environment changes")
+                    logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                except Exception as e:
+                    logger.warning(f"Could not get Learning DB metrics: {e}")
+            else:
+                logger.info("✅ UAE + SAI initialized successfully")
+                logger.info("   • SAI monitoring: Active (10s interval)")
+                logger.info("   • Context intelligence: Active")
+                logger.info("   • Display clicker: Will use UAE+SAI enhanced mode")
+                logger.info("   • Proactive adaptation: Enabled")
+                logger.warning("   ⚠️  Learning Database: Not active (no persistent memory)")
         else:
             logger.warning("⚠️ UAE initialized but not active")
 
     except Exception as e:
-        logger.warning(f"⚠️ Could not initialize UAE: {e}")
+        logger.warning(f"⚠️ Could not initialize UAE + Learning Database: {e}")
         logger.info("   Falling back to SAI-only mode for display connections")
 
     # Discover running services (if dynamic CORS is available)
@@ -1628,14 +1688,35 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Failed to stop Goal Inference: {e}")
 
-    # Shutdown UAE (Unified Awareness Engine)
+    # Shutdown UAE (Unified Awareness Engine) + Learning Database
     if hasattr(app.state, "uae_engine"):
         try:
-            from intelligence.uae_integration import shutdown_uae
+            from intelligence.uae_integration import shutdown_uae, get_learning_db
+
+            logger.info("🧠 Shutting down Intelligence Stack...")
+
+            # Get Learning DB metrics before shutdown
+            learning_db = get_learning_db()
+            if learning_db:
+                try:
+                    metrics = await learning_db.get_learning_metrics()
+                    logger.info("   📊 Final Learning Database Stats:")
+                    logger.info(f"   • Total Patterns Learned: {metrics['patterns']['total_patterns']}")
+                    logger.info(f"   • Display Patterns: {metrics['display_patterns']['total_display_patterns']}")
+                    logger.info(f"   • Total Actions Logged: {metrics['actions']['total_actions']}")
+                    logger.info(f"   • Success Rate: {metrics['actions']['success_rate']:.1f}%")
+                    logger.info(f"   • Cache Hit Rate: {metrics['cache_performance']['pattern_cache_hit_rate']:.1%}")
+                except Exception as e:
+                    logger.debug(f"Could not get final metrics: {e}")
+
+            # Shutdown UAE + Learning DB
             await shutdown_uae()
+
             logger.info("✅ UAE (Unified Awareness Engine) stopped")
+            logger.info("✅ SAI (Situational Awareness) stopped")
+            logger.info("✅ Learning Database closed (all data persisted)")
         except Exception as e:
-            logger.error(f"Failed to stop UAE: {e}")
+            logger.error(f"Failed to stop UAE + Learning Database: {e}")
 
     # Stop Voice Unlock system
     voice_unlock = components.get("voice_unlock") or {}

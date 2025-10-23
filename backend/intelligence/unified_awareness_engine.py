@@ -4,28 +4,31 @@ Unified Awareness Engine (UAE)
 ===============================
 
 Production-grade fusion of Context Intelligence and Situational Awareness
-into a single self-correcting cognitive system.
+into a single self-correcting cognitive system with persistent learning.
 
-UAE = Context (past) × Situation (present) = True Intelligence
+UAE = Context (past) × Situation (present) × Learning (memory) = True Intelligence
 
 Features:
 - Bidirectional learning between historical context and real-time perception
+- Persistent memory with Learning Database integration
 - Confidence-weighted decision making
 - Priority-based element monitoring
 - Self-healing intelligence loop
 - Continuous adaptation and improvement
 - Zero hardcoding, fully dynamic
+- Temporal pattern recognition and prediction
 
 Architecture:
     UnifiedAwarenessEngine
     ├── ContextIntelligenceLayer (historical patterns, intent)
     ├── SituationalAwarenessLayer (real-time perception)
     ├── AwarenessIntegrationLayer (decision fusion)
+    ├── LearningDatabaseLayer (persistent memory)
     └── FeedbackLoop (continuous learning)
 
 Author: Derek J. Russell
 Date: October 2025
-Version: 1.0.0
+Version: 2.0.0 - Learning Database Integration
 """
 
 import asyncio
@@ -47,6 +50,13 @@ from backend.vision.situational_awareness import (
     ChangeEvent,
     ChangeType,
     get_sai_engine
+)
+
+# Import Learning Database
+from backend.intelligence.learning_database import (
+    JARVISLearningDatabase,
+    get_learning_database,
+    PatternType
 )
 
 logger = logging.getLogger(__name__)
@@ -167,22 +177,29 @@ class ExecutionResult:
 
 class ContextIntelligenceLayer:
     """
-    Historical pattern learning and contextual understanding
+    Historical pattern learning and contextual understanding with persistent memory
 
     Manages long-term memory of:
     - Element positions and usage patterns
     - User workflows and preferences
     - Command intent and expected outcomes
     - Reliability and success history
+    - Temporal patterns and predictions
+
+    Uses Learning Database for persistent storage and semantic search
     """
 
-    def __init__(self, knowledge_base_path: Optional[Path] = None):
+    def __init__(self, knowledge_base_path: Optional[Path] = None, learning_db: Optional[JARVISLearningDatabase] = None):
         self.knowledge_base_path = knowledge_base_path or (
             Path.home() / ".jarvis" / "uae_context.json"
         )
         self.knowledge_base_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Context data structures
+        # Learning Database integration
+        self.learning_db = learning_db
+        self.db_initialized = False
+
+        # Context data structures (in-memory cache)
         self.element_patterns: Dict[str, ContextualData] = {}
         self.usage_history: deque = deque(maxlen=1000)
         self.success_history: Dict[str, deque] = defaultdict(lambda: deque(maxlen=100))
@@ -196,12 +213,14 @@ class ContextIntelligenceLayer:
             'total_predictions': 0,
             'successful_predictions': 0,
             'pattern_updates': 0,
-            'learning_events': 0
+            'learning_events': 0,
+            'db_stores': 0,
+            'db_retrievals': 0
         }
 
         self._load_knowledge_base()
 
-        logger.info("[UAE-CI] Context Intelligence Layer initialized")
+        logger.info("[UAE-CI] Context Intelligence Layer initialized with Learning DB integration")
 
     def _load_knowledge_base(self):
         """Load knowledge base from disk"""
@@ -244,9 +263,55 @@ class ContextIntelligenceLayer:
         except Exception as e:
             logger.error(f"[UAE-CI] Error saving knowledge base: {e}")
 
+    async def initialize_db(self, learning_db: JARVISLearningDatabase):
+        """Initialize Learning Database connection"""
+        self.learning_db = learning_db
+        self.db_initialized = True
+
+        # Load patterns from database
+        await self._load_patterns_from_db()
+
+        logger.info("[UAE-CI] Learning Database initialized and patterns loaded")
+
+    async def _load_patterns_from_db(self):
+        """Load patterns from Learning Database"""
+        if not self.learning_db:
+            return
+
+        try:
+            # Get display patterns from DB
+            async with self.learning_db.db.cursor() as cursor:
+                await cursor.execute("""
+                    SELECT display_name, context, frequency, consecutive_successes
+                    FROM display_patterns
+                    WHERE frequency >= 2
+                    ORDER BY frequency DESC
+                    LIMIT 50
+                """)
+                rows = await cursor.fetchall()
+
+                for row in rows:
+                    element_id = row['display_name']
+                    # Create pattern from DB data
+                    if element_id not in self.element_patterns:
+                        self.element_patterns[element_id] = ContextualData(
+                            element_id=element_id,
+                            expected_position=None,  # Will be learned
+                            confidence=min(row['frequency'] / 10.0, 0.9),
+                            usage_count=row['frequency'],
+                            last_success=time.time(),
+                            pattern_strength=min(row['consecutive_successes'] / 5.0, 0.95),
+                            metadata={'source': 'learning_db'}
+                        )
+
+                logger.info(f"[UAE-CI] Loaded {len(rows)} patterns from Learning Database")
+
+        except Exception as e:
+            logger.error(f"[UAE-CI] Error loading patterns from DB: {e}")
+
     async def get_contextual_data(self, element_id: str) -> Optional[ContextualData]:
         """
-        Get contextual data for element
+        Get contextual data for element with Learning DB fallback
 
         Args:
             element_id: Element identifier
@@ -254,19 +319,55 @@ class ContextIntelligenceLayer:
         Returns:
             Contextual data or None
         """
-        if element_id not in self.element_patterns:
-            return None
+        # Check in-memory cache first
+        if element_id in self.element_patterns:
+            pattern = self.element_patterns[element_id]
 
-        pattern = self.element_patterns[element_id]
+            # Calculate current confidence based on pattern strength and recency
+            age_hours = (time.time() - pattern.last_success) / 3600
+            recency_factor = np.exp(-age_hours / 48)  # Decay over 48 hours
+            pattern.confidence = pattern.pattern_strength * recency_factor
 
-        # Calculate current confidence based on pattern strength and recency
-        age_hours = (time.time() - pattern.last_success) / 3600
-        recency_factor = np.exp(-age_hours / 48)  # Decay over 48 hours
-        pattern.confidence = pattern.pattern_strength * recency_factor
+            self.metrics['total_predictions'] += 1
+            return pattern
 
-        self.metrics['total_predictions'] += 1
+        # Fallback to Learning Database
+        if self.learning_db:
+            try:
+                self.metrics['db_retrievals'] += 1
 
-        return pattern
+                # Check display patterns
+                async with self.learning_db.db.cursor() as cursor:
+                    await cursor.execute("""
+                        SELECT * FROM display_patterns
+                        WHERE display_name = ?
+                        ORDER BY frequency DESC
+                        LIMIT 1
+                    """, (element_id,))
+                    row = await cursor.fetchone()
+
+                    if row:
+                        # Create pattern from DB
+                        pattern = ContextualData(
+                            element_id=element_id,
+                            expected_position=None,
+                            confidence=min(row['frequency'] / 10.0, 0.8),
+                            usage_count=row['frequency'],
+                            last_success=time.time(),
+                            pattern_strength=min(row['consecutive_successes'] / 5.0, 0.9),
+                            metadata={'source': 'learning_db', 'auto_connect': bool(row['auto_connect'])}
+                        )
+
+                        # Cache it
+                        self.element_patterns[element_id] = pattern
+
+                        logger.info(f"[UAE-CI] Retrieved pattern for {element_id} from Learning DB")
+                        return pattern
+
+            except Exception as e:
+                logger.error(f"[UAE-CI] Error retrieving from Learning DB: {e}")
+
+        return None
 
     async def update_pattern(
         self,
@@ -276,7 +377,7 @@ class ContextIntelligenceLayer:
         metadata: Optional[Dict[str, Any]] = None
     ):
         """
-        Update learned pattern for element
+        Update learned pattern for element and store in Learning DB
 
         Args:
             element_id: Element identifier
@@ -322,10 +423,55 @@ class ContextIntelligenceLayer:
         self.metrics['pattern_updates'] += 1
         self._save_knowledge_base()
 
+        # Store in Learning Database
+        if self.learning_db:
+            await self._store_pattern_in_db(element_id, position, success, metadata)
+
         logger.debug(
             f"[UAE-CI] Updated pattern for {element_id}: "
             f"pos={position}, strength={self.element_patterns[element_id].pattern_strength:.2f}"
         )
+
+    async def _store_pattern_in_db(
+        self,
+        element_id: str,
+        position: Tuple[int, int],
+        success: bool,
+        metadata: Optional[Dict[str, Any]] = None
+    ):
+        """Store pattern in Learning Database"""
+        try:
+            self.metrics['db_stores'] += 1
+
+            # Store as display pattern
+            context = metadata or {}
+            context['position'] = position
+
+            await self.learning_db.learn_display_pattern(
+                display_name=element_id,
+                context=context
+            )
+
+            # Store as general pattern
+            pattern_data = {
+                'pattern_type': PatternType.CONTEXTUAL.value,
+                'pattern_data': {
+                    'element_id': element_id,
+                    'position': position,
+                    'success': success,
+                    'timestamp': datetime.now().isoformat()
+                },
+                'confidence': self.element_patterns[element_id].pattern_strength,
+                'success_rate': 1.0 if success else 0.0,
+                'metadata': metadata or {}
+            }
+
+            await self.learning_db.store_pattern(pattern_data, auto_merge=True)
+
+            logger.debug(f"[UAE-CI] Stored pattern for {element_id} in Learning DB")
+
+        except Exception as e:
+            logger.error(f"[UAE-CI] Error storing pattern in Learning DB: {e}")
 
     async def get_priority_elements(self, top_n: int = 10) -> List[str]:
         """
@@ -376,7 +522,7 @@ class ContextIntelligenceLayer:
 
     async def learn_from_execution(self, result: ExecutionResult):
         """
-        Learn from execution result
+        Learn from execution result and store in Learning DB
 
         Args:
             result: Execution result
@@ -394,13 +540,40 @@ class ContextIntelligenceLayer:
             result.success,
             metadata={
                 'source': result.decision.decision_source.value,
-                'verification': result.verification_passed
+                'verification': result.verification_passed,
+                'execution_time': result.execution_time
             }
         )
 
         # Update priority failure rate
         if element_id in self.element_priorities:
             self.element_priorities[element_id].failure_rate = 1.0 - self._get_success_rate(element_id)
+
+        # Store action in Learning DB
+        if self.learning_db:
+            try:
+                action_data = {
+                    'action_type': 'click_element',
+                    'target': element_id,
+                    'confidence': result.decision.confidence,
+                    'success': result.success,
+                    'execution_time': result.execution_time,
+                    'params': {
+                        'position': position,
+                        'decision_source': result.decision.decision_source.value
+                    },
+                    'result': {
+                        'verification_passed': result.verification_passed,
+                        'error': result.error
+                    }
+                }
+
+                await self.learning_db.store_action(action_data, batch=False)
+
+                logger.debug(f"[UAE-CI] Stored action for {element_id} in Learning DB")
+
+            except Exception as e:
+                logger.error(f"[UAE-CI] Error storing action in Learning DB: {e}")
 
         self.metrics['learning_events'] += 1
 
@@ -804,37 +977,44 @@ class AwarenessIntegrationLayer:
 
 class UnifiedAwarenessEngine:
     """
-    Main orchestrator combining Context Intelligence and Situational Awareness
+    Main orchestrator combining Context Intelligence, Situational Awareness, and Learning Database
 
-    Implements the complete awareness loop:
-    1. Analyze context (historical patterns)
-    2. Perceive situation (real-time state)
+    Implements the complete awareness loop with persistent memory:
+    1. Analyze context (historical patterns from Learning DB)
+    2. Perceive situation (real-time state from SAI)
     3. Fuse decisions (weighted combination)
     4. Execute action
-    5. Learn from result (feedback loop)
+    5. Learn from result (feedback loop + DB storage)
 
     Features:
-    - Bidirectional learning
+    - Bidirectional learning with persistence
     - Confidence-weighted decisions
     - Priority-based monitoring
     - Self-healing intelligence
     - Continuous adaptation
+    - Temporal pattern recognition
+    - Cross-session memory
     """
 
     def __init__(
         self,
         sai_engine: Optional[SituationalAwarenessEngine] = None,
-        vision_analyzer=None
+        vision_analyzer=None,
+        learning_db: Optional[JARVISLearningDatabase] = None
     ):
         """
-        Initialize UAE
+        Initialize UAE with Learning Database
 
         Args:
             sai_engine: Situational Awareness Engine
             vision_analyzer: Claude Vision analyzer
+            learning_db: Learning Database instance
         """
+        # Learning Database
+        self.learning_db = learning_db
+
         # Core layers
-        self.context_layer = ContextIntelligenceLayer()
+        self.context_layer = ContextIntelligenceLayer(learning_db=learning_db)
         self.situation_layer = SituationalAwarenessLayer(sai_engine)
         self.integration_layer = AwarenessIntegrationLayer()
 
@@ -858,10 +1038,11 @@ class UnifiedAwarenessEngine:
             'successful_executions': 0,
             'failed_executions': 0,
             'learning_cycles': 0,
-            'adaptations': 0
+            'adaptations': 0,
+            'db_active': learning_db is not None
         }
 
-        logger.info("[UAE] Unified Awareness Engine initialized")
+        logger.info("[UAE] Unified Awareness Engine initialized with Learning Database integration")
 
     async def start(self):
         """Start UAE system"""
@@ -1096,14 +1277,16 @@ _uae_instance: Optional[UnifiedAwarenessEngine] = None
 
 def get_uae_engine(
     sai_engine: Optional[SituationalAwarenessEngine] = None,
-    vision_analyzer=None
+    vision_analyzer=None,
+    learning_db: Optional[JARVISLearningDatabase] = None
 ) -> UnifiedAwarenessEngine:
     """
-    Get singleton UAE engine
+    Get singleton UAE engine with Learning Database
 
     Args:
         sai_engine: SAI engine instance
         vision_analyzer: Vision analyzer
+        learning_db: Learning Database instance
 
     Returns:
         UnifiedAwarenessEngine instance
@@ -1120,12 +1303,20 @@ def get_uae_engine(
 
         _uae_instance = UnifiedAwarenessEngine(
             sai_engine=sai_engine,
-            vision_analyzer=vision_analyzer
+            vision_analyzer=vision_analyzer,
+            learning_db=learning_db
         )
     else:
         # Update SAI engine if provided
         if sai_engine is not None:
             _uae_instance.situation_layer.set_sai_engine(sai_engine)
+
+        # Update Learning DB if provided
+        if learning_db is not None and _uae_instance.learning_db is None:
+            _uae_instance.learning_db = learning_db
+            _uae_instance.context_layer.learning_db = learning_db
+            _uae_instance.metrics['db_active'] = True
+            logger.info("[UAE] Learning Database connected to existing UAE instance")
 
     return _uae_instance
 
