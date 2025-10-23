@@ -1457,15 +1457,31 @@ class JARVISVoiceAPI:
                                 from display import get_display_monitor
                                 monitor = get_display_monitor()
 
-                                if monitor.has_pending_prompt():
-                                    logger.info(f"[JARVIS WS] Pending display prompt detected! Checking if '{command_text}' is a response...")
+                                # Debug logging
+                                logger.info(f"[JARVIS WS] Display check - pending_prompt: {getattr(monitor, 'pending_prompt_display', None)}, has_pending: {monitor.has_pending_prompt()}")
 
-                                    # Check if this looks like a yes/no response
-                                    response_lower = command_text.lower().strip()
-                                    is_response = any(word in response_lower for word in ["yes", "yeah", "yep", "no", "nope", "sure", "connect", "skip"])
+                                # ALWAYS check for yes/no if it looks like a response
+                                response_lower = command_text.lower().strip()
+                                is_yes_no = any(word in response_lower for word in ["yes", "yeah", "yep", "no", "nope", "sure", "okay", "connect", "skip"])
 
-                                    if is_response:
-                                        logger.info(f"[JARVIS WS] This is a display prompt response! Handling directly...")
+                                if is_yes_no:
+                                    logger.info(f"[JARVIS WS] Detected yes/no response: '{command_text}'")
+
+                                    # If there's a pending prompt OR if Living Room TV is available, handle it
+                                    has_pending = monitor.has_pending_prompt()
+                                    available_displays = list(getattr(monitor, 'available_displays', set()))
+                                    living_room_available = 'living_room_tv' in available_displays
+
+                                    logger.info(f"[JARVIS WS] Has pending: {has_pending}, Living Room TV available: {living_room_available}, All available: {available_displays}")
+
+                                    if has_pending or living_room_available:
+                                        logger.info(f"[JARVIS WS] Handling display response (pending={has_pending}, tv_available={living_room_available})")
+
+                                        # If no pending prompt but TV is available, set it now
+                                        if not has_pending and living_room_available:
+                                            monitor.pending_prompt_display = 'living_room_tv'
+                                            logger.info(f"[JARVIS WS] Set pending prompt for Living Room TV")
+
                                         display_result = await monitor.handle_user_response(command_text)
 
                                         if display_result.get("handled"):
