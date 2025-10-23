@@ -104,7 +104,7 @@ class MultiSpaceQueryHandler:
     - Vision systems (OCR and analysis)
     """
 
-    def __init__(self, context_graph=None, implicit_resolver=None, contextual_resolver=None, learning_db=None):
+    def __init__(self, context_graph=None, implicit_resolver=None, contextual_resolver=None, learning_db=None, yabai_detector=None, cg_window_detector=None):
         """
         Initialize the multi-space query handler.
 
@@ -113,12 +113,16 @@ class MultiSpaceQueryHandler:
             implicit_resolver: ImplicitReferenceResolver instance
             contextual_resolver: ContextualQueryResolver instance
             learning_db: JARVISLearningDatabase instance for pattern learning
+            yabai_detector: YabaiSpaceDetector for yabai integration
+            cg_window_detector: MultiSpaceWindowDetector for Core Graphics windows
         """
         self.context_graph = context_graph
         self.implicit_resolver = implicit_resolver
         self.contextual_resolver = contextual_resolver
         self.space_manager = get_space_state_manager()
         self.learning_db = learning_db
+        self.yabai_detector = yabai_detector
+        self.cg_window_detector = cg_window_detector
 
         # Query patterns (dynamic - no hardcoding)
         self._initialize_patterns()
@@ -126,6 +130,10 @@ class MultiSpaceQueryHandler:
         logger.info("[MULTI-SPACE] Handler initialized")
         if self.learning_db:
             logger.info("[MULTI-SPACE] Learning Database integration enabled")
+        if self.yabai_detector:
+            logger.info("[MULTI-SPACE] Yabai integration enabled")
+        if self.cg_window_detector:
+            logger.info("[MULTI-SPACE] Core Graphics window detection enabled")
 
     def _initialize_patterns(self):
         """Initialize dynamic query patterns"""
@@ -378,11 +386,92 @@ class MultiSpaceQueryHandler:
         logger.info(f"[MULTI-SPACE] Completed analysis: {len(valid_results)}/{len(space_ids)} successful")
         return valid_results
 
+    async def _aggregate_space_data(self, space_id: int) -> Dict[str, Any]:
+        """
+        Aggregate data from all available sources: context_graph, Yabai, and CG windows.
+
+        Returns unified data structure combining all sources.
+        """
+        aggregated_data = {
+            "space_id": space_id,
+            "windows": [],
+            "apps": [],
+            "window_count": 0,
+            "sources_used": []
+        }
+
+        # Source 1: Context Graph (historical context and patterns)
+        if self.context_graph and space_id in self.context_graph.spaces:
+            space_ctx = self.context_graph.spaces[space_id]
+            aggregated_data["context"] = {
+                "applications": list(space_ctx.applications.keys()) if space_ctx.applications else [],
+                "recent_events": space_ctx.get_recent_events(within_seconds=300),
+                "patterns": space_ctx.patterns if hasattr(space_ctx, 'patterns') else []
+            }
+            aggregated_data["sources_used"].append("context_graph")
+            logger.debug(f"[MULTI-SPACE] Space {space_id}: Got context from context_graph")
+
+        # Source 2: Yabai (real-time window manager data)
+        if self.yabai_detector and self.yabai_detector.is_available():
+            try:
+                yabai_windows = self.yabai_detector.get_windows_for_space(space_id)
+                if yabai_windows:
+                    aggregated_data["yabai_windows"] = yabai_windows
+                    aggregated_data["window_count"] = max(aggregated_data["window_count"], len(yabai_windows))
+                    for window in yabai_windows:
+                        if "app" in window and window["app"] not in aggregated_data["apps"]:
+                            aggregated_data["apps"].append(window["app"])
+                    aggregated_data["sources_used"].append("yabai")
+                    logger.debug(f"[MULTI-SPACE] Space {space_id}: Got {len(yabai_windows)} windows from Yabai")
+            except Exception as e:
+                logger.warning(f"[MULTI-SPACE] Yabai query failed for space {space_id}: {e}")
+
+        # Source 3: Core Graphics (low-level window detection)
+        if self.cg_window_detector:
+            try:
+                all_cg_windows = self.cg_window_detector.get_all_windows_across_spaces()
+                if all_cg_windows and "spaces" in all_cg_windows:
+                    space_key = str(space_id)
+                    if space_key in all_cg_windows["spaces"]:
+                        cg_windows = all_cg_windows["spaces"][space_key]
+                        aggregated_data["cg_windows"] = cg_windows
+                        aggregated_data["window_count"] = max(aggregated_data["window_count"], len(cg_windows))
+                        aggregated_data["sources_used"].append("core_graphics")
+                        logger.debug(f"[MULTI-SPACE] Space {space_id}: Got {len(cg_windows)} windows from Core Graphics")
+            except Exception as e:
+                logger.warning(f"[MULTI-SPACE] Core Graphics query failed for space {space_id}: {e}")
+
+        # Merge window data from all sources
+        all_windows = []
+
+        # Add Yabai windows (most reliable)
+        if "yabai_windows" in aggregated_data:
+            all_windows.extend(aggregated_data["yabai_windows"])
+
+        # Add CG windows (additional detail)
+        if "cg_windows" in aggregated_data:
+            for cg_win in aggregated_data["cg_windows"]:
+                # Add if not already in list
+                if not any(w.get("app") == cg_win.get("app_name") and
+                          w.get("title") == cg_win.get("window_title")
+                          for w in all_windows):
+                    all_windows.append({
+                        "app": cg_win.get("app_name"),
+                        "title": cg_win.get("window_title"),
+                        "source": "cg"
+                    })
+
+        aggregated_data["windows"] = all_windows
+
+        logger.info(f"[MULTI-SPACE] Space {space_id}: Aggregated data from {len(aggregated_data['sources_used'])} sources - {aggregated_data['window_count']} windows, {len(aggregated_data['apps'])} apps")
+
+        return aggregated_data
+
     async def _analyze_single_space(self, space_id: int, query: str) -> SpaceAnalysisResult:
         """
-        Analyze a single space.
+        Analyze a single space using unified data aggregation.
 
-        This integrates with vision systems and context graph.
+        Combines data from context_graph, Yabai, and Core Graphics windows.
         """
         start_time = datetime.now()
 
@@ -427,59 +516,88 @@ class MultiSpaceQueryHandler:
             logger.info(f"[MULTI-SPACE] Space {space_id} stabilized after transition")
 
         try:
-            # Get context from context graph if available
-            if self.context_graph and space_id in self.context_graph.spaces:
-                space_ctx = self.context_graph.spaces[space_id]
+            # Aggregate data from all sources
+            aggregated_data = await self._aggregate_space_data(space_id)
 
-                # Get active apps
-                apps = list(space_ctx.applications.keys()) if space_ctx.applications else []
-                app_name = apps[0] if apps else "Unknown"
+            # Extract unified data
+            apps = aggregated_data.get("apps", [])
+            window_count = aggregated_data.get("window_count", 0)
+            windows = aggregated_data.get("windows", [])
+            sources_used = aggregated_data.get("sources_used", [])
 
-                # Get recent events
-                recent_events = space_ctx.get_recent_events(within_seconds=300)
-
-                # Find errors
-                errors = []
-                for event in recent_events:
-                    if event.event_type.value == "error_detected":
-                        errors.append(event.details.get("error", "Unknown error"))
-
-                # Determine content type
-                content_type = "unknown"
-                if errors:
-                    content_type = "error"
-                elif app_name.lower() in ["terminal", "iterm2", "hyper"]:
-                    content_type = "terminal"
-                elif app_name.lower() in ["safari", "chrome", "firefox"]:
-                    content_type = "browser"
-                elif app_name.lower() in ["vscode", "pycharm", "sublime", "vim"]:
-                    content_type = "code"
-
-                # Build content summary
-                content_summary = f"{app_name}"
-                if errors:
-                    content_summary += f" with {len(errors)} error(s)"
-
-                analysis_time = (datetime.now() - start_time).total_seconds()
-
+            # Handle empty space
+            if window_count == 0 and not apps:
                 return SpaceAnalysisResult(
                     space_id=space_id,
                     success=True,
-                    app_name=app_name,
-                    content_type=content_type,
-                    content_summary=content_summary,
-                    errors=errors,
-                    significance="critical" if errors else "normal",
-                    analysis_time=analysis_time
-                )
-            else:
-                # No context available - basic result
-                return SpaceAnalysisResult(
-                    space_id=space_id,
-                    success=True,
-                    content_summary="No context available",
+                    content_summary="Empty space",
                     analysis_time=(datetime.now() - start_time).total_seconds()
                 )
+
+            # Determine primary app
+            app_name = apps[0] if apps else "Unknown"
+
+            # Check for errors from context (if available)
+            errors = []
+            if "context" in aggregated_data and "recent_events" in aggregated_data["context"]:
+                for event in aggregated_data["context"]["recent_events"]:
+                    if hasattr(event, 'event_type') and event.event_type.value == "error_detected":
+                        errors.append(event.details.get("error", "Unknown error"))
+
+            # Determine content type based on primary app
+            content_type = "unknown"
+            app_lower = app_name.lower()
+            if errors:
+                content_type = "error"
+            elif any(term in app_lower for term in ["terminal", "iterm", "hyper", "wezterm"]):
+                content_type = "terminal"
+            elif any(term in app_lower for term in ["safari", "chrome", "firefox", "edge", "browser"]):
+                content_type = "browser"
+            elif any(term in app_lower for term in ["code", "vscode", "pycharm", "sublime", "vim", "cursor", "xcode"]):
+                content_type = "code"
+            elif any(term in app_lower for term in ["slack", "discord", "teams"]):
+                content_type = "communication"
+            elif any(term in app_lower for term in ["spotify", "music"]):
+                content_type = "media"
+
+            # Build intelligent content summary
+            if window_count == 1:
+                # Single window - show app and title if available
+                window_title = windows[0].get("title", "") if windows else ""
+                if window_title:
+                    content_summary = f"{app_name}: {window_title}"
+                else:
+                    content_summary = f"{app_name}"
+            elif window_count <= 3:
+                # Few windows - list them
+                content_summary = f"{window_count} windows: {', '.join(apps)}"
+            else:
+                # Many windows - summarize
+                content_summary = f"{window_count} windows: {', '.join(apps[:3])}"
+                if len(apps) > 3:
+                    content_summary += f" (+{len(apps) - 3} more)"
+
+            # Add error context if present
+            if errors:
+                content_summary += f" [⚠️ {len(errors)} error(s)]"
+
+            # Add data source info for debugging
+            if sources_used:
+                logger.debug(f"[MULTI-SPACE] Space {space_id} analysis used sources: {', '.join(sources_used)}")
+
+            analysis_time = (datetime.now() - start_time).total_seconds()
+
+            return SpaceAnalysisResult(
+                space_id=space_id,
+                success=True,
+                app_name=app_name,
+                window_title=windows[0].get("title", "") if windows and len(windows) == 1 else None,
+                content_type=content_type,
+                content_summary=content_summary,
+                errors=errors,
+                significance="critical" if errors else "normal",
+                analysis_time=analysis_time
+            )
 
         except Exception as e:
             logger.error(f"[MULTI-SPACE] Error analyzing space {space_id}: {e}", exc_info=True)
@@ -823,9 +941,17 @@ def get_multi_space_handler() -> Optional[MultiSpaceQueryHandler]:
 
 
 def initialize_multi_space_handler(context_graph=None, implicit_resolver=None,
-                                   contextual_resolver=None, learning_db=None) -> MultiSpaceQueryHandler:
+                                   contextual_resolver=None, learning_db=None,
+                                   yabai_detector=None, cg_window_detector=None) -> MultiSpaceQueryHandler:
     """Initialize the global multi-space query handler"""
     global _global_handler
-    _global_handler = MultiSpaceQueryHandler(context_graph, implicit_resolver, contextual_resolver, learning_db)
+    _global_handler = MultiSpaceQueryHandler(
+        context_graph,
+        implicit_resolver,
+        contextual_resolver,
+        learning_db,
+        yabai_detector,
+        cg_window_detector
+    )
     logger.info("[MULTI-SPACE] Global handler initialized")
     return _global_handler
