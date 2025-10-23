@@ -1925,7 +1925,7 @@ const JarvisVoice = () => {
           startTime: commandStartTime,
         }
       }));
-      setResponse('Processing...');
+      setResponse('⚙️ Processing...');
     } else {
       // Fallback to REST API if WebSocket not connected
       sendTextCommand(command);
@@ -2696,24 +2696,30 @@ const JarvisVoice = () => {
       {/* Transcript Display - Always visible when there's activity */}
       {(transcript || response || isProcessing || isJarvisSpeaking) && (
         <div className="jarvis-transcript">
+          {/* User Message */}
           {transcript && (
             <div className="user-message">
               <span className="message-label">You:</span>
               <span className="message-text">{transcript}</span>
             </div>
           )}
-          {(response || isProcessing || isJarvisSpeaking) && (
+
+          {/* JARVIS Response - Always show when processing, speaking, or has response */}
+          {(isProcessing || isJarvisSpeaking || response) && (
             <div className="jarvis-message">
               <span className="message-label">JARVIS:</span>
               <span className="message-text" style={{ whiteSpace: 'pre-wrap' }}>
-                {isProcessing && !response && !isJarvisSpeaking ? (
-                  <span className="processing-indicator">Processing your request...</span>
+                {/* Priority 1: Processing state (no response yet) */}
+                {isProcessing && !response ? (
+                  <span className="processing-indicator">⚙️ Processing your request...</span>
                 ) : isJarvisSpeaking && response ? (
+                  /* Priority 2: Speaking with response */
                   <>
                     {response}
                     <span className="speaking-indicator"> 🎤</span>
                   </>
                 ) : (
+                  /* Priority 3: Just the response */
                   response || ''
                 )}
               </span>
