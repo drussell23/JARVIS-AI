@@ -258,28 +258,38 @@ class PredictiveHealthAnalyzer:
 
     @staticmethod
     def _calculate_health(cpu_percent: float, mem_percent: float) -> SystemHealth:
-        """Calculate health from metrics"""
-        # Emergency: Either resource > 95%
+        """
+        Calculate health from metrics (macOS-aware)
+
+        macOS memory philosophy:
+        - 50-70% memory is NORMAL and healthy (file cache working)
+        - 70-85% is GOOD (aggressive caching, system optimizing)
+        - >85% is when we start caring (if swap is also high)
+        - CPU thresholds remain similar to Linux
+
+        We weight CPU more heavily than memory for macOS.
+        """
+        # Emergency: CPU critical OR memory >95%
         if cpu_percent >= 95 or mem_percent >= 95:
             return SystemHealth.EMERGENCY
 
-        # Critical: Either resource > 85%
-        if cpu_percent >= 85 or mem_percent >= 90:
+        # Critical: CPU >85% OR memory >92% (macOS-adjusted)
+        if cpu_percent >= 85 or mem_percent >= 92:
             return SystemHealth.CRITICAL
 
-        # Degraded: Either resource > 70%
-        if cpu_percent >= 70 or mem_percent >= 85:
+        # Degraded: CPU >70% OR memory >88% (macOS-adjusted)
+        if cpu_percent >= 70 or mem_percent >= 88:
             return SystemHealth.DEGRADED
 
-        # Fair: Either resource > 50%
-        if cpu_percent >= 50 or mem_percent >= 75:
+        # Fair: CPU >50% OR memory >82% (macOS-adjusted)
+        if cpu_percent >= 50 or mem_percent >= 82:
             return SystemHealth.FAIR
 
-        # Good: Either resource > 30%
+        # Good: CPU >30% OR memory >70% (macOS-adjusted - this is NORMAL!)
         if cpu_percent >= 30 or mem_percent >= 60:
             return SystemHealth.GOOD
 
-        # Excellent: Both resources low
+        # Excellent: Both resources low (rare on macOS due to caching)
         return SystemHealth.EXCELLENT
 
 
@@ -708,34 +718,68 @@ class SwiftSystemMonitor:
         return metrics
 
     def _get_memory_pressure(self) -> str:
-        """Get system memory pressure (macOS specific)"""
+        """
+        Get system memory pressure (macOS kernel - PRIMARY source)
+
+        macOS kernel's memory_pressure is the MOST reliable indicator.
+        It understands compression, swap efficiency, and page fault rates.
+
+        DO NOT fallback to simple percentage - it's misleading on macOS!
+        """
         try:
             import subprocess
             result = subprocess.run(
                 ['memory_pressure'],
                 capture_output=True,
                 text=True,
-                timeout=1
+                timeout=2
             )
             output = result.stdout.lower()
 
+            # Trust the kernel's assessment
             if 'critical' in output:
                 return 'critical'
             elif 'warn' in output:
                 return 'warn'
             elif 'normal' in output:
                 return 'normal'
+
+            # Parse free percentage if available
+            if 'percentage' in output:
+                import re
+                match = re.search(r'percentage:\s*(\d+)%', output)
+                if match:
+                    free_percent = int(match.group(1))
+                    # macOS reports FREE (not used)
+                    if free_percent < 10:
+                        return 'critical'
+                    elif free_percent < 25:
+                        return 'warn'
+                    else:
+                        return 'normal'
+
+        except Exception as e:
+            logger.debug(f"memory_pressure command failed: {e}")
+
+        # Conservative fallback using TRUE pressure (wired + active)
+        try:
+            mem = psutil.virtual_memory()
+            wired = getattr(mem, 'wired', 0)
+            active = getattr(mem, 'active', 0)
+            total = mem.total
+
+            true_pressure = ((wired + active) / total) * 100
+
+            if true_pressure > 90:
+                return 'critical'
+            elif true_pressure > 85:
+                return 'warn'
+            else:
+                return 'normal'
         except:
             pass
 
-        # Fallback
-        mem = psutil.virtual_memory()
-        if mem.percent > 85:
-            return 'critical'
-        elif mem.percent > 70:
-            return 'warn'
-        else:
-            return 'normal'
+        return 'normal'
 
     # ========================================================================
     # Monitoring & Learning

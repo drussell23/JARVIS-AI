@@ -483,8 +483,99 @@ class MemoryQuantizer:
         self.current_metrics = metrics
         return metrics
 
+    def _calculate_macos_memory_pressure(self, mem) -> float:
+        """
+        Calculate macOS-specific memory pressure percentage
+
+        macOS memory management philosophy:
+        - Wired: Kernel memory, cannot be paged out (TRULY USED)
+        - Active: Recently used, likely to stay in RAM (TRULY USED)
+        - Inactive: Not recently used, CAN be freed instantly (AVAILABLE)
+        - Compressed: Compressed memory (TRULY USED but efficient)
+        - Purgeable: Can be freed by system instantly (AVAILABLE)
+        - Free: Completely unused (AVAILABLE)
+
+        Unlike Linux, macOS WANTS to use all RAM for caching (inactive pages).
+        High "used" percentage is NORMAL and GOOD on macOS!
+
+        Real pressure = (Wired + Active + Compressed) / Total
+        """
+        total = mem.total
+
+        # macOS-specific fields (available via psutil on macOS)
+        wired = getattr(mem, 'wired', 0)
+        active = getattr(mem, 'active', 0)
+
+        # Compressed memory (if available - macOS 10.9+)
+        # Note: psutil may not expose this, use vm_stat parsing if needed
+        compressed = 0
+        if hasattr(mem, 'compressed'):
+            compressed = mem.compressed
+
+        # Calculate TRUE memory pressure (what's actually locked in RAM)
+        true_used = wired + active + compressed
+        pressure_percent = (true_used / total) * 100
+
+        # Cap at 100%
+        return min(100.0, pressure_percent)
+
+    def _calculate_tier_macos(
+        self,
+        kernel_pressure: MemoryPressure,
+        pressure_percent: float,
+        swap
+    ) -> MemoryTier:
+        """
+        Calculate memory tier for macOS using kernel pressure as PRIMARY signal
+
+        macOS tier philosophy (different from Linux):
+        - <50% pressure is ABUNDANT (underutilized)
+        - 50-70% pressure is OPTIMAL (healthy file cache)
+        - 70-80% is ELEVATED (normal for macOS if pressure is "normal")
+        - >80% with "warn" is CONSTRAINED
+        - >85% with "critical" OR heavy swap (>80%) is CRITICAL
+        - >95% is EMERGENCY
+
+        KEY: Trust kernel's memory_pressure command over percentages!
+        Swap usage on macOS is NORMAL - only worry if >80% swap AND kernel warns
+        """
+        swap_gb = swap.used / (1024 ** 3)
+        swap_percent = swap.percent if swap.total > 0 else 0
+
+        # EMERGENCY: Kernel says critical OR >95% pressure
+        if kernel_pressure == MemoryPressure.CRITICAL or pressure_percent >= 95:
+            return MemoryTier.EMERGENCY
+
+        # CRITICAL: >90% pressure OR (>85% pressure + heavy swap >80%)
+        if pressure_percent >= 90:
+            return MemoryTier.CRITICAL
+        if pressure_percent >= 85 and swap_percent > 80:
+            return MemoryTier.CRITICAL
+
+        # CONSTRAINED: >80% pressure with kernel "warn" OR extreme swap (>90%)
+        if pressure_percent >= 80 and kernel_pressure == MemoryPressure.WARN:
+            return MemoryTier.CONSTRAINED
+        if swap_percent > 90:
+            return MemoryTier.CONSTRAINED
+
+        # ELEVATED: >70% pressure (normal for macOS with good file cache)
+        # This is HEALTHY on macOS! Not a problem unless kernel warns.
+        if pressure_percent >= 70:
+            return MemoryTier.ELEVATED
+
+        # OPTIMAL: 50-70% pressure (sweet spot for macOS)
+        if pressure_percent >= 50:
+            return MemoryTier.OPTIMAL
+
+        # ABUNDANT: <50% pressure (RAM underutilized, but fine)
+        return MemoryTier.ABUNDANT
+
     def _calculate_tier(self, usage_percent: float) -> MemoryTier:
-        """Calculate memory tier dynamically"""
+        """
+        Legacy tier calculation (kept for backward compatibility)
+        NOTE: This uses simple percentage which doesn't work well for macOS
+        Use _calculate_tier_macos() instead
+        """
         thresholds = self.tier_thresholds
 
         if usage_percent >= thresholds['critical']:
@@ -499,31 +590,61 @@ class MemoryQuantizer:
             return MemoryTier.ABUNDANT
 
     def _get_memory_pressure(self) -> MemoryPressure:
-        """Get system memory pressure (macOS specific)"""
+        """
+        Get system memory pressure from macOS kernel (PRIMARY truth source)
+
+        macOS kernel's memory_pressure is the MOST accurate indicator.
+        It considers:
+        - Page compression effectiveness
+        - Swap activity
+        - Page fault rate
+        - File cache efficiency
+        - Memory allocation requests
+
+        This is MORE reliable than simple percentage calculations!
+        """
         try:
             import subprocess
             result = subprocess.run(
                 ['memory_pressure'],
                 capture_output=True,
                 text=True,
-                timeout=1
+                timeout=2
             )
             output = result.stdout.lower()
 
+            # Parse the kernel's assessment
             if 'critical' in output:
                 return MemoryPressure.CRITICAL
             elif 'warn' in output:
                 return MemoryPressure.WARN
             elif 'normal' in output:
                 return MemoryPressure.NORMAL
-        except:
-            pass
 
-        # Fallback based on percentage
+            # Parse "system-wide memory free percentage" if available
+            if 'percentage' in output:
+                import re
+                match = re.search(r'percentage:\s*(\d+)%', output)
+                if match:
+                    free_percent = int(match.group(1))
+                    # macOS reports FREE percentage (opposite of used)
+                    if free_percent < 10:
+                        return MemoryPressure.CRITICAL
+                    elif free_percent < 25:
+                        return MemoryPressure.WARN
+                    else:
+                        return MemoryPressure.NORMAL
+
+        except Exception as e:
+            logger.debug(f"memory_pressure command failed: {e}")
+
+        # Fallback: Use conservative thresholds based on TRUE pressure
+        # NOT psutil's percentage which includes inactive pages
         if self.current_metrics:
-            if self.current_metrics.system_memory_percent > 85:
+            pressure = self.current_metrics.metadata.get('macos_pressure_percent', 0)
+            if pressure > 90:
                 return MemoryPressure.CRITICAL
-            elif self.current_metrics.system_memory_percent > 70:
+            elif pressure > 85:
                 return MemoryPressure.WARN
 
         return MemoryPressure.NORMAL
