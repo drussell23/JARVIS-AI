@@ -716,6 +716,12 @@ class AdvancedDisplayMonitor:
         # Emit event
         await self._emit_event('display_detected', display=monitored, detected_name=detected_name)
 
+        # IMPORTANT: Set pending prompt FIRST if we're going to prompt
+        if monitored.auto_prompt and self.config['voice_integration']['speak_on_detection']:
+            # Set pending prompt state so we can handle yes/no responses
+            self.pending_prompt_display = monitored.id
+            logger.info(f"[DISPLAY MONITOR] Set pending prompt for {monitored.name} (will prompt user)")
+
         # Send WebSocket notification to UI
         if self.websocket_manager:
             try:
@@ -805,9 +811,8 @@ class AdvancedDisplayMonitor:
 
         logger.info(f"[DISPLAY MONITOR] Voice: {message}")
 
-        # Set pending prompt state so we can handle yes/no responses
-        self.pending_prompt_display = monitored.id
-        logger.info(f"[DISPLAY MONITOR] Set pending prompt for {monitored.name}")
+        # Note: pending_prompt_display is already set in _handle_display_detected
+        logger.info(f"[DISPLAY MONITOR] Speaking prompt for {monitored.name} (pending_prompt_display={self.pending_prompt_display})")
 
         # Use voice handler if available
         if self.voice_handler:
@@ -962,9 +967,19 @@ class AdvancedDisplayMonitor:
 
                 logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via Simple Hardcoded Coordinates in {total_duration:.2f}s")
                 logger.info(f"[DISPLAY MONITOR] Method: {result['method']}")
-                logger.info(f"[DISPLAY MONITOR] Steps: {len(result.get('steps', []))}")
-                for step in result.get('steps', []):
-                    logger.info(f"[DISPLAY MONITOR]   {step['step']}. {step['action']}: {step['coordinates']}")
+
+                # Log steps if available (handle both dict and list formats)
+                steps = result.get('steps', {})
+                if isinstance(steps, dict):
+                    logger.info(f"[DISPLAY MONITOR] Steps: {len(steps)} actions completed")
+                    for step_name, step_data in steps.items():
+                        if isinstance(step_data, dict):
+                            logger.info(f"[DISPLAY MONITOR]   {step_name}: {step_data.get('success', False)}")
+                elif isinstance(steps, list):
+                    logger.info(f"[DISPLAY MONITOR] Steps: {len(steps)}")
+                    for step in steps:
+                        logger.info(f"[DISPLAY MONITOR]   {step.get('step')}. {step.get('action')}: {step.get('coordinates')}")
+
                 logger.info(f"[DISPLAY MONITOR] ========================================")
 
                 # Release circuit breaker
@@ -1601,7 +1616,9 @@ class AdvancedDisplayMonitor:
                 mode = "mirror" if "mirror" in response_lower else display_to_connect.connection_mode
 
                 # Connect to display
+                logger.info(f"[DISPLAY MONITOR] Calling connect_display with id={display_to_connect.id}, mode={mode}")
                 result = await self.connect_display(display_to_connect.id)
+                logger.info(f"[DISPLAY MONITOR] connect_display returned: success={result.get('success')}, error={result.get('error')}")
 
                 # Generate dynamic response
                 try:
@@ -1627,13 +1644,23 @@ Respond ONLY with JARVIS's exact words, no quotes or formatting."""
                     logger.warning(f"Could not generate dynamic response: {e}")
                     success_response = f"Connected to {display_to_connect.name}, sir."
 
+                # Determine final response
+                if result.get("success"):
+                    final_response = success_response
+                else:
+                    # Connection failed - generate error response
+                    error_detail = result.get("error", "Unknown error")
+                    final_response = f"I encountered an issue connecting to {display_to_connect.name}, sir. {error_detail}"
+                    logger.error(f"[DISPLAY MONITOR] Connection failed: {error_detail}")
+
                 return {
                     "handled": True,
                     "action": "connect",
                     "display_name": display_to_connect.name,
                     "mode": mode,
                     "result": result,
-                    "response": success_response if result.get("success") else f"I encountered an issue connecting to {display_to_connect.name}, sir."
+                    "response": final_response,
+                    "success": result.get("success", False)
                 }
 
             # Negative responses

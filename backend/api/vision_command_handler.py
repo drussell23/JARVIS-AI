@@ -416,8 +416,11 @@ class VisionCommandHandler:
             }
 
         # SIMPLE TV MONITOR: Check for display prompt responses (YES/NO) - HIGHEST PRIORITY
+        logger.info(f"[VISION] Checking if TV monitor response handler should process: '{command_text}'")
         tv_response_result = await self._handle_tv_monitor_response(command_text)
+        logger.info(f"[VISION] TV monitor handler result: handled={tv_response_result.get('handled')}, action={tv_response_result.get('action')}")
         if tv_response_result.get("handled"):
+            logger.info(f"[VISION] TV monitor handled the command, returning response")
             return tv_response_result
         
         # PHASE 1.2C: Check for voice prompt responses (YES/NO)
@@ -1851,19 +1854,23 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
     async def _handle_tv_monitor_response(self, command_text: str) -> Dict[str, Any]:
         """
         SIMPLE TV MONITOR: Handle voice responses for TV connection prompts
-        
+
         Intercepts "yes", "no" commands when JARVIS asks about connecting to Living Room TV
         """
         try:
             from display import get_display_monitor
-            
+
             monitor = get_display_monitor()
-            
+
             # Only handle if we're waiting for a response
-            if not monitor.has_pending_prompt():
+            has_pending = monitor.has_pending_prompt()
+            logger.info(f"[TV MONITOR] Checking pending prompt: {has_pending}, pending_display={getattr(monitor, 'pending_prompt_display', None)}")
+
+            if not has_pending:
+                logger.info(f"[TV MONITOR] No pending prompt, skipping handler")
                 return {"handled": False}
-            
-            logger.info(f"[TV MONITOR] Handling response: {command_text}")
+
+            logger.info(f"[TV MONITOR] Has pending prompt! Handling response: '{command_text}'")
             
             # Handle the voice response
             result = await monitor.handle_user_response(command_text)
