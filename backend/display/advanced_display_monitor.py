@@ -892,43 +892,26 @@ class AdvancedDisplayMonitor:
         # Uses best available clicker: UAE > SAI > Adaptive > Basic
         # Total: ~2 seconds, 100% reliable, adapts when UI changes
         try:
-            # Use factory to get the BEST available clicker
-            from backend.display.control_center_clicker_factory import get_best_clicker
+            # Use SIMPLE connector with hardcoded coordinates
+            from backend.display.simple_display_connector import get_simple_connector
 
-            logger.info(f"[DISPLAY MONITOR] 🥇 STRATEGY 1: INTELLIGENT HYBRID CLICKING")
+            logger.info(f"[DISPLAY MONITOR] 🥇 STRATEGY 1: SIMPLE HARDCODED COORDINATES")
             logger.info(f"[DISPLAY MONITOR] Complete flow: Control Center → Screen Mirroring → {monitored.name}")
-            logger.info(f"[DISPLAY MONITOR] Using coordinates + vision + UAE for dynamic adaptation!")
+            logger.info(f"[DISPLAY MONITOR] Using known logical pixel coordinates (fast & reliable!)")
 
-            strategies_attempted.append("intelligent_hybrid")
+            strategies_attempted.append("simple_hardcoded")
 
-            # Get best available clicker (will use UAE-enhanced if available)
-            cc_clicker = get_best_clicker(
-                vision_analyzer=self.vision_analyzer,
-                enable_verification=True,
-                prefer_uae=True,  # Prefer UAE for dynamic adaptation
-                force_new=True  # Force fresh instance to ensure drag fix is used
-            )
-            logger.info(f"[DISPLAY MONITOR] Using clicker: {cc_clicker.__class__.__name__}")
-            logger.info(f"[DISPLAY MONITOR] Vision analyzer: {self.vision_analyzer is not None}")
+            # Get simple connector (hardcoded coordinates, no DPI confusion)
+            connector = get_simple_connector()
+            logger.info(f"[DISPLAY MONITOR] Using SimpleDisplayConnector")
+            logger.info(f"[DISPLAY MONITOR] Coordinates: (1235,10) → (1396,177) → (1223,115)")
 
-            # Execute complete flow: Control Center → Screen Mirroring → Device
+            # Execute complete flow with hardcoded coordinates
             logger.info(f"[DISPLAY MONITOR] Executing 3-click flow...")
-            # Use connect_to_device method which exists in AdaptiveControlCenterClicker
-            if hasattr(cc_clicker, 'connect_to_device'):
-                result = await cc_clicker.connect_to_device(monitored.name)
-            else:
-                # Fallback for basic clicker
-                logger.warning(f"[DISPLAY MONITOR] Clicker doesn't support connect_to_device, using manual flow")
-                result = await cc_clicker.click("control_center")
-                if result.get('success'):
-                    await asyncio.sleep(0.5)
-                    result = await cc_clicker.click("screen_mirroring")
-                    if result.get('success'):
-                        await asyncio.sleep(0.5)
-                        result = await cc_clicker.click(monitored.name)
+            result = await connector.connect_to_living_room_tv()
 
             if result.get('success'):
-                total_duration = asyncio.get_event_loop().time() - connection_start
+                total_duration = result.get('duration', 0)
 
                 self.connected_displays.add(display_id)
                 await self._emit_event('display_connected', display=monitored)
@@ -946,11 +929,11 @@ class AdvancedDisplayMonitor:
                     else:
                         subprocess.Popen(['say', message])
 
-                logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via Direct Coordinates in {total_duration:.2f}s")
-                logger.info(f"[DISPLAY MONITOR] 1. Control Center: {result['control_center_coords']}")
-                logger.info(f"[DISPLAY MONITOR] 2. Screen Mirroring: {result['screen_mirroring_coords']}")
-                logger.info(f"[DISPLAY MONITOR] 3. {monitored.name}: {result['living_room_tv_coords']}")
+                logger.info(f"[DISPLAY MONITOR] ✅ SUCCESS via Simple Hardcoded Coordinates in {total_duration:.2f}s")
                 logger.info(f"[DISPLAY MONITOR] Method: {result['method']}")
+                logger.info(f"[DISPLAY MONITOR] Steps: {len(result.get('steps', []))}")
+                for step in result.get('steps', []):
+                    logger.info(f"[DISPLAY MONITOR]   {step['step']}. {step['action']}: {step['coordinates']}")
                 logger.info(f"[DISPLAY MONITOR] ========================================")
 
                 # Release circuit breaker
