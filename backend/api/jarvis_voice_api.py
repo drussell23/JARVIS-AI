@@ -812,7 +812,7 @@ class JARVISVoiceAPI:
             # Check if this is a vision command
             logger.info(f"[JARVIS API] Checking if '{command.text}' is a vision command...")
 
-            # Quick check for monitoring commands
+            # Quick check for monitoring commands and multi-space queries
             is_monitoring_cmd = any(
                 phrase in command.text.lower()
                 for phrase in [
@@ -826,12 +826,21 @@ class JARVISVoiceAPI:
                     "begin monitoring",
                     "stop monitoring",
                     "disable monitoring",
+                    # Multi-space query patterns
+                    "what's happening across",
+                    "what is happening across",
+                    "happening across my",
+                    "desktop spaces",
+                    "across my spaces",
+                    "all my spaces",
+                    "show me all spaces",
+                    "all my desktops",
                 ]
             )
 
             if is_monitoring_cmd:
                 logger.info(
-                    "[JARVIS API] Detected monitoring command - routing to vision handler"
+                    "[JARVIS API] Detected vision/multi-space command - routing to vision handler"
                 )
 
             try:
