@@ -1220,334 +1220,335 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("⚠️ Vision analyzer not available - vision features disabled")
 
-            # Initialize proactive monitoring components
+    # Initialize proactive monitoring components
+    try:
+        # Set JARVIS API in vision command handler for voice integration
+        from api.vision_command_handler import vision_command_handler
+
+        voice = components.get("voice", {})
+        if voice.get("jarvis_api"):
+            vision_command_handler.jarvis_api = voice["jarvis_api"]
+            logger.info(
+                "✅ JARVIS voice API connected to pure vision command handler"
+            )
+
+        # Initialize pure intelligence with API key
+        if api_key:
+            await vision_command_handler.initialize_intelligence(api_key)
+            logger.info("✅ Pure vision intelligence initialized")
+
+        # ========================================================================
+        # Initialize Context Integration Bridge (Priority 1-3 Features)
+        # Multi-Space Context Tracking + Implicit Reference + Cross-Space Intelligence
+        # ========================================================================
+        try:
+            from backend.core.context.context_integration_bridge import (
+                initialize_integration_bridge,
+            )
+
+            logger.info("🧠 Initializing Context Intelligence System...")
+            logger.info("   Priority 1: Multi-Space Context Tracking")
+            logger.info("   Priority 2: 'What Does It Say?' Understanding")
+            logger.info("   Priority 3: Cross-Space Intelligence")
+
+            # Initialize bridge with auto-start
+            bridge = await initialize_integration_bridge(auto_start=True)
+            app.state.context_bridge = bridge
+
+            # Integrate with PureVisionIntelligence for vision updates
+            if hasattr(vision_command_handler, "vision_intelligence"):
+                logger.info(
+                    "   🔗 Connecting Vision Intelligence to Context Bridge..."
+                )
+                # Store bridge reference in vision intelligence so it can feed updates
+                vision_command_handler.vision_intelligence.context_bridge = (
+                    bridge
+                )
+                logger.info(
+                    "   ✅ Vision Intelligence connected to Context Bridge"
+                )
+
+            # Integrate with AsyncPipeline for command processing
+            jarvis_api = voice.get("jarvis_api")
+            if jarvis_api and hasattr(jarvis_api, "async_pipeline"):
+                jarvis_api.async_pipeline.context_bridge = bridge
+                logger.info("   ✅ AsyncPipeline connected to Context Bridge")
+
+            # Get intelligence summary
+            summary = bridge.get_workspace_intelligence_summary()
+            logger.info("✅ Context Intelligence System initialized:")
+            logger.info(
+                f"   • Multi-Space Context Tracking: Active ({summary.get('total_spaces', 0)} spaces)"
+            )
+            logger.info(f"   • Implicit Reference Resolution: Enabled")
+            logger.info(f"   • Cross-Space Intelligence: Enabled")
+            logger.info(
+                f"   • Natural Language Queries: 'what does it say?', 'what am I working on?'"
+            )
+            logger.info(
+                f"   • Workspace Synthesis: Combining context from all spaces"
+            )
+
+        except ImportError as e:
+            logger.warning(
+                f"   ⚠️ Context Intelligence System not available: {e}"
+            )
+            app.state.context_bridge = None
+        except Exception as e:
+            logger.error(
+                f"   ❌ Context Intelligence initialization failed: {e}",
+                exc_info=True,
+            )
+            app.state.context_bridge = None
+
+        # ========================================================================
+        # Initialize ALL 6 Upgraded v2.0 Systems with HybridMonitoring Integration
+        # ========================================================================
+        logger.info("\n" + "=" * 60)
+        logger.info("🚀 INITIALIZING v2.0 INTELLIGENT SYSTEMS")
+        logger.info("=" * 60)
+
+        try:
+            # Get HybridProactiveMonitoringManager (if available)
+            hybrid_monitoring = None
             try:
-                # Set JARVIS API in vision command handler for voice integration
-                from api.vision_command_handler import vision_command_handler
+                from context_intelligence.managers.hybrid_proactive_monitoring_manager import (
+                    get_hybrid_proactive_monitoring_manager,
+                )
+                hybrid_monitoring = get_hybrid_proactive_monitoring_manager()
+                logger.info("✅ HybridProactiveMonitoringManager: Available")
+            except Exception as e:
+                logger.warning(f"⚠️ HybridMonitoring not available: {e}")
 
-                voice = components.get("voice", {})
-                if voice.get("jarvis_api"):
-                    vision_command_handler.jarvis_api = voice["jarvis_api"]
-                    logger.info(
-                        "✅ JARVIS voice API connected to pure vision command handler"
-                    )
-
-                # Initialize pure intelligence with API key
-                if api_key:
-                    await vision_command_handler.initialize_intelligence(api_key)
-                    logger.info("✅ Pure vision intelligence initialized")
-
-                # ========================================================================
-                # Initialize Context Integration Bridge (Priority 1-3 Features)
-                # Multi-Space Context Tracking + Implicit Reference + Cross-Space Intelligence
-                # ========================================================================
+            # Get ImplicitReferenceResolver (from context bridge)
+            implicit_resolver = None
+            if hasattr(app.state, 'context_bridge') and app.state.context_bridge:
                 try:
-                    from backend.core.context.context_integration_bridge import (
-                        initialize_integration_bridge,
-                    )
-
-                    logger.info("🧠 Initializing Context Intelligence System...")
-                    logger.info("   Priority 1: Multi-Space Context Tracking")
-                    logger.info("   Priority 2: 'What Does It Say?' Understanding")
-                    logger.info("   Priority 3: Cross-Space Intelligence")
-
-                    # Initialize bridge with auto-start
-                    bridge = await initialize_integration_bridge(auto_start=True)
-                    app.state.context_bridge = bridge
-
-                    # Integrate with PureVisionIntelligence for vision updates
-                    if hasattr(vision_command_handler, "vision_intelligence"):
-                        logger.info(
-                            "   🔗 Connecting Vision Intelligence to Context Bridge..."
-                        )
-                        # Store bridge reference in vision intelligence so it can feed updates
-                        vision_command_handler.vision_intelligence.context_bridge = (
-                            bridge
-                        )
-                        logger.info(
-                            "   ✅ Vision Intelligence connected to Context Bridge"
-                        )
-
-                    # Integrate with AsyncPipeline for command processing
-                    jarvis_api = voice.get("jarvis_api")
-                    if jarvis_api and hasattr(jarvis_api, "async_pipeline"):
-                        jarvis_api.async_pipeline.context_bridge = bridge
-                        logger.info("   ✅ AsyncPipeline connected to Context Bridge")
-
-                    # Get intelligence summary
-                    summary = bridge.get_workspace_intelligence_summary()
-                    logger.info("✅ Context Intelligence System initialized:")
-                    logger.info(
-                        f"   • Multi-Space Context Tracking: Active ({summary.get('total_spaces', 0)} spaces)"
-                    )
-                    logger.info(f"   • Implicit Reference Resolution: Enabled")
-                    logger.info(f"   • Cross-Space Intelligence: Enabled")
-                    logger.info(
-                        f"   • Natural Language Queries: 'what does it say?', 'what am I working on?'"
-                    )
-                    logger.info(
-                        f"   • Workspace Synthesis: Combining context from all spaces"
-                    )
-
-                except ImportError as e:
-                    logger.warning(
-                        f"   ⚠️ Context Intelligence System not available: {e}"
-                    )
-                    app.state.context_bridge = None
+                    implicit_resolver = app.state.context_bridge.implicit_resolver
+                    logger.info("✅ ImplicitReferenceResolver: Available")
                 except Exception as e:
-                    logger.error(
-                        f"   ❌ Context Intelligence initialization failed: {e}",
-                        exc_info=True,
-                    )
-                    app.state.context_bridge = None
+                    logger.warning(f"⚠️ ImplicitResolver not available: {e}")
 
-                # ========================================================================
-                # Initialize ALL 6 Upgraded v2.0 Systems with HybridMonitoring Integration
-                # ========================================================================
-                logger.info("\n" + "=" * 60)
-                logger.info("🚀 INITIALIZING v2.0 INTELLIGENT SYSTEMS")
-                logger.info("=" * 60)
-
-                try:
-                    # Get HybridProactiveMonitoringManager (if available)
-                    hybrid_monitoring = None
-                    try:
-                        from context_intelligence.managers.hybrid_proactive_monitoring_manager import (
-                            get_hybrid_proactive_monitoring_manager,
-                        )
-                        hybrid_monitoring = get_hybrid_proactive_monitoring_manager()
-                        logger.info("✅ HybridProactiveMonitoringManager: Available")
-                    except Exception as e:
-                        logger.warning(f"⚠️ HybridMonitoring not available: {e}")
-
-                    # Get ImplicitReferenceResolver (from context bridge)
-                    implicit_resolver = None
-                    if hasattr(app.state, 'context_bridge') and app.state.context_bridge:
-                        try:
-                            implicit_resolver = app.state.context_bridge.implicit_resolver
-                            logger.info("✅ ImplicitReferenceResolver: Available")
-                        except Exception as e:
-                            logger.warning(f"⚠️ ImplicitResolver not available: {e}")
-
-                    # 1. TemporalQueryHandler v3.0
-                    try:
-                        from context_intelligence.handlers.temporal_query_handler import (
-                            initialize_temporal_query_handler,
-                        )
-                        from context_intelligence.managers import get_change_detection_manager
-                        from core.conversation_tracker import get_conversation_tracker
-
-                        temporal_handler = initialize_temporal_query_handler(
-                            proactive_monitoring_manager=hybrid_monitoring,
-                            change_detection_manager=get_change_detection_manager(),
-                            implicit_resolver=implicit_resolver,
-                            conversation_tracker=get_conversation_tracker()
-                        )
-                        app.state.temporal_handler = temporal_handler
-                        logger.info("✅ TemporalQueryHandler v3.0 initialized")
-                        logger.info("   • Pattern analysis, predictive analysis, anomaly detection")
-                    except Exception as e:
-                        logger.warning(f"⚠️ TemporalQueryHandler v3.0 init failed: {e}")
-
-                    # 2. ErrorRecoveryManager v2.0
-                    try:
-                        from autonomy.error_recovery import ErrorRecoveryManager
-                        from context_intelligence.managers import get_change_detection_manager
-
-                        error_recovery = ErrorRecoveryManager(
-                            hybrid_monitoring_manager=hybrid_monitoring,
-                            implicit_resolver=implicit_resolver,
-                            change_detection_manager=get_change_detection_manager()
-                        )
-                        app.state.error_recovery = error_recovery
-                        logger.info("✅ ErrorRecoveryManager v2.0 initialized")
-                        logger.info("   • Proactive error detection, frequency tracking, auto-healing")
-                    except Exception as e:
-                        logger.warning(f"⚠️ ErrorRecoveryManager v2.0 init failed: {e}")
-
-                    # 3. StateIntelligence v2.0
-                    try:
-                        from vision.intelligence.state_intelligence import initialize_state_intelligence
-                        from context_intelligence.managers import get_change_detection_manager
-
-                        async def handle_stuck_alert(alert):
-                            """Handle stuck state alerts"""
-                            logger.warning(f"[STUCK-STATE] {alert['message']}")
-
-                        state_intelligence = initialize_state_intelligence(
-                            user_id="default",
-                            hybrid_monitoring_manager=hybrid_monitoring,
-                            implicit_resolver=implicit_resolver,
-                            change_detection_manager=get_change_detection_manager(),
-                            stuck_alert_callback=handle_stuck_alert
-                        )
-                        app.state.state_intelligence = state_intelligence
-
-                        # Start stuck state monitoring
-                        asyncio.create_task(state_intelligence.start_stuck_state_monitoring())
-
-                        logger.info("✅ StateIntelligence v2.0 initialized")
-                        logger.info("   • Auto-recording, stuck state detection, productivity tracking")
-                    except Exception as e:
-                        logger.warning(f"⚠️ StateIntelligence v2.0 init failed: {e}")
-
-                    # 4. StateDetectionPipeline v2.0
-                    try:
-                        from vision.intelligence.state_detection_pipeline import StateDetectionPipeline
-                        from context_intelligence.managers import get_change_detection_manager
-
-                        async def handle_state_transition(transition):
-                            """Handle state transition alerts"""
-                            logger.info(
-                                f"[STATE-TRANSITION] Space {transition['space_id']}: "
-                                f"{transition['from_state']} → {transition['to_state']}"
-                            )
-
-                        async def handle_new_state(new_state):
-                            """Handle unknown state detection"""
-                            logger.info(f"[NEW-STATE] Unknown state in Space {new_state['space_id']}")
-
-                        state_detection = StateDetectionPipeline(
-                            hybrid_monitoring_manager=hybrid_monitoring,
-                            implicit_resolver=implicit_resolver,
-                            change_detection_manager=get_change_detection_manager(),
-                            state_transition_callback=handle_state_transition,
-                            new_state_callback=handle_new_state
-                        )
-                        app.state.state_detection = state_detection
-                        logger.info("✅ StateDetectionPipeline v2.0 initialized")
-                        logger.info("   • Auto-triggered detection, visual signature learning")
-                    except Exception as e:
-                        logger.warning(f"⚠️ StateDetectionPipeline v2.0 init failed: {e}")
-
-                    # 5. ComplexComplexityHandler v2.0
-                    try:
-                        from context_intelligence.handlers.complex_complexity_handler import (
-                            initialize_complex_complexity_handler,
-                        )
-                        from context_intelligence.managers import (
-                            get_capture_strategy_manager,
-                            get_ocr_strategy_manager,
-                        )
-
-                        complex_handler = initialize_complex_complexity_handler(
-                            temporal_handler=app.state.temporal_handler if hasattr(app.state, 'temporal_handler') else None,
-                            capture_manager=get_capture_strategy_manager(),
-                            ocr_manager=get_ocr_strategy_manager(),
-                            implicit_resolver=implicit_resolver,
-                            hybrid_monitoring_manager=hybrid_monitoring,
-                            prefer_monitoring_cache=True
-                        )
-                        app.state.complex_handler = complex_handler
-                        logger.info("✅ ComplexComplexityHandler v2.0 initialized")
-                        logger.info("   • Ultra-fast queries (87% faster), monitoring cache enabled")
-                    except Exception as e:
-                        logger.warning(f"⚠️ ComplexComplexityHandler v2.0 init failed: {e}")
-
-                    # 6. PredictiveQueryHandler v2.0
-                    try:
-                        from context_intelligence.handlers.predictive_query_handler import (
-                            initialize_predictive_handler,
-                        )
-
-                        predictive_handler = initialize_predictive_handler(
-                            context_graph=None,  # TODO: Add context graph if available
-                            hybrid_monitoring_manager=hybrid_monitoring,
-                            implicit_resolver=implicit_resolver,
-                            enable_vision=True,
-                            claude_api_key=api_key
-                        )
-                        app.state.predictive_handler = predictive_handler
-                        logger.info("✅ PredictiveQueryHandler v2.0 initialized")
-                        logger.info("   • Progress tracking, bug prediction, workflow suggestions")
-                    except Exception as e:
-                        logger.warning(f"⚠️ PredictiveQueryHandler v2.0 init failed: {e}")
-
-                    logger.info("\n" + "=" * 60)
-                    logger.info("✨ ALL 6 v2.0 SYSTEMS INITIALIZED")
-                    logger.info("=" * 60)
-                    logger.info("🎯 Enhanced Capabilities:")
-                    logger.info("   1. TemporalQueryHandler    - ML-powered temporal analysis")
-                    logger.info("   2. ErrorRecoveryManager    - Proactive error detection & healing")
-                    logger.info("   3. StateIntelligence       - Auto-learning state patterns")
-                    logger.info("   4. StateDetectionPipeline  - Visual signature learning")
-                    logger.info("   5. ComplexComplexityHandler - 87% faster complex queries")
-                    logger.info("   6. PredictiveQueryHandler  - Intelligent predictions")
-                    logger.info("\n🚀 All systems integrated with HybridMonitoring & ImplicitResolver!")
-                    logger.info("=" * 60 + "\n")
-
-                except Exception as e:
-                    logger.error(f"❌ v2.0 Systems initialization failed: {e}", exc_info=True)
-
-                # Log proactive monitoring configuration
-                proactive_config = app.state.vision_analyzer.get_proactive_config()
-                if proactive_config["proactive_enabled"]:
-                    logger.info(
-                        "✅ Proactive Vision Intelligence System initialized with:"
-                    )
-                    logger.info(
-                        f"   - Confidence threshold: {proactive_config['confidence_threshold']}"
-                    )
-                    logger.info(
-                        f"   - Voice announcements: {'enabled' if proactive_config['voice_enabled'] else 'disabled'}"
-                    )
-                    logger.info("   - Debugging Assistant: Auto-detects code errors")
-                    logger.info("   - Research Helper: Monitors multi-tab workflows")
-                    logger.info(
-                        "   - Workflow Optimizer: Identifies repetitive patterns"
-                    )
-                    logger.info(
-                        "   - Privacy Protection: Auto-pauses for sensitive content"
-                    )
-                    logger.info(
-                        "   - Say 'Start monitoring my screen' to activate intelligent assistance"
-                    )
-                else:
-                    logger.info("⚠️ Proactive monitoring disabled in configuration")
-            except Exception as e:
-                logger.warning(
-                    f"⚠️ Could not initialize proactive monitoring components: {e}"
-                )
-
-            # Initialize weather system with vision
+            # 1. TemporalQueryHandler v3.0
             try:
-                from system_control.weather_system_config import (
-                    initialize_weather_system,
+                from context_intelligence.handlers.temporal_query_handler import (
+                    initialize_temporal_query_handler,
                 )
-                from system_control.macos_controller import MacOSController
+                from context_intelligence.managers import get_change_detection_manager
+                from core.conversation_tracker import get_conversation_tracker
 
-                controller = MacOSController()
-                weather_bridge = initialize_weather_system(
-                    app.state.vision_analyzer, controller
+                temporal_handler = initialize_temporal_query_handler(
+                    proactive_monitoring_manager=hybrid_monitoring,
+                    change_detection_manager=get_change_detection_manager(),
+                    implicit_resolver=implicit_resolver,
+                    conversation_tracker=get_conversation_tracker()
                 )
-                app.state.weather_system = weather_bridge
-                logger.info("✅ Weather system initialized with vision")
+                app.state.temporal_handler = temporal_handler
+                logger.info("✅ TemporalQueryHandler v3.0 initialized")
+                logger.info("   • Pattern analysis, predictive analysis, anomaly detection")
             except Exception as e:
-                logger.warning(f"⚠️ Could not initialize weather system: {e}")
+                logger.warning(f"⚠️ TemporalQueryHandler v3.0 init failed: {e}")
 
-            # Initialize vision status manager
+            # 2. ErrorRecoveryManager v2.0
             try:
-                from vision.vision_status_integration import (
-                    initialize_vision_status,
-                    setup_vision_status_callbacks,
+                from autonomy.error_recovery import ErrorRecoveryManager
+                from context_intelligence.managers import get_change_detection_manager
+
+                error_recovery = ErrorRecoveryManager(
+                    hybrid_monitoring_manager=hybrid_monitoring,
+                    implicit_resolver=implicit_resolver,
+                    change_detection_manager=get_change_detection_manager()
+                )
+                app.state.error_recovery = error_recovery
+                logger.info("✅ ErrorRecoveryManager v2.0 initialized")
+                logger.info("   • Proactive error detection, frequency tracking, auto-healing")
+            except Exception as e:
+                logger.warning(f"⚠️ ErrorRecoveryManager v2.0 init failed: {e}")
+
+            # 3. StateIntelligence v2.0
+            try:
+                from vision.intelligence.state_intelligence import initialize_state_intelligence
+                from context_intelligence.managers import get_change_detection_manager
+
+                async def handle_stuck_alert(alert):
+                    """Handle stuck state alerts"""
+                    logger.warning(f"[STUCK-STATE] {alert['message']}")
+
+                state_intelligence = initialize_state_intelligence(
+                    user_id="default",
+                    hybrid_monitoring_manager=hybrid_monitoring,
+                    implicit_resolver=implicit_resolver,
+                    change_detection_manager=get_change_detection_manager(),
+                    stuck_alert_callback=handle_stuck_alert
+                )
+                app.state.state_intelligence = state_intelligence
+
+                # Start stuck state monitoring
+                asyncio.create_task(state_intelligence.start_stuck_state_monitoring())
+
+                logger.info("✅ StateIntelligence v2.0 initialized")
+                logger.info("   • Auto-recording, stuck state detection, productivity tracking")
+            except Exception as e:
+                logger.warning(f"⚠️ StateIntelligence v2.0 init failed: {e}")
+
+            # 4. StateDetectionPipeline v2.0
+            try:
+                from vision.intelligence.state_detection_pipeline import StateDetectionPipeline
+                from context_intelligence.managers import get_change_detection_manager
+
+                async def handle_state_transition(transition):
+                    """Handle state transition alerts"""
+                    logger.info(
+                        f"[STATE-TRANSITION] Space {transition['space_id']}: "
+                        f"{transition['from_state']} → {transition['to_state']}"
+                    )
+
+                async def handle_new_state(new_state):
+                    """Handle unknown state detection"""
+                    logger.info(f"[NEW-STATE] Unknown state in Space {new_state['space_id']}")
+
+                state_detection = StateDetectionPipeline(
+                    hybrid_monitoring_manager=hybrid_monitoring,
+                    implicit_resolver=implicit_resolver,
+                    change_detection_manager=get_change_detection_manager(),
+                    state_transition_callback=handle_state_transition,
+                    new_state_callback=handle_new_state
+                )
+                app.state.state_detection = state_detection
+                logger.info("✅ StateDetectionPipeline v2.0 initialized")
+                logger.info("   • Auto-triggered detection, visual signature learning")
+            except Exception as e:
+                logger.warning(f"⚠️ StateDetectionPipeline v2.0 init failed: {e}")
+
+            # 5. ComplexComplexityHandler v2.0
+            try:
+                from context_intelligence.handlers.complex_complexity_handler import (
+                    initialize_complex_complexity_handler,
+                )
+                from context_intelligence.managers import (
+                    get_capture_strategy_manager,
+                    get_ocr_strategy_manager,
                 )
 
-                # Initialize after WebSocket is mounted
-                async def setup_vision_status():
-                    await asyncio.sleep(0.5)  # Give WebSocket time to initialize
-                    success = await initialize_vision_status(app)
-                    if success:
-                        setup_vision_status_callbacks(app)
-                        logger.info(
-                            "✅ Vision status manager initialized and connected"
-                        )
-
-                asyncio.create_task(setup_vision_status())
+                complex_handler = initialize_complex_complexity_handler(
+                    temporal_handler=app.state.temporal_handler if hasattr(app.state, 'temporal_handler') else None,
+                    capture_manager=get_capture_strategy_manager(),
+                    ocr_manager=get_ocr_strategy_manager(),
+                    implicit_resolver=implicit_resolver,
+                    hybrid_monitoring_manager=hybrid_monitoring,
+                    prefer_monitoring_cache=True
+                )
+                app.state.complex_handler = complex_handler
+                logger.info("✅ ComplexComplexityHandler v2.0 initialized")
+                logger.info("   • Ultra-fast queries (87% faster), monitoring cache enabled")
             except Exception as e:
-                logger.warning(f"⚠️ Could not initialize vision status manager: {e}")
+                logger.warning(f"⚠️ ComplexComplexityHandler v2.0 init failed: {e}")
 
-        elif analyzer_class:
-            logger.warning("⚠️ Vision analyzer available but no ANTHROPIC_API_KEY set")
+            # 6. PredictiveQueryHandler v2.0
+            try:
+                from context_intelligence.handlers.predictive_query_handler import (
+                    initialize_predictive_handler,
+                )
+
+                predictive_handler = initialize_predictive_handler(
+                    context_graph=None,  # TODO: Add context graph if available
+                    hybrid_monitoring_manager=hybrid_monitoring,
+                    implicit_resolver=implicit_resolver,
+                    enable_vision=True,
+                    claude_api_key=api_key
+                )
+                app.state.predictive_handler = predictive_handler
+                logger.info("✅ PredictiveQueryHandler v2.0 initialized")
+                logger.info("   • Progress tracking, bug prediction, workflow suggestions")
+            except Exception as e:
+                logger.warning(f"⚠️ PredictiveQueryHandler v2.0 init failed: {e}")
+
+            logger.info("\n" + "=" * 60)
+            logger.info("✨ ALL 6 v2.0 SYSTEMS INITIALIZED")
+            logger.info("=" * 60)
+            logger.info("🎯 Enhanced Capabilities:")
+            logger.info("   1. TemporalQueryHandler    - ML-powered temporal analysis")
+            logger.info("   2. ErrorRecoveryManager    - Proactive error detection & healing")
+            logger.info("   3. StateIntelligence       - Auto-learning state patterns")
+            logger.info("   4. StateDetectionPipeline  - Visual signature learning")
+            logger.info("   5. ComplexComplexityHandler - 87% faster complex queries")
+            logger.info("   6. PredictiveQueryHandler  - Intelligent predictions")
+            logger.info("\n🚀 All systems integrated with HybridMonitoring & ImplicitResolver!")
+            logger.info("=" * 60 + "\n")
+
+        except Exception as e:
+            logger.error(f"❌ v2.0 Systems initialization failed: {e}", exc_info=True)
+
+        # Log proactive monitoring configuration
+        proactive_config = app.state.vision_analyzer.get_proactive_config()
+        if proactive_config["proactive_enabled"]:
+            logger.info(
+                "✅ Proactive Vision Intelligence System initialized with:"
+            )
+            logger.info(
+                f"   - Confidence threshold: {proactive_config['confidence_threshold']}"
+            )
+            logger.info(
+                f"   - Voice announcements: {'enabled' if proactive_config['voice_enabled'] else 'disabled'}"
+            )
+            logger.info("   - Debugging Assistant: Auto-detects code errors")
+            logger.info("   - Research Helper: Monitors multi-tab workflows")
+            logger.info(
+                "   - Workflow Optimizer: Identifies repetitive patterns"
+            )
+            logger.info(
+                "   - Privacy Protection: Auto-pauses for sensitive content"
+            )
+            logger.info(
+                "   - Say 'Start monitoring my screen' to activate intelligent assistance"
+            )
+        else:
+            logger.info("⚠️ Proactive monitoring disabled in configuration")
+    except Exception as e:
+        logger.warning(
+            f"⚠️ Could not initialize proactive monitoring components: {e}"
+        )
+
+    # Initialize weather system with vision
+    try:
+        from system_control.weather_system_config import (
+            initialize_weather_system,
+        )
+        from system_control.macos_controller import MacOSController
+
+        controller = MacOSController()
+        weather_bridge = initialize_weather_system(
+            app.state.vision_analyzer, controller
+        )
+        app.state.weather_system = weather_bridge
+        logger.info("✅ Weather system initialized with vision")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not initialize weather system: {e}")
+
+    # Initialize vision status manager
+    try:
+        from vision.vision_status_integration import (
+            initialize_vision_status,
+            setup_vision_status_callbacks,
+        )
+
+        # Initialize after WebSocket is mounted
+        async def setup_vision_status():
+            await asyncio.sleep(0.5)  # Give WebSocket time to initialize
+            success = await initialize_vision_status(app)
+            if success:
+                setup_vision_status_callbacks(app)
+                logger.info(
+                    "✅ Vision status manager initialized and connected"
+                )
+
+        asyncio.create_task(setup_vision_status())
+    except Exception as e:
+        logger.warning(f"⚠️ Could not initialize vision status manager: {e}")
+
+    # NOTE: This elif was orphaned/unreachable - analyzer_class check already done at line 988
+    # elif analyzer_class:
+    #     logger.warning("⚠️ Vision analyzer available but no ANTHROPIC_API_KEY set")
 
     # Initialize ML models if not lazy loading
     ml = components.get("ml_models", {})
