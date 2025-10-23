@@ -961,6 +961,38 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"⚠️ Could not start Goal Inference tasks: {e}")
 
+    # Initialize UAE (Unified Awareness Engine) with SAI integration
+    try:
+        logger.info("🧠 Initializing UAE (Unified Awareness Engine)...")
+        from intelligence.uae_integration import initialize_uae, get_uae
+
+        # Get vision analyzer if available
+        vision_analyzer = None
+        chatbots = components.get("chatbots", {})
+        if chatbots and chatbots.get("vision_chatbot"):
+            vision_analyzer = chatbots["vision_chatbot"]
+
+        # Initialize UAE with SAI integration
+        uae = await initialize_uae(
+            vision_analyzer=vision_analyzer,
+            sai_monitoring_interval=10.0,  # Monitor every 10 seconds
+            enable_auto_start=True  # Start monitoring immediately
+        )
+
+        if uae and uae.is_active:
+            app.state.uae_engine = uae
+            logger.info("✅ UAE initialized successfully")
+            logger.info("   • SAI monitoring: Active (10s interval)")
+            logger.info("   • Context intelligence: Active")
+            logger.info("   • Display clicker: Will use UAE+SAI enhanced mode")
+            logger.info("   • Proactive adaptation: Enabled")
+        else:
+            logger.warning("⚠️ UAE initialized but not active")
+
+    except Exception as e:
+        logger.warning(f"⚠️ Could not initialize UAE: {e}")
+        logger.info("   Falling back to SAI-only mode for display connections")
+
     # Discover running services (if dynamic CORS is available)
     try:
         from api.dynamic_cors_handler import AutoPortDiscovery
@@ -1595,6 +1627,15 @@ async def lifespan(app: FastAPI):
             logger.info("✅ Goal Inference Integration stopped")
         except Exception as e:
             logger.error(f"Failed to stop Goal Inference: {e}")
+
+    # Shutdown UAE (Unified Awareness Engine)
+    if hasattr(app.state, "uae_engine"):
+        try:
+            from intelligence.uae_integration import shutdown_uae
+            await shutdown_uae()
+            logger.info("✅ UAE (Unified Awareness Engine) stopped")
+        except Exception as e:
+            logger.error(f"Failed to stop UAE: {e}")
 
     # Stop Voice Unlock system
     voice_unlock = components.get("voice_unlock") or {}
