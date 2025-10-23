@@ -1634,6 +1634,867 @@ class JARVISLearningDatabase:
         }, sort_keys=True)
         return hashlib.sha256(pattern_str.encode()).hexdigest()[:16]
 
+    # ========================================================================
+    # PHASE 3: BEHAVIORAL LEARNING METHODS
+    # ========================================================================
+
+    async def store_workspace_usage(
+        self,
+        space_id: int,
+        app_name: str,
+        window_title: Optional[str] = None,
+        window_position: Optional[Dict] = None,
+        focus_duration: Optional[float] = None,
+        is_fullscreen: bool = False,
+        metadata: Optional[Dict] = None
+    ) -> int:
+        """
+        Store workspace usage event
+
+        Args:
+            space_id: Space/Desktop ID
+            app_name: Application name
+            window_title: Window title
+            window_position: Window frame {x, y, w, h}
+            focus_duration: Focus duration in seconds
+            is_fullscreen: Whether window is fullscreen
+            metadata: Additional metadata
+
+        Returns:
+            usage_id
+        """
+        now = datetime.now()
+
+        try:
+            async with self.db.execute("""
+                INSERT INTO workspace_usage (
+                    space_id, space_label, app_name, window_title,
+                    window_position, focus_duration_seconds, timestamp,
+                    day_of_week, hour_of_day, is_fullscreen, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                space_id,
+                None,  # space_label can be updated separately
+                app_name,
+                window_title,
+                json.dumps(window_position) if window_position else None,
+                focus_duration,
+                now.isoformat(),
+                now.weekday(),
+                now.hour,
+                is_fullscreen,
+                json.dumps(metadata) if metadata else None
+            )) as cursor:
+                await self.db.commit()
+                return cursor.lastrowid
+
+        except Exception as e:
+            logger.error(f"Error storing workspace usage: {e}", exc_info=True)
+            raise
+
+    async def update_app_usage_pattern(
+        self,
+        app_name: str,
+        space_id: int,
+        session_duration: float,
+        timestamp: Optional[datetime] = None
+    ):
+        """
+        Update app usage pattern (incremental learning)
+
+        Args:
+            app_name: Application name
+            space_id: Space ID
+            session_duration: Session duration in seconds
+            timestamp: Timestamp (defaults to now)
+        """
+        if timestamp is None:
+            timestamp = datetime.now()
+
+        hour = timestamp.hour
+        day = timestamp.weekday()
+
+        try:
+            # Check if pattern exists
+            async with self.db.execute("""
+                SELECT pattern_id, usage_frequency, avg_session_duration,
+                       total_usage_time, confidence
+                FROM app_usage_patterns
+                WHERE app_name = ? AND space_id = ?
+                  AND typical_time_of_day = ? AND typical_day_of_week = ?
+            """, (app_name, space_id, hour, day)) as cursor:
+                row = await cursor.fetchone()
+
+            if row:
+                # Update existing pattern
+                pattern_id, freq, avg_dur, total_time, conf = row
+                new_freq = freq + 1
+                new_total = total_time + session_duration
+                new_avg = new_total / new_freq
+                new_conf = min(0.99, conf + 0.02)  # Incremental confidence boost
+
+                await self.db.execute("""
+                    UPDATE app_usage_patterns
+                    SET usage_frequency = ?,
+                        avg_session_duration = ?,
+                        total_usage_time = ?,
+                        last_used = ?,
+                        confidence = ?
+                    WHERE pattern_id = ?
+                """, (new_freq, new_avg, new_total, timestamp.isoformat(), new_conf, pattern_id))
+
+            else:
+                # Create new pattern
+                await self.db.execute("""
+                    INSERT INTO app_usage_patterns (
+                        app_name, space_id, usage_frequency,
+                        avg_session_duration, total_usage_time,
+                        typical_time_of_day, typical_day_of_week,
+                        last_used, confidence, metadata
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    app_name, space_id, 1, session_duration, session_duration,
+                    hour, day, timestamp.isoformat(), 0.3, json.dumps({})
+                ))
+
+            await self.db.commit()
+
+        except Exception as e:
+            logger.error(f"Error updating app usage pattern: {e}", exc_info=True)
+
+    async def store_user_workflow(
+        self,
+        workflow_name: str,
+        action_sequence: List[Dict],
+        space_sequence: Optional[List[int]] = None,
+        app_sequence: Optional[List[str]] = None,
+        duration: Optional[float] = None,
+        success: bool = True,
+        confidence: float = 0.5,
+        metadata: Optional[Dict] = None
+    ) -> int:
+        """
+        Store or update user workflow pattern
+
+        Args:
+            workflow_name: Name/ID of workflow
+            action_sequence: Sequence of actions
+            space_sequence: Sequence of Spaces used
+            app_sequence: Sequence of apps used
+            duration: Duration in seconds
+            success: Whether workflow succeeded
+            confidence: Confidence score
+            metadata: Additional metadata
+
+        Returns:
+            workflow_id
+        """
+        now = datetime.now()
+        hour = now.hour
+
+        try:
+            # Check if workflow exists
+            async with self.db.execute("""
+                SELECT workflow_id, frequency, success_rate, time_of_day_pattern
+                FROM user_workflows
+                WHERE workflow_name = ?
+            """, (workflow_name,)) as cursor:
+                row = await cursor.fetchone()
+
+            if row:
+                # Update existing workflow
+                wf_id, freq, success_rate, time_pattern = row
+                new_freq = freq + 1
+
+                # Update success rate
+                new_success_rate = ((success_rate * freq) + (1.0 if success else 0.0)) / new_freq
+
+                # Update time pattern
+                time_patterns = json.loads(time_pattern) if time_pattern else []
+                time_patterns.append(hour)
+
+                await self.db.execute("""
+                    UPDATE user_workflows
+                    SET frequency = ?,
+                        success_rate = ?,
+                        last_seen = ?,
+                        time_of_day_pattern = ?,
+                        confidence = ?
+                    WHERE workflow_id = ?
+                """, (
+                    new_freq,
+                    new_success_rate,
+                    now.isoformat(),
+                    json.dumps(time_patterns[-20:]),  # Keep last 20
+                    min(0.99, confidence + 0.05),
+                    wf_id
+                ))
+
+                return wf_id
+
+            else:
+                # Create new workflow
+                async with self.db.execute("""
+                    INSERT INTO user_workflows (
+                        workflow_name, action_sequence, space_sequence,
+                        app_sequence, frequency, avg_duration, success_rate,
+                        first_seen, last_seen, time_of_day_pattern,
+                        confidence, metadata
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    workflow_name,
+                    json.dumps(action_sequence),
+                    json.dumps(space_sequence) if space_sequence else None,
+                    json.dumps(app_sequence) if app_sequence else None,
+                    1,
+                    duration,
+                    1.0 if success else 0.0,
+                    now.isoformat(),
+                    now.isoformat(),
+                    json.dumps([hour]),
+                    confidence,
+                    json.dumps(metadata) if metadata else None
+                )) as cursor:
+                    await self.db.commit()
+                    return cursor.lastrowid
+
+        except Exception as e:
+            logger.error(f"Error storing workflow: {e}", exc_info=True)
+            raise
+
+    async def store_space_transition(
+        self,
+        from_space: int,
+        to_space: int,
+        trigger_app: Optional[str] = None,
+        trigger_action: Optional[str] = None,
+        metadata: Optional[Dict] = None
+    ):
+        """
+        Store Space transition event
+
+        Args:
+            from_space: Source Space ID
+            to_space: Target Space ID
+            trigger_app: App that triggered transition
+            trigger_action: Action that triggered transition
+            metadata: Additional metadata
+        """
+        now = datetime.now()
+
+        try:
+            # Check for existing transition pattern
+            async with self.db.execute("""
+                SELECT transition_id, frequency, avg_time_between_seconds
+                FROM space_transitions
+                WHERE from_space_id = ? AND to_space_id = ?
+                  AND hour_of_day = ? AND day_of_week = ?
+            """, (from_space, to_space, now.hour, now.weekday())) as cursor:
+                row = await cursor.fetchone()
+
+            if row:
+                # Update existing
+                trans_id, freq, avg_time = row
+                await self.db.execute("""
+                    UPDATE space_transitions
+                    SET frequency = ?,
+                        timestamp = ?
+                    WHERE transition_id = ?
+                """, (freq + 1, now.isoformat(), trans_id))
+            else:
+                # Create new
+                await self.db.execute("""
+                    INSERT INTO space_transitions (
+                        from_space_id, to_space_id, trigger_app, trigger_action,
+                        frequency, timestamp, hour_of_day, day_of_week, metadata
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    from_space, to_space, trigger_app, trigger_action,
+                    1, now.isoformat(), now.hour, now.weekday(),
+                    json.dumps(metadata) if metadata else None
+                ))
+
+            await self.db.commit()
+
+        except Exception as e:
+            logger.error(f"Error storing space transition: {e}", exc_info=True)
+
+    async def store_behavioral_pattern(
+        self,
+        behavior_type: str,
+        description: str,
+        pattern_data: Dict,
+        confidence: float = 0.5,
+        temporal_pattern: Optional[Dict] = None,
+        contextual_triggers: Optional[List[str]] = None,
+        prediction_accuracy: Optional[float] = None,
+        metadata: Optional[Dict] = None
+    ) -> int:
+        """
+        Store high-level behavioral pattern
+
+        Args:
+            behavior_type: Type of behavior
+            description: Human-readable description
+            pattern_data: Pattern data structure
+            confidence: Confidence score
+            temporal_pattern: Time-based pattern info
+            contextual_triggers: List of triggers
+            prediction_accuracy: How accurate predictions are
+            metadata: Additional metadata
+
+        Returns:
+            behavior_id
+        """
+        now = datetime.now()
+
+        try:
+            # Check if behavior exists
+            async with self.db.execute("""
+                SELECT behavior_id, frequency, confidence
+                FROM behavioral_patterns
+                WHERE behavior_type = ? AND behavior_description = ?
+            """, (behavior_type, description)) as cursor:
+                row = await cursor.fetchone()
+
+            if row:
+                # Update existing
+                beh_id, freq, old_conf = row
+                new_conf = min(0.99, old_conf + 0.03)
+
+                await self.db.execute("""
+                    UPDATE behavioral_patterns
+                    SET frequency = ?,
+                        confidence = ?,
+                        last_observed = ?,
+                        prediction_accuracy = ?
+                    WHERE behavior_id = ?
+                """, (freq + 1, new_conf, now.isoformat(), prediction_accuracy, beh_id))
+
+                return beh_id
+            else:
+                # Create new
+                async with self.db.execute("""
+                    INSERT INTO behavioral_patterns (
+                        behavior_type, behavior_description, pattern_data,
+                        frequency, confidence, temporal_pattern,
+                        contextual_triggers, first_observed, last_observed,
+                        prediction_accuracy, metadata
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    behavior_type,
+                    description,
+                    json.dumps(pattern_data),
+                    1,
+                    confidence,
+                    json.dumps(temporal_pattern) if temporal_pattern else None,
+                    json.dumps(contextual_triggers) if contextual_triggers else None,
+                    now.isoformat(),
+                    now.isoformat(),
+                    prediction_accuracy,
+                    json.dumps(metadata) if metadata else None
+                )) as cursor:
+                    await self.db.commit()
+                    return cursor.lastrowid
+
+        except Exception as e:
+            logger.error(f"Error storing behavioral pattern: {e}", exc_info=True)
+            raise
+
+    async def store_temporal_pattern(
+        self,
+        pattern_type: str,
+        action_type: str,
+        target: str,
+        time_of_day: Optional[int] = None,
+        day_of_week: Optional[int] = None,
+        day_of_month: Optional[int] = None,
+        month_of_year: Optional[int] = None,
+        frequency: int = 1,
+        confidence: float = 0.5,
+        metadata: Optional[Dict] = None
+    ):
+        """
+        Store temporal (time-based) behavioral pattern
+
+        Args:
+            pattern_type: Type of temporal pattern
+            action_type: Type of action
+            target: Target of action
+            time_of_day: Hour (0-23)
+            day_of_week: Day (0-6)
+            day_of_month: Day (1-31)
+            month_of_year: Month (1-12)
+            frequency: Occurrence frequency
+            confidence: Confidence score
+            metadata: Additional metadata
+        """
+        now = datetime.now()
+        is_leap = calendar.isleap(now.year)
+
+        try:
+            # Check if pattern exists
+            async with self.db.execute("""
+                SELECT temporal_id, frequency, confidence
+                FROM temporal_patterns
+                WHERE pattern_type = ? AND action_type = ? AND target = ?
+                  AND time_of_day = ? AND day_of_week = ?
+            """, (pattern_type, action_type, target, time_of_day, day_of_week)) as cursor:
+                row = await cursor.fetchone()
+
+            if row:
+                # Update existing
+                temp_id, freq, old_conf = row
+                new_freq = freq + frequency
+                new_conf = min(0.99, old_conf + 0.02)
+
+                await self.db.execute("""
+                    UPDATE temporal_patterns
+                    SET frequency = ?,
+                        confidence = ?,
+                        last_occurrence = ?
+                    WHERE temporal_id = ?
+                """, (new_freq, new_conf, now.isoformat(), temp_id))
+            else:
+                # Create new
+                await self.db.execute("""
+                    INSERT INTO temporal_patterns (
+                        pattern_type, time_of_day, day_of_week,
+                        day_of_month, month_of_year, is_leap_year,
+                        action_type, target, frequency, confidence,
+                        last_occurrence, metadata
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    pattern_type, time_of_day, day_of_week,
+                    day_of_month, month_of_year, is_leap,
+                    action_type, target, frequency, confidence,
+                    now.isoformat(),
+                    json.dumps(metadata) if metadata else None
+                ))
+
+            await self.db.commit()
+
+        except Exception as e:
+            logger.error(f"Error storing temporal pattern: {e}", exc_info=True)
+
+    async def store_proactive_suggestion(
+        self,
+        suggestion_type: str,
+        suggestion_text: str,
+        trigger_pattern_id: Optional[str] = None,
+        confidence: float = 0.7,
+        metadata: Optional[Dict] = None
+    ) -> int:
+        """
+        Store proactive suggestion from AI
+
+        Args:
+            suggestion_type: Type of suggestion
+            suggestion_text: The suggestion itself
+            trigger_pattern_id: Pattern that triggered this
+            confidence: Confidence score
+            metadata: Additional metadata
+
+        Returns:
+            suggestion_id
+        """
+        now = datetime.now()
+
+        try:
+            async with self.db.execute("""
+                INSERT INTO proactive_suggestions (
+                    suggestion_type, suggestion_text, trigger_pattern_id,
+                    confidence, times_suggested, times_accepted,
+                    times_rejected, acceptance_rate, created_at,
+                    last_suggested, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                suggestion_type,
+                suggestion_text,
+                trigger_pattern_id,
+                confidence,
+                0, 0, 0, 0.0,
+                now.isoformat(),
+                None,
+                json.dumps(metadata) if metadata else None
+            )) as cursor:
+                await self.db.commit()
+                return cursor.lastrowid
+
+        except Exception as e:
+            logger.error(f"Error storing suggestion: {e}", exc_info=True)
+            raise
+
+    async def update_suggestion_feedback(
+        self,
+        suggestion_id: int,
+        accepted: bool
+    ):
+        """
+        Update suggestion with user feedback
+
+        Args:
+            suggestion_id: Suggestion ID
+            accepted: Whether user accepted/rejected
+        """
+        now = datetime.now()
+
+        try:
+            # Get current stats
+            async with self.db.execute("""
+                SELECT times_suggested, times_accepted, times_rejected
+                FROM proactive_suggestions
+                WHERE suggestion_id = ?
+            """, (suggestion_id,)) as cursor:
+                row = await cursor.fetchone()
+
+            if row:
+                suggested, accepted_count, rejected_count = row
+
+                if accepted:
+                    accepted_count += 1
+                else:
+                    rejected_count += 1
+
+                total = accepted_count + rejected_count
+                acceptance_rate = accepted_count / total if total > 0 else 0.0
+
+                await self.db.execute("""
+                    UPDATE proactive_suggestions
+                    SET times_accepted = ?,
+                        times_rejected = ?,
+                        acceptance_rate = ?,
+                        last_suggested = ?
+                    WHERE suggestion_id = ?
+                """, (accepted_count, rejected_count, acceptance_rate, now.isoformat(), suggestion_id))
+
+                await self.db.commit()
+
+        except Exception as e:
+            logger.error(f"Error updating suggestion feedback: {e}", exc_info=True)
+
+    # Behavioral Query Methods
+
+    async def get_app_usage_patterns(
+        self,
+        app_name: Optional[str] = None,
+        space_id: Optional[int] = None,
+        time_of_day: Optional[int] = None,
+        min_confidence: float = 0.6
+    ) -> List[Dict]:
+        """
+        Query app usage patterns
+
+        Args:
+            app_name: Filter by app name
+            space_id: Filter by Space ID
+            time_of_day: Filter by hour
+            min_confidence: Minimum confidence threshold
+
+        Returns:
+            List of app usage patterns
+        """
+        query = """
+            SELECT * FROM app_usage_patterns
+            WHERE confidence >= ?
+        """
+        params = [min_confidence]
+
+        if app_name:
+            query += " AND app_name = ?"
+            params.append(app_name)
+        if space_id is not None:
+            query += " AND space_id = ?"
+            params.append(space_id)
+        if time_of_day is not None:
+            query += " AND typical_time_of_day = ?"
+            params.append(time_of_day)
+
+        query += " ORDER BY confidence DESC, usage_frequency DESC LIMIT 50"
+
+        try:
+            async with self.db.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
+                return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error querying app patterns: {e}", exc_info=True)
+            return []
+
+    async def get_workflows_by_context(
+        self,
+        app_sequence: Optional[List[str]] = None,
+        space_sequence: Optional[List[int]] = None,
+        time_of_day: Optional[int] = None,
+        min_confidence: float = 0.6
+    ) -> List[Dict]:
+        """
+        Query workflows by context
+
+        Args:
+            app_sequence: Partial app sequence to match
+            space_sequence: Partial space sequence to match
+            time_of_day: Hour of day
+            min_confidence: Minimum confidence
+
+        Returns:
+            List of matching workflows
+        """
+        query = """
+            SELECT * FROM user_workflows
+            WHERE confidence >= ?
+        """
+        params = [min_confidence]
+
+        if time_of_day is not None:
+            query += " AND json_extract(time_of_day_pattern, '$') LIKE ?"
+            params.append(f'%{time_of_day}%')
+
+        query += " ORDER BY confidence DESC, frequency DESC LIMIT 30"
+
+        try:
+            async with self.db.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
+                workflows = [dict(row) for row in rows]
+
+                # Filter by sequences if provided
+                if app_sequence:
+                    workflows = [
+                        w for w in workflows
+                        if self._sequence_matches(
+                            json.loads(w['app_sequence']) if w['app_sequence'] else [],
+                            app_sequence
+                        )
+                    ]
+
+                return workflows
+        except Exception as e:
+            logger.error(f"Error querying workflows: {e}", exc_info=True)
+            return []
+
+    async def predict_next_action(
+        self,
+        current_context: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """
+        Predict next likely actions based on current context
+
+        Args:
+            current_context: Current context including:
+                - current_app: Current app name
+                - current_space: Current Space ID
+                - time_of_day: Current hour
+                - recent_actions: List of recent actions
+
+        Returns:
+            List of predicted actions with confidence scores
+        """
+        predictions = []
+
+        try:
+            now = datetime.now()
+            current_app = current_context.get('current_app')
+            current_space = current_context.get('current_space')
+            time_of_day = current_context.get('time_of_day', now.hour)
+
+            # Check temporal patterns
+            async with self.db.execute("""
+                SELECT action_type, target, confidence, frequency
+                FROM temporal_patterns
+                WHERE time_of_day = ? AND day_of_week = ?
+                ORDER BY confidence DESC, frequency DESC
+                LIMIT 10
+            """, (time_of_day, now.weekday())) as cursor:
+                temporal_rows = await cursor.fetchall()
+
+            for row in temporal_rows:
+                predictions.append({
+                    'source': 'temporal_pattern',
+                    'action_type': row[0],
+                    'target': row[1],
+                    'confidence': row[2],
+                    'reasoning': f'Typical behavior at {time_of_day}:00'
+                })
+
+            # Check app transitions
+            if current_app:
+                # Find common next apps
+                async with self.db.execute("""
+                    SELECT app_name, confidence, usage_frequency
+                    FROM app_usage_patterns
+                    WHERE typical_time_of_day = ?
+                      AND space_id = ?
+                    ORDER BY confidence DESC
+                    LIMIT 5
+                """, (time_of_day, current_space)) as cursor:
+                    app_rows = await cursor.fetchall()
+
+                for row in app_rows:
+                    predictions.append({
+                        'source': 'app_usage_pattern',
+                        'action_type': 'switch_app',
+                        'target': row[0],
+                        'confidence': row[1],
+                        'reasoning': f'Commonly used on Space {current_space} at this time'
+                    })
+
+            # Check workflows
+            workflows = await self.get_workflows_by_context(
+                time_of_day=time_of_day,
+                min_confidence=0.6
+            )
+
+            for workflow in workflows[:3]:
+                predictions.append({
+                    'source': 'workflow_pattern',
+                    'action_type': 'workflow',
+                    'target': workflow['workflow_name'],
+                    'confidence': workflow['confidence'],
+                    'reasoning': f'Part of frequent workflow'
+                })
+
+            # Sort by confidence
+            predictions.sort(key=lambda x: x['confidence'], reverse=True)
+
+            return predictions[:10]
+
+        except Exception as e:
+            logger.error(f"Error predicting next action: {e}", exc_info=True)
+            return []
+
+    def _sequence_matches(self, full_sequence: List, partial: List) -> bool:
+        """Check if partial sequence appears in full sequence"""
+        if not partial:
+            return True
+        if len(partial) > len(full_sequence):
+            return False
+
+        for i in range(len(full_sequence) - len(partial) + 1):
+            if full_sequence[i:i+len(partial)] == partial:
+                return True
+        return False
+
+    async def get_behavioral_insights(self) -> Dict[str, Any]:
+        """
+        Get comprehensive behavioral insights
+
+        Returns:
+            Dictionary of behavioral insights and statistics
+        """
+        insights = {
+            'most_used_apps': [],
+            'most_used_spaces': [],
+            'common_workflows': [],
+            'temporal_habits': [],
+            'space_transitions': [],
+            'prediction_accuracy': 0.0
+        }
+
+        try:
+            # Most used apps
+            async with self.db.execute("""
+                SELECT app_name, space_id, SUM(usage_frequency) as total_use,
+                       AVG(confidence) as avg_conf
+                FROM app_usage_patterns
+                GROUP BY app_name, space_id
+                ORDER BY total_use DESC
+                LIMIT 10
+            """) as cursor:
+                rows = await cursor.fetchall()
+                insights['most_used_apps'] = [
+                    {'app': r[0], 'space': r[1], 'usage': r[2], 'confidence': r[3]}
+                    for r in rows
+                ]
+
+            # Most used spaces
+            async with self.db.execute("""
+                SELECT space_id, COUNT(*) as usage_count
+                FROM workspace_usage
+                GROUP BY space_id
+                ORDER BY usage_count DESC
+                LIMIT 5
+            """) as cursor:
+                rows = await cursor.fetchall()
+                insights['most_used_spaces'] = [
+                    {'space_id': r[0], 'usage_count': r[1]}
+                    for r in rows
+                ]
+
+            # Common workflows
+            async with self.db.execute("""
+                SELECT workflow_name, frequency, success_rate, confidence
+                FROM user_workflows
+                ORDER BY frequency DESC
+                LIMIT 10
+            """) as cursor:
+                rows = await cursor.fetchall()
+                insights['common_workflows'] = [
+                    {
+                        'name': r[0],
+                        'frequency': r[1],
+                        'success_rate': r[2],
+                        'confidence': r[3]
+                    }
+                    for r in rows
+                ]
+
+            # Temporal habits
+            async with self.db.execute("""
+                SELECT time_of_day, day_of_week, action_type,
+                       COUNT(*) as occurrences, AVG(confidence) as avg_conf
+                FROM temporal_patterns
+                GROUP BY time_of_day, day_of_week, action_type
+                HAVING occurrences > 2
+                ORDER BY occurrences DESC
+                LIMIT 20
+            """) as cursor:
+                rows = await cursor.fetchall()
+                insights['temporal_habits'] = [
+                    {
+                        'hour': r[0],
+                        'day': r[1],
+                        'action': r[2],
+                        'occurrences': r[3],
+                        'confidence': r[4]
+                    }
+                    for r in rows
+                ]
+
+            # Space transitions
+            async with self.db.execute("""
+                SELECT from_space_id, to_space_id, trigger_app,
+                       SUM(frequency) as total_transitions
+                FROM space_transitions
+                GROUP BY from_space_id, to_space_id
+                ORDER BY total_transitions DESC
+                LIMIT 15
+            """) as cursor:
+                rows = await cursor.fetchall()
+                insights['space_transitions'] = [
+                    {
+                        'from': r[0],
+                        'to': r[1],
+                        'trigger': r[2],
+                        'frequency': r[3]
+                    }
+                    for r in rows
+                ]
+
+            # Overall prediction accuracy
+            async with self.db.execute("""
+                SELECT AVG(acceptance_rate) as avg_acceptance
+                FROM proactive_suggestions
+                WHERE times_suggested > 0
+            """) as cursor:
+                row = await cursor.fetchone()
+                if row and row[0]:
+                    insights['prediction_accuracy'] = row[0]
+
+            return insights
+
+        except Exception as e:
+            logger.error(f"Error getting behavioral insights: {e}", exc_info=True)
+            return insights
+
     async def close(self):
         """Close database connections gracefully"""
         # Flush pending batches

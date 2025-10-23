@@ -731,103 +731,39 @@ class YabaiSpatialIntelligence:
             logger.error(f"[YABAI-SI] Error storing to Learning DB: {e}")
 
     async def _store_workspace_usage(self):
-        """Store workspace usage data"""
-        now = datetime.now()
-
+        """Store workspace usage data (Phase 3 enhanced)"""
         for space_id, space_info in self.current_spaces.items():
             if space_info.focused_window:
                 try:
-                    async with self.learning_db.db.cursor() as cursor:
-                        await cursor.execute("""
-                            INSERT INTO workspace_usage
-                            (space_id, space_label, app_name, window_title, window_position,
-                             focus_duration_seconds, timestamp, day_of_week, hour_of_day,
-                             is_fullscreen, metadata)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            space_id,
-                            space_info.space_label,
-                            space_info.focused_window.app_name,
-                            space_info.focused_window.title,
-                            json.dumps(space_info.focused_window.frame),
-                            self.monitoring_interval,  # Approximation
-                            now,
-                            now.weekday(),
-                            now.hour,
-                            space_info.focused_window.is_fullscreen,
-                            json.dumps({'space_index': space_info.space_index})
-                        ))
-
-                    await self.learning_db.db.commit()
-
+                    # Use Phase 3 Learning DB method
+                    await self.learning_db.store_workspace_usage(
+                        space_id=space_id,
+                        app_name=space_info.focused_window.app_name,
+                        window_title=space_info.focused_window.title,
+                        window_position=space_info.focused_window.frame,
+                        focus_duration=self.monitoring_interval,
+                        is_fullscreen=space_info.focused_window.is_fullscreen,
+                        metadata={'space_index': space_info.space_index}
+                    )
                 except Exception as e:
                     logger.error(f"[YABAI-SI] Error storing workspace usage: {e}")
 
     async def _store_app_usage_patterns(self):
-        """Store or update app usage patterns"""
-        now = datetime.now()
-
+        """Store or update app usage patterns (Phase 3 enhanced)"""
         for space_id, space_info in self.current_spaces.items():
             if space_info.focused_window:
-                app_name = space_info.focused_window.app_name
-
                 try:
-                    async with self.learning_db.db.cursor() as cursor:
-                        # Check if pattern exists
-                        await cursor.execute("""
-                            SELECT * FROM app_usage_patterns
-                            WHERE app_name = ? AND space_id = ?
-                            AND typical_time_of_day = ? AND typical_day_of_week = ?
-                        """, (app_name, space_id, now.hour, now.weekday()))
-
-                        existing = await cursor.fetchone()
-
-                        if existing:
-                            # Update existing pattern
-                            await cursor.execute("""
-                                UPDATE app_usage_patterns SET
-                                    usage_frequency = usage_frequency + 1,
-                                    total_usage_time = total_usage_time + ?,
-                                    last_used = ?,
-                                    confidence = MIN(confidence + 0.01, 0.95)
-                                WHERE app_name = ? AND space_id = ?
-                                AND typical_time_of_day = ? AND typical_day_of_week = ?
-                            """, (
-                                self.monitoring_interval,
-                                now,
-                                app_name,
-                                space_id,
-                                now.hour,
-                                now.weekday()
-                            ))
-                        else:
-                            # Insert new pattern
-                            await cursor.execute("""
-                                INSERT INTO app_usage_patterns
-                                (app_name, space_id, usage_frequency, avg_session_duration,
-                                 total_usage_time, typical_time_of_day, typical_day_of_week,
-                                 last_used, confidence, metadata)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """, (
-                                app_name,
-                                space_id,
-                                1,
-                                self.monitoring_interval,
-                                self.monitoring_interval,
-                                now.hour,
-                                now.weekday(),
-                                now,
-                                0.5,
-                                json.dumps({})
-                            ))
-
-                    await self.learning_db.db.commit()
-
+                    # Use Phase 3 Learning DB method
+                    await self.learning_db.update_app_usage_pattern(
+                        app_name=space_info.focused_window.app_name,
+                        space_id=space_id,
+                        session_duration=self.monitoring_interval
+                    )
                 except Exception as e:
                     logger.error(f"[YABAI-SI] Error storing app usage pattern: {e}")
 
     async def _store_space_transitions(self):
-        """Store Space transition data"""
+        """Store Space transition data (Phase 3 enhanced)"""
         if not self.space_transition_history:
             return
 
@@ -836,66 +772,36 @@ class YabaiSpatialIntelligence:
 
         for transition in transitions_to_store:
             try:
-                async with self.learning_db.db.cursor() as cursor:
-                    await cursor.execute("""
-                        INSERT INTO space_transitions
-                        (from_space_id, to_space_id, trigger_app, trigger_action,
-                         frequency, timestamp, hour_of_day, day_of_week, metadata)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ON CONFLICT DO UPDATE SET
-                            frequency = frequency + 1
-                    """, (
-                        transition.from_space_id,
-                        transition.to_space_id,
-                        transition.trigger_app,
-                        'space_change',
-                        1,
-                        datetime.fromtimestamp(transition.timestamp),
-                        transition.hour_of_day,
-                        transition.day_of_week,
-                        json.dumps({})
-                    ))
-
-                await self.learning_db.db.commit()
-
+                # Use Phase 3 Learning DB method
+                await self.learning_db.store_space_transition(
+                    from_space=transition.from_space_id,
+                    to_space=transition.to_space_id,
+                    trigger_app=transition.trigger_app,
+                    trigger_action='space_change'
+                )
             except Exception as e:
                 logger.error(f"[YABAI-SI] Error storing space transition: {e}")
 
     async def _store_temporal_patterns(self):
-        """Store temporal patterns including leap year support"""
+        """Store temporal patterns including leap year support (Phase 3 enhanced)"""
         now = datetime.now()
-        is_leap = calendar.isleap(now.year)
 
         for space_id, space_info in self.current_spaces.items():
             if space_info.focused_window:
-                app_name = space_info.focused_window.app_name
-
                 try:
-                    async with self.learning_db.db.cursor() as cursor:
-                        await cursor.execute("""
-                            INSERT INTO temporal_patterns
-                            (pattern_type, time_of_day, day_of_week, day_of_month,
-                             month_of_year, is_leap_year, action_type, target,
-                             frequency, confidence, last_occurrence, metadata)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            ON CONFLICT DO NOTHING
-                        """, (
-                            'app_usage',
-                            now.hour,
-                            now.weekday(),
-                            now.day,
-                            now.month,
-                            is_leap,
-                            'focus_app',
-                            app_name,
-                            1,
-                            0.5,
-                            now,
-                            json.dumps({'space_id': space_id})
-                        ))
-
-                    await self.learning_db.db.commit()
-
+                    # Use Phase 3 Learning DB method (includes leap year support!)
+                    await self.learning_db.store_temporal_pattern(
+                        pattern_type='app_usage',
+                        action_type='focus_app',
+                        target=space_info.focused_window.app_name,
+                        time_of_day=now.hour,
+                        day_of_week=now.weekday(),
+                        day_of_month=now.day,
+                        month_of_year=now.month,
+                        frequency=1,
+                        confidence=0.5,
+                        metadata={'space_id': space_id}
+                    )
                 except Exception as e:
                     logger.error(f"[YABAI-SI] Error storing temporal pattern: {e}")
 

@@ -295,6 +295,10 @@ class WorkspacePatternLearner:
 
                     logger.debug(f"[WPL] Workflow pattern reinforced: {seq_key} (confidence: {workflow.confidence:.2f})")
 
+                    # Store to Learning DB (Phase 3)
+                    if self.learning_db and workflow.confidence >= self.confidence_threshold:
+                        await self._store_workflow_to_db(workflow)
+
                 elif len([w for w in self.workflow_patterns.values() if w.sequence == sequence]) == 0:
                     # New potential workflow
                     now = datetime.now()
@@ -713,8 +717,37 @@ class WorkspacePatternLearner:
         for wid in to_remove:
             del self.workflow_patterns[wid]
 
+    async def _store_workflow_to_db(self, workflow: WorkflowPattern):
+        """Store workflow pattern to Learning DB (Phase 3)"""
+        if not self.learning_db:
+            return
+
+        try:
+            # Extract app and space sequences
+            app_sequence = [item[0] for item in workflow.sequence]
+            space_sequence = [item[1] for item in workflow.sequence]
+
+            # Create action sequence from workflow
+            action_sequence = [
+                {'action': 'focus_app', 'app': app, 'space': space}
+                for app, space in workflow.sequence
+            ]
+
+            await self.learning_db.store_user_workflow(
+                workflow_name=workflow.workflow_id,
+                action_sequence=action_sequence,
+                space_sequence=space_sequence,
+                app_sequence=app_sequence,
+                duration=workflow.avg_duration,
+                success=True,
+                confidence=workflow.confidence,
+                metadata={'typical_times': workflow.typical_times}
+            )
+        except Exception as e:
+            logger.error(f"[WPL] Error storing workflow: {e}", exc_info=True)
+
     async def _store_temporal_pattern(self, pattern: TemporalPattern):
-        """Store temporal pattern to Learning DB"""
+        """Store temporal pattern to Learning DB (Phase 3)"""
         if not self.learning_db:
             return
 
@@ -732,18 +765,29 @@ class WorkspacePatternLearner:
             logger.error(f"[WPL] Error storing temporal pattern: {e}", exc_info=True)
 
     async def _store_suggestion(self, suggestion: PredictiveSuggestion):
-        """Store prediction to Learning DB"""
+        """Store prediction to Learning DB (Phase 3)"""
         if not self.learning_db:
             return
 
         try:
+            # Format suggestion text
+            suggestion_text = f"{suggestion.action}"
+            if suggestion.target_app:
+                suggestion_text += f" {suggestion.target_app}"
+            if suggestion.target_space:
+                suggestion_text += f" on Space {suggestion.target_space}"
+
             await self.learning_db.store_proactive_suggestion(
                 suggestion_type=suggestion.suggestion_type,
-                target_space=suggestion.target_space,
-                target_app=suggestion.target_app,
-                action=suggestion.action,
+                suggestion_text=suggestion_text,
+                trigger_pattern_id=None,
                 confidence=suggestion.confidence,
-                reasoning=suggestion.reasoning
+                metadata={
+                    'target_space': suggestion.target_space,
+                    'target_app': suggestion.target_app,
+                    'action': suggestion.action,
+                    'reasoning': suggestion.reasoning
+                }
             )
         except Exception as e:
             logger.error(f"[WPL] Error storing suggestion: {e}", exc_info=True)
