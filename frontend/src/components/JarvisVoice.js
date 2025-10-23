@@ -2213,12 +2213,20 @@ const JarvisVoice = () => {
   const sendTextCommand = async (text) => {
     if (!text.trim()) return;
 
+    console.log('[TEXT COMMAND] Sending typed command:', text);
+
+    // Clear typing state and update interaction timestamp
+    setIsTyping(false);
+    setLastUserInteraction(Date.now());
+
     setTranscript(text);
+    console.log('[TEXT COMMAND] Set transcript:', text);
     setIsProcessing(true);
     setResponse('');  // Clear previous response
 
     // Use WebSocket if connected
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      console.log('[TEXT COMMAND] Sending via WebSocket');
       wsRef.current.send(JSON.stringify({
         type: 'command',
         text: text,
@@ -2227,6 +2235,7 @@ const JarvisVoice = () => {
       // Response will come through WebSocket message handler
     } else {
       // WebSocket not connected
+      console.log('[TEXT COMMAND] WebSocket not connected');
       setError('Not connected to JARVIS. Please refresh the page.');
       setIsProcessing(false);
     }
