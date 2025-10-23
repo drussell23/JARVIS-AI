@@ -606,10 +606,11 @@ class AdvancedDisplayMonitor:
                 for monitored in self.monitored_displays:
                     if monitored.matches(display_name):
                         current_available.add(monitored.id)
-                        logger.debug(f"[DISPLAY MONITOR] Check: matched '{display_name}' to '{monitored.name}' (id: {monitored.id})")
+                        logger.info(f"[DISPLAY MONITOR] MATCH: '{display_name}' → '{monitored.name}' (id: {monitored.id}), in_available={monitored.id in self.available_displays}, initial_complete={self.initial_scan_complete}")
 
                         # New display detected - announce and set pending prompt
                         if monitored.id not in self.available_displays:
+                            logger.info(f"[DISPLAY MONITOR] NEW DISPLAY DETECTED: {monitored.name}")
                             if self.initial_scan_complete:
                                 # Display became available after initial scan - announce it!
                                 logger.info(f"[DISPLAY MONITOR] STATE CHANGE: {monitored.name} became AVAILABLE")
