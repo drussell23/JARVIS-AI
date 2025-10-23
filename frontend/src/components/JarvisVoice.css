@@ -585,9 +585,27 @@
   animation: pulse-minimal 2s ease-in-out infinite;
 }
 
+.mode-badge.phase4 {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  animation: pulse-phase4 3s ease-in-out infinite;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+}
+
 @keyframes pulse-minimal {
   0%, 100% { opacity: 0.8; }
   50% { opacity: 1; }
+}
+
+@keyframes pulse-phase4 {
+  0%, 100% {
+    opacity: 0.9;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.6);
+  }
 }
 
 .minimal-mode-banner {
@@ -706,4 +724,13 @@
   font-size: 0.85em;
   font-weight: 400;
   opacity: 0.9;
+}
+
+/* Phase 4: Proactive Suggestions Container */
+.proactive-suggestions-container {
+  width: 100%;
+  max-width: 700px;
+  margin: 20px auto;
+  padding: 0;
+  z-index: 10;
 }

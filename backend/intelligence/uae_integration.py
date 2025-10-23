@@ -59,6 +59,12 @@ from intelligence.yabai_sai_integration import (
     shutdown_bridge,
     YabaiSAIBridge
 )
+from intelligence.proactive_intelligence_engine import (
+    initialize_proactive_intelligence,
+    get_proactive_intelligence,
+    shutdown_proactive_intelligence,
+    ProactiveIntelligenceEngine
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +75,7 @@ _learning_db_instance: Optional[JARVISLearningDatabase] = None
 _yabai_instance: Optional[YabaiSpatialIntelligence] = None
 _pattern_learner_instance: Optional[WorkspacePatternLearner] = None
 _bridge_instance: Optional[YabaiSAIBridge] = None
+_proactive_intelligence_instance: Optional[ProactiveIntelligenceEngine] = None
 
 
 async def initialize_uae(
@@ -77,14 +84,18 @@ async def initialize_uae(
     enable_auto_start: bool = True,
     knowledge_base_path: Optional[Path] = None,
     enable_learning_db: bool = True,
-    enable_yabai: bool = True  # Enable Yabai spatial intelligence
+    enable_yabai: bool = True,  # Enable Yabai spatial intelligence
+    enable_proactive_intelligence: bool = True,  # Enable Phase 4 proactive communication
+    voice_callback: Optional[Any] = None,  # Voice output callback
+    notification_callback: Optional[Any] = None  # Notification callback
 ) -> UnifiedAwarenessEngine:
     """
-    Initialize UAE system with full Phase 2 intelligence stack:
+    Initialize UAE system with full Phase 4 intelligence stack:
     - Learning Database
     - Yabai Spatial Intelligence (event-driven)
     - Workspace Pattern Learner (ML-powered)
     - Yabai ↔ SAI Integration Bridge
+    - Proactive Intelligence Engine (Natural Communication)
 
     Args:
         vision_analyzer: Claude Vision analyzer instance
@@ -98,14 +109,14 @@ async def initialize_uae(
         Initialized UAE engine with persistent memory + spatial intelligence
     """
     global _uae_instance, _uae_initialized, _learning_db_instance, _yabai_instance
-    global _pattern_learner_instance, _bridge_instance
+    global _pattern_learner_instance, _bridge_instance, _proactive_intelligence_instance
 
     if _uae_initialized and _uae_instance is not None:
         logger.info("[UAE-INIT] UAE already initialized")
         return _uae_instance
 
     logger.info("[UAE-INIT] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    logger.info("[UAE-INIT] Initializing Phase 2 Intelligence Stack...")
+    logger.info("[UAE-INIT] Initializing Phase 4 Intelligence Stack...")
     logger.info("[UAE-INIT] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
     try:
@@ -228,7 +239,7 @@ async def initialize_uae(
 
         # Step 7: Auto-start all monitoring systems
         if enable_auto_start:
-            logger.info("[UAE-INIT] Step 7/7: Starting all monitoring systems...")
+            logger.info("[UAE-INIT] Step 7/8: Starting all monitoring systems...")
 
             # Start UAE
             await uae.start()
@@ -239,12 +250,35 @@ async def initialize_uae(
                 await yabai.start_monitoring()
                 logger.info("[UAE-INIT] ✅ Yabai 24/7 workspace monitoring started (event-driven)")
 
+        # Step 8: Initialize Proactive Intelligence Engine (Phase 4)
+        proactive_intelligence = None
+        if enable_proactive_intelligence:
+            logger.info("[UAE-INIT] Step 8/8: Initializing Proactive Intelligence Engine...")
+            try:
+                proactive_intelligence = await initialize_proactive_intelligence(
+                    learning_db=learning_db,
+                    pattern_learner=pattern_learner,
+                    yabai_intelligence=yabai,
+                    uae_engine=uae,
+                    voice_callback=voice_callback,
+                    notification_callback=notification_callback
+                )
+                _proactive_intelligence_instance = proactive_intelligence
+                logger.info("[UAE-INIT] ✅ Proactive Intelligence Engine initialized")
+                logger.info(f"[UAE-INIT]    • Natural Communication: ✅ Active")
+                logger.info(f"[UAE-INIT]    • Voice Output: {'✅ Enabled' if voice_callback else '⚠️  Disabled'}")
+                logger.info(f"[UAE-INIT]    • Predictive Suggestions: ✅ Active")
+                logger.info(f"[UAE-INIT]    • Workflow Optimization: ✅ Active")
+            except Exception as e:
+                logger.warning(f"[UAE-INIT] ⚠️  Proactive Intelligence failed to initialize: {e}")
+                logger.info("[UAE-INIT]    • Continuing without proactive communication")
+
         # Store global instance
         _uae_instance = uae
         _uae_initialized = True
 
         logger.info("[UAE-INIT] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        logger.info("[UAE-INIT] ✅ Phase 2 Intelligence Stack: FULLY OPERATIONAL")
+        logger.info("[UAE-INIT] ✅ Phase 4 Intelligence Stack: FULLY OPERATIONAL")
         logger.info("[UAE-INIT] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         logger.info("[UAE-INIT] Core Systems:")
         logger.info("[UAE-INIT]    • Context Intelligence: ✅ Active (with Learning DB)")
@@ -255,6 +289,8 @@ async def initialize_uae(
         logger.info("[UAE-INIT]    • Spatial Intelligence (Yabai): " + ("✅ Active (24/7 event-driven)" if (yabai and yabai.yabai_available) else "⚠️  Disabled"))
         logger.info("[UAE-INIT]    • Pattern Learner (ML): " + ("✅ Active" if pattern_learner else "⚠️  Disabled"))
         logger.info("[UAE-INIT]    • Integration Bridge (Yabai↔SAI): " + ("✅ Active" if bridge else "⚠️  Disabled"))
+        logger.info("[UAE-INIT] Phase 4 Systems:")
+        logger.info("[UAE-INIT]    • Proactive Intelligence: " + ("✅ Active (Natural Communication)" if proactive_intelligence else "⚠️  Disabled"))
         logger.info("[UAE-INIT] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
         return uae
@@ -279,17 +315,24 @@ def get_uae() -> Optional[UnifiedAwarenessEngine]:
 
 
 async def shutdown_uae():
-    """Shutdown UAE system with full Phase 2 intelligence stack"""
+    """Shutdown UAE system with full Phase 4 intelligence stack"""
     global _uae_instance, _uae_initialized, _learning_db_instance, _yabai_instance
-    global _pattern_learner_instance, _bridge_instance
+    global _pattern_learner_instance, _bridge_instance, _proactive_intelligence_instance
 
     if not _uae_initialized or _uae_instance is None:
         return
 
-    logger.info("[UAE-SHUTDOWN] Shutting down Phase 2 intelligence stack...")
+    logger.info("[UAE-SHUTDOWN] Shutting down Phase 4 intelligence stack...")
 
     try:
-        # Stop Integration Bridge first
+        # Stop Proactive Intelligence first
+        if _proactive_intelligence_instance:
+            logger.info("[UAE-SHUTDOWN] Stopping Proactive Intelligence Engine...")
+            await shutdown_proactive_intelligence()
+            logger.info("[UAE-SHUTDOWN] ✅ Proactive Intelligence stopped")
+            _proactive_intelligence_instance = None
+
+        # Stop Integration Bridge
         if _bridge_instance:
             logger.info("[UAE-SHUTDOWN] Stopping Yabai ↔ SAI Integration Bridge...")
             await shutdown_bridge()

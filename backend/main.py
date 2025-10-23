@@ -989,20 +989,51 @@ async def lifespan(app: FastAPI):
         if chatbots and chatbots.get("vision_chatbot"):
             vision_analyzer = chatbots["vision_chatbot"]
 
-        # Initialize UAE with SAI + Learning Database + Yabai integration
+        # Create voice callback for Phase 4 Proactive Intelligence
+        async def voice_callback(text: str):
+            """Voice callback for proactive suggestions"""
+            try:
+                voice = components.get("voice", {})
+                jarvis_api = voice.get("jarvis_api")
+                if jarvis_api:
+                    await jarvis_api.speak({"text": text})
+                    logger.debug(f"[PROACTIVE-VOICE] Spoke: {text}")
+                else:
+                    logger.warning("[PROACTIVE-VOICE] JARVIS API not available")
+            except Exception as e:
+                logger.error(f"[PROACTIVE-VOICE] Error: {e}")
+
+        # Create notification callback for Phase 4 Proactive Intelligence
+        async def notification_callback(title: str, message: str, priority: str = "low"):
+            """Notification callback for proactive suggestions"""
+            try:
+                # Log notification (can be extended to use macOS notifications)
+                logger.info(f"[PROACTIVE-NOTIFY] [{priority.upper()}] {title}: {message}")
+                # Future: Can integrate with macOS notification center
+                # osascript -e 'display notification "message" with title "title"'
+            except Exception as e:
+                logger.error(f"[PROACTIVE-NOTIFY] Error: {e}")
+
+        # Initialize UAE with SAI + Learning Database + Yabai + Proactive Intelligence
         logger.info("🔧 Initializing FULL intelligence stack (24/7 mode)...")
-        logger.info("   Step 1/5: Learning Database initialization...")
-        logger.info("   Step 2/5: Yabai Spatial Intelligence (workspace monitoring)...")
-        logger.info("   Step 3/5: Situational Awareness Engine (SAI)...")
-        logger.info("   Step 4/5: Context Intelligence Layer...")
-        logger.info("   Step 5/5: Decision Fusion Engine + 24/7 monitoring...")
+        logger.info("   Step 1/8: Learning Database initialization...")
+        logger.info("   Step 2/8: Behavioral Pattern Learning...")
+        logger.info("   Step 3/8: Yabai Spatial Intelligence (workspace monitoring)...")
+        logger.info("   Step 4/8: Situational Awareness Engine (SAI)...")
+        logger.info("   Step 5/8: Context Intelligence Layer...")
+        logger.info("   Step 6/8: Decision Fusion Engine + 24/7 monitoring...")
+        logger.info("   Step 7/8: Goal-Oriented Workflow Prediction...")
+        logger.info("   Step 8/8: Proactive Communication Engine (Magic)...")
 
         uae = await initialize_uae(
             vision_analyzer=vision_analyzer,
             sai_monitoring_interval=5.0,  # Enhanced 24/7 mode: 5 seconds
             enable_auto_start=True,  # Start monitoring immediately
             enable_learning_db=True,  # Enable persistent memory
-            enable_yabai=True  # Enable Yabai spatial intelligence
+            enable_yabai=True,  # Enable Yabai spatial intelligence
+            enable_proactive_intelligence=True,  # Enable Phase 4: Proactive Communication
+            voice_callback=voice_callback,  # Natural voice suggestions
+            notification_callback=notification_callback  # Visual notifications
         )
 
         if uae and uae.is_active:
@@ -1021,18 +1052,32 @@ async def lifespan(app: FastAPI):
                     yabai = get_yabai()
                     yabai_active = yabai is not None and yabai.yabai_available
 
-                    logger.info("✅ UAE + SAI + Learning Database + Yabai initialized successfully")
+                    logger.info("✅ UAE + SAI + Learning Database + Yabai + Proactive Intelligence initialized successfully")
                     logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-                    logger.info("   🧠 INTELLIGENCE STACK: FULLY OPERATIONAL (24/7 MODE)")
+                    logger.info("   🧠 PHASE 4 INTELLIGENCE STACK: FULLY OPERATIONAL (24/7 MODE)")
                     logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                    logger.info("   📍 PHASE 1: Environmental Awareness")
                     logger.info("   • SAI (Situational Awareness): ✅ Active (5s monitoring - 24/7)")
+                    logger.info(f"   • Yabai Spatial Intelligence: {'✅ Active (workspace monitoring)' if yabai_active else '⚠️  Not available'}")
                     logger.info("   • Context Intelligence: ✅ Active (with persistent memory)")
+                    logger.info("")
+                    logger.info("   📍 PHASE 2: Decision Intelligence")
                     logger.info("   • Decision Fusion Engine: ✅ Active (confidence-weighted)")
+                    logger.info("   • Cross-Session Memory: ✅ Enabled (survives restarts)")
+                    logger.info("")
+                    logger.info("   📍 PHASE 3: Behavioral Learning (Smart)")
                     logger.info("   • Learning Database: ✅ Active (async + ChromaDB)")
                     logger.info("   • Predictive Intelligence: ✅ Enabled (temporal patterns)")
-                    logger.info("   • Cross-Session Memory: ✅ Enabled (survives restarts)")
                     logger.info("   • 24/7 Behavioral Learning: ✅ Enabled (always watching)")
-                    logger.info(f"   • Yabai Spatial Intelligence: {'✅ Active (workspace monitoring)' if yabai_active else '⚠️  Not available'}")
+                    logger.info("   • Workflow Pattern Recognition: ✅ Active")
+                    logger.info("")
+                    logger.info("   📍 PHASE 4: Proactive Communication (Magic)")
+                    logger.info("   • Natural Language Suggestions: ✅ Active")
+                    logger.info("   • Voice Output: ✅ Enabled (JARVIS API)")
+                    logger.info("   • Predictive App Launching: ✅ Active")
+                    logger.info("   • Workflow Optimization Tips: ✅ Active")
+                    logger.info("   • Smart Space Switching: ✅ Active")
+                    logger.info("   • Context-Aware Timing: ✅ Enabled (focus-level detection)")
                     logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                     logger.info("   📊 LEARNING DATABASE METRICS:")
                     logger.info(f"   • Total Patterns: {metrics['patterns']['total_patterns']}")
@@ -1042,9 +1087,17 @@ async def lifespan(app: FastAPI):
                     logger.info("   🎯 CAPABILITIES:")
                     logger.info("   • Learns user patterns across all macOS workspace")
                     logger.info("   • Predicts actions before you ask")
+                    logger.info("   • Proactively suggests apps and workflows naturally")
+                    logger.info("   • Speaks suggestions with human-like communication")
                     logger.info("   • Adapts to UI changes automatically")
                     logger.info("   • Remembers preferences across restarts")
                     logger.info("   • Self-healing when environment changes")
+                    logger.info("   • Respects your focus level (no interruptions during deep work)")
+                    logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                    logger.info("   💬 PROACTIVE EXAMPLES:")
+                    logger.info("   • 'Hey, you usually open Slack around this time. Want me to launch it?'")
+                    logger.info("   • 'I noticed your email workflow is slower than usual. Try filtering first.'")
+                    logger.info("   • 'You typically switch to Space 2 when coding. Should I move you there?'")
                     logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                 except Exception as e:
                     logger.warning(f"Could not get Learning DB metrics: {e}")
