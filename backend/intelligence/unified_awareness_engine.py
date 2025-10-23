@@ -1018,7 +1018,8 @@ class UnifiedAwarenessEngine:
         self,
         sai_engine: Optional[SituationalAwarenessEngine] = None,
         vision_analyzer=None,
-        learning_db: Optional[JARVISLearningDatabase] = None
+        learning_db: Optional[JARVISLearningDatabase] = None,
+        multi_space_handler=None
     ):
         """
         Initialize UAE with Learning Database
@@ -1027,9 +1028,13 @@ class UnifiedAwarenessEngine:
             sai_engine: Situational Awareness Engine
             vision_analyzer: Claude Vision analyzer
             learning_db: Learning Database instance
+            multi_space_handler: MultiSpaceQueryHandler for cross-space intelligence
         """
         # Learning Database
         self.learning_db = learning_db
+
+        # Multi-space intelligence
+        self.multi_space_handler = multi_space_handler
 
         # Core layers
         self.context_layer = ContextIntelligenceLayer(learning_db=learning_db)
@@ -1057,10 +1062,13 @@ class UnifiedAwarenessEngine:
             'failed_executions': 0,
             'learning_cycles': 0,
             'adaptations': 0,
-            'db_active': learning_db is not None
+            'db_active': learning_db is not None,
+            'multi_space_queries': 0
         }
 
         logger.info("[UAE] Unified Awareness Engine initialized with Learning Database integration")
+        if self.multi_space_handler:
+            logger.info("[UAE] Multi-space intelligence integration enabled")
 
     async def start(self):
         """Start UAE system"""
@@ -1296,7 +1304,8 @@ _uae_instance: Optional[UnifiedAwarenessEngine] = None
 def get_uae_engine(
     sai_engine: Optional[SituationalAwarenessEngine] = None,
     vision_analyzer=None,
-    learning_db: Optional[JARVISLearningDatabase] = None
+    learning_db: Optional[JARVISLearningDatabase] = None,
+    multi_space_handler=None
 ) -> UnifiedAwarenessEngine:
     """
     Get singleton UAE engine with Learning Database
@@ -1305,6 +1314,7 @@ def get_uae_engine(
         sai_engine: SAI engine instance
         vision_analyzer: Vision analyzer
         learning_db: Learning Database instance
+        multi_space_handler: MultiSpaceQueryHandler for cross-space intelligence
 
     Returns:
         UnifiedAwarenessEngine instance
@@ -1316,13 +1326,15 @@ def get_uae_engine(
         if sai_engine is None:
             sai_engine = get_sai_engine(
                 vision_analyzer=vision_analyzer,
-                monitoring_interval=5.0  # Enhanced 24/7 mode: 5s interval
+                monitoring_interval=5.0,  # Enhanced 24/7 mode: 5s interval
+                multi_space_handler=multi_space_handler
             )
 
         _uae_instance = UnifiedAwarenessEngine(
             sai_engine=sai_engine,
             vision_analyzer=vision_analyzer,
-            learning_db=learning_db
+            learning_db=learning_db,
+            multi_space_handler=multi_space_handler
         )
     else:
         # Update SAI engine if provided
@@ -1335,6 +1347,11 @@ def get_uae_engine(
             _uae_instance.context_layer.learning_db = learning_db
             _uae_instance.metrics['db_active'] = True
             logger.info("[UAE] Learning Database connected to existing UAE instance")
+
+        # Update multi-space handler if provided
+        if multi_space_handler is not None and _uae_instance.multi_space_handler is None:
+            _uae_instance.multi_space_handler = multi_space_handler
+            logger.info("[UAE] Multi-space intelligence connected to existing UAE instance")
 
     return _uae_instance
 

@@ -104,7 +104,7 @@ class MultiSpaceQueryHandler:
     - Vision systems (OCR and analysis)
     """
 
-    def __init__(self, context_graph=None, implicit_resolver=None, contextual_resolver=None):
+    def __init__(self, context_graph=None, implicit_resolver=None, contextual_resolver=None, learning_db=None):
         """
         Initialize the multi-space query handler.
 
@@ -112,16 +112,20 @@ class MultiSpaceQueryHandler:
             context_graph: MultiSpaceContextGraph instance
             implicit_resolver: ImplicitReferenceResolver instance
             contextual_resolver: ContextualQueryResolver instance
+            learning_db: JARVISLearningDatabase instance for pattern learning
         """
         self.context_graph = context_graph
         self.implicit_resolver = implicit_resolver
         self.contextual_resolver = contextual_resolver
         self.space_manager = get_space_state_manager()
+        self.learning_db = learning_db
 
         # Query patterns (dynamic - no hardcoding)
         self._initialize_patterns()
 
         logger.info("[MULTI-SPACE] Handler initialized")
+        if self.learning_db:
+            logger.info("[MULTI-SPACE] Learning Database integration enabled")
 
     def _initialize_patterns(self):
         """Initialize dynamic query patterns"""
@@ -221,6 +225,17 @@ class MultiSpaceQueryHandler:
         confidence = self._calculate_confidence(results, query_type)
 
         total_time = (datetime.now() - start_time).total_seconds()
+
+        # Store query pattern in learning database
+        if self.learning_db:
+            await self._record_query_pattern(
+                query=query,
+                query_type=query_type,
+                spaces_analyzed=spaces_to_analyze,
+                results=results,
+                confidence=confidence,
+                execution_time=total_time
+            )
 
         return MultiSpaceQueryResult(
             query_type=query_type,
@@ -750,6 +765,50 @@ class MultiSpaceQueryHandler:
 
         return min(1.0, confidence)
 
+    async def _record_query_pattern(
+        self,
+        query: str,
+        query_type: MultiSpaceQueryType,
+        spaces_analyzed: List[int],
+        results: List[SpaceAnalysisResult],
+        confidence: float,
+        execution_time: float
+    ):
+        """Record multi-space query pattern to learning database"""
+        try:
+            # Extract apps and window titles from results
+            apps_involved = [r.app_name for r in results if r.app_name]
+            window_titles = [r.window_title for r in results if r.window_title]
+
+            # Build pattern data
+            pattern_data = {
+                "query_type": query_type.value,
+                "spaces_analyzed": spaces_analyzed,
+                "space_count": len(spaces_analyzed),
+                "apps_involved": apps_involved,
+                "window_titles": window_titles,
+                "successful_captures": sum(1 for r in results if r.success),
+                "total_captures": len(results)
+            }
+
+            # Store as behavioral pattern
+            await self.learning_db.store_behavioral_pattern(
+                behavior_type="multi_space_query",
+                description=f"{query_type.value}: {query}",
+                pattern_data=pattern_data,
+                confidence=confidence,
+                metadata={
+                    "execution_time": execution_time,
+                    "query": query,
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
+
+            logger.debug(f"[MULTI-SPACE] Recorded query pattern: {query_type.value}")
+
+        except Exception as e:
+            logger.warning(f"[MULTI-SPACE] Failed to record query pattern: {e}")
+
 
 # ============================================================================
 # GLOBAL INSTANCE MANAGEMENT
@@ -764,9 +823,9 @@ def get_multi_space_handler() -> Optional[MultiSpaceQueryHandler]:
 
 
 def initialize_multi_space_handler(context_graph=None, implicit_resolver=None,
-                                   contextual_resolver=None) -> MultiSpaceQueryHandler:
+                                   contextual_resolver=None, learning_db=None) -> MultiSpaceQueryHandler:
     """Initialize the global multi-space query handler"""
     global _global_handler
-    _global_handler = MultiSpaceQueryHandler(context_graph, implicit_resolver, contextual_resolver)
+    _global_handler = MultiSpaceQueryHandler(context_graph, implicit_resolver, contextual_resolver, learning_db)
     logger.info("[MULTI-SPACE] Global handler initialized")
     return _global_handler

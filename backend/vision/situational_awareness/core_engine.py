@@ -934,7 +934,8 @@ class SituationalAwarenessEngine:
         self,
         vision_analyzer=None,
         monitoring_interval: float = 10.0,
-        enable_auto_revalidation: bool = True
+        enable_auto_revalidation: bool = True,
+        multi_space_handler=None
     ):
         """
         Initialize SAI Engine
@@ -943,6 +944,7 @@ class SituationalAwarenessEngine:
             vision_analyzer: Claude Vision analyzer instance
             monitoring_interval: Seconds between environmental scans
             enable_auto_revalidation: Auto-revalidate cache on changes
+            multi_space_handler: MultiSpaceQueryHandler for cross-space intelligence
         """
         # Core components
         self.vision_analyzer = vision_analyzer
@@ -951,6 +953,7 @@ class SituationalAwarenessEngine:
         self.cache = AdaptiveCacheManager()
         self.hasher = EnvironmentHasher()
         self.display_awareness = MultiDisplayAwareness()
+        self.multi_space_handler = multi_space_handler
 
         # Configuration
         self.monitoring_interval = monitoring_interval
@@ -969,6 +972,8 @@ class SituationalAwarenessEngine:
         self._monitoring_task: Optional[asyncio.Task] = None
 
         logger.info("[SAI-ENGINE] Situational Awareness Engine initialized")
+        if self.multi_space_handler:
+            logger.info("[SAI-ENGINE] Multi-space intelligence integration enabled")
 
     async def start_monitoring(self):
         """Start continuous environmental monitoring"""
@@ -1328,7 +1333,8 @@ _sai_engine: Optional[SituationalAwarenessEngine] = None
 def get_sai_engine(
     vision_analyzer=None,
     monitoring_interval: float = 10.0,
-    enable_auto_revalidation: bool = True
+    enable_auto_revalidation: bool = True,
+    multi_space_handler=None
 ) -> SituationalAwarenessEngine:
     """
     Get singleton SAI engine instance
@@ -1337,6 +1343,7 @@ def get_sai_engine(
         vision_analyzer: Claude Vision analyzer
         monitoring_interval: Monitoring interval in seconds
         enable_auto_revalidation: Enable automatic cache revalidation
+        multi_space_handler: MultiSpaceQueryHandler for cross-space intelligence
 
     Returns:
         SituationalAwarenessEngine instance
@@ -1347,7 +1354,8 @@ def get_sai_engine(
         _sai_engine = SituationalAwarenessEngine(
             vision_analyzer=vision_analyzer,
             monitoring_interval=monitoring_interval,
-            enable_auto_revalidation=enable_auto_revalidation
+            enable_auto_revalidation=enable_auto_revalidation,
+            multi_space_handler=multi_space_handler
         )
 
     return _sai_engine
