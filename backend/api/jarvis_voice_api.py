@@ -1451,9 +1451,41 @@ class JARVISVoiceAPI:
 
                     if USE_CONTEXT_HANDLER:
                         try:
+                            # CRITICAL: Check for TV/display prompt responses FIRST (highest priority)
+                            # This must happen BEFORE any classification or processing
+                            try:
+                                from display import get_display_monitor
+                                monitor = get_display_monitor()
+
+                                if monitor.has_pending_prompt():
+                                    logger.info(f"[JARVIS WS] Pending display prompt detected! Checking if '{command_text}' is a response...")
+
+                                    # Check if this looks like a yes/no response
+                                    response_lower = command_text.lower().strip()
+                                    is_response = any(word in response_lower for word in ["yes", "yeah", "yep", "no", "nope", "sure", "connect", "skip"])
+
+                                    if is_response:
+                                        logger.info(f"[JARVIS WS] This is a display prompt response! Handling directly...")
+                                        display_result = await monitor.handle_user_response(command_text)
+
+                                        if display_result.get("handled"):
+                                            logger.info(f"[JARVIS WS] Display handler processed the response successfully")
+                                            await websocket.send_json({
+                                                "type": "response",
+                                                "text": display_result.get("response", "Understood."),
+                                                "command_type": "display_response",
+                                                "success": display_result.get("success", True),
+                                                "timestamp": datetime.now().isoformat(),
+                                                "speak": True
+                                            })
+                                            continue
+                            except Exception as e:
+                                logger.error(f"[JARVIS WS] Error checking display prompt: {e}")
+                                # Continue to normal processing if this fails
+
                             from .unified_command_processor import get_unified_processor
                             processor = get_unified_processor(self.api_key)
-                            
+
                             if USE_ENHANCED_CONTEXT:
                                 # Use enhanced simple context handler for proper feedback
                                 from .simple_context_handler_enhanced import wrap_with_enhanced_context
