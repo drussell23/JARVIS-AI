@@ -537,6 +537,89 @@
   }
 }
 
+/* ==================== TEXT COMMAND INPUT ==================== */
+.text-command-container {
+  width: 100%;
+  max-width: 800px;
+  margin: 1.5rem auto 0;
+  z-index: 10;
+  padding: 0 20px;
+}
+
+.text-command-form {
+  display: flex;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  padding: 8px;
+  border-radius: 50px;
+  border: 1px solid rgba(0, 255, 65, 0.2);
+  box-shadow: 0 0 20px rgba(0, 255, 65, 0.1);
+  transition: all 0.3s ease;
+}
+
+.text-command-form:focus-within {
+  border-color: rgba(0, 255, 65, 0.5);
+  box-shadow:
+    0 0 30px rgba(0, 255, 65, 0.3),
+    0 0 15px rgba(0, 255, 65, 0.2);
+}
+
+.text-command-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 14px 20px;
+  color: #FFFFFF;
+  font-size: 1rem;
+  font-family: 'SF Pro Display', -apple-system, sans-serif;
+  font-weight: 400;
+}
+
+.text-command-input::placeholder {
+  color: rgba(0, 255, 65, 0.4);
+  font-style: italic;
+}
+
+.text-command-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.text-command-submit {
+  min-width: 80px;
+  padding: 12px 24px;
+  border-radius: 50px;
+  background: linear-gradient(135deg, #00ff41 0%, #00aa2e 100%);
+  border: none;
+  cursor: pointer;
+  color: #000000;
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  box-shadow: 0 0 20px rgba(0, 255, 65, 0.4);
+  transition: all 0.3s ease;
+  font-family: 'SF Pro Display', -apple-system, sans-serif;
+}
+
+.text-command-submit:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: 0 0 30px rgba(0, 255, 65, 0.6);
+  background: linear-gradient(135deg, #00ff41 0%, #00dd35 100%);
+}
+
+.text-command-submit:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.text-command-submit:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  background: linear-gradient(135deg, #00aa2e 0%, #008C25 100%);
+}
+
 /* ==================== COMMAND INPUT ==================== */
 .jarvis-input-section {
   width: 100%;

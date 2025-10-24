@@ -609,6 +609,7 @@ const JarvisVoice = () => {
   const [transcript, setTranscript] = useState('');
   const [response, setResponse] = useState('');
   const [error, setError] = useState(null);
+  const [textCommand, setTextCommand] = useState('');
   const [continuousListening, setContinuousListening] = useState(false);
   const [isWaitingForCommand, setIsWaitingForCommand] = useState(false);
   const [isJarvisSpeaking, setIsJarvisSpeaking] = useState(false);
@@ -2145,6 +2146,38 @@ const JarvisVoice = () => {
     console.log('Command sent, waiting for response...');
   };
 
+  // Handle text command submission
+  const handleTextCommandSubmit = (e) => {
+    e.preventDefault();
+
+    if (!textCommand.trim()) return;
+
+    console.log('[TEXT-CMD] Submitting typed command:', textCommand);
+
+    // Set transcript to show what was typed
+    setTranscript(textCommand);
+
+    // Send via WebSocket
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'command',
+        text: textCommand,
+        mode: autonomousMode ? 'autonomous' : 'manual',
+        metadata: {
+          source: 'text_input',
+          timestamp: Date.now()
+        }
+      }));
+      setResponse('⚙️ Processing...');
+      setIsProcessing(true);
+    } else {
+      setResponse('❌ Not connected to JARVIS');
+    }
+
+    // Clear the input
+    setTextCommand('');
+  };
+
   const activateJarvis = async () => {
     // Ensure config is ready
     if (!configReady || !API_URL) {
@@ -2936,6 +2969,27 @@ const JarvisVoice = () => {
           )}
         </div>
       )}
+
+      {/* Text Command Input - Always visible */}
+      <div className="text-command-container">
+        <form onSubmit={handleTextCommandSubmit} className="text-command-form">
+          <input
+            type="text"
+            value={textCommand}
+            onChange={(e) => setTextCommand(e.target.value)}
+            placeholder="Type a command to JARVIS..."
+            className="text-command-input"
+            disabled={jarvisStatus !== 'online'}
+          />
+          <button
+            type="submit"
+            className="text-command-submit"
+            disabled={!textCommand.trim() || jarvisStatus !== 'online'}
+          >
+            Send
+          </button>
+        </form>
+      </div>
 
       {/* Phase 4: Proactive Suggestions */}
       {proactiveSuggestions.length > 0 && (
