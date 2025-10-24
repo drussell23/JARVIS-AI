@@ -1,14 +1,12 @@
+[tool.bandit]
+# Bandit security linter configuration
+exclude_dirs = ["/tests/", "/test_*.py", "/__pycache__/"]
+skips = ["B101"]  # Skip assert_used in tests
+
 [tool.black]
-line-length = 88
+line-length = 100
 target-version = ['py310']
-force-exclude = '''
-.*/backend/vision/yabai_space_detector\.py
-'''
 
 [tool.isort]
 profile = "black"
-skip = ["backend/vision/yabai_space_detector.py"]
-
-[tool.autopep8]
-max_line_length = 88
-exclude = "backend/vision/yabai_space_detector.py"
+line_length = 100

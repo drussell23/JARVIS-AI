@@ -162,6 +162,18 @@ htmlcov/
 coverage.xml
 *.cover
 
+# Testing framework artifacts
+.hypothesis/
+**/.hypothesis/
+.tox/
+*.hypothesis/
+.pytest_cache_*/
+.mypy_cache/
+.ruff_cache/
+
+# Pre-commit hooks
+.pre-commit-config.yaml.backup
+
 # Profiling data
 *.prof
 *.perf
@@ -259,3 +271,14 @@ backend/.jarvis_cache/
 .env.gcp
 backend/backend/.env.gcp
 cloud_sql_proxy
+
+# Cloud SQL and GCP secrets
+**/gcp_config.json
+**/database_config.json
+**/*-key.json
+**/service-account*.json
+~/.jarvis/cloud-sql-proxy.log
+nohup.out
+
+# GitHub Actions service account (sensitive)
+/tmp/github-actions-key*.json
