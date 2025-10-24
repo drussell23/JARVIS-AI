@@ -1,7 +1,13 @@
 """
-JARVIS Hybrid Orchestrator
+JARVIS Hybrid Orchestrator - UAE/SAI/CAI Integrated
 Main entry point for hybrid local/cloud architecture
 Coordinates between local Mac and GCP backends with intelligent routing
+
+Integrated Intelligence Systems:
+- UAE (Unified Awareness Engine): Real-time context aggregation
+- SAI (Self-Aware Intelligence): Self-healing and optimization
+- CAI (Context Awareness Intelligence): Intent prediction
+- learning_database: Persistent memory and pattern learning
 """
 import asyncio
 import logging
@@ -12,6 +18,65 @@ from backend.core.hybrid_backend_client import HybridBackendClient
 from backend.core.hybrid_router import HybridRouter, RoutingContext, RouteDecision
 
 logger = logging.getLogger(__name__)
+
+# UAE/SAI/CAI Integration (lazy loaded)
+_uae_engine = None
+_sai_system = None
+_cai_system = None
+_learning_db = None
+
+
+def _get_uae():
+    """Lazy load UAE"""
+    global _uae_engine
+    if _uae_engine is None:
+        try:
+            from intelligence.unified_awareness_engine import UnifiedAwarenessEngine
+            _uae_engine = UnifiedAwarenessEngine()
+            logger.info("✅ UAE loaded")
+        except Exception as e:
+            logger.warning(f"UAE not available: {e}")
+    return _uae_engine
+
+
+def _get_sai():
+    """Lazy load SAI"""
+    global _sai_system
+    if _sai_system is None:
+        try:
+            from intelligence.self_aware_intelligence import SelfAwareIntelligence
+            _sai_system = SelfAwareIntelligence()
+            logger.info("✅ SAI loaded")
+        except Exception as e:
+            logger.warning(f"SAI not available: {e}")
+    return _sai_system
+
+
+def _get_cai():
+    """Lazy load CAI"""
+    global _cai_system
+    if _cai_system is None:
+        try:
+            # CAI might be part of UAE or separate module
+            from intelligence.context_awareness_intelligence import ContextAwarenessIntelligence
+            _cai_system = ContextAwarenessIntelligence()
+            logger.info("✅ CAI loaded")
+        except Exception as e:
+            logger.warning(f"CAI not available: {e}")
+    return _cai_system
+
+
+async def _get_learning_db():
+    """Lazy load learning database"""
+    global _learning_db
+    if _learning_db is None:
+        try:
+            from intelligence.learning_database import get_learning_database
+            _learning_db = await get_learning_database()
+            logger.info("✅ learning_database loaded")
+        except Exception as e:
+            logger.warning(f"learning_database not available: {e}")
+    return _learning_db
 
 
 class HybridOrchestrator:
@@ -66,7 +131,7 @@ class HybridOrchestrator:
         metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Execute command with intelligent routing
+        Execute command with intelligent routing + UAE/SAI/CAI integration
 
         Args:
             command: The command to execute
@@ -74,7 +139,7 @@ class HybridOrchestrator:
             metadata: Additional metadata for routing
 
         Returns:
-            Response from backend
+            Response from backend with intelligence context
         """
         if not self.is_running:
             await self.start()
@@ -90,12 +155,19 @@ class HybridOrchestrator:
 
         # Route the request
         decision, backend_name, route_metadata = self.router.route(context)
+        rule = self._get_rule(route_metadata['rule'])
 
         logger.info(
             f"📨 Request #{self.request_count}: '{command[:50]}...' "
             f"→ {decision.value} (rule: {route_metadata['rule']}, "
             f"confidence: {route_metadata['confidence']:.2f})"
         )
+
+        # Enrich with intelligence systems
+        intelligence_context = await self._gather_intelligence_context(command, rule)
+
+        # Merge with existing metadata
+        enhanced_metadata = {**(metadata or {}), **intelligence_context}
 
         # Determine capability based on decision
         capability = self._get_capability_from_decision(decision, command)
@@ -108,22 +180,40 @@ class HybridOrchestrator:
                 data={
                     "command": command,
                     "command_type": command_type,
-                    "metadata": metadata
+                    "metadata": enhanced_metadata,
+                    "intelligence_context": intelligence_context
                 },
                 capability=capability
             )
 
-            # Add routing metadata to response
+            # Add routing and intelligence metadata to response
             result['routing'] = {
                 'decision': decision.value,
                 'backend': backend_name,
                 **route_metadata
             }
+            result['intelligence'] = intelligence_context
+
+            # Learn from execution (SAI)
+            if rule and rule.get('use_sai'):
+                await self._sai_learn_from_execution(command, result)
+
+            # Store in learning database
+            if rule and rule.get('use_learning_db'):
+                await self._store_in_learning_db(command, result)
 
             return result
 
         except Exception as e:
             logger.error(f"Command execution failed: {e}")
+
+            # SAI self-healing attempt
+            if self._should_attempt_self_heal():
+                logger.info("🔧 SAI attempting self-heal...")
+                heal_result = await self._sai_self_heal(e, command)
+                if heal_result.get('success'):
+                    return heal_result
+
             return {
                 'success': False,
                 'error': str(e),
@@ -131,8 +221,132 @@ class HybridOrchestrator:
                     'decision': decision.value,
                     'backend': backend_name,
                     **route_metadata
-                }
+                },
+                'intelligence': intelligence_context
             }
+
+    def _get_rule(self, rule_name: str) -> Optional[Dict]:
+        """Get routing rule by name"""
+        rules = self.client.config['hybrid']['routing'].get('rules', [])
+        for rule in rules:
+            if rule.get('name') == rule_name:
+                return rule
+        return None
+
+    async def _gather_intelligence_context(self, command: str, rule: Optional[Dict]) -> Dict[str, Any]:
+        """
+        Gather context from UAE/SAI/CAI/learning_database
+
+        Returns enriched context for command execution
+        """
+        context = {}
+
+        if not rule:
+            return context
+
+        # UAE: Unified Awareness Engine
+        if rule.get('use_uae'):
+            uae = _get_uae()
+            if uae:
+                try:
+                    uae_context = await asyncio.to_thread(uae.get_current_context)
+                    context['uae'] = {
+                        'screen_state': uae_context.get('screen_locked', False),
+                        'active_apps': uae_context.get('active_apps', []),
+                        'current_space': uae_context.get('current_space'),
+                        'network_status': uae_context.get('network_connected', True),
+                    }
+                    logger.debug(f"🧠 UAE context gathered")
+                except Exception as e:
+                    logger.warning(f"UAE context failed: {e}")
+
+        # CAI: Context Awareness Intelligence
+        if rule.get('use_cai'):
+            cai = _get_cai()
+            if cai:
+                try:
+                    intent = await asyncio.to_thread(cai.predict_intent, command)
+                    context['cai'] = {
+                        'predicted_intent': intent.get('intent'),
+                        'confidence': intent.get('confidence', 0.0),
+                        'suggested_action': intent.get('suggestion'),
+                    }
+                    logger.debug(f"🎯 CAI intent: {intent.get('intent')}")
+                except Exception as e:
+                    logger.warning(f"CAI prediction failed: {e}")
+
+        # learning_database: Historical patterns
+        if rule.get('use_learning_db'):
+            learning_db = await _get_learning_db()
+            if learning_db:
+                try:
+                    similar_patterns = await learning_db.find_similar_patterns(command)
+                    context['learning_db'] = {
+                        'similar_commands': [p.get('command') for p in similar_patterns[:3]],
+                        'success_rate': sum(p.get('success', 0) for p in similar_patterns) / len(similar_patterns) if similar_patterns else 0.0,
+                        'learned_preferences': similar_patterns[0].get('metadata') if similar_patterns else {}
+                    }
+                    logger.debug(f"📚 learning_db: Found {len(similar_patterns)} similar patterns")
+                except Exception as e:
+                    logger.warning(f"learning_db query failed: {e}")
+
+        return context
+
+    async def _sai_learn_from_execution(self, command: str, result: Dict):
+        """SAI learns from command execution"""
+        sai = _get_sai()
+        if sai:
+            try:
+                await asyncio.to_thread(
+                    sai.learn_from_execution,
+                    command=command,
+                    success=result.get('success', False),
+                    response_time=result.get('response_time', 0),
+                    metadata=result.get('routing', {})
+                )
+                logger.debug("🤖 SAI learned from execution")
+            except Exception as e:
+                logger.warning(f"SAI learning failed: {e}")
+
+    async def _store_in_learning_db(self, command: str, result: Dict):
+        """Store execution in learning database"""
+        learning_db = await _get_learning_db()
+        if learning_db:
+            try:
+                await learning_db.store_interaction(
+                    command=command,
+                    result=result,
+                    timestamp=asyncio.get_event_loop().time()
+                )
+                logger.debug("💾 Stored in learning_database")
+            except Exception as e:
+                logger.warning(f"learning_db storage failed: {e}")
+
+    def _should_attempt_self_heal(self) -> bool:
+        """Check if SAI should attempt self-healing"""
+        config = self.client.config.get('hybrid', {}).get('intelligence', {}).get('sai', {})
+        return config.get('enabled', False) and config.get('self_healing', False)
+
+    async def _sai_self_heal(self, error: Exception, command: str) -> Dict[str, Any]:
+        """SAI attempts to self-heal from error"""
+        sai = _get_sai()
+        if sai:
+            try:
+                heal_result = await asyncio.to_thread(
+                    sai.attempt_self_heal,
+                    error=str(error),
+                    context={'command': command}
+                )
+                if heal_result.get('healed'):
+                    logger.info(f"✅ SAI self-heal successful: {heal_result.get('action')}")
+                    # Retry command after heal
+                    return await self.execute_command(command)
+                else:
+                    logger.warning(f"⚠️  SAI self-heal unsuccessful")
+            except Exception as e:
+                logger.error(f"SAI self-heal failed: {e}")
+
+        return {'success': False, 'error': str(error)}
 
     async def execute_query(self, query: str, **kwargs) -> Dict[str, Any]:
         """Execute a natural language query"""

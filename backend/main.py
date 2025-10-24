@@ -1018,6 +1018,18 @@ async def lifespan(app: FastAPI):
             app.state.learning_db = None
             app.state.uae_initializing = False
 
+            # Initialize Hybrid Orchestrator (always initialized)
+            logger.info("🌐 Initializing Hybrid Orchestrator (Local + GCP)...")
+            try:
+                from backend.core.hybrid_orchestrator import get_orchestrator
+                hybrid_orchestrator = get_orchestrator()
+                await hybrid_orchestrator.start()
+                app.state.hybrid_orchestrator = hybrid_orchestrator
+                logger.info("✅ Hybrid Orchestrator initialized (intelligent routing active)")
+            except Exception as e:
+                logger.warning(f"⚠️  Hybrid Orchestrator not available: {e}")
+                app.state.hybrid_orchestrator = None
+
         else:
             logger.info("🧠 Initializing UAE (Unified Awareness Engine) with Learning Database + Yabai...")
             from intelligence.uae_integration import initialize_uae, get_uae, get_learning_db, get_yabai
@@ -1147,6 +1159,21 @@ async def lifespan(app: FastAPI):
                     logger.warning("   ⚠️  Learning Database: Not active (no persistent memory)")
             else:
                 logger.warning("⚠️ UAE initialized but not active")
+
+            # Initialize Hybrid Orchestrator (always initialized)
+            logger.info("🌐 Initializing Hybrid Orchestrator (Local + GCP)...")
+            try:
+                from backend.core.hybrid_orchestrator import get_orchestrator
+                hybrid_orchestrator = get_orchestrator()
+                await hybrid_orchestrator.start()
+                app.state.hybrid_orchestrator = hybrid_orchestrator
+                logger.info("✅ Hybrid Orchestrator initialized (intelligent routing active)")
+                logger.info("   • Local Mac (16GB) - Vision, Voice, macOS features")
+                logger.info("   • GCP Cloud (32GB) - ML, NLP, heavy processing")
+                logger.info("   • UAE/SAI/CAI integrated for intelligent routing")
+            except Exception as e:
+                logger.warning(f"⚠️  Hybrid Orchestrator not available: {e}")
+                app.state.hybrid_orchestrator = None
 
     except Exception as e:
         logger.warning(f"⚠️ Could not initialize UAE + Learning Database: {e}")

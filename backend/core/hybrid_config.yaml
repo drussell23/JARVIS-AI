@@ -88,24 +88,63 @@ hybrid:
     strategy: capability_based  # capability_based, round_robin, least_loaded, fastest
 
     # Task routing rules (matched in order)
+    # Enhanced with UAE/SAI/CAI intelligence
     rules:
+      # Real-time local-only tasks
       - name: vision_capture
         match:
           capabilities: [vision_capture]
         route_to: local
         fallback: none  # Cannot fallback, requires local
+        use_uae: true  # Capture context
 
       - name: screen_unlock
         match:
           capabilities: [screen_unlock]
         route_to: local
         fallback: none
+        use_cai: true  # Context-aware unlock
 
       - name: voice_activation
         match:
           capabilities: [voice_activation]
         route_to: local
         fallback: none
+        use_cai: true  # Predict intent
+
+      - name: wake_word
+        match:
+          capabilities: [wake_word_detection]
+        route_to: local
+        fallback: none
+
+      # Cloud-heavy intelligence tasks
+      - name: uae_processing
+        match:
+          keywords: [context, awareness, what am i doing, understand situation]
+          capabilities: [uae_processing]
+        route_to: gcp
+        fallback: local
+        use_uae: true
+        use_cai: true
+
+      - name: sai_learning
+        match:
+          keywords: [learn, pattern, remember, adapt, optimize]
+          capabilities: [sai_learning]
+        route_to: gcp
+        fallback: none
+        use_sai: true
+        use_learning_db: true
+
+      - name: cai_prediction
+        match:
+          keywords: [predict, suggest, what should, recommend]
+          capabilities: [cai_prediction]
+        route_to: gcp
+        fallback: local
+        use_cai: true
+        use_learning_db: true
 
       - name: ml_heavy
         match:
@@ -113,6 +152,7 @@ hybrid:
           capabilities: [ml_processing]
         route_to: gcp
         fallback: local
+        use_uae: true
 
       - name: nlp_analysis
         match:
@@ -120,6 +160,8 @@ hybrid:
           capabilities: [nlp_analysis]
         route_to: gcp
         fallback: local
+        use_uae: true
+        use_cai: true
 
       - name: chatbot
         match:
@@ -127,11 +169,24 @@ hybrid:
           capabilities: [chatbot_inference]
         route_to: gcp
         fallback: local
+        use_uae: true  # Provide context to chatbot
+        use_cai: true  # Understand intent
+        use_learning_db: true  # Remember conversations
+
+      - name: goal_inference
+        match:
+          keywords: [goal, intention, trying to, working on]
+          capabilities: [goal_inference]
+        route_to: gcp
+        fallback: local
+        use_cai: true
+        use_learning_db: true
 
       - name: default
         match:
           all: true
         route_to: auto  # Let system decide
+        use_uae: true  # Always capture context
 
   # Circuit Breaker Configuration
   circuit_breaker:
