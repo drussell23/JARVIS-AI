@@ -922,11 +922,13 @@ exit 1
                 "json",
             ]
 
+            logger.info(f"🔧 Running gcloud command: {' '.join(cmd[:8])}...")
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 
             if result.returncode == 0:
                 import json
 
+                logger.info("✅ gcloud command succeeded")
                 instance_data = json.loads(result.stdout)
 
                 return {
@@ -938,10 +940,19 @@ exit 1
                     .get("natIP"),
                 }
             else:
+                logger.error(f"❌ gcloud command failed with return code {result.returncode}")
+                logger.error(f"   stdout: {result.stdout}")
+                logger.error(f"   stderr: {result.stderr}")
                 raise Exception(f"gcloud failed: {result.stderr}")
 
+        except subprocess.TimeoutExpired:
+            logger.error(f"❌ gcloud command timed out after 120s")
+            raise Exception("GCP deployment timeout - gcloud command took too long")
         except Exception as e:
-            logger.error(f"Direct GCP deployment failed: {e}")
+            logger.error(f"❌ Direct GCP deployment failed: {e}")
+            import traceback
+
+            logger.error(f"   Traceback: {traceback.format_exc()}")
             raise
 
     async def _wait_for_gcp_ready(self, instance_id: str, timeout: int = 300) -> bool:
