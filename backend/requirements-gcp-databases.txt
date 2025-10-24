@@ -1,0 +1,18 @@
+# GCP Centralized Database Support
+# Install with: pip install -r requirements-gcp-databases.txt
+
+# PostgreSQL async driver
+asyncpg>=0.29.0
+
+# Cloud SQL Python Connector (recommended for secure connections)
+cloud-sql-python-connector[asyncpg]>=1.7.0
+
+# Google Cloud Storage (for ChromaDB)
+google-cloud-storage>=2.14.0
+
+# Environment management
+python-dotenv>=1.0.0
+
+# Already in main requirements but listed for reference:
+# aiosqlite - for local SQLite support
+# chromadb - for vector embeddings
