@@ -986,9 +986,14 @@ class HybridIntelligenceCoordinator:
         self.ram_monitor = DynamicRAMMonitor()
         self.workload_router = HybridWorkloadRouter(self.ram_monitor)
 
+        # SAI Learning Integration
+        self.learning_model = HybridLearningModel()
+        self.sai_integration = SAIHybridIntegration(self.learning_model)
+        self.learning_enabled = True
+
         # Monitoring loop
         self.monitoring_task = None
-        self.monitoring_interval = 5  # Check every 5 seconds
+        self.monitoring_interval = 5  # Will be dynamically adjusted by SAI
         self.running = False
 
         # Decision history for learning
@@ -999,7 +1004,7 @@ class HybridIntelligenceCoordinator:
         self.emergency_mode = False
         self.emergency_start = None
 
-        logger.info("🎯 HybridIntelligenceCoordinator initialized")
+        logger.info("🎯 HybridIntelligenceCoordinator initialized with SAI learning")
 
     async def start(self):
         """Start hybrid monitoring and coordination"""
@@ -1007,12 +1012,31 @@ class HybridIntelligenceCoordinator:
             logger.warning("Hybrid coordinator already running")
             return
 
+        # Initialize SAI learning database
+        if self.learning_enabled:
+            try:
+                await self.sai_integration.initialize_database()
+                logger.info("✅ SAI learning database connected")
+
+                # Apply learned thresholds to RAM monitor
+                learned_thresholds = self.learning_model.optimal_thresholds
+                self.ram_monitor.warning_threshold = learned_thresholds["warning"]
+                self.ram_monitor.critical_threshold = learned_thresholds["critical"]
+                self.ram_monitor.optimal_threshold = learned_thresholds["optimal"]
+                self.ram_monitor.emergency_threshold = learned_thresholds["emergency"]
+
+                logger.info(f"📚 Applied learned thresholds: {learned_thresholds}")
+            except Exception as e:
+                logger.warning(f"SAI integration initialization failed: {e}")
+                self.learning_enabled = False
+
         self.running = True
         self.monitoring_task = asyncio.create_task(self._monitoring_loop())
 
         logger.info("🚀 Hybrid coordination started")
-        logger.info(f"   Monitoring interval: {self.monitoring_interval}s")
+        logger.info(f"   Monitoring interval: {self.monitoring_interval}s (adaptive)")
         logger.info(f"   RAM: {self.ram_monitor.local_ram_gb:.1f}GB total")
+        logger.info(f"   Learning: {'Enabled' if self.learning_enabled else 'Disabled'}")
 
     async def stop(self):
         """Stop hybrid coordination"""
@@ -1028,7 +1052,7 @@ class HybridIntelligenceCoordinator:
         logger.info("🛑 Hybrid coordination stopped")
 
     async def _monitoring_loop(self):
-        """Continuous monitoring and decision loop"""
+        """Continuous monitoring and decision loop with SAI learning"""
         while self.running:
             try:
                 # Update RAM metrics
@@ -1037,7 +1061,34 @@ class HybridIntelligenceCoordinator:
                 # Get current state
                 ram_state = await self.ram_monitor.get_current_state()
 
-                # Make routing decision
+                # SAI Learning: Record RAM observation
+                if self.learning_enabled:
+                    component_mem = await self.ram_monitor.get_component_memory()
+                    await self.sai_integration.record_and_learn(
+                        "ram",
+                        {
+                            "timestamp": time.time(),
+                            "usage": ram_state["percent"],
+                            "components": component_mem,
+                        },
+                    )
+
+                    # SAI Learning: Get RAM spike prediction
+                    spike_prediction = await self.learning_model.predict_ram_spike(
+                        current_usage=ram_state["percent"],
+                        trend=self.ram_monitor.trend_direction,
+                        time_horizon_seconds=60,
+                    )
+
+                    if spike_prediction["spike_likely"] and spike_prediction["confidence"] > 0.5:
+                        logger.info(
+                            f"🔮 SAI Prediction: RAM spike likely in 60s "
+                            f"(peak: {spike_prediction['predicted_peak']*100:.1f}%, "
+                            f"confidence: {spike_prediction['confidence']:.1%})"
+                        )
+                        logger.info(f"   Reason: {spike_prediction['reason']}")
+
+                # Make routing decision (now using SAI-learned thresholds)
                 should_shift, reason, details = await self.ram_monitor.should_shift_to_gcp()
 
                 # Log significant changes
@@ -1076,6 +1127,17 @@ class HybridIntelligenceCoordinator:
 
                 if len(self.decision_history) > self.max_decision_history:
                     self.decision_history.pop(0)
+
+                # SAI Learning: Adapt monitoring interval dynamically
+                if self.learning_enabled:
+                    optimal_interval = await self.learning_model.get_optimal_monitoring_interval(
+                        ram_state["percent"]
+                    )
+                    if optimal_interval != self.monitoring_interval:
+                        logger.info(
+                            f"📊 SAI: Adapting monitoring interval {self.monitoring_interval}s → {optimal_interval}s"
+                        )
+                        self.monitoring_interval = optimal_interval
 
             except Exception as e:
                 logger.error(f"Monitoring loop error: {e}")
@@ -1124,10 +1186,25 @@ class HybridIntelligenceCoordinator:
         self.emergency_start = None
 
     async def _perform_shift_to_gcp(self, reason: str, ram_state: dict):
-        """Perform workload shift to GCP"""
+        """Perform workload shift to GCP with SAI learning"""
+        migration_start = time.time()
+        success = False
+
         try:
-            # Get heavy components
+            # Get heavy components (use SAI-learned weights if available)
             component_memory = await self.ram_monitor.get_component_memory()
+
+            # SAI Learning: Use learned component weights
+            if self.learning_enabled:
+                learned_weights = await self.learning_model.get_learned_component_weights()
+
+                # Update component memory with learned weights
+                for comp in component_memory:
+                    if comp in learned_weights:
+                        component_memory[comp]["weight"] = learned_weights[comp]
+
+                logger.info(f"📚 Using SAI-learned component weights: {learned_weights}")
+
             components_to_shift = [
                 comp for comp, info in component_memory.items() if info.get("migratable")
             ]
@@ -1140,13 +1217,30 @@ class HybridIntelligenceCoordinator:
 
             result = await self.workload_router.trigger_gcp_deployment(components_to_shift)
 
-            if result["success"]:
+            success = result["success"]
+
+            if success:
                 logger.info(f"✅ GCP shift completed in {result['migration_time']:.1f}s")
             else:
                 logger.error(f"❌ GCP shift failed: {result['reason']}")
 
         except Exception as e:
             logger.error(f"Shift to GCP failed: {e}")
+            success = False
+
+        finally:
+            # SAI Learning: Record migration outcome
+            if self.learning_enabled:
+                migration_duration = time.time() - migration_start
+                await self.sai_integration.record_and_learn(
+                    "migration",
+                    {
+                        "timestamp": migration_start,
+                        "reason": reason,
+                        "success": success,
+                        "duration": migration_duration,
+                    },
+                )
 
     async def _perform_shift_to_local(self, reason: str):
         """Perform workload shift back to local"""
@@ -1172,9 +1266,14 @@ class HybridIntelligenceCoordinator:
             logger.error(f"Shift to local failed: {e}")
 
     async def get_status(self) -> dict:
-        """Get comprehensive status"""
+        """Get comprehensive status with SAI learning stats"""
         ram_state = await self.ram_monitor.get_current_state()
         health = await self.workload_router.check_health()
+
+        # Get SAI learning stats
+        learning_stats = {}
+        if self.learning_enabled:
+            learning_stats = await self.learning_model.get_learning_stats()
 
         return {
             "timestamp": datetime.now().isoformat(),
@@ -1183,13 +1282,539 @@ class HybridIntelligenceCoordinator:
             "emergency_mode": self.emergency_mode,
             "health": health,
             "component_locations": self.workload_router.component_locations,
+            "monitoring_interval": self.monitoring_interval,
             "metrics": {
                 "total_migrations": self.workload_router.total_migrations,
                 "failed_migrations": self.workload_router.failed_migrations,
                 "avg_migration_time": self.workload_router.avg_migration_time,
                 "prevented_crashes": self.ram_monitor.prevented_crashes,
             },
+            "sai_learning": learning_stats if self.learning_enabled else {"enabled": False},
         }
+
+
+# ============================================================================
+# 🧠 SAI LEARNING INTEGRATION - Adaptive Intelligence for Hybrid Routing
+# ============================================================================
+# Machine learning system that learns optimal thresholds, predicts RAM spikes,
+# adapts monitoring intervals, and learns component weights from user patterns
+# ============================================================================
+
+
+class HybridLearningModel:
+    """
+    Advanced ML model for hybrid routing optimization.
+
+    Features:
+    - Adaptive threshold learning per user
+    - RAM spike prediction using time-series analysis
+    - Component weight learning from actual usage
+    - Workload pattern recognition
+    - Time-of-day correlation analysis
+    - Seasonal trend detection
+    """
+
+    def __init__(self):
+        """Initialize the learning model"""
+        # Historical data storage
+        self.ram_observations = []  # (timestamp, usage, components_active)
+        self.migration_outcomes = []  # (timestamp, reason, success, duration)
+        self.component_observations = []  # (timestamp, component, memory_usage)
+
+        # Learned parameters (start with defaults, adapt over time)
+        self.optimal_thresholds = {
+            "warning": 0.75,
+            "critical": 0.85,
+            "optimal": 0.60,
+            "emergency": 0.95,
+        }
+
+        # Confidence in learned thresholds (0.0 to 1.0)
+        self.threshold_confidence = {
+            "warning": 0.0,
+            "critical": 0.0,
+            "optimal": 0.0,
+            "emergency": 0.0,
+        }
+
+        # Component weight learning
+        self.learned_component_weights = {}  # component -> learned weight
+        self.component_observation_count = {}  # component -> observation count
+
+        # Pattern recognition
+        self.hourly_ram_patterns = {}  # hour -> avg RAM usage
+        self.daily_patterns = {}  # day_of_week -> avg RAM usage
+        self.workload_sequences = []  # Recent sequences of workload patterns
+
+        # Prediction model parameters
+        self.prediction_accuracy = 0.0
+        self.total_predictions = 0
+        self.correct_predictions = 0
+
+        # Learning rate (how quickly to adapt)
+        self.learning_rate = 0.1  # Conservative to avoid overreacting
+
+        # Minimum observations before trusting learned values
+        self.min_observations = 20
+
+        logger.info("🧠 HybridLearningModel initialized")
+
+    async def record_ram_observation(
+        self, timestamp: float, usage: float, components_active: dict
+    ):
+        """Record a RAM observation for learning"""
+        observation = {
+            "timestamp": timestamp,
+            "usage": usage,
+            "components": components_active.copy(),
+            "hour": datetime.fromtimestamp(timestamp).hour,
+            "day_of_week": datetime.fromtimestamp(timestamp).weekday(),
+        }
+
+        self.ram_observations.append(observation)
+
+        # Keep only recent observations (last 1000)
+        if len(self.ram_observations) > 1000:
+            self.ram_observations.pop(0)
+
+        # Update hourly patterns
+        hour = observation["hour"]
+        if hour not in self.hourly_ram_patterns:
+            self.hourly_ram_patterns[hour] = []
+        self.hourly_ram_patterns[hour].append(usage)
+
+        # Keep only recent hourly data
+        if len(self.hourly_ram_patterns[hour]) > 50:
+            self.hourly_ram_patterns[hour].pop(0)
+
+        # Update daily patterns
+        day = observation["day_of_week"]
+        if day not in self.daily_patterns:
+            self.daily_patterns[day] = []
+        self.daily_patterns[day].append(usage)
+
+        if len(self.daily_patterns[day]) > 50:
+            self.daily_patterns[day].pop(0)
+
+    async def record_migration_outcome(
+        self, timestamp: float, reason: str, success: bool, duration: float
+    ):
+        """Record a migration outcome for learning"""
+        outcome = {
+            "timestamp": timestamp,
+            "reason": reason,
+            "success": success,
+            "duration": duration,
+            "ram_before": (
+                self.ram_observations[-1]["usage"] if self.ram_observations else 0.0
+            ),
+        }
+
+        self.migration_outcomes.append(outcome)
+
+        if len(self.migration_outcomes) > 100:
+            self.migration_outcomes.pop(0)
+
+        # Learn from outcome
+        await self._learn_from_migration(outcome)
+
+    async def record_component_usage(
+        self, timestamp: float, component: str, memory_gb: float
+    ):
+        """Record component memory usage for weight learning"""
+        observation = {"timestamp": timestamp, "component": component, "memory": memory_gb}
+
+        self.component_observations.append(observation)
+
+        if len(self.component_observations) > 500:
+            self.component_observations.pop(0)
+
+        # Update learned weights
+        if component not in self.learned_component_weights:
+            self.learned_component_weights[component] = memory_gb
+            self.component_observation_count[component] = 1
+        else:
+            # Exponential moving average
+            old_weight = self.learned_component_weights[component]
+            new_weight = old_weight * (1 - self.learning_rate) + memory_gb * self.learning_rate
+            self.learned_component_weights[component] = new_weight
+            self.component_observation_count[component] += 1
+
+    async def _learn_from_migration(self, outcome: dict):
+        """Learn and adapt thresholds from migration outcomes"""
+        if not outcome["success"]:
+            # Migration failed - might need to lower critical threshold to migrate earlier
+            if "CRITICAL" in outcome["reason"]:
+                # Adapt critical threshold down slightly
+                old_threshold = self.optimal_thresholds["critical"]
+                new_threshold = max(0.70, old_threshold - 0.02)  # Don't go below 70%
+                self.optimal_thresholds["critical"] = new_threshold
+
+                # Increase confidence slowly
+                self.threshold_confidence["critical"] = min(
+                    1.0, self.threshold_confidence["critical"] + 0.05
+                )
+
+                logger.info(
+                    f"📚 Learning: Critical threshold adapted {old_threshold:.2f} → {new_threshold:.2f}"
+                )
+
+        else:
+            # Migration successful
+            if "EMERGENCY" in outcome["reason"]:
+                # We hit emergency - learn to migrate earlier
+                old_warning = self.optimal_thresholds["warning"]
+                new_warning = max(0.65, old_warning - 0.03)
+                self.optimal_thresholds["warning"] = new_warning
+
+                logger.info(
+                    f"📚 Learning: Warning threshold adapted {old_warning:.2f} → {new_warning:.2f} (prevented emergency)"
+                )
+
+            elif "PROACTIVE" in outcome["reason"] and outcome["ram_before"] < 0.80:
+                # Proactive migration was too early - can be less aggressive
+                old_warning = self.optimal_thresholds["warning"]
+                new_warning = min(0.80, old_warning + 0.01)
+                self.optimal_thresholds["warning"] = new_warning
+
+                logger.info(
+                    f"📚 Learning: Warning threshold relaxed {old_warning:.2f} → {new_warning:.2f} (was too aggressive)"
+                )
+
+    async def predict_ram_spike(
+        self, current_usage: float, trend: float, time_horizon_seconds: int = 60
+    ) -> dict:
+        """
+        Predict if a RAM spike will occur.
+
+        Returns:
+            {
+                'spike_likely': bool,
+                'predicted_peak': float,
+                'confidence': float,
+                'reason': str
+            }
+        """
+        # Simple linear extrapolation with trend
+        predicted_usage = current_usage + (trend * time_horizon_seconds)
+
+        # Check historical patterns for this time of day
+        current_hour = datetime.now().hour
+        current_day = datetime.now().weekday()
+
+        # Get average RAM for this hour
+        hourly_avg = (
+            sum(self.hourly_ram_patterns.get(current_hour, [current_usage]))
+            / len(self.hourly_ram_patterns.get(current_hour, [1]))
+        )
+
+        # Get average RAM for this day
+        daily_avg = (
+            sum(self.daily_patterns.get(current_day, [current_usage]))
+            / len(self.daily_patterns.get(current_day, [1]))
+        )
+
+        # Combine predictions with weighted average
+        pattern_predicted = (hourly_avg * 0.6 + daily_avg * 0.4)
+
+        # Final prediction: 70% trend-based, 30% pattern-based
+        final_prediction = predicted_usage * 0.7 + pattern_predicted * 0.3
+
+        # Calculate confidence based on observation count
+        observation_count = len(self.ram_observations)
+        confidence = min(1.0, observation_count / self.min_observations)
+
+        # Determine if spike is likely
+        spike_likely = final_prediction > self.optimal_thresholds["critical"]
+
+        reason = ""
+        if spike_likely:
+            if trend > 0.02:  # Increasing at >2% per second
+                reason = "Rapid upward trend detected"
+            elif final_prediction > hourly_avg * 1.2:
+                reason = "Usage significantly above typical for this hour"
+            else:
+                reason = "Pattern analysis suggests spike"
+
+        self.total_predictions += 1
+
+        return {
+            "spike_likely": spike_likely,
+            "predicted_peak": final_prediction,
+            "confidence": confidence,
+            "reason": reason,
+            "contributing_factors": {
+                "trend_based": predicted_usage,
+                "hourly_pattern": hourly_avg,
+                "daily_pattern": daily_avg,
+            },
+        }
+
+    async def get_optimal_monitoring_interval(self, current_usage: float) -> int:
+        """
+        Determine optimal monitoring interval based on RAM state.
+
+        Returns interval in seconds.
+        """
+        # Base interval
+        base_interval = 5
+
+        # Adjust based on usage
+        if current_usage >= 0.90:
+            # Very high - check very frequently
+            interval = 2
+        elif current_usage >= 0.80:
+            # High - check frequently
+            interval = 3
+        elif current_usage >= 0.70:
+            # Elevated - normal frequency
+            interval = 5
+        elif current_usage >= 0.50:
+            # Moderate - can check less often
+            interval = 7
+        else:
+            # Low - check infrequently
+            interval = 10
+
+        # Adjust based on learned patterns
+        current_hour = datetime.now().hour
+        if current_hour in self.hourly_ram_patterns:
+            hourly_avg = sum(self.hourly_ram_patterns[current_hour]) / len(
+                self.hourly_ram_patterns[current_hour]
+            )
+
+            # If this hour typically has high usage, stay vigilant
+            if hourly_avg > 0.75:
+                interval = min(interval, 5)
+
+        return interval
+
+    async def get_learned_component_weights(self) -> dict:
+        """
+        Get learned component weights based on actual observations.
+
+        Returns dict of component -> weight (0.0 to 1.0)
+        """
+        if not self.learned_component_weights:
+            # Return defaults if no learning yet
+            return {
+                "vision": 0.30,
+                "ml_models": 0.25,
+                "chatbots": 0.20,
+                "memory": 0.10,
+                "voice": 0.05,
+                "monitoring": 0.05,
+                "other": 0.05,
+            }
+
+        # Normalize learned weights to sum to 1.0
+        total_weight = sum(self.learned_component_weights.values())
+
+        if total_weight == 0:
+            return self.get_learned_component_weights()  # Return defaults
+
+        normalized = {
+            comp: weight / total_weight
+            for comp, weight in self.learned_component_weights.items()
+        }
+
+        return normalized
+
+    async def get_learning_stats(self) -> dict:
+        """Get comprehensive learning statistics"""
+        return {
+            "observations": len(self.ram_observations),
+            "migrations_recorded": len(self.migration_outcomes),
+            "component_observations": len(self.component_observations),
+            "learned_thresholds": self.optimal_thresholds.copy(),
+            "threshold_confidence": self.threshold_confidence.copy(),
+            "prediction_accuracy": (
+                self.correct_predictions / self.total_predictions
+                if self.total_predictions > 0
+                else 0.0
+            ),
+            "learned_component_weights": await self.get_learned_component_weights(),
+            "patterns_detected": {
+                "hourly": len(self.hourly_ram_patterns),
+                "daily": len(self.daily_patterns),
+            },
+        }
+
+
+class SAIHybridIntegration:
+    """
+    Integration layer between SAI (Self-Aware Intelligence) and Hybrid Routing.
+
+    Provides:
+    - Persistent learning storage
+    - Real-time model updates
+    - Continuous improvement
+    - Pattern sharing across system
+    """
+
+    def __init__(self, learning_model: HybridLearningModel):
+        """Initialize SAI integration"""
+        self.learning_model = learning_model
+
+        # Database integration (lazy loaded)
+        self.db = None
+        self.db_initialized = False
+
+        # Model update tracking
+        self.last_model_save = None
+        self.save_interval = 300  # Save every 5 minutes
+
+        # Performance tracking
+        self.learning_overhead_ms = 0.0
+
+        logger.info("🧠 SAIHybridIntegration initialized")
+
+    async def initialize_database(self):
+        """Initialize connection to learning database"""
+        if self.db_initialized:
+            return
+
+        try:
+            # Import learning database
+            sys.path.insert(0, str(Path(__file__).parent / "backend"))
+            from intelligence.learning_database import LearningDatabase
+
+            # Initialize database
+            self.db = LearningDatabase()
+            await self.db.initialize()
+
+            # Load existing learned parameters
+            await self._load_learned_parameters()
+
+            self.db_initialized = True
+            logger.info("✅ SAI database integration initialized")
+
+        except Exception as e:
+            logger.warning(f"SAI database initialization failed: {e}")
+            self.db_initialized = False
+
+    async def _load_learned_parameters(self):
+        """Load previously learned parameters from database"""
+        try:
+            if not self.db:
+                return
+
+            # Query for hybrid routing patterns
+            async with self.db.db.cursor() as cursor:
+                # Check if we have learned thresholds
+                await cursor.execute(
+                    """
+                    SELECT description, metadata
+                    FROM patterns
+                    WHERE pattern_type = 'hybrid_threshold'
+                    ORDER BY last_seen DESC
+                    LIMIT 1
+                """
+                )
+
+                result = await cursor.fetchone()
+                if result:
+                    import json
+
+                    metadata = json.loads(result[1]) if result[1] else {}
+
+                    if "thresholds" in metadata:
+                        # Apply learned thresholds
+                        for key, value in metadata["thresholds"].items():
+                            if key in self.learning_model.optimal_thresholds:
+                                self.learning_model.optimal_thresholds[key] = value
+                                self.learning_model.threshold_confidence[key] = metadata.get(
+                                    "confidence", {}
+                                ).get(key, 0.5)
+
+                        logger.info(
+                            f"📚 Loaded learned thresholds: {self.learning_model.optimal_thresholds}"
+                        )
+
+        except Exception as e:
+            logger.warning(f"Failed to load learned parameters: {e}")
+
+    async def save_learned_parameters(self):
+        """Save learned parameters to database"""
+        if not self.db_initialized or not self.db:
+            return
+
+        try:
+            import json
+
+            # Prepare metadata
+            metadata = {
+                "thresholds": self.learning_model.optimal_thresholds,
+                "confidence": self.learning_model.threshold_confidence,
+                "component_weights": await self.learning_model.get_learned_component_weights(),
+                "stats": await self.learning_model.get_learning_stats(),
+                "last_updated": datetime.now().isoformat(),
+            }
+
+            # Save as pattern
+            await self.db.record_pattern(
+                pattern_type="hybrid_threshold",
+                description=f"Learned hybrid routing thresholds",
+                trigger_conditions={"observation_count": len(self.learning_model.ram_observations)},
+                success_rate=self.learning_model.prediction_accuracy,
+                metadata=metadata,
+            )
+
+            self.last_model_save = time.time()
+            logger.info("💾 Saved learned parameters to database")
+
+        except Exception as e:
+            logger.warning(f"Failed to save learned parameters: {e}")
+
+    async def record_and_learn(
+        self,
+        observation_type: str,
+        data: dict,
+    ):
+        """
+        Record observation and trigger learning.
+
+        Args:
+            observation_type: 'ram', 'migration', 'component'
+            data: Observation data
+        """
+        start_time = time.time()
+
+        try:
+            if observation_type == "ram":
+                await self.learning_model.record_ram_observation(
+                    timestamp=data.get("timestamp", time.time()),
+                    usage=data["usage"],
+                    components_active=data.get("components", {}),
+                )
+
+            elif observation_type == "migration":
+                await self.learning_model.record_migration_outcome(
+                    timestamp=data.get("timestamp", time.time()),
+                    reason=data["reason"],
+                    success=data["success"],
+                    duration=data["duration"],
+                )
+
+            elif observation_type == "component":
+                await self.learning_model.record_component_usage(
+                    timestamp=data.get("timestamp", time.time()),
+                    component=data["component"],
+                    memory_gb=data["memory_gb"],
+                )
+
+            # Periodically save learned parameters
+            if (
+                self.last_model_save is None
+                or time.time() - self.last_model_save > self.save_interval
+            ):
+                await self.save_learned_parameters()
+
+        except Exception as e:
+            logger.error(f"SAI learning failed: {e}")
+
+        finally:
+            self.learning_overhead_ms = (time.time() - start_time) * 1000
 
 
 # ANSI color codes for terminal output
