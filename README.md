@@ -755,19 +755,47 @@ Both versions committed together
 python start_system.py  # Hybrid enabled by default
 ```
 
-**Environment Variables (Optional):**
+**Environment Variables (Required for GCP auto-deployment):**
+
+Add to both `.env` and `backend/.env`:
 ```bash
-JARVIS_HYBRID_MODE=auto       # auto, true, false
-GCP_PROJECT_ID=your-project   # For auto-deployment
-GCP_REGION=us-central1        # GCP region
+# GCP Configuration
+GCP_PROJECT_ID=jarvis-473803      # Your GCP project ID
+GCP_REGION=us-central1            # GCP region
+
+# Cloud SQL
+JARVIS_DB_TYPE=cloudsql
+JARVIS_DB_CONNECTION_NAME=your-project:region:instance
+JARVIS_DB_HOST=xx.xx.xx.xx
+JARVIS_DB_PORT=5432
+JARVIS_DB_NAME=jarvis_learning
+JARVIS_DB_USER=jarvis
+JARVIS_DB_PASSWORD=your-password
+
+# Cloud Storage
+JARVIS_CHROMADB_BUCKET=your-project-jarvis-chromadb
+JARVIS_BACKUP_BUCKET=your-project-jarvis-backups
+```
+
+**Optional (for GitHub Actions deployment):**
+```bash
 GITHUB_TOKEN=ghp_xxx          # For GitHub Actions trigger
+GITHUB_REPOSITORY=user/repo   # GitHub repository
 ```
 
 **GCP Instance:**
 - Machine: e2-highmem-4 (4 vCPUs, 32GB RAM)
 - Region: us-central1 (configurable)
-- Deployment: GitHub Actions + gcloud CLI
+- Deployment: Automatic via gcloud CLI (GitHub Actions fallback)
+- Auto-trigger: When local RAM exceeds 85%
 - Health check: Every 5s with auto-recovery
+- Auto-shutdown: When local RAM drops below 60%
+
+**Prerequisites:**
+1. Install gcloud CLI: `brew install google-cloud-sdk`
+2. Authenticate: `gcloud auth login`
+3. Set project: `gcloud config set project YOUR_PROJECT_ID`
+4. Enable Compute Engine API in GCP Console
 
 ### 📈 Performance & Storage
 
