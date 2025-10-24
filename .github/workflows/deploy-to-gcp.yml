@@ -99,17 +99,23 @@ jobs:
 
       - name: Deploy to VM
         id: deploy
+        env:
+          DEPLOY_BRANCH: ${{ github.ref_name }}
+          DEPLOY_COMMIT: ${{ github.sha }}
         run: |
-          # Copy deployment script to VM and execute
+          # Deploy to GCP VM via SSH
           gcloud compute ssh ${{ secrets.GCP_VM_NAME }} \
             --zone=${{ secrets.GCP_ZONE }} \
             --project=${{ secrets.GCP_PROJECT_ID }} \
-            --command='bash -s' <<'ENDSSH'
+            --command="bash -s $DEPLOY_BRANCH $DEPLOY_COMMIT" <<'ENDSSH'
           set -e
 
+          BRANCH=$1
+          COMMIT=$2
+
           echo "🚀 Starting JARVIS deployment..."
-          echo "Branch: ${{ github.ref_name }}"
-          echo "Commit: ${{ github.sha }}"
+          echo "Branch: $BRANCH"
+          echo "Commit: $COMMIT"
 
           # Stop running backend
           echo "⏸️  Stopping existing backend..."
@@ -126,7 +132,7 @@ jobs:
           PREV_COMMIT=$(git rev-parse HEAD)
           echo "Previous commit: $PREV_COMMIT"
 
-          git reset --hard origin/${{ github.ref_name }}
+          git reset --hard origin/$BRANCH
 
           # Install/update dependencies if requirements changed
           echo "📦 Checking dependencies..."
