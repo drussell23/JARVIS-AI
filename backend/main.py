@@ -121,9 +121,9 @@ Browser Automation Features (v13.4.0):
 # CRITICAL: Set multiprocessing start method to 'spawn' BEFORE any other imports
 # This prevents segmentation faults from semaphore leaks on macOS
 import multiprocessing
-import sys
-import subprocess
 import os
+import subprocess
+import sys
 
 # Set critical environment variables FIRST
 if sys.platform == "darwin":  # macOS specific
@@ -156,14 +156,14 @@ if sys.platform == "darwin":  # macOS specific
         # Already set, that's fine
         if "context has already been set" not in str(e):
             print(f"[STARTUP] Multiprocessing warning: {e}")
-        pass
 
 # Now continue with other imports
 import asyncio
-import time
 import logging
+import time
 from contextlib import asynccontextmanager
-from typing import Optional, Dict, Any
+from datetime import datetime
+from typing import Optional
 
 # DEBUG: Print location info
 print(f"[STARTUP-DEBUG] Running from: {os.path.abspath(__file__)}")
@@ -173,17 +173,24 @@ print(f"[STARTUP-DEBUG] Python path: {sys.path[:3]}")  # First 3 entries
 # DEBUG: Run coordinate diagnostic
 try:
     print("[STARTUP-DEBUG] Running coordinate diagnostic...")
-    exec(open('/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/diagnose_coordinate_doubling.py').read())
+    exec(
+        open(
+            "/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/diagnose_coordinate_doubling.py"
+        ).read()
+    )
 except Exception as e:
     print(f"[STARTUP-DEBUG] Coordinate diagnostic failed: {e}")
 
 # DEBUG: Install PyAutoGUI intercept to track coordinate doubling
 try:
     print("[STARTUP-DEBUG] Installing PyAutoGUI intercept...")
-    sys.path.insert(0, '/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent')
+    sys.path.insert(0, "/Users/derekjrussell/Documents/repos/JARVIS-AI-Agent")
     import pyautogui_intercept
+
     pyautogui_intercept.install_intercept()
-    print("[STARTUP-DEBUG] ✅ PyAutoGUI intercept installed - logging to /tmp/pyautogui_intercept.log")
+    print(
+        "[STARTUP-DEBUG] ✅ PyAutoGUI intercept installed - logging to /tmp/pyautogui_intercept.log"
+    )
 except Exception as e:
     print(f"[STARTUP-DEBUG] PyAutoGUI intercept failed: {e}")
 
@@ -231,10 +238,9 @@ os.environ["USE_TORCH"] = "1"
 os.environ["USE_TF"] = "0"
 
 # FastAPI and core imports (always needed)
-from fastapi import FastAPI, APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 
 # Load environment variables (force override of system env vars)
 try:
@@ -256,9 +262,7 @@ try:
     from core.dynamic_component_manager import get_component_manager
 
     logger.info("✅ Dynamic Component Manager available")
-    DYNAMIC_LOADING_ENABLED = (
-        os.getenv("DYNAMIC_COMPONENT_LOADING", "true").lower() == "true"
-    )
+    DYNAMIC_LOADING_ENABLED = os.getenv("DYNAMIC_COMPONENT_LOADING", "true").lower() == "true"
     if DYNAMIC_LOADING_ENABLED:
         logger.info("🧩 Dynamic Component Loading: ENABLED")
     else:
@@ -276,7 +280,6 @@ async def parallel_import_components():
     logger.info("⚡ Starting parallel component imports...")
 
     import concurrent.futures
-    from functools import partial
 
     # Define import tasks
     import_tasks = {
@@ -338,10 +341,7 @@ def import_vision_system():
 
     try:
         from vision.claude_vision_analyzer_main import ClaudeVisionAnalyzer
-        from vision.video_stream_capture import (
-            VideoStreamCapture,
-            MACOS_CAPTURE_AVAILABLE,
-        )
+        from vision.video_stream_capture import MACOS_CAPTURE_AVAILABLE, VideoStreamCapture
 
         vision["analyzer"] = ClaudeVisionAnalyzer
         vision["video_capture"] = VideoStreamCapture
@@ -352,7 +352,7 @@ def import_vision_system():
 
     # Check purple indicator separately
     try:
-        from vision.simple_purple_indicator import SimplePurpleIndicator
+        pass
 
         vision["purple_indicator"] = True
     except ImportError:
@@ -366,8 +366,8 @@ def import_memory_system():
     memory = {}
 
     try:
-        from memory.memory_manager import M1MemoryManager, ComponentPriority
-        from memory.memory_api import MemoryAPI, create_memory_alert_callback
+        from memory.memory_api import MemoryAPI
+        from memory.memory_manager import ComponentPriority, M1MemoryManager
 
         memory["manager_class"] = M1MemoryManager
         memory["priority"] = ComponentPriority
@@ -423,7 +423,8 @@ def import_voice_system():
         voice["enhanced_available"] = False
 
     try:
-        from api.jarvis_voice_api import jarvis_api, router as jarvis_voice_router
+        from api.jarvis_voice_api import jarvis_api
+        from api.jarvis_voice_api import router as jarvis_voice_router
 
         voice["jarvis_router"] = jarvis_voice_router
         voice["jarvis_api"] = jarvis_api
@@ -444,8 +445,8 @@ def import_ml_models():
         return ml
 
     try:
-        from ml_model_loader import initialize_models, get_loader_status
         from api.model_status_api import router as model_status_router
+        from ml_model_loader import get_loader_status, initialize_models
 
         ml["initialize_models"] = initialize_models
         ml["get_status"] = get_loader_status
@@ -481,10 +482,8 @@ def import_voice_unlock():
     voice_unlock = {}
 
     try:
-        from api.voice_unlock_api import (
-            router as voice_unlock_router,
-            initialize_voice_unlock,
-        )
+        from api.voice_unlock_api import initialize_voice_unlock
+        from api.voice_unlock_api import router as voice_unlock_router
 
         voice_unlock["router"] = voice_unlock_router
         voice_unlock["initialize"] = initialize_voice_unlock
@@ -527,11 +526,9 @@ def import_wake_word():
     wake_word = {}
 
     try:
-        from api.wake_word_api import (
-            router as wake_word_router,
-            initialize_wake_word,
-            wake_service,
-        )
+        from api.wake_word_api import initialize_wake_word
+        from api.wake_word_api import router as wake_word_router
+        from api.wake_word_api import wake_service
 
         wake_word["router"] = wake_word_router
         wake_word["initialize"] = initialize_wake_word
@@ -559,12 +556,9 @@ def import_display_monitor():
     display_monitor = {}
 
     try:
-        from display.advanced_display_monitor import (
-            get_display_monitor,
-            AdvancedDisplayMonitor,
-        )
-        from display.display_voice_handler import create_voice_handler
+        from display.advanced_display_monitor import AdvancedDisplayMonitor, get_display_monitor
         from display.display_config_manager import get_config_manager
+        from display.display_voice_handler import create_voice_handler
 
         display_monitor["get_monitor"] = get_display_monitor
         display_monitor["monitor_class"] = AdvancedDisplayMonitor
@@ -587,28 +581,29 @@ def import_goal_inference():
 
     try:
         # Import Goal Inference + Autonomous Engine Integration
+        import json
+        import os
+        from pathlib import Path
+
         from backend.intelligence.goal_autonomous_uae_integration import get_integration
         from backend.intelligence.learning_database import get_learning_database
-        import json
-        from pathlib import Path
-        import os
 
         # Load or create configuration
         config_path = Path("backend/config/integration_config.json")
 
         # Check for environment variable overrides
-        preset_override = os.getenv('JARVIS_GOAL_PRESET', None)
-        automation_override = os.getenv('JARVIS_GOAL_AUTOMATION', None)
+        preset_override = os.getenv("JARVIS_GOAL_PRESET", None)
+        automation_override = os.getenv("JARVIS_GOAL_AUTOMATION", None)
 
         if config_path.exists():
-            with open(config_path, 'r') as f:
+            with open(config_path, "r") as f:
                 config = json.load(f)
         else:
             # Create default configuration automatically
             logger.info("  📝 Creating default Goal Inference configuration...")
             config = _create_default_goal_config()
             config_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(config_path, 'w') as f:
+            with open(config_path, "w") as f:
                 json.dump(config, f, indent=2)
             logger.info(f"  ✅ Configuration created at {config_path}")
 
@@ -616,15 +611,17 @@ def import_goal_inference():
         if preset_override:
             logger.info(f"  🎯 Applying preset from environment: {preset_override}")
             config = _apply_preset_to_config(config, preset_override)
-            with open(config_path, 'w') as f:
+            with open(config_path, "w") as f:
                 json.dump(config, f, indent=2)
 
         # Apply automation override if environment variable is set
         if automation_override:
-            automation_enabled = automation_override.lower() == 'true'
-            config['integration']['enable_automation'] = automation_enabled
-            logger.info(f"  🤖 Automation override: {'ENABLED' if automation_enabled else 'DISABLED'}")
-            with open(config_path, 'w') as f:
+            automation_enabled = automation_override.lower() == "true"
+            config["integration"]["enable_automation"] = automation_enabled
+            logger.info(
+                f"  🤖 Automation override: {'ENABLED' if automation_enabled else 'DISABLED'}"
+            )
+            with open(config_path, "w") as f:
                 json.dump(config, f, indent=2)
 
         # Initialize integration with config
@@ -635,11 +632,11 @@ def import_goal_inference():
 
         # Initialize learning database with config
         db_config = {
-            'cache_size': config.get('performance', {}).get('max_prediction_cache_size', 1000),
-            'cache_ttl_seconds': config.get('performance', {}).get('cache_ttl_seconds', 3600),
-            'enable_ml_features': config.get('learning', {}).get('enabled', True),
-            'auto_optimize': True,
-            'batch_insert_size': 100
+            "cache_size": config.get("performance", {}).get("max_prediction_cache_size", 1000),
+            "cache_ttl_seconds": config.get("performance", {}).get("cache_ttl_seconds", 3600),
+            "enable_ml_features": config.get("learning", {}).get("enabled", True),
+            "auto_optimize": True,
+            "batch_insert_size": 100,
         }
         learning_db = get_learning_database()
         goal_inference["learning_db"] = learning_db
@@ -648,7 +645,9 @@ def import_goal_inference():
         # Log configuration
         logger.info("  ✅ Goal Inference + Learning Database loaded")
         logger.info(f"     • Goal Confidence: {config['goal_inference']['min_goal_confidence']}")
-        logger.info(f"     • Proactive Suggestions: {config['integration']['enable_proactive_suggestions']}")
+        logger.info(
+            f"     • Proactive Suggestions: {config['integration']['enable_proactive_suggestions']}"
+        )
         logger.info(f"     • Automation: {config['integration']['enable_automation']}")
         logger.info(f"     • Learning: {config['learning']['enabled']}")
         logger.info(f"     • Database Cache: {db_config['cache_size']} entries")
@@ -656,8 +655,10 @@ def import_goal_inference():
         # Get current metrics
         try:
             metrics = integration.get_metrics()
-            if metrics.get('goals_inferred', 0) > 0:
-                logger.info(f"     • Previous session: {metrics['goals_inferred']} goals, {metrics.get('actions_executed', 0)} actions")
+            if metrics.get("goals_inferred", 0) > 0:
+                logger.info(
+                    f"     • Previous session: {metrics['goals_inferred']} goals, {metrics.get('actions_executed', 0)} actions"
+                )
                 logger.info(f"     • Success rate: {metrics.get('success_rate', 0):.1%}")
         except Exception as e:
             logger.debug(f"Could not load metrics: {e}")
@@ -685,7 +686,7 @@ def _create_default_goal_config():
             "enable_learning": True,
             "max_active_goals": 10,
             "goal_timeout_minutes": 30,
-            "pattern_learning_enabled": True
+            "pattern_learning_enabled": True,
         },
         "autonomous_decisions": {
             "min_decision_confidence": 0.70,
@@ -693,7 +694,7 @@ def _create_default_goal_config():
             "auto_connect_threshold": 0.85,
             "max_concurrent_actions": 5,
             "learning_rate": 0.01,
-            "exploration_rate": 0.1
+            "exploration_rate": 0.1,
         },
         "integration": {
             "enable_proactive_suggestions": True,
@@ -701,7 +702,7 @@ def _create_default_goal_config():
             "enable_automation": False,
             "automation_threshold": 0.95,
             "feedback_window_minutes": 30,
-            "cache_duration_minutes": 5
+            "cache_duration_minutes": 5,
         },
         "display_optimization": {
             "enable_predictive_connection": True,
@@ -712,8 +713,8 @@ def _create_default_goal_config():
                 "meeting_preparation": "Living Room TV",
                 "project_completion": "External Monitor",
                 "presentation": "Living Room TV",
-                "casual_viewing": "Living Room TV"
-            }
+                "casual_viewing": "Living Room TV",
+            },
         },
         "learning": {
             "enabled": True,
@@ -721,36 +722,36 @@ def _create_default_goal_config():
             "pattern_confidence_boost": 0.05,
             "success_rate_threshold": 0.7,
             "feedback_weight": 0.1,
-            "save_state_interval_minutes": 60
+            "save_state_interval_minutes": 60,
         },
         "user_preferences": {
             "verbose_suggestions": False,
             "explain_reasoning": True,
             "show_confidence_scores": False,
             "auto_accept_high_confidence": False,
-            "notification_style": "subtle"
+            "notification_style": "subtle",
         },
         "performance": {
             "max_prediction_cache_size": 100,
             "cache_ttl_seconds": 300,
             "parallel_processing": True,
             "max_workers": 4,
-            "timeout_seconds": 5
+            "timeout_seconds": 5,
         },
         "safety": {
             "require_confirmation_for_automation": True,
             "max_automation_actions_per_day": 50,
             "blacklist_actions": [],
             "whitelist_actions": ["connect_display", "open_application", "organize_workspace"],
-            "risk_tolerance": 0.5
+            "risk_tolerance": 0.5,
         },
         "logging": {
             "log_predictions": True,
             "log_decisions": True,
             "log_learning_events": True,
             "metrics_tracking": True,
-            "debug_mode": False
-        }
+            "debug_mode": False,
+        },
     }
 
 
@@ -762,40 +763,40 @@ def _apply_preset_to_config(config, preset):
             "autonomous_decisions.min_decision_confidence": 0.60,
             "integration.proactive_suggestion_threshold": 0.75,
             "integration.enable_automation": True,
-            "learning.pattern_confidence_boost": 0.10
+            "learning.pattern_confidence_boost": 0.10,
         },
         "balanced": {
             "goal_inference.min_goal_confidence": 0.75,
             "autonomous_decisions.min_decision_confidence": 0.70,
             "integration.proactive_suggestion_threshold": 0.85,
             "integration.enable_automation": False,
-            "learning.pattern_confidence_boost": 0.05
+            "learning.pattern_confidence_boost": 0.05,
         },
         "conservative": {
             "goal_inference.min_goal_confidence": 0.85,
             "autonomous_decisions.min_decision_confidence": 0.80,
             "integration.proactive_suggestion_threshold": 0.90,
             "integration.enable_automation": False,
-            "learning.pattern_confidence_boost": 0.02
+            "learning.pattern_confidence_boost": 0.02,
         },
         "learning": {
             "learning.enabled": True,
             "learning.min_samples_for_pattern": 2,
             "learning.pattern_confidence_boost": 0.10,
             "learning.feedback_weight": 0.15,
-            "autonomous_decisions.exploration_rate": 0.2
+            "autonomous_decisions.exploration_rate": 0.2,
         },
         "performance": {
             "performance.max_prediction_cache_size": 200,
             "performance.cache_ttl_seconds": 600,
             "performance.parallel_processing": True,
-            "display_optimization.preload_resources": True
-        }
+            "display_optimization.preload_resources": True,
+        },
     }
 
     if preset in presets:
         for path, value in presets[preset].items():
-            keys = path.split('.')
+            keys = path.split(".")
             current = config
             for key in keys[:-1]:
                 if key not in current:
@@ -810,21 +811,23 @@ def _apply_config_to_integration(integration, config):
     """Apply configuration settings to integration"""
     try:
         # Apply goal inference settings
-        if hasattr(integration, 'goal_inference'):
-            goal_config = config.get('goal_inference', {})
-            integration.goal_inference.min_confidence = goal_config.get('min_goal_confidence', 0.75)
-            integration.goal_inference.max_active_goals = goal_config.get('max_active_goals', 10)
+        if hasattr(integration, "goal_inference"):
+            goal_config = config.get("goal_inference", {})
+            integration.goal_inference.min_confidence = goal_config.get("min_goal_confidence", 0.75)
+            integration.goal_inference.max_active_goals = goal_config.get("max_active_goals", 10)
 
         # Apply autonomous decision settings
-        if hasattr(integration, 'autonomous_engine'):
-            auto_config = config.get('autonomous_decisions', {})
-            integration.autonomous_engine.min_confidence = auto_config.get('min_decision_confidence', 0.70)
-            integration.autonomous_engine.learning_rate = auto_config.get('learning_rate', 0.01)
+        if hasattr(integration, "autonomous_engine"):
+            auto_config = config.get("autonomous_decisions", {})
+            integration.autonomous_engine.min_confidence = auto_config.get(
+                "min_decision_confidence", 0.70
+            )
+            integration.autonomous_engine.learning_rate = auto_config.get("learning_rate", 0.01)
 
         # Apply integration settings
-        integration_config = config.get('integration', {})
-        integration.enable_proactive = integration_config.get('enable_proactive_suggestions', True)
-        integration.enable_automation = integration_config.get('enable_automation', False)
+        integration_config = config.get("integration", {})
+        integration.enable_proactive = integration_config.get("enable_proactive_suggestions", True)
+        integration.enable_automation = integration_config.get("enable_automation", False)
 
     except Exception as e:
         logger.debug(f"Could not apply all config settings: {e}")
@@ -846,9 +849,7 @@ async def lifespan(app: FastAPI):
         # Start memory pressure monitoring
         asyncio.create_task(dynamic_component_manager.start_monitoring())
         logger.info(f"   Memory limit: {dynamic_component_manager.memory_limit_gb}GB")
-        logger.info(
-            f"   ARM64 optimized: {dynamic_component_manager.arm64_optimizer.is_arm64}"
-        )
+        logger.info(f"   ARM64 optimized: {dynamic_component_manager.arm64_optimizer.is_arm64}")
         logger.info("✅ Dynamic component loading enabled")
 
     # CRITICAL: Check for code changes and clean up old instances FIRST
@@ -876,27 +877,21 @@ async def lifespan(app: FastAPI):
                     "   ⚠️ Vision not in CORE list, adding it to ensure multi-space queries work"
                 )
 
-            logger.info(
-                f"   Loading {len(core_components)} CORE components: {core_components}"
-            )
+            logger.info(f"   Loading {len(core_components)} CORE components: {core_components}")
 
             for comp_name in core_components:
                 success = await dynamic_component_manager.load_component(comp_name)
                 if success:
                     comp = dynamic_component_manager.components[comp_name]
                     components[comp_name] = comp.instance
-                    logger.info(
-                        f"   ✅ {comp_name} loaded ({comp.memory_estimate_mb}MB)"
-                    )
+                    logger.info(f"   ✅ {comp_name} loaded ({comp.memory_estimate_mb}MB)")
                 else:
                     logger.warning(f"   ⚠️ {comp_name} failed to load")
 
             logger.info(
                 f"✅ Dynamic component loading active - {len(core_components)} CORE components loaded"
             )
-            logger.info(
-                f"   Other components will load on-demand based on user commands"
-            )
+            logger.info(f"   Other components will load on-demand based on user commands")
 
         except Exception as e:
             logger.error(f"Dynamic loading failed, falling back to legacy mode: {e}")
@@ -940,7 +935,7 @@ async def lifespan(app: FastAPI):
                 while True:
                     try:
                         await asyncio.sleep(3600)  # Run every hour
-                        if hasattr(integration, 'learning_db'):
+                        if hasattr(integration, "learning_db"):
                             # Clean up old patterns
                             integration.learning_db.cleanup_old_patterns(days=30)
                             # Optimize database
@@ -954,14 +949,14 @@ async def lifespan(app: FastAPI):
                 while True:
                     try:
                         await asyncio.sleep(1800)  # Run every 30 minutes
-                        if hasattr(integration, 'learning_db'):
+                        if hasattr(integration, "learning_db"):
                             # Analyze patterns
                             patterns = integration.learning_db.analyze_patterns()
                             # Update confidence scores based on success rates
                             for pattern in patterns:
-                                if pattern.get('success_rate', 0) > 0.9:
+                                if pattern.get("success_rate", 0) > 0.9:
                                     integration.learning_db.boost_pattern_confidence(
-                                        pattern['id'], boost=0.05
+                                        pattern["id"], boost=0.05
                                     )
                             logger.debug("✅ Pattern analysis completed")
                     except Exception as e:
@@ -1012,7 +1007,7 @@ async def lifespan(app: FastAPI):
                 "enable_auto_start": True,
                 "enable_learning_db": True,
                 "enable_yabai": True,
-                "enable_proactive_intelligence": True
+                "enable_proactive_intelligence": True,
             }
             app.state.uae_engine = None  # Will be initialized on first use
             app.state.learning_db = None
@@ -1022,6 +1017,7 @@ async def lifespan(app: FastAPI):
             logger.info("🌐 Initializing Hybrid Orchestrator (Local + GCP)...")
             try:
                 from backend.core.hybrid_orchestrator import get_orchestrator
+
                 hybrid_orchestrator = get_orchestrator()
                 await hybrid_orchestrator.start()
                 app.state.hybrid_orchestrator = hybrid_orchestrator
@@ -1031,8 +1027,10 @@ async def lifespan(app: FastAPI):
                 app.state.hybrid_orchestrator = None
 
         else:
-            logger.info("🧠 Initializing UAE (Unified Awareness Engine) with Learning Database + Yabai...")
-            from intelligence.uae_integration import initialize_uae, get_uae, get_learning_db, get_yabai
+            logger.info(
+                "🧠 Initializing UAE (Unified Awareness Engine) with Learning Database + Yabai..."
+            )
+            from intelligence.uae_integration import get_learning_db, get_yabai, initialize_uae
 
             # Use the vision analyzer we just created
             if vision_analyzer:
@@ -1082,7 +1080,7 @@ async def lifespan(app: FastAPI):
                 enable_yabai=True,  # Enable Yabai spatial intelligence
                 enable_proactive_intelligence=True,  # Enable Phase 4: Proactive Communication
                 voice_callback=voice_callback,  # Natural voice suggestions
-                notification_callback=notification_callback  # Visual notifications
+                notification_callback=notification_callback,  # Visual notifications
             )
 
             if uae and uae.is_active:
@@ -1101,13 +1099,21 @@ async def lifespan(app: FastAPI):
                         yabai = get_yabai()
                         yabai_active = yabai is not None and yabai.yabai_available
 
-                        logger.info("✅ UAE + SAI + Learning Database + Yabai + Proactive Intelligence initialized successfully")
+                        logger.info(
+                            "✅ UAE + SAI + Learning Database + Yabai + Proactive Intelligence initialized successfully"
+                        )
                         logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-                        logger.info("   🧠 PHASE 4 INTELLIGENCE STACK: FULLY OPERATIONAL (24/7 MODE)")
+                        logger.info(
+                            "   🧠 PHASE 4 INTELLIGENCE STACK: FULLY OPERATIONAL (24/7 MODE)"
+                        )
                         logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                         logger.info("   📍 PHASE 1: Environmental Awareness")
-                        logger.info("   • SAI (Situational Awareness): ✅ Active (5s monitoring - 24/7)")
-                        logger.info(f"   • Yabai Spatial Intelligence: {'✅ Active (workspace monitoring)' if yabai_active else '⚠️  Not available'}")
+                        logger.info(
+                            "   • SAI (Situational Awareness): ✅ Active (5s monitoring - 24/7)"
+                        )
+                        logger.info(
+                            f"   • Yabai Spatial Intelligence: {'✅ Active (workspace monitoring)' if yabai_active else '⚠️  Not available'}"
+                        )
                         logger.info("   • Context Intelligence: ✅ Active (with persistent memory)")
                         logger.info("")
                         logger.info("   📍 PHASE 2: Decision Intelligence")
@@ -1130,8 +1136,12 @@ async def lifespan(app: FastAPI):
                         logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                         logger.info("   📊 LEARNING DATABASE METRICS:")
                         logger.info(f"   • Total Patterns: {metrics['patterns']['total_patterns']}")
-                        logger.info(f"   • Display Patterns: {metrics['display_patterns']['total_display_patterns']}")
-                        logger.info(f"   • Pattern Cache Hit Rate: {metrics['cache_performance']['pattern_cache_hit_rate']:.1%}")
+                        logger.info(
+                            f"   • Display Patterns: {metrics['display_patterns']['total_display_patterns']}"
+                        )
+                        logger.info(
+                            f"   • Pattern Cache Hit Rate: {metrics['cache_performance']['pattern_cache_hit_rate']:.1%}"
+                        )
                         logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                         logger.info("   🎯 CAPABILITIES:")
                         logger.info("   • Learns user patterns across all macOS workspace")
@@ -1141,12 +1151,20 @@ async def lifespan(app: FastAPI):
                         logger.info("   • Adapts to UI changes automatically")
                         logger.info("   • Remembers preferences across restarts")
                         logger.info("   • Self-healing when environment changes")
-                        logger.info("   • Respects your focus level (no interruptions during deep work)")
+                        logger.info(
+                            "   • Respects your focus level (no interruptions during deep work)"
+                        )
                         logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                         logger.info("   💬 PROACTIVE EXAMPLES:")
-                        logger.info("   • 'Hey, you usually open Slack around this time. Want me to launch it?'")
-                        logger.info("   • 'I noticed your email workflow is slower than usual. Try filtering first.'")
-                        logger.info("   • 'You typically switch to Space 2 when coding. Should I move you there?'")
+                        logger.info(
+                            "   • 'Hey, you usually open Slack around this time. Want me to launch it?'"
+                        )
+                        logger.info(
+                            "   • 'I noticed your email workflow is slower than usual. Try filtering first.'"
+                        )
+                        logger.info(
+                            "   • 'You typically switch to Space 2 when coding. Should I move you there?'"
+                        )
                         logger.info("   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
                     except Exception as e:
                         logger.warning(f"Could not get Learning DB metrics: {e}")
@@ -1164,6 +1182,7 @@ async def lifespan(app: FastAPI):
             logger.info("🌐 Initializing Hybrid Orchestrator (Local + GCP)...")
             try:
                 from backend.core.hybrid_orchestrator import get_orchestrator
+
                 hybrid_orchestrator = get_orchestrator()
                 await hybrid_orchestrator.start()
                 app.state.hybrid_orchestrator = hybrid_orchestrator
@@ -1193,12 +1212,8 @@ async def lifespan(app: FastAPI):
 
     # Initialize Rust acceleration for vision system with self-healing
     try:
-        from vision.rust_startup_integration import (
-            initialize_rust_acceleration,
-            get_rust_status,
-        )
-        from vision.rust_self_healer import get_self_healer
         from vision.dynamic_component_loader import get_component_loader
+        from vision.rust_startup_integration import initialize_rust_acceleration
 
         # Start self-healing and dynamic component loader
         logger.info("🔧 Initializing self-healing system...")
@@ -1223,9 +1238,7 @@ async def lifespan(app: FastAPI):
             mem_savings = rust_config.get("memory_savings", {})
             if mem_savings.get("enabled"):
                 logger.info(f"   • Memory pool: {mem_savings['rust_pool_mb']}MB")
-                logger.info(
-                    f"   • Estimated savings: {mem_savings['estimated_savings_percent']}%"
-                )
+                logger.info(f"   • Estimated savings: {mem_savings['estimated_savings_percent']}%")
         else:
             logger.info("🦀 Rust acceleration not available (Python fallback active)")
             logger.debug(f"   Reason: {rust_config.get('fallback_reason', 'Unknown')}")
@@ -1241,6 +1254,7 @@ async def lifespan(app: FastAPI):
         # Connect Vision Navigator to vision analyzer (for display connection)
         try:
             from display.vision_ui_navigator import get_vision_navigator
+
             navigator = get_vision_navigator()
             navigator.set_vision_analyzer(app.state.vision_analyzer)
             logger.info("✅ Vision Navigator connected to Claude Vision analyzer")
@@ -1264,9 +1278,7 @@ async def lifespan(app: FastAPI):
             set_app_state(app.state)
             logger.info("✅ App state set in JARVIS factory")
         except ImportError:
-            logger.warning(
-                "⚠️ JARVIS factory not available for dependency injection"
-            )
+            logger.warning("⚠️ JARVIS factory not available for dependency injection")
     else:
         logger.warning("⚠️ Vision analyzer not available - vision features disabled")
 
@@ -1278,9 +1290,7 @@ async def lifespan(app: FastAPI):
         voice = components.get("voice", {})
         if voice.get("jarvis_api"):
             vision_command_handler.jarvis_api = voice["jarvis_api"]
-            logger.info(
-                "✅ JARVIS voice API connected to pure vision command handler"
-            )
+            logger.info("✅ JARVIS voice API connected to pure vision command handler")
 
         # Initialize pure intelligence with API key
         if api_key:
@@ -1307,16 +1317,10 @@ async def lifespan(app: FastAPI):
 
             # Integrate with PureVisionIntelligence for vision updates
             if hasattr(vision_command_handler, "vision_intelligence"):
-                logger.info(
-                    "   🔗 Connecting Vision Intelligence to Context Bridge..."
-                )
+                logger.info("   🔗 Connecting Vision Intelligence to Context Bridge...")
                 # Store bridge reference in vision intelligence so it can feed updates
-                vision_command_handler.vision_intelligence.context_bridge = (
-                    bridge
-                )
-                logger.info(
-                    "   ✅ Vision Intelligence connected to Context Bridge"
-                )
+                vision_command_handler.vision_intelligence.context_bridge = bridge
+                logger.info("   ✅ Vision Intelligence connected to Context Bridge")
 
             # Integrate with AsyncPipeline for command processing
             jarvis_api = voice.get("jarvis_api")
@@ -1335,14 +1339,10 @@ async def lifespan(app: FastAPI):
             logger.info(
                 f"   • Natural Language Queries: 'what does it say?', 'what am I working on?'"
             )
-            logger.info(
-                f"   • Workspace Synthesis: Combining context from all spaces"
-            )
+            logger.info(f"   • Workspace Synthesis: Combining context from all spaces")
 
         except ImportError as e:
-            logger.warning(
-                f"   ⚠️ Context Intelligence System not available: {e}"
-            )
+            logger.warning(f"   ⚠️ Context Intelligence System not available: {e}")
             app.state.context_bridge = None
         except Exception as e:
             logger.error(
@@ -1365,6 +1365,7 @@ async def lifespan(app: FastAPI):
                 from context_intelligence.managers.hybrid_proactive_monitoring_manager import (
                     get_hybrid_proactive_monitoring_manager,
                 )
+
                 hybrid_monitoring = get_hybrid_proactive_monitoring_manager()
                 logger.info("✅ HybridProactiveMonitoringManager: Available")
             except Exception as e:
@@ -1372,7 +1373,7 @@ async def lifespan(app: FastAPI):
 
             # Get ImplicitReferenceResolver (from context bridge)
             implicit_resolver = None
-            if hasattr(app.state, 'context_bridge') and app.state.context_bridge:
+            if hasattr(app.state, "context_bridge") and app.state.context_bridge:
                 try:
                     implicit_resolver = app.state.context_bridge.implicit_resolver
                     logger.info("✅ ImplicitReferenceResolver: Available")
@@ -1391,7 +1392,7 @@ async def lifespan(app: FastAPI):
                     proactive_monitoring_manager=hybrid_monitoring,
                     change_detection_manager=get_change_detection_manager(),
                     implicit_resolver=implicit_resolver,
-                    conversation_tracker=get_conversation_tracker()
+                    conversation_tracker=get_conversation_tracker(),
                 )
                 app.state.temporal_handler = temporal_handler
                 logger.info("✅ TemporalQueryHandler v3.0 initialized")
@@ -1407,7 +1408,7 @@ async def lifespan(app: FastAPI):
                 error_recovery = ErrorRecoveryManager(
                     hybrid_monitoring_manager=hybrid_monitoring,
                     implicit_resolver=implicit_resolver,
-                    change_detection_manager=get_change_detection_manager()
+                    change_detection_manager=get_change_detection_manager(),
                 )
                 app.state.error_recovery = error_recovery
                 logger.info("✅ ErrorRecoveryManager v2.0 initialized")
@@ -1417,8 +1418,8 @@ async def lifespan(app: FastAPI):
 
             # 3. StateIntelligence v2.0
             try:
-                from vision.intelligence.state_intelligence import initialize_state_intelligence
                 from context_intelligence.managers import get_change_detection_manager
+                from vision.intelligence.state_intelligence import initialize_state_intelligence
 
                 async def handle_stuck_alert(alert):
                     """Handle stuck state alerts"""
@@ -1429,7 +1430,7 @@ async def lifespan(app: FastAPI):
                     hybrid_monitoring_manager=hybrid_monitoring,
                     implicit_resolver=implicit_resolver,
                     change_detection_manager=get_change_detection_manager(),
-                    stuck_alert_callback=handle_stuck_alert
+                    stuck_alert_callback=handle_stuck_alert,
                 )
                 app.state.state_intelligence = state_intelligence
 
@@ -1443,8 +1444,8 @@ async def lifespan(app: FastAPI):
 
             # 4. StateDetectionPipeline v2.0
             try:
-                from vision.intelligence.state_detection_pipeline import StateDetectionPipeline
                 from context_intelligence.managers import get_change_detection_manager
+                from vision.intelligence.state_detection_pipeline import StateDetectionPipeline
 
                 async def handle_state_transition(transition):
                     """Handle state transition alerts"""
@@ -1462,7 +1463,7 @@ async def lifespan(app: FastAPI):
                     implicit_resolver=implicit_resolver,
                     change_detection_manager=get_change_detection_manager(),
                     state_transition_callback=handle_state_transition,
-                    new_state_callback=handle_new_state
+                    new_state_callback=handle_new_state,
                 )
                 app.state.state_detection = state_detection
                 logger.info("✅ StateDetectionPipeline v2.0 initialized")
@@ -1481,12 +1482,16 @@ async def lifespan(app: FastAPI):
                 )
 
                 complex_handler = initialize_complex_complexity_handler(
-                    temporal_handler=app.state.temporal_handler if hasattr(app.state, 'temporal_handler') else None,
+                    temporal_handler=(
+                        app.state.temporal_handler
+                        if hasattr(app.state, "temporal_handler")
+                        else None
+                    ),
                     capture_manager=get_capture_strategy_manager(),
                     ocr_manager=get_ocr_strategy_manager(),
                     implicit_resolver=implicit_resolver,
                     hybrid_monitoring_manager=hybrid_monitoring,
-                    prefer_monitoring_cache=True
+                    prefer_monitoring_cache=True,
                 )
                 app.state.complex_handler = complex_handler
                 logger.info("✅ ComplexComplexityHandler v2.0 initialized")
@@ -1505,7 +1510,7 @@ async def lifespan(app: FastAPI):
                     hybrid_monitoring_manager=hybrid_monitoring,
                     implicit_resolver=implicit_resolver,
                     enable_vision=True,
-                    claude_api_key=api_key
+                    claude_api_key=api_key,
                 )
                 app.state.predictive_handler = predictive_handler
                 logger.info("✅ PredictiveQueryHandler v2.0 initialized")
@@ -1532,44 +1537,28 @@ async def lifespan(app: FastAPI):
         # Log proactive monitoring configuration
         proactive_config = app.state.vision_analyzer.get_proactive_config()
         if proactive_config["proactive_enabled"]:
-            logger.info(
-                "✅ Proactive Vision Intelligence System initialized with:"
-            )
-            logger.info(
-                f"   - Confidence threshold: {proactive_config['confidence_threshold']}"
-            )
+            logger.info("✅ Proactive Vision Intelligence System initialized with:")
+            logger.info(f"   - Confidence threshold: {proactive_config['confidence_threshold']}")
             logger.info(
                 f"   - Voice announcements: {'enabled' if proactive_config['voice_enabled'] else 'disabled'}"
             )
             logger.info("   - Debugging Assistant: Auto-detects code errors")
             logger.info("   - Research Helper: Monitors multi-tab workflows")
-            logger.info(
-                "   - Workflow Optimizer: Identifies repetitive patterns"
-            )
-            logger.info(
-                "   - Privacy Protection: Auto-pauses for sensitive content"
-            )
-            logger.info(
-                "   - Say 'Start monitoring my screen' to activate intelligent assistance"
-            )
+            logger.info("   - Workflow Optimizer: Identifies repetitive patterns")
+            logger.info("   - Privacy Protection: Auto-pauses for sensitive content")
+            logger.info("   - Say 'Start monitoring my screen' to activate intelligent assistance")
         else:
             logger.info("⚠️ Proactive monitoring disabled in configuration")
     except Exception as e:
-        logger.warning(
-            f"⚠️ Could not initialize proactive monitoring components: {e}"
-        )
+        logger.warning(f"⚠️ Could not initialize proactive monitoring components: {e}")
 
     # Initialize weather system with vision
     try:
-        from system_control.weather_system_config import (
-            initialize_weather_system,
-        )
         from system_control.macos_controller import MacOSController
+        from system_control.weather_system_config import initialize_weather_system
 
         controller = MacOSController()
-        weather_bridge = initialize_weather_system(
-            app.state.vision_analyzer, controller
-        )
+        weather_bridge = initialize_weather_system(app.state.vision_analyzer, controller)
         app.state.weather_system = weather_bridge
         logger.info("✅ Weather system initialized with vision")
     except Exception as e:
@@ -1588,9 +1577,7 @@ async def lifespan(app: FastAPI):
             success = await initialize_vision_status(app)
             if success:
                 setup_vision_status_callbacks(app)
-                logger.info(
-                    "✅ Vision status manager initialized and connected"
-                )
+                logger.info("✅ Vision status manager initialized and connected")
 
         asyncio.create_task(setup_vision_status())
     except Exception as e:
@@ -1673,9 +1660,7 @@ async def lifespan(app: FastAPI):
     if loaded_count == 8:
         logger.info("✨ All systems operational - JARVIS is fully functional!")
     else:
-        logger.warning(
-            f"⚠️  Only {loaded_count}/8 components loaded - some features may be limited"
-        )
+        logger.warning(f"⚠️  Only {loaded_count}/8 components loaded - some features may be limited")
 
     logger.info("=" * 60 + "\n")
 
@@ -1716,9 +1701,7 @@ async def lifespan(app: FastAPI):
                 success = await wake_service.start(wake_word_activation_callback)
                 if success:
                     app.state.wake_service = wake_service
-                    logger.info(
-                        "🎤 Wake word detection service started - Say 'Hey JARVIS'!"
-                    )
+                    logger.info("🎤 Wake word detection service started - Say 'Hey JARVIS'!")
                 else:
                     logger.warning("⚠️ Wake word service failed to start")
         except Exception as e:
@@ -1805,7 +1788,7 @@ async def lifespan(app: FastAPI):
     if hasattr(app.state, "goal_inference_integration"):
         try:
             integration = app.state.goal_inference_integration
-            if hasattr(integration, 'learning_db'):
+            if hasattr(integration, "learning_db"):
                 # Save final state and close connections
                 integration.learning_db.close()
             logger.info("✅ Goal Inference Integration stopped")
@@ -1815,7 +1798,7 @@ async def lifespan(app: FastAPI):
     # Shutdown UAE (Unified Awareness Engine) + Learning Database + Yabai
     if hasattr(app.state, "uae_engine"):
         try:
-            from intelligence.uae_integration import shutdown_uae, get_learning_db, get_yabai
+            from intelligence.uae_integration import get_learning_db, get_yabai, shutdown_uae
 
             logger.info("🧠 Shutting down Intelligence Stack...")
 
@@ -1825,11 +1808,17 @@ async def lifespan(app: FastAPI):
                 try:
                     metrics = await learning_db.get_learning_metrics()
                     logger.info("   📊 Final Learning Database Stats:")
-                    logger.info(f"   • Total Patterns Learned: {metrics['patterns']['total_patterns']}")
-                    logger.info(f"   • Display Patterns: {metrics['display_patterns']['total_display_patterns']}")
+                    logger.info(
+                        f"   • Total Patterns Learned: {metrics['patterns']['total_patterns']}"
+                    )
+                    logger.info(
+                        f"   • Display Patterns: {metrics['display_patterns']['total_display_patterns']}"
+                    )
                     logger.info(f"   • Total Actions Logged: {metrics['actions']['total_actions']}")
                     logger.info(f"   • Success Rate: {metrics['actions']['success_rate']:.1f}%")
-                    logger.info(f"   • Cache Hit Rate: {metrics['cache_performance']['pattern_cache_hit_rate']:.1%}")
+                    logger.info(
+                        f"   • Cache Hit Rate: {metrics['cache_performance']['pattern_cache_hit_rate']:.1%}"
+                    )
                 except Exception as e:
                     logger.debug(f"Could not get final metrics: {e}")
 
@@ -1849,12 +1838,15 @@ async def lifespan(app: FastAPI):
                     logger.info(f"      • Space Changes: {yabai_metrics['total_space_changes']}")
                     logger.info(f"      • Monitoring Cycles: {yabai_metrics['monitoring_cycles']}")
                     logger.info(f"      • Events Emitted: {yabai_metrics.get('events_emitted', 0)}")
-                    logger.info(f"      • Session Duration: {yabai_metrics['session_duration_minutes']:.1f} minutes")
+                    logger.info(
+                        f"      • Session Duration: {yabai_metrics['session_duration_minutes']:.1f} minutes"
+                    )
                 except Exception as e:
                     logger.debug(f"Could not get Yabai metrics: {e}")
 
             # Pattern Learner metrics
             from intelligence.uae_integration import get_pattern_learner_sync
+
             pattern_learner = get_pattern_learner_sync()
             if pattern_learner:
                 try:
@@ -1864,13 +1856,16 @@ async def lifespan(app: FastAPI):
                     logger.info(f"      • Workflows Detected: {pl_stats['workflows_detected']}")
                     logger.info(f"      • Temporal Patterns: {pl_stats['temporal_patterns']}")
                     logger.info(f"      • Spatial Preferences: {pl_stats['spatial_preferences']}")
-                    logger.info(f"      • Predictions Generated: {pl_stats['predictions_generated']}")
+                    logger.info(
+                        f"      • Predictions Generated: {pl_stats['predictions_generated']}"
+                    )
                     logger.info(f"      • ML Clustering Runs: {pl_stats['clustering_runs']}")
                 except Exception as e:
                     logger.debug(f"Could not get Pattern Learner stats: {e}")
 
             # Bridge metrics
             from intelligence.uae_integration import get_integration_bridge
+
             bridge = get_integration_bridge()
             if bridge and bridge.is_active:
                 try:
@@ -1880,7 +1875,9 @@ async def lifespan(app: FastAPI):
                     logger.info(f"      • Yabai → SAI: {bridge_metrics['yabai_to_sai']}")
                     logger.info(f"      • SAI → Yabai: {bridge_metrics['sai_to_yabai']}")
                     logger.info(f"      • Contexts Enriched: {bridge_metrics['contexts_enriched']}")
-                    logger.info(f"      • Actions Coordinated: {bridge_metrics['actions_coordinated']}")
+                    logger.info(
+                        f"      • Actions Coordinated: {bridge_metrics['actions_coordinated']}"
+                    )
                 except Exception as e:
                     logger.debug(f"Could not get Bridge metrics: {e}")
 
@@ -1900,9 +1897,7 @@ async def lifespan(app: FastAPI):
 
     # Stop Voice Unlock system
     voice_unlock = components.get("voice_unlock") or {}
-    if hasattr(app.state, "voice_unlock_system") and voice_unlock.get(
-        "shutdown_system"
-    ):
+    if hasattr(app.state, "voice_unlock_system") and voice_unlock.get("shutdown_system"):
         try:
             shutdown_system = voice_unlock["shutdown_system"]
             await shutdown_system()
@@ -1917,7 +1912,7 @@ async def lifespan(app: FastAPI):
             logger.info("✅ Display monitoring stopped")
         except Exception as e:
             logger.error(f"Error stopping display monitoring: {e}")
-    
+
     # Stop dynamic component loader and self-healer
     try:
         from vision.dynamic_component_loader import get_component_loader
@@ -1934,7 +1929,7 @@ async def lifespan(app: FastAPI):
 
 # Apply vision monitoring fix
 try:
-    import api.direct_vision_fix
+    pass
 
     logger.info("Vision monitoring fix applied")
 except Exception as e:
@@ -1942,7 +1937,7 @@ except Exception as e:
 
 # Force reload vision handler to get latest fixes
 try:
-    import api.reload_vision_fix
+    pass
 
     logger.info("Vision handler reloaded with multi-space fixes")
 except Exception as e:
@@ -1958,7 +1953,7 @@ app = FastAPI(
 
 # Configure Dynamic CORS
 try:
-    from api.dynamic_cors_handler import DynamicCORSMiddleware, AutoPortDiscovery
+    from api.dynamic_cors_handler import DynamicCORSMiddleware
 
     # Add dynamic CORS middleware
     class DynamicCORSWrapper:
@@ -2013,9 +2008,7 @@ try:
 except Exception as e:
     # Fallback to static CORS if dynamic handler not available
     logger.warning(f"Dynamic CORS handler error: {e}, using static configuration")
-    origins = os.getenv(
-        "CORS_ORIGINS", "http://localhost:3000,http://localhost:3001"
-    ).split(",")
+    origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001").split(",")
     backend_port = os.getenv("BACKEND_PORT", "8000")
     if backend_port == "8010":
         origins.extend(["http://localhost:8010", "ws://localhost:8010"])
@@ -2108,7 +2101,7 @@ async def health_check():
     voice_unlock_details = {}
     if hasattr(app.state, "voice_unlock") and app.state.voice_unlock.get("initialized"):
         try:
-            from voice_unlock.services.mac_unlock_service import MacUnlockService
+            pass
 
             # Get basic status without initializing service
             voice_unlock_details = {
@@ -2131,9 +2124,7 @@ async def health_check():
             "memory_pressure": mgr.memory_monitor.current_pressure().value,
             "arm64_optimized": mgr.arm64_optimizer.is_arm64,
             "m1_detected": mgr.arm64_optimizer.is_m1,
-            "config_loaded": (
-                os.path.exists(mgr.config_path) if mgr.config_path else False
-            ),
+            "config_loaded": (os.path.exists(mgr.config_path) if mgr.config_path else False),
             "advanced_preloader": {
                 "predictor_active": mgr.advanced_predictor is not None,
                 "dependency_resolver_active": mgr.dependency_resolver is not None,
@@ -2148,9 +2139,7 @@ async def health_check():
         "mode": "optimized" if OPTIMIZE_STARTUP else "legacy",
         "parallel_imports": PARALLEL_IMPORTS,
         "lazy_models": LAZY_LOAD_MODELS,
-        "components": {
-            name: bool(comp) for name, comp in components.items() if comp is not None
-        },
+        "components": {name: bool(comp) for name, comp in components.items() if comp is not None},
         "vision_status": vision_status,
         "vision_enhanced": vision_details,
         "ml_audio_system": ml_audio_details,
@@ -2181,8 +2170,9 @@ async def hybrid_status():
     try:
         # Try to import and check if coordinator is running
         # This is a read-only status check
-        import psutil
         from datetime import datetime
+
+        import psutil
 
         # Get current RAM state
         mem = psutil.virtual_memory()
@@ -2192,24 +2182,31 @@ async def hybrid_status():
             "available_gb": mem.available / (1024**3),
             "percent": mem.percent,
             "status": (
-                "EMERGENCY" if mem.percent >= 95
-                else "CRITICAL" if mem.percent >= 85
-                else "WARNING" if mem.percent >= 75
-                else "ELEVATED" if mem.percent >= 60
-                else "OPTIMAL"
+                "EMERGENCY"
+                if mem.percent >= 95
+                else (
+                    "CRITICAL"
+                    if mem.percent >= 85
+                    else (
+                        "WARNING"
+                        if mem.percent >= 75
+                        else "ELEVATED" if mem.percent >= 60 else "OPTIMAL"
+                    )
+                )
             ),
         }
 
         # Check if running on GCP (via environment detection)
         import os
+
         is_gcp = os.path.exists("/.dockerenv") or os.getenv("GCP_PROJECT_ID") is not None
 
         # Try to load SAI learned parameters from database
         learned_params = {}
         try:
             # Check if learning database has hybrid parameters
-            import sys
             import json
+            import sys
             from pathlib import Path
 
             sys.path.insert(0, str(Path(__file__).parent))
@@ -2253,10 +2250,14 @@ async def hybrid_status():
             "current_location": "gcp" if is_gcp else "local",
             "ram": ram_state,
             "gcp_available": is_gcp or bool(os.getenv("GCP_PROJECT_ID")),
-            "sai_learning": learned_params if learned_params else {
-                "status": "No learned parameters yet",
-                "note": "Run start_system.py to enable learning"
-            },
+            "sai_learning": (
+                learned_params
+                if learned_params
+                else {
+                    "status": "No learned parameters yet",
+                    "note": "Run start_system.py to enable learning",
+                }
+            ),
             "features": {
                 "crash_prevention": True,
                 "auto_scaling": True,
@@ -2264,13 +2265,16 @@ async def hybrid_status():
                 "cost_optimization": True,
                 "persistent_learning": True,
             },
-            "thresholds": learned_params.get("thresholds", {
-                "warning": 0.75,
-                "critical": 0.85,
-                "optimal": 0.60,
-                "emergency": 0.95,
-                "note": "Default values (not yet learned)"
-            }),
+            "thresholds": learned_params.get(
+                "thresholds",
+                {
+                    "warning": 0.75,
+                    "critical": 0.85,
+                    "optimal": 0.60,
+                    "emergency": 0.95,
+                    "note": "Default values (not yet learned)",
+                },
+            ),
         }
 
         return response
@@ -2311,8 +2315,7 @@ async def autonomous_status():
             mesh_status = {"error": str(e)}
 
     return {
-        "autonomous_enabled": orchestrator_status is not None
-        or mesh_status is not None,
+        "autonomous_enabled": orchestrator_status is not None or mesh_status is not None,
         "orchestrator": orchestrator_status,
         "mesh": mesh_status,
     }
@@ -2352,9 +2355,7 @@ async def component_metrics():
     efficiency_score = 0
     if total_loads > 0:
         # Score based on cache hits, memory savings, and load count
-        efficiency_score = min(
-            100, (cache_hit_rate * 0.4) + (min(memory_saved / 100, 50) * 0.6)
-        )
+        efficiency_score = min(100, (cache_hit_rate * 0.4) + (min(memory_saved / 100, 50) * 0.6))
 
     return {
         "enabled": True,
@@ -2366,8 +2367,7 @@ async def component_metrics():
                 "loaded": status["loaded_components"],
                 "utilization_percent": (
                     round(
-                        (status["loaded_components"] / status["total_components"])
-                        * 100,
+                        (status["loaded_components"] / status["total_components"]) * 100,
                         1,
                     )
                     if status["total_components"] > 0
@@ -2410,9 +2410,7 @@ def mount_routers():
     # Voice API
     voice = components.get("voice", {})
     if voice and voice.get("jarvis_available"):
-        app.include_router(
-            voice["jarvis_router"], prefix="/voice/jarvis", tags=["jarvis"]
-        )
+        app.include_router(voice["jarvis_router"], prefix="/voice/jarvis", tags=["jarvis"])
         logger.info("✅ JARVIS Voice API mounted")
 
         # Set JARVIS instance in unified WebSocket pipeline
@@ -2426,9 +2424,7 @@ def mount_routers():
             logger.warning(f"⚠️  Could not set JARVIS in WebSocket pipeline: {e}")
 
     if voice and voice.get("enhanced_available"):
-        app.include_router(
-            voice["enhanced_router"], prefix="/voice/enhanced", tags=["voice"]
-        )
+        app.include_router(voice["enhanced_router"], prefix="/voice/enhanced", tags=["voice"])
         logger.info("✅ Enhanced Voice API mounted")
 
     # ML Model Status API
@@ -2440,9 +2436,7 @@ def mount_routers():
     # Monitoring API
     monitoring = components.get("monitoring", {})
     if monitoring and monitoring.get("router"):
-        app.include_router(
-            monitoring["router"], prefix="/monitoring", tags=["monitoring"]
-        )
+        app.include_router(monitoring["router"], prefix="/monitoring", tags=["monitoring"])
         logger.info("✅ Monitoring API mounted")
 
     # Voice Unlock API
@@ -2468,16 +2462,12 @@ def mount_routers():
             app.state.wake_word = wake_word
             logger.info("✅ Wake Word detection service available")
         else:
-            logger.info(
-                "ℹ️  Wake Word API available (stub mode - service not initialized)"
-            )
+            logger.info("ℹ️  Wake Word API available (stub mode - service not initialized)")
     except ImportError as e:
         logger.warning(f"⚠️ Wake Word API not available: {e}")
 
     # Rust API (if Rust components are available)
-    if hasattr(app.state, "rust_acceleration") and app.state.rust_acceleration.get(
-        "available"
-    ):
+    if hasattr(app.state, "rust_acceleration") and app.state.rust_acceleration.get("available"):
         try:
             from api.rust_api import router as rust_router
 
@@ -2490,16 +2480,13 @@ def mount_routers():
     try:
         from api.self_healing_api import router as self_healing_router
 
-        app.include_router(
-            self_healing_router, prefix="/self-healing", tags=["self-healing"]
-        )
+        app.include_router(self_healing_router, prefix="/self-healing", tags=["self-healing"])
         logger.info("✅ Self-healing API mounted")
     except ImportError:
         logger.debug("Self-healing API not available")
 
     # Context Intelligence API (Priority 1-3 features)
     if hasattr(app.state, "context_bridge") and app.state.context_bridge:
-        from fastapi import Request
         from pydantic import BaseModel
 
         class ContextQueryRequest(BaseModel):
@@ -2581,10 +2568,8 @@ def mount_routers():
 
     # Vision WebSocket endpoint at /vision/ws/vision
     try:
-        from api.vision_ws_endpoint import (
-            router as vision_ws_endpoint_router,
-            set_vision_analyzer,
-        )
+        from api.vision_ws_endpoint import router as vision_ws_endpoint_router
+        from api.vision_ws_endpoint import set_vision_analyzer
 
         app.include_router(vision_ws_endpoint_router, tags=["vision"])
 
@@ -2596,23 +2581,25 @@ def mount_routers():
         logger.info("✅ Vision WebSocket endpoint mounted at /vision/ws/vision")
     except ImportError as e:
         logger.warning(f"Could not import vision WebSocket endpoint: {e}")
-    
+
     # Multi-Monitor Display Routes
     try:
         from api.display_routes import router as display_router
+
         app.include_router(display_router, tags=["displays"])
         logger.info("✅ Multi-Monitor display routes configured")
     except Exception as e:
         logger.warning(f"⚠️  Multi-Monitor display routes not available: {e}")
-    
+
     # Proximity-Aware Display Routes (Phase 1.2)
     try:
         from api.proximity_display_api import router as proximity_display_router
+
         app.include_router(proximity_display_router, tags=["proximity-display"])
         logger.info("✅ Proximity-Aware Display API configured")
     except Exception as e:
         logger.warning(f"⚠️  Proximity-Aware Display API not available: {e}")
-    
+
     # Advanced Display Monitor (Component #9) - Multi-method detection with voice integration
     try:
         display_monitor_comp = components.get("display_monitor", {})
@@ -2629,36 +2616,42 @@ def mount_routers():
 
                 # Get monitor instance with voice integration
                 monitor = get_monitor(voice_handler=voice_handler)
-                
+
                 # Register as the app's monitor instance (singleton pattern)
                 from display.advanced_display_monitor import set_app_display_monitor
+
                 set_app_display_monitor(monitor)
                 logger.info("   ✅ Display monitor registered as singleton")
-                
+
                 # Connect Vision Navigator with Claude Vision analyzer
                 try:
                     from display.vision_ui_navigator import get_vision_navigator
-                    
+
                     navigator = get_vision_navigator()
-                    
+
                     # Connect vision analyzer if available
-                    if hasattr(app.state, 'vision_analyzer'):
+                    if hasattr(app.state, "vision_analyzer"):
                         navigator.set_vision_analyzer(app.state.vision_analyzer)
                         # Also connect to monitor
                         monitor.vision_analyzer = app.state.vision_analyzer
                         logger.info("   ✅ Vision Navigator connected to Claude Vision")
                         logger.info("   👁️ JARVIS can now SEE and CLICK UI elements!")
                     else:
-                        logger.warning("   ⚠️ Vision analyzer not available yet (will connect later)")
-                        
+                        logger.warning(
+                            "   ⚠️ Vision analyzer not available yet (will connect later)"
+                        )
+
                 except Exception as nav_err:
                     logger.warning(f"   ⚠️ Could not initialize Vision Navigator: {nav_err}")
 
                 # Set WebSocket manager for UI notifications
                 try:
                     from api.unified_websocket import ws_manager
+
                     monitor.set_websocket_manager(ws_manager)
-                    ws_manager.display_monitor = monitor  # Allow ws_manager to send current status to new clients
+                    ws_manager.display_monitor = (
+                        monitor  # Allow ws_manager to send current status to new clients
+                    )
                     logger.info("   ✅ Display monitor connected to WebSocket")
                 except Exception as ws_err:
                     logger.warning(f"   ⚠️ Could not connect display monitor to WebSocket: {ws_err}")
@@ -2686,6 +2679,7 @@ def mount_routers():
     except Exception as e:
         logger.warning(f"⚠️  Display Monitor initialization failed: {e}")
         import traceback
+
         logger.debug(traceback.format_exc())
 
     # ML Audio API (with built-in fallback) - Always mount regardless of WebSocket status
@@ -2713,24 +2707,18 @@ def mount_routers():
         from api.auto_config_endpoint import router as auto_config_router
 
         app.include_router(auto_config_router, tags=["Auto Configuration"])
-        logger.info(
-            "✅ Auto Configuration API mounted - clients can auto-discover settings"
-        )
+        logger.info("✅ Auto Configuration API mounted - clients can auto-discover settings")
     except ImportError as e:
         logger.warning(f"Could not import Auto Config router: {e}")
 
     # Autonomous Service API (for zero-configuration mode)
     try:
         # Check if we should use memory-optimized version
-        use_memory_optimized = (
-            os.getenv("MEMORY_OPTIMIZED_MODE", "true").lower() == "true"
-        )
+        use_memory_optimized = os.getenv("MEMORY_OPTIMIZED_MODE", "true").lower() == "true"
 
         if use_memory_optimized:
             # Import memory-optimized orchestrator
-            from backend.core.memory_optimized_orchestrator import (
-                get_memory_optimized_orchestrator,
-            )
+            from backend.core.memory_optimized_orchestrator import get_memory_optimized_orchestrator
 
             orchestrator = get_memory_optimized_orchestrator(
                 memory_limit_mb=400
@@ -2798,9 +2786,7 @@ async def process_command(request: dict):
 
         if USE_ENHANCED_CONTEXT:
             try:
-                from api.simple_context_handler_enhanced import (
-                    wrap_with_enhanced_context,
-                )
+                from api.simple_context_handler_enhanced import wrap_with_enhanced_context
 
                 processor = UnifiedCommandProcessor()
                 context_handler = wrap_with_enhanced_context(processor)
@@ -2835,9 +2821,7 @@ async def root():
         "message": "JARVIS Backend (Optimized) is running",
         "version": "13.4.0-browser-automation",
         "proactive_vision_enabled": hasattr(app.state, "vision_analyzer"),
-        "components": {
-            name: bool(comp) for name, comp in components.items() if comp is not None
-        },
+        "components": {name: bool(comp) for name, comp in components.items() if comp is not None},
     }
 
 
@@ -2856,9 +2840,9 @@ async def ml_audio_websocket_compat(websocket: WebSocket):
 
     try:
         # Import unified handler and datetime
-        from api.unified_websocket import ws_manager, connection_capabilities
         from datetime import datetime
-        import json
+
+        from api.unified_websocket import connection_capabilities, ws_manager
 
         # Get client info
         client_host = websocket.client.host if websocket.client else "unknown"
@@ -2958,6 +2942,7 @@ async def audio_speak_get(text: str):
 # LAZY LOADING HELPER FOR UAE/SAI/LEARNING DB
 # ============================================================
 
+
 async def ensure_uae_loaded(app_state):
     """
     Lazy-load UAE/SAI/Learning DB on first use with Memory Quantizer integration.
@@ -2971,6 +2956,7 @@ async def ensure_uae_loaded(app_state):
     if app_state.uae_initializing:
         # Wait for initialization to complete
         import asyncio
+
         for _ in range(50):  # Wait up to 5 seconds
             await asyncio.sleep(0.1)
             if app_state.uae_engine is not None:
@@ -3003,7 +2989,9 @@ async def ensure_uae_loaded(app_state):
             logger.error(f"[LAZY-UAE] ❌ Insufficient memory for intelligence components")
             logger.error(f"[LAZY-UAE]    Required: {REQUIRED_MEMORY_GB:.1f} GB")
             logger.error(f"[LAZY-UAE]    Available: {metrics.system_memory_available_gb:.2f} GB")
-            logger.error(f"[LAZY-UAE]    Deficit: {REQUIRED_MEMORY_GB - metrics.system_memory_available_gb:.2f} GB")
+            logger.error(
+                f"[LAZY-UAE]    Deficit: {REQUIRED_MEMORY_GB - metrics.system_memory_available_gb:.2f} GB"
+            )
 
             # Provide fallback recommendation
             logger.info(f"[LAZY-UAE] 💡 Falling back to basic multi-space detection (Yabai only)")
@@ -3012,16 +3000,22 @@ async def ensure_uae_loaded(app_state):
         # Check memory tier - refuse to load in dangerous tiers
         dangerous_tiers = {MemoryTier.CRITICAL, MemoryTier.EMERGENCY, MemoryTier.CONSTRAINED}
         if metrics.tier in dangerous_tiers:
-            logger.warning(f"[LAZY-UAE] ⚠️  Memory tier is {metrics.tier.value} - postponing intelligence loading")
+            logger.warning(
+                f"[LAZY-UAE] ⚠️  Memory tier is {metrics.tier.value} - postponing intelligence loading"
+            )
             logger.warning(f"[LAZY-UAE]    Current tier: {metrics.tier.value}")
             logger.warning(f"[LAZY-UAE]    Required tier: ELEVATED or better")
             logger.info(f"[LAZY-UAE] 💡 Using lightweight mode until memory pressure reduces")
             return None
 
         # Predictive check - will loading cause OOM?
-        predicted_usage = metrics.system_memory_percent + (REQUIRED_MEMORY_GB / metrics.system_memory_gb * 100)
+        predicted_usage = metrics.system_memory_percent + (
+            REQUIRED_MEMORY_GB / metrics.system_memory_gb * 100
+        )
         if predicted_usage > 90:
-            logger.warning(f"[LAZY-UAE] ⚠️  Loading would push usage to {predicted_usage:.1f}% (OOM risk)")
+            logger.warning(
+                f"[LAZY-UAE] ⚠️  Loading would push usage to {predicted_usage:.1f}% (OOM risk)"
+            )
             logger.warning(f"[LAZY-UAE]    Current: {metrics.system_memory_percent:.1f}%")
             logger.warning(f"[LAZY-UAE]    After load: ~{predicted_usage:.1f}%")
             logger.warning(f"[LAZY-UAE]    Safe threshold: <85%")
@@ -3040,7 +3034,7 @@ async def ensure_uae_loaded(app_state):
     logger.info("[LAZY-UAE] 🧠 Initializing UAE/SAI/Learning DB on first use...")
 
     try:
-        from intelligence.uae_integration import initialize_uae, get_learning_db, get_yabai
+        from intelligence.uae_integration import get_learning_db, initialize_uae
 
         config = app_state.uae_lazy_config
 
@@ -3073,7 +3067,7 @@ async def ensure_uae_loaded(app_state):
             enable_yabai=config["enable_yabai"],
             enable_proactive_intelligence=config["enable_proactive_intelligence"],
             voice_callback=voice_callback,
-            notification_callback=notification_callback
+            notification_callback=notification_callback,
         )
 
         if uae and uae.is_active:
@@ -3096,8 +3090,9 @@ async def ensure_uae_loaded(app_state):
 # (The rest of your API endpoints would go here)
 
 if __name__ == "__main__":
-    import uvicorn
     import argparse
+
+    import uvicorn
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="JARVIS Backend Server")
@@ -3124,9 +3119,7 @@ if __name__ == "__main__":
             port=args.port,
             log_level="info",
             access_log=False,  # Disable access logs for performance
-            loop=(
-                "uvloop" if sys.platform != "win32" else "asyncio"
-            ),  # Use uvloop on Unix
+            loop=("uvloop" if sys.platform != "win32" else "asyncio"),  # Use uvloop on Unix
         )
     else:
         uvicorn.run(app, host="0.0.0.0", port=args.port)

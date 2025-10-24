@@ -270,7 +270,6 @@ except ImportError:
     logger.info("Creating fallback autonomous components...")
 
     # Import typing to avoid redefining imported types
-    from datetime import datetime
 
     class MockServiceInfo:
         def __init__(self, name, port, protocol="http"):
@@ -781,7 +780,7 @@ class HybridWorkloadRouter:
                     "-f",
                     f"components={','.join(components)}",
                     "-f",
-                    f"ram_triggered=true",
+                    "ram_triggered=true",
                 ]
 
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
@@ -803,10 +802,93 @@ class HybridWorkloadRouter:
             logger.warning(f"GitHub deployment failed, trying direct: {e}")
             return await self._direct_gcp_deployment(components, gcp_config)
 
+    def _generate_startup_script(self, gcp_config: dict) -> str:
+        """
+        Generate inline startup script for GCP instance.
+
+        This eliminates the need for a separate gcp_startup.sh file by
+        embedding the startup logic directly in start_system.py.
+        """
+        repo_url = gcp_config.get("repo_url", "https://github.com/drussell23/JARVIS-AI-Agent.git")
+        branch = gcp_config.get("branch", "multi-monitor-support")
+
+        return f"""#!/bin/bash
+set -e
+echo "🚀 JARVIS GCP Auto-Deployment Starting..."
+
+# Install dependencies
+sudo apt-get update -qq
+sudo apt-get install -y -qq python3.10 python3.10-venv python3-pip git curl jq build-essential postgresql-client
+
+# Clone repository
+PROJECT_DIR="$HOME/jarvis-backend"
+if [ -d "$PROJECT_DIR" ]; then
+    cd "$PROJECT_DIR" && git fetch --all && git reset --hard origin/{branch}
+else
+    git clone -b {branch} {repo_url} "$PROJECT_DIR"
+fi
+
+# Setup Python environment
+cd "$PROJECT_DIR/backend"
+if [ ! -d "venv" ]; then
+    python3.10 -m venv venv
+fi
+source venv/bin/activate
+pip install --quiet --upgrade pip
+if [ -f "requirements-cloud.txt" ]; then
+    pip install --quiet -r requirements-cloud.txt
+elif [ -f "requirements.txt" ]; then
+    pip install --quiet -r requirements.txt
+fi
+
+# Setup Cloud SQL Proxy
+if [ ! -f "$HOME/.local/bin/cloud-sql-proxy" ]; then
+    mkdir -p "$HOME/.local/bin"
+    curl -o "$HOME/.local/bin/cloud-sql-proxy" https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.8.2/cloud-sql-proxy.linux.amd64
+    chmod +x "$HOME/.local/bin/cloud-sql-proxy"
+fi
+
+# Configure environment
+cat > "$PROJECT_DIR/backend/.env.gcp" <<EOF
+JARVIS_HYBRID_MODE=true
+GCP_INSTANCE=true
+JARVIS_DB_TYPE=cloudsql
+EOF
+
+# Start Cloud SQL Proxy (if config available)
+if [ -f "$HOME/.jarvis/gcp/database_config.json" ]; then
+    CONNECTION_NAME=$(jq -r '.cloud_sql.connection_name' "$HOME/.jarvis/gcp/database_config.json")
+    nohup "$HOME/.local/bin/cloud-sql-proxy" "$CONNECTION_NAME" --port 5432 > "$HOME/cloud-sql-proxy.log" 2>&1 &
+    sleep 2
+fi
+
+# Start backend
+cd "$PROJECT_DIR/backend"
+source .env.gcp
+nohup venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8010 --log-level info > "$HOME/jarvis-backend.log" 2>&1 &
+
+# Wait for health check
+for i in {{1..30}}; do
+    sleep 2
+    if curl -sf http://localhost:8010/health > /dev/null; then
+        INSTANCE_IP=$(curl -sf http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip -H "Metadata-Flavor: Google" || echo "unknown")
+        echo "✅ JARVIS Ready at http://$INSTANCE_IP:8010"
+        exit 0
+    fi
+done
+
+echo "❌ Backend failed to start"
+tail -50 "$HOME/jarvis-backend.log"
+exit 1
+"""
+
     async def _direct_gcp_deployment(self, components: list, gcp_config: dict) -> dict:
-        """Direct GCP deployment using gcloud CLI"""
+        """Direct GCP deployment using gcloud CLI with embedded startup script"""
         try:
             instance_name = f"jarvis-auto-{int(time.time())}"
+
+            # Generate startup script inline (no external file needed!)
+            startup_script = self._generate_startup_script(gcp_config)
 
             # Create GCP instance with appropriate machine type
             machine_type = "e2-highmem-4"  # 4 vCPUs, 32GB RAM
@@ -830,7 +912,7 @@ class HybridWorkloadRouter:
                 "--boot-disk-size",
                 "50GB",
                 "--metadata",
-                f"startup-script=curl -sSL https://raw.githubusercontent.com/{gcp_config.get('gh_repo', 'user/repo')}/main/scripts/gcp_startup.sh | bash",
+                f"startup-script={startup_script}",  # Embedded inline!
                 "--tags",
                 "jarvis-auto",
                 "--labels",
@@ -1149,7 +1231,7 @@ class HybridIntelligenceCoordinator:
         self.emergency_mode = True
         self.emergency_start = time.time()
 
-        logger.error(f"🚨 EMERGENCY MODE ACTIVATED")
+        logger.error("🚨 EMERGENCY MODE ACTIVATED")
         logger.error(f"   RAM: {ram_state['percent']*100:.1f}% used")
         logger.error(f"   Available: {ram_state['available_gb']:.2f}GB")
 
@@ -1171,7 +1253,7 @@ class HybridIntelligenceCoordinator:
             result = await self.workload_router.trigger_gcp_deployment(components_to_shift)
 
             if result["success"]:
-                logger.info(f"✅ Emergency shift successful")
+                logger.info("✅ Emergency shift successful")
                 self.ram_monitor.prevented_crashes += 1
             else:
                 logger.error(f"❌ Emergency shift failed: {result['reason']}")
@@ -1359,9 +1441,7 @@ class HybridLearningModel:
 
         logger.info("🧠 HybridLearningModel initialized")
 
-    async def record_ram_observation(
-        self, timestamp: float, usage: float, components_active: dict
-    ):
+    async def record_ram_observation(self, timestamp: float, usage: float, components_active: dict):
         """Record a RAM observation for learning"""
         observation = {
             "timestamp": timestamp,
@@ -1405,9 +1485,7 @@ class HybridLearningModel:
             "reason": reason,
             "success": success,
             "duration": duration,
-            "ram_before": (
-                self.ram_observations[-1]["usage"] if self.ram_observations else 0.0
-            ),
+            "ram_before": (self.ram_observations[-1]["usage"] if self.ram_observations else 0.0),
         }
 
         self.migration_outcomes.append(outcome)
@@ -1418,9 +1496,7 @@ class HybridLearningModel:
         # Learn from outcome
         await self._learn_from_migration(outcome)
 
-    async def record_component_usage(
-        self, timestamp: float, component: str, memory_gb: float
-    ):
+    async def record_component_usage(self, timestamp: float, component: str, memory_gb: float):
         """Record component memory usage for weight learning"""
         observation = {"timestamp": timestamp, "component": component, "memory": memory_gb}
 
@@ -1503,19 +1579,17 @@ class HybridLearningModel:
         current_day = datetime.now().weekday()
 
         # Get average RAM for this hour
-        hourly_avg = (
-            sum(self.hourly_ram_patterns.get(current_hour, [current_usage]))
-            / len(self.hourly_ram_patterns.get(current_hour, [1]))
+        hourly_avg = sum(self.hourly_ram_patterns.get(current_hour, [current_usage])) / len(
+            self.hourly_ram_patterns.get(current_hour, [1])
         )
 
         # Get average RAM for this day
-        daily_avg = (
-            sum(self.daily_patterns.get(current_day, [current_usage]))
-            / len(self.daily_patterns.get(current_day, [1]))
+        daily_avg = sum(self.daily_patterns.get(current_day, [current_usage])) / len(
+            self.daily_patterns.get(current_day, [1])
         )
 
         # Combine predictions with weighted average
-        pattern_predicted = (hourly_avg * 0.6 + daily_avg * 0.4)
+        pattern_predicted = hourly_avg * 0.6 + daily_avg * 0.4
 
         # Final prediction: 70% trend-based, 30% pattern-based
         final_prediction = predicted_usage * 0.7 + pattern_predicted * 0.3
@@ -1556,9 +1630,6 @@ class HybridLearningModel:
 
         Returns interval in seconds.
         """
-        # Base interval
-        base_interval = 5
-
         # Adjust based on usage
         if current_usage >= 0.90:
             # Very high - check very frequently
@@ -1614,8 +1685,7 @@ class HybridLearningModel:
             return self.get_learned_component_weights()  # Return defaults
 
         normalized = {
-            comp: weight / total_weight
-            for comp, weight in self.learned_component_weights.items()
+            comp: weight / total_weight for comp, weight in self.learned_component_weights.items()
         }
 
         return normalized
@@ -1740,8 +1810,6 @@ class SAIHybridIntegration:
             return
 
         try:
-            import json
-
             # Prepare metadata
             metadata = {
                 "thresholds": self.learning_model.optimal_thresholds,
@@ -1754,14 +1822,14 @@ class SAIHybridIntegration:
             # Save as pattern
             await self.db.record_pattern(
                 pattern_type="hybrid_threshold",
-                description=f"Learned hybrid routing thresholds",
+                description="Learned hybrid routing thresholds",  # noqa: F541
                 trigger_conditions={"observation_count": len(self.learning_model.ram_observations)},
                 success_rate=self.learning_model.prediction_accuracy,
                 metadata=metadata,
             )
 
             self.last_model_save = time.time()
-            logger.info("💾 Saved learned parameters to database")
+            logger.info("💾 Saved learned parameters to database")  # noqa: F541
 
         except Exception as e:
             logger.warning(f"Failed to save learned parameters: {e}")
@@ -2093,17 +2161,19 @@ class AsyncSystemManager:
 
         # Memory optimization based on quantization
         print(f"\n{Colors.CYAN}Memory Optimization:{Colors.ENDC}")
-        print(f"  • Target: 4GB maximum usage")
+        print("  • Target: 4GB maximum usage")  # noqa: F541
         print(f"  • Current: {memory.used / (1024**3):.1f}GB used")
 
         if memory.used / (1024**3) < 3.2:  # Ultra-low
-            print(f"  • Level: {Colors.GREEN}Ultra-Low (1 model, 100MB cache){Colors.ENDC}")
+            print(f"  • Level: {Colors.GREEN}Ultra-Low (1 model, 100MB cache){Colors.ENDC}")  # noqa
         elif memory.used / (1024**3) < 3.6:  # Low
-            print(f"  • Level: {Colors.GREEN}Low (2 models, 200MB cache){Colors.ENDC}")
+            print(f"  • Level: {Colors.GREEN}Low (2 models, 200MB cache){Colors.ENDC}")  # noqa
         elif memory.used / (1024**3) < 4.0:  # Normal
-            print(f"  • Level: {Colors.YELLOW}Normal (3 models, 500MB cache){Colors.ENDC}")
+            print(f"  • Level: {Colors.YELLOW}Normal (3 models, 500MB cache){Colors.ENDC}")  # noqa
         else:  # High
-            print(f"  • Level: {Colors.WARNING}High (emergency cleanup active){Colors.ENDC}")
+            print(
+                f"  • Level: {Colors.WARNING}High (emergency cleanup active){Colors.ENDC}"
+            )  # noqa
 
         # Check for Swift availability
         swift_lib = Path("backend/swift_bridge/.build/release/libPerformanceCore.dylib")
@@ -2111,22 +2181,22 @@ class AsyncSystemManager:
 
         if swift_lib.exists():
             print(f"\n{Colors.GREEN}✓ Swift performance layer available{Colors.ENDC}")
-            print(f"  • AudioProcessor: Voice processing (50x faster)")
-            print(f"  • VisionProcessor: Metal acceleration (10x faster)")
-            print(f"  • SystemMonitor: IOKit monitoring (24x faster)")
+            print("  • AudioProcessor: Voice processing (50x faster)")  # noqa: F541
+            print("  • VisionProcessor: Metal acceleration (10x faster)")  # noqa: F541
+            print("  • SystemMonitor: IOKit monitoring (24x faster)")  # noqa: F541
         else:
             print(f"\n{Colors.YELLOW}⚠ Swift performance library not built{Colors.ENDC}")
-            print(f"  Build with: cd backend/swift_bridge && ./build_performance.sh")
+            print("  Build with: cd backend/swift_bridge && ./build_performance.sh")  # noqa
 
         # Check for Swift video capture
         if swift_video.exists():
             print(f"\n{Colors.GREEN}✓ Swift video capture available{Colors.ENDC}")
-            print(f"  • Enhanced screen recording permissions")
-            print(f"  • Native macOS integration")
-            print(f"  • Purple recording indicator support")
+            print("  • Enhanced screen recording permissions")  # noqa: F541
+            print("  • Native macOS integration")  # noqa: F541
+            print("  • Purple recording indicator support")  # noqa: F541
         else:
             print(f"\n{Colors.YELLOW}⚠ Swift video capture not compiled{Colors.ENDC}")
-            print(f"  • Will be compiled automatically on first use")
+            print("  • Will be compiled automatically on first use")  # noqa: F541
 
         # Check for Rust availability (legacy)
         rust_lib = Path("backend/rust_performance/target/release/librust_performance.dylib")
@@ -2236,7 +2306,6 @@ class AsyncSystemManager:
                     print(
                         f"{Colors.YELLOW}Skipping smart cleanup (macOS compatibility){Colors.ENDC}"
                     )
-                    report = {"actions": [], "freed_resources": {"cpu_percent": 0, "memory_mb": 0}}
                 else:
                     print(f"{Colors.YELLOW}Skipping cleanup{Colors.ENDC}")
             else:
@@ -2387,13 +2456,13 @@ class AsyncSystemManager:
             print(f"{Colors.YELLOW}⚠ Performance fixes missing:{Colors.ENDC}")
             for path, name in fixes_missing:
                 print(f"  • {name}")
-            print(f"\n  Run: python backend/apply_performance_fixes.py")
+            print("\n  Run: python backend/apply_performance_fixes.py")  # noqa: F541
 
         return len(fixes_missing) == 0
 
     async def check_dependencies(self):
         """Check Python dependencies with optimization packages"""
-        print(f"\n{Colors.BLUE}Checking dependencies...{Colors.ENDC}")
+        print(f"\n{Colors.BLUE}Checking dependencies...{Colors.ENDC}")  # noqa: F541
 
         critical_packages = [
             "fastapi",
@@ -2493,15 +2562,15 @@ class AsyncSystemManager:
             if self.claude_configured:
                 print(f"{Colors.GREEN}✓ Claude Vision integration ready{Colors.ENDC}")
                 print(f"{Colors.GREEN}✓ Integration Architecture active (v12.9.2):{Colors.ENDC}")
-                print(f"  • Integration Orchestrator (9-stage pipeline)")
-                print(f"  • VSMS Core (Visual State Management)")
-                print(f"  • Bloom Filter Network (hierarchical deduplication)")
-                print(f"  • Predictive Engine (Markov chain predictions)")
-                print(f"  • Semantic Cache LSH (intelligent caching)")
-                print(f"  • Quadtree Spatial (region optimization)")
-                print(f"  • 🎥 Video Streaming (30 FPS with purple indicator)")
-                print(f"  • Dynamic memory allocation (1.2GB budget)")
-                print(f"  • Cross-language optimization (Python/Rust/Swift)")
+                print("  • Integration Orchestrator (9-stage pipeline)")  # noqa: F541
+                print("  • VSMS Core (Visual State Management)")  # noqa: F541
+                print("  • Bloom Filter Network (hierarchical deduplication)")  # noqa: F541
+                print("  • Predictive Engine (Markov chain predictions)")  # noqa: F541
+                print("  • Semantic Cache LSH (intelligent caching)")  # noqa: F541
+                print("  • Quadtree Spatial (region optimization)")  # noqa: F541
+                print("  • 🎥 Video Streaming (30 FPS with purple indicator)")  # noqa: F541
+                print("  • Dynamic memory allocation (1.2GB budget)")  # noqa: F541
+                print("  • Cross-language optimization (Python/Rust/Swift)")  # noqa: F541
 
                 # Check for native video capture
                 try:
@@ -2956,15 +3025,15 @@ class AsyncSystemManager:
         # Define health check endpoints
         health_checks = [
             ("Backend API", f"http://localhost:{self.ports['main_api']}/health"),
-            ("WebSocket Router", f"http://localhost:8001/health"),
+            ("WebSocket Router", "http://localhost:8001/health"),  # noqa: F541
             (
                 "Frontend",
-                f"http://localhost:3000",
+                "http://localhost:3000",  # noqa: F541
                 False,
             ),  # Frontend may not have health endpoint
         ]
 
-        async def check_service_health(name: str, url: str, expect_json: bool = True):
+        async def check_service_health(name: str, url: str, expect_json: bool = True):  # noqa
             service_start = time.time()
             while time.time() - service_start < timeout:
                 try:
@@ -3162,10 +3231,10 @@ class AsyncSystemManager:
 
         if self.use_optimized:
             print(f"\n{Colors.CYAN}Performance Management:{Colors.ENDC}")
-            print(f"  • CPU usage: 0% idle (was 87.4%)")
-            print(f"  • Memory target: 4GB max")
-            print(f"  • Swift monitoring: 0.41ms overhead")
-            print(f"  • Emergency cleanup: Automatic")
+            print("  • CPU usage: 0% idle (was 87.4%)")  # noqa: F541
+            print("  • Memory target: 4GB max")  # noqa: F541
+            print("  • Swift monitoring: 0.41ms overhead")  # noqa: F541
+            print("  • Emergency cleanup: Automatic")  # noqa: F541
 
         print(f"\n{Colors.YELLOW}Press Ctrl+C to stop{Colors.ENDC}")
 
@@ -3949,7 +4018,7 @@ except Exception as e:
 """
 
         # Run in background
-        proc = await asyncio.create_subprocess_exec(
+        await asyncio.create_subprocess_exec(
             sys.executable,
             "-c",
             prewarm_script,
