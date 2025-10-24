@@ -30,9 +30,11 @@ jobs:
 
       - name: Deploy to VM
         run: |
-          # Create deployment script
-          cat > /tmp/deploy.sh <<'EOF'
-          #!/bin/bash
+          # Copy deployment script to VM and execute
+          gcloud compute ssh ${{ secrets.GCP_VM_NAME }} \
+            --zone=${{ secrets.GCP_ZONE }} \
+            --project=${{ secrets.GCP_PROJECT_ID }} \
+            --command='bash -s' <<'ENDSSH'
           set -e
 
           echo "🚀 Starting JARVIS deployment..."
@@ -71,21 +73,10 @@ jobs:
             echo "🌐 Backend running at http://34.10.137.70:8010"
           else
             echo "❌ Health check failed"
+            tail -50 jarvis.log
             exit 1
           fi
-          EOF
-
-          chmod +x /tmp/deploy.sh
-
-          # Copy and execute deployment script on VM
-          gcloud compute scp /tmp/deploy.sh ${{ secrets.GCP_VM_NAME }}:/tmp/ \
-            --zone=${{ secrets.GCP_ZONE }} \
-            --project=${{ secrets.GCP_PROJECT_ID }}
-
-          gcloud compute ssh ${{ secrets.GCP_VM_NAME }} \
-            --zone=${{ secrets.GCP_ZONE }} \
-            --project=${{ secrets.GCP_PROJECT_ID }} \
-            --command="bash /tmp/deploy.sh"
+          ENDSSH
 
       - name: Deployment Summary
         run: |
