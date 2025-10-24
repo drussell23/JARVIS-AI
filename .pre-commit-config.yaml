@@ -88,3 +88,14 @@ repos:
           - '--remove-unused-variables'
           - '--remove-duplicate-keys'
           - '--ignore-init-module-imports'
+
+  # Auto-generate GCP startup script from start_system.py
+  - repo: local
+    hooks:
+      - id: generate-gcp-startup
+        name: Generate GCP startup script
+        entry: python3 scripts/generate_startup_script.py
+        language: system
+        pass_filenames: false
+        files: ^start_system\.py$
+        always_run: false
