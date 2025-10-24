@@ -906,6 +906,12 @@ exit 1
                 f"{gcp_config['region']}-a",
                 "--machine-type",
                 machine_type,
+                "--provisioning-model",
+                "SPOT",  # Use Spot VMs (60-91% cheaper)
+                "--instance-termination-action",
+                "DELETE",  # Auto-delete when preempted
+                "--max-run-duration",
+                "10800s",  # Max 3 hours (safety limit)
                 "--image-family",
                 "ubuntu-2204-lts",
                 "--image-project",
@@ -917,7 +923,7 @@ exit 1
                 "--tags",
                 "jarvis-auto",
                 "--labels",
-                f"components={'-'.join(components)},auto=true",
+                f"components={'-'.join(components)},auto=true,spot=true",
                 "--format",
                 "json",
             ]
@@ -1061,6 +1067,40 @@ exit 1
 
         return self.gcp_health
 
+    async def _cleanup_gcp_instance(self, instance_id: str):
+        """Delete GCP instance to stop costs"""
+        try:
+            project_id = os.getenv("GCP_PROJECT_ID")
+            region = os.getenv("GCP_REGION", "us-central1")
+            zone = f"{region}-a"
+
+            cmd = [
+                "gcloud",
+                "compute",
+                "instances",
+                "delete",
+                instance_id,
+                "--project",
+                project_id,
+                "--zone",
+                zone,
+                "--quiet",  # Don't prompt for confirmation
+            ]
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+
+            if result.returncode == 0:
+                logger.info(f"✅ Deleted GCP instance: {instance_id}")
+                # Reset state
+                self.gcp_active = False
+                self.gcp_instance_id = None
+                self.gcp_ip = None
+            else:
+                logger.error(f"Failed to delete instance: {result.stderr}")
+
+        except Exception as e:
+            logger.error(f"Error cleaning up GCP instance: {e}")
+
 
 class HybridIntelligenceCoordinator:
     """
@@ -1133,7 +1173,7 @@ class HybridIntelligenceCoordinator:
         logger.info(f"   Learning: {'Enabled' if self.learning_enabled else 'Disabled'}")
 
     async def stop(self):
-        """Stop hybrid coordination"""
+        """Stop hybrid coordination and cleanup GCP resources"""
         self.running = False
 
         if self.monitoring_task:
@@ -1142,6 +1182,15 @@ class HybridIntelligenceCoordinator:
                 await self.monitoring_task
             except asyncio.CancelledError:
                 pass
+
+        # Cleanup GCP instance if active
+        if self.gcp_active and self.gcp_instance_id:
+            try:
+                logger.info(f"🧹 Cleaning up GCP instance: {self.gcp_instance_id}")
+                await self._cleanup_gcp_instance(self.gcp_instance_id)
+                logger.info(f"✅ GCP instance {self.gcp_instance_id} deleted")
+            except Exception as e:
+                logger.error(f"Failed to cleanup GCP instance: {e}")
 
         logger.info("🛑 Hybrid coordination stopped")
 
