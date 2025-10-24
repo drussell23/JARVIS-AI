@@ -61,7 +61,8 @@ class DatabaseConfig:
                     config = json.load(f)
                     cloud_sql = config.get('cloud_sql', {})
                     self.connection_name = cloud_sql.get('connection_name', self.connection_name)
-                    self.db_host = cloud_sql.get('private_ip', self.db_host)
+                    # Don't override db_host - keep 127.0.0.1 for local proxy
+                    # self.db_host = cloud_sql.get('private_ip', self.db_host)
                     self.db_port = cloud_sql.get('port', self.db_port)
                     self.db_name = cloud_sql.get('database', self.db_name)
                     self.db_user = cloud_sql.get('user', self.db_user)
