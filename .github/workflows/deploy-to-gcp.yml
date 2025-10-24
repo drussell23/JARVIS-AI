@@ -155,15 +155,7 @@ jobs:
             # Test hybrid orchestrator
             echo "🧪 Testing hybrid orchestrator..."
             cd ~/backend/backend
-            venv/bin/python -c "
-import sys
-sys.path.insert(0, '.')
-try:
-    from backend.core.hybrid_orchestrator import HybridOrchestrator
-    print('✅ Hybrid Orchestrator: OK')
-except Exception as e:
-    print(f'⚠️  Hybrid Orchestrator test: {e}')
-            "
+            venv/bin/python -c "import sys; sys.path.insert(0, '.'); exec(\"try:\\n    from backend.core.hybrid_orchestrator import HybridOrchestrator\\n    print('✅ Hybrid Orchestrator: OK')\\nexcept Exception as e:\\n    print(f'⚠️  Hybrid Orchestrator test: {e}')\")"
 
             echo "✅ Deployment successful!"
             echo "🌐 Backend: http://34.10.137.70:8010"
