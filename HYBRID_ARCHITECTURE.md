@@ -730,6 +730,839 @@ Tests run automatically in GitHub Actions:
 
 ---
 
+## 🌐 End-to-End Hybrid Architecture: Local ↔ CI/CD ↔ GCP
+
+### **Complete System Integration**
+
+JARVIS operates as a **fully integrated hybrid system** where Local Mac, GitHub Actions (CI/CD), and GCP Cloud work together seamlessly, sharing data, intelligence, and computational resources in real-time.
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    JARVIS HYBRID ECOSYSTEM                              │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌──────────────────┐      ┌──────────────────┐      ┌──────────────┐ │
+│  │   LOCAL (Mac)    │◄────►│  GitHub Actions  │◄────►│  GCP Cloud   │ │
+│  │   16GB RAM       │      │     CI/CD        │      │  32GB RAM    │ │
+│  └────────┬─────────┘      └────────┬─────────┘      └──────┬───────┘ │
+│           │                         │                       │         │
+│           │         ┌───────────────┴───────────────┐       │         │
+│           │         │  Intelligence Layer           │       │         │
+│           └────────►│  • UAE (Awareness)            │◄──────┘         │
+│                     │  • SAI (Self-Healing)         │                 │
+│                     │  • CAI (Intent Prediction)    │                 │
+│                     │  • learning_database          │                 │
+│                     └───────────────┬───────────────┘                 │
+│                                     │                                 │
+│                     ┌───────────────▼───────────────┐                 │
+│                     │  Data Synchronization Layer   │                 │
+│                     │  • SQLite (Local)             │                 │
+│                     │  • PostgreSQL (Cloud)         │                 │
+│                     │  • Real-time Sync             │                 │
+│                     └───────────────────────────────┘                 │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### **1. Local Environment (Mac - 16GB RAM)**
+
+#### **Role:** Fast, real-time operations with immediate response
+
+**Responsibilities:**
+- **Vision System:** Screen capture, OCR, UI element detection
+- **Voice System:** Wake word detection ("Hey JARVIS"), voice commands
+- **Voice Unlock:** Biometric authentication + screen unlock
+- **Display Management:** Multi-monitor, AirPlay, desktop spaces
+- **UAE (Local):** Real-time context capture (screen, apps, network)
+- **CAI (Local):** Instant intent prediction from commands
+- **SQLite Database:** Fast local queries, offline operation
+
+**Intelligence Components (Local):**
+```python
+# Local intelligence operates in real-time
+uae_local = {
+    "screen_state": "Captured every 100ms",
+    "active_apps": "Real-time monitoring",
+    "desktop_space": "Current space tracking",
+    "network_status": "Live connection state"
+}
+
+cai_local = {
+    "intent_detection": "< 50ms latency",
+    "command_routing": "Instant local/cloud decision",
+    "context_injection": "Adds UAE context to commands"
+}
+```
+
+**RAM Management (Local):**
+- **Lightweight processes:** Vision capture, voice detection, UAE context
+- **Memory budget:** ~2-4GB for core operations
+- **Heavy processes:** Automatically routed to GCP
+
+---
+
+### **2. GitHub Actions (CI/CD Pipeline)**
+
+#### **Role:** Automated testing, deployment, and synchronization bridge
+
+**Responsibilities:**
+- **Code Quality:** Pre-commit hooks, linting, security scans
+- **Testing:** Run pytest suite with Hypothesis property-based tests
+- **Database Migration:** Deploy schema changes to Cloud SQL
+- **Secrets Management:** Store GCP credentials, database passwords
+- **Auto-Deployment:** Push code to GCP Cloud Run / Compute Engine
+- **Configuration Sync:** Update `database_config.json` across environments
+
+**CI/CD Workflow:**
+```yaml
+# GitHub Actions Pipeline
+name: JARVIS Hybrid Deploy
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    - Run pytest with coverage
+    - Run Hypothesis property tests
+    - Security scan with bandit
+    - Type checking with mypy
+
+  deploy-to-gcp:
+    - Authenticate with GCP service account
+    - Deploy to Cloud Run (backend services)
+    - Update Cloud SQL schema
+    - Sync database_config.json
+    - Update environment variables
+
+  sync-intelligence:
+    - Push learning_database patterns to Cloud SQL
+    - Sync UAE/SAI/CAI models
+    - Update Cloud Storage (ChromaDB embeddings)
+```
+
+**Data Flow:**
+```
+Local Dev → Git Push → GitHub Actions → Tests Pass → Deploy to GCP
+                            ↓
+                    Update Cloud SQL Schema
+                            ↓
+                    Sync Intelligence Models
+                            ↓
+                    Deploy Backend to Cloud Run
+                            ↓
+            Local pulls latest config via Cloud SQL Proxy
+```
+
+---
+
+### **3. GCP Cloud (32GB RAM)**
+
+#### **Role:** Heavy ML/AI processing, long-term analytics, persistent storage
+
+**Responsibilities:**
+- **Chatbots:** Claude Vision AI (memory-intensive, 8-16GB)
+- **ML Models:** NLP, sentiment analysis, transformers
+- **Memory Management:** Advanced pattern recognition
+- **SAI (Cloud):** Deep self-healing analysis and optimization
+- **UAE (Cloud):** Historical context analysis and correlation
+- **CAI (Cloud):** Complex multi-step intent prediction
+- **PostgreSQL Database:** Production data, 17-table schema
+- **Cloud Storage:** ChromaDB embeddings, backups
+
+**Intelligence Components (Cloud):**
+```python
+# Cloud intelligence processes deeply
+uae_cloud = {
+    "historical_analysis": "Analyze 30+ days of context",
+    "pattern_correlation": "Cross-reference all UAE events",
+    "predictive_modeling": "Forecast user behavior"
+}
+
+sai_cloud = {
+    "deep_healing": "Analyze failure patterns across weeks",
+    "performance_tuning": "ML-based optimization",
+    "circuit_breaker_learning": "Adapt retry strategies"
+}
+
+cai_cloud = {
+    "complex_intent": "Multi-turn conversation analysis",
+    "workflow_prediction": "Predict next 5 user actions",
+    "proactive_suggestions": "ML-generated recommendations"
+}
+```
+
+**RAM Management (Cloud):**
+- **Heavy ML models:** Claude Vision, transformers (8-16GB)
+- **Large datasets:** Historical analysis, embeddings
+- **Memory budget:** Up to 32GB available
+- **Auto-scaling:** GCP can scale to 64GB+ if needed
+
+---
+
+### **4. Intelligence System Integration (UAE/SAI/CAI/learning_database)**
+
+#### **How Intelligence Systems Work Together**
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                     INTELLIGENCE COLLABORATION                         │
+├────────────────────────────────────────────────────────────────────────┤
+│                                                                        │
+│  User Command: "What am I working on?"                                │
+│       │                                                                │
+│       ▼                                                                │
+│  ┌────────────────────────────────────────────┐                       │
+│  │  Step 1: UAE Captures Context              │                       │
+│  │  ────────────────────────────────          │                       │
+│  │  • Screen: Cursor IDE open                 │                       │
+│  │  • Active File: hybrid_orchestrator.py     │                       │
+│  │  • Desktop Space: Space 2                  │                       │
+│  │  • Time: 2:30 PM (work hours)              │                       │
+│  │  • Network: Connected to home WiFi         │                       │
+│  └────────────┬───────────────────────────────┘                       │
+│               │                                                        │
+│               ▼                                                        │
+│  ┌────────────────────────────────────────────┐                       │
+│  │  Step 2: CAI Predicts Intent               │                       │
+│  │  ─────────────────────────────             │                       │
+│  │  • Intent: "status_query"                  │                       │
+│  │  • Confidence: 0.95                        │                       │
+│  │  • Required Context: [screen, time, apps]  │                       │
+│  │  • Routing: GCP (needs Claude Vision)      │                       │
+│  └────────────┬───────────────────────────────┘                       │
+│               │                                                        │
+│               ▼                                                        │
+│  ┌────────────────────────────────────────────┐                       │
+│  │  Step 3: learning_database Lookup          │                       │
+│  │  ──────────────────────────────────        │                       │
+│  │  • Query: Find similar past queries        │                       │
+│  │  • Result: User asked this 5 times before  │                       │
+│  │  • Pattern: Usually wants file + context   │                       │
+│  │  • Success Rate: 92% satisfaction          │                       │
+│  └────────────┬───────────────────────────────┘                       │
+│               │                                                        │
+│               ▼                                                        │
+│  ┌────────────────────────────────────────────┐                       │
+│  │  Step 4: Hybrid Routing Decision           │                       │
+│  │  ────────────────────────────────          │                       │
+│  │  • Complexity: HIGH (needs Claude Vision)  │                       │
+│  │  • Memory Required: ~8GB                   │                       │
+│  │  • Decision: ROUTE TO GCP                  │                       │
+│  │  • Local: Too memory-intensive             │                       │
+│  │  • Cloud: Perfect fit (32GB available)     │                       │
+│  └────────────┬───────────────────────────────┘                       │
+│               │                                                        │
+│               ▼                                                        │
+│  ┌────────────────────────────────────────────┐                       │
+│  │  Step 5: GCP Processes with Intelligence   │                       │
+│  │  ─────────────────────────────────────     │                       │
+│  │  • Claude Vision analyzes screen           │                       │
+│  │  • UAE context added to prompt             │                       │
+│  │  • learning_db patterns enhance response   │                       │
+│  │  • Result: "You're coding hybrid_orchestr- │                       │
+│  │    ator.py in Cursor IDE, implementing     │                       │
+│  │    the intelligence routing system."       │                       │
+│  └────────────┬───────────────────────────────┘                       │
+│               │                                                        │
+│               ▼                                                        │
+│  ┌────────────────────────────────────────────┐                       │
+│  │  Step 6: SAI Monitors & Learns             │                       │
+│  │  ───────────────────────────────           │                       │
+│  │  • Performance: 2.3s response time         │                       │
+│  │  • Success: User satisfied (inferred)      │                       │
+│  │  • Learning: Store pattern in learning_db  │                       │
+│  │  • Optimization: Cache result for 30min    │                       │
+│  └────────────────────────────────────────────┘                       │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+#### **Intelligence System Roles**
+
+**UAE (Unified Awareness Engine):**
+- **Local:** Captures real-time context (screen, apps, network, desktop spaces)
+- **Cloud:** Analyzes historical patterns, correlates events across days/weeks
+- **Synced via:** Cloud SQL (context logs stored in `behavioral_patterns` table)
+- **Update Frequency:** Local → Cloud every 5 minutes, Cloud → Local on-demand
+
+**SAI (Self-Aware Intelligence):**
+- **Local:** Monitors local process health, restarts failed services
+- **Cloud:** Deep analysis of failure patterns, ML-based optimization
+- **Synced via:** Cloud SQL (`learning_metrics` table)
+- **Self-Healing Example:**
+  ```python
+  # SAI detects Cloud SQL connection failure
+  error = "Connection refused to 34.46.152.27:5432"
+
+  # SAI analyzes
+  sai.analyze(error)
+  # → Diagnosis: "Cloud SQL Proxy not running"
+
+  # SAI heals
+  sai.heal()
+  # → Action: Restart proxy via ~/start_cloud_sql_proxy.sh
+
+  # SAI learns
+  sai.learn()
+  # → Store in learning_db: "Always check proxy before Cloud SQL"
+  ```
+
+**CAI (Context Awareness Intelligence):**
+- **Local:** Instant intent prediction (<50ms) from voice/text commands
+- **Cloud:** Complex multi-turn intent analysis, workflow prediction
+- **Synced via:** Cloud SQL (`user_workflows` table)
+- **Intent Routing:**
+  ```python
+  # CAI predicts intent and routes accordingly
+  command = "unlock my screen"
+  intent = cai.predict(command)
+
+  if intent.complexity == "LOW" and intent.latency_sensitive:
+      route = "LOCAL"  # Fast, simple operation
+  elif intent.memory_required > 8_000_000_000:  # > 8GB
+      route = "GCP"    # Heavy ML processing
+  else:
+      route = "LOCAL"  # Default to local for speed
+  ```
+
+**learning_database (Persistent Memory):**
+- **Local (SQLite):** Fast queries, recent history (last 7 days)
+- **Cloud (PostgreSQL):** Full history, ML analytics, 17 tables
+- **Synced via:** Cloud SQL Proxy (real-time replication)
+- **Data Shared:**
+  - Goals, patterns, actions, workflows
+  - Success rates, user preferences
+  - Context embeddings, temporal patterns
+  - All 17 tables synchronized
+
+---
+
+### **5. Real-Time RAM-Based Routing**
+
+#### **Intelligent Process Distribution**
+
+JARVIS continuously monitors RAM usage on both Local and GCP, routing processes based on **real-time resource availability**.
+
+**Routing Algorithm:**
+```python
+class HybridRAMRouter:
+    def __init__(self):
+        self.local_ram_total = 16_000_000_000  # 16GB
+        self.gcp_ram_total = 32_000_000_000    # 32GB
+
+    async def route_process(self, process_name: str, estimated_ram: int):
+        """Route process based on RAM requirements and availability"""
+
+        # Get real-time RAM usage
+        local_ram_free = await self.get_local_ram_free()
+        gcp_ram_free = await self.get_gcp_ram_free()
+
+        # Check if process is latency-sensitive
+        latency_sensitive = process_name in [
+            "voice_unlock", "wake_word", "vision_capture", "uae_context"
+        ]
+
+        # Check if process is memory-intensive
+        memory_intensive = estimated_ram > 2_000_000_000  # > 2GB
+
+        # Routing decision
+        if latency_sensitive and local_ram_free > estimated_ram:
+            return "LOCAL"  # Fast response required
+
+        elif memory_intensive and gcp_ram_free > estimated_ram:
+            return "GCP"    # Heavy processing
+
+        elif local_ram_free > estimated_ram:
+            return "LOCAL"  # Default to local if possible
+
+        else:
+            return "GCP"    # Fallback to cloud
+```
+
+**Process Classification:**
+
+| Process | Estimated RAM | Default Route | Reason |
+|---------|--------------|---------------|---------|
+| **Voice Wake Word** | 100MB | LOCAL | Latency-sensitive, always local |
+| **Voice Unlock** | 200MB | LOCAL | Security + speed, must be local |
+| **Vision Capture** | 500MB | LOCAL | Real-time screen monitoring |
+| **UAE Context** | 300MB | LOCAL | Real-time awareness |
+| **CAI Intent (simple)** | 200MB | LOCAL | Fast intent prediction |
+| **Claude Vision AI** | 8-16GB | GCP | Memory-intensive, requires 32GB |
+| **ML Transformers** | 4-8GB | GCP | Heavy NLP models |
+| **Deep Learning** | 10-20GB | GCP | Training/inference |
+| **SAI Analysis (deep)** | 2-4GB | GCP | Historical pattern analysis |
+| **UAE Pattern Mining** | 3-6GB | GCP | Long-term correlation |
+
+**Real-Time Monitoring:**
+```python
+# Monitor RAM usage every 10 seconds
+async def monitor_resources():
+    while True:
+        local_usage = psutil.virtual_memory()
+        gcp_usage = await get_gcp_metrics()
+
+        status = {
+            "local": {
+                "total_gb": 16,
+                "used_gb": local_usage.used / 1e9,
+                "free_gb": local_usage.available / 1e9,
+                "percent": local_usage.percent
+            },
+            "gcp": {
+                "total_gb": 32,
+                "used_gb": gcp_usage["memory_used"] / 1e9,
+                "free_gb": gcp_usage["memory_free"] / 1e9,
+                "percent": gcp_usage["memory_percent"]
+            }
+        }
+
+        # Store in learning_database for SAI optimization
+        await learning_db.store_metric("ram_usage", status)
+
+        # SAI analyzes and optimizes routing
+        await sai.optimize_routing(status)
+
+        await asyncio.sleep(10)
+```
+
+---
+
+### **6. Data Synchronization: Local ↔ Cloud**
+
+#### **Bidirectional Real-Time Sync**
+
+**Database Synchronization:**
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    DATA SYNC ARCHITECTURE                        │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  LOCAL (SQLite)                     CLOUD (PostgreSQL)           │
+│  ~/.jarvis/learning/                jarvis-473803:us-central1    │
+│  jarvis_learning.db                 jarvis-learning-db           │
+│         │                                    │                   │
+│         │  ┌─────────────────────────────┐   │                   │
+│         └─►│   Cloud SQL Proxy           │◄──┘                   │
+│            │   localhost:5432            │                       │
+│            │   • Encrypted tunnel        │                       │
+│            │   • Real-time replication   │                       │
+│            │   • Automatic failover      │                       │
+│            └──────────────┬──────────────┘                       │
+│                           │                                      │
+│                           ▼                                      │
+│            ┌──────────────────────────────┐                      │
+│            │  Sync Controller             │                      │
+│            │  ─────────────────           │                      │
+│            │  • Every 5 minutes           │                      │
+│            │  • On-demand (user action)   │                      │
+│            │  • Conflict resolution       │                      │
+│            │  • Delta sync (changes only) │                      │
+│            └──────────────────────────────┘                      │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**What Gets Synced:**
+
+| Data Type | Local → Cloud | Cloud → Local | Sync Frequency |
+|-----------|---------------|---------------|----------------|
+| **Goals** | ✅ Yes | ✅ Yes | Every 5 min |
+| **Patterns** | ✅ Yes | ✅ Yes | Every 5 min |
+| **Actions** | ✅ Yes | ✅ Yes | Real-time |
+| **User Preferences** | ✅ Yes | ✅ Yes | Immediate |
+| **Context Embeddings** | ✅ Yes | ✅ Yes | Every 10 min |
+| **Learning Metrics** | ✅ Yes | ✅ Yes | Every 5 min |
+| **SAI Optimizations** | ❌ No | ✅ Yes | On-demand |
+| **UAE Patterns** | ✅ Yes | ✅ Yes | Every 5 min |
+| **CAI Workflows** | ✅ Yes | ✅ Yes | Every 5 min |
+
+**Sync Implementation:**
+```python
+class HybridDatabaseSync:
+    def __init__(self):
+        self.local_db = SQLiteAdapter()
+        self.cloud_db = CloudSQLAdapter()
+
+    async def sync_bidirectional(self):
+        """Sync data between local and cloud"""
+
+        # 1. Get last sync timestamp
+        last_sync = await self.get_last_sync_time()
+
+        # 2. Get changes from local (since last sync)
+        local_changes = await self.local_db.get_changes_since(last_sync)
+
+        # 3. Get changes from cloud (since last sync)
+        cloud_changes = await self.cloud_db.get_changes_since(last_sync)
+
+        # 4. Resolve conflicts (cloud wins by default)
+        resolved = self.resolve_conflicts(local_changes, cloud_changes)
+
+        # 5. Push local changes to cloud
+        await self.cloud_db.apply_changes(resolved["local_to_cloud"])
+
+        # 6. Pull cloud changes to local
+        await self.local_db.apply_changes(resolved["cloud_to_local"])
+
+        # 7. Update sync timestamp
+        await self.update_last_sync_time(datetime.now())
+```
+
+**Conflict Resolution:**
+```python
+def resolve_conflicts(local_changes, cloud_changes):
+    """Cloud changes win in conflicts"""
+
+    resolved = {
+        "local_to_cloud": [],
+        "cloud_to_local": []
+    }
+
+    # Find conflicts (same record modified on both sides)
+    conflicts = find_conflicts(local_changes, cloud_changes)
+
+    for conflict in conflicts:
+        # Cloud wins (GCP has more compute for ML decisions)
+        resolved["cloud_to_local"].append(conflict.cloud_version)
+
+    # Add non-conflicting changes
+    resolved["local_to_cloud"] += [c for c in local_changes if c not in conflicts]
+    resolved["cloud_to_local"] += [c for c in cloud_changes if c not in conflicts]
+
+    return resolved
+```
+
+---
+
+### **7. CI/CD Pipeline Integration**
+
+#### **Automated Deployment & Sync**
+
+**GitHub Actions Workflow:**
+```yaml
+name: JARVIS Hybrid Deploy & Sync
+
+on:
+  push:
+    branches: [main, multi-monitor-support]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # Step 1: Test everything
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Run pytest tests
+        run: |
+          cd backend
+          pytest tests/ --cov=. -n auto -v
+
+      - name: Run Hypothesis property tests
+        run: |
+          pytest tests/test_hypothesis_examples.py -v
+
+      - name: Security scan
+        run: |
+          bandit -r backend/ -c pyproject.toml
+
+  # Step 2: Deploy to GCP
+  deploy-gcp:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy jarvis-backend \
+            --source . \
+            --region us-central1 \
+            --memory 32Gi \
+            --set-env-vars JARVIS_DB_TYPE=cloudsql
+
+      - name: Update Cloud SQL schema
+        run: |
+          # Apply migrations to Cloud SQL
+          PGPASSWORD=${{ secrets.CLOUD_SQL_PASSWORD }} \
+          psql -h 127.0.0.1 -p 5432 -U jarvis -d jarvis_learning \
+            -f backend/intelligence/schema_migrations.sql
+
+  # Step 3: Sync intelligence models
+  sync-intelligence:
+    needs: deploy-gcp
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync UAE/SAI/CAI models
+        run: |
+          # Upload latest intelligence models to Cloud Storage
+          gsutil cp -r backend/core/models/ \
+            gs://jarvis-473803-jarvis-models/
+
+      - name: Sync database config
+        run: |
+          # Update database_config.json in Cloud Storage
+          echo '${{ secrets.DATABASE_CONFIG }}' > database_config.json
+          gsutil cp database_config.json \
+            gs://jarvis-473803-jarvis-config/
+
+      - name: Notify local to pull latest
+        run: |
+          # Trigger local sync via webhook or manual pull
+          echo "Deploy complete. Run: git pull && source ~/.zshrc"
+```
+
+**Environment Consistency:**
+```
+┌────────────────────────────────────────────────────────────────┐
+│                 ENVIRONMENT SYNC FLOW                          │
+├────────────────────────────────────────────────────────────────┤
+│                                                                │
+│  Developer writes code locally                                 │
+│         │                                                      │
+│         ▼                                                      │
+│  git commit (pre-commit hooks run: black, isort, flake8)      │
+│         │                                                      │
+│         ▼                                                      │
+│  git push to GitHub                                            │
+│         │                                                      │
+│         ▼                                                      │
+│  GitHub Actions CI/CD Pipeline                                 │
+│         │                                                      │
+│         ├──► Run tests (pytest + Hypothesis)                   │
+│         ├──► Security scan (bandit)                            │
+│         ├──► Deploy to GCP Cloud Run (32GB RAM)                │
+│         ├──► Update Cloud SQL schema                           │
+│         ├──► Sync intelligence models to Cloud Storage         │
+│         └──► Update database_config.json                       │
+│                     │                                          │
+│                     ▼                                          │
+│  GCP Cloud now has latest code + models                        │
+│         │                                                      │
+│         ▼                                                      │
+│  Local pulls latest:                                           │
+│    • git pull                                                  │
+│    • Cloud SQL Proxy auto-syncs database                       │
+│    • Intelligence models pulled from Cloud Storage             │
+│    • database_config.json updated                              │
+│         │                                                      │
+│         ▼                                                      │
+│  Local, GitHub Actions, and GCP all in sync! ✅                │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### **8. Real-Time Information Sharing**
+
+#### **How All Components Stay Updated**
+
+**Information Flow:**
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                   REAL-TIME INFO SHARING                             │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  Event: User performs action (e.g., "unlock screen")                │
+│         │                                                            │
+│         ▼                                                            │
+│  ┌────────────────────────────────────────────┐                     │
+│  │  LOCAL captures event                      │                     │
+│  │  • UAE logs context                        │                     │
+│  │  • CAI logs intent                         │                     │
+│  │  • Action stored in SQLite                 │                     │
+│  └────────────┬───────────────────────────────┘                     │
+│               │                                                      │
+│               │ (within 5 seconds)                                   │
+│               ▼                                                      │
+│  ┌────────────────────────────────────────────┐                     │
+│  │  SYNC to Cloud SQL                         │                     │
+│  │  • Action record inserted                  │                     │
+│  │  • UAE context stored                      │                     │
+│  │  • CAI intent pattern saved                │                     │
+│  └────────────┬───────────────────────────────┘                     │
+│               │                                                      │
+│               │ (immediately)                                        │
+│               ▼                                                      │
+│  ┌────────────────────────────────────────────┐                     │
+│  │  SAI analyzes on GCP                       │                     │
+│  │  • Pattern detected: "unlock_after_work"   │                     │
+│  │  • Optimization: Pre-load voice model      │                     │
+│  │  • Learning stored in learning_metrics     │                     │
+│  └────────────┬───────────────────────────────┘                     │
+│               │                                                      │
+│               │ (next sync, ~5 min)                                  │
+│               ▼                                                      │
+│  ┌────────────────────────────────────────────┐                     │
+│  │  LOCAL pulls SAI optimization              │                     │
+│  │  • Pre-loads voice model at 5 PM           │                     │
+│  │  • Unlock now 50% faster                   │                     │
+│  │  • User experiences improvement            │                     │
+│  └────────────────────────────────────────────┘                     │
+│                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+**Latency Breakdown:**
+
+| Update Type | Latency | Method |
+|-------------|---------|--------|
+| **Local → Local** | <1ms | Direct memory access |
+| **Local → Cloud** | 5 sec - 5 min | Cloud SQL sync |
+| **Cloud → Local** | 5 sec - 5 min | Cloud SQL sync |
+| **Critical Updates** | <1 sec | WebSocket push |
+| **CI/CD Deploy** | 5-10 min | GitHub Actions |
+
+**WebSocket Push (Critical Updates):**
+```python
+# For critical updates that can't wait 5 minutes
+class CriticalUpdatePusher:
+    async def push_to_local(self, update_type: str, data: dict):
+        """Push critical updates to local via WebSocket"""
+
+        if update_type == "SAI_OPTIMIZATION":
+            # SAI found critical optimization
+            await websocket.send_to_local({
+                "type": "apply_optimization",
+                "optimization": data,
+                "priority": "HIGH"
+            })
+
+        elif update_type == "SECURITY_ALERT":
+            # Security issue detected
+            await websocket.send_to_local({
+                "type": "security_alert",
+                "alert": data,
+                "priority": "CRITICAL"
+            })
+```
+
+---
+
+### **9. Complete System Example**
+
+#### **End-to-End Flow: "Hey JARVIS, unlock my screen"**
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      COMPLETE HYBRID FLOW                               │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  [1] LOCAL: Wake word detected "Hey JARVIS"                            │
+│      • Voice system (local, 100MB RAM)                                 │
+│      • Latency: <100ms                                                 │
+│      • UAE: Captures context (screen locked, 5:30 PM, home WiFi)       │
+│                                                                         │
+│  [2] LOCAL: Voice command "unlock my screen"                           │
+│      • Speech-to-text (local, 200MB RAM)                               │
+│      • CAI predicts intent: "screen_unlock" (confidence: 0.98)         │
+│      • Latency: <50ms                                                  │
+│                                                                         │
+│  [3] LOCAL: Check learning_database                                    │
+│      • Query SQLite: "SELECT * FROM user_workflows WHERE intent=?"     │
+│      • Result: User unlocks screen ~10 times/day at this time          │
+│      • Latency: <5ms                                                   │
+│                                                                         │
+│  [4] LOCAL: Routing decision                                           │
+│      • Process: voice_unlock                                           │
+│      • RAM required: 200MB                                             │
+│      • Latency-sensitive: YES                                          │
+│      • Decision: EXECUTE LOCALLY                                       │
+│                                                                         │
+│  [5] LOCAL: Execute unlock                                             │
+│      • Voice biometric verification                                    │
+│      • Retrieve password from Keychain                                 │
+│      • Type password via native bridge                                 │
+│      • Screen unlocked! ✅                                             │
+│      • Total time: <500ms                                              │
+│                                                                         │
+│  [6] LOCAL: UAE logs the event                                         │
+│      • Context: {time: "5:30 PM", location: "home", success: true}     │
+│      • Stored in SQLite                                                │
+│                                                                         │
+│  [7] SYNC: Local → Cloud (within 5 sec)                                │
+│      • Event synced to Cloud SQL PostgreSQL                            │
+│      • Cloud SQL Proxy handles encryption                              │
+│                                                                         │
+│  [8] CLOUD: SAI analyzes pattern (GCP, 32GB RAM)                       │
+│      • Pattern detected: "User unlocks at 5:30 PM every day"           │
+│      • Optimization: Pre-load voice model at 5:25 PM                   │
+│      • Learning: Store in learning_metrics table                       │
+│                                                                         │
+│  [9] SYNC: Cloud → Local (next sync, ~2 min)                           │
+│      • SAI optimization synced to local                                │
+│      • Local will now pre-load voice model at 5:25 PM                  │
+│                                                                         │
+│  [10] RESULT: Next day at 5:25 PM                                      │
+│      • LOCAL: Pre-loads voice model (SAI optimization applied)         │
+│      • User says "unlock my screen"                                    │
+│      • Unlock now 50% faster (<250ms) due to pre-loaded model! 🚀     │
+│                                                                         │
+│  [11] CONTINUOUS IMPROVEMENT                                            │
+│      • SAI continues learning across days                              │
+│      • UAE captures more context patterns                              │
+│      • CAI improves intent prediction accuracy                         │
+│      • learning_database grows smarter                                 │
+│      • All changes synced: Local ↔ Cloud                               │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### **10. Architecture Benefits**
+
+#### **Why This Hybrid Approach is Powerful**
+
+✅ **Real-Time Performance**
+- Local handles latency-sensitive operations (<100ms)
+- Cloud handles heavy processing without blocking local
+- Intelligent routing ensures optimal execution
+
+✅ **Infinite Scalability**
+- Local: 16GB RAM for everyday tasks
+- Cloud: 32GB RAM, scalable to 64GB+ on-demand
+- GCP auto-scales based on load
+
+✅ **Continuous Learning**
+- Every action stored and analyzed
+- SAI optimizes routing over time
+- CAI predicts intents more accurately
+- UAE understands context better
+
+✅ **Data Persistence**
+- Local SQLite: Fast, offline-capable
+- Cloud PostgreSQL: Persistent, multi-device sync
+- Automatic failover if one fails
+
+✅ **Always Up-to-Date**
+- CI/CD deploys code automatically
+- Database syncs every 5 minutes
+- Intelligence models updated seamlessly
+- WebSocket for critical instant updates
+
+✅ **Self-Healing**
+- SAI detects failures locally and in cloud
+- Automatic recovery and retry
+- Learns from errors to prevent future failures
+- Circuit breakers prevent cascading failures
+
+✅ **Cost-Effective**
+- Local handles 80% of operations (free)
+- Cloud handles 20% heavy processing (minimal cost)
+- Pay only for what you use on GCP
+
+---
+
 ## 🎉 Result
 
 **You now have a JARVIS that:**
