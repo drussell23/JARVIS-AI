@@ -1671,6 +1671,265 @@ This fix accounts for macOS's memory management where high percentage usage is n
 
 **Total Code Added:** ~2,000+ lines of advanced proactive intelligence implementation
 
+---
+
+## 🏗️ Infrastructure & DevOps (2025-10-24)
+
+### Hybrid Cloud Architecture
+
+**JARVIS now operates seamlessly across local and cloud environments:**
+
+#### **Component Distribution**
+- **Local Mac (16GB RAM):** Vision, Voice, Voice Unlock, Wake Word, Display Monitor
+- **GCP Cloud (32GB RAM):** Claude Vision AI, ML Models, Memory Management, Heavy Processing
+- **Intelligent Routing:** Automatic capability-based routing with UAE/SAI/CAI integration
+
+See [HYBRID_ARCHITECTURE.md](HYBRID_ARCHITECTURE.md) for complete details.
+
+### Database Infrastructure
+
+#### **Dual Database System**
+
+**Local SQLite:**
+- **Purpose:** Development, offline operation, fast queries (<1ms)
+- **Location:** `~/.jarvis/learning/jarvis_learning.db`
+- **Features:** Zero-latency, no internet required, perfect for development
+
+**Cloud PostgreSQL (GCP Cloud SQL):**
+- **Purpose:** Production, multi-device sync, advanced analytics
+- **Instance:** `jarvis-473803:us-central1:jarvis-learning-db`
+- **Specs:** PostgreSQL 15.14, db-f1-micro, 10GB SSD, automated backups
+- **Features:** Multi-device synchronization, team collaboration, high availability
+
+#### **Seamless Switching**
+```bash
+# Switch between databases via environment variable
+export JARVIS_DB_TYPE=cloudsql  # Use Cloud SQL
+export JARVIS_DB_TYPE=sqlite    # Use local SQLite
+```
+
+#### **Database Schema (17 Tables)**
+- **Core:** goals, patterns, actions, goal_action_mappings, learning_metrics
+- **Context:** behavioral_patterns, app_usage_patterns, display_patterns, space_transitions, workspace_usage
+- **Intelligence:** context_embeddings, temporal_patterns, user_preferences, user_workflows, proactive_suggestions, pattern_similarity_cache
+
+#### **Cloud SQL Proxy**
+```bash
+# Start secure local proxy
+~/start_cloud_sql_proxy.sh
+
+# Connects to Cloud SQL via encrypted tunnel
+# Runs on localhost:5432
+# No public IP exposure required
+```
+
+**Features:**
+- ✅ Automatic service account authentication
+- ✅ TLS-encrypted connections
+- ✅ Connection pooling
+- ✅ Automatic reconnection
+- ✅ Zero-trust security model
+
+### Testing Infrastructure
+
+#### **Enterprise-Grade Testing Framework**
+
+**pytest Plugins Installed:**
+- `pytest-xdist` - Parallel test execution (8x faster on 8-core CPU)
+- `pytest-mock` - Advanced mocking utilities
+- `pytest-timeout` - Prevent hanging tests
+- `pytest-cov` - Code coverage reporting (HTML, XML, terminal)
+- `pytest-sugar` - Beautiful test output with progress bars
+- `pytest-clarity` - Better assertion diffs
+
+**Property-Based Testing with Hypothesis:**
+- Automatic test case generation
+- Finds edge cases humans miss
+- Shrinks failing examples to minimal cases
+- Stateful testing for complex systems
+- 13 example tests demonstrating best practices
+
+**Code Quality Tools:**
+- `black` - Automatic code formatting (PEP 8)
+- `isort` - Import sorting
+- `flake8` - Linting
+- `bandit` - Security vulnerability scanning
+- `autoflake` - Remove unused imports
+
+#### **Pre-Commit Hooks**
+Automatic code quality checks before every commit:
+
+```bash
+# Hooks run automatically
+git commit -m "Your message"
+
+# Manual execution
+pre-commit run --all-files
+```
+
+**Active Hooks:**
+- ✅ black (code formatting)
+- ✅ isort (import sorting)
+- ✅ flake8 (linting)
+- ✅ bandit (security)
+- ✅ YAML/JSON/TOML validation
+- ✅ File checks (EOF, trailing whitespace, large files, private keys)
+
+#### **Test Configuration**
+
+**Full Testing (`pytest.ini`):**
+```bash
+cd backend && pytest
+# Runs in parallel with coverage
+```
+
+**Quick Testing (`pytest-quick.ini`):**
+```bash
+cd backend && pytest -c pytest-quick.ini
+# Fast feedback without coverage
+```
+
+**Test Organization:**
+- `backend/tests/test_hypothesis_examples.py` - 13 property-based test examples
+- `backend/tests/TESTING_GUIDE.md` - Complete testing documentation
+- `backend/tests/run_quick_tests.sh` - Quick test script
+- `backend/tests/unit/` - Fast, isolated tests
+- `backend/tests/integration/` - Multi-component tests
+
+#### **Property-Based Testing Examples**
+
+```python
+from hypothesis import given, strategies as st
+
+# Automatic generation of test cases
+@given(st.text())
+def test_string_round_trip(text):
+    encoded = text.encode('utf-8')
+    decoded = encoded.decode('utf-8')
+    assert decoded == text
+
+# Goal pattern validation
+@given(
+    st.text(min_size=1, max_size=500),
+    st.floats(min_value=0.0, max_value=1.0)
+)
+def test_goal_pattern_structure(goal_text, confidence):
+    pattern = create_goal_pattern(goal_text, confidence)
+    assert 0.0 <= pattern['confidence'] <= 1.0
+
+# Stateful testing
+class ContextStoreStateMachine(RuleBasedStateMachine):
+    @rule(key=st.text(), value=st.integers())
+    def add_item(self, key, value):
+        self.store[key] = value
+
+    @invariant()
+    def total_matches_length(self):
+        assert self.total_items == len(self.store)
+```
+
+### CI/CD Pipeline
+
+**GitHub Actions Integration:**
+- Automatic testing on push/PR
+- Parallel test execution
+- Coverage reporting
+- Automated deployment to GCP
+- Health checks with rollback
+
+**Workflows:**
+- `.github/workflows/test.yml` - Run tests and quality checks
+- `.github/workflows/deploy-to-gcp.yml` - Deploy to GCP VM
+- `.github/workflows/sync-databases.yml` - Database management
+
+### Security Enhancements
+
+**Updated `.gitignore` Protection:**
+- ✅ GCP service account keys (`**/*-key.json`)
+- ✅ Database configs (`**/database_config.json`)
+- ✅ Cloud SQL proxy logs
+- ✅ Testing artifacts (`.hypothesis/`, `.pytest_cache/`)
+- ✅ Pre-commit caches (`.mypy_cache/`, `.ruff_cache/`)
+
+**Protected Secrets:**
+- Database passwords (encrypted in GitHub Secrets)
+- Service account credentials
+- API keys
+- Connection strings
+
+### Infrastructure Files
+
+**New Configuration Files:**
+- `backend/pytest.ini` - Full pytest configuration
+- `backend/pytest-quick.ini` - Quick test configuration
+- `.pre-commit-config.yaml` - Pre-commit hooks
+- `pyproject.toml` - Tool configurations
+- `~/start_cloud_sql_proxy.sh` - Cloud SQL proxy launcher
+
+**New Test Files:**
+- `backend/tests/test_hypothesis_examples.py` - 13 property-based tests
+- `backend/tests/TESTING_GUIDE.md` - Comprehensive testing guide
+- `backend/tests/run_quick_tests.sh` - Quick test script
+
+**Database Adapter:**
+- `backend/intelligence/cloud_database_adapter.py` - Seamless SQLite/PostgreSQL switching
+- Unified API for both databases
+- Automatic connection pooling
+- Query translation (SQLite `?` → PostgreSQL `$1`)
+
+### Key Achievements
+
+**Infrastructure:**
+- ✅ Hybrid local/cloud architecture
+- ✅ Dual database system (SQLite + PostgreSQL)
+- ✅ Secure Cloud SQL Proxy connection
+- ✅ Automatic database failover
+- ✅ Zero-configuration switching
+
+**Testing:**
+- ✅ Property-based testing with Hypothesis
+- ✅ Parallel test execution
+- ✅ Comprehensive test coverage
+- ✅ Pre-commit hooks for code quality
+- ✅ CI/CD integration
+
+**DevOps:**
+- ✅ GitHub Actions automation
+- ✅ Automated deployment to GCP
+- ✅ Health checks with rollback
+- ✅ Secret management
+- ✅ Environment variable configuration
+
+**Total Infrastructure Code:** ~3,000+ lines of production-ready DevOps implementation
+
+---
+
+## 📚 Documentation
+
+**Architecture Documentation:**
+- [HYBRID_ARCHITECTURE.md](HYBRID_ARCHITECTURE.md) - Complete hybrid architecture guide
+  - Intelligence systems (UAE/SAI/CAI)
+  - Component distribution
+  - Routing examples
+  - Database infrastructure
+  - Testing framework
+
+**Testing Documentation:**
+- [backend/tests/TESTING_GUIDE.md](backend/tests/TESTING_GUIDE.md) - Complete testing guide
+  - Test types and strategies
+  - Property-based testing
+  - Pre-commit hooks
+  - CI/CD integration
+  - Best practices
+
+**Configuration Files:**
+- `backend/core/hybrid_config.yaml` - Hybrid system configuration
+- `backend/pytest.ini` - pytest configuration
+- `.pre-commit-config.yaml` - Pre-commit hook configuration
+- `pyproject.toml` - Tool configurations
+
+---
+
 ## License
 
 MIT License - see LICENSE file for details
