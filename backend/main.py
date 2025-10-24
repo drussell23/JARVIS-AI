@@ -2802,8 +2802,8 @@ async def audio_speak_get(text: str):
 
 async def ensure_uae_loaded(app_state):
     """
-    Lazy-load UAE/SAI/Learning DB on first use.
-    This saves 8-10GB of RAM at startup.
+    Lazy-load UAE/SAI/Learning DB on first use with Memory Quantizer integration.
+    This saves 8-10GB of RAM at startup and prevents OOM kills.
     """
     # Already loaded?
     if app_state.uae_engine is not None:
@@ -2819,6 +2819,63 @@ async def ensure_uae_loaded(app_state):
                 return app_state.uae_engine
         logger.warning("[LAZY-UAE] Timeout waiting for UAE initialization")
         return None
+
+    # ============================================================
+    # MEMORY QUANTIZER INTEGRATION - Intelligent Load Prevention
+    # ============================================================
+    try:
+        from core.memory_quantizer import MemoryQuantizer, MemoryTier
+
+        # Get memory quantizer instance
+        quantizer = MemoryQuantizer()
+        metrics = quantizer.get_current_metrics()  # Synchronous call
+
+        # Log current memory state
+        logger.info(f"[LAZY-UAE] Memory check before loading:")
+        logger.info(f"[LAZY-UAE]   • Tier: {metrics.tier.value}")
+        logger.info(f"[LAZY-UAE]   • Pressure: {metrics.pressure.value}")
+        logger.info(f"[LAZY-UAE]   • Available: {metrics.system_memory_available_gb:.2f} GB")
+        logger.info(f"[LAZY-UAE]   • Usage: {metrics.system_memory_percent:.1f}%")
+
+        # Estimated UAE/SAI/Learning DB memory requirement
+        REQUIRED_MEMORY_GB = 10.0
+
+        # Check if we have enough memory available
+        if metrics.system_memory_available_gb < REQUIRED_MEMORY_GB:
+            logger.error(f"[LAZY-UAE] ❌ Insufficient memory for intelligence components")
+            logger.error(f"[LAZY-UAE]    Required: {REQUIRED_MEMORY_GB:.1f} GB")
+            logger.error(f"[LAZY-UAE]    Available: {metrics.system_memory_available_gb:.2f} GB")
+            logger.error(f"[LAZY-UAE]    Deficit: {REQUIRED_MEMORY_GB - metrics.system_memory_available_gb:.2f} GB")
+
+            # Provide fallback recommendation
+            logger.info(f"[LAZY-UAE] 💡 Falling back to basic multi-space detection (Yabai only)")
+            return None
+
+        # Check memory tier - refuse to load in dangerous tiers
+        dangerous_tiers = {MemoryTier.CRITICAL, MemoryTier.EMERGENCY, MemoryTier.CONSTRAINED}
+        if metrics.tier in dangerous_tiers:
+            logger.warning(f"[LAZY-UAE] ⚠️  Memory tier is {metrics.tier.value} - postponing intelligence loading")
+            logger.warning(f"[LAZY-UAE]    Current tier: {metrics.tier.value}")
+            logger.warning(f"[LAZY-UAE]    Required tier: ELEVATED or better")
+            logger.info(f"[LAZY-UAE] 💡 Using lightweight mode until memory pressure reduces")
+            return None
+
+        # Predictive check - will loading cause OOM?
+        predicted_usage = metrics.system_memory_percent + (REQUIRED_MEMORY_GB / metrics.system_memory_gb * 100)
+        if predicted_usage > 90:
+            logger.warning(f"[LAZY-UAE] ⚠️  Loading would push usage to {predicted_usage:.1f}% (OOM risk)")
+            logger.warning(f"[LAZY-UAE]    Current: {metrics.system_memory_percent:.1f}%")
+            logger.warning(f"[LAZY-UAE]    After load: ~{predicted_usage:.1f}%")
+            logger.warning(f"[LAZY-UAE]    Safe threshold: <85%")
+            return None
+
+        # Memory check PASSED - safe to load
+        logger.info(f"[LAZY-UAE] ✅ Memory check PASSED - safe to load intelligence")
+        logger.info(f"[LAZY-UAE]    Predicted usage after load: {predicted_usage:.1f}%")
+
+    except Exception as e:
+        logger.warning(f"[LAZY-UAE] Memory Quantizer check failed: {e}")
+        logger.warning(f"[LAZY-UAE] Proceeding with loading (no safety check)")
 
     # Start initialization
     app_state.uae_initializing = True
