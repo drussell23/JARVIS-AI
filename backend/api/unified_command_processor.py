@@ -207,9 +207,9 @@ class UnifiedCommandProcessor:
         self.query_complexity_manager = None  # Query complexity classification and routing
         self.medium_complexity_handler = None  # Medium complexity (Level 2) query execution
         self.display_reference_handler = None  # Display voice command resolution
-        self._initialize_resolvers()
+        self._resolvers_initialized = False
 
-    def _initialize_resolvers(self):
+    async def _initialize_resolvers(self):
         """Initialize both resolver systems for comprehensive query understanding"""
 
         # Step 1: Initialize MultiSpaceContextGraph (required for implicit resolver)
@@ -682,6 +682,8 @@ class UnifiedCommandProcessor:
         else:
             logger.warning("[UNIFIED] ⚠️  No resolvers available - queries will use basic processing")
 
+        self._resolvers_initialized = True
+
     def _load_learned_data(self):
         """Load previously learned patterns and statistics"""
         try:
@@ -733,6 +735,11 @@ class UnifiedCommandProcessor:
     ) -> Dict[str, Any]:
         """Process any command through unified pipeline with FULL context awareness"""
         logger.info(f"[UNIFIED] Processing with context awareness: '{command_text}'")
+
+        # Ensure resolvers are initialized (lazy init on first use)
+        if not self._resolvers_initialized:
+            logger.info("[UNIFIED] Lazy-initializing resolvers on first command...")
+            await self._initialize_resolvers()
 
         # Track command frequency
         self.command_stats[command_text.lower()] += 1
@@ -2531,6 +2538,10 @@ class UnifiedCommandProcessor:
                 from api.voice_unlock_handler import get_voice_unlock_handler
 
                 return get_voice_unlock_handler()
+            elif command_type == CommandType.QUERY:
+                from api.query_handler import handle_query
+
+                return handle_query
             # Add other handlers as needed
 
         except ImportError as e:

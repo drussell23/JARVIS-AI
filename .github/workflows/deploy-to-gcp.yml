@@ -1,0 +1,96 @@
+name: Deploy JARVIS to GCP
+
+on:
+  push:
+    branches:
+      - main
+      - multi-monitor-support  # Also deploy from your current branch
+    paths:
+      - 'backend/**'  # Only deploy when backend code changes
+      - '.github/workflows/deploy-to-gcp.yml'
+
+jobs:
+  deploy:
+    name: Deploy to GCP VM
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Deploy to VM
+        run: |
+          # Create deployment script
+          cat > /tmp/deploy.sh <<'EOF'
+          #!/bin/bash
+          set -e
+
+          echo "🚀 Starting JARVIS deployment..."
+
+          # Navigate to backend directory
+          cd ~/backend
+
+          # Stop running backend
+          echo "⏸️  Stopping existing backend..."
+          pkill -f uvicorn || true
+          sleep 2
+
+          # Pull latest changes
+          echo "📥 Pulling latest code..."
+          git config --global --add safe.directory ~/backend
+          git fetch --all
+          git reset --hard origin/${{ github.ref_name }}
+
+          # Install/update dependencies if requirements changed
+          echo "📦 Checking dependencies..."
+          if [ -f requirements-cloud.txt ]; then
+            ~/backend/venv/bin/pip install -q -r requirements-cloud.txt
+          fi
+
+          # Start backend
+          echo "▶️  Starting backend..."
+          cd ~/backend
+          nohup venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8010 > jarvis.log 2>&1 &
+
+          # Wait for backend to start
+          sleep 5
+
+          # Health check
+          echo "🏥 Health check..."
+          if curl -s http://localhost:8010/health > /dev/null; then
+            echo "✅ Deployment successful!"
+            echo "🌐 Backend running at http://34.10.137.70:8010"
+          else
+            echo "❌ Health check failed"
+            exit 1
+          fi
+          EOF
+
+          chmod +x /tmp/deploy.sh
+
+          # Copy and execute deployment script on VM
+          gcloud compute scp /tmp/deploy.sh ${{ secrets.GCP_VM_NAME }}:/tmp/ \
+            --zone=${{ secrets.GCP_ZONE }} \
+            --project=${{ secrets.GCP_PROJECT_ID }}
+
+          gcloud compute ssh ${{ secrets.GCP_VM_NAME }} \
+            --zone=${{ secrets.GCP_ZONE }} \
+            --project=${{ secrets.GCP_PROJECT_ID }} \
+            --command="bash /tmp/deploy.sh"
+
+      - name: Deployment Summary
+        run: |
+          echo "✅ JARVIS deployed successfully!"
+          echo "📊 Commit: ${{ github.sha }}"
+          echo "🌿 Branch: ${{ github.ref_name }}"
+          echo "🌐 URL: http://34.10.137.70:8010"
