@@ -193,12 +193,13 @@ logger = logging.getLogger(__name__)
 try:
     from dotenv import load_dotenv
 
-    # Load from backend/.env if it exists
+    # Load from root .env first
+    load_dotenv()
+
+    # Then load from backend/.env (will override if there are conflicts)
     backend_env = Path("backend") / ".env"
     if backend_env.exists():
-        load_dotenv(backend_env)
-    else:
-        load_dotenv()  # Load from root .env
+        load_dotenv(backend_env, override=True)
 except ImportError:
     pass
 
