@@ -123,6 +123,12 @@ jobs:
             venv/bin/pip install -q -r requirements-cloud.txt
           fi
 
+          # Deploy database config from GitHub secret
+          echo "📋 Deploying database config..."
+          mkdir -p ~/.jarvis/gcp
+          echo '${{ secrets.GCP_DATABASE_CONFIG }}' > ~/.jarvis/gcp/database_config.json
+          echo "✅ Database config deployed"
+
           # Setup Cloud SQL Proxy
           echo "☁️  Setting up Cloud SQL Proxy..."
           if [ ! -f ~/.local/bin/cloud-sql-proxy ]; then
