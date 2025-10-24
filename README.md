@@ -2,6 +2,128 @@
 
 An intelligent voice-activated AI assistant with **Hybrid Cloud Auto-Scaling**, **SAI Learning Integration**, **Phase 4 Proactive Communication**, advanced multi-space desktop awareness, Claude Vision integration, seamless display mirroring control, and **6 upgraded v2.0 ML-powered intelligent systems** with crash-proof automatic GCP routing.
 
+---
+
+## 📑 Table of Contents
+
+### **Latest Updates & Features**
+1. [🌐 NEW in v16.0: Hybrid Cloud Intelligence - Never Crash Again](#-new-in-v160-hybrid-cloud-intelligence---never-crash-again)
+   - [🚀 Key Highlights](#-key-highlights)
+2. [🚀 v15.0: Phase 4 - Proactive Communication (Magic)](#-v150-phase-4---proactive-communication-magic)
+   - [✨ What's New in Phase 4](#-whats-new-in-phase-4)
+3. [🏗️ Intelligence Evolution: Phase 1-4 Journey](#️-intelligence-evolution-phase-1-4-journey)
+   - [📍 Phase 1: Environmental Awareness (Foundation)](#-phase-1-environmental-awareness-foundation)
+   - [📍 Phase 2: Decision Intelligence (Smart Decisions)](#-phase-2-decision-intelligence-smart-decisions)
+   - [📍 Phase 3: Behavioral Learning (Smart)](#-phase-3-behavioral-learning-smart)
+   - [📍 Phase 4: Proactive Communication (Magic) ⭐](#-phase-4-proactive-communication-magic--current)
+   - [🚀 The Complete Intelligence Stack](#-the-complete-intelligence-stack)
+
+### **Hybrid Cloud Architecture**
+4. [🌐 Hybrid Cloud Architecture - Crash-Proof Intelligence](#-hybrid-cloud-architecture---crash-proof-intelligence)
+   - [⚡ Zero-Configuration Auto-Scaling](#-zero-configuration-auto-scaling)
+   - [🧠 SAI Learning Integration](#-sai-learning-integration)
+   - [🚀 Key Features](#-key-features)
+   - [🏗️ Architecture Components](#️-architecture-components)
+   - [📊 What You See](#-what-you-see)
+5. [🏗️ Deployment Architecture: How Code Flows to Production](#️-deployment-architecture-how-code-flows-to-production)
+   - Architecture Overview
+   - Scenario 1: Existing VM Deployment (GitHub Actions)
+   - Scenario 2: Auto-Created VMs (Hybrid Routing)
+   - Scenario 3: Manual Testing
+   - How Updates Stay in Sync
+   - Why This Architecture?
+   - Benefits for Ongoing Development
+6. [🎯 Configuration](#-configuration)
+7. [📈 Performance & Storage](#-performance--storage)
+8. [🔄 Complete Flow](#-complete-flow)
+9. [🛠️ Technology Stack: Hybrid Cloud Intelligence](#️-technology-stack-hybrid-cloud-intelligence)
+   - Core Technologies (FastAPI, GCP, Databases)
+   - Machine Learning & Intelligence (SAI, UAE, CAI)
+   - Monitoring & Observability
+   - Development Tools & CI/CD
+   - Why This Stack? (5 Critical Problems Solved)
+   - How This Enables Future Development
+   - Scalability Path & Future Vision
+
+### **Intelligent Systems**
+10. [🧠 Intelligent Systems v2.0 (Phase 3: Behavioral Learning)](#-intelligent-systems-v20-phase-3-behavioral-learning)
+    - [1. TemporalQueryHandler v3.0](#1-temporalqueryhandler-v30)
+    - [2. ErrorRecoveryManager v2.0](#2-errorrecoverymanager-v20)
+    - [3. StateIntelligence v2.0](#3-stateintelligence-v20)
+    - [4. StateDetectionPipeline v2.0](#4-statedetectionpipeline-v20)
+    - [5. ComplexComplexityHandler v2.0](#5-complexcomplexityhandler-v20)
+    - [6. PredictiveQueryHandler v2.0](#6-predictivequeryhandler-v20)
+    - [Performance Improvements](#performance-improvements)
+11. [💡 Phase 4 Implementation Details](#-phase-4-implementation-details)
+    - [Proactive Intelligence Engine](#proactive-intelligence-engine)
+    - [Frontend Integration](#frontend-integration)
+    - [Wake Word Response System](#wake-word-response-system)
+    - [Integration with UAE](#integration-with-uae)
+
+### **Core Features**
+12. [Features](#features)
+    - [🖥️ Multi-Space Desktop Intelligence](#️-multi-space-desktop-intelligence)
+    - [🎯 Key Capabilities](#-key-capabilities)
+    - [📺 Intelligent Display Mirroring](#-intelligent-display-mirroring)
+    - [🎮 Display Control Features](#-display-control-features)
+    - [🔄 Integration Flow](#-integration-flow)
+    - [🧠 Enhanced Contextual & Ambiguous Query Resolution](#-enhanced-contextual--ambiguous-query-resolution)
+    - [🔀 Multi-Space Queries (Advanced Cross-Space Analysis)](#-multi-space-queries-advanced-cross-space-analysis)
+    - [⏱️ Temporal Queries (Time-Based Change Detection)](#️-temporal-queries-time-based-change-detection)
+    - [🔧 Display System Technical Details](#-display-system-technical-details)
+    - [⚠️ Edge Cases & Nuanced Scenarios](#️-edge-cases--nuanced-scenarios)
+    - [🔧 Troubleshooting Display Mirroring](#-troubleshooting-display-mirroring)
+    - [📋 Known Limitations](#-known-limitations)
+
+### **Technical Implementation**
+13. [Technical Implementation](#technical-implementation)
+    - [Architecture](#architecture)
+    - [Components](#components)
+    - [Configuration](#configuration)
+14. [Usage Examples](#usage-examples)
+    - [Basic Queries](#basic-queries)
+    - [Follow-Up Queries](#follow-up-queries)
+    - [Specific Space Analysis](#specific-space-analysis)
+    - [Multi-Monitor Queries](#multi-monitor-queries)
+    - [Display Mirroring Commands](#display-mirroring-commands)
+
+### **Setup & Configuration**
+15. [Requirements](#requirements)
+16. [Installation](#installation)
+17. [System Status](#system-status)
+18. [Implementation Details](#implementation-details)
+    - [Follow-Up Detection](#follow-up-detection)
+    - [Context Storage](#context-storage)
+    - [Claude Vision Integration](#claude-vision-integration)
+19. [macOS Compatibility](#macos-compatibility)
+    - [Memory Pressure Detection (Fixed: 2025-10-14)](#memory-pressure-detection-fixed-2025-10-14)
+
+### **Release Notes & Updates**
+20. [Fixes Applied](#fixes-applied)
+21. [Display Mirroring Features (2025-10-17)](#display-mirroring-features-2025-10-17)
+22. [Contextual Intelligence Features (2025-10-17)](#contextual-intelligence-features-2025-10-17)
+23. [Phase 4 Features (2025-10-23)](#phase-4-features-2025-10-23)
+    - [Backend Enhancements](#backend-enhancements)
+    - [Frontend Enhancements](#frontend-enhancements)
+    - [Integration & Communication](#integration--communication)
+    - [Files Created/Modified](#files-createdmodified)
+
+### **Infrastructure & DevOps**
+24. [🏗️ Infrastructure & DevOps (2025-10-24)](#️-infrastructure--devops-2025-10-24)
+    - [Hybrid Cloud Architecture](#hybrid-cloud-architecture)
+    - [Database Infrastructure](#database-infrastructure)
+    - [Testing Infrastructure](#testing-infrastructure)
+    - [CI/CD Pipeline](#cicd-pipeline)
+    - [Security Enhancements](#security-enhancements)
+    - [Infrastructure Files](#infrastructure-files)
+    - [Key Achievements](#key-achievements)
+
+### **Documentation & Legal**
+25. [📚 Documentation](#-documentation)
+26. [License](#license)
+
+---
+
 ## 🌐 NEW in v16.0: Hybrid Cloud Intelligence - Never Crash Again
 
 JARVIS v16.0 introduces **enterprise-grade hybrid cloud routing** that makes your system **crash-proof** by automatically shifting workloads to GCP when RAM gets high. Combined with **SAI learning**, the system gets smarter with every use.
