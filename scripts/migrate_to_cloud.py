@@ -61,11 +61,13 @@ class DatabaseMigrator:
         print(f"☁️  Cloud SQL: {self.config['cloud_sql']['database']}")
         print()
 
-        # Confirm migration
-        response = input("⚠️  This will overwrite cloud data. Continue? (y/N): ")
-        if response.lower() != 'y':
-            print("❌ Migration cancelled")
-            return
+        # Confirm migration (check for --yes flag)
+        import sys
+        if '--yes' not in sys.argv:
+            response = input("⚠️  This will overwrite cloud data. Continue? (y/N): ")
+            if response.lower() != 'y':
+                print("❌ Migration cancelled")
+                return
 
         print()
         print("🔄 Starting migration...")
@@ -78,8 +80,10 @@ class DatabaseMigrator:
             local_conn.row_factory = aiosqlite.Row
 
             cloud_sql_config = self.config['cloud_sql']
+            # Connect via Cloud SQL Proxy (localhost) if available, otherwise use private IP
+            cloud_host = '127.0.0.1' if os.path.exists(os.path.expanduser('~/.local/bin/cloud-sql-proxy')) else cloud_sql_config['private_ip']
             cloud_conn = await asyncpg.connect(
-                host=cloud_sql_config['private_ip'],
+                host=cloud_host,
                 port=cloud_sql_config['port'],
                 database=cloud_sql_config['database'],
                 user=cloud_sql_config['user'],
@@ -135,6 +139,7 @@ class DatabaseMigrator:
         # Create table in PostgreSQL
         pg_schema = self._convert_schema_to_postgres(table_name, columns)
         print(f"   Creating table schema...")
+        print(f"   Schema SQL: {pg_schema[:200]}...")  # Debug: show first 200 chars
         await cloud_conn.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE")
         await cloud_conn.execute(pg_schema)
 
@@ -153,12 +158,55 @@ class DatabaseMigrator:
         placeholders = ', '.join([f'${i+1}' for i in range(len(col_names))])
         insert_sql = f"INSERT INTO {table_name} ({', '.join(col_names)}) VALUES ({placeholders})"
 
+        # Get column info including types for proper conversion
+        col_info = {col['name']: col for col in columns}
+
         # Insert data in batches
         batch_size = 100
         for i in range(0, len(rows), batch_size):
             batch = rows[i:i+batch_size]
             for row in batch:
-                values = [row[col] for col in col_names]
+                # Convert values to match PostgreSQL types
+                values = []
+                for col_name in col_names:
+                    val = row[col_name]
+                    col_type = col_info[col_name]['type'].upper()
+
+                    # Type conversions
+                    if val is None:
+                        pass  # Keep as None
+                    elif col_type == 'TEXT':
+                        # Ensure TEXT columns are strings
+                        if not isinstance(val, str):
+                            val = str(val)
+                    elif col_type in ('INTEGER', 'BIGINT'):
+                        # Ensure INTEGER columns are ints
+                        if isinstance(val, str):
+                            val = int(val) if val else None
+                    elif col_type in ('REAL', 'DOUBLE PRECISION'):
+                        # Ensure REAL columns are floats
+                        if isinstance(val, str):
+                            val = float(val) if val else None
+                    elif col_type == 'BOOLEAN':
+                        # Convert to boolean
+                        if isinstance(val, (int, str)):
+                            val = bool(int(val)) if val not in (None, '') else False
+                    elif col_type in ('TIMESTAMP', 'DATETIME'):
+                        # Convert timestamp strings to datetime objects
+                        if isinstance(val, str):
+                            from datetime import datetime as dt
+                            try:
+                                val = dt.fromisoformat(val.replace(' ', 'T'))
+                            except:
+                                val = None
+                    elif col_type in ('JSON', 'JSONB'):
+                        # JSON columns should be strings
+                        if val is not None and not isinstance(val, str):
+                            import json as json_lib
+                            val = json_lib.dumps(val)
+
+                    values.append(val)
+
                 await cloud_conn.execute(insert_sql, *values)
 
         print(f"   ✅ Migrated {len(rows)} rows")
@@ -178,7 +226,10 @@ class DatabaseMigrator:
                 'REAL': 'DOUBLE PRECISION',
                 'BLOB': 'BYTEA',
                 'NUMERIC': 'NUMERIC',
-                'DATETIME': 'TIMESTAMP'
+                'DATETIME': 'TIMESTAMP',
+                'TIMESTAMP': 'TIMESTAMP',
+                'BOOLEAN': 'BOOLEAN',
+                'JSON': 'JSONB'
             }
 
             pg_type = type_mapping.get(col_type, 'TEXT')
@@ -194,12 +245,22 @@ class DatabaseMigrator:
                     col_def = f"{col_name} {pg_type} PRIMARY KEY"
             else:
                 not_null = " NOT NULL" if col['notnull'] else ""
-                default = f" DEFAULT {col['dflt_value']}" if col['dflt_value'] else ""
+
+                # Handle default values - need to convert for PostgreSQL
+                default = ""
+                if col['dflt_value']:
+                    dflt_val = col['dflt_value']
+                    # Convert boolean defaults
+                    if pg_type == 'BOOLEAN' and dflt_val in ('0', '1'):
+                        dflt_val = 'false' if dflt_val == '0' else 'true'
+                    default = f" DEFAULT {dflt_val}"
+
                 col_def = f"{col_name} {pg_type}{not_null}{default}"
 
             col_defs.append(col_def)
 
-        return f"CREATE TABLE {table_name} (\n  {',\n  '.join(col_defs)}\n)"
+        col_list = ',\n  '.join(col_defs)
+        return f"CREATE TABLE {table_name} (\n  {col_list}\n)"
 
 
 async def main():

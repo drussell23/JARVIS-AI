@@ -256,3 +256,5 @@ backend/voice_unlock/proximity_voice_auth/**/*.pyc
 **/*password*.txt
 **/*credentials*.txt
 backend/.jarvis_cache/
+.env.gcp
+cloud_sql_proxy

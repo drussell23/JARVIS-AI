@@ -112,39 +112,19 @@ class CloudDatabaseAdapter:
         try:
             logger.info(f"☁️  Connecting to Cloud SQL: {self.config.connection_name}")
 
-            if CLOUD_SQL_CONNECTOR_AVAILABLE:
-                # Use Cloud SQL Connector (recommended for secure connections)
-                self.connector = Connector()
-
-                async def getconn():
-                    conn = await self.connector.connect_async(
-                        self.config.connection_name,
-                        "asyncpg",
-                        user=self.config.db_user,
-                        password=self.config.db_password,
-                        db=self.config.db_name
-                    )
-                    return conn
-
-                # Create connection pool
-                self.pool = await asyncpg.create_pool(
-                    min_size=2,
-                    max_size=10,
-                    command_timeout=60,
-                    connection_class=getconn
-                )
-            else:
-                # Direct connection (requires Cloud SQL Proxy running locally)
-                self.pool = await asyncpg.create_pool(
-                    host=self.config.db_host,
-                    port=self.config.db_port,
-                    database=self.config.db_name,
-                    user=self.config.db_user,
-                    password=self.config.db_password,
-                    min_size=2,
-                    max_size=10,
-                    command_timeout=60
-                )
+            # Use direct connection via Cloud SQL Proxy (simpler and no event loop issues)
+            # Cloud SQL Proxy must be running locally: ~/.local/bin/cloud-sql-proxy <connection-name>
+            logger.info(f"Connecting to Cloud SQL via proxy at {self.config.db_host}:{self.config.db_port}")
+            self.pool = await asyncpg.create_pool(
+                host=self.config.db_host,
+                port=self.config.db_port,
+                database=self.config.db_name,
+                user=self.config.db_user,
+                password=self.config.db_password,
+                min_size=2,
+                max_size=10,
+                command_timeout=60
+            )
 
             logger.info("✅ Cloud SQL connection pool created")
 
@@ -158,7 +138,7 @@ class CloudDatabaseAdapter:
     async def connection(self):
         """Get database connection (context manager)"""
         if self.pool:
-            # Cloud SQL (PostgreSQL)
+            # Cloud SQL (PostgreSQL) via connection pool
             async with self.pool.acquire() as conn:
                 yield CloudSQLConnection(conn)
         else:
@@ -171,10 +151,6 @@ class CloudDatabaseAdapter:
         if self.pool:
             await self.pool.close()
             logger.info("✅ Cloud SQL pool closed")
-
-        if self.connector:
-            await self.connector.close_async()
-            logger.info("✅ Cloud SQL connector closed")
 
         if self._local_connection:
             await self._local_connection.close()

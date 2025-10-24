@@ -76,17 +76,13 @@ if [ "$SQL_EXISTS" != "true" ]; then
         --database-version=POSTGRES_15 \
         --tier=$SQL_TIER \
         --region=$REGION \
-        --root-password="$SQL_PASSWORD" \
         --storage-type=SSD \
         --storage-size=10GB \
         --storage-auto-increase \
         --backup-start-time=03:00 \
-        --enable-bin-log \
         --retained-backups-count=7 \
         --maintenance-window-day=SUN \
-        --maintenance-window-hour=4 \
-        --network=default \
-        --no-assign-ip
+        --maintenance-window-hour=4
 
     echo "✅ Cloud SQL instance created!"
     echo ""
@@ -127,11 +123,13 @@ echo "☁️  Setting up Cloud Storage Buckets"
 echo "================================================================================"
 
 # ChromaDB bucket
-if gsutil ls -b gs://$BUCKET_NAME &>/dev/null; then
+if gcloud storage buckets describe gs://$BUCKET_NAME &>/dev/null; then
     echo "⚠️  Bucket '$BUCKET_NAME' already exists"
 else
     echo "📦 Creating ChromaDB bucket..."
-    gsutil mb -p $PROJECT_ID -l $REGION gs://$BUCKET_NAME
+    gcloud storage buckets create gs://$BUCKET_NAME \
+        --location=$REGION \
+        --project=$PROJECT_ID
 
     # Set lifecycle (delete old versions after 30 days)
     cat > /tmp/lifecycle.json << 'EOF'
@@ -146,21 +144,23 @@ else
   }
 }
 EOF
-    gsutil lifecycle set /tmp/lifecycle.json gs://$BUCKET_NAME
+    gcloud storage buckets update gs://$BUCKET_NAME --lifecycle-file=/tmp/lifecycle.json
     rm /tmp/lifecycle.json
 
     echo "✅ ChromaDB bucket created: gs://$BUCKET_NAME"
 fi
 
 # Backup bucket
-if gsutil ls -b gs://$BACKUP_BUCKET_NAME &>/dev/null; then
+if gcloud storage buckets describe gs://$BACKUP_BUCKET_NAME &>/dev/null; then
     echo "⚠️  Backup bucket '$BACKUP_BUCKET_NAME' already exists"
 else
     echo "📦 Creating backup bucket..."
-    gsutil mb -p $PROJECT_ID -l $REGION gs://$BACKUP_BUCKET_NAME
+    gcloud storage buckets create gs://$BACKUP_BUCKET_NAME \
+        --location=$REGION \
+        --project=$PROJECT_ID
 
     # Enable versioning
-    gsutil versioning set on gs://$BACKUP_BUCKET_NAME
+    gcloud storage buckets update gs://$BACKUP_BUCKET_NAME --versioning
 
     echo "✅ Backup bucket created: gs://$BACKUP_BUCKET_NAME"
 fi
