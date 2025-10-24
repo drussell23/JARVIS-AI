@@ -139,15 +139,13 @@ jobs:
             DB_PASSWORD=\$(jq -r '.cloud_sql.password' ~/.jarvis/gcp/database_config.json)
 
             # Create environment file for JARVIS
-            cat > ~/backend/backend/.env.gcp << ENVEOF
-JARVIS_DB_TYPE=cloudsql
-JARVIS_DB_CONNECTION_NAME=\$CONNECTION_NAME
-JARVIS_DB_HOST=127.0.0.1
-JARVIS_DB_PORT=5432
-JARVIS_DB_NAME=jarvis_learning
-JARVIS_DB_USER=jarvis
-JARVIS_DB_PASSWORD=\$DB_PASSWORD
-ENVEOF
+            echo "JARVIS_DB_TYPE=cloudsql" > ~/backend/backend/.env.gcp
+            echo "JARVIS_DB_CONNECTION_NAME=\$CONNECTION_NAME" >> ~/backend/backend/.env.gcp
+            echo "JARVIS_DB_HOST=127.0.0.1" >> ~/backend/backend/.env.gcp
+            echo "JARVIS_DB_PORT=5432" >> ~/backend/backend/.env.gcp
+            echo "JARVIS_DB_NAME=jarvis_learning" >> ~/backend/backend/.env.gcp
+            echo "JARVIS_DB_USER=jarvis" >> ~/backend/backend/.env.gcp
+            echo "JARVIS_DB_PASSWORD=\$DB_PASSWORD" >> ~/backend/backend/.env.gcp
 
             echo "✅ Created .env.gcp file"
 
