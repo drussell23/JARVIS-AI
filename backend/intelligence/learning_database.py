@@ -46,55 +46,862 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+# ============================================================================
+# DATABASE WRAPPER CLASSES
+# ============================================================================
+# These classes provide a robust, async, dynamic abstraction layer that makes
+# Cloud SQL (PostgreSQL) behave like aiosqlite, enabling seamless switching
+# between local SQLite and cloud databases without code changes.
+#
+# Features:
+# - Full DB-API 2.0 compatibility (execute, executemany, fetchall, fetchone, etc.)
+# - Transaction support with savepoints for nested transactions
+# - Connection pooling and resource management
+# - Automatic query type detection (SELECT vs DML)
+# - Comprehensive error handling and logging
+# - Async iteration support
+# - Context manager support for RAII pattern
+# - No hardcoded values - fully dynamic configuration
+# ============================================================================
+
+
 class DatabaseCursorWrapper:
-    """Wrapper that makes Cloud SQL adapter look like aiosqlite cursor"""
+    """
+    Advanced wrapper that makes Cloud SQL adapter look like aiosqlite cursor.
+    Provides robust, async, dynamic database operations with comprehensive error handling.
+    """
 
-    def __init__(self, adapter_conn):
+    def __init__(self, adapter_conn, connection_wrapper=None):
+        """
+        Initialize cursor wrapper.
+
+        Args:
+            adapter_conn: Cloud SQL adapter connection instance
+            connection_wrapper: Parent connection wrapper for context
+        """
         self.adapter_conn = adapter_conn
+        self.connection_wrapper = connection_wrapper
+        self._last_results: List[Dict[str, Any]] = []
+        self._last_query: Optional[str] = None
+        self._last_params: Optional[Tuple] = None
+        self._current_index: int = 0
+        self._row_count: int = -1  # DB-API 2.0: -1 means "not available"
+        self._description: Optional[List[Tuple]] = None
+        self._lastrowid: Optional[int] = None
+        self._arraysize: int = 1  # DB-API 2.0 default
+        self._rownumber: Optional[int] = None  # Current row position
+        self._column_metadata: Dict[str, Dict[str, Any]] = {}  # Extended metadata
 
-    async def execute(self, sql, parameters=()):
-        """Execute SQL with parameters"""
-        if sql.strip().upper().startswith("PRAGMA"):
-            # Skip PRAGMA commands for Cloud SQL (PostgreSQL doesn't support them)
-            return self
-        await self.adapter_conn.execute(sql, *parameters)
-        return self
+    @property
+    def rowcount(self) -> int:
+        """
+        Return number of rows affected by last operation.
 
-    async def fetchall(self):
-        """Fetch all results - not supported in this pattern"""
-        return []
+        DB-API 2.0 compliant:
+        - For SELECT: number of rows returned
+        - For INSERT/UPDATE/DELETE: number of rows affected
+        - Returns -1 if not available or not applicable
 
-    async def fetchone(self):
-        """Fetch one result - not supported in this pattern"""
+        Returns:
+            int: Row count or -1 if unavailable
+        """
+        return self._row_count
+
+    @property
+    def description(self) -> Optional[List[Tuple]]:
+        """
+        Return column descriptions for last query result.
+
+        DB-API 2.0 format - 7-item sequence per column:
+        (name, type_code, display_size, internal_size, precision, scale, null_ok)
+
+        Enhanced with dynamic type inference from result data:
+        - Automatically detects Python types from results
+        - Provides basic size estimates
+        - Supports NULL detection
+
+        Returns:
+            Optional[List[Tuple]]: Column descriptions or None for non-SELECT queries
+        """
+        if not self._description and self._last_results:
+            # Dynamically build description from results
+            self._build_description_from_results()
+        return self._description
+
+    @property
+    def lastrowid(self) -> Optional[int]:
+        """
+        Return last inserted row ID.
+
+        Advanced implementation:
+        - PostgreSQL: Uses RETURNING id clause (must be in query)
+        - SQLite: Returns last inserted rowid
+        - Auto-detects 'id' column from RETURNING results
+
+        Note: For PostgreSQL, query must include RETURNING clause:
+            INSERT INTO table (col) VALUES (?) RETURNING id
+
+        Returns:
+            Optional[int]: Last row ID or None if unavailable
+        """
+        if self._lastrowid is not None:
+            return self._lastrowid
+
+        # Try to extract from RETURNING results
+        if self._last_results and self._last_query:
+            query_upper = self._last_query.strip().upper()
+            if "RETURNING" in query_upper and self._last_results:
+                # Check for common ID column names
+                first_row = self._last_results[0]
+                for id_col in ['id', 'ID', 'Id', 'rowid', 'ROWID']:
+                    if id_col in first_row:
+                        try:
+                            self._lastrowid = int(first_row[id_col])
+                            return self._lastrowid
+                        except (ValueError, TypeError):
+                            pass
+
+                # If only one column returned, assume it's the ID
+                if len(first_row) == 1:
+                    try:
+                        self._lastrowid = int(next(iter(first_row.values())))
+                        return self._lastrowid
+                    except (ValueError, TypeError):
+                        pass
+
         return None
 
+    @property
+    def arraysize(self) -> int:
+        """
+        Number of rows to fetch at a time with fetchmany().
+        DB-API 2.0 compliant (default: 1)
+        """
+        return self._arraysize
+
+    @arraysize.setter
+    def arraysize(self, size: int):
+        """Set arraysize for fetchmany() operations"""
+        if size < 1:
+            raise ValueError("arraysize must be >= 1")
+        self._arraysize = size
+
+    @property
+    def rownumber(self) -> Optional[int]:
+        """
+        Current 0-based index of cursor in result set.
+        None if no query executed or before first row.
+        """
+        if self._current_index == 0:
+            return None
+        return self._current_index - 1
+
+    @property
+    def connection(self):
+        """Return parent connection wrapper (DB-API 2.0 optional)"""
+        return self.connection_wrapper
+
+    @property
+    def query(self) -> Optional[str]:
+        """Return last executed query (extension)"""
+        return self._last_query
+
+    @property
+    def query_parameters(self) -> Optional[Tuple]:
+        """Return last query parameters (extension)"""
+        return self._last_params
+
+    def _build_description_from_results(self):
+        """
+        Dynamically build column description from result data.
+        Infers types and sizes from actual values.
+        """
+        if not self._last_results:
+            self._description = None
+            return
+
+        first_row = self._last_results[0]
+        descriptions = []
+
+        for col_name in first_row.keys():
+            # Infer type and properties from all rows
+            col_type = None
+            max_size = 0
+            has_null = False
+
+            for row in self._last_results:
+                value = row.get(col_name)
+
+                if value is None:
+                    has_null = True
+                    continue
+
+                # Detect Python type
+                value_type = type(value)
+                if col_type is None:
+                    col_type = value_type
+
+                # Estimate size
+                if isinstance(value, str):
+                    max_size = max(max_size, len(value))
+                elif isinstance(value, (int, float)):
+                    max_size = max(max_size, len(str(value)))
+                elif isinstance(value, bytes):
+                    max_size = max(max_size, len(value))
+
+            # Build DB-API 2.0 description tuple
+            # (name, type_code, display_size, internal_size, precision, scale, null_ok)
+            descriptions.append((
+                col_name,                    # name
+                col_type,                    # type_code (Python type)
+                max_size if max_size > 0 else None,  # display_size
+                None,                        # internal_size (not available)
+                None,                        # precision (not available)
+                None,                        # scale (not available)
+                has_null                     # null_ok
+            ))
+
+            # Store extended metadata
+            self._column_metadata[col_name] = {
+                'python_type': col_type,
+                'max_size': max_size,
+                'nullable': has_null,
+                'samples': min(len(self._last_results), 5)
+            }
+
+        self._description = descriptions
+
+    async def execute(self, sql: str, parameters: Tuple = ()) -> 'DatabaseCursorWrapper':
+        """
+        Execute SQL with parameters. Handles both SELECT and DML operations.
+
+        Advanced features:
+        - Automatic query type detection (SELECT, INSERT, UPDATE, DELETE, etc.)
+        - RETURNING clause support for PostgreSQL
+        - Rowcount tracking for affected rows
+        - Lastrowid extraction from RETURNING results
+        - Dynamic column description generation
+
+        Args:
+            sql: SQL query string
+            parameters: Query parameters tuple
+
+        Returns:
+            Self for chaining
+
+        Raises:
+            Exception: Database errors with detailed logging
+        """
+        try:
+            # Reset state for new query
+            self._last_query = sql
+            self._last_params = parameters
+            self._current_index = 0
+            self._lastrowid = None
+            self._column_metadata.clear()
+
+            # Skip PRAGMA commands for PostgreSQL
+            if sql.strip().upper().startswith("PRAGMA"):
+                logger.debug(f"Skipping PRAGMA command: {sql}")
+                self._last_results = []
+                self._row_count = 0
+                self._description = None
+                return self
+
+            # Detect query type dynamically
+            query_upper = sql.strip().upper()
+            query_type = self._detect_query_type(query_upper)
+
+            if query_type in ('SELECT', 'RETURNING'):
+                # Query that returns rows
+                results = await self.adapter_conn.fetch(sql, *parameters)
+                self._last_results = results if results else []
+                self._row_count = len(self._last_results)
+
+                # Build dynamic column descriptions
+                if self._last_results:
+                    self._build_description_from_results()
+                else:
+                    self._description = None
+
+                # Extract lastrowid from RETURNING results
+                if query_type == 'RETURNING' and self._last_results:
+                    self._extract_lastrowid()
+
+            elif query_type in ('INSERT', 'UPDATE', 'DELETE'):
+                # DML operation - try to get affected rows count
+                try:
+                    # For PostgreSQL with asyncpg, we can use execute and get status
+                    result = await self.adapter_conn.execute(sql, *parameters)
+
+                    # Try to extract row count from result status
+                    # PostgreSQL returns status like "INSERT 0 1" or "UPDATE 5"
+                    if hasattr(result, 'decode'):
+                        result = result.decode('utf-8')
+
+                    if isinstance(result, str):
+                        self._row_count = self._parse_rowcount_from_status(result)
+                    else:
+                        self._row_count = -1  # Not available
+
+                except Exception as e:
+                    logger.debug(f"Could not determine rowcount: {e}")
+                    await self.adapter_conn.execute(sql, *parameters)
+                    self._row_count = -1  # Not available
+
+                self._last_results = []
+                self._description = None
+
+            else:
+                # Other operations (CREATE, DROP, ALTER, etc.)
+                await self.adapter_conn.execute(sql, *parameters)
+                self._last_results = []
+                self._row_count = -1  # Not applicable
+                self._description = None
+
+            return self
+
+        except Exception as e:
+            logger.error(f"Error executing query: {sql[:100]}... with params {parameters}: {e}")
+            # Reset state on error
+            self._row_count = -1
+            self._description = None
+            self._last_results = []
+            raise
+
+    def _detect_query_type(self, query_upper: str) -> str:
+        """
+        Dynamically detect SQL query type.
+
+        Args:
+            query_upper: Uppercase SQL query
+
+        Returns:
+            str: Query type ('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'RETURNING', etc.)
+        """
+        # Check for RETURNING clause (takes precedence)
+        if 'RETURNING' in query_upper:
+            return 'RETURNING'
+
+        # Check for standard DML/DDL commands
+        query_start = query_upper.split()[0] if query_upper.split() else ''
+
+        if query_start in ('SELECT', 'WITH'):  # WITH for CTEs
+            return 'SELECT'
+        elif query_start == 'INSERT':
+            return 'INSERT'
+        elif query_start == 'UPDATE':
+            return 'UPDATE'
+        elif query_start == 'DELETE':
+            return 'DELETE'
+        elif query_start in ('CREATE', 'DROP', 'ALTER', 'TRUNCATE'):
+            return 'DDL'
+        else:
+            return 'OTHER'
+
+    def _parse_rowcount_from_status(self, status: str) -> int:
+        """
+        Parse rowcount from PostgreSQL status string.
+
+        Examples:
+            "INSERT 0 1" -> 1
+            "UPDATE 5" -> 5
+            "DELETE 10" -> 10
+
+        Args:
+            status: PostgreSQL command status string
+
+        Returns:
+            int: Number of affected rows or -1 if unavailable
+        """
+        try:
+            parts = status.split()
+            if len(parts) >= 2:
+                # Last part is usually the row count
+                return int(parts[-1])
+        except (ValueError, IndexError):
+            pass
+        return -1
+
+    def _extract_lastrowid(self):
+        """
+        Extract last inserted row ID from RETURNING results.
+        Checks common ID column names and patterns.
+        """
+        if not self._last_results:
+            return
+
+        first_row = self._last_results[0]
+
+        # Priority order for ID column detection
+        id_candidates = [
+            'id', 'ID', 'Id',
+            'rowid', 'ROWID', 'RowId',
+            '_id', '_ID',
+            'pk', 'PK'
+        ]
+
+        # Try known column names first
+        for col_name in id_candidates:
+            if col_name in first_row:
+                try:
+                    self._lastrowid = int(first_row[col_name])
+                    logger.debug(f"Extracted lastrowid={self._lastrowid} from column '{col_name}'")
+                    return
+                except (ValueError, TypeError) as e:
+                    logger.debug(f"Could not convert {col_name} to int: {e}")
+
+        # If RETURNING has exactly one column, assume it's the ID
+        if len(first_row) == 1:
+            try:
+                value = next(iter(first_row.values()))
+                self._lastrowid = int(value)
+                logger.debug(f"Extracted lastrowid={self._lastrowid} from single RETURNING column")
+            except (ValueError, TypeError, StopIteration) as e:
+                logger.debug(f"Could not extract lastrowid from single column: {e}")
+
+    async def executemany(self, sql: str, parameters_list: List[Tuple]) -> 'DatabaseCursorWrapper':
+        """
+        Execute SQL with multiple parameter sets.
+
+        Args:
+            sql: SQL query string
+            parameters_list: List of parameter tuples
+
+        Returns:
+            Self for chaining
+        """
+        try:
+            total_affected = 0
+            for parameters in parameters_list:
+                await self.execute(sql, parameters)
+                total_affected += self._row_count
+
+            self._row_count = total_affected
+            return self
+
+        except Exception as e:
+            logger.error(f"Error in executemany: {e}")
+            raise
+
+    async def fetchall(self) -> List[Dict[str, Any]]:
+        """
+        Fetch all remaining results from last query.
+
+        Returns:
+            List of result dictionaries
+        """
+        try:
+            results = self._last_results[self._current_index:]
+            self._current_index = len(self._last_results)
+            return results
+
+        except Exception as e:
+            logger.error(f"Error in fetchall: {e}")
+            return []
+
+    async def fetchone(self) -> Optional[Dict[str, Any]]:
+        """
+        Fetch next result from last query.
+
+        Returns:
+            Single result dictionary or None
+        """
+        try:
+            if self._current_index < len(self._last_results):
+                result = self._last_results[self._current_index]
+                self._current_index += 1
+                return result
+            return None
+
+        except Exception as e:
+            logger.error(f"Error in fetchone: {e}")
+            return None
+
+    async def fetchmany(self, size: Optional[int] = None) -> List[Dict[str, Any]]:
+        """
+        Fetch multiple results from last query.
+
+        DB-API 2.0 compliant:
+        - If size is None, uses cursor.arraysize (default: 1)
+        - Returns up to size rows
+        - Returns empty list when no more rows
+
+        Args:
+            size: Number of rows to fetch (None = use arraysize)
+
+        Returns:
+            List of result dictionaries (up to size items)
+        """
+        try:
+            # Use arraysize if size not specified (DB-API 2.0 behavior)
+            fetch_size = size if size is not None else self._arraysize
+
+            if fetch_size < 1:
+                raise ValueError("fetchmany size must be >= 1")
+
+            results = self._last_results[self._current_index:self._current_index + fetch_size]
+            self._current_index += len(results)
+            return results
+
+        except Exception as e:
+            logger.error(f"Error in fetchmany: {e}")
+            return []
+
+    async def fetchval(self) -> Optional[Any]:
+        """
+        Fetch first column of next result.
+
+        Returns:
+            Single value or None
+        """
+        try:
+            row = await self.fetchone()
+            if row:
+                # Get first value from dict
+                return next(iter(row.values())) if row else None
+            return None
+
+        except Exception as e:
+            logger.error(f"Error in fetchval: {e}")
+            return None
+
+    async def scroll(self, value: int, mode: str = 'relative'):
+        """
+        Scroll cursor position (DB-API 2.0 optional extension).
+
+        Args:
+            value: Number of rows to move
+            mode: 'relative' (default) or 'absolute'
+
+        Raises:
+            IndexError: If scrolling beyond result bounds
+        """
+        if mode == 'relative':
+            new_index = self._current_index + value
+        elif mode == 'absolute':
+            new_index = value
+        else:
+            raise ValueError(f"Invalid scroll mode: {mode}. Use 'relative' or 'absolute'")
+
+        if new_index < 0 or new_index > len(self._last_results):
+            raise IndexError(f"Scroll out of range: {new_index}")
+
+        self._current_index = new_index
+
+    def setinputsizes(self, sizes):
+        """DB-API 2.0 required method (no-op for our implementation)"""
+        pass
+
+    def setoutputsize(self, size, column=None):
+        """DB-API 2.0 required method (no-op for our implementation)"""
+        pass
+
+    def get_column_metadata(self, column_name: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get extended column metadata (custom extension).
+
+        Args:
+            column_name: Specific column or None for all columns
+
+        Returns:
+            Dict with column metadata including types, sizes, nullability
+        """
+        if column_name:
+            return self._column_metadata.get(column_name, {})
+        return self._column_metadata.copy()
+
+    async def close(self):
+        """Close cursor and release resources"""
+        self._last_results.clear()
+        self._current_index = 0
+        self._row_count = -1
+        self._description = None
+        self._lastrowid = None
+        self._column_metadata.clear()
+
+    def __aiter__(self):
+        """Make cursor iterable"""
+        return self
+
+    async def __anext__(self) -> Dict[str, Any]:
+        """Async iteration support"""
+        row = await self.fetchone()
+        if row is None:
+            raise StopAsyncIteration
+        return row
+
     async def __aenter__(self):
+        """Async context manager entry"""
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        pass
+        """Async context manager exit"""
+        await self.close()
+        return False
+
+    def __repr__(self) -> str:
+        """String representation for debugging"""
+        status = "closed" if self._row_count == -1 and not self._last_results else "open"
+        return (f"<DatabaseCursorWrapper status={status} "
+                f"rowcount={self._row_count} "
+                f"rownumber={self.rownumber}>")
+
+    def __str__(self) -> str:
+        """User-friendly string representation"""
+        if self._last_query:
+            query_preview = self._last_query[:50] + "..." if len(self._last_query) > 50 else self._last_query
+            return f"Cursor(query='{query_preview}', rowcount={self._row_count})"
+        return "Cursor(no query)"
 
 
 class DatabaseConnectionWrapper:
-    """Wrapper that makes Cloud SQL adapter look like aiosqlite connection"""
+    """
+    Advanced wrapper that makes Cloud SQL adapter look like aiosqlite connection.
+    Provides transaction support, connection pooling, and comprehensive error handling.
+    """
 
     def __init__(self, adapter):
+        """
+        Initialize connection wrapper.
+
+        Args:
+            adapter: Cloud SQL database adapter instance
+        """
         self.adapter = adapter
-        self.row_factory = None  # For compatibility
+        self.row_factory = None  # For aiosqlite compatibility
+        self._in_transaction: bool = False
+        self._transaction_savepoint: Optional[str] = None
+        self._current_connection = None
+        self._connection_lock = asyncio.Lock()
+        self._closed: bool = False
+
+    @property
+    def is_cloud(self) -> bool:
+        """Check if using cloud database backend"""
+        return self.adapter.is_cloud if hasattr(self.adapter, 'is_cloud') else False
+
+    @property
+    def in_transaction(self) -> bool:
+        """Check if currently in a transaction"""
+        return self._in_transaction
 
     @asynccontextmanager
     async def cursor(self):
-        """Return cursor-like object using adapter connection"""
-        async with self.adapter.connection() as conn:
-            yield DatabaseCursorWrapper(conn)
+        """
+        Return cursor-like object using adapter connection.
+        Reuses connection if in transaction, otherwise creates new one.
+
+        Yields:
+            DatabaseCursorWrapper: Cursor for executing queries
+        """
+        if self._closed:
+            raise RuntimeError("Connection is closed")
+
+        async with self._connection_lock:
+            if self._in_transaction and self._current_connection:
+                # Reuse existing transaction connection
+                yield DatabaseCursorWrapper(self._current_connection, connection_wrapper=self)
+            else:
+                # Create new connection for non-transaction queries
+                async with self.adapter.connection() as conn:
+                    yield DatabaseCursorWrapper(conn, connection_wrapper=self)
+
+    async def execute(self, sql: str, parameters: Tuple = ()) -> 'DatabaseCursorWrapper':
+        """
+        Execute SQL directly without creating cursor.
+
+        Args:
+            sql: SQL query string
+            parameters: Query parameters
+
+        Returns:
+            Cursor wrapper with results
+        """
+        async with self.cursor() as cur:
+            await cur.execute(sql, parameters)
+            return cur
+
+    async def executemany(self, sql: str, parameters_list: List[Tuple]) -> 'DatabaseCursorWrapper':
+        """
+        Execute SQL with multiple parameter sets.
+
+        Args:
+            sql: SQL query string
+            parameters_list: List of parameter tuples
+
+        Returns:
+            Cursor wrapper
+        """
+        async with self.cursor() as cur:
+            await cur.executemany(sql, parameters_list)
+            return cur
+
+    async def executescript(self, sql_script: str):
+        """
+        Execute multiple SQL statements (compatibility with aiosqlite).
+
+        Args:
+            sql_script: Multiple SQL statements separated by semicolons
+        """
+        # Split on semicolons and execute each statement
+        statements = [s.strip() for s in sql_script.split(';') if s.strip()]
+        async with self.cursor() as cur:
+            for statement in statements:
+                await cur.execute(statement)
+
+    async def begin(self):
+        """Start a transaction explicitly"""
+        if self._in_transaction:
+            logger.warning("Already in transaction, creating savepoint")
+            await self._create_savepoint()
+            return
+
+        async with self._connection_lock:
+            if not self._current_connection:
+                # Acquire connection for transaction
+                self._current_connection = await self.adapter.connection().__aenter__()
+
+            if self.is_cloud:
+                # PostgreSQL: Start transaction
+                await self._current_connection.execute("BEGIN")
+
+            self._in_transaction = True
+            logger.debug("Transaction started")
 
     async def commit(self):
-        """No-op for Cloud SQL (auto-commit mode)"""
-        pass
+        """
+        Commit current transaction.
+        For Cloud SQL (PostgreSQL): Explicit COMMIT
+        For SQLite: Auto-commit mode, this is a no-op
+        """
+        if not self._in_transaction:
+            # Not in explicit transaction, likely auto-commit mode
+            return
+
+        async with self._connection_lock:
+            try:
+                if self.is_cloud and self._current_connection:
+                    # PostgreSQL: Explicit commit
+                    await self._current_connection.execute("COMMIT")
+                    logger.debug("Transaction committed")
+
+                self._in_transaction = False
+                self._transaction_savepoint = None
+
+                # Release connection back to pool
+                if self._current_connection:
+                    await self._release_connection()
+
+            except Exception as e:
+                logger.error(f"Error committing transaction: {e}")
+                await self.rollback()
+                raise
+
+    async def rollback(self):
+        """
+        Rollback current transaction.
+        """
+        if not self._in_transaction:
+            logger.warning("No active transaction to rollback")
+            return
+
+        async with self._connection_lock:
+            try:
+                if self.is_cloud and self._current_connection:
+                    if self._transaction_savepoint:
+                        # Rollback to savepoint
+                        await self._current_connection.execute(
+                            f"ROLLBACK TO SAVEPOINT {self._transaction_savepoint}"
+                        )
+                        logger.debug(f"Rolled back to savepoint {self._transaction_savepoint}")
+                        self._transaction_savepoint = None
+                    else:
+                        # Full rollback
+                        await self._current_connection.execute("ROLLBACK")
+                        logger.debug("Transaction rolled back")
+                        self._in_transaction = False
+
+                # Release connection
+                if not self._transaction_savepoint and self._current_connection:
+                    await self._release_connection()
+
+            except Exception as e:
+                logger.error(f"Error rolling back transaction: {e}")
+                # Force release connection
+                await self._release_connection()
+                raise
+
+    async def _create_savepoint(self):
+        """Create a savepoint for nested transactions"""
+        if not self.is_cloud:
+            return  # SQLite handles this differently
+
+        savepoint_name = f"sp_{int(time.time() * 1000000)}"
+        if self._current_connection:
+            await self._current_connection.execute(f"SAVEPOINT {savepoint_name}")
+            self._transaction_savepoint = savepoint_name
+            logger.debug(f"Created savepoint {savepoint_name}")
+
+    async def _release_connection(self):
+        """Release transaction connection back to pool"""
+        if self._current_connection:
+            try:
+                # Exit the context manager for the connection
+                await self._current_connection.__aexit__(None, None, None)
+            except Exception as e:
+                logger.error(f"Error releasing connection: {e}")
+            finally:
+                self._current_connection = None
+                self._in_transaction = False
+
+    @asynccontextmanager
+    async def transaction(self):
+        """
+        Context manager for automatic transaction handling.
+
+        Usage:
+            async with conn.transaction():
+                await conn.execute("INSERT ...")
+                await conn.execute("UPDATE ...")
+            # Auto-commits on success, rolls back on exception
+        """
+        await self.begin()
+        try:
+            yield self
+            await self.commit()
+        except Exception:
+            await self.rollback()
+            raise
 
     async def close(self):
-        """Close adapter"""
-        await self.adapter.close()
+        """Close connection and release all resources"""
+        if self._closed:
+            return
+
+        async with self._connection_lock:
+            # Rollback any pending transaction
+            if self._in_transaction:
+                await self.rollback()
+
+            # Release connection
+            if self._current_connection:
+                await self._release_connection()
+
+            self._closed = True
+            logger.debug("Connection wrapper closed")
+
+    async def __aenter__(self):
+        """Async context manager entry"""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit"""
+        if exc_type is not None and self._in_transaction:
+            # Exception occurred, rollback
+            await self.rollback()
+        await self.close()
+        return False
 
 
 class PatternType(Enum):
