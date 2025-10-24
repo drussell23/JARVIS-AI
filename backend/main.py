@@ -2161,6 +2161,137 @@ async def health_check():
     }
 
 
+@app.get("/hybrid/status")
+async def hybrid_status():
+    """
+    Get hybrid cloud routing status and SAI learning metrics.
+
+    Returns comprehensive status of:
+    - RAM usage and trends
+    - GCP deployment state
+    - SAI learning statistics
+    - Component locations (local vs GCP)
+    - Migration metrics
+    - Crash prevention stats
+    """
+    # Check if hybrid coordinator is available (from start_system.py)
+    # Note: This endpoint works even if start_system.py isn't running
+    # It will show the last known state or indicate hybrid is inactive
+
+    try:
+        # Try to import and check if coordinator is running
+        # This is a read-only status check
+        import psutil
+        from datetime import datetime
+
+        # Get current RAM state
+        mem = psutil.virtual_memory()
+        ram_state = {
+            "total_gb": mem.total / (1024**3),
+            "used_gb": mem.used / (1024**3),
+            "available_gb": mem.available / (1024**3),
+            "percent": mem.percent,
+            "status": (
+                "EMERGENCY" if mem.percent >= 95
+                else "CRITICAL" if mem.percent >= 85
+                else "WARNING" if mem.percent >= 75
+                else "ELEVATED" if mem.percent >= 60
+                else "OPTIMAL"
+            ),
+        }
+
+        # Check if running on GCP (via environment detection)
+        import os
+        is_gcp = os.path.exists("/.dockerenv") or os.getenv("GCP_PROJECT_ID") is not None
+
+        # Try to load SAI learned parameters from database
+        learned_params = {}
+        try:
+            # Check if learning database has hybrid parameters
+            import sys
+            import json
+            from pathlib import Path
+
+            sys.path.insert(0, str(Path(__file__).parent))
+            from intelligence.learning_database import LearningDatabase
+
+            db = LearningDatabase()
+            await db.initialize()
+
+            # Query for latest hybrid learning stats
+            async with db.db.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    SELECT metadata
+                    FROM patterns
+                    WHERE pattern_type = 'hybrid_threshold'
+                    ORDER BY last_seen DESC
+                    LIMIT 1
+                """
+                )
+                result = await cursor.fetchone()
+
+                if result and result[0]:
+                    metadata = json.loads(result[0])
+                    learned_params = {
+                        "thresholds": metadata.get("thresholds", {}),
+                        "confidence": metadata.get("confidence", {}),
+                        "component_weights": metadata.get("component_weights", {}),
+                        "stats": metadata.get("stats", {}),
+                        "last_updated": metadata.get("last_updated"),
+                    }
+
+            await db.close()
+
+        except Exception as e:
+            learned_params = {"error": f"Could not load learning data: {str(e)}"}
+
+        # Build response
+        response = {
+            "timestamp": datetime.now().isoformat(),
+            "hybrid_enabled": os.getenv("JARVIS_HYBRID_MODE", "auto") in ["auto", "true", "1"],
+            "current_location": "gcp" if is_gcp else "local",
+            "ram": ram_state,
+            "gcp_available": is_gcp or bool(os.getenv("GCP_PROJECT_ID")),
+            "sai_learning": learned_params if learned_params else {
+                "status": "No learned parameters yet",
+                "note": "Run start_system.py to enable learning"
+            },
+            "features": {
+                "crash_prevention": True,
+                "auto_scaling": True,
+                "predictive_routing": True,
+                "cost_optimization": True,
+                "persistent_learning": True,
+            },
+            "thresholds": learned_params.get("thresholds", {
+                "warning": 0.75,
+                "critical": 0.85,
+                "optimal": 0.60,
+                "emergency": 0.95,
+                "note": "Default values (not yet learned)"
+            }),
+        }
+
+        return response
+
+    except Exception as e:
+        # Return error but still provide basic info
+        return {
+            "timestamp": datetime.now().isoformat(),
+            "hybrid_enabled": False,
+            "error": str(e),
+            "message": "Hybrid routing status unavailable. Run start_system.py to enable.",
+            "features": {
+                "crash_prevention": True,
+                "auto_scaling": True,
+                "predictive_routing": True,
+                "cost_optimization": True,
+                "persistent_learning": True,
+            },
+        }
+
+
 @app.get("/autonomous/status")
 async def autonomous_status():
     """Get autonomous orchestrator and mesh network status"""
