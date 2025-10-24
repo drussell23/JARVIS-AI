@@ -7,6 +7,7 @@ on:
       - multi-monitor-support
     paths:
       - 'backend/**'
+      - 'start_system.py'  # Root startup script with hybrid routing
       - '.github/workflows/deploy-to-gcp.yml'
 
   workflow_dispatch:
