@@ -17,6 +17,15 @@ import aiosqlite
 from collections import defaultdict, deque
 from enum import Enum
 import time
+from contextlib import asynccontextmanager
+
+# Try to import Cloud Database Adapter
+try:
+    from intelligence.cloud_database_adapter import get_database_adapter
+    CLOUD_ADAPTER_AVAILABLE = True
+except ImportError:
+    CLOUD_ADAPTER_AVAILABLE = False
+    logging.warning("Cloud Database Adapter not available - using SQLite only")
 
 # Async and ML dependencies
 try:
@@ -35,6 +44,57 @@ except ImportError:
     logging.warning("ChromaDB not available - install with: pip install chromadb")
 
 logger = logging.getLogger(__name__)
+
+
+class DatabaseCursorWrapper:
+    """Wrapper that makes Cloud SQL adapter look like aiosqlite cursor"""
+
+    def __init__(self, adapter_conn):
+        self.adapter_conn = adapter_conn
+
+    async def execute(self, sql, parameters=()):
+        """Execute SQL with parameters"""
+        if sql.strip().upper().startswith("PRAGMA"):
+            # Skip PRAGMA commands for Cloud SQL (PostgreSQL doesn't support them)
+            return self
+        await self.adapter_conn.execute(sql, *parameters)
+        return self
+
+    async def fetchall(self):
+        """Fetch all results - not supported in this pattern"""
+        return []
+
+    async def fetchone(self):
+        """Fetch one result - not supported in this pattern"""
+        return None
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
+class DatabaseConnectionWrapper:
+    """Wrapper that makes Cloud SQL adapter look like aiosqlite connection"""
+
+    def __init__(self, adapter):
+        self.adapter = adapter
+        self.row_factory = None  # For compatibility
+
+    @asynccontextmanager
+    async def cursor(self):
+        """Return cursor-like object using adapter connection"""
+        async with self.adapter.connection() as conn:
+            yield DatabaseCursorWrapper(conn)
+
+    async def commit(self):
+        """No-op for Cloud SQL (auto-commit mode)"""
+        pass
+
+    async def close(self):
+        """Close adapter"""
+        await self.adapter.close()
 
 
 class PatternType(Enum):
@@ -304,9 +364,26 @@ class JARVISLearningDatabase:
         logger.info(f"   Auto-optimize: {self.auto_optimize}")
 
     async def _init_sqlite(self):
-        """Initialize async SQLite database with enhanced schema"""
-        self.db = await aiosqlite.connect(str(self.sqlite_path))
-        self.db.row_factory = aiosqlite.Row
+        """Initialize async database (SQLite or Cloud SQL) with enhanced schema"""
+        # Try to use Cloud SQL if available
+        if CLOUD_ADAPTER_AVAILABLE:
+            try:
+                adapter = await get_database_adapter()
+                if adapter.is_cloud:
+                    logger.info("☁️  Using Cloud SQL (PostgreSQL)")
+                    self.db = DatabaseConnectionWrapper(adapter)
+                else:
+                    logger.info("📂 Using SQLite (Cloud SQL not configured)")
+                    self.db = await aiosqlite.connect(str(self.sqlite_path))
+                    self.db.row_factory = aiosqlite.Row
+            except Exception as e:
+                logger.warning(f"⚠️  Cloud SQL adapter failed ({e}), falling back to SQLite")
+                self.db = await aiosqlite.connect(str(self.sqlite_path))
+                self.db.row_factory = aiosqlite.Row
+        else:
+            logger.info("📂 Using SQLite (Cloud adapter not available)")
+            self.db = await aiosqlite.connect(str(self.sqlite_path))
+            self.db.row_factory = aiosqlite.Row
 
         async with self.db.cursor() as cursor:
             # Enable WAL mode for better concurrency
