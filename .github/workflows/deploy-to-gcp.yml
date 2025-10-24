@@ -37,9 +37,6 @@ jobs:
 
           echo "🚀 Starting JARVIS deployment..."
 
-          # Navigate to backend directory
-          cd ~/backend
-
           # Stop running backend
           echo "⏸️  Stopping existing backend..."
           pkill -f uvicorn || true
@@ -47,23 +44,25 @@ jobs:
 
           # Pull latest changes
           echo "📥 Pulling latest code..."
+          cd ~/backend
           git config --global --add safe.directory ~/backend
           git fetch --all
           git reset --hard origin/${{ github.ref_name }}
 
           # Install/update dependencies if requirements changed
           echo "📦 Checking dependencies..."
+          cd ~/backend/backend
           if [ -f requirements-cloud.txt ]; then
-            ~/backend/venv/bin/pip install -q -r requirements-cloud.txt
+            venv/bin/pip install -q -r requirements-cloud.txt
           fi
 
           # Start backend
           echo "▶️  Starting backend..."
-          cd ~/backend
+          cd ~/backend/backend
           nohup venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8010 > jarvis.log 2>&1 &
 
           # Wait for backend to start
-          sleep 5
+          sleep 8
 
           # Health check
           echo "🏥 Health check..."
