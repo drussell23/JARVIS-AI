@@ -256,12 +256,47 @@ class UnifiedCommandProcessor:
         if self.context_graph:
             try:
                 from context_intelligence.handlers import initialize_multi_space_handler
+                from intelligence.learning_database import get_learning_database
+
+                # Import Yabai and CG window detectors
+                yabai_detector = None
+                cg_window_detector = None
+
+                try:
+                    from vision.yabai_space_detector import YabaiSpaceDetector
+                    yabai_detector = YabaiSpaceDetector()
+                    logger.info("[UNIFIED] ✅ YabaiSpaceDetector initialized")
+                except Exception as e:
+                    logger.warning(f"[UNIFIED] Yabai detector not available: {e}")
+
+                try:
+                    from vision.multi_space_window_detector import MultiSpaceWindowDetector
+                    cg_window_detector = MultiSpaceWindowDetector()
+                    logger.info("[UNIFIED] ✅ MultiSpaceWindowDetector initialized")
+                except Exception as e:
+                    logger.warning(f"[UNIFIED] CG window detector not available: {e}")
+
+                # Get learning database
+                learning_db = None
+                try:
+                    learning_db = await get_learning_database()
+                    logger.info("[UNIFIED] ✅ Learning database connected")
+                except Exception as e:
+                    logger.warning(f"[UNIFIED] Learning database not available: {e}")
+
                 self.multi_space_handler = initialize_multi_space_handler(
                     context_graph=self.context_graph,
                     implicit_resolver=self.implicit_resolver,
-                    contextual_resolver=self.contextual_resolver
+                    contextual_resolver=self.contextual_resolver,
+                    learning_db=learning_db,
+                    yabai_detector=yabai_detector,
+                    cg_window_detector=cg_window_detector
                 )
-                logger.info("[UNIFIED] ✅ MultiSpaceQueryHandler initialized")
+                logger.info("[UNIFIED] ✅ MultiSpaceQueryHandler initialized with ALL data sources")
+                logger.info(f"[UNIFIED]    • Context Graph: ✅")
+                logger.info(f"[UNIFIED]    • Yabai: {'✅' if yabai_detector else '❌'}")
+                logger.info(f"[UNIFIED]    • Core Graphics: {'✅' if cg_window_detector else '❌'}")
+                logger.info(f"[UNIFIED]    • Learning DB: {'✅' if learning_db else '❌'}")
             except ImportError as e:
                 logger.warning(f"[UNIFIED] MultiSpaceQueryHandler not available: {e}")
                 self.multi_space_handler = None
