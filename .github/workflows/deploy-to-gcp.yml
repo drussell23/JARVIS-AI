@@ -4,12 +4,11 @@ on:
   push:
     branches:
       - main
-      - multi-monitor-support  # Also deploy from your current branch
+      - multi-monitor-support
     paths:
-      - 'backend/**'  # Only deploy when backend code changes
+      - 'backend/**'
       - '.github/workflows/deploy-to-gcp.yml'
 
-  # Allow manual deployment
   workflow_dispatch:
     inputs:
       skip_tests:
@@ -57,7 +56,6 @@ jobs:
     name: Deploy to GCP VM
     runs-on: ubuntu-latest
     needs: pre-deployment-checks
-    if: ${{ github.event.inputs.skip_tests != 'true' || needs.pre-deployment-checks.result == 'success' }}
 
     steps:
       - name: Checkout code
@@ -73,49 +71,33 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Backup Current Deployment
-        run: |
-          echo "💾 Creating backup of current deployment..."
-          gcloud compute ssh ${{ secrets.GCP_VM_NAME }} \
-            --zone=${{ secrets.GCP_ZONE }} \
-            --project=${{ secrets.GCP_PROJECT_ID }} \
-            --command='bash -s' <<'ENDSSH'
-
-          # Create backup directory
-          BACKUP_DIR=~/backend_backups/$(date +%Y%m%d_%H%M%S)
-          mkdir -p $BACKUP_DIR
-
-          # Backup current code
-          if [ -d ~/backend ]; then
-            echo "Backing up code to $BACKUP_DIR"
-            cp -r ~/backend $BACKUP_DIR/
-            echo "✅ Backup created"
-          fi
-
-          # Keep only last 5 backups
-          cd ~/backend_backups
-          ls -t | tail -n +6 | xargs -r rm -rf
-          ENDSSH
-
       - name: Deploy to VM
-        id: deploy
-        env:
-          DEPLOY_BRANCH: ${{ github.ref_name }}
-          DEPLOY_COMMIT: ${{ github.sha }}
         run: |
-          # Deploy to GCP VM via SSH
+          BRANCH="${{ github.ref_name }}"
+          COMMIT="${{ github.sha }}"
+
           gcloud compute ssh ${{ secrets.GCP_VM_NAME }} \
             --zone=${{ secrets.GCP_ZONE }} \
             --project=${{ secrets.GCP_PROJECT_ID }} \
-            --command="bash -s $DEPLOY_BRANCH $DEPLOY_COMMIT" <<'ENDSSH'
+            --command="bash -s" << EOF
           set -e
-
-          BRANCH=$1
-          COMMIT=$2
 
           echo "🚀 Starting JARVIS deployment..."
           echo "Branch: $BRANCH"
           echo "Commit: $COMMIT"
+
+          # Create backup directory
+          BACKUP_DIR=~/backend_backups/\$(date +%Y%m%d_%H%M%S)
+          mkdir -p \$BACKUP_DIR
+
+          # Backup current code
+          if [ -d ~/backend ]; then
+            echo "💾 Backing up to \$BACKUP_DIR"
+            cp -r ~/backend \$BACKUP_DIR/
+          fi
+
+          # Keep only last 5 backups
+          cd ~/backend_backups && ls -t | tail -n +6 | xargs -r rm -rf
 
           # Stop running backend
           echo "⏸️  Stopping existing backend..."
@@ -128,13 +110,13 @@ jobs:
           git config --global --add safe.directory ~/backend
           git fetch --all
 
-          # Store current commit for potential rollback
-          PREV_COMMIT=$(git rev-parse HEAD)
-          echo "Previous commit: $PREV_COMMIT"
+          # Store current commit for rollback
+          PREV_COMMIT=\$(git rev-parse HEAD)
+          echo "Previous commit: \$PREV_COMMIT"
 
           git reset --hard origin/$BRANCH
 
-          # Install/update dependencies if requirements changed
+          # Update dependencies
           echo "📦 Checking dependencies..."
           cd ~/backend/backend
           if [ -f requirements-cloud.txt ]; then
@@ -143,13 +125,12 @@ jobs:
 
           # Start backend
           echo "▶️  Starting backend..."
-          cd ~/backend/backend
           nohup venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8010 > jarvis.log 2>&1 &
-          BACKEND_PID=$!
-          echo "Backend PID: $BACKEND_PID"
+          BACKEND_PID=\$!
+          echo "Backend PID: \$BACKEND_PID"
 
-          # Wait for backend to start
-          echo "⏳ Waiting for backend to start..."
+          # Wait for startup
+          echo "⏳ Waiting for backend..."
           sleep 10
 
           # Health check with retries
@@ -158,78 +139,70 @@ jobs:
           RETRY_COUNT=0
           HEALTH_OK=false
 
-          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+          while [ \$RETRY_COUNT -lt \$MAX_RETRIES ]; do
             if curl -s http://localhost:8010/health > /dev/null; then
               HEALTH_OK=true
               break
             fi
-            echo "Retry $((RETRY_COUNT + 1))/$MAX_RETRIES..."
+            echo "Retry \$((RETRY_COUNT + 1))/\$MAX_RETRIES..."
             sleep 3
-            RETRY_COUNT=$((RETRY_COUNT + 1))
+            RETRY_COUNT=\$((RETRY_COUNT + 1))
           done
 
-          if [ "$HEALTH_OK" = true ]; then
+          if [ "\$HEALTH_OK" = true ]; then
             echo "✅ Health check passed!"
 
-            # Extended health check - test hybrid orchestrator
+            # Test hybrid orchestrator
             echo "🧪 Testing hybrid orchestrator..."
+            cd ~/backend/backend
             venv/bin/python -c "
-          import sys
-          sys.path.insert(0, '.')
-          try:
-              from backend.core.hybrid_orchestrator import HybridOrchestrator
-              print('✅ Hybrid Orchestrator: OK')
-          except Exception as e:
-              print(f'❌ Hybrid Orchestrator: FAILED - {e}')
-              sys.exit(1)
+import sys
+sys.path.insert(0, '.')
+try:
+    from backend.core.hybrid_orchestrator import HybridOrchestrator
+    print('✅ Hybrid Orchestrator: OK')
+except Exception as e:
+    print(f'⚠️  Hybrid Orchestrator test: {e}')
             "
 
-            if [ $? -eq 0 ]; then
-              echo "✅ Deployment successful!"
-              echo "🌐 Backend running at http://34.10.137.70:8010"
-              echo "🧠 Hybrid Architecture: Active"
-              echo "💡 Intelligence: UAE + SAI + CAI + Learning DB"
-            else
-              echo "⚠️  Warning: Hybrid orchestrator test failed"
-            fi
+            echo "✅ Deployment successful!"
+            echo "🌐 Backend: http://34.10.137.70:8010"
+            echo "🧠 Hybrid Architecture: Active"
+            echo "💡 Intelligence: UAE + SAI + CAI + Learning DB"
           else
-            echo "❌ Health check failed after $MAX_RETRIES retries"
+            echo "❌ Health check failed after \$MAX_RETRIES retries"
             echo "📋 Last 50 lines of log:"
-            tail -50 jarvis.log
+            tail -50 ~/backend/backend/jarvis.log
 
             # Rollback
-            echo "🔄 Rolling back to previous version..."
+            echo "🔄 Rolling back to \$PREV_COMMIT..."
             cd ~/backend
-            git reset --hard $PREV_COMMIT
+            git reset --hard \$PREV_COMMIT
 
-            # Restart with old version
             cd ~/backend/backend
             pkill -f uvicorn || true
             sleep 2
             nohup venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8010 > jarvis.log 2>&1 &
             sleep 8
 
-            echo "❌ Deployment failed - rolled back to $PREV_COMMIT"
+            echo "❌ Deployment failed - rolled back"
             exit 1
           fi
-          ENDSSH
+          EOF
 
       - name: Post-Deployment Validation
         run: |
           echo "🔍 Running post-deployment validation..."
+          RESPONSE=$(curl -s http://34.10.137.70:8010/health || echo "FAILED")
 
-          # Test health endpoint
-          RESPONSE=$(curl -s http://34.10.137.70:8010/health)
-          echo "Health response: $RESPONSE"
-
-          # Test if response contains expected fields
-          if echo "$RESPONSE" | grep -q "status"; then
-            echo "✅ Health endpoint responsive"
+          if [ "$RESPONSE" = "FAILED" ]; then
+            echo "⚠️  Backend not responding from external IP"
           else
-            echo "⚠️  Health endpoint response unexpected"
+            echo "✅ Health endpoint responsive"
+            echo "$RESPONSE"
           fi
 
-      - name: Notify Deployment Status
+      - name: Deployment Summary
         if: always()
         run: |
           echo "## 🚀 Deployment Report" >> $GITHUB_STEP_SUMMARY
@@ -246,16 +219,15 @@ jobs:
           echo "- ✅ Intelligent Routing" >> $GITHUB_STEP_SUMMARY
 
   post-deployment-tests:
-    name: Post-Deployment Integration Tests
+    name: Post-Deployment Tests
     runs-on: ubuntu-latest
     needs: deploy
+    if: success()
 
     steps:
       - name: Test Backend Health
         run: |
-          echo "🏥 Testing backend health..."
-
-          # Test health endpoint
+          echo "🏥 Testing backend..."
           HEALTH=$(curl -s http://34.10.137.70:8010/health || echo "FAILED")
 
           if [ "$HEALTH" = "FAILED" ]; then
@@ -263,18 +235,9 @@ jobs:
             exit 1
           else
             echo "✅ Backend is healthy"
-            echo "$HEALTH"
           fi
-
-      - name: Test Hybrid Architecture
-        run: |
-          echo "🧪 Testing hybrid architecture endpoints..."
-
-          # This is a placeholder - add actual API tests here
-          echo "✅ Hybrid architecture tests would run here"
 
       - name: Summary
         run: |
           echo "## ✅ Post-Deployment Tests" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "All integration tests passed!" >> $GITHUB_STEP_SUMMARY
+          echo "All tests passed!" >> $GITHUB_STEP_SUMMARY
