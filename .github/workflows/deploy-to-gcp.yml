@@ -123,8 +123,57 @@ jobs:
             venv/bin/pip install -q -r requirements-cloud.txt
           fi
 
+          # Setup Cloud SQL Proxy
+          echo "☁️  Setting up Cloud SQL Proxy..."
+          if [ ! -f ~/.local/bin/cloud-sql-proxy ]; then
+            echo "📥 Installing Cloud SQL Proxy..."
+            mkdir -p ~/.local/bin
+            curl -o ~/.local/bin/cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.8.2/cloud-sql-proxy.linux.amd64
+            chmod +x ~/.local/bin/cloud-sql-proxy
+          fi
+
+          # Load database config and setup systemd service
+          if [ -f ~/.jarvis/gcp/database_config.json ]; then
+            echo "✅ Found database config"
+            CONNECTION_NAME=\$(jq -r '.cloud_sql.connection_name' ~/.jarvis/gcp/database_config.json)
+            DB_PASSWORD=\$(jq -r '.cloud_sql.password' ~/.jarvis/gcp/database_config.json)
+
+            # Create environment file for JARVIS
+            cat > ~/backend/backend/.env.gcp << ENVEOF
+JARVIS_DB_TYPE=cloudsql
+JARVIS_DB_CONNECTION_NAME=\$CONNECTION_NAME
+JARVIS_DB_HOST=127.0.0.1
+JARVIS_DB_PORT=5432
+JARVIS_DB_NAME=jarvis_learning
+JARVIS_DB_USER=jarvis
+JARVIS_DB_PASSWORD=\$DB_PASSWORD
+ENVEOF
+
+            echo "✅ Created .env.gcp file"
+
+            # Setup Cloud SQL Proxy as systemd service
+            echo "🔧 Setting up Cloud SQL Proxy service..."
+            cd ~/backend
+            bash scripts/setup_cloud_sql_service.sh || echo "⚠️  Service setup failed, will try manual start"
+
+            # Verify Cloud SQL Proxy is running
+            sleep 2
+            if sudo systemctl is-active --quiet cloud-sql-proxy || pgrep -f cloud-sql-proxy > /dev/null; then
+              echo "✅ Cloud SQL Proxy is running"
+            else
+              echo "⚠️  Cloud SQL Proxy not running, falling back to SQLite"
+            fi
+          else
+            echo "⚠️  No database config found, using local SQLite"
+          fi
+
           # Start backend
           echo "▶️  Starting backend..."
+          # Load Cloud SQL environment if available
+          if [ -f .env.gcp ]; then
+            echo "☁️  Loading Cloud SQL configuration..."
+            export \$(cat .env.gcp | xargs)
+          fi
           nohup venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8010 > jarvis.log 2>&1 &
           BACKEND_PID=\$!
           echo "Backend PID: \$BACKEND_PID"
