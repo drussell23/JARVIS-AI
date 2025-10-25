@@ -205,7 +205,7 @@ class MacOSMemoryManager:
                 total_gb=vm.total / (1024**3),
                 available_gb=vm.available / (1024**3),
                 used_percent=vm.percent,
-                app_memory_gb=(vm.used - vm.cached) / (1024**3),
+                app_memory_gb=(vm.used - getattr(vm, "cached", 0)) / (1024**3),
                 wired_memory_gb=getattr(vm, "wired", 0) / (1024**3),
                 compressed_gb=0,  # Not available via psutil
                 swap_used_gb=swap.used / (1024**3),

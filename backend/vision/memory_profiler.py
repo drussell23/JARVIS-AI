@@ -8,12 +8,18 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import psutil
+
+# Ensure vision directory is in path for imports
+vision_dir = os.path.dirname(os.path.abspath(__file__))
+if vision_dir not in sys.path:
+    sys.path.insert(0, vision_dir)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
