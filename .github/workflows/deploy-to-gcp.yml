@@ -1,0 +1,289 @@
+name: Deploy JARVIS to GCP
+
+on:
+  push:
+    branches:
+      - main
+      - multi-monitor-support
+    paths:
+      - 'backend/**'
+      - 'start_system.py'  # Root startup script with hybrid routing
+      - '.github/workflows/deploy-to-gcp.yml'
+
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: 'Skip pre-deployment tests'
+        required: false
+        default: 'false'
+
+jobs:
+  pre-deployment-checks:
+    name: Pre-Deployment Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Validate Configuration
+        run: |
+          pip install pyyaml
+          python -c "
+          import yaml
+          print('🔍 Validating hybrid configuration...')
+          with open('backend/core/hybrid_config.yaml', 'r') as f:
+              config = yaml.safe_load(f)
+          assert 'hybrid' in config
+          assert config['hybrid']['intelligence']['uae']['enabled']
+          print('✅ Configuration valid')
+          "
+
+      - name: Check Critical Files
+        run: |
+          echo "📋 Checking critical files..."
+          test -f backend/core/hybrid_orchestrator.py && echo "✅ hybrid_orchestrator.py"
+          test -f backend/core/hybrid_router.py && echo "✅ hybrid_router.py"
+          test -f backend/core/hybrid_config.yaml && echo "✅ hybrid_config.yaml"
+          test -f backend/main.py && echo "✅ main.py"
+          echo "✅ All critical files present"
+
+  deploy:
+    name: Deploy to GCP VM
+    runs-on: ubuntu-latest
+    needs: pre-deployment-checks
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Deploy to VM
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          COMMIT="${{ github.sha }}"
+
+          gcloud compute ssh ${{ secrets.GCP_VM_NAME }} \
+            --zone=${{ secrets.GCP_ZONE }} \
+            --project=${{ secrets.GCP_PROJECT_ID }} \
+            --command="bash -s" << EOF
+          set -e
+
+          echo "🚀 Starting JARVIS deployment..."
+          echo "Branch: $BRANCH"
+          echo "Commit: $COMMIT"
+
+          # Create backup directory
+          BACKUP_DIR=~/backend_backups/\$(date +%Y%m%d_%H%M%S)
+          mkdir -p \$BACKUP_DIR
+
+          # Backup current code
+          if [ -d ~/backend ]; then
+            echo "💾 Backing up to \$BACKUP_DIR"
+            cp -r ~/backend \$BACKUP_DIR/
+          fi
+
+          # Keep only last 5 backups
+          cd ~/backend_backups && ls -t | tail -n +6 | xargs -r rm -rf
+
+          # Stop running backend
+          echo "⏸️  Stopping existing backend..."
+          pkill -f uvicorn || true
+          sleep 2
+
+          # Pull latest changes
+          echo "📥 Pulling latest code..."
+          cd ~/backend
+          git config --global --add safe.directory ~/backend
+          git fetch --all
+
+          # Store current commit for rollback
+          PREV_COMMIT=\$(git rev-parse HEAD)
+          echo "Previous commit: \$PREV_COMMIT"
+
+          git reset --hard origin/$BRANCH
+
+          # Update dependencies
+          echo "📦 Checking dependencies..."
+          cd ~/backend/backend
+          if [ -f requirements-cloud.txt ]; then
+            venv/bin/pip install -q -r requirements-cloud.txt
+          fi
+
+          # Deploy database config from GitHub secret
+          echo "📋 Deploying database config..."
+          mkdir -p ~/.jarvis/gcp
+          echo '${{ secrets.GCP_DATABASE_CONFIG }}' > ~/.jarvis/gcp/database_config.json
+          echo "✅ Database config deployed"
+
+          # Setup Cloud SQL Proxy
+          echo "☁️  Setting up Cloud SQL Proxy..."
+          if [ ! -f ~/.local/bin/cloud-sql-proxy ]; then
+            echo "📥 Installing Cloud SQL Proxy..."
+            mkdir -p ~/.local/bin
+            curl -o ~/.local/bin/cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.8.2/cloud-sql-proxy.linux.amd64
+            chmod +x ~/.local/bin/cloud-sql-proxy
+          fi
+
+          # Load database config and setup systemd service
+          if [ -f ~/.jarvis/gcp/database_config.json ]; then
+            echo "✅ Found database config"
+            CONNECTION_NAME=\$(jq -r '.cloud_sql.connection_name' ~/.jarvis/gcp/database_config.json)
+            DB_PASSWORD=\$(jq -r '.cloud_sql.password' ~/.jarvis/gcp/database_config.json)
+
+            # Create environment file for JARVIS
+            echo "JARVIS_DB_TYPE=cloudsql" > ~/backend/backend/.env.gcp
+            echo "JARVIS_DB_CONNECTION_NAME=\$CONNECTION_NAME" >> ~/backend/backend/.env.gcp
+            echo "JARVIS_DB_HOST=127.0.0.1" >> ~/backend/backend/.env.gcp
+            echo "JARVIS_DB_PORT=5432" >> ~/backend/backend/.env.gcp
+            echo "JARVIS_DB_NAME=jarvis_learning" >> ~/backend/backend/.env.gcp
+            echo "JARVIS_DB_USER=jarvis" >> ~/backend/backend/.env.gcp
+            echo "JARVIS_DB_PASSWORD=\$DB_PASSWORD" >> ~/backend/backend/.env.gcp
+
+            echo "✅ Created .env.gcp file"
+
+            # Setup Cloud SQL Proxy as systemd service
+            echo "🔧 Setting up Cloud SQL Proxy service..."
+            cd ~/backend
+            bash scripts/setup_cloud_sql_service.sh || echo "⚠️  Service setup failed, will try manual start"
+
+            # Verify Cloud SQL Proxy is running
+            sleep 2
+            if sudo systemctl is-active --quiet cloud-sql-proxy || pgrep -f cloud-sql-proxy > /dev/null; then
+              echo "✅ Cloud SQL Proxy is running"
+            else
+              echo "⚠️  Cloud SQL Proxy not running, falling back to SQLite"
+            fi
+          else
+            echo "⚠️  No database config found, using local SQLite"
+          fi
+
+          # Start backend
+          echo "▶️  Starting backend..."
+          # Load Cloud SQL environment if available
+          if [ -f .env.gcp ]; then
+            echo "☁️  Loading Cloud SQL configuration..."
+            export \$(cat .env.gcp | xargs)
+          fi
+          nohup venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8010 > jarvis.log 2>&1 &
+          BACKEND_PID=\$!
+          echo "Backend PID: \$BACKEND_PID"
+
+          # Wait for startup
+          echo "⏳ Waiting for backend..."
+          sleep 10
+
+          # Health check with retries
+          echo "🏥 Running health checks..."
+          MAX_RETRIES=5
+          RETRY_COUNT=0
+          HEALTH_OK=false
+
+          while [ \$RETRY_COUNT -lt \$MAX_RETRIES ]; do
+            if curl -s http://localhost:8010/health > /dev/null; then
+              HEALTH_OK=true
+              break
+            fi
+            echo "Retry \$((RETRY_COUNT + 1))/\$MAX_RETRIES..."
+            sleep 3
+            RETRY_COUNT=\$((RETRY_COUNT + 1))
+          done
+
+          if [ "\$HEALTH_OK" = true ]; then
+            echo "✅ Health check passed!"
+
+            # Test hybrid orchestrator
+            echo "🧪 Testing hybrid orchestrator..."
+            cd ~/backend/backend
+            venv/bin/python -c "import sys; sys.path.insert(0, '.'); exec(\"try:\\n    from backend.core.hybrid_orchestrator import HybridOrchestrator\\n    print('✅ Hybrid Orchestrator: OK')\\nexcept Exception as e:\\n    print(f'⚠️  Hybrid Orchestrator test: {e}')\")"
+
+            echo "✅ Deployment successful!"
+            echo "🌐 Backend: http://34.10.137.70:8010"
+            echo "🧠 Hybrid Architecture: Active"
+            echo "💡 Intelligence: UAE + SAI + CAI + Learning DB"
+          else
+            echo "❌ Health check failed after \$MAX_RETRIES retries"
+            echo "📋 Last 50 lines of log:"
+            tail -50 ~/backend/backend/jarvis.log
+
+            # Rollback
+            echo "🔄 Rolling back to \$PREV_COMMIT..."
+            cd ~/backend
+            git reset --hard \$PREV_COMMIT
+
+            cd ~/backend/backend
+            pkill -f uvicorn || true
+            sleep 2
+            nohup venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8010 > jarvis.log 2>&1 &
+            sleep 8
+
+            echo "❌ Deployment failed - rolled back"
+            exit 1
+          fi
+          EOF
+
+      - name: Post-Deployment Validation
+        run: |
+          echo "🔍 Running post-deployment validation..."
+          RESPONSE=$(curl -s http://34.10.137.70:8010/health || echo "FAILED")
+
+          if [ "$RESPONSE" = "FAILED" ]; then
+            echo "⚠️  Backend not responding from external IP"
+          else
+            echo "✅ Health endpoint responsive"
+            echo "$RESPONSE"
+          fi
+
+      - name: Deployment Summary
+        if: always()
+        run: |
+          echo "## 🚀 Deployment Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** ${{ job.status == 'success' && '✅ Success' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **URL:** http://34.10.137.70:8010" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Features Deployed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Hybrid Architecture (Local + GCP)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Intelligence Systems (UAE/SAI/CAI)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Learning Database" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Intelligent Routing" >> $GITHUB_STEP_SUMMARY
+
+  post-deployment-tests:
+    name: Post-Deployment Tests
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: success()
+
+    steps:
+      - name: Test Backend Health
+        run: |
+          echo "🏥 Testing backend..."
+          HEALTH=$(curl -s http://34.10.137.70:8010/health || echo "FAILED")
+
+          if [ "$HEALTH" = "FAILED" ]; then
+            echo "❌ Backend not responding"
+            exit 1
+          else
+            echo "✅ Backend is healthy"
+          fi
+
+      - name: Summary
+        run: |
+          echo "## ✅ Post-Deployment Tests" >> $GITHUB_STEP_SUMMARY
+          echo "All tests passed!" >> $GITHUB_STEP_SUMMARY

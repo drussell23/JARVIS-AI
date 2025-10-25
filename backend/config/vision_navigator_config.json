@@ -1,0 +1,81 @@
+{
+  "navigation": {
+    "max_retries": 3,
+    "retry_delay": 1.0,
+    "screenshot_verification": true,
+    "step_delay": 0.8,
+    "max_navigation_time": 30.0,
+    "verify_each_step": true,
+    "save_debug_screenshots": true
+  },
+  "mouse": {
+    "delay_between_actions": 0.5,
+    "click_duration": 0.1,
+    "movement_speed": 0.3,
+    "double_click_enabled": false,
+    "failsafe_enabled": true
+  },
+  "vision": {
+    "confidence_threshold": 0.7,
+    "use_bounding_boxes": true,
+    "verify_actions": true,
+    "screenshot_format": "png",
+    "screenshot_quality": 95,
+    "max_analysis_time": 10.0,
+    "enable_ocr_fallback": true
+  },
+  "prompts": {
+    "find_control_center": "I need you to find the Control Center icon in this screenshot and tell me where to click.\n\nThe Control Center icon:\n- Is in the menu bar at the top of the screen\n- Looks like two overlapping rounded rectangles/squares\n- Is in the top-right area, usually near the clock\n\nPlease measure from the LEFT edge and TOP edge of the screen and tell me:\nX_POSITION: [number of pixels from left edge]\nY_POSITION: [number of pixels from top edge]\n\nFor example:\nX_POSITION: 1380\nY_POSITION: 12",
+    
+    "find_screen_mirroring": "I need you to find the Screen Mirroring button in this Control Center panel.\n\nThe Screen Mirroring button:\n- Has an icon that looks like two overlapping screens or displays\n- May have text saying 'Screen Mirroring' or 'Display'\n- Is somewhere in the Control Center panel that's now visible\n\nPlease measure from the LEFT edge and TOP edge of the screen and tell me:\nX_POSITION: [number of pixels from left edge]\nY_POSITION: [number of pixels from top edge]\n\nFor example:\nX_POSITION: 800\nY_POSITION: 350",
+    
+    "find_display": "I need you to find '{display_name}' in this Screen Mirroring device list.\n\nLook for:\n- The text '{display_name}'\n- Usually has a TV or display icon next to it\n- It's in a list of available displays\n\nPlease measure from the LEFT edge and TOP edge of the screen and tell me:\nX_POSITION: [number of pixels from left edge]\nY_POSITION: [number of pixels from top edge]\n\nFor example:\nX_POSITION: 850\nY_POSITION: 480",
+    
+    "verify_connection": "Look at this screenshot. Is there any indication that the display '{display_name}' is currently connected? Look for: checkmarks, connection indicators, the device showing as 'Connected', or the device appearing in a 'Connected Displays' section. Answer with just: YES or NO"
+  },
+  "ui_elements": {
+    "control_center": {
+      "search_region": "top_right",
+      "icon_description": "two overlapping squares",
+      "typical_position_from_right": 70,
+      "menu_bar_height": 25
+    },
+    "screen_mirroring": {
+      "icon_description": "two overlapping screens",
+      "typical_text": ["Screen Mirroring", "Screen Mirror", "Display"]
+    },
+    "display_device": {
+      "icon_description": "TV or monitor icon",
+      "text_pattern": "{display_name}"
+    }
+  },
+  "fallback_strategies": {
+    "control_center": [
+      "claude_vision",
+      "heuristic_position",
+      "icon_template_match"
+    ],
+    "screen_mirroring": [
+      "claude_vision",
+      "ocr_text_search",
+      "icon_detection"
+    ],
+    "display_selection": [
+      "claude_vision",
+      "ocr_exact_match",
+      "fuzzy_text_match"
+    ]
+  },
+  "debug": {
+    "save_all_screenshots": true,
+    "log_vision_responses": true,
+    "log_mouse_movements": false,
+    "screenshot_dir": "~/.jarvis/screenshots/ui_navigation"
+  },
+  "advanced": {
+    "use_enhanced_pipeline": true,
+    "pipeline_config_path": "config/vision_pipeline_config.json",
+    "enable_ml_learning": false,
+    "enable_performance_profiling": true
+  }
+}

@@ -1,0 +1,259 @@
+# JARVIS Hybrid Architecture Configuration
+# Zero-hardcoding, fully dynamic system
+# Integrated with UAE, SAI, CAI, and learning_database
+
+hybrid:
+  mode: auto  # auto, local-only, cloud-only, hybrid
+
+  # Intelligent Systems Integration
+  intelligence:
+    uae:
+      enabled: true
+      local_context: true  # Capture context locally
+      cloud_processing: true  # Process in cloud
+    sai:
+      enabled: true
+      self_healing: true
+      performance_optimization: true
+    cai:
+      enabled: true
+      intent_prediction: true
+      proactive_assistance: true
+    learning_database:
+      enabled: true
+      local_cache: true  # Fast local access
+      cloud_sync: true  # Sync to cloud for ML
+
+  # Service Discovery
+  discovery:
+    enabled: true
+    methods:
+      - dns  # DNS-SD / mDNS for local services
+      - consul  # Consul for cloud services
+      - static  # Fallback to static config
+    health_check_interval: 30  # seconds
+    service_timeout: 5  # seconds
+
+  # Backend Definitions (auto-discovered or static fallback)
+  backends:
+    local:
+      type: local
+      priority: 1  # Lower = higher priority for local tasks
+      capabilities:
+        - vision_capture
+        - screen_unlock
+        - voice_activation
+        - macos_automation
+        - display_monitoring
+        - wake_word_detection
+        - real_time_context
+        - immediate_response
+      components:
+        - VISION
+        - VOICE
+        - VOICE_UNLOCK
+        - WAKE_WORD
+        - DISPLAY_MONITOR
+      health_endpoint: "http://localhost:8010/health"
+      enabled: true
+
+    gcp:
+      type: cloud
+      priority: 2  # Higher priority for heavy ML tasks
+      capabilities:
+        - ml_processing
+        - nlp_analysis
+        - heavy_computation
+        - chatbot_inference
+        - sentiment_analysis
+        - goal_inference
+        - uae_processing
+        - sai_learning
+        - cai_prediction
+        - deep_learning
+      components:
+        - CHATBOTS
+        - ML_MODELS
+        - MEMORY
+        - MONITORING
+      discovery:
+        method: dns
+        hostname: jarvis-backend.gcp.internal
+      fallback_url: "http://34.10.137.70:8010"
+      health_endpoint: "/health"
+      enabled: true
+
+  # Intelligent Routing Rules
+  routing:
+    strategy: capability_based  # capability_based, round_robin, least_loaded, fastest
+
+    # Task routing rules (matched in order)
+    # Enhanced with UAE/SAI/CAI intelligence
+    rules:
+      # Real-time local-only tasks
+      - name: vision_capture
+        match:
+          capabilities: [vision_capture]
+        route_to: local
+        fallback: none  # Cannot fallback, requires local
+        use_uae: true  # Capture context
+
+      - name: screen_unlock
+        match:
+          capabilities: [screen_unlock]
+        route_to: local
+        fallback: none
+        use_cai: true  # Context-aware unlock
+
+      - name: voice_activation
+        match:
+          capabilities: [voice_activation]
+        route_to: local
+        fallback: none
+        use_cai: true  # Predict intent
+
+      - name: wake_word
+        match:
+          capabilities: [wake_word_detection]
+        route_to: local
+        fallback: none
+
+      # Cloud-heavy intelligence tasks
+      - name: uae_processing
+        match:
+          keywords: [context, awareness, what am i doing, understand situation]
+          capabilities: [uae_processing]
+        route_to: gcp
+        fallback: local
+        use_uae: true
+        use_cai: true
+
+      - name: sai_learning
+        match:
+          keywords: [learn, pattern, remember, adapt, optimize]
+          capabilities: [sai_learning]
+        route_to: gcp
+        fallback: none
+        use_sai: true
+        use_learning_db: true
+
+      - name: cai_prediction
+        match:
+          keywords: [predict, suggest, what should, recommend]
+          capabilities: [cai_prediction]
+        route_to: gcp
+        fallback: local
+        use_cai: true
+        use_learning_db: true
+
+      - name: ml_heavy
+        match:
+          memory_required: ">8GB"
+          capabilities: [ml_processing]
+        route_to: gcp
+        fallback: local
+        use_uae: true
+
+      - name: nlp_analysis
+        match:
+          keywords: [analyze, summarize, understand, explain]
+          capabilities: [nlp_analysis]
+        route_to: gcp
+        fallback: local
+        use_uae: true
+        use_cai: true
+
+      - name: chatbot
+        match:
+          command_type: query
+          capabilities: [chatbot_inference]
+        route_to: gcp
+        fallback: local
+        use_uae: true  # Provide context to chatbot
+        use_cai: true  # Understand intent
+        use_learning_db: true  # Remember conversations
+
+      - name: goal_inference
+        match:
+          keywords: [goal, intention, trying to, working on]
+          capabilities: [goal_inference]
+        route_to: gcp
+        fallback: local
+        use_cai: true
+        use_learning_db: true
+
+      - name: default
+        match:
+          all: true
+        route_to: auto  # Let system decide
+        use_uae: true  # Always capture context
+
+  # Circuit Breaker Configuration
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 5  # failures before opening circuit
+    success_threshold: 2  # successes to close circuit
+    timeout: 60  # seconds circuit stays open
+    half_open_timeout: 30  # seconds to retry in half-open state
+
+  # Retry Configuration
+  retry:
+    enabled: true
+    max_attempts: 3
+    initial_delay: 1  # seconds
+    max_delay: 30  # seconds
+    exponential_base: 2
+    jitter: true
+
+  # Connection Pooling
+  connection_pool:
+    max_connections: 100
+    max_keepalive_connections: 20
+    keepalive_expiry: 30  # seconds
+    timeout: 10  # seconds
+
+  # Caching
+  cache:
+    enabled: true
+    backend: redis  # redis, memory, disk
+    ttl: 300  # seconds (5 minutes)
+    max_size: 1000  # max cached items
+    redis:
+      host: localhost
+      port: 6379
+      db: 0
+
+  # Load Balancing
+  load_balancing:
+    enabled: true
+    strategy: least_loaded  # round_robin, least_loaded, weighted
+    health_check: true
+
+  # Monitoring
+  monitoring:
+    enabled: true
+    metrics:
+      - request_count
+      - response_time
+      - error_rate
+      - cache_hit_rate
+      - backend_health
+    export:
+      prometheus: true
+      log_file: "logs/hybrid_metrics.log"
+
+  # WebSocket Configuration
+  websocket:
+    enabled: true
+    ping_interval: 30  # seconds
+    ping_timeout: 10  # seconds
+    max_message_size: 10485760  # 10MB
+    compression: true
+
+  # Fallback Behavior
+  fallback:
+    on_cloud_failure: local  # local, error, queue
+    on_local_failure: cloud  # cloud, error, queue
+    queue_enabled: true
+    queue_max_size: 1000
+    queue_timeout: 300  # seconds

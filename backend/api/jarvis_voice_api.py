@@ -706,6 +706,50 @@ class JARVISVoiceAPI:
     async def process_command(self, command: JARVISCommand) -> Dict:
         """Process a JARVIS command"""
 
+        # CRITICAL: Check for TV/display prompt responses FIRST (highest priority)
+        try:
+            from display import get_display_monitor
+            monitor = get_display_monitor()
+
+            # Debug logging
+            logger.info(f"[JARVIS CMD] Display check - pending_prompt: {getattr(monitor, 'pending_prompt_display', None)}, has_pending: {monitor.has_pending_prompt()}")
+
+            # ALWAYS check for yes/no if it looks like a response
+            response_lower = command.text.lower().strip()
+            is_yes_no = any(word in response_lower for word in ["yes", "yeah", "yep", "no", "nope", "sure", "okay", "connect", "skip"])
+
+            if is_yes_no:
+                logger.info(f"[JARVIS CMD] Detected yes/no response: '{command.text}'")
+
+                # If there's a pending prompt OR if Living Room TV is available, handle it
+                has_pending = monitor.has_pending_prompt()
+                available_displays = list(getattr(monitor, 'available_displays', set()))
+                living_room_available = 'living_room_tv' in available_displays
+
+                logger.info(f"[JARVIS CMD] Has pending: {has_pending}, Living Room TV available: {living_room_available}, All available: {available_displays}")
+
+                if has_pending or living_room_available:
+                    logger.info(f"[JARVIS CMD] Handling display response (pending={has_pending}, tv_available={living_room_available})")
+
+                    # If no pending prompt but TV is available, set it now
+                    if not has_pending and living_room_available:
+                        monitor.pending_prompt_display = 'living_room_tv'
+                        logger.info(f"[JARVIS CMD] Set pending prompt for Living Room TV")
+
+                    display_result = await monitor.handle_user_response(command.text)
+
+                    if display_result.get("handled"):
+                        logger.info(f"[JARVIS CMD] Display handler processed the response successfully")
+                        return {
+                            "response": display_result.get("response", "Understood."),
+                            "status": "success" if display_result.get("success", True) else "error",
+                            "command_type": "display_response",
+                            "success": display_result.get("success", True)
+                        }
+        except Exception as e:
+            logger.error(f"[JARVIS CMD] Error checking display prompt: {e}")
+            # Continue to normal processing if this fails
+
         # DYNAMIC COMPONENT LOADING - Load required components based on command intent
         try:
             from api.jarvis_factory import get_app_state
@@ -765,10 +809,10 @@ class JARVISVoiceAPI:
             logger.info(f"[JARVIS API] Document creation command detected - skipping vision handler: '{command.text}'")
             # Skip vision handler entirely - will go to unified processor below
         else:
-            # First check if this is a vision command
+            # Check if this is a vision command
             logger.info(f"[JARVIS API] Checking if '{command.text}' is a vision command...")
 
-            # Quick check for monitoring commands
+            # Quick check for monitoring commands and multi-space queries
             is_monitoring_cmd = any(
                 phrase in command.text.lower()
                 for phrase in [
@@ -782,12 +826,21 @@ class JARVISVoiceAPI:
                     "begin monitoring",
                     "stop monitoring",
                     "disable monitoring",
+                    # Multi-space query patterns
+                    "what's happening across",
+                    "what is happening across",
+                    "happening across my",
+                    "desktop spaces",
+                    "across my spaces",
+                    "all my spaces",
+                    "show me all spaces",
+                    "all my desktops",
                 ]
             )
 
             if is_monitoring_cmd:
                 logger.info(
-                    "[JARVIS API] Detected monitoring command - routing to vision handler"
+                    "[JARVIS API] Detected vision/multi-space command - routing to vision handler"
                 )
 
             try:
@@ -1451,9 +1504,57 @@ class JARVISVoiceAPI:
 
                     if USE_CONTEXT_HANDLER:
                         try:
+                            # CRITICAL: Check for TV/display prompt responses FIRST (highest priority)
+                            # This must happen BEFORE any classification or processing
+                            try:
+                                from display import get_display_monitor
+                                monitor = get_display_monitor()
+
+                                # Debug logging
+                                logger.info(f"[JARVIS WS] Display check - pending_prompt: {getattr(monitor, 'pending_prompt_display', None)}, has_pending: {monitor.has_pending_prompt()}")
+
+                                # ALWAYS check for yes/no if it looks like a response
+                                response_lower = command_text.lower().strip()
+                                is_yes_no = any(word in response_lower for word in ["yes", "yeah", "yep", "no", "nope", "sure", "okay", "connect", "skip"])
+
+                                if is_yes_no:
+                                    logger.info(f"[JARVIS WS] Detected yes/no response: '{command_text}'")
+
+                                    # If there's a pending prompt OR if Living Room TV is available, handle it
+                                    has_pending = monitor.has_pending_prompt()
+                                    available_displays = list(getattr(monitor, 'available_displays', set()))
+                                    living_room_available = 'living_room_tv' in available_displays
+
+                                    logger.info(f"[JARVIS WS] Has pending: {has_pending}, Living Room TV available: {living_room_available}, All available: {available_displays}")
+
+                                    if has_pending or living_room_available:
+                                        logger.info(f"[JARVIS WS] Handling display response (pending={has_pending}, tv_available={living_room_available})")
+
+                                        # If no pending prompt but TV is available, set it now
+                                        if not has_pending and living_room_available:
+                                            monitor.pending_prompt_display = 'living_room_tv'
+                                            logger.info(f"[JARVIS WS] Set pending prompt for Living Room TV")
+
+                                        display_result = await monitor.handle_user_response(command_text)
+
+                                        if display_result.get("handled"):
+                                            logger.info(f"[JARVIS WS] Display handler processed the response successfully")
+                                            await websocket.send_json({
+                                                "type": "response",
+                                                "text": display_result.get("response", "Understood."),
+                                                "command_type": "display_response",
+                                                "success": display_result.get("success", True),
+                                                "timestamp": datetime.now().isoformat(),
+                                                "speak": True
+                                            })
+                                            continue
+                            except Exception as e:
+                                logger.error(f"[JARVIS WS] Error checking display prompt: {e}")
+                                # Continue to normal processing if this fails
+
                             from .unified_command_processor import get_unified_processor
                             processor = get_unified_processor(self.api_key)
-                            
+
                             if USE_ENHANCED_CONTEXT:
                                 # Use enhanced simple context handler for proper feedback
                                 from .simple_context_handler_enhanced import wrap_with_enhanced_context

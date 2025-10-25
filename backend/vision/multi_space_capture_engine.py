@@ -43,6 +43,32 @@ except ImportError:
     logger.warning("Vision status manager not available")
     get_vision_status_manager = None
 
+# Import window capture manager for robust edge case handling
+try:
+    import sys
+    from pathlib import Path as PathLib
+    backend_path = PathLib(__file__).parent.parent
+    if str(backend_path) not in sys.path:
+        sys.path.insert(0, str(backend_path))
+    from context_intelligence.managers.window_capture_manager import get_window_capture_manager
+    from context_intelligence.managers.system_state_manager import get_system_state_manager, SystemHealth
+    from context_intelligence.managers.capture_strategy_manager import (
+        get_capture_strategy_manager,
+        initialize_capture_strategy_manager
+    )
+    WINDOW_CAPTURE_AVAILABLE = True
+    SYSTEM_STATE_AVAILABLE = True
+    CAPTURE_STRATEGY_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Context intelligence managers not available: {e}")
+    get_window_capture_manager = None
+    get_system_state_manager = None
+    get_capture_strategy_manager = None
+    initialize_capture_strategy_manager = None
+    WINDOW_CAPTURE_AVAILABLE = False
+    SYSTEM_STATE_AVAILABLE = False
+    CAPTURE_STRATEGY_AVAILABLE = False
+
 
 class CaptureMethod(Enum):
     """Available capture methods with fallback hierarchy"""
@@ -226,6 +252,24 @@ class MultiSpaceCaptureEngine:
         self.optimizer = None  # Will be set by vision intelligence
         self.monitoring_active = False  # Track if monitoring is active
         self.direct_capture = get_direct_capture() if get_direct_capture else None
+        self.system_state_manager = get_system_state_manager() if SYSTEM_STATE_AVAILABLE else None
+
+        # Initialize Capture Strategy Manager for intelligent fallbacks
+        self.capture_strategy_manager = None
+        if CAPTURE_STRATEGY_AVAILABLE:
+            try:
+                # Try to get existing instance
+                self.capture_strategy_manager = get_capture_strategy_manager()
+                if not self.capture_strategy_manager:
+                    # Initialize with default settings
+                    self.capture_strategy_manager = initialize_capture_strategy_manager(
+                        cache_ttl=60.0,  # 60-second cache
+                        max_cache_entries=100,
+                        enable_error_matrix=True
+                    )
+                logger.info("✅ Capture Strategy Manager available for intelligent fallbacks")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Capture Strategy Manager: {e}")
 
     def _initialize_capture_methods(self) -> Dict[CaptureMethod, bool]:
         """Check available capture methods"""
@@ -253,6 +297,48 @@ class MultiSpaceCaptureEngine:
         )
         return methods
 
+    async def check_system_health(self) -> Tuple[bool, str, Optional[Any]]:
+        """
+        Check system health before capture operations.
+
+        Returns:
+            Tuple of (is_healthy, message, state_info)
+        """
+        if not SYSTEM_STATE_AVAILABLE or not self.system_state_manager:
+            # System state manager not available, assume healthy
+            return True, "System state checking not available", None
+
+        try:
+            state_info = await self.system_state_manager.check_system_state()
+
+            if state_info.health == SystemHealth.HEALTHY:
+                return True, "System is healthy", state_info
+
+            elif state_info.health == SystemHealth.DEGRADED:
+                # System degraded but usable
+                warnings = "; ".join(state_info.warnings)
+                logger.warning(f"[SYSTEM-HEALTH] System degraded: {warnings}")
+                return True, f"System degraded: {warnings}", state_info
+
+            else:
+                # System unhealthy or critical
+                failures = "; ".join(state_info.checks_failed)
+                logger.error(f"[SYSTEM-HEALTH] System unhealthy: {failures}")
+
+                # Generate helpful error message
+                if not state_info.can_use_vision:
+                    error_msg = state_info.display_status.message
+                elif not state_info.can_use_spaces:
+                    error_msg = state_info.yabai_status.message
+                else:
+                    error_msg = f"System unhealthy: {failures}"
+
+                return False, error_msg, state_info
+
+        except Exception as e:
+            logger.error(f"[SYSTEM-HEALTH] Error checking system health: {e}")
+            return True, "Health check failed, proceeding anyway", None
+
     async def capture_all_spaces(
         self, request: SpaceCaptureRequest
     ) -> SpaceCaptureResult:
@@ -261,6 +347,24 @@ class MultiSpaceCaptureEngine:
         Implements PRD FR-1.1: Capture screenshots from any desktop space
         """
         start_time = time.time()
+
+        # Check system health first
+        is_healthy, health_message, state_info = await self.check_system_health()
+
+        if not is_healthy:
+            logger.error(f"[MULTI-SPACE] System health check failed: {health_message}")
+            # Return error result
+            return SpaceCaptureResult(
+                screenshots={},
+                metadata={},
+                success=False,
+                total_duration=time.time() - start_time,
+                errors={-1: health_message}  # Use -1 as system-level error
+            )
+
+        if state_info and state_info.health == SystemHealth.DEGRADED:
+            logger.warning(f"[MULTI-SPACE] System degraded: {health_message}")
+            # Continue but log warnings
 
         # If monitoring is active with purple indicator, use that for better performance
         if self.monitoring_active and is_direct_capturing():
@@ -746,16 +850,54 @@ class MultiSpaceCaptureEngine:
                             f"[CG_CAPTURE] Found {app_name} '{window_title}' in space {space_id}, capturing..."
                         )
 
-                        # Find window ID
-                        window_id = CGWindowCapture.find_window_by_name(
-                            app_name, window_title
-                        )
+                        # Find window ID (try yabai first for more reliable ID)
+                        if hasattr(window, "window_id"):
+                            window_id = window.window_id
+                        else:
+                            window_id = CGWindowCapture.find_window_by_name(
+                                app_name, window_title
+                            )
+
                         if window_id:
-                            # Capture it!
+                            # Try WindowCaptureManager first for robust edge case handling
+                            if WINDOW_CAPTURE_AVAILABLE:
+                                logger.info(
+                                    f"[CG_CAPTURE] Using WindowCaptureManager for window {window_id} in space {space_id}"
+                                )
+                                try:
+                                    capture_manager = get_window_capture_manager()
+                                    capture_result = await capture_manager.capture_window(
+                                        window_id=window_id,
+                                        space_id=space_id,
+                                        use_fallback=True
+                                    )
+
+                                    if capture_result.success:
+                                        # Load image as numpy array
+                                        img = Image.open(capture_result.image_path)
+                                        screenshot = np.array(img)
+                                        logger.info(
+                                            f"[CG_CAPTURE] Successfully captured {app_name} (ID: {window_id}) from space {space_id} using WindowCaptureManager!"
+                                        )
+                                        if capture_result.status.value == "fallback_used":
+                                            logger.info(
+                                                f"[CG_CAPTURE] Used fallback window {capture_result.fallback_window_id}"
+                                            )
+                                        return screenshot
+                                    else:
+                                        logger.warning(
+                                            f"[CG_CAPTURE] WindowCaptureManager failed: {capture_result.error}, falling back to CGWindowCapture"
+                                        )
+                                except Exception as e:
+                                    logger.warning(
+                                        f"[CG_CAPTURE] WindowCaptureManager exception: {e}, falling back to CGWindowCapture"
+                                    )
+
+                            # Fallback to CGWindowCapture
                             screenshot = CGWindowCapture.capture_window_by_id(window_id)
                             if screenshot is not None:
                                 logger.info(
-                                    f"[CG_CAPTURE] Successfully captured {app_name} (ID: {window_id}) from space {space_id} WITHOUT switching!"
+                                    f"[CG_CAPTURE] Successfully captured {app_name} (ID: {window_id}) from space {space_id} using CGWindowCapture!"
                                 )
                                 return screenshot
 

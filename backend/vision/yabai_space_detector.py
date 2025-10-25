@@ -80,8 +80,13 @@ class YabaiSpaceDetector:
         except:
             return YabaiStatus.ERROR
 
-    def enumerate_all_spaces(self) -> List[Dict[str, Any]]:
-        """Enumerate all Mission Control spaces using Yabai"""
+    def enumerate_all_spaces(self, include_display_info: bool = True) -> List[Dict[str, Any]]:
+        """
+        Enumerate all Mission Control spaces using Yabai
+        
+        Args:
+            include_display_info: If True, include display ID for each space
+        """
         if not self.is_available():
             logger.warning("[YABAI] Yabai not available, returning empty list")
             return []
@@ -134,6 +139,9 @@ class YabaiSpaceDetector:
                         f"{applications[0]} and {len(applications)-1} others"
                     )
 
+                # Get display info if requested
+                display_id = space.get("display", 1) if include_display_info else None
+
                 space_info = {
                     "space_id": space_id,
                     "space_name": f"Desktop {space_id}",
@@ -145,7 +153,7 @@ class YabaiSpaceDetector:
                     "applications": applications,
                     "primary_activity": primary_activity,
                     "type": space.get("type", "unknown"),
-                    "display": space.get("display", 1),
+                    "display": display_id,  # Added display awareness
                     "uuid": space.get("uuid", ""),
                     "windows": [
                         {
@@ -177,6 +185,61 @@ class YabaiSpaceDetector:
         except Exception as e:
             logger.error(f"[YABAI] Error enumerating spaces: {e}")
             return []
+    
+    def get_display_for_space(self, space_id: int) -> Optional[int]:
+        """
+        Get display ID for a given space
+        
+        Args:
+            space_id: Space ID to lookup
+            
+        Returns:
+            Display ID or None if not found
+        """
+        if not self.is_available():
+            return None
+        
+        try:
+            result = subprocess.run(
+                ["yabai", "-m", "query", "--spaces"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            
+            if result.returncode != 0:
+                return None
+            
+            spaces_data = json.loads(result.stdout)
+            
+            for space in spaces_data:
+                if space.get("index") == space_id:
+                    return space.get("display", 1)
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"[YABAI] Error getting display for space {space_id}: {e}")
+            return None
+    
+    def enumerate_spaces_by_display(self) -> Dict[int, List[Dict[str, Any]]]:
+        """
+        Group spaces by display ID
+        
+        Returns:
+            Dictionary mapping display_id -> list of spaces
+        """
+        spaces = self.enumerate_all_spaces(include_display_info=True)
+        
+        spaces_by_display = {}
+        for space in spaces:
+            display_id = space.get("display", 1)
+            if display_id not in spaces_by_display:
+                spaces_by_display[display_id] = []
+            spaces_by_display[display_id].append(space)
+        
+        logger.info(f"[YABAI] Grouped {len(spaces)} spaces across {len(spaces_by_display)} displays")
+        return spaces_by_display
 
     def get_current_space(self) -> Optional[Dict[str, Any]]:
         """Get information about the currently focused space"""

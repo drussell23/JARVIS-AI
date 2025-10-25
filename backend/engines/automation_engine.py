@@ -901,14 +901,14 @@ class AutomationEngine:
         if any(word in command_lower for word in ["plan", "create task", "automate"]):
             # Create task plan
             tasks = self.task_executor.create_task_plan(command, context)
-            
+
             # Execute tasks
             results = []
             for task in tasks:
                 task_id = await self.task_executor.create_task(task)
                 result = await self.task_executor.execute_task(task_id)
                 results.append(result)
-                
+
             return {
                 "type": "task_plan",
                 "action": "executed",
@@ -916,10 +916,35 @@ class AutomationEngine:
                 "results": results,
                 "message": f"Created and executed {len(tasks)} tasks"
             }
-            
+
+        # Display connection commands - route to JARVIS voice API
+        if any(word in command_lower for word in ["tv", "display", "monitor", "screen mirroring", "airplay", "living room", "bedroom", "kitchen"]):
+            # Route to JARVIS voice API for proper handling
+            try:
+                from api.jarvis_voice_api import unified_command_processor
+                from pydantic import BaseModel
+
+                class CommandRequest(BaseModel):
+                    text: str
+
+                request = CommandRequest(text=command)
+                result = await unified_command_processor(request)
+
+                return {
+                    "type": "display",
+                    "action": "routed_to_jarvis",
+                    "result": result,
+                    "message": result.get("message", "Display command processed")
+                }
+            except Exception as e:
+                return {
+                    "type": "error",
+                    "message": f"Failed to process display command: {str(e)}"
+                }
+
         return {
             "type": "unknown",
-            "message": "I couldn't understand that command. Try asking about weather, calendar, news, or home automation."
+            "message": "I couldn't understand that command. Try asking about weather, calendar, news, home automation, or display connections."
         }
         
     def shutdown(self):

@@ -31,6 +31,35 @@ from AppKit import NSScreen, NSBitmapImageRep, NSImage
 
 logger = logging.getLogger(__name__)
 
+# Import window capture manager for robust edge case handling
+try:
+    import sys
+    from pathlib import Path as PathLib
+    backend_path = PathLib(__file__).parent.parent
+    if str(backend_path) not in sys.path:
+        sys.path.insert(0, str(backend_path))
+    from context_intelligence.managers.window_capture_manager import get_window_capture_manager
+    WINDOW_CAPTURE_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Window capture manager not available: {e}")
+    get_window_capture_manager = None
+    WINDOW_CAPTURE_AVAILABLE = False
+
+# Import Error Handling Matrix for graceful degradation
+try:
+    from context_intelligence.managers.error_handling_matrix import (
+        get_error_handling_matrix,
+        initialize_error_handling_matrix,
+        FallbackChain,
+        ErrorMessageGenerator
+    )
+    ERROR_MATRIX_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Error Handling Matrix not available: {e}")
+    get_error_handling_matrix = None
+    initialize_error_handling_matrix = None
+    ERROR_MATRIX_AVAILABLE = False
+
 @dataclass
 class ScreenshotResult:
     """Result of a screenshot capture attempt"""
@@ -48,15 +77,39 @@ class ReliableScreenshotCapture:
     """
 
     def __init__(self):
-        self.methods = [
+        # Build methods list with window_capture_manager as first choice (if available)
+        self.methods = []
+
+        if WINDOW_CAPTURE_AVAILABLE:
+            self.methods.append(('window_capture_manager', self._capture_with_window_manager))
+
+        self.methods.extend([
             ('quartz_composite', self._capture_quartz_composite),
             ('quartz_windows', self._capture_quartz_windows),
             ('appkit_screen', self._capture_appkit_screen),
             ('screencapture_cli', self._capture_screencapture_cli),
             ('window_server', self._capture_window_server)
-        ]
+        ])
+
+        # Initialize Error Handling Matrix for graceful degradation
+        self.error_matrix = None
+        if ERROR_MATRIX_AVAILABLE:
+            try:
+                # Try to get existing instance
+                self.error_matrix = get_error_handling_matrix() # If not available, initialize with default settings
+                if not self.error_matrix: # No existing instance
+                    # Initialize with default settings
+                    self.error_matrix = initialize_error_handling_matrix(
+                        default_timeout=10.0,
+                        aggregation_strategy="first_success", # Aggregation strategy for partial results
+                        recovery_strategy="continue" # Recovery strategy for errors
+                    )
+                logger.info("✅ Error Handling Matrix available for screenshot capture")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Error Handling Matrix: {e}")
+
         self._init_capture_cache()
-        logger.info("Reliable Screenshot Capture initialized")
+        logger.info(f"Reliable Screenshot Capture initialized with {len(self.methods)} methods")
 
     def _init_capture_cache(self):
         """Initialize cache for recent captures"""
@@ -109,6 +162,165 @@ class ReliableScreenshotCapture:
             timestamp=datetime.now(),
             metadata={}
         )
+
+    async def capture_space_with_matrix(self, space_id: int) -> ScreenshotResult:
+        """
+        Capture a specific space using Error Handling Matrix for graceful degradation
+
+        This async version uses the Error Handling Matrix for:
+        - Priority-based fallback execution
+        - Partial result aggregation
+        - User-friendly error messages
+        """
+        # Check cache first
+        cached = self._get_cached(space_id)
+        if cached:
+            logger.info(f"[MATRIX-CAPTURE] Using cached result for space {space_id}")
+            return cached
+
+        # Use Error Handling Matrix if available
+        if self.error_matrix:
+            logger.info(f"[MATRIX-CAPTURE] Using Error Handling Matrix for space {space_id}")
+
+            # Build fallback chain
+            chain = FallbackChain(f"capture_space_{space_id}") # Use space_id as fallback chain name
+
+            # Add methods in priority order
+            for i, (method_name, method_func) in enumerate(self.methods):
+                # Wrap sync method in async
+                async def async_wrapper(func=method_func, sid=space_id):
+                    return func(sid) # Call the sync method
+
+                if i == 0 and WINDOW_CAPTURE_AVAILABLE: # Highest priority (if available)
+                    chain.add_primary(async_wrapper, name=method_name, timeout=5.0) # Capture with window_capture_manager first if available 
+                elif i == 1: # Second highest priority
+                    chain.add_fallback(async_wrapper, name=method_name, timeout=8.0) # Fallback to other methods next if primary fails 
+                elif i == len(self.methods) - 1: # Lowest priority (last resort)
+                    chain.add_last_resort(async_wrapper, name=method_name, timeout=10.0) # Last resort method with longer timeout 
+                else: 
+                    # All other methods
+                    chain.add_secondary(async_wrapper, name=method_name, timeout=7.0) 
+
+            # Execute chain
+            report = await self.error_matrix.execute_chain(chain, stop_on_success=True)
+
+            # Convert ExecutionReport to ScreenshotResult
+            if report.success and report.final_result:
+                # Cache and return the result
+                self._cache_result(space_id, report.final_result)
+                logger.info(f"[MATRIX-CAPTURE] ✅ Captured space {space_id} - {report.message}")
+                return report.final_result
+            else:
+                # Generate user-friendly error message
+                error_msg = ErrorMessageGenerator.generate_message(
+                    report,
+                    include_technical=True,
+                    include_suggestions=True
+                )
+
+                logger.error(f"[MATRIX-CAPTURE] ❌ Failed to capture space {space_id}:\n{error_msg}")
+
+                return ScreenshotResult(
+                    success=False,
+                    image=None,
+                    method='matrix_fallback',
+                    space_id=space_id,
+                    error=error_msg,
+                    timestamp=datetime.now(),
+                    metadata={
+                        "execution_report": report,
+                        "methods_attempted": len(report.methods_attempted),
+                        "total_duration": report.total_duration
+                    }
+                )
+
+        # Fallback to regular capture if matrix not available
+        logger.warning(f"[MATRIX-CAPTURE] Error Handling Matrix not available, using standard capture")
+        return self.capture_space(space_id) # Fallback to regular capture
+
+    def _capture_with_window_manager(self, space_id: int) -> ScreenshotResult:
+        """
+        Use WindowCaptureManager for robust window capture with edge case handling.
+
+        This method attempts to capture windows from the specified space using
+        the WindowCaptureManager which handles permissions, off-screen windows,
+        4K/5K resizing, transparency, and fallback windows automatically.
+        """
+        try:
+            import asyncio
+
+            # Get window manager
+            window_manager = get_window_capture_manager()
+
+            # Find windows in the target space
+            try:
+                from .multi_space_window_detector import MultiSpaceWindowDetector
+                detector = MultiSpaceWindowDetector()
+                window_data = detector.get_all_windows_across_spaces()
+
+                # Find windows in target space
+                target_windows = []
+                for window in window_data.get("windows", []):
+                    if hasattr(window, "space_id"):
+                        if window.space_id == space_id:
+                            target_windows.append(window)
+                    elif isinstance(window, dict) and window.get("space") == space_id:
+                        target_windows.append(window)
+
+                if not target_windows:
+                    raise Exception(f"No windows found in space {space_id}")
+
+                # Try to capture the first non-minimized window
+                for window in target_windows:
+                    window_id = None
+                    if hasattr(window, "window_id"):
+                        window_id = window.window_id
+                    elif isinstance(window, dict):
+                        window_id = window.get("id")
+
+                    if window_id:
+                        # Create async event loop if needed
+                        try:
+                            loop = asyncio.get_event_loop()
+                        except RuntimeError:
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+
+                        # Capture using window manager
+                        capture_result = loop.run_until_complete(
+                            window_manager.capture_window(
+                                window_id=window_id,
+                                space_id=space_id,
+                                use_fallback=True
+                            )
+                        )
+
+                        if capture_result.success:
+                            # Load image
+                            image = Image.open(capture_result.image_path)
+
+                            return ScreenshotResult(
+                                success=True,
+                                image=image,
+                                method='window_capture_manager',
+                                space_id=space_id,
+                                error=None,
+                                timestamp=datetime.now(),
+                                metadata={
+                                    'window_id': window_id,
+                                    'capture_status': capture_result.status.value,
+                                    'original_size': capture_result.original_size,
+                                    'resized_size': capture_result.resized_size,
+                                    'fallback_used': capture_result.fallback_window_id is not None
+                                }
+                            )
+
+            except Exception as e:
+                logger.debug(f"Window detection failed: {e}, trying next method")
+                raise Exception(f"Window manager capture failed: {e}")
+
+        except Exception as e:
+            raise Exception(f"Window manager capture failed: {e}")
 
     def _capture_quartz_composite(self, space_id: int) -> ScreenshotResult:
         """

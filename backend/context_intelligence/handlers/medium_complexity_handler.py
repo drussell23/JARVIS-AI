@@ -1,0 +1,930 @@
+"""
+Medium Complexity Handler for JARVIS
+=====================================
+
+Handles Level 2 (Moderate) complexity queries:
+- Multiple spaces or context
+- Comparisons between spaces
+- Cross-space searches
+
+Processing Pipeline:
+1. Parse multiple spaces
+2. Capture in parallel
+3. Run OCR on each (with intelligent fallbacks)
+4. Synthesize comparison/results
+
+Latency: 3-6s
+API Calls: 2-6 (depending on spaces)
+
+Examples:
+- "Compare space 3 and space 5"
+- "Which space has the terminal?"
+- "Show me spaces 1, 2, 3"
+- "What's different between those spaces?"
+
+Uses:
+- CaptureStrategyManager for intelligent screen capture
+- OCRStrategyManager for intelligent OCR with fallbacks
+- ImplicitReferenceResolver for entity resolution
+- Error Handling Matrix for graceful degradation
+
+Author: Derek Russell
+Date: 2025-10-19
+"""
+
+import asyncio
+import logging
+import time
+from typing import Dict, List, Optional, Any, Tuple
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+
+logger = logging.getLogger(__name__)
+
+# Import managers and resolvers
+try:
+    from context_intelligence.managers import (
+        get_capture_strategy_manager,
+        get_ocr_strategy_manager,
+        get_response_strategy_manager,
+        get_context_aware_response_manager,
+        get_proactive_suggestion_manager,
+        get_confidence_manager,
+        get_multi_monitor_manager,
+        CaptureStrategyManager,
+        OCRStrategyManager,
+        ResponseStrategyManager,
+        ContextAwareResponseManager,
+        ProactiveSuggestionManager,
+        ConfidenceManager
+    )
+    CAPTURE_STRATEGY_AVAILABLE = True
+    OCR_STRATEGY_AVAILABLE = True
+    RESPONSE_STRATEGY_AVAILABLE = True
+    CONTEXT_AWARE_AVAILABLE = True
+    PROACTIVE_SUGGESTION_AVAILABLE = True
+    CONFIDENCE_AVAILABLE = True
+    MULTI_MONITOR_AVAILABLE = True
+except ImportError:
+    CAPTURE_STRATEGY_AVAILABLE = False
+    OCR_STRATEGY_AVAILABLE = False
+    RESPONSE_STRATEGY_AVAILABLE = False
+    CONTEXT_AWARE_AVAILABLE = False
+    PROACTIVE_SUGGESTION_AVAILABLE = False
+    CONFIDENCE_AVAILABLE = False
+    MULTI_MONITOR_AVAILABLE = False
+    get_capture_strategy_manager = lambda: None
+    get_ocr_strategy_manager = lambda: None
+    get_response_strategy_manager = lambda: None
+    get_context_aware_response_manager = lambda: None
+    get_proactive_suggestion_manager = lambda: None
+    get_confidence_manager = lambda: None
+    get_multi_monitor_manager = lambda: None
+    logger.warning("Strategy managers not available")
+
+try:
+    from backend.context_intelligence.resolvers import (
+        get_implicit_reference_resolver
+    )
+    IMPLICIT_RESOLVER_AVAILABLE = True
+except ImportError:
+    IMPLICIT_RESOLVER_AVAILABLE = False
+    get_implicit_reference_resolver = lambda: None
+    logger.warning("ImplicitReferenceResolver not available")
+
+try:
+    from context_intelligence.handlers import get_multi_monitor_query_handler
+    MULTI_MONITOR_QUERY_HANDLER_AVAILABLE = True
+except ImportError:
+    MULTI_MONITOR_QUERY_HANDLER_AVAILABLE = False
+    get_multi_monitor_query_handler = lambda: None
+    logger.warning("MultiMonitorQueryHandler not available")
+
+
+# ============================================================================
+# DATA STRUCTURES
+# ============================================================================
+
+class MediumQueryType(Enum):
+    """Medium query types"""
+    COMPARISON = "comparison"          # Compare multiple spaces
+    MULTI_SPACE = "multi_space"       # Show multiple spaces
+    CROSS_SPACE_SEARCH = "cross_space_search"  # Find entity across spaces
+    MULTI_MONITOR = "multi_monitor"   # Multi-monitor queries
+
+
+@dataclass
+class SpaceCapture:
+    """Captured space data"""
+    space_id: int
+    success: bool
+    image: Optional[Any] = None
+    ocr_text: Optional[str] = None
+    ocr_confidence: float = 0.0
+    capture_method: str = "unknown"
+    ocr_method: str = "unknown"
+    error: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class MediumQueryResult:
+    """Result from medium complexity query"""
+    success: bool
+    query_type: MediumQueryType
+    spaces_processed: List[int]
+    captures: List[SpaceCapture]
+    synthesis: str  # Synthesized result/comparison
+    execution_time: float
+    total_api_calls: int
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+# ============================================================================
+# MEDIUM COMPLEXITY HANDLER
+# ============================================================================
+
+class MediumComplexityHandler:
+    """
+    Handles Level 2 (Moderate) complexity queries
+
+    Features:
+    - Parallel space capture
+    - Intelligent OCR with fallbacks
+    - Comparison synthesis
+    - Cross-space search
+    - Reference resolution
+    """
+
+    def __init__(
+        self,
+        capture_manager: Optional[CaptureStrategyManager] = None,
+        ocr_manager: Optional[OCRStrategyManager] = None,
+        response_manager: Optional[ResponseStrategyManager] = None,
+        context_aware_manager: Optional[ContextAwareResponseManager] = None,
+        proactive_suggestion_manager: Optional[ProactiveSuggestionManager] = None,
+        confidence_manager: Optional[ConfidenceManager] = None,
+        multi_monitor_manager: Optional[Any] = None,
+        multi_monitor_query_handler: Optional[Any] = None,
+        implicit_resolver: Optional[Any] = None
+    ):
+        """
+        Initialize medium complexity handler
+
+        Args:
+            capture_manager: CaptureStrategyManager instance
+            ocr_manager: OCRStrategyManager instance
+            response_manager: ResponseStrategyManager instance
+            context_aware_manager: ContextAwareResponseManager instance
+            proactive_suggestion_manager: ProactiveSuggestionManager instance
+            confidence_manager: ConfidenceManager instance
+            multi_monitor_manager: MultiMonitorManager instance
+            multi_monitor_query_handler: MultiMonitorQueryHandler instance
+            implicit_resolver: ImplicitReferenceResolver instance
+        """
+        self.capture_manager = capture_manager or get_capture_strategy_manager()
+        self.ocr_manager = ocr_manager or get_ocr_strategy_manager()
+        self.response_manager = response_manager or get_response_strategy_manager()
+        self.context_aware_manager = context_aware_manager or get_context_aware_response_manager()
+        self.proactive_suggestion_manager = proactive_suggestion_manager or get_proactive_suggestion_manager()
+        self.confidence_manager = confidence_manager or get_confidence_manager()
+        self.multi_monitor_manager = multi_monitor_manager or get_multi_monitor_manager()
+        self.multi_monitor_query_handler = multi_monitor_query_handler or get_multi_monitor_query_handler()
+        self.implicit_resolver = implicit_resolver or get_implicit_reference_resolver()
+
+        logger.info("[MEDIUM-HANDLER] Initialized")
+        logger.info(f"  Capture Manager: {'✅' if self.capture_manager else '❌'}")
+        logger.info(f"  OCR Manager: {'✅' if self.ocr_manager else '❌'}")
+        logger.info(f"  Response Manager: {'✅' if self.response_manager else '❌'}")
+        logger.info(f"  Context-Aware Manager: {'✅' if self.context_aware_manager else '❌'}")
+        logger.info(f"  Proactive Suggestion Manager: {'✅' if self.proactive_suggestion_manager else '❌'}")
+        logger.info(f"  Confidence Manager: {'✅' if self.confidence_manager else '❌'}")
+        logger.info(f"  Multi-Monitor Manager: {'✅' if self.multi_monitor_manager else '❌'}")
+        logger.info(f"  Multi-Monitor Query Handler: {'✅' if self.multi_monitor_query_handler else '❌'}")
+        logger.info(f"  Implicit Resolver: {'✅' if self.implicit_resolver else '❌'}")
+
+    async def process_query(
+        self,
+        query: str,
+        space_ids: List[int],
+        query_type: MediumQueryType,
+        context: Optional[Dict[str, Any]] = None
+    ) -> MediumQueryResult:
+        """
+        Process medium complexity query
+
+        Args:
+            query: Original user query
+            space_ids: List of space IDs to process
+            query_type: Type of medium query
+            context: Optional context
+
+        Returns:
+            MediumQueryResult with captures and synthesis
+        """
+        start_time = time.time()
+        api_calls = 0
+
+        logger.info(f"[MEDIUM-HANDLER] Processing {query_type.value} query: '{query}'")
+        logger.info(f"  Spaces: {space_ids}")
+
+        # Special handling for MULTI_MONITOR queries
+        if query_type == MediumQueryType.MULTI_MONITOR:
+            if self.multi_monitor_query_handler:
+                return await self._handle_multi_monitor_query(query, context, start_time)
+            else:
+                logger.warning("[MEDIUM-HANDLER] Multi-monitor query handler not available")
+                # Fall back to regular processing
+                pass
+
+        # Step 1: Resolve references if needed
+        resolved_query = await self._resolve_references(query, context)
+        if resolved_query != query:
+            logger.info(f"[MEDIUM-HANDLER] Resolved: '{query}' → '{resolved_query}'")
+
+        # Step 2: Capture all spaces in parallel
+        captures = await self._capture_spaces_parallel(space_ids)
+
+        # Count successful captures
+        successful_captures = [c for c in captures if c.success]
+        logger.info(f"[MEDIUM-HANDLER] Captured {len(successful_captures)}/{len(space_ids)} spaces")
+
+        # Step 3: Run OCR on all captures in parallel
+        captures_with_ocr = await self._extract_text_parallel(captures)
+
+        # Count API calls (rough estimate)
+        for capture in captures_with_ocr:
+            if capture.ocr_method == "claude_vision":
+                api_calls += 1
+            elif capture.capture_method != "cached":
+                api_calls += 0.5  # Partial API call for capture
+
+        # Step 4: Synthesize results based on query type
+        synthesis = await self._synthesize_results(
+            resolved_query,
+            query_type,
+            captures_with_ocr,
+            context
+        )
+
+        # Step 5: Enhance response quality to be clear and actionable
+        final_synthesis = synthesis
+        if self.response_manager:
+            try:
+                # Build context for response enhancement
+                response_context = {
+                    "space_ids": space_ids,
+                    "query_type": query_type.value,
+                    "captures_count": len(captures_with_ocr)
+                }
+
+                # Get first successful capture's image for vision enhancement
+                first_image = next(
+                    (c.image for c in captures_with_ocr if c.success and c.image),
+                    None
+                )
+
+                # Get all OCR text for detail extraction
+                all_ocr_text = "\n".join(
+                    c.ocr_text for c in captures_with_ocr if c.ocr_text
+                )
+
+                # Enhance response
+                enhanced = await self.response_manager.improve_response(
+                    response=synthesis,
+                    context=response_context,
+                    image_path=first_image,
+                    ocr_text=all_ocr_text
+                )
+
+                # Use enhanced response if improved
+                if enhanced.improvements:
+                    final_synthesis = enhanced.enhanced_response
+                    logger.info(
+                        f"[MEDIUM-HANDLER] Response enhanced "
+                        f"(quality: {enhanced.analysis.quality.value}, "
+                        f"score: {enhanced.analysis.specificity_score:.2f})"
+                    )
+
+            except Exception as e:
+                logger.warning(f"[MEDIUM-HANDLER] Response enhancement failed: {e}")
+                # Keep original synthesis
+
+        # Step 6: Enrich with conversation context
+        final_response = final_synthesis
+        context_enrichment = None
+        if self.context_aware_manager:
+            try:
+                # Extract entities from this query for tracking
+                extracted_entities = {
+                    "space": space_ids,
+                    "query_type": query_type.value
+                }
+
+                # Add file/error entities if found in OCR text
+                for capture in captures_with_ocr:
+                    if capture.ocr_text:
+                        # Simple entity extraction (can be enhanced)
+                        if ".py" in capture.ocr_text or ".js" in capture.ocr_text:
+                            # Track file mentions
+                            import re
+                            files = re.findall(r'[\w\-]+\.(?:py|js|ts|java|cpp)', capture.ocr_text)
+                            if files:
+                                extracted_entities["file"] = files
+
+                        if "Error" in capture.ocr_text or "Exception" in capture.ocr_text:
+                            errors = re.findall(r'(\w+Error|\w+Exception)', capture.ocr_text)
+                            if errors:
+                                extracted_entities["error"] = errors
+
+                # Enrich response with conversation context
+                context_enrichment = await self.context_aware_manager.enrich_response(
+                    query=query,
+                    response=final_synthesis,
+                    extracted_entities=extracted_entities
+                )
+
+                # Use enriched response if context was added
+                if context_enrichment.context_added:
+                    final_response = context_enrichment.enriched_response
+                    logger.info(
+                        f"[MEDIUM-HANDLER] Response enriched with context "
+                        f"(confidence: {context_enrichment.confidence:.2f}, "
+                        f"context: {list(context_enrichment.context_added.keys())})"
+                    )
+
+            except Exception as e:
+                logger.warning(f"[MEDIUM-HANDLER] Context-aware enrichment failed: {e}")
+                # Keep enhanced synthesis
+
+        # Step 7: Generate proactive suggestions
+        final_response_with_suggestions = final_response
+        suggestion_result = None
+        if self.proactive_suggestion_manager:
+            try:
+                # Generate suggestions based on query and response
+                suggestion_result = await self.proactive_suggestion_manager.generate_suggestions(
+                    query=query,
+                    response=final_response,
+                    context={"space_ids": space_ids, "query_type": query_type.value}
+                )
+
+                # Append suggestions if any were generated
+                if suggestion_result.suggestions:
+                    final_response_with_suggestions = final_response + suggestion_result.formatted_text
+                    logger.info(
+                        f"[MEDIUM-HANDLER] Generated {len(suggestion_result.suggestions)} suggestions "
+                        f"(top: {suggestion_result.top_suggestion.type.value if suggestion_result.top_suggestion else 'none'})"
+                    )
+
+            except Exception as e:
+                logger.warning(f"[MEDIUM-HANDLER] Proactive suggestion generation failed: {e}")
+                # Keep response without suggestions
+
+        # Step 8: Apply confidence formatting based on capture quality
+        final_response_with_confidence = final_response_with_suggestions
+        confidence_result = None
+        if self.confidence_manager:
+            try:
+                # Format response with confidence indicators
+                confidence_result = self.confidence_manager.format_multiple_captures(
+                    response=final_response_with_suggestions,
+                    captures=captures_with_ocr
+                )
+
+                # Use confidence-formatted response
+                final_response_with_confidence = confidence_result.formatted_response
+
+                logger.info(
+                    f"[MEDIUM-HANDLER] Confidence applied "
+                    f"(level: {confidence_result.confidence_score.level.value}, "
+                    f"score: {confidence_result.confidence_score.overall:.2f}, "
+                    f"indicator: {confidence_result.visual_indicator})"
+                )
+
+            except Exception as e:
+                logger.warning(f"[MEDIUM-HANDLER] Confidence formatting failed: {e}")
+                # Keep response without confidence formatting
+
+        execution_time = time.time() - start_time
+
+        logger.info(
+            f"[MEDIUM-HANDLER] ✅ Completed in {execution_time:.2f}s "
+            f"(api_calls={api_calls:.1f})"
+        )
+
+        return MediumQueryResult(
+            success=len(successful_captures) > 0,
+            query_type=query_type,
+            spaces_processed=space_ids,
+            captures=captures_with_ocr,
+            synthesis=final_response_with_confidence,
+            execution_time=execution_time,
+            total_api_calls=int(api_calls),
+            metadata={
+                "original_query": query,
+                "resolved_query": resolved_query,
+                "successful_captures": len(successful_captures),
+                "failed_captures": len(space_ids) - len(successful_captures),
+                "context_enrichment": {
+                    "enabled": context_enrichment is not None,
+                    "context_added": context_enrichment.context_added if context_enrichment else {},
+                    "confidence": context_enrichment.confidence if context_enrichment else 0.0
+                },
+                "proactive_suggestions": {
+                    "enabled": suggestion_result is not None,
+                    "count": len(suggestion_result.suggestions) if suggestion_result else 0,
+                    "top_type": suggestion_result.top_suggestion.type.value if (suggestion_result and suggestion_result.top_suggestion) else None
+                },
+                "confidence_level": {
+                    "enabled": confidence_result is not None,
+                    "level": confidence_result.confidence_score.level.value if confidence_result else None,
+                    "score": confidence_result.confidence_score.overall if confidence_result else None,
+                    "hedging_applied": confidence_result.hedging_applied if confidence_result else False
+                }
+            }
+        )
+
+    async def _handle_multi_monitor_query(
+        self,
+        query: str,
+        context: Optional[Dict[str, Any]],
+        start_time: float
+    ) -> MediumQueryResult:
+        """
+        Handle multi-monitor specific queries by routing to MultiMonitorQueryHandler.
+
+        Args:
+            query: User query
+            context: Optional context
+            start_time: Query start time
+
+        Returns:
+            MediumQueryResult with multi-monitor results
+        """
+        from context_intelligence.handlers import MultiMonitorQueryType
+
+        logger.info(f"[MEDIUM-HANDLER] Routing to multi-monitor query handler")
+
+        # Determine multi-monitor query sub-type based on keywords
+        query_lower = query.lower()
+        multi_monitor_type = None
+
+        if any(phrase in query_lower for phrase in ["compare", " vs ", " versus "]):
+            multi_monitor_type = MultiMonitorQueryType.COMPARE_MONITORS
+        elif any(phrase in query_lower for phrase in ["what's on", "show me", "content of"]):
+            multi_monitor_type = MultiMonitorQueryType.MONITOR_CONTENT
+        elif any(phrase in query_lower for phrase in ["all displays", "all monitors", "list displays"]):
+            multi_monitor_type = MultiMonitorQueryType.LIST_DISPLAYS
+        elif any(phrase in query_lower for phrase in ["which monitor", "where is", "find", "locate"]):
+            multi_monitor_type = MultiMonitorQueryType.FIND_WINDOW
+        elif any(phrase in query_lower for phrase in ["move space", "move to"]):
+            multi_monitor_type = MultiMonitorQueryType.MOVE_SPACE
+        else:
+            # Default to LIST_DISPLAYS if can't determine
+            multi_monitor_type = MultiMonitorQueryType.LIST_DISPLAYS
+
+        # Process query with multi-monitor handler
+        try:
+            result = await self.multi_monitor_query_handler.process_query(
+                query=query,
+                query_type=multi_monitor_type,
+                context=context
+            )
+
+            # Convert result to MediumQueryResult format
+            latency = time.time() - start_time
+
+            return MediumQueryResult(
+                success=getattr(result, 'success', True),
+                query_type=MediumQueryType.MULTI_MONITOR,
+                captures=[],  # Multi-monitor results don't use traditional captures
+                synthesis=getattr(result, 'summary', str(result)),
+                latency=latency,
+                api_calls=1,  # Estimated
+                metadata={
+                    "multi_monitor_type": multi_monitor_type.value,
+                    "result": result
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"[MEDIUM-HANDLER] Multi-monitor query failed: {e}")
+            latency = time.time() - start_time
+            return MediumQueryResult(
+                success=False,
+                query_type=MediumQueryType.MULTI_MONITOR,
+                captures=[],
+                synthesis=f"Error processing multi-monitor query: {str(e)}",
+                latency=latency,
+                api_calls=0,
+                metadata={"error": str(e)}
+            )
+
+    async def _resolve_references(
+        self,
+        query: str,
+        context: Optional[Dict[str, Any]]
+    ) -> str:
+        """Resolve ambiguous references in query"""
+        if not self.implicit_resolver:
+            return query
+
+        try:
+            resolved = await asyncio.to_thread(
+                self.implicit_resolver.resolve_query,
+                query,
+                context or {}
+            )
+            return resolved if resolved else query
+        except Exception as e:
+            logger.error(f"Reference resolution failed: {e}")
+            return query
+
+    async def _capture_spaces_parallel(
+        self,
+        space_ids: List[int]
+    ) -> List[SpaceCapture]:
+        """
+        Capture multiple spaces in parallel
+
+        Uses CaptureStrategyManager for intelligent fallbacks:
+        - Try window capture
+        - Fallback to space capture
+        - Fallback to cache
+        - Return error
+        """
+        logger.info(f"[MEDIUM-HANDLER] Capturing {len(space_ids)} spaces in parallel")
+
+        if self.capture_manager:
+            # Use capture strategy manager with fallbacks
+            tasks = [
+                self._capture_space_with_strategy(space_id)
+                for space_id in space_ids
+            ]
+        else:
+            # Fallback to basic capture
+            tasks = [
+                self._capture_space_basic(space_id)
+                for space_id in space_ids
+            ]
+
+        captures = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Convert exceptions to failed captures
+        results = []
+        for i, capture in enumerate(captures):
+            if isinstance(capture, Exception):
+                results.append(SpaceCapture(
+                    space_id=space_ids[i],
+                    success=False,
+                    error=str(capture)
+                ))
+            else:
+                results.append(capture)
+
+        return results
+
+    async def _capture_space_with_strategy(self, space_id: int) -> SpaceCapture:
+        """Capture space using CaptureStrategyManager"""
+        try:
+            success, image, message = await self.capture_manager.capture_with_fallbacks(
+                space_id=space_id,
+                window_id=None,
+                window_capture_func=None,  # Would need actual capture functions
+                space_capture_func=None,
+                cache_max_age=60.0
+            )
+
+            return SpaceCapture(
+                space_id=space_id,
+                success=success,
+                image=image,
+                capture_method=message.split("via")[-1].strip() if "via" in message else "unknown",
+                metadata={"message": message}
+            )
+
+        except Exception as e:
+            logger.error(f"Capture failed for space {space_id}: {e}")
+            return SpaceCapture(
+                space_id=space_id,
+                success=False,
+                error=str(e)
+            )
+
+    async def _capture_space_basic(self, space_id: int) -> SpaceCapture:
+        """Basic space capture fallback (legacy)"""
+        logger.warning(f"[MEDIUM-HANDLER] Using basic capture for space {space_id}")
+
+        # Placeholder - would integrate with actual capture system
+        return SpaceCapture(
+            space_id=space_id,
+            success=False,
+            error="Capture managers not available"
+        )
+
+    async def _extract_text_parallel(
+        self,
+        captures: List[SpaceCapture]
+    ) -> List[SpaceCapture]:
+        """
+        Extract text from all captures in parallel
+
+        Uses OCRStrategyManager for intelligent fallbacks:
+        - Try Claude Vision
+        - Fallback to cache
+        - Fallback to Tesseract
+        - Return metadata
+        """
+        logger.info(f"[MEDIUM-HANDLER] Extracting text from {len(captures)} captures")
+
+        # Only process successful captures
+        successful_captures = [c for c in captures if c.success and c.image]
+
+        if not successful_captures:
+            logger.warning("[MEDIUM-HANDLER] No successful captures to process")
+            return captures
+
+        if self.ocr_manager:
+            # Use OCR strategy manager with fallbacks
+            tasks = [
+                self._extract_text_with_strategy(capture)
+                for capture in successful_captures
+            ]
+        else:
+            # Fallback to basic OCR
+            tasks = [
+                self._extract_text_basic(capture)
+                for capture in successful_captures
+            ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Update captures with OCR results
+        capture_map = {c.space_id: c for c in captures}
+
+        for i, result in enumerate(results):
+            space_id = successful_captures[i].space_id
+
+            if isinstance(result, Exception):
+                capture_map[space_id].ocr_text = ""
+                capture_map[space_id].ocr_confidence = 0.0
+                capture_map[space_id].error = str(result)
+            else:
+                text, confidence, method = result
+                capture_map[space_id].ocr_text = text
+                capture_map[space_id].ocr_confidence = confidence
+                capture_map[space_id].ocr_method = method
+
+        return list(capture_map.values())
+
+    async def _extract_text_with_strategy(
+        self,
+        capture: SpaceCapture
+    ) -> Tuple[str, float, str]:
+        """Extract text using OCRStrategyManager"""
+        try:
+            # Save image to temp file for OCR
+            import tempfile
+            from PIL import Image
+            from pathlib import Path
+
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                tmp_path = tmp.name
+
+                # Convert image to PIL if needed
+                if not isinstance(capture.image, Image.Image):
+                    # Assume numpy array
+                    img = Image.fromarray(capture.image)
+                else:
+                    img = capture.image
+
+                img.save(tmp_path)
+
+            try:
+                result = await self.ocr_manager.extract_text_with_fallbacks(
+                    image_path=tmp_path,
+                    cache_max_age=300.0
+                )
+
+                return (result.text, result.confidence, result.method)
+
+            finally:
+                # Clean up temp file
+                try:
+                    Path(tmp_path).unlink()
+                except Exception:
+                    pass
+
+        except Exception as e:
+            logger.error(f"OCR failed for space {capture.space_id}: {e}")
+            return ("", 0.0, "failed")
+
+    async def _extract_text_basic(
+        self,
+        capture: SpaceCapture
+    ) -> Tuple[str, float, str]:
+        """Basic OCR fallback (legacy)"""
+        logger.warning(f"[MEDIUM-HANDLER] Using basic OCR for space {capture.space_id}")
+        return ("", 0.0, "unavailable")
+
+    async def _synthesize_results(
+        self,
+        query: str,
+        query_type: MediumQueryType,
+        captures: List[SpaceCapture],
+        context: Optional[Dict[str, Any]]
+    ) -> str:
+        """
+        Synthesize results based on query type
+
+        Args:
+            query: Resolved query
+            query_type: Type of query
+            captures: All space captures with OCR
+            context: Optional context
+
+        Returns:
+            Synthesized result string
+        """
+        logger.info(f"[MEDIUM-HANDLER] Synthesizing {query_type.value} results")
+
+        if query_type == MediumQueryType.COMPARISON:
+            return await self._synthesize_comparison(query, captures, context)
+        elif query_type == MediumQueryType.CROSS_SPACE_SEARCH:
+            return await self._synthesize_search(query, captures, context)
+        else:  # MULTI_SPACE
+            return await self._synthesize_multi_space(query, captures, context)
+
+    async def _synthesize_comparison(
+        self,
+        query: str,
+        captures: List[SpaceCapture],
+        context: Optional[Dict[str, Any]]
+    ) -> str:
+        """Synthesize comparison between spaces"""
+        successful = [c for c in captures if c.success and c.ocr_text]
+
+        if len(successful) < 2:
+            return "❌ Unable to compare: need at least 2 successful captures"
+
+        # Simple comparison based on text differences
+        comparison_parts = []
+        comparison_parts.append(f"**Comparison of {len(successful)} spaces:**\n")
+
+        for capture in successful:
+            text_preview = capture.ocr_text[:200] + "..." if len(capture.ocr_text) > 200 else capture.ocr_text
+            comparison_parts.append(
+                f"**Space {capture.space_id}:**\n"
+                f"  - Text length: {len(capture.ocr_text)} characters\n"
+                f"  - OCR confidence: {capture.ocr_confidence:.2f}\n"
+                f"  - Method: {capture.ocr_method}\n"
+                f"  - Preview: {text_preview}\n"
+            )
+
+        # Find differences
+        if len(successful) == 2:
+            space1, space2 = successful[0], successful[1]
+
+            # Simple text difference
+            if space1.ocr_text == space2.ocr_text:
+                comparison_parts.append("\n✅ **Text is identical** between both spaces")
+            else:
+                comparison_parts.append(
+                    f"\n⚠️ **Text differs** between spaces "
+                    f"({abs(len(space1.ocr_text) - len(space2.ocr_text))} character difference)"
+                )
+
+        return "\n".join(comparison_parts)
+
+    async def _synthesize_search(
+        self,
+        query: str,
+        captures: List[SpaceCapture],
+        context: Optional[Dict[str, Any]]
+    ) -> str:
+        """Synthesize cross-space search results"""
+        successful = [c for c in captures if c.success and c.ocr_text]
+
+        if not successful:
+            return "❌ Unable to search: no successful captures"
+
+        # Extract search term from query
+        import re
+        # Simple heuristic: look for quoted terms or last word
+        quoted = re.findall(r'"([^"]+)"', query)
+        if quoted:
+            search_term = quoted[0]
+        else:
+            # Use last significant word
+            words = query.lower().split()
+            search_term = words[-1] if words else ""
+
+        logger.info(f"[MEDIUM-HANDLER] Searching for: '{search_term}'")
+
+        # Search in all spaces
+        matches = []
+        for capture in successful:
+            if search_term.lower() in capture.ocr_text.lower():
+                # Find context around match
+                idx = capture.ocr_text.lower().find(search_term.lower())
+                start = max(0, idx - 50)
+                end = min(len(capture.ocr_text), idx + len(search_term) + 50)
+                context_text = capture.ocr_text[start:end]
+
+                matches.append({
+                    "space_id": capture.space_id,
+                    "context": context_text,
+                    "confidence": capture.ocr_confidence
+                })
+
+        if not matches:
+            return f"❌ **'{search_term}' not found** in any of the {len(successful)} spaces searched"
+
+        # Build result
+        result_parts = []
+        result_parts.append(f"✅ **Found '{search_term}' in {len(matches)} space(s):**\n")
+
+        for match in matches:
+            result_parts.append(
+                f"**Space {match['space_id']}:**\n"
+                f"  - Context: ...{match['context']}...\n"
+                f"  - Confidence: {match['confidence']:.2f}\n"
+            )
+
+        return "\n".join(result_parts)
+
+    async def _synthesize_multi_space(
+        self,
+        query: str,
+        captures: List[SpaceCapture],
+        context: Optional[Dict[str, Any]]
+    ) -> str:
+        """Synthesize multi-space view results"""
+        successful = [c for c in captures if c.success]
+
+        if not successful:
+            return "❌ Unable to process: no successful captures"
+
+        result_parts = []
+        result_parts.append(f"**Processed {len(successful)} space(s):**\n")
+
+        for capture in successful:
+            text_length = len(capture.ocr_text) if capture.ocr_text else 0
+            result_parts.append(
+                f"**Space {capture.space_id}:**\n"
+                f"  - Status: ✅ Captured\n"
+                f"  - Text: {text_length} characters\n"
+                f"  - Confidence: {capture.ocr_confidence:.2f}\n"
+                f"  - Methods: {capture.capture_method} + {capture.ocr_method}\n"
+            )
+
+        # Add failed captures
+        failed = [c for c in captures if not c.success]
+        if failed:
+            result_parts.append(f"\n❌ **Failed to capture {len(failed)} space(s):**")
+            for capture in failed:
+                result_parts.append(f"  - Space {capture.space_id}: {capture.error or 'Unknown error'}")
+
+        return "\n".join(result_parts)
+
+
+# ============================================================================
+# GLOBAL INSTANCE
+# ============================================================================
+
+_global_handler: Optional[MediumComplexityHandler] = None
+
+
+def get_medium_complexity_handler() -> Optional[MediumComplexityHandler]:
+    """Get the global medium complexity handler instance"""
+    return _global_handler
+
+
+def initialize_medium_complexity_handler(
+    capture_manager: Optional[CaptureStrategyManager] = None,
+    ocr_manager: Optional[OCRStrategyManager] = None,
+    response_manager: Optional[ResponseStrategyManager] = None,
+    context_aware_manager: Optional[ContextAwareResponseManager] = None,
+    proactive_suggestion_manager: Optional[ProactiveSuggestionManager] = None,
+    confidence_manager: Optional[ConfidenceManager] = None,
+    multi_monitor_manager: Optional[Any] = None,
+    multi_monitor_query_handler: Optional[Any] = None,
+    implicit_resolver: Optional[Any] = None
+) -> MediumComplexityHandler:
+    """Initialize the global medium complexity handler"""
+    global _global_handler
+    _global_handler = MediumComplexityHandler(
+        capture_manager=capture_manager,
+        ocr_manager=ocr_manager,
+        response_manager=response_manager,
+        context_aware_manager=context_aware_manager,
+        proactive_suggestion_manager=proactive_suggestion_manager,
+        confidence_manager=confidence_manager,
+        multi_monitor_manager=multi_monitor_manager,
+        multi_monitor_query_handler=multi_monitor_query_handler,
+        implicit_resolver=implicit_resolver
+    )
+    logger.info("[MEDIUM-HANDLER] Global instance initialized")
+    return _global_handler

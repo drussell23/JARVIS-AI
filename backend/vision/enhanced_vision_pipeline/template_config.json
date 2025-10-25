@@ -1,0 +1,90 @@
+{
+  "ml_template_generator": {
+    "enabled": true,
+    "max_memory_mb": 500,
+    "cache_dir": "~/.jarvis/template_cache",
+
+    "feature_extraction": {
+      "hog": {
+        "enabled": true,
+        "orientations": 9,
+        "pixels_per_cell": [8, 8],
+        "cells_per_block": [2, 2]
+      },
+      "lbp": {
+        "enabled": true,
+        "P": 8,
+        "R": 1,
+        "method": "uniform"
+      },
+      "deep_features": {
+        "enabled": true,
+        "model": "mobilenet_v3_small",
+        "use_mps": true,
+        "batch_size": 1
+      },
+      "color_histogram": {
+        "enabled": true,
+        "bins": 32,
+        "color_space": "HSV"
+      },
+      "edge_detection": {
+        "enabled": true,
+        "method": "canny",
+        "low_threshold": 50,
+        "high_threshold": 150
+      }
+    },
+
+    "template_synthesis": {
+      "control_center": {
+        "size": 28,
+        "type": "toggle_switch",
+        "colors": {
+          "background": [240, 240, 240],
+          "foreground": [100, 100, 100]
+        }
+      },
+      "screen_mirroring": {
+        "size": 64,
+        "type": "monitor_with_waves",
+        "colors": {
+          "background": [255, 255, 255],
+          "monitor": [50, 50, 50],
+          "waves": [50, 150, 255]
+        }
+      },
+      "generic_icon": {
+        "size": 48,
+        "type": "rounded_square",
+        "colors": {
+          "background": [255, 255, 255],
+          "foreground": [100, 100, 100]
+        }
+      }
+    },
+
+    "augmentation": {
+      "enabled": true,
+      "rotation_angles": [-5, 5],
+      "brightness_factors": [0.9, 1.1],
+      "blur_kernel": [3, 3],
+      "sharpen": true
+    },
+
+    "quality_thresholds": {
+      "min_hog_std": 0.01,
+      "min_lbp_std": 0.01,
+      "min_edge_density": 0.1,
+      "max_edge_density": 0.8,
+      "min_size": 16
+    },
+
+    "performance": {
+      "thread_pool_workers": 4,
+      "async_enabled": true,
+      "cache_enabled": true,
+      "memory_efficient": true
+    }
+  }
+}

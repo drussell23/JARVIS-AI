@@ -1,0 +1,87 @@
+{
+  "discovery": {
+    "enabled": true,
+    "service_type": "_airplay._tcp.local.",
+    "timeout_seconds": 5.0,
+    "scan_interval_seconds": 10.0,
+    "exclude_self": true,
+    "cache_ttl_seconds": 30,
+    "multicast_interfaces": ["en0", "en1"]
+  },
+  "raop": {
+    "enabled": true,
+    "service_type": "_raop._tcp.local.",
+    "port": 7000,
+    "features": "0x5A7FFFF7,0x1E",
+    "model": "AppleTV3,2",
+    "protocol_version": "1.0"
+  },
+  "connection": {
+    "timeout_seconds": 10.0,
+    "retry_attempts": 3,
+    "retry_delay_seconds": 1.0,
+    "keepalive_interval_seconds": 5.0,
+    "max_concurrent_connections": 5,
+    "connection_pool_size": 10,
+    "enable_auto_reconnect": true,
+    "reconnect_delay_seconds": 2.0
+  },
+  "pairing": {
+    "enabled": true,
+    "pin_length": 4,
+    "pin_timeout_seconds": 60,
+    "persist_pairings": true,
+    "pairing_data_path": "~/.jarvis/airplay/pairings.json",
+    "encryption_enabled": true
+  },
+  "mirroring": {
+    "default_mode": "extend",
+    "supported_modes": ["mirror", "extend"],
+    "default_resolution": "1920x1080",
+    "supported_resolutions": [
+      "3840x2160",
+      "2560x1440",
+      "1920x1080",
+      "1280x720"
+    ],
+    "default_framerate": 60,
+    "supported_framerates": [30, 60],
+    "codec": "h264",
+    "bitrate_mbps": 20
+  },
+  "devices": {
+    "monitored_devices": [
+      {
+        "id": "living_room_tv",
+        "name": "Living Room TV",
+        "display_type": "airplay",
+        "aliases": ["Living Room", "LG TV", "TV", "Sony TV"],
+        "mac_address": null,
+        "ip_address": null,
+        "auto_connect": false,
+        "auto_prompt": true,
+        "connection_mode": "extend",
+        "priority": 1,
+        "enabled": true,
+        "require_pairing": false
+      }
+    ]
+  },
+  "telemetry": {
+    "enabled": true,
+    "log_level": "INFO",
+    "track_connection_time": true,
+    "track_discovery_time": true,
+    "track_errors": true,
+    "emit_events": true
+  },
+  "advanced": {
+    "enable_mdns_cache": true,
+    "enable_service_filtering": true,
+    "enable_network_change_detection": true,
+    "enable_battery_optimization": false,
+    "dns_sd_command": "dns-sd",
+    "use_native_bonjour": true,
+    "fallback_to_dns_sd": true
+  }
+}

@@ -40,6 +40,35 @@ import random
 
 logger = logging.getLogger(__name__)
 
+# Import API/Network manager for edge case handling
+try:
+    from backend.context_intelligence.managers import (
+        get_api_network_manager,
+        initialize_api_network_manager,
+        APIStatus,
+        NetworkStatus
+    )
+    API_NETWORK_MANAGER_AVAILABLE = True
+except ImportError:
+    API_NETWORK_MANAGER_AVAILABLE = False
+    get_api_network_manager = lambda: None
+    initialize_api_network_manager = lambda **kwargs: None
+    logger.warning("APINetworkManager not available - edge case handling disabled")
+
+# Import OCR Strategy Manager for intelligent OCR fallbacks
+try:
+    from backend.context_intelligence.managers import (
+        get_ocr_strategy_manager,
+        initialize_ocr_strategy_manager,
+        OCRResult
+    )
+    OCR_STRATEGY_MANAGER_AVAILABLE = True
+except ImportError:
+    OCR_STRATEGY_MANAGER_AVAILABLE = False
+    get_ocr_strategy_manager = lambda: None
+    initialize_ocr_strategy_manager = lambda **kwargs: None
+    logger.warning("OCRStrategyManager not available - OCR fallbacks disabled")
+
 # Import Vision Intelligence System
 try:
     from .intelligence import (
@@ -916,6 +945,43 @@ class ClaudeVisionAnalyzer:
 
         # Initialize memory safety monitor
         self.memory_monitor = MemorySafetyMonitor(self.config)
+
+        # Initialize API/Network manager for edge case handling
+        self.api_network_manager = None
+        if API_NETWORK_MANAGER_AVAILABLE and api_key:
+            try:
+                # Try to get existing instance first
+                self.api_network_manager = get_api_network_manager()
+                if not self.api_network_manager:
+                    # Initialize with config settings
+                    self.api_network_manager = initialize_api_network_manager(
+                        api_key=api_key,
+                        max_retries=3,
+                        initial_retry_delay=1.0,
+                        max_image_width=self.config.max_image_dimension,
+                        max_image_size_mb=5.0
+                    )
+                logger.info("✅ API/Network manager available for edge case handling")
+            except Exception as e:
+                logger.warning(f"Failed to initialize API/Network manager: {e}")
+
+        # Initialize OCR Strategy Manager for intelligent OCR fallbacks
+        self.ocr_strategy_manager = None
+        if OCR_STRATEGY_MANAGER_AVAILABLE and self.client:
+            try:
+                # Try to get existing instance first
+                self.ocr_strategy_manager = get_ocr_strategy_manager()
+                if not self.ocr_strategy_manager:
+                    # Initialize with Claude API client
+                    self.ocr_strategy_manager = initialize_ocr_strategy_manager(
+                        api_client=self.client,
+                        cache_ttl=300.0,  # 5 minutes
+                        max_cache_entries=200,
+                        enable_error_matrix=True
+                    )
+                logger.info("✅ OCR Strategy Manager available for intelligent OCR with fallbacks")
+            except Exception as e:
+                logger.warning(f"Failed to initialize OCR Strategy Manager: {e}")
 
         # Initialize components based on config
         self.cache = (
@@ -9026,3 +9092,35 @@ Provide a clear summary of the current state."""
                 )
 
         return results
+
+
+# Singleton instance
+_claude_vision_analyzer_instance = None
+
+
+def get_claude_vision_analyzer(api_key: Optional[str] = None) -> ClaudeVisionAnalyzer:
+    """
+    Get singleton Claude Vision Analyzer instance
+
+    Args:
+        api_key: Optional Anthropic API key (reads from ANTHROPIC_API_KEY env var if not provided)
+
+    Returns:
+        ClaudeVisionAnalyzer instance
+    """
+    global _claude_vision_analyzer_instance
+    if _claude_vision_analyzer_instance is None:
+        import os
+
+        # Get API key from parameter or environment
+        if api_key is None:
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+
+        if not api_key:
+            raise ValueError(
+                "Anthropic API key required. Set ANTHROPIC_API_KEY environment variable "
+                "or pass api_key parameter."
+            )
+
+        _claude_vision_analyzer_instance = ClaudeVisionAnalyzer(api_key=api_key)
+    return _claude_vision_analyzer_instance

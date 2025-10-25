@@ -120,6 +120,7 @@ class CommandType(Enum):
     META = "meta"
     VOICE_UNLOCK = "voice_unlock"
     DOCUMENT = "document"
+    DISPLAY = "display"
     UNKNOWN = "unknown"
 
 
@@ -184,7 +185,7 @@ class UnifiedContext:
 class UnifiedCommandProcessor:
     """Dynamic command processor that learns and adapts"""
 
-    def __init__(self, claude_api_key: Optional[str] = None):
+    def __init__(self, claude_api_key: Optional[str] = None, app=None):
         self.context = UnifiedContext(conversation_history=[])
         self.handlers = {}
         self.pattern_learner = DynamicPatternLearner()
@@ -192,7 +193,496 @@ class UnifiedCommandProcessor:
         self.success_patterns = defaultdict(list)
         self._initialize_handlers()
         self.claude_api_key = claude_api_key
+        self._app = app  # Store app reference for accessing app.state
         self._load_learned_data()
+
+        # Initialize multi-space context graph for advanced context tracking
+        self.context_graph = None
+
+        # Initialize resolver systems
+        self.contextual_resolver = None   # Space/monitor resolution
+        self.implicit_resolver = None     # Entity/intent resolution
+        self.multi_space_handler = None   # Multi-space query handler
+        self.temporal_handler = None      # Temporal query handler (change detection, error tracking, timeline)
+        self.query_complexity_manager = None  # Query complexity classification and routing
+        self.medium_complexity_handler = None  # Medium complexity (Level 2) query execution
+        self.display_reference_handler = None  # Display voice command resolution
+        self._resolvers_initialized = False
+
+    async def _initialize_resolvers(self):
+        """Initialize both resolver systems for comprehensive query understanding"""
+
+        # Step 1: Initialize MultiSpaceContextGraph (required for implicit resolver)
+        try:
+            from core.context.multi_space_context_graph import MultiSpaceContextGraph
+            self.context_graph = MultiSpaceContextGraph()
+            logger.info("[UNIFIED] ✅ MultiSpaceContextGraph initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] MultiSpaceContextGraph not available: {e}")
+            self.context_graph = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize context graph: {e}")
+            self.context_graph = None
+
+        # Step 2: Initialize ImplicitReferenceResolver (entity/intent resolution)
+        if self.context_graph:
+            try:
+                from core.nlp.implicit_reference_resolver import initialize_implicit_resolver
+                self.implicit_resolver = initialize_implicit_resolver(self.context_graph)
+                logger.info("[UNIFIED] ✅ ImplicitReferenceResolver initialized")
+            except ImportError as e:
+                logger.warning(f"[UNIFIED] ImplicitReferenceResolver not available: {e}")
+                self.implicit_resolver = None
+            except Exception as e:
+                logger.error(f"[UNIFIED] Failed to initialize implicit resolver: {e}")
+                self.implicit_resolver = None
+        else:
+            logger.info("[UNIFIED] Skipping implicit resolver (no context graph)")
+            self.implicit_resolver = None
+
+        # Step 3: Initialize ContextualQueryResolver (space/monitor resolution)
+        try:
+            from context_intelligence.resolvers import get_contextual_resolver
+            self.contextual_resolver = get_contextual_resolver()
+            logger.info("[UNIFIED] ✅ ContextualQueryResolver initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] ContextualQueryResolver not available: {e}")
+            self.contextual_resolver = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize contextual resolver: {e}")
+            self.contextual_resolver = None
+
+        # Step 4: Initialize MultiSpaceQueryHandler (parallel space analysis)
+        if self.context_graph:
+            try:
+                from context_intelligence.handlers import initialize_multi_space_handler
+                from intelligence.learning_database import get_learning_database
+
+                # Import Yabai and CG window detectors
+                yabai_detector = None
+                cg_window_detector = None
+
+                try:
+                    from vision.yabai_space_detector import YabaiSpaceDetector
+                    yabai_detector = YabaiSpaceDetector()
+                    logger.info("[UNIFIED] ✅ YabaiSpaceDetector initialized")
+                except Exception as e:
+                    logger.warning(f"[UNIFIED] Yabai detector not available: {e}")
+
+                try:
+                    from vision.multi_space_window_detector import MultiSpaceWindowDetector
+                    cg_window_detector = MultiSpaceWindowDetector()
+                    logger.info("[UNIFIED] ✅ MultiSpaceWindowDetector initialized")
+                except Exception as e:
+                    logger.warning(f"[UNIFIED] CG window detector not available: {e}")
+
+                # Get learning database
+                learning_db = None
+                try:
+                    learning_db = await get_learning_database()
+                    logger.info("[UNIFIED] ✅ Learning database connected")
+                except Exception as e:
+                    logger.warning(f"[UNIFIED] Learning database not available: {e}")
+
+                self.multi_space_handler = initialize_multi_space_handler(
+                    context_graph=self.context_graph,
+                    implicit_resolver=self.implicit_resolver,
+                    contextual_resolver=self.contextual_resolver,
+                    learning_db=learning_db,
+                    yabai_detector=yabai_detector,
+                    cg_window_detector=cg_window_detector
+                )
+                logger.info("[UNIFIED] ✅ MultiSpaceQueryHandler initialized with ALL data sources")
+                logger.info(f"[UNIFIED]    • Context Graph: ✅")
+                logger.info(f"[UNIFIED]    • Yabai: {'✅' if yabai_detector else '❌'}")
+                logger.info(f"[UNIFIED]    • Core Graphics: {'✅' if cg_window_detector else '❌'}")
+                logger.info(f"[UNIFIED]    • Learning DB: {'✅' if learning_db else '❌'}")
+            except ImportError as e:
+                logger.warning(f"[UNIFIED] MultiSpaceQueryHandler not available: {e}")
+                self.multi_space_handler = None
+            except Exception as e:
+                logger.error(f"[UNIFIED] Failed to initialize multi-space handler: {e}")
+                self.multi_space_handler = None
+        else:
+            logger.info("[UNIFIED] Skipping multi-space handler (no context graph)")
+            self.multi_space_handler = None
+
+        # Step 5: Initialize TemporalQueryHandler (PLACEHOLDER - will be initialized after dependencies in Step 6.13)
+        # This is a placeholder to maintain backward compatibility with old code
+        # The actual initialization happens in Step 6.13 after ProactiveMonitoringManager and ChangeDetectionManager are ready
+        self.temporal_handler = None
+        logger.info("[UNIFIED] TemporalQueryHandler initialization deferred to Step 6.13")
+
+        # Step 6: Initialize QueryComplexityManager (query classification and routing)
+        try:
+            from context_intelligence.handlers import initialize_query_complexity_manager
+
+            self.query_complexity_manager = initialize_query_complexity_manager(
+                implicit_resolver=self.implicit_resolver
+            )
+            logger.info("[UNIFIED] ✅ QueryComplexityManager initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] QueryComplexityManager not available: {e}")
+            self.query_complexity_manager = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize query complexity manager: {e}")
+            self.query_complexity_manager = None
+
+        # Step 6.5: Initialize ResponseStrategyManager (response quality enhancement)
+        try:
+            from context_intelligence.managers import (
+                initialize_response_strategy_manager,
+                ResponseQuality
+            )
+
+            self.response_strategy_manager = initialize_response_strategy_manager(
+                vision_client=None,  # Will be set if vision client available
+                min_quality=ResponseQuality.SPECIFIC
+            )
+            logger.info("[UNIFIED] ✅ ResponseStrategyManager initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] ResponseStrategyManager not available: {e}")
+            self.response_strategy_manager = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize response strategy manager: {e}")
+            self.response_strategy_manager = None
+
+        # Step 6.6: Initialize ContextAwareResponseManager (conversation context tracking)
+        try:
+            from context_intelligence.managers import initialize_context_aware_response_manager
+
+            self.context_aware_manager = initialize_context_aware_response_manager(
+                implicit_resolver=self.implicit_resolver,
+                max_history=10,
+                context_ttl=300.0  # 5 minutes
+            )
+            logger.info("[UNIFIED] ✅ ContextAwareResponseManager initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] ContextAwareResponseManager not available: {e}")
+            self.context_aware_manager = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize context-aware manager: {e}")
+            self.context_aware_manager = None
+
+        # Step 6.7: Initialize ProactiveSuggestionManager (next-step suggestions)
+        try:
+            from context_intelligence.managers import initialize_proactive_suggestion_manager
+
+            # Get conversation tracker from context-aware manager
+            conversation_tracker = None
+            if self.context_aware_manager:
+                conversation_tracker = self.context_aware_manager.conversation_tracker
+
+            self.proactive_suggestion_manager = initialize_proactive_suggestion_manager(
+                conversation_tracker=conversation_tracker,
+                implicit_resolver=self.implicit_resolver,
+                max_suggestions=2,
+                confidence_threshold=0.5
+            )
+            logger.info("[UNIFIED] ✅ ProactiveSuggestionManager initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] ProactiveSuggestionManager not available: {e}")
+            self.proactive_suggestion_manager = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize proactive suggestion manager: {e}")
+            self.proactive_suggestion_manager = None
+
+        # Step 6.8: Initialize ConfidenceManager (confidence-based response formatting)
+        try:
+            from context_intelligence.managers import initialize_confidence_manager
+
+            self.confidence_manager = initialize_confidence_manager(
+                include_visual_indicators=True,  # Include ✅ ⚠️ ❓
+                include_reasoning=True,  # Include reasoning for non-high confidence
+                min_confidence_for_high=0.8,
+                min_confidence_for_medium=0.5
+            )
+            logger.info("[UNIFIED] ✅ ConfidenceManager initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] ConfidenceManager not available: {e}")
+            self.confidence_manager = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize confidence manager: {e}")
+            self.confidence_manager = None
+
+        # Step 6.9: Initialize MultiMonitorManager (multi-monitor support with spatial awareness)
+        try:
+            from context_intelligence.managers import initialize_multi_monitor_manager
+
+            # Get conversation tracker from context-aware manager
+            conversation_tracker = None
+            if self.context_aware_manager:
+                conversation_tracker = self.context_aware_manager.conversation_tracker
+
+            self.multi_monitor_manager = initialize_multi_monitor_manager(
+                implicit_resolver=self.implicit_resolver,
+                conversation_tracker=conversation_tracker,
+                auto_refresh_interval=30.0  # Refresh monitor layout every 30 seconds
+            )
+            logger.info("[UNIFIED] ✅ MultiMonitorManager initialized (will be fully initialized on first use)")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] MultiMonitorManager not available: {e}")
+            self.multi_monitor_manager = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize multi-monitor manager: {e}")
+            self.multi_monitor_manager = None
+
+        # Step 6.10: Initialize MultiMonitorQueryHandler (multi-monitor query processing)
+        try:
+            from context_intelligence.handlers import initialize_multi_monitor_query_handler
+            from context_intelligence.managers import (
+                get_capture_strategy_manager,
+                get_ocr_strategy_manager
+            )
+
+            self.multi_monitor_query_handler = initialize_multi_monitor_query_handler(
+                multi_monitor_manager=self.multi_monitor_manager,
+                capture_manager=get_capture_strategy_manager(),
+                ocr_manager=get_ocr_strategy_manager(),
+                implicit_resolver=self.implicit_resolver
+            )
+            logger.info("[UNIFIED] ✅ MultiMonitorQueryHandler initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] MultiMonitorQueryHandler not available: {e}")
+            self.multi_monitor_query_handler = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize multi-monitor query handler: {e}")
+            self.multi_monitor_query_handler = None
+
+        # Step 6.11: Initialize ChangeDetectionManager (temporal & state-based change detection)
+        try:
+            from context_intelligence.managers import initialize_change_detection_manager
+            from pathlib import Path
+
+            # Get conversation tracker from context-aware manager
+            conversation_tracker = None
+            if self.context_aware_manager:
+                conversation_tracker = self.context_aware_manager.conversation_tracker
+
+            self.change_detection_manager = initialize_change_detection_manager(
+                cache_dir=Path.home() / ".jarvis" / "change_cache",
+                cache_ttl=3600.0,  # 1 hour
+                max_cache_size=100,
+                implicit_resolver=self.implicit_resolver,
+                conversation_tracker=conversation_tracker
+            )
+            logger.info("[UNIFIED] ✅ ChangeDetectionManager initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] ChangeDetectionManager not available: {e}")
+            self.change_detection_manager = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize change detection manager: {e}")
+            self.change_detection_manager = None
+
+        # Step 6.12: Initialize ProactiveMonitoringManager (autonomous monitoring & alerts)
+        try:
+            from context_intelligence.managers import initialize_proactive_monitoring_manager, get_capture_strategy_manager, get_ocr_strategy_manager
+
+            # Get conversation tracker from context-aware manager
+            conversation_tracker = None
+            if self.context_aware_manager:
+                conversation_tracker = self.context_aware_manager.conversation_tracker
+
+            # Alert callback to display alerts to user
+            def alert_callback(alert):
+                logger.info(f"[ALERT] {alert.message}")
+                # Could be extended to notify user via TTS, notifications, etc.
+
+            self.proactive_monitoring_manager = initialize_proactive_monitoring_manager(
+                change_detection_manager=self.change_detection_manager,
+                capture_manager=get_capture_strategy_manager(),
+                ocr_manager=get_ocr_strategy_manager(),
+                implicit_resolver=self.implicit_resolver,
+                conversation_tracker=conversation_tracker,
+                default_interval=10.0,  # Check every 10 seconds
+                alert_callback=alert_callback
+            )
+            logger.info("[UNIFIED] ✅ ProactiveMonitoringManager initialized (not started - use start_monitoring())")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] ProactiveMonitoringManager not available: {e}")
+            self.proactive_monitoring_manager = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize proactive monitoring manager: {e}")
+            self.proactive_monitoring_manager = None
+
+        # Step 6.13: Initialize Goal Inference + Autonomous Decision Integration
+        try:
+            from backend.intelligence.goal_autonomous_uae_integration import get_integration
+            self.goal_autonomous_integration = get_integration()
+            logger.info("[UNIFIED] ✅ Goal Inference + Autonomous Decision Engine initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] Goal-Autonomous Integration not available: {e}")
+            self.goal_autonomous_integration = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize Goal-Autonomous Integration: {e}")
+            self.goal_autonomous_integration = None
+
+        # Step 6.14: Initialize Enhanced TemporalQueryHandler (v2.0 with ProactiveMonitoring integration)
+        try:
+            from context_intelligence.handlers import initialize_temporal_query_handler
+
+            # Get conversation tracker from context-aware manager
+            conversation_tracker = None
+            if self.context_aware_manager:
+                conversation_tracker = self.context_aware_manager.conversation_tracker
+
+            self.temporal_handler = initialize_temporal_query_handler(
+                proactive_monitoring_manager=self.proactive_monitoring_manager,
+                change_detection_manager=self.change_detection_manager,
+                implicit_resolver=self.implicit_resolver,
+                conversation_tracker=conversation_tracker
+            )
+
+            # Register alert callback for ProactiveMonitoringManager to feed alerts to TemporalHandler
+            if self.proactive_monitoring_manager and self.temporal_handler:
+                # Update alert callback to also register alerts with TemporalHandler
+                original_callback = alert_callback
+
+                def enhanced_alert_callback(alert):
+                    original_callback(alert)  # Log to console
+                    self.temporal_handler.register_monitoring_alert({
+                        'space_id': alert.space_id,
+                        'event_type': alert.event_type.value,
+                        'message': alert.message,
+                        'priority': alert.priority.value,
+                        'timestamp': alert.timestamp,
+                        'metadata': alert.metadata
+                    })
+
+                # Re-initialize ProactiveMonitoringManager with enhanced callback
+                self.proactive_monitoring_manager = initialize_proactive_monitoring_manager(
+                    change_detection_manager=self.change_detection_manager,
+                    capture_manager=get_capture_strategy_manager(),
+                    ocr_manager=get_ocr_strategy_manager(),
+                    implicit_resolver=self.implicit_resolver,
+                    conversation_tracker=conversation_tracker,
+                    default_interval=10.0,
+                    alert_callback=enhanced_alert_callback
+                )
+
+            logger.info("[UNIFIED] ✅ Enhanced TemporalQueryHandler v2.0 initialized with ProactiveMonitoring integration")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] Enhanced TemporalQueryHandler not available: {e}")
+            self.temporal_handler = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize enhanced temporal handler: {e}")
+            self.temporal_handler = None
+
+        # Step 7: Initialize MediumComplexityHandler (Level 2 query execution)
+        try:
+            from context_intelligence.handlers import initialize_medium_complexity_handler
+            from context_intelligence.managers import (
+                get_capture_strategy_manager,
+                get_ocr_strategy_manager
+            )
+
+            self.medium_complexity_handler = initialize_medium_complexity_handler(
+                capture_manager=get_capture_strategy_manager(),
+                ocr_manager=get_ocr_strategy_manager(),
+                response_manager=self.response_strategy_manager,
+                context_aware_manager=self.context_aware_manager,
+                proactive_suggestion_manager=self.proactive_suggestion_manager,
+                confidence_manager=self.confidence_manager,
+                multi_monitor_manager=self.multi_monitor_manager,
+                multi_monitor_query_handler=self.multi_monitor_query_handler,
+                implicit_resolver=self.implicit_resolver
+            )
+            logger.info("[UNIFIED] ✅ MediumComplexityHandler initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] MediumComplexityHandler not available: {e}")
+            self.medium_complexity_handler = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize medium complexity handler: {e}")
+            self.medium_complexity_handler = None
+
+        # Step 8: Initialize DisplayReferenceHandler (voice command → display connection)
+        try:
+            from context_intelligence.handlers.display_reference_handler import initialize_display_reference_handler
+
+            self.display_reference_handler = initialize_display_reference_handler(
+                implicit_resolver=self.implicit_resolver,
+                display_monitor=None  # Will be integrated with advanced_display_monitor later
+            )
+            logger.info("[UNIFIED] ✅ DisplayReferenceHandler initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] DisplayReferenceHandler not available: {e}")
+            self.display_reference_handler = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize display reference handler: {e}")
+            self.display_reference_handler = None
+
+        # Step 8: Initialize ComplexComplexityHandler (Level 3 query execution)
+        try:
+            from context_intelligence.handlers import (
+                initialize_complex_complexity_handler,
+                get_predictive_handler,
+                get_action_query_handler
+            )
+            from context_intelligence.managers import (
+                get_capture_strategy_manager,
+                get_ocr_strategy_manager
+            )
+
+            self.complex_complexity_handler = initialize_complex_complexity_handler(
+                temporal_handler=self.temporal_handler,
+                multi_space_handler=self.multi_space_handler,
+                predictive_handler=get_predictive_handler(),
+                capture_manager=get_capture_strategy_manager(),
+                ocr_manager=get_ocr_strategy_manager(),
+                multi_monitor_manager=self.multi_monitor_manager,
+                implicit_resolver=self.implicit_resolver,
+                cache_ttl=60.0,
+                max_concurrent_captures=5
+            )
+            logger.info("[UNIFIED] ✅ ComplexComplexityHandler initialized")
+        except ImportError as e:
+            logger.warning(f"[UNIFIED] ComplexComplexityHandler not available: {e}")
+            self.complex_complexity_handler = None
+        except Exception as e:
+            logger.error(f"[UNIFIED] Failed to initialize complex complexity handler: {e}")
+            self.complex_complexity_handler = None
+
+        # Log integration status
+        resolvers_active = []
+        if self.context_graph:
+            resolvers_active.append("ContextGraph")
+        if self.implicit_resolver:
+            resolvers_active.append("ImplicitResolver")
+        if self.contextual_resolver:
+            resolvers_active.append("ContextualResolver")
+        if self.multi_space_handler:
+            resolvers_active.append("MultiSpaceHandler")
+        if self.temporal_handler:
+            resolvers_active.append("TemporalHandler")
+        if self.query_complexity_manager:
+            resolvers_active.append("QueryComplexityManager")
+        if self.response_strategy_manager:
+            resolvers_active.append("ResponseStrategyManager")
+        if self.context_aware_manager:
+            resolvers_active.append("ContextAwareManager")
+        if self.proactive_suggestion_manager:
+            resolvers_active.append("ProactiveSuggestionManager")
+        if self.confidence_manager:
+            resolvers_active.append("ConfidenceManager")
+        if self.multi_monitor_manager:
+            resolvers_active.append("MultiMonitorManager")
+        if self.multi_monitor_query_handler:
+            resolvers_active.append("MultiMonitorQueryHandler")
+        if self.change_detection_manager:
+            resolvers_active.append("ChangeDetectionManager")
+        if self.proactive_monitoring_manager:
+            resolvers_active.append("ProactiveMonitoringManager")
+        if self.medium_complexity_handler:
+            resolvers_active.append("MediumComplexityHandler")
+        if self.complex_complexity_handler:
+            resolvers_active.append("ComplexComplexityHandler")
+
+        if resolvers_active:
+            logger.info(f"[UNIFIED] 🎯 Active resolvers: {', '.join(resolvers_active)}")
+        else:
+            logger.warning("[UNIFIED] ⚠️  No resolvers available - queries will use basic processing")
+
+        self._resolvers_initialized = True
 
     def _load_learned_data(self):
         """Load previously learned patterns and statistics"""
@@ -246,6 +736,11 @@ class UnifiedCommandProcessor:
         """Process any command through unified pipeline with FULL context awareness"""
         logger.info(f"[UNIFIED] Processing with context awareness: '{command_text}'")
 
+        # Ensure resolvers are initialized (lazy init on first use)
+        if not self._resolvers_initialized:
+            logger.info("[UNIFIED] Lazy-initializing resolvers on first command...")
+            await self._initialize_resolvers()
+
         # Track command frequency
         self.command_stats[command_text.lower()] += 1
 
@@ -256,30 +751,251 @@ class UnifiedCommandProcessor:
 
         context_handler = get_context_aware_handler()
 
-        # Step 1: Classify command intent
+        # Step 1: Classify query complexity (if available)
+        classified_query = None
+        if self.query_complexity_manager:
+            try:
+                context = {"recent_commands": list(self.context.conversation_history)[-5:]}
+                classified_query = await self.query_complexity_manager.process_query(
+                    command_text, context=context
+                )
+                logger.info(
+                    f"[UNIFIED] Query complexity: {classified_query.complexity.level.name} "
+                    f"(type={classified_query.query_type}, intent={classified_query.intent}, "
+                    f"latency={classified_query.complexity.estimated_latency[0]:.1f}-"
+                    f"{classified_query.complexity.estimated_latency[1]:.1f}s, "
+                    f"api_calls={classified_query.complexity.estimated_api_calls[0]}-"
+                    f"{classified_query.complexity.estimated_api_calls[1]})"
+                )
+            except Exception as e:
+                logger.warning(f"[UNIFIED] Query complexity classification failed: {e}")
+
+        # Step 2: Classify command intent
         command_type, confidence = await self._classify_command(command_text)
         logger.info(
             f"[UNIFIED] Classified as {command_type.value} (confidence: {confidence})"
         )
 
-        # Step 2: Check system context FIRST (screen lock, active apps, etc.)
+        # Step 3: Check system context FIRST (screen lock, active apps, etc.)
         system_context = await self._get_full_system_context()
         logger.info(
             f"[UNIFIED] System context: screen_locked={system_context.get('screen_locked')}, active_apps={len(system_context.get('active_apps', []))}"
         )
 
-        # Step 3: Resolve references with context
-        resolved_text = command_text
-        reference, ref_confidence = self.context.resolve_reference(command_text)
+        # Step 3.5: Goal Inference + Autonomous Decision Integration
+        if self.goal_autonomous_integration:
+            try:
+                # Build integration context
+                integration_context = {
+                    'command': command_text,
+                    'active_applications': system_context.get('active_apps', []),
+                    'recent_actions': list(self.context.conversation_history)[-5:] if self.context.conversation_history else [],
+                    'workspace_state': system_context,
+                    'windows': [],  # Would be populated from window manager if available
+                    'time_context': {
+                        'current_time': datetime.now().strftime('%I:%M %p'),
+                        'day_of_week': 'weekday' if datetime.now().weekday() < 5 else 'weekend'
+                    }
+                }
+
+                # Check for predictive display connection if relevant
+                if any(keyword in command_text.lower() for keyword in ['tv', 'display', 'screen', 'monitor', 'living room']):
+                    display_decision = await self.goal_autonomous_integration.predict_display_connection(integration_context)
+
+                    if display_decision and display_decision.integrated_confidence > 0.85:
+                        logger.info(f"[GOAL-INFERENCE] High-confidence display prediction: {display_decision.reasoning}")
+
+                        # Send proactive suggestion if websocket available
+                        if websocket:
+                            await websocket.send_json({
+                                "type": "proactive_suggestion",
+                                "message": f"I've noticed {display_decision.reasoning}. Shall I connect to {display_decision.action.target}?",
+                                "confidence": display_decision.integrated_confidence,
+                                "action": "connect_display"
+                            })
+
+                # Process through full integration for goal-based decisions
+                decisions = await self.goal_autonomous_integration.process_context(integration_context)
+
+                if decisions:
+                    logger.info(f"[GOAL-INFERENCE] Generated {len(decisions)} autonomous decisions")
+
+                    # Log high-confidence decisions for proactive suggestions
+                    for decision in decisions:
+                        if decision.integrated_confidence > 0.8:
+                            logger.info(f"[GOAL-INFERENCE] Suggestion: {decision.action.action_type} - {decision.reasoning}")
+
+                            # Could auto-execute or suggest based on confidence
+                            if decision.integrated_confidence > 0.95 and decision.action.action_type == 'connect_display':
+                                # Pre-load resources for faster execution
+                                logger.info("[GOAL-INFERENCE] Pre-loading display connection resources")
+
+            except Exception as e:
+                logger.error(f"[GOAL-INFERENCE] Error in integration: {e}")
+                # Continue with normal processing if integration fails
+
+        # Step 4: Route to Medium Complexity Handler if appropriate
+        if (classified_query and
+            classified_query.complexity.level.name == "MODERATE" and
+            self.medium_complexity_handler and
+            classified_query.entities.get("spaces")):
+
+            try:
+                from context_intelligence.handlers import MediumQueryType
+
+                # Determine medium query type
+                if classified_query.query_type == "comparison":
+                    medium_type = MediumQueryType.COMPARISON
+                elif classified_query.intent == "find":
+                    medium_type = MediumQueryType.CROSS_SPACE_SEARCH
+                else:
+                    medium_type = MediumQueryType.MULTI_SPACE
+
+                logger.info(f"[UNIFIED] Routing to MediumComplexityHandler ({medium_type.value})")
+
+                # Execute medium complexity query
+                result = await self.medium_complexity_handler.process_query(
+                    query=command_text,
+                    space_ids=classified_query.entities["spaces"],
+                    query_type=medium_type,
+                    context={"system_context": system_context}
+                )
+
+                # Return formatted result
+                return {
+                    "success": result.success,
+                    "response": result.synthesis,
+                    "command_type": "medium_complexity_query",
+                    "query_complexity": {
+                        "level": "MODERATE",
+                        "query_type": classified_query.query_type,
+                        "spaces_processed": result.spaces_processed,
+                        "execution_time": result.execution_time,
+                        "api_calls": result.total_api_calls
+                    },
+                    "captures": [
+                        {
+                            "space_id": c.space_id,
+                            "success": c.success,
+                            "text_length": len(c.ocr_text) if c.ocr_text else 0,
+                            "confidence": c.ocr_confidence,
+                            "method": f"{c.capture_method} + {c.ocr_method}"
+                        }
+                        for c in result.captures
+                    ]
+                }
+
+            except Exception as e:
+                logger.error(f"[UNIFIED] Medium complexity handler failed: {e}")
+                # Fall through to regular processing
+
+        # Step 4.5: Route to Complex Complexity Handler if appropriate
+        if (classified_query and
+            classified_query.complexity.level.name == "COMPLEX" and
+            self.complex_complexity_handler):
+
+            try:
+                from context_intelligence.handlers import ComplexQueryType
+
+                # Determine complex query type
+                if any(word in command_text.lower() for word in ["changed", "change", "different", "history"]):
+                    complex_type = ComplexQueryType.TEMPORAL
+                elif any(word in command_text.lower() for word in ["find", "search", "all", "across", "every"]):
+                    complex_type = ComplexQueryType.CROSS_SPACE
+                elif any(word in command_text.lower() for word in ["progress", "predict", "will", "going"]):
+                    complex_type = ComplexQueryType.PREDICTIVE
+                else:
+                    complex_type = ComplexQueryType.ANALYTICAL
+
+                logger.info(f"[UNIFIED] Routing to ComplexComplexityHandler ({complex_type.value})")
+
+                # Determine space IDs (all spaces if not specified)
+                space_ids = classified_query.entities.get("spaces") if classified_query.entities else None
+
+                # Determine time range for temporal queries
+                time_range = None
+                if complex_type == ComplexQueryType.TEMPORAL:
+                    # Extract time range from query
+                    import re
+                    minutes_match = re.search(r'(\d+)\s*minute', command_text.lower())
+                    hours_match = re.search(r'(\d+)\s*hour', command_text.lower())
+                    if minutes_match:
+                        time_range = {"minutes": int(minutes_match.group(1))}
+                    elif hours_match:
+                        time_range = {"hours": int(hours_match.group(1))}
+                    else:
+                        time_range = {"minutes": 5}  # Default to 5 minutes
+
+                # Execute complex query
+                result = await self.complex_complexity_handler.process_query(
+                    query=command_text,
+                    query_type=complex_type,
+                    space_ids=space_ids,
+                    time_range=time_range,
+                    context={"system_context": system_context}
+                )
+
+                # Return formatted result
+                response_parts = [result.synthesis]
+
+                # Add temporal analysis if available
+                if result.temporal_analysis:
+                    ta = result.temporal_analysis
+                    response_parts.append(f"\n\n**Temporal Analysis:**")
+                    response_parts.append(f"- Changes detected: {ta.changes_detected}")
+                    response_parts.append(f"- Changed spaces: {', '.join(map(str, ta.changed_spaces)) if ta.changed_spaces else 'none'}")
+
+                # Add cross-space analysis if available
+                if result.cross_space_analysis:
+                    csa = result.cross_space_analysis
+                    response_parts.append(f"\n\n**Cross-Space Analysis:**")
+                    response_parts.append(f"- Spaces scanned: {csa.total_spaces_scanned}")
+                    response_parts.append(f"- Matches found: {csa.matches_found}")
+
+                # Add predictive analysis if available
+                if result.predictive_analysis:
+                    pa = result.predictive_analysis
+                    response_parts.append(f"\n\n**Confidence:** {pa.confidence:.1%}")
+
+                return {
+                    "success": result.success,
+                    "response": "\n".join(response_parts),
+                    "command_type": "complex_complexity_query",
+                    "query_complexity": {
+                        "level": "COMPLEX",
+                        "query_type": complex_type.value,
+                        "spaces_processed": result.spaces_processed,
+                        "execution_time": result.execution_time,
+                        "api_calls": result.api_calls
+                    },
+                    "snapshots": [
+                        {
+                            "space_id": s.space_id,
+                            "success": s.ocr_text is not None and not s.error,
+                            "text_length": len(s.ocr_text) if s.ocr_text else 0,
+                            "confidence": s.ocr_confidence,
+                            "error": s.error
+                        }
+                        for s in result.snapshots
+                    ]
+                }
+
+            except Exception as e:
+                logger.error(f"[UNIFIED] Complex complexity handler failed: {e}")
+                # Fall through to regular processing
+
+        # Step 5: Resolve references with context (use resolved query if available)
+        resolved_text = classified_query.resolved_query if classified_query else command_text
+        reference, ref_confidence = self.context.resolve_reference(resolved_text)
         if reference and ref_confidence > 0.5:
             # Replace reference with resolved entity
             for word in ["it", "that", "this"]:
-                if word in command_text.lower():
-                    resolved_text = command_text.lower().replace(word, reference)
+                if word in resolved_text.lower():
+                    resolved_text = resolved_text.lower().replace(word, reference)
                     logger.info(f"[UNIFIED] Resolved '{word}' to '{reference}'")
                     break
 
-        # Step 4: Define command execution callback
+        # Step 6: Define command execution callback
         async def execute_with_context(cmd: str, context: Dict[str, Any] = None):
             """Execute command with full context awareness"""
             if command_type == CommandType.COMPOUND:
@@ -289,13 +1005,13 @@ class UnifiedCommandProcessor:
                     command_type, cmd, websocket, context=context
                 )
 
-        # Step 5: Process through context-aware handler
+        # Step 7: Process through context-aware handler
         logger.info(f"[UNIFIED] Processing through context-aware handler...")
         result = await context_handler.handle_command_with_context(
             resolved_text, execute_callback=execute_with_context
         )
 
-        # Step 6: Extract actual result from context handler response
+        # Step 8: Extract actual result from context handler response
         if result.get("result"):
             # Use the nested result from context handler
             actual_result = result["result"]
@@ -303,7 +1019,7 @@ class UnifiedCommandProcessor:
             # Fallback to the full result
             actual_result = result
 
-        # Step 7: Learn from the result
+        # Step 9: Learn from the result
         if actual_result.get("success", False):
             self.pattern_learner.learn_pattern(command_text, command_type.value, True)
             self.success_patterns[command_type.value].append(
@@ -319,7 +1035,7 @@ class UnifiedCommandProcessor:
                     command_type.value
                 ][-100:]
 
-        # Step 8: Update context with result
+        # Step 10: Update context with result
         self.context.update_from_command(command_type, actual_result)
         self.context.system_state = system_context  # Update system state
 
@@ -327,8 +1043,8 @@ class UnifiedCommandProcessor:
         if sum(self.command_stats.values()) % 10 == 0:
             self._save_learned_data()
 
-        # Return the formatted result
-        return {
+        # Return the formatted result with complexity information
+        result_dict = {
             "success": actual_result.get("success", False),
             "response": result.get("summary", actual_result.get("response", "")),
             "command_type": command_type.value,
@@ -336,6 +1052,21 @@ class UnifiedCommandProcessor:
             "system_context": system_context,
             **actual_result,
         }
+
+        # Add query complexity information if available
+        if classified_query:
+            result_dict["query_complexity"] = {
+                "level": classified_query.complexity.level.name,
+                "query_type": classified_query.query_type,
+                "intent": classified_query.intent,
+                "estimated_latency": classified_query.complexity.estimated_latency,
+                "estimated_api_calls": classified_query.complexity.estimated_api_calls,
+                "spaces_involved": classified_query.complexity.spaces_involved,
+                "confidence": classified_query.complexity.confidence,
+                "resolved_query": classified_query.resolved_query,
+            }
+
+        return result_dict
 
     async def _classify_command(self, command_text: str) -> Tuple[CommandType, float]:
         """Dynamically classify command using learned patterns"""
@@ -367,6 +1098,14 @@ class UnifiedCommandProcessor:
                 f"Voice unlock command detected: '{command_lower}' with patterns={voice_patterns}"
             )
             return CommandType.VOICE_UNLOCK, 0.85 + (voice_patterns * 0.05)
+
+        # Display/Screen mirroring detection (HIGH PRIORITY - before vision to avoid confusion)
+        display_score = self._calculate_display_score(words, command_lower)
+        if display_score > 0.7:
+            logger.info(
+                f"Display command detected: '{command_lower}' with score={display_score}"
+            )
+            return CommandType.DISPLAY, display_score
 
         # Check for implicit compound commands (app + action without connector)
         # Example: "open safari search for cats"
@@ -593,10 +1332,128 @@ class UnifiedCommandProcessor:
 
         return indicators
 
+    def _calculate_display_score(self, words: List[str], command_lower: str) -> float:
+        """
+        Calculate likelihood of display/screen mirroring command
+
+        Detects commands like:
+        - "screen mirror my Mac to the Living Room TV"
+        - "connect to Living Room TV"
+        - "extend display to Sony TV"
+        - "airplay to Living Room TV"
+        - "stop living room tv"
+        - "disconnect from living room tv"
+        - "stop screen mirroring"
+        """
+        score = 0.0
+
+        # Clean words by removing punctuation
+        import re
+        clean_words = [re.sub(r'[^\w\s]', '', word) for word in words]
+
+        # Primary display/mirroring keywords (STRONG indicators)
+        primary_keywords = {
+            "mirror": 0.8,
+            "airplay": 0.9,
+            "extend": 0.7,
+        }
+
+        for keyword, weight in primary_keywords.items():
+            if keyword in clean_words:
+                score += weight
+
+        # Secondary display keywords (combined with display action)
+        secondary_keywords = {"display", "screen", "tv", "television"}
+        has_secondary = any(kw in clean_words for kw in secondary_keywords)
+
+        # Display action verbs (both connection and disconnection)
+        action_verbs = {"connect", "cast", "project", "stream", "share", "stop", "disconnect", "turn", "disable"}
+        has_action = any(verb in clean_words for verb in action_verbs)
+
+        # Disconnection indicators (boost score for disconnect commands)
+        disconnect_indicators = {"stop", "disconnect", "turn", "disable", "off"}
+        has_disconnect = any(indicator in clean_words for indicator in disconnect_indicators)
+        if has_disconnect and has_secondary:
+            score += 0.7
+
+        # Boost if we have action verb + display keyword
+        if has_action and has_secondary:
+            score += 0.6
+
+        # Boost for prepositions indicating target ("to", "on")
+        if ("to" in clean_words or "on" in clean_words) and has_secondary:
+            score += 0.2
+
+        # Check for TV/display names (Living Room, Sony, etc.)
+        # If "room" or "tv" or brand names are mentioned with action
+        tv_indicators = {"room", "tv", "television", "sony", "lg", "samsung"}
+        has_tv_indicator = any(indicator in clean_words for indicator in tv_indicators)
+
+        if has_tv_indicator and (has_action or score > 0):
+            score += 0.3
+
+        # Specific display name patterns (HIGH confidence even without action verb)
+        # These patterns strongly indicate user wants to connect to a display
+        display_name_patterns = [
+            r"living\s*room\s*tv",      # "living room tv"
+            r"bedroom\s*tv",             # "bedroom tv"
+            r"kitchen\s*tv",             # "kitchen tv"
+            r"office\s*tv",              # "office tv"
+            r"\w+\s*room\s*tv",         # "any room tv"
+            r"(sony|lg|samsung)\s*tv",   # "sony tv", "lg tv", etc.
+        ]
+
+        for pattern in display_name_patterns:
+            if re.search(pattern, command_lower):
+                # Known display name mentioned - very likely a connection request
+                score = max(score, 0.85)
+                break
+
+        # Specific phrase matching (highest confidence)
+        if "screen mirror" in command_lower or "screen mirroring" in command_lower:
+            score = max(score, 0.95)
+
+        if "airplay" in command_lower and "to" in command_lower:
+            score = max(score, 0.95)
+
+        # Disconnection phrases (high confidence)
+        disconnect_phrases = [
+            "stop screen mirror",
+            "stop mirroring",
+            "disconnect display",
+            "turn off screen mirror",
+            "stop airplay"
+        ]
+        for phrase in disconnect_phrases:
+            if phrase in command_lower:
+                score = max(score, 0.95)
+                break
+
+        # Mode change phrases (high confidence)
+        mode_change_phrases = [
+            "change to extended",
+            "change to entire",
+            "change to window",
+            "switch to extended",
+            "switch to entire",
+            "switch to window",
+            "set to extended",
+            "set to entire",
+            "extended display",
+            "entire screen",
+            "window or app"
+        ]
+        for phrase in mode_change_phrases:
+            if phrase in command_lower:
+                score = max(score, 0.95)
+                break
+
+        return min(score, 1.0)  # Cap at 1.0
+
     def _calculate_vision_score(self, words: List[str], command_lower: str) -> float:
         """Calculate likelihood of vision command"""
         score = 0.0
-        
+
         # Clean words by removing punctuation for better matching
         import re
         clean_words = [re.sub(r'[^\w\s]', '', word) for word in words]
@@ -834,6 +1691,423 @@ class UnifiedCommandProcessor:
 
         return False
 
+    async def _resolve_vision_query(self, query: str) -> Dict[str, Any]:
+        """
+        Two-stage resolution for comprehensive query understanding
+
+        Stage 1 (Implicit Resolver): Entity & Intent Resolution
+        - "What does it say?" -> "it" = error in Terminal
+        - Intent: DESCRIBE
+        - Entity type: error
+        - May include space_id from visual attention
+
+        Stage 2 (Contextual Resolver): Space & Monitor Resolution
+        - If Stage 1 didn't find space, resolve it now
+        - "What's happening?" -> Space 2 (active space)
+        - "Compare them" -> Spaces [3, 5] (last queried)
+
+        Returns:
+            Dict with comprehensive resolution including:
+            - intent: QueryIntent (from implicit resolver)
+            - entity: Resolved entity (error, file, etc.)
+            - spaces: List[int] (resolved space IDs)
+            - confidence: Combined confidence score
+        """
+        resolution = {
+            "original_query": query,
+            "resolved": False,
+            "query": query,
+            "intent": None,
+            "entity_resolution": None,
+            "space_resolution": None,
+            "spaces": None,
+            "confidence": 0.0
+        }
+
+        # ============================================================
+        # STAGE 1: Implicit Reference Resolution (Entity & Intent)
+        # ============================================================
+        if self.implicit_resolver:
+            try:
+                logger.debug(f"[UNIFIED] Stage 1: Implicit resolution for '{query}'")
+                implicit_result = await self.implicit_resolver.resolve_query(query)
+
+                # Extract intent
+                resolution["intent"] = implicit_result.get("intent")
+
+                # Extract entity referent
+                referent = implicit_result.get("referent", {})
+                if referent and referent.get("source") != "none":
+                    resolution["entity_resolution"] = {
+                        "source": referent.get("source"),
+                        "type": referent.get("type"),
+                        "entity": referent.get("entity"),
+                        "confidence": referent.get("relevance", 0.0)
+                    }
+
+                    logger.info(
+                        f"[UNIFIED] Stage 1 ✅: Intent={resolution['intent']}, "
+                        f"Entity={referent.get('type')} from {referent.get('source')}"
+                    )
+
+                    # If implicit resolver found a specific space, use it (high confidence!)
+                    if referent.get("space_id"):
+                        resolution["spaces"] = [referent["space_id"]]
+                        resolution["space_resolution"] = {
+                            "strategy": "implicit_reference",
+                            "confidence": 1.0,
+                            "source": "visual_attention"
+                        }
+                        resolution["resolved"] = True
+                        resolution["confidence"] = implicit_result.get("confidence", 0.9)
+
+                        # Enhance query with entity and space info
+                        entity_desc = referent.get("entity", "")[:50]
+                        resolution["query"] = f"{query} [entity: {entity_desc}, space: {referent['space_id']}]"
+
+                        logger.info(
+                            f"[UNIFIED] Stage 1 complete: Space {referent['space_id']} from implicit resolver"
+                        )
+                        return resolution
+
+            except Exception as e:
+                logger.warning(f"[UNIFIED] Stage 1 error: {e}", exc_info=True)
+
+        # ============================================================
+        # STAGE 2: Contextual Space Resolution (if needed)
+        # ============================================================
+        if self.contextual_resolver:
+            try:
+                logger.debug(f"[UNIFIED] Stage 2: Contextual space resolution for '{query}'")
+                space_result = await self.contextual_resolver.resolve_query(query)
+
+                if space_result.requires_clarification:
+                    # Query is too ambiguous
+                    resolution["clarification_needed"] = True
+                    resolution["clarification_message"] = space_result.clarification_message
+                    logger.info(f"[UNIFIED] Stage 2: Clarification needed")
+                    return resolution
+
+                if space_result.success and space_result.resolved_spaces:
+                    # Successfully resolved spaces
+                    spaces = space_result.resolved_spaces
+                    strategy = space_result.strategy_used.value
+
+                    resolution["spaces"] = spaces
+                    resolution["space_resolution"] = {
+                        "strategy": strategy,
+                        "confidence": space_result.confidence,
+                        "monitors": space_result.resolved_monitors
+                    }
+                    resolution["resolved"] = True
+
+                    # Calculate combined confidence
+                    if resolution["entity_resolution"]:
+                        # Both stages succeeded
+                        entity_conf = resolution["entity_resolution"]["confidence"]
+                        space_conf = space_result.confidence
+                        resolution["confidence"] = (entity_conf + space_conf) / 2
+                    else:
+                        # Only space resolution
+                        resolution["confidence"] = space_result.confidence
+
+                    # Enhance query with space info (and entity if available)
+                    enhanced_query = query
+                    if resolution["entity_resolution"]:
+                        entity = resolution["entity_resolution"]["entity"][:50]
+                        enhanced_query = f"{query} [entity: {entity}]"
+
+                    if len(spaces) == 1:
+                        enhanced_query = f"{enhanced_query} [space {spaces[0]}]"
+                    elif len(spaces) > 1:
+                        enhanced_query = f"{enhanced_query} [spaces {', '.join(map(str, spaces))}]"
+
+                    resolution["query"] = enhanced_query
+
+                    logger.info(
+                        f"[UNIFIED] Stage 2 ✅: Resolved to spaces {spaces} "
+                        f"using {strategy} (confidence: {space_result.confidence})"
+                    )
+
+            except Exception as e:
+                logger.warning(f"[UNIFIED] Stage 2 error: {e}", exc_info=True)
+
+        # ============================================================
+        # FALLBACK: No resolution
+        # ============================================================
+        if not resolution["resolved"]:
+            logger.debug(f"[UNIFIED] No resolution available for '{query}' - using original query")
+            resolution["query"] = query
+            resolution["confidence"] = 0.0
+
+        return resolution
+
+    def record_visual_attention(self, space_id: int, app_name: str, ocr_text: str,
+                               content_type: str = "unknown", significance: str = "normal"):
+        """
+        Record visual attention for implicit reference resolution
+
+        This creates a feedback loop where vision analysis feeds into the
+        implicit resolver's visual attention tracker.
+
+        Args:
+            space_id: The space where content was seen
+            app_name: The application displaying the content
+            ocr_text: OCR text from the screen
+            content_type: Type of content (error, code, documentation, terminal_output)
+            significance: Importance level (critical, high, normal, low)
+        """
+        if not self.implicit_resolver:
+            return
+
+        try:
+            self.implicit_resolver.record_visual_attention(
+                space_id=space_id,
+                app_name=app_name,
+                ocr_text=ocr_text,
+                content_type=content_type,
+                significance=significance
+            )
+            logger.debug(
+                f"[UNIFIED] Recorded visual attention: {content_type} in {app_name} "
+                f"(Space {space_id}, significance={significance})"
+            )
+        except Exception as e:
+            logger.warning(f"[UNIFIED] Failed to record visual attention: {e}")
+    
+    def _is_multi_space_query(self, query: str) -> bool: # check if the query is about multiple spaces
+        """
+        Detect if a query is asking about multiple spaces.
+
+        Examples:
+        - "Compare space 3 and space 5"
+        - "Which space has the error?"
+        - "Find the terminal across all spaces"
+        - "What's different between space 1 and space 2?"
+        """
+        query_lower = query.lower() # convert the query to lowercase    
+
+        # Keywords that indicate multi-space queries
+        multi_space_keywords = [
+            "compare",
+            "difference",
+            "different",
+            "find",
+            "which space",
+            "across",
+            "all spaces",
+            "search",
+            "locate"
+        ]
+
+        # Check for keywords
+        if any(keyword in query_lower for keyword in multi_space_keywords): # if any of the keywords are in the query, it's a multi-space query
+            return True # return True if it's a multi-space query
+
+        # Check for multiple space mentions
+        import re
+        space_matches = re.findall(r'space\s+\d+', query_lower) # find all space mentions in the query
+        if len(space_matches) >= 2: # if there are at least two space mentions, it's a multi-space query
+            return True # return True if it's a multi-space query
+
+        return False # return False if it's not a multi-space query
+
+    # Function to handle multi-space queries
+    async def _handle_multi_space_query(self, query: str) -> Dict[str, Any]:
+        """
+        Handle multi-space queries using the MultiSpaceQueryHandler.
+
+        Args:
+            query: User's multi-space query
+
+        Returns:
+            Dict with comprehensive multi-space analysis
+        """
+        if not self.multi_space_handler: # if the multi-space handler is not available
+            # Fallback: treat as regular vision query
+            logger.warning("[UNIFIED] Multi-space query detected but handler not available")
+            return {
+                "success": False, # indicate failure
+                "response": "Multi-space analysis not available. Please specify a single space.", # add error message
+                "multi_space": False # indicate that it's not a multi-space query
+            }
+
+        try:
+            logger.info(f"[UNIFIED] Handling multi-space query: '{query}'")
+
+            # Use the multi-space handler
+            result = await self.multi_space_handler.handle_query(query) # handle the multi-space query
+
+            # Build response with the results of the multi-space query
+            response = {
+                "success": True, # indicate success
+                "response": result.synthesis, # add the synthesis to the response
+                "multi_space": True, # indicate that it's a multi-space query
+                "query_type": result.query_type.value, # add the query type to the response
+                "spaces_analyzed": result.spaces_analyzed, # add the spaces analyzed to the response
+                "results": [
+                    {
+                        "space_id": r.space_id, # add the space id to the response
+                        "success": r.success, # add the success to the response
+                        "app": r.app_name, # add the app name to the response
+                        "content_type": r.content_type, # add the content type to the response
+                        "summary": r.content_summary, # add the content summary to the response
+                        "errors": r.errors, # add the errors to the response
+                        "significance": r.significance # add the significance to the response
+                    }
+                    for r in result.results # loop through the results
+                ],
+                "confidence": result.confidence, # add the confidence to the response
+                "analysis_time": result.total_time # add the analysis time to the response
+            }
+
+            # Add comparison if available
+            if result.comparison: # if there is a comparison, add it to the response
+                response["comparison"] = result.comparison # add the comparison to the response
+
+            # Add differences if available
+            if result.differences: # if there is a difference, add it to the response
+                response["differences"] = result.differences # add the difference to the response
+
+            # Add search matches if available
+            if result.search_matches: # if there is a search match, add it to the response
+                response["search_matches"] = result.search_matches # add the search match to the response
+
+            logger.info(
+                f"[UNIFIED] Multi-space query completed: "
+                f"{len(result.spaces_analyzed)} spaces analyzed in {result.total_time:.2f}s"
+            )
+
+            return response
+
+        except Exception as e:
+            logger.error(f"[UNIFIED] Multi-space query failed: {e}", exc_info=True)
+            return {
+                "success": False,
+                "response": f"Multi-space analysis failed: {str(e)}",
+                "multi_space": True,
+                "error": str(e)
+            }
+
+    def _is_temporal_query(self, query: str) -> bool:
+        """
+        Detect if a query is temporal (time-based, change detection, error tracking).
+
+        Examples:
+        - "What changed in space 3?"
+        - "Has the error been fixed?"
+        - "What's new in the last 5 minutes?"
+        - "When did this error first appear?"
+        """
+        query_lower = query.lower()
+
+        # Keywords that indicate temporal queries
+        temporal_keywords = [
+            "changed", "change", "different",
+            "fixed", "error", "bug", "issue",
+            "new", "recently", "last",
+            "when", "history", "timeline",
+            "appeared", "first", "started",
+            "ago", "since", "before", "after",
+            "latest", "recent", "past"
+        ]
+
+        # Check for keywords
+        if any(keyword in query_lower for keyword in temporal_keywords):
+            return True
+
+        # Check for time expressions
+        import re
+        time_patterns = [
+            r'\d+\s+(minute|hour|day|second)s?\s+ago',
+            r'last\s+\d+\s+(minute|hour|day|second)s?',
+            r'in\s+the\s+last',
+            r'(today|yesterday|recently|just now)'
+        ]
+
+        for pattern in time_patterns:
+            if re.search(pattern, query_lower):
+                return True
+
+        return False
+
+    async def _handle_temporal_query(self, query: str) -> Dict[str, Any]:
+        """
+        Handle temporal queries using the TemporalQueryHandler.
+
+        Args:
+            query: User's temporal query
+
+        Returns:
+            Dict with temporal analysis results
+        """
+        if not self.temporal_handler:
+            # Fallback: treat as regular query
+            logger.warning("[UNIFIED] Temporal query detected but handler not available")
+            return {
+                "success": False,
+                "response": "Temporal analysis not available. Cannot track changes over time.",
+                "temporal": False
+            }
+
+        try:
+            logger.info(f"[UNIFIED] Handling temporal query: '{query}'")
+
+            # Get current space (or from query)
+            space_id = None
+            import re
+            space_match = re.search(r'space\s+(\d+)', query.lower())
+            if space_match:
+                space_id = int(space_match.group(1))
+
+            # Use the temporal handler
+            result = await self.temporal_handler.handle_query(query, space_id)
+
+            # Build response
+            response = {
+                "success": True,
+                "response": result.summary,
+                "temporal": True,
+                "query_type": result.query_type.name,
+                "time_range": {
+                    "start": result.time_range.start.isoformat(),
+                    "end": result.time_range.end.isoformat(),
+                    "duration_seconds": result.time_range.duration_seconds
+                },
+                "changes": [
+                    {
+                        "type": change.change_type.value,
+                        "description": change.description,
+                        "confidence": change.confidence,
+                        "timestamp": change.timestamp.isoformat(),
+                        "space_id": change.space_id
+                    }
+                    for change in result.changes
+                ],
+                "timeline": result.timeline,
+                "screenshot_count": len(result.screenshots)
+            }
+
+            # Add metadata if available
+            if result.metadata:
+                response["metadata"] = result.metadata
+
+            logger.info(
+                f"[UNIFIED] Temporal query completed: "
+                f"{len(result.changes)} changes detected over {result.time_range.duration_seconds:.0f}s"
+            )
+
+            return response
+
+        except Exception as e:
+            logger.error(f"[UNIFIED] Temporal query failed: {e}", exc_info=True)
+            return {
+                "success": False,
+                "response": f"Temporal analysis failed: {str(e)}",
+                "temporal": True,
+                "error": str(e)
+            }
+
     async def _get_full_system_context(self) -> Dict[str, Any]:
         """Get comprehensive system context for intelligent command processing"""
         try:
@@ -902,6 +2176,7 @@ class UnifiedCommandProcessor:
             CommandType.SYSTEM,
             CommandType.META,
             CommandType.DOCUMENT,
+            CommandType.DISPLAY,  # Display has dedicated handler below
         ]:
             return {
                 "success": False,
@@ -920,15 +2195,78 @@ class UnifiedCommandProcessor:
                 ):
                     result = await handler.handle_command(command_text)
                 else:
-                    # It's a vision query - analyze the screen with the specific query
-                    result = await handler.analyze_screen(command_text)
+                    # Check if this is a temporal query first (change detection, error tracking, timeline)
+                    if self._is_temporal_query(command_text):
+                        logger.info(f"[UNIFIED] Detected temporal query: '{command_text}'")
+                        return await self._handle_temporal_query(command_text)
 
-                return {
+                    # Check if this is a multi-space query
+                    if self._is_multi_space_query(command_text):
+                        logger.info(f"[UNIFIED] Detected multi-space query: '{command_text}'")
+                        return await self._handle_multi_space_query(command_text)
+
+                    # It's a single-space vision query - use two-stage resolution
+                    resolved_query = await self._resolve_vision_query(command_text)
+
+                    # Check if clarification is needed
+                    if resolved_query.get("clarification_needed"):
+                        return {
+                            "success": False,
+                            "response": resolved_query.get("clarification_message"),
+                            "command_type": command_type.value,
+                            "clarification_needed": True
+                        }
+
+                    # Analyze the screen with the enhanced query
+                    try:
+                        result = await handler.analyze_screen(resolved_query.get("query", command_text))
+
+                        # Ensure result has proper format
+                        if not isinstance(result, dict):
+                            logger.error(f"[VISION] analyze_screen returned non-dict: {type(result)}")
+                            result = {"handled": True, "response": str(result)}
+
+                        # Ensure handled key exists
+                        if "handled" not in result:
+                            logger.warning("[VISION] analyze_screen missing 'handled' key, adding it")
+                            result["handled"] = True
+
+                    except Exception as e:
+                        logger.error(f"[VISION] analyze_screen failed: {e}", exc_info=True)
+                        result = {
+                            "handled": True,
+                            "response": f"I encountered an error analyzing your screen: {str(e)}",
+                            "error": True
+                        }
+
+                    # Add comprehensive resolution context to result
+                    if resolved_query.get("resolved"):
+                        result["query_resolution"] = {
+                            "original_query": command_text,
+                            "intent": resolved_query.get("intent"),
+                            "entity_resolution": resolved_query.get("entity_resolution"),
+                            "space_resolution": resolved_query.get("space_resolution"),
+                            "resolved_spaces": resolved_query.get("spaces"),
+                            "confidence": resolved_query.get("confidence"),
+                            "two_stage": True  # Indicates both resolvers were used
+                        }
+
+                        # Log the comprehensive resolution
+                        logger.info(
+                            f"[UNIFIED] Vision query resolved - "
+                            f"Intent: {resolved_query.get('intent')}, "
+                            f"Spaces: {resolved_query.get('spaces')}, "
+                            f"Confidence: {resolved_query.get('confidence')}"
+                        )
+
+                vision_response = {
                     "success": result.get("handled", False),
                     "response": result.get("response", ""),
                     "command_type": command_type.value,
                     **result,
                 }
+                logger.info(f"[VISION] Returning response - success={vision_response['success']}, response_len={len(vision_response.get('response', ''))}")
+                return vision_response
             elif command_type == CommandType.WEATHER:
                 result = await handler.get_weather(command_text)
                 return {
@@ -970,6 +2308,47 @@ class UnifiedCommandProcessor:
                         "response": "Understood",
                         "command_type": "meta",
                     }
+            elif command_type == CommandType.DISPLAY:
+                # Handle display/screen mirroring commands with Goal Inference optimization
+
+                # Check if Goal Inference has pre-loaded resources
+                prediction_boost = False
+                if self.goal_autonomous_integration:
+                    try:
+                        # Check if we predicted this command
+                        integration_context = {
+                            'command': command_text,
+                            'active_applications': system_context.get('active_apps', []),
+                        }
+
+                        # If we have high confidence from Goal Inference, use optimized path
+                        display_decision = await self.goal_autonomous_integration.predict_display_connection(integration_context)
+                        if display_decision and display_decision.integrated_confidence > 0.85:
+                            logger.info(f"[GOAL-INFERENCE] Using optimized display connection path (confidence: {display_decision.integrated_confidence:.0%})")
+                            prediction_boost = True
+                    except Exception as e:
+                        logger.debug(f"[GOAL-INFERENCE] No prediction boost: {e}")
+
+                # Execute display command (possibly with optimized resources)
+                start_time = datetime.now()
+                result = await self._execute_display_command(command_text)
+                execution_time = (datetime.now() - start_time).total_seconds()
+
+                # Add Goal Inference metadata to response
+                if prediction_boost:
+                    result["goal_inference_active"] = True
+                    result["execution_time"] = f"{execution_time:.2f}s (optimized)"
+                    if execution_time < 0.5:
+                        result["response"] = result.get("response", "") + " I anticipated your request and pre-loaded resources for faster connection."
+                else:
+                    result["execution_time"] = f"{execution_time:.2f}s"
+
+                return {
+                    "success": result.get("success", False),
+                    "response": result.get("response", ""),
+                    "command_type": command_type.value,
+                    **result,
+                }
             elif command_type == CommandType.DOCUMENT:
                 # Handle document creation commands WITH CONTEXT AWARENESS
                 logger.info(
@@ -1159,6 +2538,10 @@ class UnifiedCommandProcessor:
                 from api.voice_unlock_handler import get_voice_unlock_handler
 
                 return get_voice_unlock_handler()
+            elif command_type == CommandType.QUERY:
+                from api.query_handler import handle_query
+
+                return handle_query
             # Add other handlers as needed
 
         except ImportError as e:
@@ -1858,6 +3241,572 @@ class UnifiedCommandProcessor:
         # Default fallback
         return "safari"
 
+    async def _execute_display_action(self, display_ref, original_command: str) -> Dict[str, Any]:
+        """
+        Execute display action based on resolved DisplayReference
+
+        This is the new direct routing system that uses display_ref.action
+        instead of pattern matching.
+
+        Args:
+            display_ref: DisplayReference from display_reference_handler
+            original_command: Original user command (for context)
+
+        Returns:
+            Dict with success status and response
+        """
+        from context_intelligence.handlers.display_reference_handler import ActionType, ModeType
+
+        logger.info(
+            f"[DISPLAY-ACTION] Executing: action={display_ref.action.value}, "
+            f"display={display_ref.display_name}, mode={display_ref.mode.value if display_ref.mode else 'auto'}"
+        )
+
+        try:
+            # Get display monitor instance
+            monitor = None
+            if hasattr(self, '_app') and self._app:
+                if hasattr(self._app.state, 'display_monitor'):
+                    monitor = self._app.state.display_monitor
+
+            if monitor is None:
+                from display import get_display_monitor
+                monitor = get_display_monitor()
+
+            # Route based on action type
+            if display_ref.action == ActionType.CONNECT:
+                return await self._action_connect_display(monitor, display_ref, original_command)
+
+            elif display_ref.action == ActionType.DISCONNECT:
+                return await self._action_disconnect_display(monitor, display_ref, original_command)
+
+            elif display_ref.action == ActionType.CHANGE_MODE:
+                return await self._action_change_mode(monitor, display_ref, original_command)
+
+            elif display_ref.action == ActionType.QUERY_STATUS:
+                return await self._action_query_status(monitor, display_ref, original_command)
+
+            elif display_ref.action == ActionType.LIST_DISPLAYS:
+                return await self._action_list_displays(monitor, display_ref, original_command)
+
+            else:
+                logger.warning(f"[DISPLAY-ACTION] Unknown action: {display_ref.action.value}")
+                return {
+                    "success": False,
+                    "response": f"I don't know how to perform action: {display_ref.action.value}",
+                }
+
+        except Exception as e:
+            logger.error(f"[DISPLAY-ACTION] Error: {e}", exc_info=True)
+            return {
+                "success": False,
+                "response": f"Error executing display action: {str(e)}",
+            }
+
+    async def _action_connect_display(self, monitor, display_ref, original_command: str) -> Dict[str, Any]:
+        """Execute CONNECT action"""
+        from context_intelligence.handlers.display_reference_handler import ModeType
+
+        display_name = display_ref.display_name
+        display_id = display_ref.display_id or display_name.lower().replace(" ", "-")
+        mode = display_ref.mode
+
+        logger.info(f"[DISPLAY-ACTION] Connecting to '{display_name}' (id={display_id})")
+
+        # Determine mode string for monitor.connect_display
+        mode_str = "extended" if mode == ModeType.EXTENDED else \
+                   "entire" if mode == ModeType.ENTIRE_SCREEN else \
+                   "window" if mode == ModeType.WINDOW else \
+                   "mirror"  # Default
+
+        try:
+            # Connect using display monitor
+            result = await monitor.connect_display(display_id)
+
+            if result.get("success"):
+                # Generate time-aware response
+                from datetime import datetime
+                hour = datetime.now().hour
+                greeting = "Good morning" if 5 <= hour < 12 else \
+                          "Good afternoon" if 12 <= hour < 17 else \
+                          "Good evening" if 17 <= hour < 21 else \
+                          "Good night"
+
+                response = f"{greeting}! Connected to {display_name}, sir."
+
+                # Add mode info if specified
+                if mode:
+                    response += f" Display mode: {mode.value}."
+
+                return {
+                    "success": True,
+                    "response": response,
+                    "display_name": display_name,
+                    "display_id": display_id,
+                    "mode": mode_str,
+                    "action": "connect",
+                    "resolution_strategy": display_ref.resolution_strategy.value,
+                    "confidence": display_ref.confidence
+                }
+            else:
+                return {
+                    "success": False,
+                    "response": result.get("message", f"Unable to connect to {display_name}."),
+                    "display_name": display_name,
+                }
+
+        except Exception as e:
+            logger.error(f"[DISPLAY-ACTION] Connect error: {e}", exc_info=True)
+            return {
+                "success": False,
+                "response": f"Error connecting to {display_name}: {str(e)}",
+            }
+
+    async def _action_disconnect_display(self, monitor, display_ref, original_command: str) -> Dict[str, Any]:
+        """Execute DISCONNECT action"""
+        display_name = display_ref.display_name
+        display_id = display_ref.display_id or display_name.lower().replace(" ", "-")
+
+        logger.info(f"[DISPLAY-ACTION] Disconnecting from '{display_name}' (id={display_id})")
+
+        try:
+            result = await monitor.disconnect_display(display_id)
+
+            if result.get("success"):
+                return {
+                    "success": True,
+                    "response": f"Disconnected from {display_name}, sir.",
+                    "display_name": display_name,
+                    "display_id": display_id,
+                    "action": "disconnect"
+                }
+            else:
+                return {
+                    "success": False,
+                    "response": result.get("message", f"Unable to disconnect from {display_name}."),
+                    "display_name": display_name,
+                }
+
+        except Exception as e:
+            logger.error(f"[DISPLAY-ACTION] Disconnect error: {e}", exc_info=True)
+            return {
+                "success": False,
+                "response": f"Error disconnecting from {display_name}: {str(e)}",
+            }
+
+    async def _action_change_mode(self, monitor, display_ref, original_command: str) -> Dict[str, Any]:
+        """Execute CHANGE_MODE action"""
+        from context_intelligence.handlers.display_reference_handler import ModeType
+
+        display_name = display_ref.display_name
+        display_id = display_ref.display_id or display_name.lower().replace(" ", "-")
+        mode = display_ref.mode
+
+        if not mode:
+            return {
+                "success": False,
+                "response": "Please specify which mode you'd like: entire screen, window, or extended display.",
+            }
+
+        logger.info(f"[DISPLAY-ACTION] Changing '{display_name}' to {mode.value} mode")
+
+        # Map ModeType to mode string
+        mode_str = "entire" if mode == ModeType.ENTIRE_SCREEN else \
+                   "window" if mode == ModeType.WINDOW else \
+                   "extended" if mode == ModeType.EXTENDED else \
+                   "mirror"
+
+        try:
+            result = await monitor.change_display_mode(display_id, mode_str)
+
+            if result.get("success"):
+                return {
+                    "success": True,
+                    "response": f"Changed {display_name} to {mode.value} mode, sir.",
+                    "display_name": display_name,
+                    "mode": mode_str,
+                    "action": "change_mode"
+                }
+            else:
+                return {
+                    "success": False,
+                    "response": result.get("message", f"Unable to change {display_name} to {mode.value} mode."),
+                }
+
+        except Exception as e:
+            logger.error(f"[DISPLAY-ACTION] Change mode error: {e}", exc_info=True)
+            return {
+                "success": False,
+                "response": f"Error changing mode: {str(e)}",
+            }
+
+    async def _action_query_status(self, monitor, display_ref, original_command: str) -> Dict[str, Any]:
+        """Execute QUERY_STATUS action"""
+        logger.info(f"[DISPLAY-ACTION] Querying display status")
+
+        try:
+            status = monitor.get_status()
+            connected = status.get('connected_displays', [])
+            available = monitor.get_available_display_details()
+
+            if connected:
+                display_names = [d.get('display_name', d) for d in connected]
+                response = f"You have {len(connected)} display(s) connected: {', '.join(display_names)}."
+            else:
+                response = "No displays are currently connected."
+
+            if available:
+                avail_names = [d['display_name'] for d in available]
+                response += f" Available displays: {', '.join(avail_names)}."
+
+            return {
+                "success": True,
+                "response": response,
+                "connected_displays": connected,
+                "available_displays": available,
+                "action": "query_status"
+            }
+
+        except Exception as e:
+            logger.error(f"[DISPLAY-ACTION] Query status error: {e}", exc_info=True)
+            return {
+                "success": False,
+                "response": f"Error querying display status: {str(e)}",
+            }
+
+    async def _action_list_displays(self, monitor, display_ref, original_command: str) -> Dict[str, Any]:
+        """Execute LIST_DISPLAYS action"""
+        logger.info(f"[DISPLAY-ACTION] Listing available displays")
+
+        try:
+            available = monitor.get_available_display_details()
+
+            if available:
+                names = [d['display_name'] for d in available]
+                response = f"Available displays: {', '.join(names)}."
+            else:
+                response = "No displays are currently available."
+
+            return {
+                "success": True,
+                "response": response,
+                "available_displays": available,
+                "action": "list_displays"
+            }
+
+        except Exception as e:
+            logger.error(f"[DISPLAY-ACTION] List displays error: {e}", exc_info=True)
+            return {
+                "success": False,
+                "response": f"Error listing displays: {str(e)}",
+            }
+
+    async def _execute_display_command(self, command_text: str) -> Dict[str, Any]:
+        """
+        Execute display/screen mirroring commands
+
+        Handles commands like:
+        - "Living Room TV" (implicit: connect to Living Room TV)
+        - "screen mirror my Mac to the Living Room TV"
+        - "connect to Living Room TV"
+        - "connect to the TV" (uses context to resolve "the TV")
+        - "extend display to Sony TV"
+        - "airplay to Living Room TV"
+        - "stop living room tv"
+        - "disconnect from living room tv"
+        - "disconnect from that display" (uses context)
+        - "stop screen mirroring"
+        - "change to extended display"
+        - "switch to entire screen"
+        - "set to window mode"
+
+        Flow:
+        1. TV is in standby mode (AirPlay chip active, broadcasts availability)
+        2. macOS Control Center sees "Living Room TV"
+        3. JARVIS detects "Living Room TV" via DNS-SD
+        4. User command triggers AirPlay connection request
+        5. Sony TV receives wake signal → Powers ON automatically
+        6. Mac screen appears on Sony TV
+        """
+        command_lower = command_text.lower()
+        logger.info(f"[DISPLAY] Processing display command: '{command_text}'")
+
+        # DEBUG: Log to file
+        with open("/tmp/jarvis_display_command.log", "a") as f:
+            f.write(f"\n{'='*80}\n")
+            f.write(f"[DISPLAY] _execute_display_command called\n")
+            f.write(f"  Command: '{command_text}'\n")
+            import datetime
+            f.write(f"  Time: {datetime.datetime.now()}\n")
+
+        # NEW: Try display reference handler first for intelligent voice command resolution
+        display_ref = None
+        if self.display_reference_handler:
+            try:
+                display_ref = await self.display_reference_handler.handle_voice_command(command_text)
+
+                if display_ref:
+                    logger.info(
+                        f"[DISPLAY] Display reference resolved: {display_ref.display_name} "
+                        f"(action={display_ref.action.value}, mode={display_ref.mode.value if display_ref.mode else None}, "
+                        f"confidence={display_ref.confidence:.2f}, strategy={display_ref.resolution_strategy.value})"
+                    )
+
+                    # NEW: Direct action routing based on display_ref.action
+                    # This bypasses the old pattern matching logic and goes straight to execution
+                    try:
+                        result = await self._execute_display_action(display_ref, command_text)
+
+                        # Learn from success/failure
+                        if result.get("success"):
+                            self.display_reference_handler.learn_from_success(command_text, display_ref)
+                            logger.info(f"[DISPLAY] ✅ Action completed successfully - learned from: '{command_text}'")
+                        else:
+                            self.display_reference_handler.learn_from_failure(command_text, display_ref)
+                            logger.warning(f"[DISPLAY] ❌ Action failed - learned from: '{command_text}'")
+
+                        return result
+
+                    except Exception as e:
+                        logger.error(f"[DISPLAY] Error executing display action: {e}", exc_info=True)
+                        # Learn from failure
+                        self.display_reference_handler.learn_from_failure(command_text, display_ref)
+                        # Fall through to legacy logic as fallback
+                        logger.warning("[DISPLAY] Falling back to legacy display command logic")
+
+            except Exception as e:
+                logger.warning(f"[DISPLAY] Display reference handler error (continuing with fallback): {e}")
+                # Continue with existing logic if handler fails
+
+        try:
+            # Try to get the running display monitor instance
+            monitor = None
+
+            # Check if we have app reference
+            if hasattr(self, '_app') and self._app:
+                if hasattr(self._app.state, 'display_monitor'):
+                    monitor = self._app.state.display_monitor
+                    logger.info("[DISPLAY] Using running display monitor from app.state")
+
+            # Fallback: get singleton instance
+            if monitor is None:
+                from display import get_display_monitor
+                monitor = get_display_monitor()
+                logger.info("[DISPLAY] Using display monitor singleton")
+
+            # Check if this is a mode change command
+            mode_keywords = ["change", "switch", "set"]
+            mode_types = {
+                "entire": ["entire", "entire screen", "full screen"],
+                "window": ["window", "window or app", "app"],
+                "extended": ["extended", "extend", "extended display"]
+            }
+
+            is_mode_change = any(keyword in command_lower for keyword in mode_keywords)
+            detected_mode = None
+
+            if is_mode_change:
+                # Detect which mode the user wants
+                for mode_key, mode_phrases in mode_types.items():
+                    if any(phrase in command_lower for phrase in mode_phrases):
+                        detected_mode = mode_key
+                        break
+
+            if is_mode_change and detected_mode:
+                # Handle mode change
+                logger.info(f"[DISPLAY] Detected mode change command to '{detected_mode}'")
+
+                # Check config for connected displays
+                status = monitor.get_status()
+                connected_displays = list(status.get('connected_displays', []))
+
+                logger.debug(f"[DISPLAY] Connected displays: {connected_displays}")
+
+                # If only one display is connected, change its mode
+                if len(connected_displays) == 1:
+                    display_id = connected_displays[0]
+                    logger.info(f"[DISPLAY] Changing '{display_id}' to {detected_mode} mode...")
+
+                    result = await monitor.change_display_mode(display_id, detected_mode)
+
+                    if result.get("success"):
+                        mode_name = result.get("mode", detected_mode)
+                        return {
+                            "success": True,
+                            "response": f"Changed to {mode_name} mode, sir.",
+                            "mode": mode_name,
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "response": result.get("message", f"Unable to change to {detected_mode} mode."),
+                        }
+                elif len(connected_displays) > 1:
+                    # Multiple displays connected, need to specify which one
+                    return {
+                        "success": False,
+                        "response": f"Multiple displays are connected. Please specify which display to change: {', '.join(connected_displays)}",
+                        "connected_displays": connected_displays,
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "response": "No displays are currently connected.",
+                    }
+
+            # Check if this is a disconnection command
+            disconnect_keywords = ["stop", "disconnect", "turn off", "disable"]
+            is_disconnect = any(keyword in command_lower for keyword in disconnect_keywords)
+
+            # Make sure it's not a mode change command being misdetected
+            if is_disconnect and not is_mode_change:
+                # Handle disconnection
+                logger.info(f"[DISPLAY] Detected disconnection command")
+
+                # Check config for monitored displays
+                status = monitor.get_status()
+                connected_displays = list(status.get('connected_displays', []))
+
+                logger.debug(f"[DISPLAY] Connected displays: {connected_displays}")
+
+                # If only one display is connected, disconnect it
+                if len(connected_displays) == 1:
+                    display_id = connected_displays[0]
+                    logger.info(f"[DISPLAY] Disconnecting from '{display_id}'...")
+
+                    result = await monitor.disconnect_display(display_id)
+
+                    if result.get("success"):
+                        return {
+                            "success": True,
+                            "response": "Display disconnected, sir.",
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "response": result.get("message", "Unable to disconnect display."),
+                        }
+                elif len(connected_displays) > 1:
+                    # Multiple displays connected, need to specify which one
+                    return {
+                        "success": False,
+                        "response": f"Multiple displays are connected. Please specify which one to disconnect: {', '.join(connected_displays)}",
+                        "connected_displays": connected_displays,
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "response": "No displays are currently connected.",
+                    }
+
+            # Extract display name from command (for connection)
+            # Look for TV names, room names, or brand names
+            display_name = None
+
+            # Check config for monitored displays
+            status = monitor.get_status()
+            available_displays = monitor.get_available_display_details()
+
+            logger.debug(f"[DISPLAY] Available displays: {[d['display_name'] for d in available_displays]}")
+
+            # Match display name in command text
+            display_id = None
+            for display_info in available_displays:
+                name = display_info["display_name"]
+                # Check if display name appears in command (case insensitive)
+                if name.lower() in command_lower:
+                    display_name = name
+                    display_id = display_info["display_id"]
+                    break
+
+            if not display_name:
+                # Try to extract room name or TV reference
+                import re
+                # Match patterns like "living room", "bedroom", "sony", "lg", etc.
+                patterns = [
+                    r"(living\s*room|bedroom|kitchen|office)\s*tv",
+                    r"(sony|lg|samsung)\s*tv",
+                    r"to\s+([a-z\s]+tv)",
+                ]
+                for pattern in patterns:
+                    match = re.search(pattern, command_lower)
+                    if match:
+                        extracted = match.group(0).replace("to ", "").strip()
+                        # Try to match with available displays
+                        for display_info in available_displays:
+                            if extracted.lower() in display_info["display_name"].lower():
+                                display_name = display_info["display_name"]
+                                display_id = display_info["display_id"]
+                                break
+                        if display_name:
+                            break
+
+            # Determine mode (mirror vs extend)
+            mode = "mirror" if "mirror" in command_lower else "extend"
+
+            if not display_id:
+                # No specific display found, show available options
+                if available_displays:
+                    names = [d["display_name"] for d in available_displays]
+                    return {
+                        "success": False,
+                        "response": f"I couldn't determine which display to connect to. Available displays: {', '.join(names)}. Please specify one.",
+                        "available_displays": names,
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "response": "No displays are currently available. Please ensure your TV or display is powered on and connected to the network.",
+                    }
+
+            logger.info(f"[DISPLAY] Connecting to '{display_name}' (id: {display_id}) in {mode} mode...")
+
+            # DEBUG: Log to file
+            with open("/tmp/jarvis_display_command.log", "a") as f:
+                f.write(f"\n{'='*60}\n")
+                f.write(f"[DISPLAY] About to call monitor.connect_display('{display_id}')\n")
+                f.write(f"  Display name: {display_name}\n")
+                f.write(f"  Mode: {mode}\n")
+
+            # Connect to display using display_id
+            result = await monitor.connect_display(display_id)
+
+            # DEBUG: Log result
+            with open("/tmp/jarvis_display_command.log", "a") as f:
+                f.write(f"[DISPLAY] Result: {result.get('success')}\n")
+                f.write(f"  Message: {result.get('message', 'none')}\n")
+
+            if result.get("success"):
+                # Check if already connected (cached) or connection in progress
+                if result.get("cached"):
+                    response = f"Your screen is already being {mode}ed to {display_name}, sir."
+                elif result.get("in_progress"):
+                    # This should not happen anymore with the fix, but keep as fallback
+                    response = f"Connecting to {display_name} now, sir."
+                else:
+                    response = f"Connected to {display_name}, sir."
+
+                return {
+                    "success": True,
+                    "response": response,
+                    "display_name": display_name,
+                    "mode": mode,
+                    "already_connected": result.get("cached", False)
+                }
+            else:
+                return {
+                    "success": False,
+                    "response": result.get("message", f"Unable to connect to {display_name}."),
+                    "display_name": display_name,
+                }
+
+        except Exception as e:
+            logger.error(f"[DISPLAY] Error executing display command: {e}", exc_info=True)
+            return {
+                "success": False,
+                "response": f"I encountered an error while trying to connect to the display: {str(e)}",
+            }
+
     async def _execute_system_command(self, command_text: str) -> Dict[str, Any]:
         """Dynamically execute system commands without hardcoding"""
 
@@ -2183,9 +4132,12 @@ class UnifiedCommandProcessor:
 _unified_processor = None
 
 
-def get_unified_processor(api_key: Optional[str] = None) -> UnifiedCommandProcessor:
+def get_unified_processor(api_key: Optional[str] = None, app=None) -> UnifiedCommandProcessor:
     """Get or create the unified command processor"""
     global _unified_processor
     if _unified_processor is None:
-        _unified_processor = UnifiedCommandProcessor(api_key)
+        _unified_processor = UnifiedCommandProcessor(api_key, app=app)
+    elif app is not None and not hasattr(_unified_processor, '_app'):
+        # Update existing processor with app reference
+        _unified_processor._app = app
     return _unified_processor

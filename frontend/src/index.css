@@ -1,14 +1,23 @@
-body {
+body,
+html {
   margin: 0;
+  padding: 0;
+  overflow: hidden;
+  /* This will prevent scrolling */
   min-height: 100vh;
-  background: radial-gradient(1200px 600px at 70% -20%, rgba(0, 174, 239, 0.15), transparent 60%),
-    radial-gradient(1000px 500px at -10% 110%, rgba(255, 0, 102, 0.08), transparent 60%),
-    #0a0f1c;
+  background: #000000;
   color: #e6f7ff;
   font-family: 'Rajdhani', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  min-height: 100vh;
+  background: radial-gradient(1200px 600px at 70% -20%, rgba(0, 174, 239, 0.15), transparent 60%),
+    radial-gradient(1000px 500px at -10% 110%, rgba(255, 0, 102, 0.08), transparent 60%),
+    #0a0f1c;
 }
 
 code {

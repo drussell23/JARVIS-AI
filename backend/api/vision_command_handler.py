@@ -415,6 +415,30 @@ class VisionCommandHandler:
                 "reason": "Lock/unlock screen commands are system commands, not vision",
             }
 
+        # SIMPLE TV MONITOR: Check for display prompt responses (YES/NO) - HIGHEST PRIORITY
+        logger.info(f"[VISION] Checking if TV monitor response handler should process: '{command_text}'")
+        tv_response_result = await self._handle_tv_monitor_response(command_text)
+        logger.info(f"[VISION] TV monitor handler result: handled={tv_response_result.get('handled')}, action={tv_response_result.get('action')}")
+        if tv_response_result.get("handled"):
+            logger.info(f"[VISION] TV monitor handled the command, returning response")
+            return tv_response_result
+        
+        # PHASE 1.2C: Check for voice prompt responses (YES/NO)
+        voice_response_result = await self._handle_voice_prompt_response(command_text)
+        if voice_response_result.get("handled"):
+            return voice_response_result
+        
+        # PHASE 1.2C: Check for proximity-aware routing
+        proximity_routing_result = await self._handle_proximity_aware_routing(command_text)
+        if proximity_routing_result.get("handled"):
+            return proximity_routing_result
+        
+        # Check for multi-monitor queries
+        if self._is_multi_monitor_query(command_text):
+            monitor_result = await self._handle_multi_monitor_query(command_text)
+            if monitor_result.get("handled"):
+                return monitor_result
+        
         # Check if this is a follow-up to a multi-space query
         follow_up_result = await self._handle_multi_space_follow_up(command_text)
         if follow_up_result.get("handled"):
@@ -557,7 +581,7 @@ class VisionCommandHandler:
         if is_monitoring_command:
             return await self._handle_monitoring_command(command_text, screenshot)
         else:
-                # Pure vision query - let Claude see and respond
+            # Pure vision query - let Claude see and respond
             response = await self.intelligence.understand_and_respond(
                 screenshot, command_text
             )
@@ -1683,6 +1707,18 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
             logger.error(f"[FOLLOW-UP] Failed to capture space {space_id}: {e}")
             return None
 
+    def _is_multi_monitor_query(self, command_text: str) -> bool:
+        """Check if query is about multiple monitors/displays"""
+        query_lower = command_text.lower()
+        monitor_keywords = [
+            "monitor", "display", "screen",
+            "second monitor", "primary monitor", "main monitor",
+            "monitor 1", "monitor 2", "monitor 3", "monitor 4",
+            "all monitors", "all displays", "both monitors",
+            "left monitor", "right monitor", "show me all displays"
+        ]
+        return any(keyword in query_lower for keyword in monitor_keywords)
+    
     def _is_multi_space_query(self, command_text: str) -> bool:
         """Check if query is about multiple desktop spaces OR specific space analysis"""
         command_lower = command_text.lower()
@@ -1706,6 +1742,271 @@ Provide a comprehensive analysis of what you see in Space {space_id}."""
         return (any(indicator in command_lower for indicator in multi_space_indicators) or
                 any(indicator in command_lower for indicator in visual_analysis_indicators))
 
+    async def _handle_multi_monitor_query(self, command_text: str) -> Dict[str, Any]:
+        """Handle multi-monitor specific queries with intelligent routing"""
+        try:
+            logger.info("[MULTI-MONITOR] Handling multi-monitor query")
+            
+            from vision.multi_monitor_detector import MultiMonitorDetector
+            from vision.query_disambiguation import get_query_disambiguator
+            
+            detector = MultiMonitorDetector()
+            
+            # Detect displays
+            displays = await detector.detect_displays()
+            
+            if len(displays) == 0:
+                return {
+                    "handled": True,
+                    "response": "Sir, I cannot detect any displays. Please ensure screen recording permissions are enabled.",
+                    "monitoring_active": self.monitoring_active
+                }
+            
+            if len(displays) == 1:
+                # Single display - redirect to normal space analysis
+                logger.info("[MULTI-MONITOR] Only one display, routing to multi-space handler")
+                return {"handled": False}  # Let multi-space handler take over
+            
+            # Handle "show me all displays" type queries
+            query_lower = command_text.lower()
+            if any(keyword in query_lower for keyword in ["all displays", "all monitors", "show me all"]):
+                summary = await detector.get_display_summary()
+                
+                # Generate natural language summary
+                response_parts = [f"Sir, you have {len(displays)} displays connected:"]
+                for i, display in enumerate(displays):
+                    position = "Primary" if display.is_primary else f"Monitor {i+1}"
+                    resolution = f"{display.resolution[0]}x{display.resolution[1]}"
+                    response_parts.append(f"\n• {position}: {resolution}")
+                    
+                    # Add space info if available
+                    if summary.get("space_mappings"):
+                        spaces_on_display = [
+                            space_id for space_id, mapping in summary["space_mappings"].items()
+                            if mapping.display_id == display.display_id
+                        ]
+                        if spaces_on_display:
+                            response_parts.append(f"  (Spaces: {', '.join(map(str, spaces_on_display))})")
+                
+                return {
+                    "handled": True,
+                    "response": "".join(response_parts),
+                    "display_summary": summary,
+                    "monitoring_active": self.monitoring_active
+                }
+            
+            # Parse which monitor user is asking about
+            disambiguator = get_query_disambiguator()
+            monitor_ref = await disambiguator.resolve_monitor_reference(command_text, displays)
+            
+            if monitor_ref is None or monitor_ref.ambiguous:
+                # Ask for clarification
+                clarification = await disambiguator.ask_clarification(command_text, displays)
+                return {
+                    "handled": True,
+                    "response": clarification,
+                    "needs_clarification": True,
+                    "available_displays": len(displays),
+                    "monitoring_active": self.monitoring_active
+                }
+            
+            # Capture specific monitor
+            result = await detector.capture_all_displays()
+            
+            if monitor_ref.display_id not in result.displays_captured:
+                return {
+                    "handled": True,
+                    "response": f"Sir, I was unable to capture display {monitor_ref.display_id}.",
+                    "monitoring_active": self.monitoring_active
+                }
+            
+            # Get display info
+            target_display = next((d for d in displays if d.display_id == monitor_ref.display_id), None)
+            
+            # Analyze with Claude
+            screenshot = result.displays_captured[monitor_ref.display_id]
+            
+            if target_display:
+                display_name = "the primary display" if target_display.is_primary else f"Monitor {displays.index(target_display) + 1}"
+                analysis_query = f"Analyze this screenshot from {display_name}: {command_text}"
+            else:
+                analysis_query = command_text
+            
+            # Use Claude Vision for analysis
+            response = await self.intelligence.understand_and_respond(screenshot, analysis_query)
+            
+            return {
+                "handled": True,
+                "response": response,
+                "display_id": monitor_ref.display_id,
+                "display_info": {
+                    "resolution": target_display.resolution,
+                    "is_primary": target_display.is_primary,
+                    "position": target_display.position
+                } if target_display else {},
+                "monitoring_active": self.monitoring_active
+            }
+            
+        except Exception as e:
+            logger.error(f"[MULTI-MONITOR] Error handling query: {e}", exc_info=True)
+            return {"handled": False}
+    
+    async def _handle_tv_monitor_response(self, command_text: str) -> Dict[str, Any]:
+        """
+        SIMPLE TV MONITOR: Handle voice responses for TV connection prompts
+
+        Intercepts "yes", "no" commands when JARVIS asks about connecting to Living Room TV
+        """
+        try:
+            from display import get_display_monitor
+
+            monitor = get_display_monitor()
+
+            # Only handle if we're waiting for a response
+            has_pending = monitor.has_pending_prompt()
+            logger.info(f"[TV MONITOR] Checking pending prompt: {has_pending}, pending_display={getattr(monitor, 'pending_prompt_display', None)}")
+
+            if not has_pending:
+                logger.info(f"[TV MONITOR] No pending prompt, skipping handler")
+                return {"handled": False}
+
+            logger.info(f"[TV MONITOR] Has pending prompt! Handling response: '{command_text}'")
+            
+            # Handle the voice response
+            result = await monitor.handle_user_response(command_text)
+            
+            if result.get("handled"):
+                # Use the dynamic response from handle_user_response
+                response_text = result.get("response", "")
+
+                return {
+                    "handled": True,
+                    "response": response_text,
+                    "action": result.get("action"),
+                    "monitoring_active": self.monitoring_active,
+                    "connection_result": result.get("result", {})
+                }
+            else:
+                return {"handled": False}
+                
+        except Exception as e:
+            logger.error(f"[TV MONITOR] Error handling response: {e}")
+            return {"handled": False}
+    
+    async def _handle_voice_prompt_response(self, command_text: str) -> Dict[str, Any]:
+        """
+        PHASE 1.2C: Handle voice prompt responses (Yes/No for display connection)
+        
+        Intercepts "yes", "no", "connect", etc. commands when waiting for
+        display connection prompt response.
+        """
+        try:
+            from proximity.voice_prompt_manager import get_voice_prompt_manager
+            
+            manager = get_voice_prompt_manager()
+            
+            # Only handle if we're waiting for a response
+            if manager.prompt_state.value != "waiting_for_response":
+                return {"handled": False}
+            
+            logger.info(f"[VOICE PROMPT] Handling response: {command_text}")
+            
+            # Handle the voice response
+            result = await manager.handle_voice_response(command_text)
+            
+            if result.get("handled"):
+                return {
+                    "handled": True,
+                    "response": result.get("response", ""),
+                    "action": result.get("action"),
+                    "connection_result": result.get("connection_result"),
+                    "monitoring_active": self.monitoring_active
+                }
+            else:
+                return {"handled": False}
+                
+        except Exception as e:
+            logger.error(f"[VOICE PROMPT] Error handling response: {e}")
+            return {"handled": False}
+    
+    async def _handle_proximity_aware_routing(self, command_text: str) -> Dict[str, Any]:
+        """
+        PHASE 1.2C: Handle proximity-aware command routing
+        
+        Routes vision commands to displays based on user proximity context.
+        Adds natural language acknowledgments and generates voice prompts.
+        """
+        try:
+            # Check if this is a vision/display command
+            vision_keywords = ["show", "display", "what's", "analyze", "look at", "see", "check"]
+            if not any(keyword in command_text.lower() for keyword in vision_keywords):
+                return {"handled": False}
+            
+            logger.info("[PROXIMITY ROUTING] Attempting proximity-aware routing")
+            
+            from proximity.proximity_command_router import get_proximity_command_router
+            from proximity.proximity_display_bridge import get_proximity_display_bridge
+            from proximity.voice_prompt_manager import get_voice_prompt_manager
+            from proximity.display_availability_detector import get_availability_detector
+            
+            # Get routing result
+            router = get_proximity_command_router()
+            routing_result = await router.route_command(command_text)
+            
+            if routing_result.get("success") and routing_result.get("proximity_based"):
+                # Proximity-based routing successful
+                voice_response = routing_result.get("voice_response")
+                target_display = routing_result.get("target_display")
+                display_id = routing_result.get("display_id")
+                
+                # Check if target display is available (TV on/off detection)
+                detector = get_availability_detector()
+                is_available = await detector.is_display_available(display_id)
+                
+                if not is_available:
+                    return {
+                        "handled": True,
+                        "response": f"Sir, the {routing_result.get('display_name')} appears to be offline or disconnected. Please ensure it's powered on.",
+                        "monitoring_active": self.monitoring_active
+                    }
+                
+                # Check if we should generate a connection prompt
+                bridge = get_proximity_display_bridge()
+                decision = await bridge.make_connection_decision()
+                
+                if decision and decision.action == ConnectionAction.PROMPT_USER:
+                    # Generate voice prompt
+                    prompt_manager = get_voice_prompt_manager()
+                    prompt = await prompt_manager.generate_prompt_for_decision(decision)
+                    
+                    if prompt:
+                        # Return prompt to user
+                        return {
+                            "handled": True,
+                            "response": prompt,
+                            "awaiting_response": True,
+                            "display_id": display_id,
+                            "monitoring_active": self.monitoring_active
+                        }
+                
+                # Regular routing response
+                logger.info(f"[PROXIMITY ROUTING] Routed to display: {routing_result.get('display_name')}")
+                
+                return {
+                    "handled": True,
+                    "response": f"{voice_response}\n\nProcessing your command: {command_text}",
+                    "routing_info": routing_result,
+                    "proximity_based": True,
+                    "monitoring_active": self.monitoring_active
+                }
+            else:
+                # No proximity data or routing failed
+                return {"handled": False}
+                
+        except Exception as e:
+            logger.error(f"[PROXIMITY ROUTING] Error: {e}")
+            return {"handled": False}
+    
     async def _handle_intelligent_orchestration(self, command_text: str) -> Dict[str, Any]:
         """Handle multi-space queries using intelligent orchestration"""
         try:

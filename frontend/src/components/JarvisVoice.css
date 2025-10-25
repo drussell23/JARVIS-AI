@@ -1,316 +1,687 @@
-/* Main Container - Clean and Professional */
+/* ============================================
+   J.A.R.V.I.S. - CINEMATIC MINIMAL INTERFACE
+   Pure Black Background with Glowing Elements
+   ============================================ */
+
+/* ==================== CSS VARIABLES ==================== */
+:root {
+  /* Cyan Glow Palette */
+  --glow-cyan: #00FFFF;
+  --glow-cyan-bright: #00D9FF;
+  --glow-blue: #0EA5E9;
+  --glow-soft: rgba(0, 255, 255, 0.3);
+
+  /* Background */
+  --bg-pure-black: #000000;
+  --bg-transparent: rgba(0, 0, 0, 0.4);
+
+  /* Text */
+  --text-white: #FFFFFF;
+  --text-cyan: #00FFFF;
+
+  /* Reactor States */
+  --reactor-idle: radial-gradient(circle, #00FFFF 0%, #00D9FF 50%, #0EA5E9 100%);
+  --reactor-listening: radial-gradient(circle, #FFD700 0%, #FFA500 50%, #FF8C00 100%);
+  --reactor-processing: radial-gradient(circle, #C084FC 0%, #A855F7 50%, #7E22CE 100%);
+  --reactor-continuous: radial-gradient(circle, #00FF41 0%, #00AA2E 50%, #008C25 100%);
+}
+
+/* ==================== GLOBAL RESET ==================== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* ==================== MAIN CONTAINER ==================== */
 .jarvis-voice-container {
-  min-height: 100vh;
-  background: linear-gradient(180deg, #0a0e27 0%, #0d1117 100%);
-  padding: 40px 20px;
-  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: space-between;
+  /* This will space out the items */
+  height: 100vh;
+  width: 100%;
+  padding: 2rem;
+  box-sizing: border-box;
+  /* Ensures padding is included in height */
+  background: none;
+  position: relative;
+  overflow: hidden;
 }
 
-/* Subtle background pattern */
+/* Subtle radial glow from center */
 .jarvis-voice-container::before {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-image:
-    radial-gradient(circle at 20% 50%, rgba(29, 78, 216, 0.15) 0%, transparent 50%),
-    radial-gradient(circle at 80% 50%, rgba(29, 78, 216, 0.15) 0%, transparent 50%);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 800px;
+  height: 800px;
+  background: radial-gradient(circle, rgba(0, 255, 255, 0.05) 0%, transparent 70%);
   pointer-events: none;
+  z-index: 0;
 }
 
-/* Header - Clean Typography */
+/* ==================== HEADER ==================== */
 .jarvis-header {
   text-align: center;
-  margin-bottom: 50px;
-  z-index: 1;
-  animation: fadeIn 1s ease-out;
+  z-index: 10;
+  width: 100%;
 }
 
 .jarvis-title {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
 }
 
 .jarvis-logo {
-  font-size: 2.5rem;
-  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 4rem;
+  font-family: 'Orbitron', sans-serif;
   font-weight: 700;
-  letter-spacing: 0.1em;
-  color: #ffffff;
-  text-shadow: 0 2px 20px rgba(29, 78, 216, 0.5);
+  letter-spacing: 0.2em;
+  color: #00ff41;
+  /* Matrix Green */
+  text-shadow:
+    0 0 3px rgba(0, 255, 65, 0.9),
+    0 0 8px rgba(0, 255, 65, 0.5);
+  position: relative;
+  animation: logoFlicker 3s ease-in-out infinite;
+}
+
+@keyframes logoFlicker {
+
+  0%,
+  100% {
+    opacity: 1;
+    text-shadow:
+      0 0 3px rgba(0, 255, 65, 0.9),
+      0 0 8px rgba(0, 255, 65, 0.5);
+  }
+
+  50% {
+    opacity: 0.95;
+    text-shadow:
+      0 0 5px rgba(0, 255, 65, 1),
+      0 0 12px rgba(0, 255, 65, 0.6);
+  }
 }
 
 .jarvis-subtitle {
-  font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.8rem;
+  color: #00aa2e;
+  /* Darker Matrix Green */
   font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
-  letter-spacing: 0.05em;
-  font-weight: 400;
+  letter-spacing: 0.15em;
+  font-weight: 600;
+  text-transform: uppercase;
+  text-shadow: 0 0 10px rgba(0, 255, 65, 0.5);
+  margin-top: 0.5rem;
 }
 
-/* Arc Reactor - Minimalist Design */
+/* ==================== ARC REACTOR ==================== */
 .arc-reactor {
   position: relative;
-  width: 150px;
-  height: 150px;
-  margin: 30px auto 40px;
-  z-index: 1;
+  width: 420px;
+  /* Increased from 360px */
+  height: 420px;
+  /* Increased from 360px */
+  margin: auto;
+  /* This will center it between the header and transcript */
+  z-index: 10;
+  filter: drop-shadow(0 0 80px var(--glow-blue));
 }
 
+/* Core with holographic effect */
 .arc-reactor .core {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 40px;
-  height: 40px;
-  background: radial-gradient(circle, #60a5fa 0%, #1d4ed8 100%);
+  width: 135px;
+  /* Increased from 115px */
+  height: 135px;
+  /* Increased from 115px */
+  background: var(--reactor-idle);
   border-radius: 50%;
   box-shadow:
-    0 0 40px rgba(96, 165, 250, 0.6),
-    inset 0 0 20px rgba(96, 165, 250, 0.3);
-  transition: all 0.3s ease;
-  animation: pulse-subtle 3s ease-in-out infinite;
+    0 0 50px var(--color-tech-blue),
+    0 0 100px var(--color-electric-cyan),
+    0 0 150px rgba(0, 217, 255, 0.3),
+    inset 0 0 40px rgba(0, 217, 255, 0.6);
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: coreIdlePulse 4s ease-in-out infinite;
+  border: 3px solid rgba(0, 217, 255, 0.5);
 }
 
+@keyframes coreIdlePulse {
+
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    box-shadow:
+      0 0 50px var(--color-tech-blue),
+      0 0 100px var(--color-electric-cyan),
+      0 0 150px rgba(0, 217, 255, 0.3),
+      inset 0 0 40px rgba(0, 217, 255, 0.6);
+  }
+
+  50% {
+    transform: translate(-50%, -50%) scale(1.1);
+    box-shadow:
+      0 0 70px var(--color-tech-blue),
+      0 0 140px var(--color-electric-cyan),
+      0 0 210px rgba(0, 217, 255, 0.4),
+      inset 0 0 50px rgba(0, 217, 255, 0.8);
+  }
+}
+
+/* Listening State - Gold */
+.arc-reactor.listening .core {
+  background: var(--reactor-listening);
+  box-shadow:
+    0 0 60px 15px rgba(255, 215, 0, 0.6),
+    0 0 120px 25px rgba(255, 215, 0, 0.3),
+    inset 0 0 45px rgba(255, 215, 0, 0.7);
+  animation: reactorListeningPulse 0.8s ease-in-out infinite;
+}
+
+@keyframes reactorListeningPulse {
+
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  50% {
+    transform: translate(-50%, -50%) scale(1.15);
+  }
+}
+
+/* Processing State - Purple */
+.arc-reactor.processing .core {
+  background: var(--reactor-processing);
+  box-shadow:
+    0 0 60px 15px rgba(168, 85, 247, 0.6),
+    0 0 120px 25px rgba(168, 85, 247, 0.3),
+    inset 0 0 45px rgba(192, 132, 252, 0.7);
+  animation: reactorProcessingSpin 2s linear infinite;
+}
+
+@keyframes reactorProcessingSpin {
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+/* Continuous State - Green */
+.arc-reactor.continuous .core {
+  background: var(--reactor-continuous);
+  box-shadow:
+    0 0 60px 15px rgba(0, 255, 65, 0.6),
+    0 0 120px 25px rgba(0, 255, 65, 0.3),
+    inset 0 0 45px rgba(0, 255, 65, 0.7);
+}
+
+/* Inner core with energy effect */
+.arc-reactor .core::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 70px;
+  /* Increased from 60px */
+  height: 70px;
+  /* Increased from 60px */
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.9) 0%, rgba(0, 217, 255, 0.5) 50%, transparent 100%);
+  border-radius: 50%;
+  animation: innerCoreShimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes innerCoreShimmer {
+
+  0%,
+  100% {
+    opacity: 0.8;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.3);
+  }
+}
+
+/* Holographic reactor rings */
 .arc-reactor .ring {
   position: absolute;
   top: 50%;
   left: 50%;
-  border: 1px solid;
+  border: 3px solid;
+  /* Increased border */
   border-radius: 50%;
-  opacity: 0.3;
+  opacity: 0.4;
   transform: translate(-50%, -50%);
+  transition: all 0.5s ease;
+  box-shadow: 0 0 25px currentColor;
+  /* Enhanced glow */
 }
 
 .ring-1 {
-  width: 70px;
-  height: 70px;
-  border-color: rgba(96, 165, 250, 0.4);
-  animation: rotate-slow 20s linear infinite;
+  width: 210px;
+  /* Increased from 180px */
+  height: 210px;
+  /* Increased from 180px */
+  border-color: var(--color-tech-blue);
+  animation: ringRotate1 20s linear infinite, ringPulse 3s ease-in-out infinite;
 }
 
 .ring-2 {
-  width: 100px;
-  height: 100px;
-  border-color: rgba(96, 165, 250, 0.3);
-  animation: rotate-slow 30s linear infinite reverse;
+  width: 285px;
+  /* Increased from 245px */
+  height: 285px;
+  /* Increased from 245px */
+  border-color: var(--color-electric-cyan);
+  animation: ringRotate2 15s linear infinite reverse, ringPulse 3s ease-in-out infinite 0.5s;
 }
 
 .ring-3 {
-  width: 130px;
-  height: 130px;
-  border-color: rgba(96, 165, 250, 0.2);
-  animation: rotate-slow 40s linear infinite;
+  width: 360px;
+  /* Increased from 310px */
+  height: 360px;
+  /* Increased from 310px */
+  border-color: var(--color-neon-purple);
+  animation: ringRotate3 25s linear infinite, ringPulse 3s ease-in-out infinite 1s;
 }
 
-/* Active States - Subtle Animations */
-.arc-reactor.listening .core {
-  background: radial-gradient(circle, #10b981 0%, #047857 100%);
+@keyframes ringRotate1 {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+@keyframes ringRotate2 {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+@keyframes ringRotate3 {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+@keyframes ringPulse {
+
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+
+  50% {
+    opacity: 0.8;
+  }
+}
+
+/* Outer energy field */
+.arc-reactor::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 440px;
+  /* Increased from 380px */
+  height: 440px;
+  /* Increased from 380px */
+  border-radius: 50%;
+  border: 1px solid rgba(0, 217, 255, 0.2);
   box-shadow:
-    0 0 50px rgba(16, 185, 129, 0.6),
-    inset 0 0 25px rgba(16, 185, 129, 0.3);
-  animation: pulse-subtle 1.5s ease-in-out infinite;
+    0 0 40px rgba(0, 217, 255, 0.2),
+    inset 0 0 40px rgba(0, 217, 255, 0.1);
+  animation: outerFieldPulse 5s ease-in-out infinite;
 }
 
-.arc-reactor.processing .core {
-  background: radial-gradient(circle, #fbbf24 0%, #f59e0b 100%);
-  box-shadow:
-    0 0 50px rgba(251, 191, 36, 0.6),
-    inset 0 0 25px rgba(251, 191, 36, 0.3);
-  animation: pulse-subtle 0.8s ease-in-out infinite;
+@keyframes outerFieldPulse {
+
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
 }
 
-.arc-reactor.waiting .core {
-  background: radial-gradient(circle, #8b5cf6 0%, #6d28d9 100%);
-  box-shadow:
-    0 0 50px rgba(139, 92, 246, 0.6),
-    inset 0 0 25px rgba(139, 92, 246, 0.3);
-  animation: pulse-subtle 1s ease-in-out infinite;
-}
-
-.arc-reactor.continuous .ring {
-  opacity: 0.5;
-  border-width: 2px;
-}
-
-/* Status Display - Clean and Minimal */
+/* ==================== STATUS INDICATOR ==================== */
 .jarvis-status {
-  text-align: center;
-  margin: 20px 0;
-  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
-  color: #ffffff;
-  font-size: 0.95rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  z-index: 1;
-  opacity: 0.9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 30px;
+  padding: 0;
+  background: none;
+  backdrop-filter: none;
+  border: none;
+  border-radius: 0;
+  z-index: 10;
+  box-shadow: none;
+  transition: none;
+  position: relative;
 }
 
 .status-indicator {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-right: 8px;
+  width: 16px;
+  /* Increased from 12px */
+  height: 16px;
+  /* Increased from 12px */
   border-radius: 50%;
-  background-color: #6b7280;
+  position: relative;
+  animation: statusPulse 2s ease-in-out infinite;
 }
 
-.status-indicator.online,
-.status-indicator.active {
-  background-color: #10b981;
-  box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
+@keyframes statusPulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
 }
 
-.status-indicator.activating {
-  background-color: #fbbf24;
-  animation: blink-subtle 1s ease-in-out infinite;
+.status-text {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #00ff41;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  font-family: 'SF Mono', monospace;
+  text-shadow: 0 0 8px rgba(0, 255, 65, 0.6);
 }
 
-.status-indicator.offline {
-  background-color: #ef4444;
+/* ==================== TRANSCRIPT DISPLAY ==================== */
+.jarvis-transcript {
+  width: 100%;
+  max-width: 1000px;
+  height: 450px;
+  /* Fixed height for the transcript window */
+  margin: 0 auto;
+  padding: 2rem;
+  box-sizing: border-box;
+  z-index: 10;
+  overflow-y: auto;
+  /* Allow internal scrolling */
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 
-/* Status Indicator Bar - Minimal Design */
-.status-indicator-bar {
-  display: flex;
-  justify-content: center;
-  gap: 20px;
-  margin: 20px 0;
-  min-height: 30px;
-  z-index: 1;
+.user-message,
+.jarvis-message {
+  margin: 0 0 1rem 0;
+  padding: 0.5rem 0;
+  border-radius: 0;
+  background: none;
+  border-left: none;
+  animation: messageFadeIn 0.5s ease-out;
 }
 
-.status-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 20px;
-  font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.8);
-  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
-  animation: fadeIn 0.5s ease-out;
+@keyframes messageFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.status-item.wake-active {
-  border-color: rgba(96, 165, 250, 0.3);
-  background: rgba(96, 165, 250, 0.1);
+.user-message {
+  border-left-color: var(--color-electric-cyan);
 }
 
-.status-item.listening {
-  border-color: rgba(16, 185, 129, 0.3);
-  background: rgba(16, 185, 129, 0.1);
-  animation: pulse-border 1s ease-in-out infinite;
+.jarvis-message {
+  border-left-color: var(--color-matrix-green);
 }
 
-.status-item.speech-queue {
-  border-color: rgba(245, 158, 11, 0.3);
-  background: rgba(245, 158, 11, 0.1);
-  color: rgba(245, 158, 11, 0.9);
-}
-
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: #60a5fa;
-  animation: pulse-dot-subtle 2s ease-in-out infinite;
-}
-
-.status-dot.active {
-  background-color: #10b981;
-  animation: pulse-dot-subtle 1s ease-in-out infinite;
-}
-
-/* Controls - Only When Needed */
-.jarvis-controls {
-  margin: 20px 0;
-  z-index: 1;
-}
-
-.initializing-message {
-  color: rgba(255, 255, 255, 0.7);
+.message-label {
+  display: block;
   font-size: 0.9rem;
-  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
-  animation: pulse-text 1.5s ease-in-out infinite;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+  opacity: 0.7;
 }
 
-/* Input Section - Clean and Modern */
+.user-message .message-label {
+  color: var(--color-electric-cyan);
+}
+
+.jarvis-message .message-label {
+  color: var(--color-matrix-green);
+}
+
+.message-text {
+  color: var(--text-primary);
+  font-size: 1.4rem;
+  line-height: 1.8;
+}
+
+.processing-indicator {
+  color: #A855F7;
+  font-style: italic;
+  animation: processingPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes processingPulse {
+
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+.speaking-indicator {
+  color: var(--glow-cyan);
+  margin-left: 8px;
+  animation: speakingBounce 0.6s ease-in-out infinite;
+}
+
+@keyframes speakingBounce {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+/* ==================== TEXT COMMAND INPUT ==================== */
+.text-command-container {
+  width: 100%;
+  max-width: 800px;
+  margin: 1.5rem auto 0;
+  z-index: 10;
+  padding: 0 20px;
+}
+
+.text-command-form {
+  display: flex;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  padding: 8px;
+  border-radius: 50px;
+  border: 1px solid rgba(0, 255, 65, 0.2);
+  box-shadow: 0 0 20px rgba(0, 255, 65, 0.1);
+  transition: all 0.3s ease;
+}
+
+.text-command-form:focus-within {
+  border-color: rgba(0, 255, 65, 0.5);
+  box-shadow:
+    0 0 30px rgba(0, 255, 65, 0.3),
+    0 0 15px rgba(0, 255, 65, 0.2);
+}
+
+.text-command-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 14px 20px;
+  color: #FFFFFF;
+  font-size: 1rem;
+  font-family: 'SF Pro Display', -apple-system, sans-serif;
+  font-weight: 400;
+}
+
+.text-command-input::placeholder {
+  color: rgba(0, 255, 65, 0.4);
+  font-style: italic;
+}
+
+.text-command-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.text-command-submit {
+  min-width: 80px;
+  padding: 12px 24px;
+  border-radius: 50px;
+  background: linear-gradient(135deg, #00ff41 0%, #00aa2e 100%);
+  border: none;
+  cursor: pointer;
+  color: #000000;
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  box-shadow: 0 0 20px rgba(0, 255, 65, 0.4);
+  transition: all 0.3s ease;
+  font-family: 'SF Pro Display', -apple-system, sans-serif;
+}
+
+.text-command-submit:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: 0 0 30px rgba(0, 255, 65, 0.6);
+  background: linear-gradient(135deg, #00ff41 0%, #00dd35 100%);
+}
+
+.text-command-submit:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.text-command-submit:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  background: linear-gradient(135deg, #00aa2e 0%, #008C25 100%);
+}
+
+/* ==================== COMMAND INPUT ==================== */
 .jarvis-input-section {
   width: 100%;
-  max-width: 600px;
-  margin: 30px auto;
-  z-index: 1;
+  max-width: 700px;
+  z-index: 10;
+  padding: 0 20px;
+  display: none;
 }
 
 .jarvis-input-container {
   display: flex;
-  align-items: center;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 50px;
-  padding: 4px 4px 4px 20px;
-  transition: all 0.3s ease;
+  gap: 12px;
+  background: var(--bg-transparent);
   backdrop-filter: blur(10px);
-}
-
-.jarvis-input-container:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(96, 165, 250, 0.3);
+  padding: 8px 8px 8px 24px;
+  border-radius: 50px;
+  border: 1px solid rgba(0, 255, 255, 0.2);
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.1);
+  transition: all 0.3s ease;
 }
 
 .jarvis-input-container:focus-within {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(96, 165, 250, 0.5);
-  box-shadow: 0 0 20px rgba(96, 165, 250, 0.2);
+  border-color: var(--glow-cyan);
+  box-shadow:
+    0 0 30px rgba(0, 255, 255, 0.3),
+    0 0 15px rgba(0, 255, 255, 0.2);
 }
 
 .jarvis-input {
   flex: 1;
   background: transparent;
   border: none;
-  color: #ffffff;
-  padding: 12px 8px;
-  font-size: 0.95rem;
-  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
   outline: none;
-  letter-spacing: 0.02em;
-}
-
-.jarvis-input::placeholder {
-  color: rgba(255, 255, 255, 0.4);
+  padding: 14px 0;
+  color: var(--text-white);
+  font-size: 1rem;
+  font-family: 'SF Pro Display', -apple-system, sans-serif;
   font-weight: 400;
 }
 
+.jarvis-input::placeholder {
+  color: rgba(0, 255, 255, 0.4);
+  font-style: italic;
+}
+
 .jarvis-send-button {
-  width: 42px;
-  height: 42px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #60a5fa, #3b82f6);
+  background: linear-gradient(135deg, var(--glow-cyan-bright) 0%, var(--glow-blue) 100%);
   border: none;
-  color: #ffffff;
-  font-size: 1.2rem;
   cursor: pointer;
-  transition: all 0.3s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 2px;
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+  transition: all 0.3s ease;
 }
 
 .jarvis-send-button:hover:not(:disabled) {
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  transform: scale(1.05);
+  transform: scale(1.1);
+  box-shadow: 0 0 30px rgba(0, 255, 255, 0.6);
 }
 
 .jarvis-send-button:active:not(:disabled) {
@@ -323,134 +694,28 @@
 }
 
 .send-icon {
-  font-weight: 700;
-  line-height: 1;
+  font-size: 1.5rem;
+  color: var(--bg-pure-black);
+  font-weight: 900;
 }
 
-/* Transcript Display - Clean Cards */
-.jarvis-transcript {
-  width: 100%;
-  max-width: 700px;
-  margin: 30px auto;
-  padding: 0;
-  z-index: 1;
-  animation: fadeIn 0.5s ease-out;
+/* ==================== HIDDEN ELEMENTS ==================== */
+/* Hide manual mode, vision status, and extra boxes */
+.vision-status-bar,
+.mode-toggle,
+.jarvis-controls,
+.minimal-mode-banner,
+.upgrade-success-banner,
+.status-indicator-bar,
+.jarvis-error,
+.proactive-suggestions-container,
+VoiceStatsDisplay,
+EnvironmentalStatsDisplay,
+AudioQualityStatsDisplay {
+  display: none !important;
 }
 
-.user-message,
-.jarvis-message {
-  margin: 16px 0;
-  padding: 16px 20px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  animation: slideUp 0.3s ease-out;
-  white-space: pre-wrap; /* Preserve line breaks */
-}
-
-.user-message {
-  border-left: 3px solid #60a5fa;
-}
-
-.jarvis-message {
-  border-left: 3px solid #10b981;
-  background: rgba(16, 185, 129, 0.05);
-}
-
-.message-label {
-  display: inline-block;
-  font-weight: 600;
-  margin-right: 12px;
-  font-size: 0.75rem;
-  letter-spacing: 0.1em;
-  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
-  opacity: 0.6;
-}
-
-.user-message .message-label {
-  color: #60a5fa;
-}
-
-.jarvis-message .message-label {
-  color: #10b981;
-}
-
-.message-text {
-  color: rgba(255, 255, 255, 0.95);
-  font-size: 0.95rem;
-  line-height: 1.6;
-  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
-  letter-spacing: 0.02em;
-  white-space: pre-wrap; /* Preserve line breaks */
-}
-
-/* Error Display - Subtle */
-.jarvis-error {
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #f87171;
-  padding: 16px 20px;
-  margin: 20px auto;
-  max-width: 500px;
-  border-radius: 12px;
-  text-align: center;
-  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
-  font-size: 0.9rem;
-  z-index: 1;
-}
-
-/* Vision Status Bar - Clean Design */
-.vision-status-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 20px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  margin: 20px auto;
-  max-width: 600px;
-  font-size: 0.85rem;
-  font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
-  z-index: 1;
-}
-
-/* Animations - Subtle and Professional */
-@keyframes pulse-subtle {
-
-  0%,
-  100% {
-    transform: translate(-50%, -50%) scale(1);
-  }
-
-  50% {
-    transform: translate(-50%, -50%) scale(1.05);
-  }
-}
-
-@keyframes pulse-dot-subtle {
-
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.5;
-  }
-}
-
-@keyframes rotate-slow {
-  from {
-    transform: translate(-50%, -50%) rotate(0deg);
-  }
-
-  to {
-    transform: translate(-50%, -50%) rotate(360deg);
-  }
-}
-
+/* ==================== ANIMATIONS ==================== */
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -461,102 +726,81 @@
   }
 }
 
-@keyframes slideUp {
+@keyframes fadeInDown {
   from {
-    transform: translateY(10px);
     opacity: 0;
+    transform: translateY(-30px);
   }
 
   to {
+    opacity: 1;
     transform: translateY(0);
-    opacity: 1;
   }
 }
 
-@keyframes blink-subtle {
-
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.5;
-  }
+/* ==================== SCROLLBAR ==================== */
+.jarvis-transcript::-webkit-scrollbar {
+  width: 8px;
 }
 
-@keyframes pulse-text {
-
-  0%,
-  100% {
-    opacity: 0.7;
-  }
-
-  50% {
-    opacity: 1;
-  }
+.jarvis-transcript::-webkit-scrollbar-track {
+  background: rgba(0, 255, 65, 0.05);
+  border-radius: 4px;
 }
 
-@keyframes pulse-border {
-
-  0%,
-  100% {
-    border-color: rgba(16, 185, 129, 0.3);
-  }
-
-  50% {
-    border-color: rgba(16, 185, 129, 0.6);
-  }
+.jarvis-transcript::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 65, 0.3);
+  border-radius: 4px;
 }
 
-/* Responsive Design */
+.jarvis-transcript::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 65, 0.5);
+}
+
+/* ==================== RESPONSIVE ==================== */
 @media (max-width: 768px) {
   .jarvis-logo {
-    font-size: 2rem;
+    font-size: 3rem;
   }
 
   .arc-reactor {
-    width: 120px;
-    height: 120px;
+    width: 250px;
+    height: 250px;
   }
 
   .arc-reactor .core {
-    width: 32px;
-    height: 32px;
-  }
-
-  .ring-1 {
-    width: 56px;
-    height: 56px;
-  }
-
-  .ring-2 {
     width: 80px;
     height: 80px;
   }
 
-  .ring-3 {
-    width: 104px;
-    height: 104px;
-  }
-
-  .jarvis-input-section {
-    padding: 0 20px;
-  }
-
   .jarvis-transcript {
-    padding: 0 20px;
+    max-height: 150px;
   }
 }
 
-/* Dark mode optimized */
-@media (prefers-color-scheme: dark) {
+@media (max-width: 480px) {
   .jarvis-voice-container {
-    background: linear-gradient(180deg, #0a0e27 0%, #0d1117 100%);
+    gap: 30px;
+    padding: 30px 15px;
+  }
+
+  .jarvis-logo {
+    font-size: 2.5rem;
+    letter-spacing: 0.2em;
+  }
+
+  .arc-reactor {
+    width: 200px;
+    height: 200px;
+  }
+
+  .arc-reactor .core {
+    width: 70px;
+    height: 70px;
   }
 }
 
-/* Accessibility */
+/* ==================== ACCESSIBILITY ==================== */
 @media (prefers-reduced-motion: reduce) {
 
   *,
@@ -564,146 +808,5 @@
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
   }
-}
-
-/* Minimal Mode Styling */
-.mode-badge {
-  display: inline-block;
-  margin-left: 10px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 0.75em;
-  font-weight: bold;
-  letter-spacing: 0.5px;
-}
-
-.mode-badge.minimal {
-  background: linear-gradient(135deg, #ff6b00, #ff8c00);
-  color: #fff;
-  animation: pulse-minimal 2s ease-in-out infinite;
-}
-
-@keyframes pulse-minimal {
-  0%, 100% { opacity: 0.8; }
-  50% { opacity: 1; }
-}
-
-.minimal-mode-banner {
-  width: 100%;
-  max-width: 600px;
-  margin: 20px auto;
-  padding: 12px 20px;
-  background: linear-gradient(90deg, 
-    rgba(255, 107, 0, 0.05) 0%, 
-    rgba(255, 140, 0, 0.1) 50%, 
-    rgba(255, 107, 0, 0.05) 100%);
-  border: 1px solid rgba(255, 140, 0, 0.2);
-  border-radius: 12px;
-  backdrop-filter: blur(10px);
-  animation: fadeIn 0.5s ease-out;
-}
-
-.mode-info {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  color: #ff8c00;
-  font-size: 0.95em;
-  font-weight: 500;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-
-.mode-icon {
-  font-size: 1.2em;
-  animation: flash 1.5s ease-in-out infinite;
-}
-
-@keyframes flash {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
-}
-
-.mode-spinner {
-  display: inline-block;
-  font-size: 1.1em;
-  animation: spin 2s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* Upgrade Success Banner */
-.upgrade-success-banner {
-  width: 100%;
-  max-width: 600px;
-  margin: 20px auto;
-  padding: 16px 24px;
-  background: linear-gradient(135deg, 
-    rgba(0, 255, 127, 0.1) 0%, 
-    rgba(50, 205, 50, 0.15) 50%, 
-    rgba(0, 255, 127, 0.1) 100%);
-  border: 1px solid rgba(50, 205, 50, 0.3);
-  border-radius: 12px;
-  backdrop-filter: blur(10px);
-  animation: slideInSuccess 0.5s ease-out, pulse-success 2s ease-in-out infinite;
-}
-
-@keyframes slideInSuccess {
-  from {
-    transform: translateY(-20px);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-@keyframes pulse-success {
-  0%, 100% { 
-    box-shadow: 0 0 20px rgba(50, 205, 50, 0.2);
-  }
-  50% { 
-    box-shadow: 0 0 30px rgba(50, 205, 50, 0.4);
-  }
-}
-
-.success-info {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  color: #32cd32;
-  font-size: 1.1em;
-  font-weight: 600;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  margin-bottom: 8px;
-}
-
-.success-icon {
-  font-size: 1.4em;
-  animation: bounce 1s ease-in-out infinite;
-}
-
-@keyframes bounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-5px); }
-}
-
-.success-check {
-  font-size: 1.3em;
-  color: #00ff7f;
-}
-
-.success-features {
-  text-align: center;
-  color: rgba(50, 205, 50, 0.9);
-  font-size: 0.85em;
-  font-weight: 400;
-  opacity: 0.9;
 }

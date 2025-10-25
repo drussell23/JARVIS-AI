@@ -28,6 +28,7 @@ from vision.claude_vision_analyzer import ClaudeVisionAnalyzer
 from vision.workspace_analyzer import WorkspaceAnalyzer
 from vision.window_detector import WindowDetector
 from vision.enhanced_monitoring import EnhancedWorkspaceMonitor
+from vision.multi_monitor_detector import MultiMonitorDetector, MonitorCaptureResult, MACOS_AVAILABLE
 from autonomy.autonomous_behaviors import AutonomousBehaviorManager
 from autonomy.action_queue import ActionQueueManager
 from autonomy.action_executor import ExecutionStatus
@@ -40,6 +41,7 @@ router = APIRouter(prefix="/vision", tags=["vision"])
 # Initialize vision systems
 vision_system = ScreenVisionSystem()
 claude_analyzer = None
+multi_monitor_detector = MultiMonitorDetector()
 
 # Import unified handler for WebSocket integration
 from api.unified_vision_handler import handle_vision_command as unified_handle_vision_command
@@ -710,3 +712,193 @@ async def vision_websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
         ws_manager.disconnect(websocket)
+
+
+# Multi-Monitor Support Endpoints
+
+@router.get("/displays")
+@graceful_endpoint(fallback_response={"success": False, "error": "Multi-monitor support unavailable"})
+async def get_displays():
+    """
+    Get information about all connected displays
+    
+    Returns:
+        JSON with display information, resolutions, positions, and space mappings
+    """
+    try:
+        summary = await multi_monitor_detector.get_display_summary()
+        
+        return {
+            "success": True,
+            "displays": summary.get("displays", []),
+            "total_displays": summary.get("total_displays", 0),
+            "space_mappings": summary.get("space_mappings", {}),
+            "detection_time": summary.get("detection_time", 0),
+            "capture_stats": summary.get("capture_stats", {})
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting displays: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get display information: {str(e)}")
+
+
+@router.post("/displays/capture")
+@graceful_endpoint(fallback_response={"success": False, "error": "Multi-monitor capture unavailable"})
+async def capture_all_displays():
+    """
+    Capture screenshots from all connected displays
+    
+    Returns:
+        JSON with capture results and metadata
+    """
+    try:
+        result = await multi_monitor_detector.capture_all_displays()
+        
+        # Convert numpy arrays to base64 for JSON serialization
+        displays_captured = {}
+        for display_id, screenshot in result.displays_captured.items():
+            # For now, just return metadata about the screenshot
+            # In a full implementation, you'd encode the image data
+            displays_captured[display_id] = {
+                "shape": screenshot.shape,
+                "dtype": str(screenshot.dtype),
+                "size_bytes": screenshot.nbytes,
+                "captured": True
+            }
+        
+        return {
+            "success": result.success,
+            "displays_captured": displays_captured,
+            "failed_displays": result.failed_displays,
+            "capture_time": result.capture_time,
+            "total_displays": result.total_displays,
+            "error": result.error,
+            "metadata": result.metadata
+        }
+        
+    except Exception as e:
+        logger.error(f"Error capturing displays: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to capture displays: {str(e)}")
+
+
+@router.get("/displays/{display_id}")
+@graceful_endpoint(fallback_response={"success": False, "error": "Display information unavailable"})
+async def get_display_info(display_id: int):
+    """
+    Get detailed information about a specific display
+    
+    Args:
+        display_id: ID of the display to query
+        
+    Returns:
+        JSON with detailed display information
+    """
+    try:
+        displays = await multi_monitor_detector.detect_displays()
+        
+        # Find the requested display
+        display_info = None
+        for display in displays:
+            if display.display_id == display_id:
+                display_info = display
+                break
+        
+        if not display_info:
+            raise HTTPException(status_code=404, detail=f"Display {display_id} not found")
+        
+        # Get space mappings for this display
+        space_mappings = await multi_monitor_detector.get_space_display_mapping()
+        display_spaces = [space_id for space_id, mapping in space_mappings.items() 
+                         if mapping.display_id == display_id]
+        
+        return {
+            "success": True,
+            "display": {
+                "id": display_info.display_id,
+                "name": display_info.name,
+                "resolution": display_info.resolution,
+                "position": display_info.position,
+                "is_primary": display_info.is_primary,
+                "refresh_rate": display_info.refresh_rate,
+                "color_depth": display_info.color_depth,
+                "spaces": display_spaces,
+                "active_space": display_info.active_space,
+                "last_updated": display_info.last_updated
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting display {display_id} info: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get display information: {str(e)}")
+
+
+@router.get("/displays/performance")
+@graceful_endpoint(fallback_response={"success": False, "error": "Performance stats unavailable"})
+async def get_monitor_performance():
+    """
+    Get performance statistics for multi-monitor operations
+    
+    Returns:
+        JSON with performance metrics and statistics
+    """
+    try:
+        stats = multi_monitor_detector.get_performance_stats()
+        
+        return {
+            "success": True,
+            "performance": {
+                "capture_stats": stats["capture_stats"],
+                "cache_info": {
+                    "displays_cached": stats["displays_cached"],
+                    "space_mappings_cached": stats["space_mappings_cached"],
+                    "last_detection_time": stats["last_detection_time"],
+                    "cache_age_seconds": stats["cache_age"]
+                },
+                "system_info": {
+                    "macos_available": MACOS_AVAILABLE,
+                    "yabai_path": multi_monitor_detector.yabai_path
+                }
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting performance stats: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get performance stats: {str(e)}")
+
+
+@router.post("/displays/refresh")
+@graceful_endpoint(fallback_response={"success": False, "error": "Display refresh unavailable"})
+async def refresh_display_info():
+    """
+    Force refresh of display detection and space mappings
+    
+    Returns:
+        JSON with updated display information
+    """
+    try:
+        # Force refresh both displays and mappings
+        displays = await multi_monitor_detector.detect_displays(force_refresh=True)
+        space_mappings = await multi_monitor_detector.get_space_display_mapping(force_refresh=True)
+        
+        return {
+            "success": True,
+            "message": "Display information refreshed",
+            "displays": [
+                {
+                    "id": d.display_id,
+                    "name": d.name,
+                    "resolution": d.resolution,
+                    "position": d.position,
+                    "is_primary": d.is_primary
+                } for d in displays
+            ],
+            "space_mappings": space_mappings,
+            "total_displays": len(displays),
+            "total_spaces": len(space_mappings)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error refreshing display info: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to refresh display information: {str(e)}")

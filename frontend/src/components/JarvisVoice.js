@@ -444,26 +444,160 @@ const getStartupGreeting = () => {
   return greetingPool[Math.floor(Math.random() * greetingPool.length)];
 };
 
-const getWakeWordResponse = () => {
-  const responses = [
-    "Yes, Sir. How may I assist you?",
-    "At your service, Sir.",
-    "Ready for your command, Sir.",
-    "Listening, Sir.",
-    "How can I help you?",
+/**
+ * Dynamic Wake Word Response Generator
+ * Context-aware, personality-driven, Phase 4 enhanced
+ */
+const getWakeWordResponse = (context = {}) => {
+  const {
+    timeOfDay = null,
+    lastInteraction = null,
+    proactiveMode = false,
+    workspaceContext = null,
+    userFocusLevel = 'casual'
+  } = context;
+
+  // Determine time context
+  const hour = new Date().getHours();
+  const timeContext = timeOfDay || (
+    hour >= 5 && hour < 12 ? 'morning' :
+    hour >= 12 && hour < 17 ? 'afternoon' :
+    hour >= 17 && hour < 22 ? 'evening' : 'night'
+  );
+
+  // Check if this is a quick re-activation (within 2 minutes)
+  const isQuickReturn = lastInteraction && (Date.now() - lastInteraction) < 120000;
+
+  // Build response pools based on context
+  const baseResponses = {
+    morning: [
+      "Yes, Sir. How may I assist you this morning?",
+      "Good morning. I'm listening.",
+      "At your service, Sir.",
+      "Morning. What can I do for you?",
+      "Ready and listening, Sir."
+    ],
+    afternoon: [
+      "Yes, Sir. How can I help?",
+      "At your service.",
+      "I'm here. What do you need?",
+      "Listening, Sir.",
+      "Ready for your command."
+    ],
+    evening: [
+      "Yes, Sir. How may I assist you this evening?",
+      "Good evening. I'm listening.",
+      "At your service, Sir.",
+      "Evening. What can I do for you?",
+      "Ready and standing by."
+    ],
+    night: [
+      "Yes, Sir. Burning the midnight oil?",
+      "I'm here. What do you need?",
+      "Listening, Sir.",
+      "Ready for your command, even at this late hour.",
+      "At your service, Sir."
+    ]
+  };
+
+  // Quick return responses (more casual, no time greeting)
+  const quickReturnResponses = [
+    "Yes?",
+    "I'm here.",
+    "Go ahead.",
+    "Listening.",
     "Yes, Sir?",
-    "Standing by for instructions.",
-    "What do you need, Sir?",
-    "I'm here, Sir.",
-    "Go ahead, Sir.",
-    "Ready and waiting.",
-    "Your command, Sir?",
-    "How may I be of service?",
-    "JARVIS ready. What's on your mind?",
-    "Systems ready. What can I do for you?"
+    "What's next?",
+    "Ready.",
+    "I'm all ears."
   ];
 
-  return responses[Math.floor(Math.random() * responses.length)];
+  // Phase 4 Proactive Mode responses (more intelligent, aware)
+  const proactiveResponses = [
+    "Yes, Sir? I've been monitoring your workspace.",
+    "I'm here. I have some suggestions when you're ready.",
+    "At your service. I noticed a few patterns worth discussing.",
+    "Listening. I've been keeping an eye on things.",
+    "Yes? I'm tracking your workflow and ready to optimize."
+  ];
+
+  // Focus-aware responses
+  const focusAwareResponses = {
+    deep_work: [
+      "Yes? I'll keep this brief.",
+      "I'm here. What do you need?",
+      "Listening.",
+      "Go ahead - I know you're focused."
+    ],
+    focused: [
+      "Yes, Sir?",
+      "I'm listening.",
+      "Ready.",
+      "What can I do for you?"
+    ],
+    casual: [
+      "Yes, Sir. How may I assist you?",
+      "At your service.",
+      "What's on your mind?",
+      "How can I help?",
+      "I'm all ears."
+    ],
+    idle: [
+      "Finally! What can I do for you?",
+      "Welcome back. What would you like to tackle?",
+      "Yes, Sir. Ready for action.",
+      "I'm here. Let's get productive."
+    ]
+  };
+
+  // Workspace-aware responses
+  const workspaceResponses = workspaceContext?.focused_app ? [
+    `Yes, Sir? I see you're working in ${workspaceContext.focused_app}.`,
+    `I'm here. ${workspaceContext.focused_app} still open?`,
+    `At your service. Need help with ${workspaceContext.focused_app}?`
+  ] : [];
+
+  // Build final response pool
+  let responsePool = [];
+
+  // Priority 1: Quick return (most recent interaction)
+  if (isQuickReturn && Math.random() < 0.7) {
+    responsePool = quickReturnResponses;
+  }
+  // Priority 2: Proactive mode (Phase 4 active)
+  else if (proactiveMode && Math.random() < 0.5) {
+    responsePool = [...proactiveResponses];
+  }
+  // Priority 3: Focus-aware (deep work gets concise responses)
+  else if (userFocusLevel === 'deep_work' || userFocusLevel === 'focused') {
+    responsePool = [...focusAwareResponses[userFocusLevel]];
+  }
+  // Priority 4: Workspace context (if available)
+  else if (workspaceResponses.length > 0 && Math.random() < 0.3) {
+    responsePool = [...workspaceResponses, ...baseResponses[timeContext]];
+  }
+  // Priority 5: Standard context-aware responses
+  else {
+    responsePool = [
+      ...baseResponses[timeContext],
+      ...(focusAwareResponses[userFocusLevel] || focusAwareResponses.casual)
+    ];
+  }
+
+  // Add personality variations (20% chance)
+  if (Math.random() < 0.2) {
+    const personalityVariations = [
+      "Systems nominal. How may I help?",
+      "Neural pathways ready. What's the task?",
+      "All systems operational. Your command?",
+      "Ready to optimize your workflow, Sir.",
+      "Standing by for instructions."
+    ];
+    responsePool.push(...personalityVariations);
+  }
+
+  // Select and return random response
+  return responsePool[Math.floor(Math.random() * responsePool.length)];
 };
 
 const JarvisVoice = () => {
@@ -475,6 +609,7 @@ const JarvisVoice = () => {
   const [transcript, setTranscript] = useState('');
   const [response, setResponse] = useState('');
   const [error, setError] = useState(null);
+  const [textCommand, setTextCommand] = useState('');
   const [continuousListening, setContinuousListening] = useState(false);
   const [isWaitingForCommand, setIsWaitingForCommand] = useState(false);
   const [isJarvisSpeaking, setIsJarvisSpeaking] = useState(false);
@@ -486,6 +621,16 @@ const JarvisVoice = () => {
   const [networkRetries, setNetworkRetries] = useState(0);
   const [maxNetworkRetries] = useState(3);
   const [workflowProgress, setWorkflowProgress] = useState(null);
+
+  // Phase 4: Proactive Intelligence state
+  const [proactiveSuggestions, setProactiveSuggestions] = useState([]);
+  const [proactiveIntelligenceActive, setProactiveIntelligenceActive] = useState(false);
+  const [lastSuggestionTime, setLastSuggestionTime] = useState(null);
+
+  // User interaction state
+  const [isTyping, setIsTyping] = useState(false);
+  const [lastUserInteraction, setLastUserInteraction] = useState(null);
+  const typingTimeoutRef = useRef(null);
 
   const wsRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -541,62 +686,6 @@ const JarvisVoice = () => {
     const styleElement = document.createElement('style');
     styleElement.textContent = buttonVisibilityStyle;
     document.head.appendChild(styleElement);
-
-    // Button visibility checker - disabled since we now auto-activate
-    const checkButtonsInterval = null; // Commented out button injection
-    // const checkButtonsInterval = setInterval(() => {
-    //   const container = document.querySelector('.jarvis-voice-container');
-    //   if (!container) {
-    //     console.log('Button checker: Container not found yet');
-    //     return;
-    //   }
-
-    //   // Look for control buttons
-    //   const hasButtons = container.querySelector('.jarvis-button');
-    //   // Only log when buttons are missing
-
-    //   if (!hasButtons) {
-    //     console.warn('JARVIS buttons missing - injecting emergency button');
-    //     // Find the voice-controls div
-    //     const voiceControls = container.querySelector('.voice-controls');
-    //     if (voiceControls && !document.getElementById('jarvis-emergency-button')) {
-    //       // Inject a fallback activate button
-    //       const buttonDiv = document.createElement('div');
-    //       buttonDiv.id = 'jarvis-emergency-button';
-    //       buttonDiv.style.cssText = 'text-align: center; margin-top: 10px;';
-    //       buttonDiv.innerHTML = `
-    //         <button 
-    //           class="jarvis-button activate" 
-    //           style="
-    //             display: inline-block;
-    //             padding: 12px 24px;
-    //             font-size: 16px;
-    //             background: linear-gradient(135deg, #ff6b35 0%, #ff4500 100%);
-    //             color: white;
-    //             border: none;
-    //             border-radius: 8px;
-    //             cursor: pointer;
-    //             margin: 5px;
-    //             transition: all 0.3s;
-    //           "
-    //           onclick="
-    //             console.log('Emergency activate button clicked');
-    //             // Try to call the activate function
-    //             const event = new CustomEvent('jarvis-emergency-activate');
-    //             window.dispatchEvent(event);
-    //           "
-    //         >
-    //           🚀 Activate JARVIS (Emergency)
-    //         </button>
-    //         <div style="margin-top: 5px; font-size: 12px; color: #888;">
-    //           If buttons are missing, click here to activate JARVIS
-    //         </div>
-    //       `;
-    //       voiceControls.appendChild(buttonDiv);
-    //       console.log('Injected emergency JARVIS button');
-    //     }
-    //   }
-    // }, 1000);
 
     // Set up ML event listeners
     const handleAudioPrediction = (event) => {
@@ -688,10 +777,22 @@ const JarvisVoice = () => {
     }
 
     return () => {
+      // Stop health monitoring
+      stopHealthMonitoring();
+
       // Clean up WebSocket
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.close();
+      if (wsRef.current) {
+        console.log('[WS-CLEANUP] Closing WebSocket connection');
+        try {
+          if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING) {
+            wsRef.current.close();
+          }
+        } catch (e) {
+          console.log('[WS-CLEANUP] Error closing WebSocket:', e);
+        }
+        wsRef.current = null;
       }
+
       // Stop speech recognition
       if (recognitionRef.current) {
         recognitionRef.current.stop();
@@ -723,7 +824,7 @@ const JarvisVoice = () => {
         styleElement.parentNode.removeChild(styleElement);
       }
     };
-  }, [autonomousMode]);
+  }, []);
 
   // Separate effect for auto-activation
   useEffect(() => {
@@ -873,62 +974,261 @@ const JarvisVoice = () => {
     }
   };
 
+  // Advanced WebSocket reconnection state
+  const reconnectionStateRef = useRef({
+    attempts: 0,
+    maxAttempts: 10,
+    baseDelay: 1000,
+    maxDelay: 30000,
+    backoffMultiplier: 1.5,
+    pingInterval: null,
+    healthCheckInterval: null,
+    lastPingTime: null,
+    latency: 0,
+    connectionHealth: 100,
+    reconnecting: false
+  });
+
   const connectWebSocket = async () => {
     // Don't connect if already connected or connecting
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
-      console.log('WebSocket already connected or connecting');
+      console.log('[WS-ADVANCED] WebSocket already connected or connecting');
+      return;
+    }
+
+    // Close any existing connection first to prevent duplicates
+    if (wsRef.current) {
+      console.log('[WS-ADVANCED] Closing existing WebSocket before reconnecting');
+      try {
+        wsRef.current.close();
+      } catch (e) {
+        console.log('[WS-ADVANCED] Error closing existing WebSocket:', e);
+      }
+      wsRef.current = null;
+    }
+
+    // Check if we've exceeded max reconnection attempts
+    if (reconnectionStateRef.current.attempts >= reconnectionStateRef.current.maxAttempts) {
+      console.error('[WS-ADVANCED] Max reconnection attempts reached, giving up');
+      setError('Connection failed - please refresh the page');
       return;
     }
 
     // Ensure config is ready
     if (!configReady || !WS_URL) {
-      console.log('JarvisVoice: Waiting for config before WebSocket connection...');
+      console.log('[WS-ADVANCED] Waiting for config before WebSocket connection...');
       await configPromise;
     }
 
     try {
       const wsBaseUrl = WS_URL || configService.getWebSocketUrl() || 'ws://localhost:8010';
       const wsUrl = `${wsBaseUrl}/ws`;  // Use unified WebSocket endpoint
-      console.log('Connecting to unified WebSocket:', wsUrl);
+      console.log(`[WS-ADVANCED] Connecting to unified WebSocket (attempt ${reconnectionStateRef.current.attempts + 1}/${reconnectionStateRef.current.maxAttempts}):`, wsUrl);
+
       wsRef.current = new WebSocket(wsUrl);
 
       wsRef.current.onopen = () => {
-        console.log('Connected to JARVIS WebSocket');
+        console.log('[WS-ADVANCED] ✅ Connected to JARVIS WebSocket');
         setError(null);
+
+        // Reset reconnection state on successful connection
+        reconnectionStateRef.current.attempts = 0;
+        reconnectionStateRef.current.connectionHealth = 100;
+        reconnectionStateRef.current.reconnecting = false;
+
+        // Start ping/pong health monitoring
+        startHealthMonitoring();
       };
 
       wsRef.current.onmessage = (event) => {
         const data = JSON.parse(event.data);
+
+        // Update last message time (improves health)
+        reconnectionStateRef.current.connectionHealth = Math.min(100, reconnectionStateRef.current.connectionHealth + 1);
+
         handleWebSocketMessage(data);
       };
 
       wsRef.current.onerror = (error) => {
-        console.error('WebSocket error:', error);
+        console.error('[WS-ADVANCED] WebSocket error:', error);
+
+        // Degrade connection health
+        reconnectionStateRef.current.connectionHealth = Math.max(0, reconnectionStateRef.current.connectionHealth - 20);
+
         // Only show error if not connecting
         if (wsRef.current.readyState !== WebSocket.CONNECTING) {
-          setError('Connection error');
+          setError('Connection error - attempting recovery...');
         }
       };
 
       wsRef.current.onclose = (event) => {
-        console.log('WebSocket disconnected');
-        // Only reconnect if it was a clean close and component is still mounted
-        if (event.wasClean && jarvisStatus !== 'offline') {
+        console.log(`[WS-ADVANCED] WebSocket disconnected (code: ${event.code}, clean: ${event.wasClean})`);
+
+        // Stop health monitoring
+        stopHealthMonitoring();
+
+        // Mark as reconnecting
+        reconnectionStateRef.current.reconnecting = true;
+        reconnectionStateRef.current.attempts += 1;
+
+        // Calculate exponential backoff delay
+        const delay = Math.min(
+          reconnectionStateRef.current.baseDelay * Math.pow(reconnectionStateRef.current.backoffMultiplier, reconnectionStateRef.current.attempts - 1),
+          reconnectionStateRef.current.maxDelay
+        );
+
+        console.log(`[WS-ADVANCED] Reconnecting in ${delay}ms (attempt ${reconnectionStateRef.current.attempts}/${reconnectionStateRef.current.maxAttempts})`);
+
+        // Only reconnect if component is still mounted and not offline
+        if (jarvisStatus !== 'offline') {
           setTimeout(() => {
             connectWebSocket();
-          }, 3000);
+          }, delay);
         }
       };
     } catch (err) {
-      console.error('Failed to connect WebSocket:', err);
-      setError('Failed to connect to JARVIS');
+      console.error('[WS-ADVANCED] Failed to connect WebSocket:', err);
+      setError('Failed to connect to JARVIS - retrying...');
+
+      // Increment attempts and retry
+      reconnectionStateRef.current.attempts += 1;
+      const delay = Math.min(
+        reconnectionStateRef.current.baseDelay * Math.pow(reconnectionStateRef.current.backoffMultiplier, reconnectionStateRef.current.attempts - 1),
+        reconnectionStateRef.current.maxDelay
+      );
+
+      setTimeout(() => {
+        connectWebSocket();
+      }, delay);
     }
+  };
+
+  const startHealthMonitoring = () => {
+    // Clear any existing intervals
+    stopHealthMonitoring();
+
+    // Send ping every 15 seconds to keep connection alive
+    reconnectionStateRef.current.pingInterval = setInterval(() => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        const pingTime = Date.now();
+        reconnectionStateRef.current.lastPingTime = pingTime;
+
+        wsRef.current.send(JSON.stringify({
+          type: 'ping',
+          timestamp: pingTime
+        }));
+
+        console.log('[WS-HEALTH] Sent ping');
+      }
+    }, 15000);
+
+    // Health check every 5 seconds
+    reconnectionStateRef.current.healthCheckInterval = setInterval(() => {
+      const health = reconnectionStateRef.current.connectionHealth;
+
+      // If health is degraded, warn
+      if (health < 50) {
+        console.warn(`[WS-HEALTH] ⚠️ Connection health degraded: ${health}%`);
+        setError(`Connection unstable (health: ${health}%) - monitoring...`);
+      } else if (health < 80) {
+        console.log(`[WS-HEALTH] Connection health: ${health}%`);
+      } else {
+        // Clear error if health is good
+        if (error && error.includes('health')) {
+          setError(null);
+        }
+      }
+
+      // Natural health decay (simulates timeout check)
+      reconnectionStateRef.current.connectionHealth = Math.max(0, health - 2);
+    }, 5000);
+
+    console.log('[WS-HEALTH] 🏥 Health monitoring started');
+  };
+
+  const stopHealthMonitoring = () => {
+    if (reconnectionStateRef.current.pingInterval) {
+      clearInterval(reconnectionStateRef.current.pingInterval);
+      reconnectionStateRef.current.pingInterval = null;
+    }
+
+    if (reconnectionStateRef.current.healthCheckInterval) {
+      clearInterval(reconnectionStateRef.current.healthCheckInterval);
+      reconnectionStateRef.current.healthCheckInterval = null;
+    }
+
+    console.log('[WS-HEALTH] Health monitoring stopped');
   };
 
   const handleWebSocketMessage = (data) => {
     switch (data.type) {
       case 'connected':
         setJarvisStatus('online');
+        break;
+      case 'connection_established':
+        // Handle advanced connection established with features
+        console.log('[WS-ADVANCED] Connection established with features:', data.features);
+        setJarvisStatus('online');
+        break;
+      case 'pong':
+        // Handle pong response - calculate latency
+        if (reconnectionStateRef.current.lastPingTime) {
+          const latency = Date.now() - data.timestamp;
+          reconnectionStateRef.current.latency = latency;
+          console.log(`[WS-HEALTH] Pong received - latency: ${latency}ms`);
+
+          // Improve health score based on latency
+          if (latency < 100) {
+            reconnectionStateRef.current.connectionHealth = Math.min(100, reconnectionStateRef.current.connectionHealth + 5);
+          } else if (latency > 500) {
+            reconnectionStateRef.current.connectionHealth = Math.max(0, reconnectionStateRef.current.connectionHealth - 5);
+          }
+        }
+        break;
+      case 'pong_ack':
+        // Handle pong acknowledgment with latency from backend
+        if (data.latency_ms !== undefined) {
+          reconnectionStateRef.current.latency = data.latency_ms;
+          console.log(`[WS-HEALTH] Backend latency: ${data.latency_ms}ms`);
+        }
+        break;
+      case 'connection_health':
+        // Handle connection health updates from backend
+        console.log(`[WS-HEALTH] Backend health status: ${data.state}, score: ${data.health_score}`);
+        if (data.state === 'degraded') {
+          console.warn('[WS-HEALTH] ⚠️ Backend reports degraded connection');
+          setError('Connection unstable - backend recovery in progress...');
+        }
+        break;
+      case 'reconnection_advisory':
+        // Backend is advising us to prepare for reconnection
+        console.warn('[WS-HEALTH] 🔮 Backend predicts connection issues:', data.message);
+        setError(data.message || 'Connection optimization in progress...');
+        break;
+      case 'connection_optimization':
+        // Backend is requesting optimization (reduce load)
+        console.log('[WS-HEALTH] Backend requesting optimization:', data.action);
+        if (data.action === 'reduce_load') {
+          // We could reduce message frequency here if needed
+          console.log('[WS-HEALTH] Reducing message load as requested');
+        }
+        break;
+      case 'system_status':
+        // System-wide status updates (e.g., circuit breaker)
+        console.log('[WS-ADVANCED] System status:', data.status, '-', data.message);
+        if (data.status === 'degraded') {
+          setError(`System: ${data.message}`);
+        }
+        break;
+      case 'display_detected':
+        // Handle display monitor notifications
+        console.log('🖥️ Display detected:', data);
+        const displayMessage = data.message || `${data.display_name} is now available`;
+        setResponse(displayMessage);
+        // Speak the message using JARVIS voice
+        if (data.message) {
+          speakResponse(data.message, false);
+        }
         break;
       case 'processing':
         setIsProcessing(true);
@@ -985,7 +1285,15 @@ const JarvisVoice = () => {
 
         // Check if this is an error response we should ignore
         const errorText = (data.text || data.response || '').toLowerCase();
-        const isError = errorText.includes("don't have a handler") || errorText.includes("error") || errorText.includes("failed");
+        // Only mark as error if response explicitly indicates failure, not if it contains these words in a successful response
+        const isError = (
+          errorText.includes("don't have a handler") ||
+          errorText.startsWith("error") ||
+          errorText.startsWith("sorry") ||
+          errorText.startsWith("command failed") ||
+          errorText.startsWith("i encountered an error") ||
+          (errorText.includes("error") && !errorText.includes("can see"))
+        );
 
         if (errorText.includes("don't have a handler for query commands")) {
           console.log('Ignoring query handler error, continuing to listen...');
@@ -1176,6 +1484,22 @@ const JarvisVoice = () => {
         }));
         // Clear workflow progress after 10 seconds
         setTimeout(() => setWorkflowProgress(null), 10000);
+        break;
+      case 'proactive_suggestion':
+        // Phase 4: Proactive intelligence suggestion
+        console.log('💡 Proactive suggestion:', data);
+        setProactiveSuggestions(prev => [...prev, data.suggestion]);
+        setLastSuggestionTime(new Date());
+        setProactiveIntelligenceActive(true);
+        // Speak the suggestion if voice is enabled
+        if (data.suggestion.voice_message) {
+          speakResponse(data.suggestion.voice_message);
+        }
+        break;
+      case 'proactive_intelligence_status':
+        // Phase 4: Proactive intelligence status update
+        console.log('🤖 Proactive Intelligence status:', data);
+        setProactiveIntelligenceActive(data.active);
         break;
       case 'narration':
         // Handle document writing narration (display only, no voice)
@@ -1553,11 +1877,19 @@ const JarvisVoice = () => {
             case 'audio-capture':
               setError('🎤 Microphone access denied. ML recovery failed.');
               setMicStatus('error');
+              // Stop continuous listening to prevent retry loop
+              continuousListeningRef.current = false;
+              setContinuousListening(false);
+              console.warn('⛔ Stopping continuous listening due to audio capture error');
               break;
 
             case 'not-allowed':
               setError('🚫 Microphone permission denied. Please enable in browser settings.');
               setMicStatus('error');
+              // Stop continuous listening to prevent retry loop
+              continuousListeningRef.current = false;
+              setContinuousListening(false);
+              console.warn('⛔ Stopping continuous listening due to permission denial');
               break;
 
             case 'no-speech':
@@ -1803,7 +2135,7 @@ const JarvisVoice = () => {
           startTime: commandStartTime,
         }
       }));
-      setResponse('Processing...');
+      setResponse('⚙️ Processing...');
     } else {
       // Fallback to REST API if WebSocket not connected
       sendTextCommand(command);
@@ -1812,6 +2144,38 @@ const JarvisVoice = () => {
     // Don't immediately reset waiting state - let the response handler do it
     // This ensures we don't miss the response
     console.log('Command sent, waiting for response...');
+  };
+
+  // Handle text command submission
+  const handleTextCommandSubmit = (e) => {
+    e.preventDefault();
+
+    if (!textCommand.trim()) return;
+
+    console.log('[TEXT-CMD] Submitting typed command:', textCommand);
+
+    // Set transcript to show what was typed
+    setTranscript(textCommand);
+
+    // Send via WebSocket
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'command',
+        text: textCommand,
+        mode: autonomousMode ? 'autonomous' : 'manual',
+        metadata: {
+          source: 'text_input',
+          timestamp: Date.now()
+        }
+      }));
+      setResponse('⚙️ Processing...');
+      setIsProcessing(true);
+    } else {
+      setResponse('❌ Not connected to JARVIS');
+    }
+
+    // Clear the input
+    setTextCommand('');
   };
 
   const activateJarvis = async () => {
@@ -2091,12 +2455,20 @@ const JarvisVoice = () => {
   const sendTextCommand = async (text) => {
     if (!text.trim()) return;
 
+    console.log('[TEXT COMMAND] Sending typed command:', text);
+
+    // Clear typing state and update interaction timestamp
+    setIsTyping(false);
+    setLastUserInteraction(Date.now());
+
     setTranscript(text);
+    console.log('[TEXT COMMAND] Set transcript:', text);
     setIsProcessing(true);
     setResponse('');  // Clear previous response
 
     // Use WebSocket if connected
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      console.log('[TEXT COMMAND] Sending via WebSocket');
       wsRef.current.send(JSON.stringify({
         type: 'command',
         text: text,
@@ -2105,6 +2477,7 @@ const JarvisVoice = () => {
       // Response will come through WebSocket message handler
     } else {
       // WebSocket not connected
+      console.log('[TEXT COMMAND] WebSocket not connected');
       setError('Not connected to JARVIS. Please refresh the page.');
       setIsProcessing(false);
     }
@@ -2482,7 +2855,11 @@ const JarvisVoice = () => {
         <div className={`status-indicator ${jarvisStatus || 'offline'}`}></div>
         <span className="status-text">
           {jarvisStatus === 'online' || jarvisStatus === 'active' ? (
-            <>SYSTEM READY {systemMode === 'minimal' && <span className="mode-badge minimal">[MINIMAL MODE]</span>}</>
+            <>
+              SYSTEM READY
+              {systemMode === 'minimal' && <span className="mode-badge minimal">[MINIMAL MODE]</span>}
+              {proactiveIntelligenceActive && <span className="mode-badge phase4">[PHASE 4: PROACTIVE]</span>}
+            </>
           ) : jarvisStatus === 'activating' ? (
             <>INITIALIZING...</>
           ) : (
@@ -2558,21 +2935,102 @@ const JarvisVoice = () => {
         </div>
       )}
 
-      {/* Transcript Display */}
-      {(transcript || response) && (
+      {/* Transcript Display - Always visible when there's activity */}
+      {(transcript || response || isProcessing || isJarvisSpeaking) && (
         <div className="jarvis-transcript">
+          {/* User Message */}
           {transcript && (
             <div className="user-message">
               <span className="message-label">You:</span>
               <span className="message-text">{transcript}</span>
             </div>
           )}
-          {response && (
+
+          {/* JARVIS Response - Always show when processing, speaking, or has response */}
+          {(isProcessing || isJarvisSpeaking || response) && (
             <div className="jarvis-message">
               <span className="message-label">JARVIS:</span>
-              <span className="message-text" style={{ whiteSpace: 'pre-wrap' }}>{response}</span>
+              <span className="message-text" style={{ whiteSpace: 'pre-wrap' }}>
+                {/* Priority 1: Processing state (no response yet) */}
+                {isProcessing && !response ? (
+                  <span className="processing-indicator">⚙️ Processing your request...</span>
+                ) : isJarvisSpeaking && response ? (
+                  /* Priority 2: Speaking with response */
+                  <>
+                    {response}
+                    <span className="speaking-indicator"> 🎤</span>
+                  </>
+                ) : (
+                  /* Priority 3: Just the response */
+                  response || ''
+                )}
+              </span>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Text Command Input - Always visible */}
+      <div className="text-command-container">
+        <form onSubmit={handleTextCommandSubmit} className="text-command-form">
+          <input
+            type="text"
+            value={textCommand}
+            onChange={(e) => setTextCommand(e.target.value)}
+            placeholder="Type a command to JARVIS..."
+            className="text-command-input"
+            disabled={jarvisStatus !== 'online'}
+          />
+          <button
+            type="submit"
+            className="text-command-submit"
+            disabled={!textCommand.trim() || jarvisStatus !== 'online'}
+          >
+            Send
+          </button>
+        </form>
+      </div>
+
+      {/* Phase 4: Proactive Suggestions */}
+      {proactiveSuggestions.length > 0 && (
+        <div className="proactive-suggestions-container">
+          {proactiveSuggestions.map((suggestion) => (
+            <div key={suggestion.id} className="proactive-suggestion">
+              <div className="suggestion-content">
+                <p>{suggestion.message || suggestion.voice_message}</p>
+              </div>
+              <div className="suggestion-actions">
+                <button
+                  onClick={() => {
+                    // Send response to backend
+                    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                      wsRef.current.send(JSON.stringify({
+                        type: 'proactive_suggestion_response',
+                        suggestion_id: suggestion.id,
+                        response: 'accept'
+                      }));
+                    }
+                    // Remove suggestion from UI
+                    setProactiveSuggestions(prev =>
+                      prev.filter(s => s.id !== suggestion.id)
+                    );
+                  }}
+                >
+                  Accept
+                </button>
+                <button
+                  onClick={() => {
+                    // Remove suggestion from UI
+                    setProactiveSuggestions(prev =>
+                      prev.filter(s => s.id !== suggestion.id)
+                    );
+                  }}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -2594,23 +3052,7 @@ const JarvisVoice = () => {
         />
       )}
 
-      {/* Vision Status */}
-      {autonomousMode && (
-        <div className="vision-status-bar">
-          <div className={`vision-connection ${visionConnected ? 'connected' : 'disconnected'}`}>
-            <span className="vision-icon">👁️</span>
-            <span>Vision: {visionConnected ? 'Connected' : 'Connecting...'}</span>
-          </div>
-          {workspaceData && workspaceData.workspace && (
-            <div className="workspace-summary">
-              <span>{workspaceData.workspace.window_count} windows</span>
-              {workspaceData.workspace.focused_app && (
-                <span> • Focused: {workspaceData.workspace.focused_app}</span>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+      {/* Vision Status - REMOVED */}
 
       {/* Simplified Control - Only show when needed */}
       {jarvisStatus === 'activating' && (
@@ -2625,9 +3067,40 @@ const JarvisVoice = () => {
           <input
             type="text"
             className="jarvis-input"
-            placeholder={jarvisStatus === 'online' ? "Say 'Hey JARVIS' or type a command..." : "Initializing..."}
+            placeholder={
+              isJarvisSpeaking
+                ? "🎤 JARVIS is speaking..."
+                : isProcessing
+                ? "⚙️ Processing..."
+                : isTyping
+                ? "✍️ Type your command..."
+                : proactiveSuggestions.length > 0
+                ? "💡 Proactive suggestion available..."
+                : jarvisStatus === 'online'
+                ? "Say 'Hey JARVIS' or type a command..."
+                : "Initializing..."
+            }
+            onChange={(e) => {
+              // Track typing state
+              setIsTyping(e.target.value.length > 0);
+              setLastUserInteraction(Date.now());
+
+              // Clear existing timeout
+              if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
+              }
+
+              // Set typing to false after 2 seconds of inactivity
+              if (e.target.value.length > 0) {
+                typingTimeoutRef.current = setTimeout(() => {
+                  setIsTyping(false);
+                }, 2000);
+              }
+            }}
             onKeyPress={(e) => {
               if (e.key === 'Enter') {
+                setIsTyping(false);
+                setLastUserInteraction(Date.now());
                 sendTextCommand(e.target.value);
                 e.target.value = '';
               }

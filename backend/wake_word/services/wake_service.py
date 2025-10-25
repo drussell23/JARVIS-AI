@@ -207,22 +207,144 @@ class WakeWordService:
         except Exception as e:
             logger.error(f"Error handling activation: {e}")
     
-    def _get_activation_response(self) -> str:
-        """Get activation response based on configuration"""
-        responses = self.config.response.activation_responses.copy()
-        
-        # Add time-based greetings if enabled
-        if self.config.response.use_time_based_greetings:
-            hour = time.localtime().tm_hour
-            if 5 <= hour < 12:
-                responses.append("Good morning Sir. How may I assist you?")
-            elif 12 <= hour < 17:
-                responses.append("Good afternoon Sir. What can I do for you?")
-            elif 17 <= hour < 22:
-                responses.append("Good evening Sir. How can I help?")
-            else:
-                responses.append("Hello Sir. Still working late I see. How can I help?")
-        
+    def _get_activation_response(self, context: Optional[Dict[str, Any]] = None) -> str:
+        """
+        Get context-aware activation response based on configuration
+
+        Args:
+            context: Optional context containing:
+                - proactive_mode: bool - Phase 4 proactive intelligence active
+                - workspace: dict - Current workspace/app context
+                - last_interaction: float - Timestamp of last interaction
+                - user_focus_level: str - deep_work, focused, casual, idle
+
+        Returns:
+            Contextually appropriate activation response
+        """
+        context = context or {}
+        responses = []
+
+        # Get time context
+        hour = time.localtime().tm_hour
+        time_context = (
+            'morning' if 5 <= hour < 12 else
+            'afternoon' if 12 <= hour < 17 else
+            'evening' if 17 <= hour < 22 else
+            'night'
+        )
+
+        # Check for quick return (< 2 minutes)
+        last_interaction = context.get('last_interaction', 0)
+        is_quick_return = (time.time() - last_interaction) < 120 if last_interaction else False
+
+        # Get Phase 4 context
+        proactive_mode = context.get('proactive_mode', False)
+        workspace = context.get('workspace', {})
+        focus_level = context.get('user_focus_level', 'casual')
+
+        # Priority 1: Quick return responses (casual, brief)
+        if is_quick_return and random.random() < 0.7:
+            return random.choice([
+                "Yes?",
+                "I'm here.",
+                "Go ahead.",
+                "Listening.",
+                "Yes, Sir?",
+                "What's next?",
+                "Ready."
+            ])
+
+        # Priority 2: Phase 4 Proactive Mode (intelligent, aware)
+        if proactive_mode and random.random() < 0.5:
+            return random.choice([
+                "Yes, Sir? I've been monitoring your workspace.",
+                "I'm here. I have some suggestions when you're ready.",
+                "At your service. I noticed a few patterns worth discussing.",
+                "Listening. I've been keeping an eye on things.",
+                "Yes? I'm tracking your workflow and ready to optimize."
+            ])
+
+        # Priority 3: Focus-aware responses (respect deep work)
+        if focus_level == 'deep_work':
+            return random.choice([
+                "Yes? I'll keep this brief.",
+                "I'm here. What do you need?",
+                "Listening.",
+                "Go ahead - I know you're focused."
+            ])
+        elif focus_level == 'focused':
+            return random.choice([
+                "Yes, Sir?",
+                "I'm listening.",
+                "Ready.",
+                "What can I do for you?"
+            ])
+
+        # Priority 4: Workspace-aware responses
+        focused_app = workspace.get('focused_app')
+        if focused_app and random.random() < 0.3:
+            return random.choice([
+                f"Yes, Sir? I see you're working in {focused_app}.",
+                f"I'm here. {focused_app} still open?",
+                f"At your service. Need help with {focused_app}?"
+            ])
+
+        # Priority 5: Time-based responses (standard)
+        time_responses = {
+            'morning': [
+                "Yes, Sir. How may I assist you this morning?",
+                "Good morning. I'm listening.",
+                "At your service, Sir.",
+                "Morning. What can I do for you?",
+                "Ready and listening, Sir."
+            ],
+            'afternoon': [
+                "Yes, Sir. How can I help?",
+                "At your service.",
+                "I'm here. What do you need?",
+                "Listening, Sir.",
+                "Ready for your command."
+            ],
+            'evening': [
+                "Yes, Sir. How may I assist you this evening?",
+                "Good evening. I'm listening.",
+                "At your service, Sir.",
+                "Evening. What can I do for you?",
+                "Ready and standing by."
+            ],
+            'night': [
+                "Yes, Sir. Burning the midnight oil?",
+                "I'm here. What do you need?",
+                "Listening, Sir.",
+                "Ready for your command, even at this late hour.",
+                "At your service, Sir."
+            ]
+        }
+
+        responses.extend(time_responses.get(time_context, time_responses['afternoon']))
+
+        # Add idle-specific responses if user is idle
+        if focus_level == 'idle':
+            responses.extend([
+                "Finally! What can I do for you?",
+                "Welcome back. What would you like to tackle?",
+                "Yes, Sir. Ready for action.",
+                "I'm here. Let's get productive."
+            ])
+
+        # Add personality variations (20% chance)
+        if random.random() < 0.2:
+            responses.extend([
+                "Systems nominal. How may I help?",
+                "Neural pathways ready. What's the task?",
+                "All systems operational. Your command?",
+                "Ready to optimize your workflow, Sir.",
+                "Standing by for instructions."
+            ])
+
+        # Add original configured responses
+        responses.extend(self.config.response.activation_responses)
+
         # Select random response
         return random.choice(responses)
     

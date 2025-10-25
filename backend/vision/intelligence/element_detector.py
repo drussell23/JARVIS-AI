@@ -11,8 +11,22 @@ from dataclasses import dataclass
 import logging
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
+import tempfile
+from pathlib import Path
+from PIL import Image
 
 logger = logging.getLogger(__name__)
+
+# Import OCR Strategy Manager for intelligent OCR fallbacks
+try:
+    from backend.context_intelligence.managers import (
+        get_ocr_strategy_manager,
+    )
+    OCR_STRATEGY_AVAILABLE = True
+except ImportError:
+    OCR_STRATEGY_AVAILABLE = False
+    get_ocr_strategy_manager = lambda: None
+    logger.warning("OCRStrategyManager not available - using legacy Tesseract only")
 
 
 @dataclass
@@ -35,11 +49,27 @@ class DetectedElement:
 
 class ElementDetector:
     """Detects visual elements in screenshots"""
-    
-    def __init__(self):
+
+    def __init__(self, use_ocr_strategy: bool = True):
+        """
+        Initialize element detector
+
+        Args:
+            use_ocr_strategy: Use OCRStrategyManager for intelligent OCR fallbacks
+        """
         self.executor = ThreadPoolExecutor(max_workers=4)
         self.min_element_size = 10  # Minimum size for valid elements
         self.text_confidence_threshold = 60
+
+        # Initialize OCR Strategy Manager if available and requested
+        self.ocr_strategy_manager = None
+        if use_ocr_strategy and OCR_STRATEGY_AVAILABLE:
+            try:
+                self.ocr_strategy_manager = get_ocr_strategy_manager()
+                if self.ocr_strategy_manager:
+                    logger.info("✅ OCR Strategy Manager available for element detector")
+            except Exception as e:
+                logger.warning(f"Failed to get OCR Strategy Manager: {e}")
         
     async def detect_elements(self, screenshot: np.ndarray) -> List[Dict[str, Any]]:
         """Detect all visual elements in screenshot"""
@@ -70,8 +100,63 @@ class ElementDetector:
             e['bounds']['y'],  # Top to bottom
             e['bounds']['x']   # Left to right
         ))
-        
+
         return elements
+
+    async def extract_full_text(self, screenshot: np.ndarray) -> Tuple[str, float]:
+        """
+        Extract all text from screenshot using intelligent OCR with fallbacks
+
+        Uses OCRStrategyManager when available for Claude Vision -> Cache -> Tesseract fallbacks.
+        Falls back to legacy Tesseract if OCRStrategyManager not available.
+
+        Args:
+            screenshot: Screenshot as numpy array
+
+        Returns:
+            (extracted_text, confidence)
+        """
+        if self.ocr_strategy_manager:
+            try:
+                # Save screenshot to temp file for OCR Strategy Manager
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                    tmp_path = tmp.name
+                    img = Image.fromarray(screenshot)
+                    img.save(tmp_path)
+
+                try:
+                    # Extract text with intelligent fallbacks
+                    result = await self.ocr_strategy_manager.extract_text_with_fallbacks(
+                        image_path=tmp_path,
+                        cache_max_age=300.0
+                    )
+
+                    if result.success:
+                        logger.info(
+                            f"✅ OCR: extracted {len(result.text)} chars via {result.method} "
+                            f"(confidence={result.confidence:.2f})"
+                        )
+                        return result.text, result.confidence
+                    else:
+                        logger.warning(f"OCR Strategy Manager failed: {result.error}")
+
+                finally:
+                    # Clean up temp file
+                    try:
+                        Path(tmp_path).unlink()
+                    except Exception:
+                        pass
+
+            except Exception as e:
+                logger.error(f"OCR Strategy Manager error: {e}")
+
+        # Fallback to legacy pytesseract
+        try:
+            text = pytesseract.image_to_string(screenshot).strip()
+            return text, 0.5  # Default medium confidence
+        except Exception as e:
+            logger.error(f"Legacy OCR failed: {e}")
+            return "", 0.0
     
     async def _detect_windows(self, screenshot: np.ndarray) -> List[Dict[str, Any]]:
         """Detect application windows and containers"""

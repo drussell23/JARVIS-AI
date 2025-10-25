@@ -1,32 +1,81 @@
 """
-State Detection Pipeline - Core detection logic for VSMS
-Implements the complete detection pipeline with visual signatures and confidence scoring
+State Detection Pipeline v2.0 - PROACTIVE & AUTOMATED STATE DETECTION
+========================================================================
+
+Advanced state detection with ML-powered automation and proactive monitoring.
+
+**UPGRADED v2.0 Features**:
+✅ Auto-triggered detection from HybridProactiveMonitoringManager alerts
+✅ Automatic visual signature library building from monitored captures
+✅ Real-time state transition detection across all monitored spaces
+✅ Proactive state classification without manual queries
+✅ Context-aware state queries via ImplicitReferenceResolver
+✅ Async signature learning and matching
+✅ Multi-strategy ensemble detection with confidence voting
+✅ Visual fingerprinting for state identification
+
+**Integration**:
+- HybridProactiveMonitoringManager: Auto-triggers detection on monitoring alerts
+- ImplicitReferenceResolver: Natural language state queries ("is this the error screen?")
+- ChangeDetectionManager: Detects visual state changes automatically
+
+**Proactive Capabilities**:
+- Detects state transitions in real-time without queries
+- Learns visual signatures automatically from monitoring
+- Builds state library without manual labeling
+- Identifies unknown states and alerts user
+- Tracks state transition patterns
+
+Example:
+"Sir, I detected a state transition in Space 3: 'coding' → 'error_state'
+ (confidence: 95%). This is a new error state not seen before."
 """
 
+import asyncio
 import cv2
 import numpy as np
-from typing import Dict, List, Optional, Tuple, Any, Set
-from dataclasses import dataclass
-from datetime import datetime
+from typing import Dict, List, Optional, Tuple, Any, Set, Callable
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 import hashlib
-from collections import defaultdict
+from collections import defaultdict, deque, Counter
 from sklearn.cluster import MiniBatchKMeans
 import logging
+import json
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class VisualSignature:
-    """Visual signature for state identification"""
+    """Visual signature for state identification (v2.0 Enhanced)"""
     signature_type: str  # layout, color, text, icon, etc.
     features: Dict[str, Any]
     confidence_weight: float = 1.0
     timestamp: datetime = None
-    
+
+    # NEW v2.0: Proactive tracking fields
+    state_id: Optional[str] = None              # Identified state name
+    space_id: Optional[int] = None              # Space where signature was captured
+    auto_learned: bool = False                  # True if learned from monitoring
+    match_count: int = 0                        # Number of times matched
+    last_matched: Optional[datetime] = None     # Last time this signature matched
+    visual_fingerprint: Optional[str] = None    # MD5 hash of key visual features
+
     def __post_init__(self):
         if self.timestamp is None:
             self.timestamp = datetime.now()
+
+        # Generate visual fingerprint if not provided
+        if self.visual_fingerprint is None:
+            self.visual_fingerprint = self._generate_fingerprint()
+
+    def _generate_fingerprint(self) -> str:
+        """Generate unique fingerprint for this signature (NEW v2.0)"""
+        # Create a string from key features
+        feature_str = json.dumps(self.features, sort_keys=True)
+        return hashlib.md5(feature_str.encode()).hexdigest()[:16]
     
     def match(self, other_features: Dict[str, Any]) -> float:
         """Calculate match score against other features"""
@@ -158,9 +207,34 @@ class VisualSignature:
 
 
 class StateDetectionPipeline:
-    """Advanced state detection pipeline with multiple detection strategies"""
-    
-    def __init__(self):
+    """
+    Advanced State Detection Pipeline v2.0 with Proactive Monitoring.
+
+    **NEW v2.0 Features**:
+    - Auto-triggered detection from monitoring alerts
+    - Automatic signature learning
+    - Real-time state transition tracking
+    - Visual signature library building
+    """
+
+    def __init__(
+        self,
+        hybrid_monitoring_manager=None,
+        implicit_resolver=None,
+        change_detection_manager=None,
+        state_transition_callback: Optional[Callable] = None,
+        new_state_callback: Optional[Callable] = None
+    ):
+        """
+        Initialize StateDetectionPipeline v2.0.
+
+        Args:
+            hybrid_monitoring_manager: HybridProactiveMonitoringManager for auto-detection
+            implicit_resolver: ImplicitReferenceResolver for natural language queries
+            change_detection_manager: ChangeDetectionManager for state change detection
+            state_transition_callback: Async callback for state transitions
+            new_state_callback: Async callback for newly discovered states
+        """
         self.color_clusterer = MiniBatchKMeans(n_clusters=5, random_state=42)
         self.detection_strategies = [
             self.detect_by_layout,
@@ -176,6 +250,34 @@ class StateDetectionPipeline:
             'elements': 0.15,
             'modal': 0.05
         }
+
+        # NEW v2.0: Manager integrations
+        self.hybrid_monitoring = hybrid_monitoring_manager
+        self.implicit_resolver = implicit_resolver
+        self.change_detection = change_detection_manager
+        self.state_transition_callback = state_transition_callback
+        self.new_state_callback = new_state_callback
+
+        # NEW v2.0: Proactive tracking
+        self.is_proactive_enabled = hybrid_monitoring_manager is not None
+        self.signature_library: List[VisualSignature] = []  # All learned signatures
+        self.signature_index: Dict[str, List[VisualSignature]] = defaultdict(list)  # By state_id
+        self.current_space_states: Dict[int, str] = {}  # space_id -> current state_id
+        self.state_transitions: deque[Dict[str, Any]] = deque(maxlen=200)  # Transition history
+        self.unknown_states: deque[Dict[str, Any]] = deque(maxlen=50)  # Unidentified states
+        self.detection_stats: Dict[str, int] = defaultdict(int)  # Detection statistics
+
+        # NEW v2.0: Async monitoring
+        self._monitoring_active = False
+        self._detection_task: Optional[asyncio.Task] = None
+
+        # Load saved signature library
+        self._load_signature_library()
+
+        if self.is_proactive_enabled:
+            logger.info("[STATE-DETECTION] ✅ v2.0 Initialized with Proactive Monitoring!")
+        else:
+            logger.info("[STATE-DETECTION] Initialized (manual mode)")
     
     async def extract_state_features(self, screenshot: np.ndarray) -> Dict[str, Any]:
         """Extract comprehensive features for state detection"""
@@ -637,5 +739,454 @@ class StateDetectionPipeline:
             'state_votes': dict(state_votes),
             'agreement_level': len(strategy_votes[best_state[0]]) / len(self.detection_strategies)
         }
-        
+
         return best_state[0], final_confidence, features
+
+    # ========================================
+    # NEW v2.0: PROACTIVE STATE DETECTION
+    # ========================================
+
+    async def register_monitoring_alert(self, alert: Dict[str, Any], screenshot: Optional[np.ndarray] = None):
+        """
+        Register monitoring alert and trigger state detection (NEW v2.0).
+
+        Args:
+            alert: Alert from HybridProactiveMonitoringManager
+            screenshot: Optional screenshot (will capture if not provided)
+        """
+        if not self.is_proactive_enabled:
+            return
+
+        space_id = alert.get('space_id')
+        if not space_id:
+            return
+
+        # Get screenshot if not provided
+        if screenshot is None:
+            # Would capture from space
+            logger.debug(f"[STATE-DETECTION] No screenshot provided for Space {space_id}")
+            return
+
+        # Detect state
+        state_id, confidence, features = await self.detect_state_ensemble(
+            screenshot,
+            self.signature_library
+        )
+
+        # Track detection
+        self.detection_stats['total_detections'] += 1
+
+        if state_id:
+            self.detection_stats['successful_detections'] += 1
+
+            # Check for state transition
+            previous_state = self.current_space_states.get(space_id)
+
+            if previous_state and previous_state != state_id:
+                # State transition detected!
+                await self._handle_state_transition(
+                    space_id=space_id,
+                    from_state=previous_state,
+                    to_state=state_id,
+                    confidence=confidence,
+                    features=features
+                )
+
+            # Update current state
+            self.current_space_states[space_id] = state_id
+
+            # Learn from this detection
+            await self._learn_from_detection(
+                state_id=state_id,
+                space_id=space_id,
+                features=features,
+                confidence=confidence
+            )
+
+        else:
+            # Unknown state detected
+            self.detection_stats['unknown_detections'] += 1
+            await self._handle_unknown_state(
+                space_id=space_id,
+                features=features,
+                screenshot=screenshot
+            )
+
+    async def _handle_state_transition(
+        self,
+        space_id: int,
+        from_state: str,
+        to_state: str,
+        confidence: float,
+        features: Dict[str, Any]
+    ):
+        """
+        Handle detected state transition (NEW v2.0).
+
+        Args:
+            space_id: Space ID
+            from_state: Previous state
+            to_state: New state
+            confidence: Detection confidence
+            features: Extracted features
+        """
+        transition = {
+            'space_id': space_id,
+            'from_state': from_state,
+            'to_state': to_state,
+            'confidence': confidence,
+            'timestamp': datetime.now(),
+            'features_hash': hashlib.md5(
+                json.dumps(features, sort_keys=True).encode()
+            ).hexdigest()[:8]
+        }
+
+        self.state_transitions.append(transition)
+
+        logger.info(
+            f"[STATE-DETECTION] State transition in Space {space_id}: "
+            f"'{from_state}' → '{to_state}' (confidence: {confidence:.1%})"
+        )
+
+        # Call transition callback
+        if self.state_transition_callback:
+            await self.state_transition_callback(transition)
+
+    async def _handle_unknown_state(
+        self,
+        space_id: int,
+        features: Dict[str, Any],
+        screenshot: np.ndarray
+    ):
+        """
+        Handle unknown state detection (NEW v2.0).
+
+        Args:
+            space_id: Space ID
+            features: Extracted features
+            screenshot: Screenshot array
+        """
+        unknown_state = {
+            'space_id': space_id,
+            'timestamp': datetime.now(),
+            'features_hash': hashlib.md5(
+                json.dumps(features, sort_keys=True).encode()
+            ).hexdigest()[:8],
+            'layout_complexity': features.get('layout_complexity', 0),
+            'dominant_colors': features.get('dominant_colors', [])
+        }
+
+        self.unknown_states.append(unknown_state)
+
+        logger.warning(
+            f"[STATE-DETECTION] Unknown state in Space {space_id} "
+            f"(complexity: {features.get('layout_complexity', 0):.2f})"
+        )
+
+        # Call new state callback
+        if self.new_state_callback:
+            await self.new_state_callback(unknown_state)
+
+    async def _learn_from_detection(
+        self,
+        state_id: str,
+        space_id: int,
+        features: Dict[str, Any],
+        confidence: float
+    ):
+        """
+        Learn and update signatures from detection (NEW v2.0).
+
+        Args:
+            state_id: Detected state ID
+            space_id: Space ID
+            features: Extracted features
+            confidence: Detection confidence
+        """
+        # Find existing signatures for this state
+        existing_sigs = self.signature_index.get(state_id, [])
+
+        if existing_sigs:
+            # Update match count for matching signatures
+            for sig in existing_sigs:
+                match_score = sig.match(features)
+                if match_score > 0.7:
+                    sig.match_count += 1
+                    sig.last_matched = datetime.now()
+
+        else:
+            # Create new signature for this state
+            await self.learn_signature_from_features(
+                state_id=state_id,
+                features=features,
+                space_id=space_id,
+                auto_learned=True
+            )
+
+    async def learn_signature_from_features(
+        self,
+        state_id: str,
+        features: Dict[str, Any],
+        space_id: Optional[int] = None,
+        auto_learned: bool = False
+    ):
+        """
+        Learn a new visual signature from features (NEW v2.0).
+
+        Args:
+            state_id: State identifier
+            features: Extracted features
+            space_id: Optional space ID
+            auto_learned: True if learned from monitoring
+        """
+        # Create signatures for each feature type
+        new_signatures = []
+
+        # Layout signature
+        if 'layout_hash' in features:
+            layout_sig = VisualSignature(
+                signature_type='layout',
+                features={'layout_hash': features['layout_hash'],
+                         'element_positions': features.get('element_positions', []),
+                         'state_id': state_id},
+                state_id=state_id,
+                space_id=space_id,
+                auto_learned=auto_learned
+            )
+            new_signatures.append(layout_sig)
+
+        # Color signature
+        if 'dominant_colors' in features:
+            color_sig = VisualSignature(
+                signature_type='color',
+                features={'dominant_colors': features['dominant_colors'],
+                         'state_id': state_id},
+                state_id=state_id,
+                space_id=space_id,
+                auto_learned=auto_learned
+            )
+            new_signatures.append(color_sig)
+
+        # Text signature
+        if 'text_elements' in features:
+            text_sig = VisualSignature(
+                signature_type='text',
+                features={'text_elements': features['text_elements'],
+                         'state_id': state_id},
+                state_id=state_id,
+                space_id=space_id,
+                auto_learned=auto_learned
+            )
+            new_signatures.append(text_sig)
+
+        # Element signature
+        if 'ui_elements' in features:
+            element_sig = VisualSignature(
+                signature_type='element',
+                features={'ui_elements': features['ui_elements'],
+                         'state_id': state_id},
+                state_id=state_id,
+                space_id=space_id,
+                auto_learned=auto_learned
+            )
+            new_signatures.append(element_sig)
+
+        # Add to library
+        for sig in new_signatures:
+            self.signature_library.append(sig)
+            self.signature_index[state_id].append(sig)
+
+        logger.info(
+            f"[STATE-DETECTION] Learned {len(new_signatures)} signatures for state '{state_id}' "
+            f"(auto: {auto_learned})"
+        )
+
+        # Save library
+        self._save_signature_library()
+
+    async def query_state_with_context(self, query: str, screenshot: np.ndarray) -> Dict[str, Any]:
+        """
+        Query state with natural language using ImplicitReferenceResolver (NEW v2.0).
+
+        Examples:
+        - "is this the error screen?"
+        - "what state is this?"
+        - "detect the login page"
+
+        Args:
+            query: Natural language query
+            screenshot: Screenshot to analyze
+
+        Returns:
+            Dictionary with query results
+        """
+        if not self.implicit_resolver:
+            # Fallback to direct detection
+            state_id, confidence, features = await self.detect_state_ensemble(
+                screenshot,
+                self.signature_library
+            )
+
+            return {
+                'query': query,
+                'state_id': state_id,
+                'confidence': confidence,
+                'method': 'direct_detection'
+            }
+
+        # Resolve implicit references in query
+        resolved_query = await self.implicit_resolver.resolve_references(query)
+
+        # Extract state reference from query (simple keyword matching for now)
+        query_lower = resolved_query.lower()
+
+        # Check if query is asking about specific state
+        for state_id in self.signature_index.keys():
+            if state_id.lower() in query_lower:
+                # Verify if screenshot matches this state
+                state_id_detected, confidence, features = await self.detect_state_ensemble(
+                    screenshot,
+                    self.signature_index[state_id]  # Only check this state's signatures
+                )
+
+                is_match = state_id_detected == state_id and confidence > 0.5
+
+                return {
+                    'query': query,
+                    'resolved_query': resolved_query,
+                    'state_id': state_id,
+                    'is_match': is_match,
+                    'confidence': confidence,
+                    'method': 'targeted_detection'
+                }
+
+        # General state detection
+        state_id, confidence, features = await self.detect_state_ensemble(
+            screenshot,
+            self.signature_library
+        )
+
+        return {
+            'query': query,
+            'resolved_query': resolved_query,
+            'state_id': state_id,
+            'confidence': confidence,
+            'method': 'general_detection'
+        }
+
+    def get_state_transition_history(self, space_id: Optional[int] = None, limit: int = 20) -> List[Dict[str, Any]]:
+        """
+        Get state transition history (NEW v2.0).
+
+        Args:
+            space_id: Optional space ID to filter by
+            limit: Maximum number of transitions to return
+
+        Returns:
+            List of transitions
+        """
+        transitions = list(self.state_transitions)
+
+        if space_id:
+            transitions = [t for t in transitions if t['space_id'] == space_id]
+
+        return transitions[-limit:]
+
+    def get_detection_statistics(self) -> Dict[str, Any]:
+        """
+        Get detection statistics (NEW v2.0).
+
+        Returns:
+            Dictionary with detection stats
+        """
+        total = self.detection_stats.get('total_detections', 0)
+        successful = self.detection_stats.get('successful_detections', 0)
+        unknown = self.detection_stats.get('unknown_detections', 0)
+
+        success_rate = successful / total if total > 0 else 0.0
+
+        return {
+            'total_detections': total,
+            'successful_detections': successful,
+            'unknown_detections': unknown,
+            'success_rate': success_rate,
+            'signature_library_size': len(self.signature_library),
+            'known_states': len(self.signature_index),
+            'auto_learned_signatures': sum(1 for sig in self.signature_library if sig.auto_learned),
+            'total_transitions': len(self.state_transitions),
+            'is_proactive_enabled': self.is_proactive_enabled
+        }
+
+    def _save_signature_library(self):
+        """Save signature library to disk (NEW v2.0)"""
+        try:
+            save_path = Path.home() / ".jarvis" / "state_signature_library.json"
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Convert signatures to dict
+            data = {
+                'signatures': [
+                    {
+                        'signature_type': sig.signature_type,
+                        'features': sig.features,
+                        'state_id': sig.state_id,
+                        'space_id': sig.space_id,
+                        'auto_learned': sig.auto_learned,
+                        'match_count': sig.match_count,
+                        'timestamp': sig.timestamp.isoformat() if sig.timestamp else None,
+                        'last_matched': sig.last_matched.isoformat() if sig.last_matched else None,
+                        'visual_fingerprint': sig.visual_fingerprint
+                    }
+                    for sig in self.signature_library[-500:]  # Keep last 500
+                ],
+                'stats': dict(self.detection_stats)
+            }
+
+            with open(save_path, 'w') as f:
+                json.dump(data, f, indent=2)
+
+            logger.info(f"[STATE-DETECTION] Saved {len(self.signature_library)} signatures")
+
+        except Exception as e:
+            logger.error(f"[STATE-DETECTION] Failed to save signature library: {e}")
+
+    def _load_signature_library(self):
+        """Load signature library from disk (NEW v2.0)"""
+        try:
+            load_path = Path.home() / ".jarvis" / "state_signature_library.json"
+
+            if not load_path.exists():
+                return
+
+            with open(load_path, 'r') as f:
+                data = json.load(f)
+
+            # Reconstruct signatures
+            for sig_data in data.get('signatures', []):
+                sig = VisualSignature(
+                    signature_type=sig_data['signature_type'],
+                    features=sig_data['features'],
+                    state_id=sig_data.get('state_id'),
+                    space_id=sig_data.get('space_id'),
+                    auto_learned=sig_data.get('auto_learned', False),
+                    match_count=sig_data.get('match_count', 0),
+                    timestamp=datetime.fromisoformat(sig_data['timestamp']) if sig_data.get('timestamp') else None,
+                    last_matched=datetime.fromisoformat(sig_data['last_matched']) if sig_data.get('last_matched') else None,
+                    visual_fingerprint=sig_data.get('visual_fingerprint')
+                )
+
+                self.signature_library.append(sig)
+                if sig.state_id:
+                    self.signature_index[sig.state_id].append(sig)
+
+            # Load stats
+            self.detection_stats.update(data.get('stats', {}))
+
+            logger.info(f"[STATE-DETECTION] Loaded {len(self.signature_library)} signatures from disk")
+
+        except Exception as e:
+            logger.error(f"[STATE-DETECTION] Failed to load signature library: {e}")
+
+    # ========================================
+    # END NEW v2.0 PROACTIVE METHODS
+    # ========================================

@@ -1,0 +1,82 @@
+{
+  "goal_inference": {
+    "min_goal_confidence": 0.65,
+    "goal_confidence_threshold": 0.65,
+    "enable_learning": true,
+    "max_active_goals": 10,
+    "goal_timeout_minutes": 30,
+    "pattern_learning_enabled": true
+  },
+
+  "autonomous_decisions": {
+    "min_decision_confidence": 0.70,
+    "enable_predictive_display": true,
+    "auto_connect_threshold": 0.85,
+    "max_concurrent_actions": 5,
+    "learning_rate": 0.01,
+    "exploration_rate": 0.1
+  },
+
+  "integration": {
+    "enable_proactive_suggestions": true,
+    "proactive_suggestion_threshold": 0.85,
+    "enable_automation": true,
+    "automation_threshold": 0.90,
+    "feedback_window_minutes": 30,
+    "cache_duration_minutes": 5
+  },
+
+  "display_optimization": {
+    "enable_predictive_connection": true,
+    "preload_resources": true,
+    "predictive_confidence_threshold": 0.85,
+    "default_display": "Living Room TV",
+    "connection_patterns": {
+      "meeting_preparation": "Living Room TV",
+      "project_completion": "External Monitor",
+      "presentation": "Living Room TV",
+      "casual_viewing": "Living Room TV"
+    }
+  },
+
+  "learning": {
+    "enabled": true,
+    "min_samples_for_pattern": 3,
+    "pattern_confidence_boost": 0.05,
+    "success_rate_threshold": 0.7,
+    "feedback_weight": 0.1,
+    "save_state_interval_minutes": 60
+  },
+
+  "user_preferences": {
+    "verbose_suggestions": false,
+    "explain_reasoning": true,
+    "show_confidence_scores": false,
+    "auto_accept_high_confidence": false,
+    "notification_style": "subtle"
+  },
+
+  "performance": {
+    "max_prediction_cache_size": 100,
+    "cache_ttl_seconds": 300,
+    "parallel_processing": true,
+    "max_workers": 4,
+    "timeout_seconds": 5
+  },
+
+  "safety": {
+    "require_confirmation_for_automation": true,
+    "max_automation_actions_per_day": 50,
+    "blacklist_actions": [],
+    "whitelist_actions": ["connect_display", "open_application", "organize_workspace"],
+    "risk_tolerance": 0.5
+  },
+
+  "logging": {
+    "log_predictions": true,
+    "log_decisions": true,
+    "log_learning_events": true,
+    "metrics_tracking": true,
+    "debug_mode": false
+  }
+}
