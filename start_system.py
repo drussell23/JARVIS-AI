@@ -705,12 +705,15 @@ class HybridWorkloadRouter:
             # Step 2: Deploy via GitHub Actions (if available)
             deployment = await self._trigger_github_deployment(components, gcp_config)
 
+            # CRITICAL: Track instance immediately for cleanup, even if health check fails
+            self.gcp_instance_id = deployment["instance_id"]
+            self.gcp_active = True  # Set now so cleanup runs even if ready check fails
+            logger.info(f"📝 Tracking GCP instance for cleanup: {self.gcp_instance_id}")
+
             # Step 3: Wait for deployment to be ready
             ready = await self._wait_for_gcp_ready(deployment["instance_id"], timeout=300)
 
             if ready:
-                self.gcp_active = True
-                self.gcp_instance_id = deployment["instance_id"]
                 self.gcp_ip = deployment["ip"]
 
                 # Update component locations
@@ -735,6 +738,10 @@ class HybridWorkloadRouter:
                     "migration_time": migration_time,
                 }
             else:
+                # Even though ready check failed, instance exists and needs cleanup
+                logger.warning(
+                    f"⚠️  GCP instance created but health check timeout - will cleanup on shutdown"
+                )
                 raise Exception("GCP deployment timeout")
 
         except Exception as e:
@@ -912,48 +919,64 @@ exit 1
         try:
             instance_name = f"jarvis-auto-{int(time.time())}"
 
-            # Generate startup script inline (no external file needed!)
+            # Generate startup script and write to temp file
             startup_script = self._generate_startup_script(gcp_config)
 
-            # Create GCP instance with appropriate machine type
-            machine_type = "e2-highmem-4"  # 4 vCPUs, 32GB RAM
+            # Write startup script to temporary file (avoids metadata parsing issues)
+            import tempfile
 
-            cmd = [
-                "gcloud",
-                "compute",
-                "instances",
-                "create",
-                instance_name,
-                "--project",
-                gcp_config["project_id"],
-                "--zone",
-                f"{gcp_config['region']}-a",
-                "--machine-type",
-                machine_type,
-                "--provisioning-model",
-                "SPOT",  # Use Spot VMs (60-91% cheaper)
-                "--instance-termination-action",
-                "DELETE",  # Auto-delete when preempted
-                "--max-run-duration",
-                "10800s",  # Max 3 hours (safety limit)
-                "--image-family",
-                "ubuntu-2204-lts",
-                "--image-project",
-                "ubuntu-os-cloud",
-                "--boot-disk-size",
-                "50GB",
-                "--metadata",
-                f"startup-script={startup_script}",  # Embedded inline!
-                "--tags",
-                "jarvis-auto",
-                "--labels",
-                f"components={'-'.join(components)},auto=true,spot=true",
-                "--format",
-                "json",
-            ]
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as f:
+                f.write(startup_script)
+                startup_script_path = f.name
 
-            logger.info(f"🔧 Running gcloud command: {' '.join(cmd[:8])}...")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            try:
+                # Create GCP instance with appropriate machine type
+                machine_type = "e2-highmem-4"  # 4 vCPUs, 32GB RAM
+
+                cmd = [
+                    "gcloud",
+                    "compute",
+                    "instances",
+                    "create",
+                    instance_name,
+                    "--project",
+                    gcp_config["project_id"],
+                    "--zone",
+                    f"{gcp_config['region']}-a",
+                    "--machine-type",
+                    machine_type,
+                    "--provisioning-model",
+                    "SPOT",  # Use Spot VMs (60-91% cheaper)
+                    "--instance-termination-action",
+                    "DELETE",  # Auto-delete when preempted
+                    "--max-run-duration",
+                    "10800s",  # Max 3 hours (safety limit)
+                    "--image-family",
+                    "ubuntu-2204-lts",
+                    "--image-project",
+                    "ubuntu-os-cloud",
+                    "--boot-disk-size",
+                    "50GB",
+                    "--metadata-from-file",
+                    f"startup-script={startup_script_path}",  # Use file instead of inline!
+                    "--tags",
+                    "jarvis-auto",
+                    "--labels",
+                    f"components={'-'.join(components)},auto=true,spot=true",
+                    "--format",
+                    "json",
+                ]
+
+                logger.info(f"🔧 Running gcloud command: {' '.join(cmd[:8])}...")
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            finally:
+                # Clean up temp file
+                import os
+
+                try:
+                    os.unlink(startup_script_path)
+                except:
+                    pass
 
             if result.returncode == 0:
                 import json
@@ -1208,6 +1231,10 @@ class HybridIntelligenceCoordinator:
                 pass
 
         # Cleanup GCP instance if active
+        logger.info(
+            f"🔍 Checking for GCP cleanup: gcp_active={self.workload_router.gcp_active}, instance_id={self.workload_router.gcp_instance_id}"
+        )
+
         if self.workload_router.gcp_active and self.workload_router.gcp_instance_id:
             try:
                 logger.info(f"🧹 Cleaning up GCP instance: {self.workload_router.gcp_instance_id}")
@@ -1216,7 +1243,12 @@ class HybridIntelligenceCoordinator:
                 )
                 logger.info(f"✅ GCP instance {self.workload_router.gcp_instance_id} deleted")
             except Exception as e:
-                logger.error(f"Failed to cleanup GCP instance: {e}")
+                logger.error(f"❌ Failed to cleanup GCP instance: {e}")
+                import traceback
+
+                logger.error(traceback.format_exc())
+        else:
+            logger.info("ℹ️  No active GCP instance to cleanup")
 
         logger.info("🛑 Hybrid coordination stopped")
 
