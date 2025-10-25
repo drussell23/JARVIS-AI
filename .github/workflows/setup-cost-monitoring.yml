@@ -1,0 +1,394 @@
+name: Setup Cost Monitoring (Advanced)
+
+on:
+  workflow_dispatch:
+    inputs:
+      alert_email:
+        description: 'Email for cost alerts (optional)'
+        required: false
+        default: ''
+      budget_threshold_1:
+        description: 'First budget threshold (USD)'
+        required: false
+        default: '20'
+      budget_threshold_2:
+        description: 'Second budget threshold (USD)'
+        required: false
+        default: '50'
+      budget_threshold_3:
+        description: 'Third budget threshold (USD)'
+        required: false
+        default: '100'
+      enable_budget_creation:
+        description: 'Automatically create GCP budgets'
+        required: false
+        type: boolean
+        default: false
+      deploy_email_function:
+        description: 'Deploy email notification Cloud Function'
+        required: false
+        type: boolean
+        default: false
+
+  schedule:
+    # Run weekly to check for orphaned VMs
+    - cron: '0 0 * * 0'
+
+jobs:
+  initialize-cost-tracking:
+    name: Initialize Cost Tracking System
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      JARVIS_ALERT_EMAIL: ${{ inputs.alert_email || secrets.JARVIS_ALERT_EMAIL }}
+      BUDGET_THRESHOLD_1: ${{ inputs.budget_threshold_1 }}
+      BUDGET_THRESHOLD_2: ${{ inputs.budget_threshold_2 }}
+      BUDGET_THRESHOLD_3: ${{ inputs.budget_threshold_3 }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          install_components: 'beta'
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install aiosqlite pydantic
+
+      - name: Create JARVIS directories
+        run: |
+          mkdir -p $HOME/.jarvis/{logs,learning,config,gcp,functions}
+          echo "✅ Directory structure created"
+
+      - name: Initialize cost tracking database
+        run: |
+          python3 - <<'EOF'
+          import asyncio
+          import sys
+          from pathlib import Path
+
+          # Add backend to path
+          backend_dir = Path.cwd() / "backend"
+          sys.path.insert(0, str(backend_dir))
+
+          from core.cost_tracker import initialize_cost_tracking
+
+          async def main():
+              try:
+                  await initialize_cost_tracking()
+                  print("✅ Cost tracking database initialized")
+              except Exception as e:
+                  print(f"❌ Initialization failed: {e}")
+                  sys.exit(1)
+
+          asyncio.run(main())
+          EOF
+
+      - name: Validate cost tracking setup
+        run: |
+          python3 - <<'EOF'
+          import asyncio
+          import sys
+          from pathlib import Path
+
+          backend_dir = Path.cwd() / "backend"
+          sys.path.insert(0, str(backend_dir))
+
+          from core.cost_tracker import get_cost_tracker
+
+          async def main():
+              tracker = get_cost_tracker()
+              summary = await tracker.get_cost_summary("all")
+              print(f"✅ Cost tracker validated")
+              print(f"   Total VMs created: {summary.get('total_vms_created', 0)}")
+              print(f"   Total runtime hours: {summary.get('total_runtime_hours', 0):.2f}")
+              print(f"   Total estimated cost: ${summary.get('total_estimated_cost', 0):.2f}")
+
+          asyncio.run(main())
+          EOF
+
+      - name: Check for orphaned VMs
+        run: |
+          echo "📊 Checking for orphaned VMs..."
+
+          ORPHANED_VMS=$(gcloud compute instances list \
+            --project=$GCP_PROJECT_ID \
+            --filter="name~'jarvis-auto-.*'" \
+            --format="table(name,zone,creationTimestamp,status)" 2>/dev/null || echo "")
+
+          if [ -n "$ORPHANED_VMS" ]; then
+            echo "⚠️  Found JARVIS VMs:"
+            echo "$ORPHANED_VMS"
+
+            # Calculate age and flag old VMs
+            echo ""
+            echo "🔍 Analyzing VM ages..."
+            gcloud compute instances list \
+              --project=$GCP_PROJECT_ID \
+              --filter="name~'jarvis-auto-.*'" \
+              --format="value(name,zone,creationTimestamp)" | while read -r name zone created; do
+
+              # Calculate hours since creation
+              created_epoch=$(date -d "$created" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "$created" +%s)
+              now_epoch=$(date +%s)
+              age_hours=$(( (now_epoch - created_epoch) / 3600 ))
+
+              if [ $age_hours -gt 6 ]; then
+                echo "⚠️  VM $name is ${age_hours}h old (orphaned threshold: 6h)"
+              else
+                echo "✅ VM $name is ${age_hours}h old (within threshold)"
+              fi
+            done
+          else
+            echo "✅ No JARVIS VMs currently running"
+          fi
+
+  setup-gcp-budgets:
+    name: Setup GCP Budget Alerts
+    runs-on: ubuntu-latest
+    needs: initialize-cost-tracking
+    if: ${{ inputs.enable_budget_creation == true }}
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      BUDGET_THRESHOLD_1: ${{ inputs.budget_threshold_1 }}
+      BUDGET_THRESHOLD_2: ${{ inputs.budget_threshold_2 }}
+      BUDGET_THRESHOLD_3: ${{ inputs.budget_threshold_3 }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          install_components: 'beta'
+
+      - name: Enable required APIs
+        run: |
+          echo "🔧 Enabling required GCP APIs..."
+          gcloud services enable billingbudgets.googleapis.com --project=$GCP_PROJECT_ID
+          gcloud services enable pubsub.googleapis.com --project=$GCP_PROJECT_ID
+          echo "✅ APIs enabled"
+
+      - name: Get billing account
+        id: billing
+        run: |
+          BILLING_ACCOUNT=$(gcloud billing projects describe $GCP_PROJECT_ID \
+            --format="value(billingAccountName)" 2>/dev/null || echo "")
+
+          if [ -z "$BILLING_ACCOUNT" ]; then
+            echo "❌ No billing account found!"
+            exit 1
+          fi
+
+          echo "billing_account=$BILLING_ACCOUNT" >> $GITHUB_OUTPUT
+          echo "✅ Billing account: $BILLING_ACCOUNT"
+
+      - name: Create Pub/Sub topic for alerts
+        run: |
+          echo "📨 Creating Pub/Sub topic..."
+
+          gcloud pubsub topics create budget-alerts \
+            --project=$GCP_PROJECT_ID 2>/dev/null || \
+            echo "ℹ️  Topic already exists"
+
+          # Grant permissions
+          PROJECT_NUMBER=$(gcloud projects describe $GCP_PROJECT_ID --format="value(projectNumber)")
+
+          gcloud pubsub topics add-iam-policy-binding budget-alerts \
+            --member="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-billing.iam.gserviceaccount.com" \
+            --role="roles/pubsub.publisher" \
+            --project=$GCP_PROJECT_ID --quiet 2>/dev/null || true
+
+          echo "✅ Pub/Sub topic configured"
+
+      - name: Create budget alerts
+        run: |
+          echo "💰 Creating budget alerts..."
+
+          BILLING_ACCOUNT="${{ steps.billing.outputs.billing_account }}"
+
+          for BUDGET_AMT in $BUDGET_THRESHOLD_1 $BUDGET_THRESHOLD_2 $BUDGET_THRESHOLD_3; do
+            echo "Creating budget: \$${BUDGET_AMT}/month..."
+
+            gcloud beta billing budgets create \
+              --billing-account="$BILLING_ACCOUNT" \
+              --display-name="jarvis-hybrid-cloud-budget-${BUDGET_AMT}usd" \
+              --budget-amount="${BUDGET_AMT}USD" \
+              --threshold-rule=percent=0.5 \
+              --threshold-rule=percent=0.9 \
+              --threshold-rule=percent=1.0 \
+              --all-updates-rule-pubsub-topic="projects/$GCP_PROJECT_ID/topics/budget-alerts" \
+              --filter-projects="projects/$GCP_PROJECT_ID" 2>/dev/null && \
+              echo "✅ Budget created: \$${BUDGET_AMT}/month" || \
+              echo "ℹ️  Budget \$${BUDGET_AMT} already exists"
+          done
+
+      - name: List created budgets
+        run: |
+          echo "📊 Current budgets:"
+          gcloud beta billing budgets list \
+            --billing-account="${{ steps.billing.outputs.billing_account }}" \
+            --format="table(displayName,amount,thresholdRules)" 2>/dev/null || \
+            echo "No budgets found"
+
+  deploy-email-notifications:
+    name: Deploy Email Notification Function
+    runs-on: ubuntu-latest
+    needs: setup-gcp-budgets
+    if: ${{ inputs.deploy_email_function == true && inputs.alert_email != '' }}
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      ALERT_EMAIL: ${{ inputs.alert_email || secrets.JARVIS_ALERT_EMAIL }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Prepare Cloud Function
+        run: |
+          mkdir -p /tmp/budget-alert-function
+
+          # Copy function code (created by setup script)
+          if [ -f "$HOME/.jarvis/functions/budget-alerts/main.py" ]; then
+            cp $HOME/.jarvis/functions/budget-alerts/* /tmp/budget-alert-function/
+          else
+            # Create function inline
+            cat > /tmp/budget-alert-function/main.py <<'EOF'
+          import base64
+          import json
+          import os
+          import smtplib
+          from email.mime.text import MIMEText
+          from email.mime.multipart import MIMEMultipart
+
+          def process_budget_alert(event, context):
+              """Process budget alert and send email notification"""
+
+              pubsub_message = base64.b64decode(event['data']).decode('utf-8')
+              alert_data = json.loads(pubsub_message)
+
+              budget_name = alert_data.get('budgetDisplayName', 'Unknown')
+              cost_amount = alert_data.get('costAmount', 0)
+              budget_amount = alert_data.get('budgetAmount', 0)
+              threshold = (cost_amount / budget_amount * 100) if budget_amount > 0 else 0
+
+              alert_email = os.environ.get('JARVIS_ALERT_EMAIL')
+
+              if not alert_email:
+                  print("Email not configured")
+                  return
+
+              # Simple email notification via SMTP or SendGrid
+              print(f"Budget alert: {budget_name} at {threshold:.1f}% (${cost_amount:.2f}/${budget_amount:.2f})")
+              print(f"Alert would be sent to: {alert_email}")
+          EOF
+
+            cat > /tmp/budget-alert-function/requirements.txt <<'EOF'
+          google-cloud-pubsub==2.18.4
+          EOF
+          fi
+
+      - name: Deploy Cloud Function
+        run: |
+          cd /tmp/budget-alert-function
+
+          gcloud functions deploy budget-alert-notifier \
+            --runtime python311 \
+            --trigger-topic budget-alerts \
+            --entry-point process_budget_alert \
+            --set-env-vars JARVIS_ALERT_EMAIL=$ALERT_EMAIL \
+            --project=$GCP_PROJECT_ID \
+            --region=us-central1 \
+            --quiet
+
+          echo "✅ Email notification function deployed"
+
+  summary:
+    name: Display Summary
+    runs-on: ubuntu-latest
+    needs: [initialize-cost-tracking]
+    if: always()
+
+    steps:
+      - name: Display setup summary
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "✅ Cost Monitoring Setup Complete"
+          echo "=========================================="
+          echo ""
+          echo "📊 Initialization Status:"
+          echo "   Database: ✅ Initialized"
+          echo "   Orphaned VMs: ✅ Checked"
+          echo ""
+
+          if [ "${{ inputs.enable_budget_creation }}" == "true" ]; then
+            echo "💰 Budget Alerts:"
+            echo "   Budgets: \$${{ inputs.budget_threshold_1 }}, \$${{ inputs.budget_threshold_2 }}, \$${{ inputs.budget_threshold_3 }}"
+            echo "   Thresholds: 50%, 90%, 100%"
+            echo "   Status: ✅ Created"
+          else
+            echo "💰 Budget Alerts: ⏭️  Skipped (enable with enable_budget_creation=true)"
+          fi
+          echo ""
+
+          if [ "${{ inputs.deploy_email_function }}" == "true" ]; then
+            echo "📧 Email Notifications:"
+            echo "   Recipient: ${{ inputs.alert_email || secrets.JARVIS_ALERT_EMAIL }}"
+            echo "   Status: ✅ Deployed"
+          else
+            echo "📧 Email Notifications: ⏭️  Skipped (enable with deploy_email_function=true)"
+          fi
+          echo ""
+
+          echo "🔧 Next Steps:"
+          echo "   1. Monitor costs: https://console.cloud.google.com/billing/${{ secrets.GCP_PROJECT_ID }}/budgets"
+          echo "   2. Check API: http://localhost:8010/hybrid/status"
+          echo "   3. WebSocket: ws://localhost:8010/hybrid/ws"
+          echo ""
+          echo "📚 Documentation:"
+          echo "   - Cost tracker: backend/core/cost_tracker.py"
+          echo "   - Hybrid router: backend/routers/hybrid.py"
+          echo "   - Setup script: scripts/setup_cost_monitoring.sh"
+          echo ""

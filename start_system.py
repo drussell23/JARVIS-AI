@@ -170,6 +170,20 @@ from typing import Optional
 import aiohttp
 import psutil
 
+# Cost tracking for hybrid cloud monitoring
+try:
+    # Add backend directory to path for cost tracker import
+    backend_dir = Path(__file__).parent / "backend"
+    if backend_dir.exists() and str(backend_dir) not in sys.path:
+        sys.path.insert(0, str(backend_dir))
+
+    from core.cost_tracker import get_cost_tracker
+
+    COST_TRACKING_AVAILABLE = True
+except ImportError:
+    COST_TRACKING_AVAILABLE = False
+    # Logger not yet initialized, will log later
+
 # Set fork safety for macOS to prevent segmentation faults
 if platform.system() == "Darwin":
     # Set environment variable for fork safety
@@ -710,6 +724,19 @@ class HybridWorkloadRouter:
             self.gcp_active = True  # Set now so cleanup runs even if ready check fails
             logger.info(f"📝 Tracking GCP instance for cleanup: {self.gcp_instance_id}")
 
+            # Record VM creation in cost tracker
+            if COST_TRACKING_AVAILABLE:
+                try:
+                    cost_tracker = get_cost_tracker()
+                    await cost_tracker.record_vm_created(
+                        instance_id=self.gcp_instance_id,
+                        components=components,
+                        trigger_reason=reason or "HIGH_RAM",
+                    )
+                    logger.info(f"💰 Cost tracking: VM creation recorded")
+                except Exception as e:
+                    logger.warning(f"Failed to record VM creation in cost tracker: {e}")
+
             # Step 3: Wait for deployment to be ready
             ready = await self._wait_for_gcp_ready(deployment["instance_id"], timeout=300)
 
@@ -1138,6 +1165,18 @@ exit 1
 
             if result.returncode == 0:
                 logger.info(f"✅ Deleted GCP instance: {instance_id}")
+
+                # Record VM deletion in cost tracker
+                if COST_TRACKING_AVAILABLE:
+                    try:
+                        cost_tracker = get_cost_tracker()
+                        await cost_tracker.record_vm_deleted(
+                            instance_id=instance_id, was_orphaned=False
+                        )
+                        logger.info(f"💰 Cost tracking: VM deletion recorded")
+                    except Exception as e:
+                        logger.warning(f"Failed to record VM deletion in cost tracker: {e}")
+
                 # Reset state
                 self.gcp_active = False
                 self.gcp_instance_id = None

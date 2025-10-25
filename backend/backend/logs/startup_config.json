@@ -1,6 +1,0 @@
-{
-  "max_initial_models": 5,
-  "enable_lazy_loading": true,
-  "memory_limit_percent": 70,
-  "startup_timeout": 30
-}
