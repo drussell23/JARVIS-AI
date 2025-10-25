@@ -160,6 +160,7 @@ import platform
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import webbrowser
 from datetime import datetime
@@ -807,11 +808,11 @@ class HybridWorkloadRouter:
         """
         Generate inline startup script for GCP instance.
 
-        This eliminates the need for a separate gcp_startup.sh file by
-        embedding the startup logic directly in start_system.py.
+        Uses Cloud Storage deployment packages instead of git clone
+        for faster startup and consistent deployments.
         """
-        repo_url = gcp_config.get("repo_url", "https://github.com/drussell23/JARVIS-AI-Agent.git")
-        branch = gcp_config.get("branch", "multi-monitor-support")
+        branch = gcp_config.get("branch", "main")
+        deployment_bucket = gcp_config.get("deployment_bucket", "gs://jarvis-473803-deployments")
 
         return f"""#!/bin/bash
 set -e
@@ -819,14 +820,37 @@ echo "🚀 JARVIS GCP Auto-Deployment Starting..."
 
 # Install dependencies
 sudo apt-get update -qq
-sudo apt-get install -y -qq python3.10 python3.10-venv python3-pip git curl jq build-essential postgresql-client
+sudo apt-get install -y -qq python3.10 python3.10-venv python3-pip curl jq build-essential postgresql-client
 
-# Clone repository
+# Download deployment package from Cloud Storage
 PROJECT_DIR="$HOME/jarvis-backend"
-if [ -d "$PROJECT_DIR" ]; then
-    cd "$PROJECT_DIR" && git fetch --all && git reset --hard origin/{branch}
+DEPLOYMENT_BUCKET="{deployment_bucket}"
+
+echo "📥 Downloading latest deployment from Cloud Storage..."
+
+# Get latest commit for this branch
+LATEST_COMMIT=$(gcloud storage cat $DEPLOYMENT_BUCKET/latest-{branch}.txt 2>/dev/null || echo "")
+
+if [ -z "$LATEST_COMMIT" ]; then
+    echo "⚠️  No deployment found for branch {branch}, falling back to git clone..."
+    REPO_URL="{gcp_config.get('repo_url', 'https://github.com/drussell23/JARVIS-AI-Agent.git')}"
+    if [ -d "$PROJECT_DIR" ]; then
+        cd "$PROJECT_DIR" && git fetch --all && git reset --hard origin/{branch}
+    else
+        git clone -b {branch} $REPO_URL "$PROJECT_DIR"
+    fi
 else
-    git clone -b {branch} {repo_url} "$PROJECT_DIR"
+    echo "📦 Using deployment: $LATEST_COMMIT"
+
+    # Download and extract deployment package
+    mkdir -p "$PROJECT_DIR"
+    cd "$PROJECT_DIR"
+
+    gcloud storage cp $DEPLOYMENT_BUCKET/jarvis-$LATEST_COMMIT.tar.gz /tmp/jarvis-deployment.tar.gz
+    tar -xzf /tmp/jarvis-deployment.tar.gz -C "$PROJECT_DIR"
+    rm /tmp/jarvis-deployment.tar.gz
+
+    echo "✅ Deployment package extracted"
 fi
 
 # Setup Python environment
@@ -1184,11 +1208,13 @@ class HybridIntelligenceCoordinator:
                 pass
 
         # Cleanup GCP instance if active
-        if self.gcp_active and self.gcp_instance_id:
+        if self.workload_router.gcp_active and self.workload_router.gcp_instance_id:
             try:
-                logger.info(f"🧹 Cleaning up GCP instance: {self.gcp_instance_id}")
-                await self._cleanup_gcp_instance(self.gcp_instance_id)
-                logger.info(f"✅ GCP instance {self.gcp_instance_id} deleted")
+                logger.info(f"🧹 Cleaning up GCP instance: {self.workload_router.gcp_instance_id}")
+                await self.workload_router._cleanup_gcp_instance(
+                    self.workload_router.gcp_instance_id
+                )
+                logger.info(f"✅ GCP instance {self.workload_router.gcp_instance_id} deleted")
             except Exception as e:
                 logger.error(f"Failed to cleanup GCP instance: {e}")
 
@@ -4584,11 +4610,26 @@ def _auto_detect_automation(preset):
 
 
 async def shutdown_handler():
-    """Handle shutdown gracefully"""
+    """
+    Handle shutdown gracefully with robust cleanup
+    Integrated from jarvis.sh wrapper for terminal close handling
+    """
     global _manager
+
     if _manager and not _manager._shutting_down:
         _manager._shutting_down = True
-        await _manager.cleanup()
+
+        # Log shutdown initiation
+        logger.info("🧹 Initiating graceful shutdown...")
+
+        try:
+            # Give cleanup 10 seconds to complete gracefully
+            await asyncio.wait_for(_manager.cleanup(), timeout=10.0)
+            logger.info("✅ JARVIS stopped gracefully")
+        except asyncio.TimeoutError:
+            logger.warning("⚠️  Cleanup timeout - forcing shutdown...")
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
 
 
 async def main():
@@ -5082,10 +5123,56 @@ async def main():
         deps_ok, _, _ = await _manager.check_dependencies()
         return 0 if deps_ok else 1
 
-    # Set up signal handlers
+    # PID file management (integrated from jarvis.sh)
+    pid_file = Path(tempfile.gettempdir()) / "jarvis.pid"
+
+    # Clean up orphaned PID file from previous crashed sessions
+    if pid_file.exists():
+        try:
+            old_pid = int(pid_file.read_text().strip())
+            if not psutil.pid_exists(old_pid):
+                logger.info(f"🧹 Removing stale PID file (process {old_pid} not running)")
+                pid_file.unlink()
+            else:
+                # Check if it's actually a JARVIS process
+                try:
+                    proc = psutil.Process(old_pid)
+                    cmdline = " ".join(proc.cmdline())
+                    if "start_system.py" in cmdline:
+                        logger.warning(f"⚠️  Another JARVIS instance is running (PID {old_pid})")
+                        print(
+                            f"{Colors.YELLOW}⚠️  Another JARVIS instance is running (PID {old_pid}){Colors.ENDC}"
+                        )
+                        print(f"   Use --force-start to override, or kill PID {old_pid} first")
+                        return 1
+                    else:
+                        # Different process reused the PID - safe to remove
+                        pid_file.unlink()
+                except psutil.NoSuchProcess:
+                    pid_file.unlink()
+        except (ValueError, OSError) as e:
+            logger.warning(f"⚠️  Could not read PID file: {e}")
+            pid_file.unlink()
+
+    # Write current PID
+    pid_file.write_text(str(os.getpid()))
+    logger.info(f"📝 PID file created: {pid_file} (PID {os.getpid()})")
+
+    # Set up signal handlers with cleanup
     loop = asyncio.get_event_loop()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, lambda: asyncio.create_task(shutdown_handler()))
+
+    def cleanup_and_shutdown():
+        """Cleanup PID file and trigger shutdown"""
+        try:
+            if pid_file.exists():
+                pid_file.unlink()
+                logger.info("🧹 PID file removed")
+        except Exception as e:
+            logger.warning(f"Could not remove PID file: {e}")
+        asyncio.create_task(shutdown_handler())
+
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        loop.add_signal_handler(sig, cleanup_and_shutdown)
 
     # Run the system
     success = await _manager.run()
@@ -5105,6 +5192,37 @@ if __name__ == "__main__":
         logger.exception("Fatal error during startup")
         sys.exit(1)
     finally:
+        # Cleanup PID file on exit
+        pid_file = Path(tempfile.gettempdir()) / "jarvis.pid"
+        try:
+            if pid_file.exists():
+                current_pid = os.getpid()
+                file_pid = int(pid_file.read_text().strip())
+                # Only remove if it's our PID (safety check)
+                if file_pid == current_pid:
+                    pid_file.unlink()
+                    logger.info("🧹 PID file cleaned up on exit")
+        except Exception as e:
+            logger.warning(f"Could not cleanup PID file: {e}")
+
+        # Clean up any orphaned start_system.py processes (except ourselves)
+        try:
+            current_pid = os.getpid()
+            for proc in psutil.process_iter(["pid", "cmdline"]):
+                try:
+                    cmdline = proc.info.get("cmdline")
+                    if cmdline and proc.info["pid"] != current_pid:
+                        cmdline_str = " ".join(cmdline)
+                        if "start_system.py" in cmdline_str and "python" in cmdline_str.lower():
+                            logger.warning(
+                                f"🧹 Cleaning up orphaned start_system.py process (PID {proc.info['pid']})"
+                            )
+                            proc.kill()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+        except Exception as e:
+            logger.warning(f"Could not cleanup orphaned processes: {e}")
+
         # Ensure terminal is restored
         sys.stdout.flush()
         sys.stderr.flush()

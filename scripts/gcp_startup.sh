@@ -4,14 +4,37 @@ echo "🚀 JARVIS GCP Auto-Deployment Starting..."
 
 # Install dependencies
 sudo apt-get update -qq
-sudo apt-get install -y -qq python3.10 python3.10-venv python3-pip git curl jq build-essential postgresql-client
+sudo apt-get install -y -qq python3.10 python3.10-venv python3-pip curl jq build-essential postgresql-client
 
-# Clone repository
+# Download deployment package from Cloud Storage
 PROJECT_DIR="$HOME/jarvis-backend"
-if [ -d "$PROJECT_DIR" ]; then
-    cd "$PROJECT_DIR" && git fetch --all && git reset --hard origin/multi-monitor-support
+DEPLOYMENT_BUCKET="gs://jarvis-473803-deployments"
+
+echo "📥 Downloading latest deployment from Cloud Storage..."
+
+# Get latest commit for this branch
+LATEST_COMMIT=$(gcloud storage cat $DEPLOYMENT_BUCKET/latest-multi-monitor-support.txt 2>/dev/null || echo "")
+
+if [ -z "$LATEST_COMMIT" ]; then
+    echo "⚠️  No deployment found for branch multi-monitor-support, falling back to git clone..."
+    REPO_URL="https://github.com/drussell23/JARVIS-AI-Agent.git"
+    if [ -d "$PROJECT_DIR" ]; then
+        cd "$PROJECT_DIR" && git fetch --all && git reset --hard origin/multi-monitor-support
+    else
+        git clone -b multi-monitor-support $REPO_URL "$PROJECT_DIR"
+    fi
 else
-    git clone -b multi-monitor-support https://github.com/drussell23/JARVIS-AI-Agent.git "$PROJECT_DIR"
+    echo "📦 Using deployment: $LATEST_COMMIT"
+
+    # Download and extract deployment package
+    mkdir -p "$PROJECT_DIR"
+    cd "$PROJECT_DIR"
+
+    gcloud storage cp $DEPLOYMENT_BUCKET/jarvis-$LATEST_COMMIT.tar.gz /tmp/jarvis-deployment.tar.gz
+    tar -xzf /tmp/jarvis-deployment.tar.gz -C "$PROJECT_DIR"
+    rm /tmp/jarvis-deployment.tar.gz
+
+    echo "✅ Deployment package extracted"
 fi
 
 # Setup Python environment
