@@ -781,7 +781,10 @@ class MultiSpaceCaptureEngine:
         self, space_id: int, quality: CaptureQuality
     ) -> Optional[np.ndarray]:
         """Use macOS screencapture command with robust async subprocess management"""
-        from .async_subprocess_manager import get_subprocess_manager
+        try:
+            from .async_subprocess_manager import get_subprocess_manager
+        except ImportError:
+            from async_subprocess_manager import get_subprocess_manager
 
         temp_path = None
         temp_fd = None
@@ -901,10 +904,12 @@ class MultiSpaceCaptureEngine:
             )
 
             # Import our CG capture module
-            from .cg_window_capture import CGWindowCapture
-
-            # Get window info to find what's in the target space
-            from .multi_space_window_detector import MultiSpaceWindowDetector
+            try:
+                from .cg_window_capture import CGWindowCapture
+                from .multi_space_window_detector import MultiSpaceWindowDetector
+            except ImportError:
+                from cg_window_capture import CGWindowCapture
+                from multi_space_window_detector import MultiSpaceWindowDetector
 
             detector = MultiSpaceWindowDetector()
             window_data = detector.get_all_windows_across_spaces()
@@ -1044,12 +1049,18 @@ class MultiSpaceCaptureEngine:
         if not self.space_switcher:
             # Initialize space switcher
             logger.info("[SPACE_SWITCH] Initializing MinimalSpaceSwitcher")
-            from .minimal_space_switcher import MinimalSpaceSwitcher
+            try:
+                from .minimal_space_switcher import MinimalSpaceSwitcher, SwitchRequest
+            except ImportError:
+                from minimal_space_switcher import MinimalSpaceSwitcher, SwitchRequest
 
             self.space_switcher = MinimalSpaceSwitcher()
-
-        # Import SwitchRequest here to avoid circular imports
-        from .minimal_space_switcher import SwitchRequest
+        else:
+            # Import SwitchRequest here to avoid circular imports
+            try:
+                from .minimal_space_switcher import SwitchRequest
+            except ImportError:
+                from minimal_space_switcher import SwitchRequest
 
         # Create switch request
         switch_req = SwitchRequest(
