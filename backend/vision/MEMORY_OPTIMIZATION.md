@@ -176,11 +176,13 @@ Cost Impact: $0.12/day (80% savings)
 
 ## Testing
 
+### Quick Memory Pressure Test
+
 ```bash
 # Test memory pressure detection
 python3 -c "
 import asyncio
-from vision.macos_memory_manager import initialize_memory_manager
+from backend.vision.macos_memory_manager import initialize_memory_manager
 
 async def test():
     manager = await initialize_memory_manager()
@@ -192,6 +194,69 @@ async def test():
 asyncio.run(test())
 "
 ```
+
+### Full Memory Profiling & Benchmarking
+
+Run comprehensive memory profiling to validate Priority 3 targets:
+
+```bash
+# Run full benchmark suite
+cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+python3 backend/vision/memory_profiler.py
+```
+
+**What it measures:**
+- Baseline memory usage
+- Multi-Space Vision memory footprint over 60s
+- Semantic Cache memory footprint over 60s
+- Peak memory, average memory, memory deltas
+- Priority 3 target validation (1.2GB → 800MB)
+
+**Output:**
+- Terminal summary with memory statistics
+- JSON report saved to `~/.jarvis/profiling/memory_profile_TIMESTAMP.json`
+
+**Success Criteria (Priority 3):**
+- ✅ Peak memory ≤ 800MB (33% reduction from 1.2GB baseline)
+- ✅ No degradation in accuracy/functionality
+- ✅ Adaptive behavior under memory pressure
+
+### Manual Monitoring
+
+Monitor memory usage during typical workflow:
+
+```bash
+# Terminal 1: Start JARVIS
+cd /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent
+python3 start_system.py
+
+# Terminal 2: Monitor memory
+watch -n 2 "ps aux | grep 'python.*start_system' | grep -v grep | awk '{print \$4\" \"\$6}'"
+```
+
+### Simulate Memory Pressure
+
+Test adaptive behavior under memory pressure:
+
+```bash
+# Create memory pressure (macOS)
+# WARNING: May slow down system temporarily
+python3 -c "
+import numpy as np
+import time
+
+# Allocate ~4GB to trigger YELLOW pressure
+arrays = []
+for i in range(40):
+    arrays.append(np.zeros((100, 1024, 1024), dtype=np.float32))
+    time.sleep(1)  # Gradual allocation
+    print(f'Allocated {(i+1) * 100}MB')
+
+input('Memory pressure created. Press Enter to release...')
+"
+```
+
+Then check JARVIS adapts its cache sizes and quality settings.
 
 ## macOS Integration
 
