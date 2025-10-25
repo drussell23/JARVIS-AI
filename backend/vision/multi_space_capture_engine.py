@@ -523,7 +523,7 @@ class MultiSpaceCaptureEngine:
         for space_id in request.space_ids:
             if request.use_cache:
                 cache_start = time.time()
-                cached = self.cache.get(space_id, request.quality, request.cache_ttl)
+                cached = await self.cache.get(space_id, request.quality, request.cache_ttl)
                 cache_time = time.time() - cache_start
 
                 if cached:
