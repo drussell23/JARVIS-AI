@@ -13,7 +13,7 @@ DEPLOYMENT_BUCKET="gs://jarvis-473803-deployments"
 echo "📥 Downloading latest deployment from Cloud Storage..."
 
 # Get latest commit for this branch
-LATEST_COMMIT=$(gsutil cat $DEPLOYMENT_BUCKET/latest-multi-monitor-support.txt 2>/dev/null || echo "")
+LATEST_COMMIT=$(gcloud storage cat $DEPLOYMENT_BUCKET/latest-multi-monitor-support.txt 2>/dev/null || echo "")
 
 if [ -z "$LATEST_COMMIT" ]; then
     echo "⚠️  No deployment found for branch multi-monitor-support, falling back to git clone..."
@@ -30,7 +30,7 @@ else
     mkdir -p "$PROJECT_DIR"
     cd "$PROJECT_DIR"
 
-    gsutil cp $DEPLOYMENT_BUCKET/jarvis-$LATEST_COMMIT.tar.gz /tmp/jarvis-deployment.tar.gz
+    gcloud storage cp $DEPLOYMENT_BUCKET/jarvis-$LATEST_COMMIT.tar.gz /tmp/jarvis-deployment.tar.gz
     tar -xzf /tmp/jarvis-deployment.tar.gz -C "$PROJECT_DIR"
     rm /tmp/jarvis-deployment.tar.gz
 

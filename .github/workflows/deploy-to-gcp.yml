@@ -97,12 +97,18 @@ jobs:
 
           # Upload to Cloud Storage
           echo "☁️  Uploading to Cloud Storage..."
-          gsutil mb ${DEPLOYMENT_BUCKET} 2>/dev/null || echo "Bucket already exists"
 
-          gsutil -m cp jarvis-${COMMIT}.tar.gz ${DEPLOYMENT_BUCKET}/
+          # Create bucket if it doesn't exist
+          gcloud storage buckets create ${DEPLOYMENT_BUCKET} \
+            --location=us-central1 \
+            --project=${{ secrets.GCP_PROJECT_ID }} 2>/dev/null || echo "Bucket already exists"
 
-          # Create latest symlink
-          echo "$COMMIT" | gsutil cp - ${DEPLOYMENT_BUCKET}/latest-${BRANCH}.txt
+          # Upload deployment package
+          gcloud storage cp jarvis-${COMMIT}.tar.gz ${DEPLOYMENT_BUCKET}/
+
+          # Create latest pointer
+          echo "$COMMIT" > latest-${BRANCH}.txt
+          gcloud storage cp latest-${BRANCH}.txt ${DEPLOYMENT_BUCKET}/
 
           # Create deployment metadata
           cat > deployment-metadata.json << METADATA
@@ -115,7 +121,7 @@ jobs:
           }
           METADATA
 
-          gsutil cp deployment-metadata.json ${DEPLOYMENT_BUCKET}/metadata-${COMMIT}.json
+          gcloud storage cp deployment-metadata.json ${DEPLOYMENT_BUCKET}/metadata-${COMMIT}.json
 
           echo "✅ Deployment package uploaded"
           echo "📍 Location: ${DEPLOYMENT_BUCKET}/jarvis-${COMMIT}.tar.gz"
@@ -193,7 +199,7 @@ jobs:
           echo "🔍 Verifying deployment package..."
 
           # Check if artifact exists
-          if gsutil ls ${DEPLOYMENT_BUCKET}/jarvis-${COMMIT}.tar.gz > /dev/null 2>&1; then
+          if gcloud storage ls ${DEPLOYMENT_BUCKET}/jarvis-${COMMIT}.tar.gz > /dev/null 2>&1; then
             echo "✅ Deployment artifact found"
           else
             echo "❌ Deployment artifact not found"
@@ -201,16 +207,16 @@ jobs:
           fi
 
           # Check if metadata exists
-          if gsutil ls ${DEPLOYMENT_BUCKET}/metadata-${COMMIT}.json > /dev/null 2>&1; then
+          if gcloud storage ls ${DEPLOYMENT_BUCKET}/metadata-${COMMIT}.json > /dev/null 2>&1; then
             echo "✅ Deployment metadata found"
-            gsutil cat ${DEPLOYMENT_BUCKET}/metadata-${COMMIT}.json
+            gcloud storage cat ${DEPLOYMENT_BUCKET}/metadata-${COMMIT}.json
           else
             echo "⚠️  Deployment metadata not found"
           fi
 
           # Check latest pointer
-          if gsutil ls ${DEPLOYMENT_BUCKET}/latest-${BRANCH}.txt > /dev/null 2>&1; then
-            LATEST_COMMIT=$(gsutil cat ${DEPLOYMENT_BUCKET}/latest-${BRANCH}.txt)
+          if gcloud storage ls ${DEPLOYMENT_BUCKET}/latest-${BRANCH}.txt > /dev/null 2>&1; then
+            LATEST_COMMIT=$(gcloud storage cat ${DEPLOYMENT_BUCKET}/latest-${BRANCH}.txt)
             echo "✅ Latest ${BRANCH} commit: ${LATEST_COMMIT}"
           else
             echo "⚠️  Latest ${BRANCH} pointer not found"
