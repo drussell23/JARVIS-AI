@@ -62,7 +62,9 @@ repos:
       - id: check-json
       - id: check-toml
       - id: end-of-file-fixer
+        exclude: '\.md$'  # Skip markdown files
       - id: trailing-whitespace
+        exclude: '\.md$'  # Skip markdown files
       - id: check-added-large-files
         args: ['--maxkb=1000']
       - id: check-merge-conflict
