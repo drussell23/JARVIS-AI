@@ -1,6 +1,17 @@
 #!/bin/bash
 # JARVIS Launcher with Robust Cleanup
-# Handles terminal close gracefully
+# DEPRECATED: This wrapper is no longer needed!
+# All cleanup logic has been integrated directly into start_system.py
+# You can now run: python start_system.py
+#
+# This script is kept for backward compatibility only.
+
+echo "⚠️  DEPRECATED: jarvis.sh wrapper is no longer needed"
+echo "   All cleanup logic is now integrated in start_system.py"
+echo "   Recommendation: Use 'python start_system.py' directly"
+echo ""
+echo "Continuing with python start_system.py..."
+echo ""
 
 set -e
 
