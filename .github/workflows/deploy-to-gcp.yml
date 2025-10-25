@@ -99,12 +99,23 @@ jobs:
           echo "☁️  Uploading to Cloud Storage..."
 
           # Create bucket if it doesn't exist
-          gcloud storage buckets create ${DEPLOYMENT_BUCKET} \
-            --location=us-central1 \
-            --project=${{ secrets.GCP_PROJECT_ID }} 2>/dev/null || echo "Bucket already exists"
+          if ! gcloud storage buckets describe ${DEPLOYMENT_BUCKET} > /dev/null 2>&1; then
+            echo "Creating bucket ${DEPLOYMENT_BUCKET}..."
+            gcloud storage buckets create ${DEPLOYMENT_BUCKET} \
+              --location=us-central1 \
+              --project=${{ secrets.GCP_PROJECT_ID }} || {
+                echo "⚠️  Bucket creation failed, but continuing (it may already exist)"
+              }
+          else
+            echo "✅ Bucket ${DEPLOYMENT_BUCKET} already exists"
+          fi
 
           # Upload deployment package
-          gcloud storage cp jarvis-${COMMIT}.tar.gz ${DEPLOYMENT_BUCKET}/
+          echo "📤 Uploading deployment package..."
+          gcloud storage cp jarvis-${COMMIT}.tar.gz ${DEPLOYMENT_BUCKET}/ || {
+            echo "❌ Failed to upload deployment package"
+            exit 1
+          }
 
           # Create latest pointer
           echo "$COMMIT" > latest-${BRANCH}.txt
