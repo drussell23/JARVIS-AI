@@ -286,7 +286,7 @@ class MultiSpaceCaptureEngine:
     Implements PRD requirements FR-1.1 through FR-1.6
     """
 
-    def __init__(self, cache_size_mb: int = 200):
+    def __init__(self, cache_size_mb: int = 200, memory_manager=None):
         self.cache = MultiSpaceCaptureCache(max_size_mb=cache_size_mb)
         self.space_switcher = None  # Will be initialized if needed
         self.executor = ThreadPoolExecutor(max_workers=4)
@@ -297,6 +297,26 @@ class MultiSpaceCaptureEngine:
         self.optimizer = None  # Will be set by vision intelligence
         self.monitoring_active = False  # Track if monitoring is active
         self.direct_capture = get_direct_capture() if get_direct_capture else None
+
+        # Memory manager integration
+        self.memory_manager = memory_manager
+        if memory_manager:
+            self.cache.set_memory_manager(memory_manager)
+
+        # Monitored spaces configuration (empty = all spaces)
+        monitored_env = os.getenv("MONITORED_SPACES", "")
+        self.monitored_spaces = []
+        if monitored_env:
+            try:
+                self.monitored_spaces = [int(s.strip()) for s in monitored_env.split(",")]
+                logger.info(f"🎯 Monitoring specific spaces: {self.monitored_spaces}")
+            except ValueError:
+                logger.warning(f"Invalid MONITORED_SPACES format: {monitored_env}")
+
+        # Monitor active only under pressure
+        self.monitor_active_only_on_pressure = (
+            os.getenv("MONITOR_ACTIVE_ONLY_PRESSURE", "true").lower() == "true"
+        )
         self.system_state_manager = get_system_state_manager() if SYSTEM_STATE_AVAILABLE else None
 
         # Initialize Capture Strategy Manager for intelligent fallbacks
@@ -540,6 +560,15 @@ class MultiSpaceCaptureEngine:
         """Capture a single space using best available method"""
         capture_start = time.time()
 
+        # Adapt quality based on memory pressure
+        effective_quality = self.get_quality_for_pressure(request.quality)
+
+        # Create modified request with adapted quality if needed
+        if effective_quality != request.quality:
+            from dataclasses import replace
+
+            request = replace(request, quality=effective_quality)
+
         # Try methods in order of preference
         # Determine current space to optimize method selection
         current_space_id = 1  # Default
@@ -577,7 +606,7 @@ class MultiSpaceCaptureEngine:
                     space_id=space_id,
                     capture_time=datetime.now(),
                     capture_method=CaptureMethod.SPACE_SWITCH,  # Using SPACE_SWITCH as CG falls under it
-                    quality=request.quality,
+                    quality=effective_quality,
                     resolution=(cg_screenshot.shape[1], cg_screenshot.shape[0]),
                     file_size=cg_screenshot.nbytes,
                     capture_duration=0.0,
@@ -621,7 +650,7 @@ class MultiSpaceCaptureEngine:
                         space_id=space_id,
                         capture_time=datetime.now(),
                         capture_method=method,
-                        quality=request.quality,
+                        quality=effective_quality,
                         resolution=(screenshot.shape[1], screenshot.shape[0]),
                         file_size=screenshot.nbytes,
                         capture_duration=time.time() - capture_start,
@@ -1026,9 +1055,73 @@ class MultiSpaceCaptureEngine:
             logger.error(f"Failed to get current space: {e}")
             return 1
 
+    async def get_spaces_to_monitor(self) -> List[int]:
+        """
+        Determine which spaces to monitor based on:
+        1. Configured monitored_spaces list (if set)
+        2. Memory pressure (active only if under pressure)
+        3. All spaces (if no pressure and no filter)
+        """
+        # If specific spaces configured, use those
+        if self.monitored_spaces:
+            return self.monitored_spaces
+
+        # Get all available spaces
+        all_spaces = await self.enumerate_spaces()
+
+        # Check memory pressure if manager available
+        if self.memory_manager and self.monitor_active_only_on_pressure:
+            should_monitor_all = self.memory_manager.should_monitor_all_spaces()
+
+            if not should_monitor_all:
+                # Under pressure - monitor active space only
+                current_space = await self.get_current_space()
+                logger.info(f"🔴 Memory pressure - monitoring active space {current_space} only")
+                return [current_space]
+
+        # Normal conditions - monitor all spaces
+        return all_spaces
+
+    def get_quality_for_pressure(self, requested_quality: CaptureQuality) -> CaptureQuality:
+        """
+        Adapt capture quality based on memory pressure.
+        Returns potentially degraded quality if system is under pressure.
+        """
+        if not self.memory_manager:
+            return requested_quality
+
+        recommended_quality_str = self.memory_manager.get_recommended_quality()
+
+        # Map quality string to enum
+        quality_map = {
+            "full": CaptureQuality.FULL,
+            "optimized": CaptureQuality.OPTIMIZED,
+            "fast": CaptureQuality.FAST,
+            "thumbnail": CaptureQuality.THUMBNAIL,
+        }
+
+        recommended_quality = quality_map.get(
+            recommended_quality_str.lower(), CaptureQuality.OPTIMIZED
+        )
+
+        # Don't upgrade quality, only maintain or degrade
+        if recommended_quality.value < requested_quality.value:
+            logger.info(
+                f"⚠️ Reducing capture quality from {requested_quality.value} to {recommended_quality.value} due to memory pressure"
+            )
+            return recommended_quality
+
+        return requested_quality
+
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics"""
-        return self.cache.get_stats()
+        stats = self.cache.get_stats()
+
+        # Add memory manager stats if available
+        if self.memory_manager:
+            stats["memory_pressure"] = self.memory_manager.get_stats_summary()
+
+        return stats
 
     async def clear_cache(self, space_ids: Optional[List[int]] = None):
         """Clear cache for specific spaces or all"""
