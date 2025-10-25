@@ -912,48 +912,64 @@ exit 1
         try:
             instance_name = f"jarvis-auto-{int(time.time())}"
 
-            # Generate startup script inline (no external file needed!)
+            # Generate startup script and write to temp file
             startup_script = self._generate_startup_script(gcp_config)
 
-            # Create GCP instance with appropriate machine type
-            machine_type = "e2-highmem-4"  # 4 vCPUs, 32GB RAM
+            # Write startup script to temporary file (avoids metadata parsing issues)
+            import tempfile
 
-            cmd = [
-                "gcloud",
-                "compute",
-                "instances",
-                "create",
-                instance_name,
-                "--project",
-                gcp_config["project_id"],
-                "--zone",
-                f"{gcp_config['region']}-a",
-                "--machine-type",
-                machine_type,
-                "--provisioning-model",
-                "SPOT",  # Use Spot VMs (60-91% cheaper)
-                "--instance-termination-action",
-                "DELETE",  # Auto-delete when preempted
-                "--max-run-duration",
-                "10800s",  # Max 3 hours (safety limit)
-                "--image-family",
-                "ubuntu-2204-lts",
-                "--image-project",
-                "ubuntu-os-cloud",
-                "--boot-disk-size",
-                "50GB",
-                "--metadata",
-                f"startup-script={startup_script}",  # Embedded inline!
-                "--tags",
-                "jarvis-auto",
-                "--labels",
-                f"components={'-'.join(components)},auto=true,spot=true",
-                "--format",
-                "json",
-            ]
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as f:
+                f.write(startup_script)
+                startup_script_path = f.name
 
-            logger.info(f"🔧 Running gcloud command: {' '.join(cmd[:8])}...")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            try:
+                # Create GCP instance with appropriate machine type
+                machine_type = "e2-highmem-4"  # 4 vCPUs, 32GB RAM
+
+                cmd = [
+                    "gcloud",
+                    "compute",
+                    "instances",
+                    "create",
+                    instance_name,
+                    "--project",
+                    gcp_config["project_id"],
+                    "--zone",
+                    f"{gcp_config['region']}-a",
+                    "--machine-type",
+                    machine_type,
+                    "--provisioning-model",
+                    "SPOT",  # Use Spot VMs (60-91% cheaper)
+                    "--instance-termination-action",
+                    "DELETE",  # Auto-delete when preempted
+                    "--max-run-duration",
+                    "10800s",  # Max 3 hours (safety limit)
+                    "--image-family",
+                    "ubuntu-2204-lts",
+                    "--image-project",
+                    "ubuntu-os-cloud",
+                    "--boot-disk-size",
+                    "50GB",
+                    "--metadata-from-file",
+                    f"startup-script={startup_script_path}",  # Use file instead of inline!
+                    "--tags",
+                    "jarvis-auto",
+                    "--labels",
+                    f"components={'-'.join(components)},auto=true,spot=true",
+                    "--format",
+                    "json",
+                ]
+
+                logger.info(f"🔧 Running gcloud command: {' '.join(cmd[:8])}...")
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            finally:
+                # Clean up temp file
+                import os
+
+                try:
+                    os.unlink(startup_script_path)
+                except:
+                    pass
 
             if result.returncode == 0:
                 import json
