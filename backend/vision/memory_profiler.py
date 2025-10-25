@@ -297,7 +297,7 @@ async def benchmark_multi_space_vision():
             request = SpaceCaptureRequest(
                 space_ids=[1, 2, 3], quality=CaptureQuality.OPTIMIZED, use_cache=True
             )
-            await engine.capture_all_spaces(request)
+            _ = await engine.capture_all_spaces(request)  # noqa: F841
             await asyncio.sleep(5)
 
     except Exception as e:
@@ -322,7 +322,7 @@ async def benchmark_semantic_cache():
             for i in range(10):
                 key = f"test_query_{i % 100}"
                 await cache.put(key, {"result": f"data_{i}"}, context={"test": True})
-                await cache.get(key)
+                _ = await cache.get(key)  # noqa: F841
             await asyncio.sleep(1)
 
     except Exception as e:
