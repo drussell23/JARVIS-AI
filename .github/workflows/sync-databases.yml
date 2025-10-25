@@ -17,6 +17,8 @@ jobs:
   sync:
     name: Sync Local → GCP Learning Data
     runs-on: ubuntu-latest
+    outputs:
+      vm_exists: ${{ steps.check_vm.outputs.vm_exists }}
 
     steps:
       - name: Checkout code
@@ -48,10 +50,39 @@ jobs:
           echo "📊 Preparing to sync learning databases..."
           echo "Mode: ${{ github.event.inputs.force_full_sync || 'incremental' }}"
 
-      - name: Sync to GCP
+      - name: Check if GCP VM exists
+        id: check_vm
         run: |
-          gcloud compute ssh ${{ secrets.GCP_VM_NAME }} \
-            --zone=${{ secrets.GCP_ZONE }} \
+          # Check if any JARVIS VMs are running
+          VM_COUNT=$(gcloud compute instances list \
+            --project=${{ secrets.GCP_PROJECT_ID }} \
+            --filter="name~'jarvis-auto-.*' AND status=RUNNING" \
+            --format="value(name)" | wc -l)
+
+          if [ "$VM_COUNT" -eq 0 ]; then
+            echo "⚠️  No JARVIS VMs currently running"
+            echo "vm_exists=false" >> $GITHUB_OUTPUT
+          else
+            VM_NAME=$(gcloud compute instances list \
+              --project=${{ secrets.GCP_PROJECT_ID }} \
+              --filter="name~'jarvis-auto-.*' AND status=RUNNING" \
+              --format="value(name)" | head -n1)
+            VM_ZONE=$(gcloud compute instances list \
+              --project=${{ secrets.GCP_PROJECT_ID }} \
+              --filter="name~'jarvis-auto-.*' AND status=RUNNING" \
+              --format="value(zone)" | head -n1)
+
+            echo "✅ Found VM: $VM_NAME in $VM_ZONE"
+            echo "vm_exists=true" >> $GITHUB_OUTPUT
+            echo "vm_name=$VM_NAME" >> $GITHUB_OUTPUT
+            echo "vm_zone=$VM_ZONE" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Sync to GCP
+        if: steps.check_vm.outputs.vm_exists == 'true'
+        run: |
+          gcloud compute ssh ${{ steps.check_vm.outputs.vm_name }} \
+            --zone=${{ steps.check_vm.outputs.vm_zone }} \
             --project=${{ secrets.GCP_PROJECT_ID }} \
             --command='bash -s' <<'ENDSSH'
           set -e
@@ -147,23 +178,35 @@ jobs:
           ENDSSH
 
       - name: Sync Summary
+        if: always()
         run: |
           echo "## 🔄 Database Sync Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Time:** $(date)" >> $GITHUB_STEP_SUMMARY
           echo "- **Mode:** ${{ github.event.inputs.force_full_sync || 'incremental' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Status:** ✅ Completed" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Actions Performed" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Aggregated learning data" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Cleaned up old patterns (30+ days)" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Optimized database" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Created backup" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.check_vm.outputs.vm_exists }}" == "true" ]; then
+            echo "- **Status:** ✅ Completed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Actions Performed" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Aggregated learning data" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Cleaned up old patterns (30+ days)" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Optimized database" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Created backup" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Status:** ⏭️ Skipped (No VMs running)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Info" >> $GITHUB_STEP_SUMMARY
+            echo "- No JARVIS VMs currently running" >> $GITHUB_STEP_SUMMARY
+            echo "- VMs are created on-demand when needed" >> $GITHUB_STEP_SUMMARY
+            echo "- Database sync will run when VM is active" >> $GITHUB_STEP_SUMMARY
+          fi
 
   health-check:
     name: Database Health Check
     runs-on: ubuntu-latest
     needs: sync
+    if: needs.sync.outputs.vm_exists == 'true'
 
     steps:
       - name: Authenticate to Google Cloud
@@ -176,10 +219,25 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
+      - name: Get VM info
+        id: vm_info
+        run: |
+          VM_NAME=$(gcloud compute instances list \
+            --project=${{ secrets.GCP_PROJECT_ID }} \
+            --filter="name~'jarvis-auto-.*' AND status=RUNNING" \
+            --format="value(name)" | head -n1)
+          VM_ZONE=$(gcloud compute instances list \
+            --project=${{ secrets.GCP_PROJECT_ID }} \
+            --filter="name~'jarvis-auto-.*' AND status=RUNNING" \
+            --format="value(zone)" | head -n1)
+
+          echo "vm_name=$VM_NAME" >> $GITHUB_OUTPUT
+          echo "vm_zone=$VM_ZONE" >> $GITHUB_OUTPUT
+
       - name: Check Database Health
         run: |
-          gcloud compute ssh ${{ secrets.GCP_VM_NAME }} \
-            --zone=${{ secrets.GCP_ZONE }} \
+          gcloud compute ssh ${{ steps.vm_info.outputs.vm_name }} \
+            --zone=${{ steps.vm_info.outputs.vm_zone }} \
             --project=${{ secrets.GCP_PROJECT_ID }} \
             --command='bash -s' <<'ENDSSH'
 
