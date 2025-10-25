@@ -1,0 +1,88 @@
+name: Setup Cost Monitoring
+
+on:
+  workflow_dispatch:
+    inputs:
+      alert_email:
+        description: 'Email for cost alerts'
+        required: false
+        default: ''
+
+jobs:
+  setup-cost-monitoring:
+    name: Initialize Cost Monitoring
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Install dependencies
+        run: |
+          pip install aiosqlite
+
+      - name: Create cost tracking directories
+        run: |
+          mkdir -p $HOME/.jarvis/logs
+          mkdir -p $HOME/.jarvis/learning
+
+      - name: Initialize cost tracking database
+        run: |
+          python3 - <<'EOF'
+          import asyncio
+          import sys
+          from pathlib import Path
+
+          # Add backend to path
+          backend_dir = Path.cwd() / "backend"
+          sys.path.insert(0, str(backend_dir))
+
+          from core.cost_tracker import initialize_cost_tracking
+
+          async def main():
+              await initialize_cost_tracking()
+              print("✅ Cost tracking database initialized")
+
+          asyncio.run(main())
+          EOF
+
+      - name: List GCP instances
+        run: |
+          echo "📊 Current GCP instances:"
+          gcloud compute instances list \
+            --project=${{ secrets.GCP_PROJECT_ID }} \
+            --filter="name~'jarvis-auto-.*'" || echo "No instances found"
+
+      - name: Display cost monitoring info
+        run: |
+          echo "=========================================="
+          echo "✅ Cost Monitoring Setup Complete"
+          echo "=========================================="
+          echo ""
+          echo "Database: $HOME/.jarvis/learning/cost_tracking.db"
+          echo ""
+          echo "⚠️  Manual steps required:"
+          echo "1. Configure GCP Budget Alerts:"
+          echo "   https://console.cloud.google.com/billing/budgets"
+          echo ""
+          echo "2. Set up email alerts (optional):"
+          echo "   - Add JARVIS_ALERT_EMAIL to GitHub secrets"
+          echo "   - Or configure in .env file"
+          echo ""
+          echo "3. Run cleanup script manually or via cron:"
+          echo "   bash scripts/cleanup_orphaned_vms.sh"

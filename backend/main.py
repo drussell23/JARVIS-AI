@@ -2742,6 +2742,20 @@ def mount_routers():
     except ImportError as e:
         logger.warning(f"Autonomous Service API not available: {e}")
 
+    # Mount Hybrid Cloud Cost Monitoring API
+    try:
+        from core.cost_tracker import initialize_cost_tracking
+        from routers.hybrid import router as hybrid_router
+
+        app.include_router(hybrid_router)
+        logger.info("✅ Hybrid Cloud Cost Monitoring API mounted at /hybrid")
+
+        # Initialize cost tracking database
+        asyncio.create_task(initialize_cost_tracking())
+
+    except ImportError as e:
+        logger.warning(f"Hybrid Cloud API not available: {e}")
+
     # Mount static files for auto-config script
     try:
         import os
