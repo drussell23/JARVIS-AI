@@ -6,23 +6,22 @@ According to PRD requirements FR-1 and NFR-1
 """
 
 import asyncio
-import subprocess
-import time
 import hashlib
-from typing import Dict, List, Optional, Any, Tuple, Set, Callable
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from enum import Enum
 import logging
-import numpy as np
-from PIL import Image
-import io
-import base64
-from pathlib import Path
-import json
+import os
+import subprocess
+import tempfile
+import time
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
-import threading
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+import numpy as np
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +29,12 @@ logger = logging.getLogger(__name__)
 try:
     from .direct_swift_capture import get_direct_capture, is_direct_capturing
 except ImportError:
-    logger.warning(
-        "Direct Swift capture not available - purple indicator will not work"
-    )
+    logger.warning("Direct Swift capture not available - purple indicator will not work")
     get_direct_capture = None
-    is_direct_capturing = lambda: False
+
+    def is_direct_capturing():
+        return False
+
 
 # Import vision status manager
 try:
@@ -47,15 +47,20 @@ except ImportError:
 try:
     import sys
     from pathlib import Path as PathLib
+
     backend_path = PathLib(__file__).parent.parent
     if str(backend_path) not in sys.path:
         sys.path.insert(0, str(backend_path))
-    from context_intelligence.managers.window_capture_manager import get_window_capture_manager
-    from context_intelligence.managers.system_state_manager import get_system_state_manager, SystemHealth
     from context_intelligence.managers.capture_strategy_manager import (
         get_capture_strategy_manager,
-        initialize_capture_strategy_manager
+        initialize_capture_strategy_manager,
     )
+    from context_intelligence.managers.system_state_manager import (
+        SystemHealth,
+        get_system_state_manager,
+    )
+    from context_intelligence.managers.window_capture_manager import get_window_capture_manager
+
     WINDOW_CAPTURE_AVAILABLE = True
     SYSTEM_STATE_AVAILABLE = True
     CAPTURE_STRATEGY_AVAILABLE = True
@@ -136,30 +141,119 @@ class SpaceCaptureResult:
 
 
 class MultiSpaceCaptureCache:
-    """Smart caching system for multi-space screenshots"""
+    """
+    Smart caching system for multi-space screenshots.
+    Adapts to macOS memory pressure dynamically (NO HARDCODING).
+    """
 
-    def __init__(self, max_size_mb: int = 200, default_ttl: int = 30):
-        self.max_size_mb = max_size_mb
-        self.default_ttl = default_ttl
-        self.cache: OrderedDict[
-            str, Tuple[np.ndarray, SpaceCaptureMetadata, datetime]
-        ] = OrderedDict()
+    def __init__(self, max_size_mb: Optional[int] = None, default_ttl: Optional[int] = None):
+        # Dynamic configuration from environment
+        self.max_size_mb = max_size_mb or int(os.getenv("CACHE_MAX_SIZE_MB", "200"))
+        self.default_ttl = default_ttl or int(os.getenv("CACHE_DEFAULT_TTL", "30"))
+
+        # Async-compatible lock
+        self.lock = asyncio.Lock()
+
+        # Cache storage
+        self.cache: OrderedDict[str, Tuple[np.ndarray, SpaceCaptureMetadata, datetime]] = (
+            OrderedDict()
+        )
         self.size_bytes = 0
-        self.lock = threading.Lock()
+
+        # Statistics
         self.hit_count = 0
         self.miss_count = 0
+
+        # Memory pressure integration
+        self._memory_manager = None
+        self._dynamic_sizing = os.getenv("CACHE_DYNAMIC_SIZING", "true").lower() == "true"
+
+        # Compression settings
+        self.compression_quality = int(os.getenv("IMAGE_COMPRESSION_QUALITY", "85"))
+        self.enable_aggressive_compression = (
+            os.getenv("ENABLE_AGGRESSIVE_COMPRESSION", "true").lower() == "true"
+        )
+
+        # Parse thumbnail size
+        thumbnail_size_str = os.getenv("IMAGE_THUMBNAIL_SIZE", "400,300")
+        try:
+            w, h = thumbnail_size_str.split(",")
+            self.thumbnail_size = (int(w.strip()), int(h.strip()))
+        except ValueError:
+            self.thumbnail_size = (400, 300)
+            logger.warning(f"Invalid IMAGE_THUMBNAIL_SIZE: {thumbnail_size_str}, using (400, 300)")
 
     def _get_cache_key(self, space_id: int, quality: CaptureQuality) -> str:
         """Generate cache key for space and quality"""
         return f"space_{space_id}_{quality.value}"
 
-    def get(
+    def set_memory_manager(self, manager):
+        """Set memory manager for dynamic sizing"""
+        self._memory_manager = manager
+        logger.info("✅ Cache connected to memory pressure manager")
+
+    def _compress_image(self, screenshot: np.ndarray, quality: CaptureQuality) -> np.ndarray:
+        """
+        Compress image to reduce memory footprint.
+        Applied based on quality level and memory pressure.
+        """
+        if not self.enable_aggressive_compression:
+            return screenshot
+
+        # Check if we should compress based on memory pressure
+        should_compress = False
+        if self._memory_manager:
+            from .macos_memory_manager import MemoryPressure
+
+            pressure = self._memory_manager.current_pressure
+            # Compress on yellow/red pressure, or for thumbnail quality always
+            should_compress = (
+                pressure == MemoryPressure.YELLOW
+                or pressure == MemoryPressure.RED
+                or quality == CaptureQuality.THUMBNAIL
+            )
+        else:
+            # No memory manager - compress thumbnails only
+            should_compress = quality == CaptureQuality.THUMBNAIL
+
+        if not should_compress:
+            return screenshot
+
+        try:
+            # Convert to PIL Image
+            img = Image.fromarray(screenshot)
+
+            # Resize if thumbnail quality
+            if quality == CaptureQuality.THUMBNAIL:
+                img.thumbnail(self.thumbnail_size, Image.Resampling.LANCZOS)
+
+            # Compress via JPEG encode/decode cycle (lossy compression)
+            import io
+
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG", quality=self.compression_quality, optimize=True)
+            buffer.seek(0)
+            compressed_img = Image.open(buffer)
+
+            # Convert back to numpy array
+            compressed = np.array(compressed_img)
+
+            reduction = 100 * (1 - compressed.nbytes / screenshot.nbytes)
+            logger.debug(f"Compressed image: {reduction:.1f}% size reduction")
+
+            return compressed
+
+        except Exception as e:
+            logger.warning(f"Image compression failed: {e}, using original")
+            return screenshot
+
+    async def get(
         self, space_id: int, quality: CaptureQuality, max_age: Optional[int] = None
     ) -> Optional[Tuple[np.ndarray, SpaceCaptureMetadata]]:
-        """Retrieve cached screenshot if valid"""
+        """Retrieve cached screenshot if valid (async)"""
         key = self._get_cache_key(space_id, quality)
 
-        with self.lock:
+        async with self.lock:
             if key not in self.cache:
                 self.miss_count += 1
                 return None
@@ -182,30 +276,37 @@ class MultiSpaceCaptureCache:
 
             return screenshot, metadata
 
-    def put(
-        self, space_id: int, screenshot: np.ndarray, metadata: SpaceCaptureMetadata
-    ):
-        """Cache a screenshot"""
+    async def put(self, space_id: int, screenshot: np.ndarray, metadata: SpaceCaptureMetadata):
+        """Cache a screenshot (async, memory-pressure aware with compression)"""
         key = self._get_cache_key(space_id, metadata.quality)
 
-        with self.lock:
+        # Apply compression before caching
+        compressed_screenshot = self._compress_image(screenshot, metadata.quality)
+
+        async with self.lock:
             # Remove old entry if exists
             if key in self.cache:
                 self._remove_entry(key)
 
+            # Get dynamic size limit based on memory pressure
+            size_limit_mb = await self._get_effective_size_limit()
+
             # Check size limit
-            entry_size = screenshot.nbytes
-            while (
-                self.size_bytes + entry_size > self.max_size_mb * 1024 * 1024
-                and self.cache
-            ):
+            entry_size = compressed_screenshot.nbytes
+            while self.size_bytes + entry_size > size_limit_mb * 1024 * 1024 and self.cache:
                 # Remove oldest
                 oldest_key = next(iter(self.cache))
                 self._remove_entry(oldest_key)
 
-            # Add new entry
-            self.cache[key] = (screenshot, metadata, datetime.now())
+            # Add new entry (with compressed screenshot)
+            self.cache[key] = (compressed_screenshot, metadata, datetime.now())
             self.size_bytes += entry_size
+
+    async def _get_effective_size_limit(self) -> int:
+        """Get effective cache size limit based on memory pressure"""
+        if self._dynamic_sizing and self._memory_manager:
+            return self._memory_manager.get_recommended_cache_size()
+        return self.max_size_mb
 
     def _remove_entry(self, key: str):
         """Remove entry from cache"""
@@ -214,14 +315,30 @@ class MultiSpaceCaptureCache:
             self.size_bytes -= screenshot.nbytes
             del self.cache[key]
 
-    def clear(self):
-        """Clear all cached data"""
-        with self.lock:
+    async def clear(self):
+        """Clear all cached data (async)"""
+        async with self.lock:
             self.cache.clear()
             self.size_bytes = 0
+            logger.info("🗑️  Cache cleared")
+
+    async def evict_to_target_size(self, target_mb: int):
+        """Aggressively evict cache entries to reach target size"""
+        async with self.lock:
+            target_bytes = target_mb * 1024 * 1024
+            evicted = 0
+
+            while self.size_bytes > target_bytes and self.cache:
+                # Remove oldest entry
+                oldest_key = next(iter(self.cache))
+                self._remove_entry(oldest_key)
+                evicted += 1
+
+            if evicted > 0:
+                logger.info(f"🗑️  Evicted {evicted} cache entries due to memory pressure")
 
     def get_stats(self) -> Dict[str, Any]:
-        """Get cache statistics"""
+        """Get cache statistics with compression info"""
         total_requests = self.hit_count + self.miss_count
         hit_rate = self.hit_count / total_requests if total_requests > 0 else 0
 
@@ -232,6 +349,10 @@ class MultiSpaceCaptureCache:
             "hit_count": self.hit_count,
             "miss_count": self.miss_count,
             "hit_rate": hit_rate,
+            "dynamic_sizing": self._dynamic_sizing,
+            "compression_enabled": self.enable_aggressive_compression,
+            "compression_quality": self.compression_quality,
+            "thumbnail_size": self.thumbnail_size,
         }
 
 
@@ -241,7 +362,7 @@ class MultiSpaceCaptureEngine:
     Implements PRD requirements FR-1.1 through FR-1.6
     """
 
-    def __init__(self, cache_size_mb: int = 200):
+    def __init__(self, cache_size_mb: int = 200, memory_manager=None):
         self.cache = MultiSpaceCaptureCache(max_size_mb=cache_size_mb)
         self.space_switcher = None  # Will be initialized if needed
         self.executor = ThreadPoolExecutor(max_workers=4)
@@ -252,6 +373,26 @@ class MultiSpaceCaptureEngine:
         self.optimizer = None  # Will be set by vision intelligence
         self.monitoring_active = False  # Track if monitoring is active
         self.direct_capture = get_direct_capture() if get_direct_capture else None
+
+        # Memory manager integration
+        self.memory_manager = memory_manager
+        if memory_manager:
+            self.cache.set_memory_manager(memory_manager)
+
+        # Monitored spaces configuration (empty = all spaces)
+        monitored_env = os.getenv("MONITORED_SPACES", "")
+        self.monitored_spaces = []
+        if monitored_env:
+            try:
+                self.monitored_spaces = [int(s.strip()) for s in monitored_env.split(",")]
+                logger.info(f"🎯 Monitoring specific spaces: {self.monitored_spaces}")
+            except ValueError:
+                logger.warning(f"Invalid MONITORED_SPACES format: {monitored_env}")
+
+        # Monitor active only under pressure
+        self.monitor_active_only_on_pressure = (
+            os.getenv("MONITOR_ACTIVE_ONLY_PRESSURE", "true").lower() == "true"
+        )
         self.system_state_manager = get_system_state_manager() if SYSTEM_STATE_AVAILABLE else None
 
         # Initialize Capture Strategy Manager for intelligent fallbacks
@@ -265,7 +406,7 @@ class MultiSpaceCaptureEngine:
                     self.capture_strategy_manager = initialize_capture_strategy_manager(
                         cache_ttl=60.0,  # 60-second cache
                         max_cache_entries=100,
-                        enable_error_matrix=True
+                        enable_error_matrix=True,
                     )
                 logger.info("✅ Capture Strategy Manager available for intelligent fallbacks")
             except Exception as e:
@@ -339,9 +480,7 @@ class MultiSpaceCaptureEngine:
             logger.error(f"[SYSTEM-HEALTH] Error checking system health: {e}")
             return True, "Health check failed, proceeding anyway", None
 
-    async def capture_all_spaces(
-        self, request: SpaceCaptureRequest
-    ) -> SpaceCaptureResult:
+    async def capture_all_spaces(self, request: SpaceCaptureRequest) -> SpaceCaptureResult:
         """
         Capture screenshots from all requested spaces
         Implements PRD FR-1.1: Capture screenshots from any desktop space
@@ -359,7 +498,7 @@ class MultiSpaceCaptureEngine:
                 metadata={},
                 success=False,
                 total_duration=time.time() - start_time,
-                errors={-1: health_message}  # Use -1 as system-level error
+                errors={-1: health_message},  # Use -1 as system-level error
             )
 
         if state_info and state_info.health == SystemHealth.DEGRADED:
@@ -368,9 +507,7 @@ class MultiSpaceCaptureEngine:
 
         # If monitoring is active with purple indicator, use that for better performance
         if self.monitoring_active and is_direct_capturing():
-            logger.info(
-                "Using active monitoring session with purple indicator for captures"
-            )
+            logger.info("Using active monitoring session with purple indicator for captures")
 
         # Optimize request if optimizer available
         if self.optimizer:
@@ -386,7 +523,7 @@ class MultiSpaceCaptureEngine:
         for space_id in request.space_ids:
             if request.use_cache:
                 cache_start = time.time()
-                cached = self.cache.get(space_id, request.quality, request.cache_ttl)
+                cached = await self.cache.get(space_id, request.quality, request.cache_ttl)
                 cache_time = time.time() - cache_start
 
                 if cached:
@@ -398,9 +535,7 @@ class MultiSpaceCaptureEngine:
 
                     # Track performance if optimizer available
                     if self.optimizer:
-                        self.optimizer.track_capture_performance(
-                            space_id, cache_time, True
-                        )
+                        self.optimizer.track_capture_performance(space_id, cache_time, True)
                     continue
 
             spaces_to_capture.append(space_id)
@@ -409,14 +544,10 @@ class MultiSpaceCaptureEngine:
         if spaces_to_capture:
             if request.parallel and len(spaces_to_capture) > 1:
                 # Parallel capture
-                capture_results = await self._capture_parallel(
-                    spaces_to_capture, request
-                )
+                capture_results = await self._capture_parallel(spaces_to_capture, request)
             else:
                 # Sequential capture
-                capture_results = await self._capture_sequential(
-                    spaces_to_capture, request
-                )
+                capture_results = await self._capture_sequential(spaces_to_capture, request)
 
             # Process results
             for space_id, (success, screenshot, meta, error) in capture_results.items():
@@ -461,13 +592,9 @@ class MultiSpaceCaptureEngine:
             new_captures=new_captures,
         )
 
-    async def _capture_parallel(
-        self, space_ids: List[int], request: SpaceCaptureRequest
-    ) -> Dict[
+    async def _capture_parallel(self, space_ids: List[int], request: SpaceCaptureRequest) -> Dict[
         int,
-        Tuple[
-            bool, Optional[np.ndarray], Optional[SpaceCaptureMetadata], Optional[str]
-        ],
+        Tuple[bool, Optional[np.ndarray], Optional[SpaceCaptureMetadata], Optional[str]],
     ]:
         """Capture multiple spaces in parallel"""
         tasks = []
@@ -486,13 +613,9 @@ class MultiSpaceCaptureEngine:
 
         return results
 
-    async def _capture_sequential(
-        self, space_ids: List[int], request: SpaceCaptureRequest
-    ) -> Dict[
+    async def _capture_sequential(self, space_ids: List[int], request: SpaceCaptureRequest) -> Dict[
         int,
-        Tuple[
-            bool, Optional[np.ndarray], Optional[SpaceCaptureMetadata], Optional[str]
-        ],
+        Tuple[bool, Optional[np.ndarray], Optional[SpaceCaptureMetadata], Optional[str]],
     ]:
         """Capture spaces sequentially"""
         results = {}
@@ -509,11 +632,18 @@ class MultiSpaceCaptureEngine:
 
     async def _capture_single_space(
         self, space_id: int, request: SpaceCaptureRequest
-    ) -> Tuple[
-        bool, Optional[np.ndarray], Optional[SpaceCaptureMetadata], Optional[str]
-    ]:
+    ) -> Tuple[bool, Optional[np.ndarray], Optional[SpaceCaptureMetadata], Optional[str]]:
         """Capture a single space using best available method"""
         capture_start = time.time()
+
+        # Adapt quality based on memory pressure
+        effective_quality = self.get_quality_for_pressure(request.quality)
+
+        # Create modified request with adapted quality if needed
+        if effective_quality != request.quality:
+            from dataclasses import replace
+
+            request = replace(request, quality=effective_quality)
 
         # Try methods in order of preference
         # Determine current space to optimize method selection
@@ -530,9 +660,7 @@ class MultiSpaceCaptureEngine:
         # Smart method selection based on whether we're capturing current or other space
         if space_id == current_space_id:
             # Current space - use fast screencapture
-            logger.info(
-                f"[CAPTURE] Space {space_id} is current space - using screencapture"
-            )
+            logger.info(f"[CAPTURE] Space {space_id} is current space - using screencapture")
             methods_to_try = [
                 CaptureMethod.SCREENCAPTURE_API,
                 CaptureMethod.SWIFT_CAPTURE,
@@ -554,7 +682,7 @@ class MultiSpaceCaptureEngine:
                     space_id=space_id,
                     capture_time=datetime.now(),
                     capture_method=CaptureMethod.SPACE_SWITCH,  # Using SPACE_SWITCH as CG falls under it
-                    quality=request.quality,
+                    quality=effective_quality,
                     resolution=(cg_screenshot.shape[1], cg_screenshot.shape[0]),
                     file_size=cg_screenshot.nbytes,
                     capture_duration=0.0,
@@ -591,31 +719,29 @@ class MultiSpaceCaptureEngine:
                         if hasattr(w, "space_id") and w.space_id == space_id
                     ]
 
-                    apps = list(
-                        set(w.app_name for w in space_windows if hasattr(w, "app_name"))
-                    )
+                    apps = list(set(w.app_name for w in space_windows if hasattr(w, "app_name")))
 
                     # Create metadata
                     metadata = SpaceCaptureMetadata(
                         space_id=space_id,
                         capture_time=datetime.now(),
                         capture_method=method,
-                        quality=request.quality,
+                        quality=effective_quality,
                         resolution=(screenshot.shape[1], screenshot.shape[0]),
                         file_size=screenshot.nbytes,
                         capture_duration=time.time() - capture_start,
                         applications=apps[:10],  # Top 10 apps
                         window_count=len(space_windows),
                         is_active_space=(space_id == self.current_space_id),
-                        content_hash=hashlib.md5(screenshot.tobytes()).hexdigest(),
+                        content_hash=hashlib.md5(
+                            screenshot.tobytes(), usedforsecurity=False
+                        ).hexdigest(),
                     )
 
                     return True, screenshot, metadata, None
 
             except Exception as e:
-                logger.warning(
-                    f"Method {method.value} failed for space {space_id}: {e}"
-                )
+                logger.warning(f"Method {method.value} failed for space {space_id}: {e}")
                 continue
 
         return False, None, None, "All capture methods failed"
@@ -631,9 +757,7 @@ class MultiSpaceCaptureEngine:
             and self.monitoring_active
             and is_direct_capturing()
         ):
-            logger.info(
-                f"Using active purple indicator session for space {space_id} capture"
-            )
+            logger.info(f"Using active purple indicator session for space {space_id} capture")
             # The Swift capture can leverage the existing session
             return await self._capture_with_swift_monitoring(space_id, request.quality)
 
@@ -657,12 +781,19 @@ class MultiSpaceCaptureEngine:
         self, space_id: int, quality: CaptureQuality
     ) -> Optional[np.ndarray]:
         """Use macOS screencapture command with robust async subprocess management"""
-        from .async_subprocess_manager import get_subprocess_manager
+        try:
+            from .async_subprocess_manager import get_subprocess_manager
+        except ImportError:
+            from async_subprocess_manager import get_subprocess_manager
 
         temp_path = None
+        temp_fd = None
         try:
-            # Create temporary file
-            temp_path = f"/tmp/jarvis_space_{space_id}_{int(time.time())}.png"
+            # Create temporary file securely
+            temp_fd, temp_path = tempfile.mkstemp(suffix=".png", prefix=f"jarvis_space_{space_id}_")
+            # Close the file descriptor so screencapture can write to it
+            os.close(temp_fd)
+            temp_fd = None  # Mark as closed
 
             # Build command
             cmd = ["screencapture", "-x", "-C"]  # -x: no sound, -C: capture cursor
@@ -685,9 +816,7 @@ class MultiSpaceCaptureEngine:
 
             if return_code != 0:
                 error_msg = stderr.decode("utf-8", errors="ignore") if stderr else ""
-                logger.error(
-                    f"Screencapture failed with code {return_code}: {error_msg}"
-                )
+                logger.error(f"Screencapture failed with code {return_code}: {error_msg}")
                 return None
 
             # Check if capture succeeded
@@ -713,6 +842,12 @@ class MultiSpaceCaptureEngine:
         except Exception as e:
             logger.error(f"Screencapture failed: {e}")
         finally:
+            # Close temp file descriptor
+            if temp_fd is not None:
+                try:
+                    os.close(temp_fd)
+                except:
+                    pass
             # Clean up temp file if it exists
             if temp_path and Path(temp_path).exists():
                 try:
@@ -769,10 +904,12 @@ class MultiSpaceCaptureEngine:
             )
 
             # Import our CG capture module
-            from .cg_window_capture import CGWindowCapture
-
-            # Get window info to find what's in the target space
-            from .multi_space_window_detector import MultiSpaceWindowDetector
+            try:
+                from .cg_window_capture import CGWindowCapture
+                from .multi_space_window_detector import MultiSpaceWindowDetector
+            except ImportError:
+                from cg_window_capture import CGWindowCapture
+                from multi_space_window_detector import MultiSpaceWindowDetector
 
             detector = MultiSpaceWindowDetector()
             window_data = detector.get_all_windows_across_spaces()
@@ -794,8 +931,7 @@ class MultiSpaceCaptureEngine:
 
             # Look specifically for Terminal first if that's what was requested
             query_wants_terminal = any(
-                term in str(request.reason).lower()
-                for term in ["terminal", "shell", "command"]
+                term in str(request.reason).lower() for term in ["terminal", "shell", "command"]
             )
             logger.info(
                 f"[CG_CAPTURE] Query wants terminal: {query_wants_terminal}, reason: {request.reason}"
@@ -854,9 +990,7 @@ class MultiSpaceCaptureEngine:
                         if hasattr(window, "window_id"):
                             window_id = window.window_id
                         else:
-                            window_id = CGWindowCapture.find_window_by_name(
-                                app_name, window_title
-                            )
+                            window_id = CGWindowCapture.find_window_by_name(app_name, window_title)
 
                         if window_id:
                             # Try WindowCaptureManager first for robust edge case handling
@@ -867,9 +1001,7 @@ class MultiSpaceCaptureEngine:
                                 try:
                                     capture_manager = get_window_capture_manager()
                                     capture_result = await capture_manager.capture_window(
-                                        window_id=window_id,
-                                        space_id=space_id,
-                                        use_fallback=True
+                                        window_id=window_id, space_id=space_id, use_fallback=True
                                     )
 
                                     if capture_result.success:
@@ -901,34 +1033,34 @@ class MultiSpaceCaptureEngine:
                                 )
                                 return screenshot
 
-            logger.warning(
-                f"[CG_CAPTURE] Could not capture any windows from space {space_id}"
-            )
+            logger.warning(f"[CG_CAPTURE] Could not capture any windows from space {space_id}")
             return None
 
         except Exception as e:
-            logger.error(
-                f"[CG_CAPTURE] Error during CG window capture: {e}", exc_info=True
-            )
+            logger.error(f"[CG_CAPTURE] Error during CG window capture: {e}", exc_info=True)
             return None
 
     async def _capture_with_space_switch(
         self, space_id: int, request: SpaceCaptureRequest
     ) -> Optional[np.ndarray]:
         """Use space switching as last resort"""
-        logger.info(
-            f"[SPACE_SWITCH] Attempting to capture space {space_id} via space switching"
-        )
+        logger.info(f"[SPACE_SWITCH] Attempting to capture space {space_id} via space switching")
 
         if not self.space_switcher:
             # Initialize space switcher
             logger.info("[SPACE_SWITCH] Initializing MinimalSpaceSwitcher")
-            from .minimal_space_switcher import MinimalSpaceSwitcher
+            try:
+                from .minimal_space_switcher import MinimalSpaceSwitcher, SwitchRequest
+            except ImportError:
+                from minimal_space_switcher import MinimalSpaceSwitcher, SwitchRequest
 
             self.space_switcher = MinimalSpaceSwitcher()
-
-        # Import SwitchRequest here to avoid circular imports
-        from .minimal_space_switcher import SwitchRequest
+        else:
+            # Import SwitchRequest here to avoid circular imports
+            try:
+                from .minimal_space_switcher import SwitchRequest
+            except ImportError:
+                from minimal_space_switcher import SwitchRequest
 
         # Create switch request
         switch_req = SwitchRequest(
@@ -945,25 +1077,19 @@ class MultiSpaceCaptureEngine:
             return await self._capture_with_screencapture(space_id, request.quality)
 
         # Quick switch and capture
-        logger.info(
-            f"[SPACE_SWITCH] Calling quick_capture_and_return for space {space_id}"
-        )
+        logger.info(f"[SPACE_SWITCH] Calling quick_capture_and_return for space {space_id}")
         try:
             screenshot = await self.space_switcher.quick_capture_and_return(
                 space_id, capture_callback
             )
             if screenshot is not None:
-                logger.info(
-                    f"[SPACE_SWITCH] Successfully captured space {space_id} via switching"
-                )
+                logger.info(f"[SPACE_SWITCH] Successfully captured space {space_id} via switching")
             else:
                 logger.warning(
                     f"[SPACE_SWITCH] Failed to capture space {space_id} - screenshot is None"
                 )
         except Exception as e:
-            logger.error(
-                f"[SPACE_SWITCH] Error during space switch capture: {e}", exc_info=True
-            )
+            logger.error(f"[SPACE_SWITCH] Error during space switch capture: {e}", exc_info=True)
             screenshot = None
 
         return screenshot
@@ -1016,9 +1142,73 @@ class MultiSpaceCaptureEngine:
             logger.error(f"Failed to get current space: {e}")
             return 1
 
+    async def get_spaces_to_monitor(self) -> List[int]:
+        """
+        Determine which spaces to monitor based on:
+        1. Configured monitored_spaces list (if set)
+        2. Memory pressure (active only if under pressure)
+        3. All spaces (if no pressure and no filter)
+        """
+        # If specific spaces configured, use those
+        if self.monitored_spaces:
+            return self.monitored_spaces
+
+        # Get all available spaces
+        all_spaces = await self.enumerate_spaces()
+
+        # Check memory pressure if manager available
+        if self.memory_manager and self.monitor_active_only_on_pressure:
+            should_monitor_all = self.memory_manager.should_monitor_all_spaces()
+
+            if not should_monitor_all:
+                # Under pressure - monitor active space only
+                current_space = await self.get_current_space()
+                logger.info(f"🔴 Memory pressure - monitoring active space {current_space} only")
+                return [current_space]
+
+        # Normal conditions - monitor all spaces
+        return all_spaces
+
+    def get_quality_for_pressure(self, requested_quality: CaptureQuality) -> CaptureQuality:
+        """
+        Adapt capture quality based on memory pressure.
+        Returns potentially degraded quality if system is under pressure.
+        """
+        if not self.memory_manager:
+            return requested_quality
+
+        recommended_quality_str = self.memory_manager.get_recommended_quality()
+
+        # Map quality string to enum
+        quality_map = {
+            "full": CaptureQuality.FULL,
+            "optimized": CaptureQuality.OPTIMIZED,
+            "fast": CaptureQuality.FAST,
+            "thumbnail": CaptureQuality.THUMBNAIL,
+        }
+
+        recommended_quality = quality_map.get(
+            recommended_quality_str.lower(), CaptureQuality.OPTIMIZED
+        )
+
+        # Don't upgrade quality, only maintain or degrade
+        if recommended_quality.value < requested_quality.value:
+            logger.info(
+                f"⚠️ Reducing capture quality from {requested_quality.value} to {recommended_quality.value} due to memory pressure"
+            )
+            return recommended_quality
+
+        return requested_quality
+
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics"""
-        return self.cache.get_stats()
+        stats = self.cache.get_stats()
+
+        # Add memory manager stats if available
+        if self.memory_manager:
+            stats["memory_pressure"] = self.memory_manager.get_stats_summary()
+
+        return stats
 
     async def clear_cache(self, space_ids: Optional[List[int]] = None):
         """Clear cache for specific spaces or all"""
@@ -1063,9 +1253,7 @@ class MultiSpaceCaptureEngine:
 
                 if len(current_spaces) != last_space_count:
                     # Spaces changed
-                    logger.info(
-                        f"Space count changed: {last_space_count} -> {len(current_spaces)}"
-                    )
+                    logger.info(f"Space count changed: {last_space_count} -> {len(current_spaces)}")
                     await callback(current_spaces)
                     last_space_count = len(current_spaces)
 
