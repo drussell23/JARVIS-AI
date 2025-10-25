@@ -2199,14 +2199,14 @@ logger = logging.getLogger(__name__)
 class UnifiedAwarenessEngine(BaseAgent):
     """
     Master intelligence coordinator for JARVIS
-    
+
     Enhanced with Neural Mesh:
     - Aggregates context from all 60+ agents via Communication Bus
     - Shares insights through Knowledge Graph
     - Orchestrates multi-agent workflows for complex tasks
     - Learns from every interaction
     """
-    
+
     def __init__(self):
         super().__init__(
             agent_name="UAE",
@@ -2220,49 +2220,49 @@ class UnifiedAwarenessEngine(BaseAgent):
             },
             backend="local"  # UAE always runs locally for real-time
         )
-        
+
         # UAE-specific state
         self.current_context = {}
         self.active_intents = []
         self.decision_history = []
-        
+
         # Performance tracking
         self.context_update_count = 0
         self.intent_predictions = 0
         self.workflow_orchestrations = 0
-        
+
     async def on_initialize(self):
         """Initialize UAE with Neural Mesh subscriptions"""
         logger.info("Initializing UAE with Neural Mesh...")
-        
+
         # Subscribe to all agent context updates
         await self.message_bus.subscribe(
             self.agent_name,
             MessageType.CUSTOM,
             self._handle_agent_context_update
         )
-        
+
         # Subscribe to user commands
         await self.message_bus.subscribe(
             self.agent_name,
             MessageType.COMMAND_RECEIVED,
             self._handle_user_command
         )
-        
+
         # Load historical context patterns from Knowledge Graph
         historical_patterns = await self.query_knowledge(
             query="user behavior patterns",
             knowledge_types=["pattern", "preference"],
             limit=20
         )
-        
+
         logger.info(f"UAE loaded {len(historical_patterns)} historical patterns")
-        
+
     async def on_start(self):
         """Start UAE intelligence aggregation"""
         # Start periodic context fusion
         asyncio.create_task(self._periodic_context_fusion())
-        
+
     async def on_stop(self):
         """Graceful shutdown"""
         # Save current context to Knowledge Graph
@@ -2273,32 +2273,32 @@ class UnifiedAwarenessEngine(BaseAgent):
                 'session_end': datetime.now().isoformat()
             }
         )
-        
+
     async def execute_task(self, task_payload: Dict[str, Any]) -> Any:
         """Execute UAE task"""
         action = task_payload.get('action')
-        
+
         if action == 'analyze_command':
             command = task_payload.get('command')
             return await self.analyze_command(command)
-            
+
         elif action == 'get_context':
             return self.current_context
-            
+
         elif action == 'predict_intent':
             return await self.predict_intent(task_payload.get('data'))
-            
+
         elif action == 'plan_workflow':
             goal = task_payload.get('goal')
             return await self.plan_multi_agent_workflow(goal)
-            
+
         else:
             raise ValueError(f"Unknown UAE action: {action}")
-    
+
     async def analyze_command(self, command: str) -> Dict[str, Any]:
         """
         Analyze user command using multi-agent intelligence
-        
+
         This is where UAE orchestrates multiple agents:
         1. CAI for intent classification
         2. Vision agents for screen context
@@ -2306,7 +2306,7 @@ class UnifiedAwarenessEngine(BaseAgent):
         4. Context agents for historical patterns
         """
         logger.info(f"UAE analyzing command: {command}")
-        
+
         # Request intent classification from CAI
         cai_response = await self.message_bus.request(
             AgentMessage(
@@ -2321,7 +2321,7 @@ class UnifiedAwarenessEngine(BaseAgent):
             ),
             timeout=2.0
         )
-        
+
         # Request current screen context from Vision
         vision_response = await self.message_bus.request(
             AgentMessage(
@@ -2336,14 +2336,14 @@ class UnifiedAwarenessEngine(BaseAgent):
             ),
             timeout=1.0
         )
-        
+
         # Query historical patterns from Knowledge Graph
         historical_context = await self.query_knowledge(
             query=command,
             knowledge_types=["command_pattern", "workflow"],
             limit=5
         )
-        
+
         # Fuse all intelligence
         analysis = {
             'command': command,
@@ -2353,13 +2353,13 @@ class UnifiedAwarenessEngine(BaseAgent):
             'historical_patterns': [node.data for node in historical_context],
             'timestamp': datetime.now().isoformat()
         }
-        
+
         # Share analysis via Knowledge Graph
         await self.add_knowledge(
             knowledge_type="command_analysis",
             data=analysis
         )
-        
+
         # Broadcast to all agents
         await self.publish(
             to_agent="ALL",
@@ -2370,31 +2370,31 @@ class UnifiedAwarenessEngine(BaseAgent):
             },
             priority=MessagePriority.NORMAL
         )
-        
+
         self.intent_predictions += 1
-        
+
         return analysis
-    
+
     async def plan_multi_agent_workflow(self, goal: str) -> Dict[str, Any]:
         """
         Plan multi-agent workflow to achieve goal
-        
+
         Example: "Connect to Living Room TV and start presentation"
-        
+
         UAE determines:
         1. Which agents needed (Vision, Display, Context)
         2. What order (dependencies)
         3. What data to pass between agents
         """
         logger.info(f"UAE planning workflow for goal: {goal}")
-        
+
         # Query Knowledge Graph for similar goals
         similar_workflows = await self.query_knowledge(
             query=goal,
             knowledge_types=["workflow_pattern"],
             limit=3
         )
-        
+
         # If we've done this before, reuse the workflow
         if similar_workflows and similar_workflows[0].confidence > 0.8:
             logger.info("Reusing known workflow pattern")
@@ -2427,42 +2427,42 @@ class UnifiedAwarenessEngine(BaseAgent):
                 'created_by': 'UAE',
                 'created_at': datetime.now().isoformat()
             }
-            
+
             # Save new workflow to Knowledge Graph
             await self.add_knowledge(
                 knowledge_type="workflow_pattern",
                 data=workflow
             )
-        
+
         self.workflow_orchestrations += 1
-        
+
         return workflow
-    
+
     async def _handle_agent_context_update(self, message: AgentMessage):
         """Handle context updates from other agents"""
         agent_name = message.from_agent
         context_data = message.payload.get('context')
-        
+
         if context_data:
             # Merge into current context
             self.current_context[agent_name] = {
                 'data': context_data,
                 'timestamp': datetime.now()
             }
-            
+
             self.context_update_count += 1
-            
+
     async def _handle_user_command(self, message: AgentMessage):
         """Handle user commands routed through UAE"""
         command = message.payload.get('command')
-        
+
         # Analyze and execute
         analysis = await self.analyze_command(command)
-        
+
         # Plan workflow if needed
         if analysis['confidence'] > 0.9:
             workflow = await self.plan_multi_agent_workflow(command)
-            
+
             # Send to orchestrator for execution
             await self.publish(
                 to_agent="orchestrator",
@@ -2473,12 +2473,12 @@ class UnifiedAwarenessEngine(BaseAgent):
                 },
                 priority=MessagePriority.HIGH
             )
-    
+
     async def _periodic_context_fusion(self):
         """Periodically fuse context from all agents"""
         while self.is_running:
             await asyncio.sleep(5)  # Every 5 seconds
-            
+
             # Broadcast context request to all agents
             await self.publish(
                 to_agent="ALL",
@@ -2541,7 +2541,7 @@ logger = logging.getLogger(__name__)
 class SelfAwareIntelligence(BaseAgent):
     """
     System health monitor and optimizer
-    
+
     Enhanced with Neural Mesh:
     - Monitors all 60+ agents via Communication Bus
     - Detects and resolves performance issues
@@ -2549,7 +2549,7 @@ class SelfAwareIntelligence(BaseAgent):
     - Self-heals system problems
     - Reports health status to all agents
     """
-    
+
     def __init__(self):
         super().__init__(
             agent_name="SAI",
@@ -2563,57 +2563,57 @@ class SelfAwareIntelligence(BaseAgent):
             },
             backend="local"
         )
-        
+
         # System metrics tracking
         self.cpu_history = deque(maxlen=100)  # Last 100 samples
         self.ram_history = deque(maxlen=100)
         self.agent_health_status = {}
-        
+
         # Performance thresholds
         self.ram_threshold_high = 0.85  # 85% - trigger cloud offload
         self.ram_threshold_critical = 0.95  # 95% - emergency
         self.cpu_threshold_high = 0.80
-        
+
         # Auto-healing
         self.healing_actions_taken = 0
         self.performance_optimizations = 0
-        
+
     async def on_initialize(self):
         """Initialize SAI monitoring"""
         logger.info("Initializing SAI health monitoring...")
-        
+
         # Subscribe to agent heartbeats
         await self.message_bus.subscribe(
             self.agent_name,
             MessageType.AGENT_HEARTBEAT,
             self._handle_agent_heartbeat
         )
-        
+
         # Subscribe to resource alerts
         await self.message_bus.subscribe(
             self.agent_name,
             MessageType.RESOURCE_ALERT,
             self._handle_resource_alert
         )
-        
+
         # Load historical performance data
         historical_metrics = await self.query_knowledge(
             query="system performance metrics",
             knowledge_types=["performance_metric"],
             limit=10
         )
-        
+
     async def on_start(self):
         """Start continuous monitoring"""
         # Monitor system resources
         asyncio.create_task(self._monitor_system_resources())
-        
+
         # Monitor agent health
         asyncio.create_task(self._monitor_agent_health())
-        
+
         # Optimize performance
         asyncio.create_task(self._optimize_performance())
-        
+
     async def on_stop(self):
         """Save final metrics"""
         await self.add_knowledge(
@@ -2624,28 +2624,28 @@ class SelfAwareIntelligence(BaseAgent):
                 'session_end': datetime.now().isoformat()
             }
         )
-        
+
     async def execute_task(self, task_payload: Dict[str, Any]) -> Any:
         """Execute SAI task"""
         action = task_payload.get('action')
-        
+
         if action == 'get_system_health':
             return await self.get_system_health()
-            
+
         elif action == 'optimize_resource_allocation':
             return await self.optimize_resource_allocation()
-            
+
         elif action == 'recommend_cloud_offload':
             return await self.recommend_cloud_offload()
-            
+
         else:
             raise ValueError(f"Unknown SAI action: {action}")
-    
+
     async def get_system_health(self) -> Dict[str, Any]:
         """Get comprehensive system health report"""
         cpu_percent = psutil.cpu_percent(interval=0.1)
         ram = psutil.virtual_memory()
-        
+
         return {
             'cpu_usage': cpu_percent,
             'ram_usage': ram.percent / 100.0,
@@ -2655,22 +2655,22 @@ class SelfAwareIntelligence(BaseAgent):
             'status': self._determine_overall_status(cpu_percent, ram.percent / 100.0),
             'timestamp': datetime.now().isoformat()
         }
-    
+
     async def recommend_cloud_offload(self) -> Dict[str, Any]:
         """Determine if tasks should be offloaded to cloud"""
         current_ram = psutil.virtual_memory().percent / 100.0
         current_cpu = psutil.cpu_percent(interval=0.1) / 100.0
-        
+
         # Calculate trend (are resources increasing or decreasing?)
         ram_trend = self._calculate_trend(self.ram_history)
         cpu_trend = self._calculate_trend(self.cpu_history)
-        
+
         should_offload = (
             current_ram > self.ram_threshold_high or
             current_cpu > self.cpu_threshold_high or
             (ram_trend > 0.1 and current_ram > 0.70)  # Rising trend
         )
-        
+
         recommendation = {
             'should_offload': should_offload,
             'reason': self._offload_reason(current_ram, current_cpu, ram_trend),
@@ -2679,7 +2679,7 @@ class SelfAwareIntelligence(BaseAgent):
             'ram_trend': ram_trend,
             'confidence': self._calculate_offload_confidence(current_ram, current_cpu)
         }
-        
+
         # Share recommendation via bus
         if should_offload:
             await self.publish(
@@ -2691,33 +2691,33 @@ class SelfAwareIntelligence(BaseAgent):
                 },
                 priority=MessagePriority.HIGH
             )
-        
+
         return recommendation
-    
+
     async def optimize_resource_allocation(self) -> Dict[str, Any]:
         """Optimize how resources are allocated across agents"""
         logger.info("SAI optimizing resource allocation...")
-        
+
         # Get all agent load information
         agent_loads = {}
         for agent_name, health_info in self.agent_health_status.items():
             if 'load' in health_info:
                 agent_loads[agent_name] = health_info['load']
-        
+
         # Find overloaded agents
         overloaded_agents = [
             name for name, load in agent_loads.items()
             if load > 0.9
         ]
-        
+
         # Find underutilized agents
         underutilized_agents = [
             name for name, load in agent_loads.items()
             if load < 0.3
         ]
-        
+
         optimizations = []
-        
+
         # Suggest load balancing
         if overloaded_agents and underutilized_agents:
             optimizations.append({
@@ -2726,7 +2726,7 @@ class SelfAwareIntelligence(BaseAgent):
                 'to_agents': underutilized_agents,
                 'action': 'redistribute_tasks'
             })
-        
+
         # Suggest cloud offload for heavy agents
         if overloaded_agents:
             optimizations.append({
@@ -2734,9 +2734,9 @@ class SelfAwareIntelligence(BaseAgent):
                 'agents': overloaded_agents,
                 'action': 'move_to_cloud'
             })
-        
+
         self.performance_optimizations += len(optimizations)
-        
+
         # Broadcast optimizations
         if optimizations:
             await self.publish(
@@ -2748,12 +2748,12 @@ class SelfAwareIntelligence(BaseAgent):
                 },
                 priority=MessagePriority.NORMAL
             )
-        
+
         return {
             'optimizations': optimizations,
             'count': len(optimizations)
         }
-    
+
     async def _monitor_system_resources(self):
         """Continuous system resource monitoring"""
         while self.is_running:
@@ -2762,15 +2762,15 @@ class SelfAwareIntelligence(BaseAgent):
                 cpu_percent = psutil.cpu_percent(interval=1.0)
                 ram = psutil.virtual_memory()
                 ram_percent = ram.percent / 100.0
-                
+
                 # Record history
                 self.cpu_history.append(cpu_percent / 100.0)
                 self.ram_history.append(ram_percent)
-                
+
                 # Check for critical conditions
                 if ram_percent > self.ram_threshold_critical:
                     logger.critical(f"CRITICAL RAM: {ram_percent*100:.1f}%")
-                    
+
                     # Emergency cloud offload
                     await self.publish(
                         to_agent="HybridRouter",
@@ -2783,47 +2783,47 @@ class SelfAwareIntelligence(BaseAgent):
                         },
                         priority=MessagePriority.CRITICAL
                     )
-                    
+
                     self.healing_actions_taken += 1
-                
+
                 elif ram_percent > self.ram_threshold_high:
                     logger.warning(f"HIGH RAM: {ram_percent*100:.1f}%")
-                    
+
                     # Recommend cloud offload
                     await self.recommend_cloud_offload()
-                
+
                 # Broadcast health status every 30 seconds
                 if len(self.ram_history) % 30 == 0:
                     health = await self.get_system_health()
-                    
+
                     await self.publish(
                         to_agent="ALL",
                         message_type=MessageType.HEALTH_REPORT,
                         payload={'health': health},
                         priority=MessagePriority.LOW
                     )
-                    
+
                     # Save to Knowledge Graph
                     await self.add_knowledge(
                         knowledge_type="performance_metric",
                         data=health
                     )
-                
+
                 await asyncio.sleep(1)  # Sample every second
-                
+
             except Exception as e:
                 logger.error(f"Resource monitoring error: {e}")
                 await asyncio.sleep(5)
-    
+
     async def _monitor_agent_health(self):
         """Monitor health of all agents via heartbeats"""
         while self.is_running:
             await asyncio.sleep(30)  # Check every 30 seconds
-            
+
             # Find stale agents (no heartbeat in >60s)
             now = datetime.now()
             stale_agents = []
-            
+
             for agent_name, health_info in self.agent_health_status.items():
                 last_heartbeat = health_info.get('last_heartbeat')
                 if last_heartbeat:
@@ -2831,7 +2831,7 @@ class SelfAwareIntelligence(BaseAgent):
                     if age > 60:
                         stale_agents.append(agent_name)
                         logger.warning(f"Agent {agent_name} stale (no heartbeat for {age:.0f}s)")
-            
+
             # Alert orchestrator about stale agents
             if stale_agents:
                 await self.publish(
@@ -2843,44 +2843,44 @@ class SelfAwareIntelligence(BaseAgent):
                     },
                     priority=MessagePriority.HIGH
                 )
-    
+
     async def _optimize_performance(self):
         """Periodic performance optimization"""
         while self.is_running:
             await asyncio.sleep(300)  # Every 5 minutes
-            
+
             try:
                 # Run optimization
                 result = await self.optimize_resource_allocation()
-                
+
                 logger.info(f"Performance optimization complete: {result['count']} actions")
-                
+
             except Exception as e:
                 logger.error(f"Optimization error: {e}")
-    
+
     async def _handle_agent_heartbeat(self, message: AgentMessage):
         """Track agent heartbeats"""
         agent_name = message.from_agent
         payload = message.payload
-        
+
         self.agent_health_status[agent_name] = {
             'status': 'healthy',
             'last_heartbeat': datetime.now(),
             'load': payload.get('load', 0.0),
             'stats': payload.get('stats', {})
         }
-    
+
     async def _handle_resource_alert(self, message: AgentMessage):
         """Handle resource alerts from agents"""
         alert = message.payload
-        
+
         logger.warning(f"Resource alert from {message.from_agent}: {alert}")
-        
+
         # Take healing action
         if alert.get('action_required') == 'immediate_cloud_offload':
             # TODO: Trigger immediate cloud offload
             pass
-    
+
     def _determine_overall_status(self, cpu: float, ram: float) -> str:
         """Determine overall system status"""
         if ram > 0.95 or cpu > 0.95:
@@ -2891,39 +2891,39 @@ class SelfAwareIntelligence(BaseAgent):
             return "healthy"
         else:
             return "optimal"
-    
+
     def _calculate_trend(self, history: deque) -> float:
         """Calculate trend (positive = increasing, negative = decreasing)"""
         if len(history) < 10:
             return 0.0
-        
+
         recent = list(history)[-10:]
         older = list(history)[-20:-10] if len(history) >= 20 else list(history)[:-10]
-        
+
         recent_avg = sum(recent) / len(recent)
         older_avg = sum(older) / len(older)
-        
+
         return recent_avg - older_avg
-    
+
     def _offload_reason(self, ram: float, cpu: float, ram_trend: float) -> str:
         """Generate human-readable offload reason"""
         reasons = []
-        
+
         if ram > 0.85:
             reasons.append(f"RAM critical ({ram*100:.0f}%)")
         elif ram > 0.70 and ram_trend > 0.1:
             reasons.append(f"RAM rising trend ({ram*100:.0f}% and increasing)")
-        
+
         if cpu > 0.80:
             reasons.append(f"CPU high ({cpu*100:.0f}%)")
-        
+
         return "; ".join(reasons) if reasons else "Preventive offload"
-    
+
     def _calculate_offload_confidence(self, ram: float, cpu: float) -> float:
         """Calculate confidence in offload recommendation"""
         ram_score = min(1.0, ram / 0.85)
         cpu_score = min(1.0, cpu / 0.80)
-        
+
         return max(ram_score, cpu_score)
 ```
 
@@ -2977,14 +2977,14 @@ logger = logging.getLogger(__name__)
 class ContextAwarenessIntelligence(BaseAgent):
     """
     Context understanding and intent classification
-    
+
     Enhanced with Neural Mesh + Transformers:
     - BERT-based intent classification
     - Pattern recognition from Knowledge Graph
     - Historical context analysis
     - User preference learning
     """
-    
+
     def __init__(self):
         super().__init__(
             agent_name="CAI",
@@ -2998,10 +2998,10 @@ class ContextAwarenessIntelligence(BaseAgent):
             },
             backend="local"  # Can be cloud for heavy models
         )
-        
+
         # Transformer models (lazy loaded)
         self.transformer_manager = None
-        
+
         # Intent classification
         self.intent_categories = [
             "display_control",
@@ -3010,91 +3010,91 @@ class ContextAwarenessIntelligence(BaseAgent):
             "automation_request",
             "preference_setting"
         ]
-        
+
         # Performance tracking
         self.intents_classified = 0
         self.patterns_recognized = 0
-        
+
     async def on_initialize(self):
         """Initialize CAI with Transformers"""
         logger.info("Initializing CAI with Transformer models...")
-        
+
         # Load Transformer manager
         self.transformer_manager = await get_transformer_manager()
-        
+
         # Pre-load intent classification model
         await self.transformer_manager.load_model(
             "facebook/bart-large-mnli",
             model_type="classification"
         )
-        
+
         # Pre-load embedding model
         await self.transformer_manager.load_model(
             "sentence-transformers/all-MiniLM-L6-v2",
             model_type="embedding"
         )
-        
+
         # Subscribe to command analysis requests
         await self.message_bus.subscribe(
             self.agent_name,
             MessageType.CUSTOM,
             self._handle_analysis_request
         )
-        
+
         logger.info("✅ CAI initialized with Transformers")
-        
+
     async def on_start(self):
         """Start CAI"""
         pass
-        
+
     async def on_stop(self):
         """Stop CAI"""
         pass
-        
+
     async def execute_task(self, task_payload: Dict[str, Any]) -> Any:
         """Execute CAI task"""
         action = task_payload.get('action')
-        
+
         if action == 'classify_intent':
             text = task_payload.get('text')
             return await self.classify_intent(text)
-            
+
         elif action == 'analyze_context':
             data = task_payload.get('data')
             return await self.analyze_context(data)
-            
+
         elif action == 'recognize_pattern':
             events = task_payload.get('events')
             return await self.recognize_pattern(events)
-            
+
         else:
             raise ValueError(f"Unknown CAI action: {action}")
-    
+
     async def classify_intent(self, text: str) -> Dict[str, Any]:
         """
         Classify user intent using Transformer model
-        
+
         Uses zero-shot classification to determine intent
         without requiring labeled training data
         """
         logger.info(f"CAI classifying intent: {text}")
-        
+
         # Use Transformer for zero-shot classification
         intent_scores = await self.transformer_manager.classify_intent(
             text=text,
             candidate_labels=self.intent_categories
         )
-        
+
         # Get top intent
         top_intent = max(intent_scores.items(), key=lambda x: x[1])
-        
+
         # Query Knowledge Graph for similar commands
         similar_commands = await self.query_knowledge(
             query=text,
             knowledge_types=["command_pattern", "user_intent"],
             limit=3
         )
-        
+
         # Adjust confidence based on historical patterns
         adjusted_confidence = top_intent[1]
         if similar_commands:
@@ -3105,7 +3105,7 @@ class ContextAwarenessIntelligence(BaseAgent):
             )
             if historical_match:
                 adjusted_confidence = min(1.0, adjusted_confidence + 0.1)
-        
+
         result = {
             'intent': top_intent[0],
             'confidence': adjusted_confidence,
@@ -3113,7 +3113,7 @@ class ContextAwarenessIntelligence(BaseAgent):
             'similar_commands': [node.data for node in similar_commands],
             'timestamp': datetime.now().isoformat()
         }
-        
+
         # Save to Knowledge Graph for learning
         await self.add_knowledge(
             knowledge_type="user_intent",
@@ -3123,45 +3123,45 @@ class ContextAwarenessIntelligence(BaseAgent):
                 'confidence': adjusted_confidence
             }
         )
-        
+
         self.intents_classified += 1
-        
+
         return result
-    
+
     async def analyze_context(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze contextual data to understand situation"""
         # Generate embedding for context
         context_text = str(data)
         embedding = await self.transformer_manager.generate_embedding(context_text)
-        
+
         # Query similar contexts from Knowledge Graph
         similar_contexts = await self.query_knowledge(
             query=context_text,
             knowledge_types=["context_snapshot"],
             limit=5
         )
-        
+
         return {
             'context_embedding': embedding.tolist(),
             'similar_contexts': [node.data for node in similar_contexts],
             'analysis_time': datetime.now().isoformat()
         }
-    
+
     async def recognize_pattern(self, events: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Recognize patterns in sequence of events"""
         # Convert events to text for embedding
         events_text = " ".join([str(e) for e in events])
-        
+
         # Query Knowledge Graph for known patterns
         known_patterns = await self.query_knowledge(
             query=events_text,
             knowledge_types=["behavior_pattern", "workflow_pattern"],
             limit=5
         )
-        
+
         # Check if this is a new pattern
         is_new_pattern = len(known_patterns) == 0 or known_patterns[0].confidence < 0.7
-        
+
         if is_new_pattern:
             # Save as new pattern
             await self.add_knowledge(
@@ -3171,18 +3171,17 @@ class ContextAwarenessIntelligence(BaseAgent):
                     'detected_at': datetime.now().isoformat()
                 }
             )
-        
+
         self.patterns_recognized += 1
-        
+
         return {
             'is_new_pattern': is_new_pattern,
             'known_patterns': [node.data for node in known_patterns],
             'pattern_count': self.patterns_recognized
         }
-    
+
     async def _handle_analysis_request(self, message):
         """Handle analysis requests from other agents"""
         # Delegate to appropriate method based on payload
         pass
 ```
-
