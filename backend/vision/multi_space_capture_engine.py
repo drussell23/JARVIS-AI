@@ -168,6 +168,21 @@ class MultiSpaceCaptureCache:
         self._memory_manager = None
         self._dynamic_sizing = os.getenv("CACHE_DYNAMIC_SIZING", "true").lower() == "true"
 
+        # Compression settings
+        self.compression_quality = int(os.getenv("IMAGE_COMPRESSION_QUALITY", "85"))
+        self.enable_aggressive_compression = (
+            os.getenv("ENABLE_AGGRESSIVE_COMPRESSION", "true").lower() == "true"
+        )
+
+        # Parse thumbnail size
+        thumbnail_size_str = os.getenv("IMAGE_THUMBNAIL_SIZE", "400,300")
+        try:
+            w, h = thumbnail_size_str.split(",")
+            self.thumbnail_size = (int(w.strip()), int(h.strip()))
+        except ValueError:
+            self.thumbnail_size = (400, 300)
+            logger.warning(f"Invalid IMAGE_THUMBNAIL_SIZE: {thumbnail_size_str}, using (400, 300)")
+
     def _get_cache_key(self, space_id: int, quality: CaptureQuality) -> str:
         """Generate cache key for space and quality"""
         return f"space_{space_id}_{quality.value}"
@@ -176,6 +191,61 @@ class MultiSpaceCaptureCache:
         """Set memory manager for dynamic sizing"""
         self._memory_manager = manager
         logger.info("✅ Cache connected to memory pressure manager")
+
+    def _compress_image(self, screenshot: np.ndarray, quality: CaptureQuality) -> np.ndarray:
+        """
+        Compress image to reduce memory footprint.
+        Applied based on quality level and memory pressure.
+        """
+        if not self.enable_aggressive_compression:
+            return screenshot
+
+        # Check if we should compress based on memory pressure
+        should_compress = False
+        if self._memory_manager:
+            from .macos_memory_manager import MemoryPressure
+
+            pressure = self._memory_manager.current_pressure
+            # Compress on yellow/red pressure, or for thumbnail quality always
+            should_compress = (
+                pressure == MemoryPressure.YELLOW
+                or pressure == MemoryPressure.RED
+                or quality == CaptureQuality.THUMBNAIL
+            )
+        else:
+            # No memory manager - compress thumbnails only
+            should_compress = quality == CaptureQuality.THUMBNAIL
+
+        if not should_compress:
+            return screenshot
+
+        try:
+            # Convert to PIL Image
+            img = Image.fromarray(screenshot)
+
+            # Resize if thumbnail quality
+            if quality == CaptureQuality.THUMBNAIL:
+                img.thumbnail(self.thumbnail_size, Image.Resampling.LANCZOS)
+
+            # Compress via JPEG encode/decode cycle (lossy compression)
+            import io
+
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG", quality=self.compression_quality, optimize=True)
+            buffer.seek(0)
+            compressed_img = Image.open(buffer)
+
+            # Convert back to numpy array
+            compressed = np.array(compressed_img)
+
+            reduction = 100 * (1 - compressed.nbytes / screenshot.nbytes)
+            logger.debug(f"Compressed image: {reduction:.1f}% size reduction")
+
+            return compressed
+
+        except Exception as e:
+            logger.warning(f"Image compression failed: {e}, using original")
+            return screenshot
 
     async def get(
         self, space_id: int, quality: CaptureQuality, max_age: Optional[int] = None
@@ -207,8 +277,11 @@ class MultiSpaceCaptureCache:
             return screenshot, metadata
 
     async def put(self, space_id: int, screenshot: np.ndarray, metadata: SpaceCaptureMetadata):
-        """Cache a screenshot (async, memory-pressure aware)"""
+        """Cache a screenshot (async, memory-pressure aware with compression)"""
         key = self._get_cache_key(space_id, metadata.quality)
+
+        # Apply compression before caching
+        compressed_screenshot = self._compress_image(screenshot, metadata.quality)
 
         async with self.lock:
             # Remove old entry if exists
@@ -219,14 +292,14 @@ class MultiSpaceCaptureCache:
             size_limit_mb = await self._get_effective_size_limit()
 
             # Check size limit
-            entry_size = screenshot.nbytes
+            entry_size = compressed_screenshot.nbytes
             while self.size_bytes + entry_size > size_limit_mb * 1024 * 1024 and self.cache:
                 # Remove oldest
                 oldest_key = next(iter(self.cache))
                 self._remove_entry(oldest_key)
 
-            # Add new entry
-            self.cache[key] = (screenshot, metadata, datetime.now())
+            # Add new entry (with compressed screenshot)
+            self.cache[key] = (compressed_screenshot, metadata, datetime.now())
             self.size_bytes += entry_size
 
     async def _get_effective_size_limit(self) -> int:
@@ -265,7 +338,7 @@ class MultiSpaceCaptureCache:
                 logger.info(f"🗑️  Evicted {evicted} cache entries due to memory pressure")
 
     def get_stats(self) -> Dict[str, Any]:
-        """Get cache statistics"""
+        """Get cache statistics with compression info"""
         total_requests = self.hit_count + self.miss_count
         hit_rate = self.hit_count / total_requests if total_requests > 0 else 0
 
@@ -277,6 +350,9 @@ class MultiSpaceCaptureCache:
             "miss_count": self.miss_count,
             "hit_rate": hit_rate,
             "dynamic_sizing": self._dynamic_sizing,
+            "compression_enabled": self.enable_aggressive_compression,
+            "compression_quality": self.compression_quality,
+            "thumbnail_size": self.thumbnail_size,
         }
 
 
