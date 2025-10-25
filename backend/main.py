@@ -1744,10 +1744,33 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"⚠️ Could not register with autonomous systems: {e}")
 
+    # Initialize Cost Tracking System (Priority 2: Cost Monitoring & Alerts)
+    try:
+        from core.cost_tracker import initialize_cost_tracking
+
+        await initialize_cost_tracking()
+        logger.info("✅ Cost Tracking System initialized")
+        logger.info("   • Auto-cleanup enabled for orphaned VMs")
+        logger.info("   • Real-time cost monitoring active")
+        logger.info("   • Alert system configured")
+    except Exception as e:
+        logger.warning(f"⚠️ Cost tracking initialization failed: {e}")
+
     yield
 
     # Cleanup
     logger.info("🛑 Shutting down JARVIS backend...")
+
+    # Shutdown Cost Tracking System
+    try:
+        from core.cost_tracker import get_cost_tracker
+
+        tracker = get_cost_tracker()
+        if tracker:
+            await tracker.shutdown()
+            logger.info("✅ Cost Tracking System shutdown complete")
+    except Exception as e:
+        logger.error(f"Failed to shutdown cost tracker: {e}")
 
     # Stop autonomous systems
     if hasattr(app.state, "orchestrator"):
