@@ -307,7 +307,19 @@ async def benchmark_multi_space_vision():
 async def benchmark_semantic_cache():
     """Benchmark semantic cache system"""
     try:
-        from intelligence.semantic_cache_lsh import get_semantic_cache
+        # Try relative import first, then absolute
+        try:
+            from intelligence.semantic_cache_lsh import get_semantic_cache
+        except ImportError:
+            import os
+            import sys
+
+            # Ensure intelligence path is available
+            intelligence_path = os.path.join(os.path.dirname(__file__), "intelligence")
+            if intelligence_path not in sys.path:
+                sys.path.insert(0, os.path.dirname(__file__))
+            from intelligence.semantic_cache_lsh import get_semantic_cache
+
         from macos_memory_manager import initialize_memory_manager
 
         # Initialize memory manager
@@ -327,6 +339,9 @@ async def benchmark_semantic_cache():
 
     except Exception as e:
         logger.error(f"Benchmark error: {e}")
+        import traceback
+
+        logger.error(traceback.format_exc())
 
 
 async def run_full_benchmark():

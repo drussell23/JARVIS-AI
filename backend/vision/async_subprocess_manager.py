@@ -10,30 +10,28 @@ This module provides a production-ready async subprocess management system with:
 """
 
 import asyncio
+import atexit
 import logging
+import multiprocessing
 import os
 import platform
 import signal
-import sys
 import time
-import weakref
+from collections import deque
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
-from collections import deque
-import atexit
+from typing import Any, Dict, List, Optional, Set, Tuple
+
 import psutil
-import multiprocessing
 
 # Set fork safety for macOS to prevent segmentation faults
-if platform.system() == 'Darwin':
+if platform.system() == "Darwin":
     # Set environment variable for fork safety
-    os.environ['OBJC_DISABLE_INITIALIZE_FORK_SAFETY'] = 'YES'
+    os.environ["OBJC_DISABLE_INITIALIZE_FORK_SAFETY"] = "YES"
     # Try to set multiprocessing start method if not already set
     try:
-        multiprocessing.set_start_method('spawn', force=False)
+        multiprocessing.set_start_method("spawn", force=False)
     except RuntimeError:
         # Already set, that's fine
         pass
@@ -43,6 +41,7 @@ logger = logging.getLogger(__name__)
 
 class ProcessState(Enum):
     """Process lifecycle states"""
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -54,6 +53,7 @@ class ProcessState(Enum):
 @dataclass
 class ProcessInfo:
     """Information about a managed subprocess"""
+
     process_id: str
     command: List[str]
     state: ProcessState
@@ -95,7 +95,7 @@ class AsyncSubprocessManager:
         max_queue_size: int = 50,
         process_timeout: float = 30.0,
         cleanup_interval: float = 10.0,
-        enable_monitoring: bool = True
+        enable_monitoring: bool = True,
     ):
         """
         Initialize the subprocess manager.
@@ -111,7 +111,7 @@ class AsyncSubprocessManager:
             return
 
         # Reduce concurrent subprocesses on macOS for safety
-        if platform.system() == 'Darwin':
+        if platform.system() == "Darwin":
             max_concurrent = min(max_concurrent, 3)
             logger.info(f"macOS detected - limiting concurrent subprocesses to {max_concurrent}")
 
@@ -138,7 +138,7 @@ class AsyncSubprocessManager:
             "total_failed": 0,
             "total_timeout": 0,
             "total_terminated": 0,
-            "peak_concurrent": 0
+            "peak_concurrent": 0,
         }
 
         # Register cleanup handlers
@@ -153,6 +153,7 @@ class AsyncSubprocessManager:
 
     def _setup_signal_handlers(self):
         """Setup signal handlers for graceful shutdown"""
+
         def signal_handler(signum, frame):
             logger.info(f"Received signal {signum}, initiating shutdown...")
             asyncio.create_task(self.shutdown())
@@ -185,8 +186,12 @@ class AsyncSubprocessManager:
         to_remove = []
 
         for process_id, info in self._processes.items():
-            if info.state in [ProcessState.COMPLETED, ProcessState.FAILED,
-                             ProcessState.TERMINATED, ProcessState.TIMEOUT]:
+            if info.state in [
+                ProcessState.COMPLETED,
+                ProcessState.FAILED,
+                ProcessState.TERMINATED,
+                ProcessState.TIMEOUT,
+            ]:
                 # Process is done, check if it's been long enough to clean up
                 if info.end_time and (time.time() - info.end_time) > 60:
                     to_remove.append(process_id)
@@ -207,7 +212,7 @@ class AsyncSubprocessManager:
         try:
             process = psutil.Process()
             memory_mb = process.memory_info().rss / 1024 / 1024
-            num_fds = process.num_fds() if hasattr(process, 'num_fds') else 0
+            num_fds = process.num_fds() if hasattr(process, "num_fds") else 0
 
             logger.debug(
                 f"Subprocess Manager Stats: "
@@ -227,7 +232,7 @@ class AsyncSubprocessManager:
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
         capture_output: bool = True,
-        **kwargs
+        **kwargs,
     ):
         """
         Context manager for running a subprocess with automatic cleanup.
@@ -260,26 +265,27 @@ class AsyncSubprocessManager:
                     self._stats["peak_concurrent"] = current_concurrent
 
                 # Prepare subprocess arguments
-                kwargs.update({
-                    'stdout': asyncio.subprocess.PIPE if capture_output else None,
-                    'stderr': asyncio.subprocess.PIPE if capture_output else None,
-                    'cwd': cwd,
-                    'env': env or os.environ.copy()
-                })
+                kwargs.update(
+                    {
+                        "stdout": asyncio.subprocess.PIPE if capture_output else None,
+                        "stderr": asyncio.subprocess.PIPE if capture_output else None,
+                        "cwd": cwd,
+                        "env": env or os.environ.copy(),
+                    }
+                )
 
                 # Only use start_new_session on non-macOS systems to avoid segfaults
-                if platform.system() != 'Darwin':
-                    kwargs['start_new_session'] = True
+                if platform.system() != "Darwin":
+                    kwargs["start_new_session"] = True
 
                 # Create subprocess
-                info.process = await asyncio.create_subprocess_exec(
-                    *command,
-                    **kwargs
-                )
+                info.process = await asyncio.create_subprocess_exec(*command, **kwargs)
                 info.pid = info.process.pid
                 info.state = ProcessState.RUNNING
 
-                logger.debug(f"Started subprocess {process_id}: {' '.join(command)} (PID: {info.pid})")
+                logger.debug(
+                    f"Started subprocess {process_id}: {' '.join(command)} (PID: {info.pid})"
+                )
 
                 # Yield control to caller
                 yield info
@@ -287,8 +293,7 @@ class AsyncSubprocessManager:
                 # Wait for completion with timeout
                 try:
                     stdout, stderr = await asyncio.wait_for(
-                        info.process.communicate(),
-                        timeout=timeout
+                        info.process.communicate(), timeout=timeout
                     )
                     info.stdout = stdout
                     info.stderr = stderr
@@ -382,11 +387,7 @@ class AsyncSubprocessManager:
             logger.error(f"Error terminating process {info.process_id}: {e}")
 
     async def run_command(
-        self,
-        command: List[str],
-        timeout: Optional[float] = None,
-        check: bool = False,
-        **kwargs
+        self, command: List[str], timeout: Optional[float] = None, check: bool = False, **kwargs
     ) -> Tuple[int, Optional[bytes], Optional[bytes]]:
         """
         Run a command and return results.
@@ -408,11 +409,9 @@ class AsyncSubprocessManager:
 
         if check and info.return_code != 0:
             from subprocess import CalledProcessError
+
             raise CalledProcessError(
-                info.return_code or -1,
-                command,
-                output=info.stdout,
-                stderr=info.stderr
+                info.return_code or -1, command, output=info.stdout, stderr=info.stderr
             )
 
         return info.return_code or 0, info.stdout, info.stderr
@@ -468,7 +467,17 @@ class AsyncSubprocessManager:
         """Synchronous cleanup for atexit handler"""
         try:
             # Try to get the event loop
-            loop = asyncio.get_event_loop()
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                # No running loop, try to get or create one
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    # Create a new event loop if none exists
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+
             if not loop.is_closed():
                 # Run async shutdown
                 loop.run_until_complete(self.shutdown())
@@ -488,13 +497,14 @@ class AsyncSubprocessManager:
             **self._stats,
             "active_processes": len(self._active_processes),
             "tracked_processes": len(self._processes),
-            "queue_size": len(self._process_queue)
+            "queue_size": len(self._process_queue),
         }
 
     def get_active_processes(self) -> List[ProcessInfo]:
         """Get list of currently active processes"""
         return [
-            info for process_id, info in self._processes.items()
+            info
+            for process_id, info in self._processes.items()
             if process_id in self._active_processes
         ]
 
@@ -513,9 +523,7 @@ def get_subprocess_manager() -> AsyncSubprocessManager:
 
 # Convenience function for simple command execution
 async def run_command(
-    command: List[str],
-    timeout: Optional[float] = None,
-    **kwargs
+    command: List[str], timeout: Optional[float] = None, **kwargs
 ) -> Tuple[int, Optional[bytes], Optional[bytes]]:
     """
     Convenience function to run a command using the global manager.
