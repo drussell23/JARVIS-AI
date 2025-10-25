@@ -1184,11 +1184,13 @@ class HybridIntelligenceCoordinator:
                 pass
 
         # Cleanup GCP instance if active
-        if self.gcp_active and self.gcp_instance_id:
+        if self.workload_router.gcp_active and self.workload_router.gcp_instance_id:
             try:
-                logger.info(f"🧹 Cleaning up GCP instance: {self.gcp_instance_id}")
-                await self._cleanup_gcp_instance(self.gcp_instance_id)
-                logger.info(f"✅ GCP instance {self.gcp_instance_id} deleted")
+                logger.info(f"🧹 Cleaning up GCP instance: {self.workload_router.gcp_instance_id}")
+                await self.workload_router._cleanup_gcp_instance(
+                    self.workload_router.gcp_instance_id
+                )
+                logger.info(f"✅ GCP instance {self.workload_router.gcp_instance_id} deleted")
             except Exception as e:
                 logger.error(f"Failed to cleanup GCP instance: {e}")
 
