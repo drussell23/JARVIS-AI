@@ -272,8 +272,8 @@ class MemoryProfiler:
 async def benchmark_multi_space_vision():
     """Benchmark multi-space vision system"""
     try:
-        from backend.vision.macos_memory_manager import initialize_memory_manager
-        from backend.vision.multi_space_capture_engine import (
+        from macos_memory_manager import initialize_memory_manager
+        from multi_space_capture_engine import (
             CaptureQuality,
             MultiSpaceCaptureEngine,
             SpaceCaptureRequest,
@@ -301,8 +301,8 @@ async def benchmark_multi_space_vision():
 async def benchmark_semantic_cache():
     """Benchmark semantic cache system"""
     try:
-        from backend.vision.intelligence.semantic_cache_lsh import get_semantic_cache
-        from backend.vision.macos_memory_manager import initialize_memory_manager
+        from intelligence.semantic_cache_lsh import get_semantic_cache
+        from macos_memory_manager import initialize_memory_manager
 
         # Initialize memory manager
         memory_manager = await initialize_memory_manager()
