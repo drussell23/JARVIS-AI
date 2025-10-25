@@ -54,7 +54,7 @@ jobs:
           echo "✅ All critical files present"
 
   deploy:
-    name: Deploy to GCP VM
+    name: Deploy to GCP (Spot VM Architecture)
     runs-on: ubuntu-latest
     needs: pre-deployment-checks
 
@@ -72,218 +72,151 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
-      - name: Deploy to VM
+      - name: Cleanup Orphaned VMs
+        run: |
+          echo "🧹 Cleaning up orphaned VMs..."
+          bash scripts/cleanup_orphaned_vms.sh || echo "⚠️  Cleanup script failed, continuing..."
+
+      - name: Deploy Code to Cloud Storage
         run: |
           BRANCH="${{ github.ref_name }}"
           COMMIT="${{ github.sha }}"
+          DEPLOYMENT_BUCKET="gs://jarvis-473803-deployments"
 
-          gcloud compute ssh ${{ secrets.GCP_VM_NAME }} \
-            --zone=${{ secrets.GCP_ZONE }} \
-            --project=${{ secrets.GCP_PROJECT_ID }} \
-            --command="bash -s" << EOF
-          set -e
+          echo "📦 Creating deployment package..."
 
-          echo "🚀 Starting JARVIS deployment..."
-          echo "Branch: $BRANCH"
-          echo "Commit: $COMMIT"
+          # Create deployment archive
+          tar -czf jarvis-${COMMIT}.tar.gz \
+            backend/ \
+            start_system.py \
+            scripts/ \
+            --exclude='backend/__pycache__' \
+            --exclude='backend/*.pyc' \
+            --exclude='backend/logs/*' \
+            --exclude='backend/.env'
 
-          # Create backup directory
-          BACKUP_DIR=~/backend_backups/\$(date +%Y%m%d_%H%M%S)
-          mkdir -p \$BACKUP_DIR
+          # Upload to Cloud Storage
+          echo "☁️  Uploading to Cloud Storage..."
+          gsutil mb ${DEPLOYMENT_BUCKET} 2>/dev/null || echo "Bucket already exists"
 
-          # Backup current code
-          if [ -d ~/backend ]; then
-            echo "💾 Backing up to \$BACKUP_DIR"
-            cp -r ~/backend \$BACKUP_DIR/
-          fi
+          gsutil -m cp jarvis-${COMMIT}.tar.gz ${DEPLOYMENT_BUCKET}/
 
-          # Keep only last 5 backups
-          cd ~/backend_backups && ls -t | tail -n +6 | xargs -r rm -rf
+          # Create latest symlink
+          echo "$COMMIT" | gsutil cp - ${DEPLOYMENT_BUCKET}/latest-${BRANCH}.txt
 
-          # Stop running backend
-          echo "⏸️  Stopping existing backend..."
-          pkill -f uvicorn || true
-          sleep 2
+          # Create deployment metadata
+          cat > deployment-metadata.json << METADATA
+          {
+            "branch": "${BRANCH}",
+            "commit": "${COMMIT}",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "deployer": "${{ github.actor }}",
+            "artifact": "jarvis-${COMMIT}.tar.gz"
+          }
+          METADATA
 
-          # Pull latest changes
-          echo "📥 Pulling latest code..."
-          cd ~/backend
-          git config --global --add safe.directory ~/backend
-          git fetch --all
+          gsutil cp deployment-metadata.json ${DEPLOYMENT_BUCKET}/metadata-${COMMIT}.json
 
-          # Store current commit for rollback
-          PREV_COMMIT=\$(git rev-parse HEAD)
-          echo "Previous commit: \$PREV_COMMIT"
+          echo "✅ Deployment package uploaded"
+          echo "📍 Location: ${DEPLOYMENT_BUCKET}/jarvis-${COMMIT}.tar.gz"
+          echo "🔗 Latest ${BRANCH}: ${DEPLOYMENT_BUCKET}/latest-${BRANCH}.txt"
 
-          git reset --hard origin/$BRANCH
-
-          # Update dependencies
-          echo "📦 Checking dependencies..."
-          cd ~/backend/backend
-          if [ -f requirements-cloud.txt ]; then
-            venv/bin/pip install -q -r requirements-cloud.txt
-          fi
-
-          # Deploy database config from GitHub secret
-          echo "📋 Deploying database config..."
-          mkdir -p ~/.jarvis/gcp
-          echo '${{ secrets.GCP_DATABASE_CONFIG }}' > ~/.jarvis/gcp/database_config.json
-          echo "✅ Database config deployed"
-
-          # Setup Cloud SQL Proxy
-          echo "☁️  Setting up Cloud SQL Proxy..."
-          if [ ! -f ~/.local/bin/cloud-sql-proxy ]; then
-            echo "📥 Installing Cloud SQL Proxy..."
-            mkdir -p ~/.local/bin
-            curl -o ~/.local/bin/cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.8.2/cloud-sql-proxy.linux.amd64
-            chmod +x ~/.local/bin/cloud-sql-proxy
-          fi
-
-          # Load database config and setup systemd service
-          if [ -f ~/.jarvis/gcp/database_config.json ]; then
-            echo "✅ Found database config"
-            CONNECTION_NAME=\$(jq -r '.cloud_sql.connection_name' ~/.jarvis/gcp/database_config.json)
-            DB_PASSWORD=\$(jq -r '.cloud_sql.password' ~/.jarvis/gcp/database_config.json)
-
-            # Create environment file for JARVIS
-            echo "JARVIS_DB_TYPE=cloudsql" > ~/backend/backend/.env.gcp
-            echo "JARVIS_DB_CONNECTION_NAME=\$CONNECTION_NAME" >> ~/backend/backend/.env.gcp
-            echo "JARVIS_DB_HOST=127.0.0.1" >> ~/backend/backend/.env.gcp
-            echo "JARVIS_DB_PORT=5432" >> ~/backend/backend/.env.gcp
-            echo "JARVIS_DB_NAME=jarvis_learning" >> ~/backend/backend/.env.gcp
-            echo "JARVIS_DB_USER=jarvis" >> ~/backend/backend/.env.gcp
-            echo "JARVIS_DB_PASSWORD=\$DB_PASSWORD" >> ~/backend/backend/.env.gcp
-
-            echo "✅ Created .env.gcp file"
-
-            # Setup Cloud SQL Proxy as systemd service
-            echo "🔧 Setting up Cloud SQL Proxy service..."
-            cd ~/backend
-            bash scripts/setup_cloud_sql_service.sh || echo "⚠️  Service setup failed, will try manual start"
-
-            # Verify Cloud SQL Proxy is running
-            sleep 2
-            if sudo systemctl is-active --quiet cloud-sql-proxy || pgrep -f cloud-sql-proxy > /dev/null; then
-              echo "✅ Cloud SQL Proxy is running"
-            else
-              echo "⚠️  Cloud SQL Proxy not running, falling back to SQLite"
-            fi
-          else
-            echo "⚠️  No database config found, using local SQLite"
-          fi
-
-          # Start backend
-          echo "▶️  Starting backend..."
-          # Load Cloud SQL environment if available
-          if [ -f .env.gcp ]; then
-            echo "☁️  Loading Cloud SQL configuration..."
-            export \$(cat .env.gcp | xargs)
-          fi
-          nohup venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8010 > jarvis.log 2>&1 &
-          BACKEND_PID=\$!
-          echo "Backend PID: \$BACKEND_PID"
-
-          # Wait for startup
-          echo "⏳ Waiting for backend..."
-          sleep 10
-
-          # Health check with retries
-          echo "🏥 Running health checks..."
-          MAX_RETRIES=5
-          RETRY_COUNT=0
-          HEALTH_OK=false
-
-          while [ \$RETRY_COUNT -lt \$MAX_RETRIES ]; do
-            if curl -s http://localhost:8010/health > /dev/null; then
-              HEALTH_OK=true
-              break
-            fi
-            echo "Retry \$((RETRY_COUNT + 1))/\$MAX_RETRIES..."
-            sleep 3
-            RETRY_COUNT=\$((RETRY_COUNT + 1))
-          done
-
-          if [ "\$HEALTH_OK" = true ]; then
-            echo "✅ Health check passed!"
-
-            # Test hybrid orchestrator
-            echo "🧪 Testing hybrid orchestrator..."
-            cd ~/backend/backend
-            venv/bin/python -c "import sys; sys.path.insert(0, '.'); exec(\"try:\\n    from backend.core.hybrid_orchestrator import HybridOrchestrator\\n    print('✅ Hybrid Orchestrator: OK')\\nexcept Exception as e:\\n    print(f'⚠️  Hybrid Orchestrator test: {e}')\")"
-
-            echo "✅ Deployment successful!"
-            echo "🌐 Backend: http://34.10.137.70:8010"
-            echo "🧠 Hybrid Architecture: Active"
-            echo "💡 Intelligence: UAE + SAI + CAI + Learning DB"
-          else
-            echo "❌ Health check failed after \$MAX_RETRIES retries"
-            echo "📋 Last 50 lines of log:"
-            tail -50 ~/backend/backend/jarvis.log
-
-            # Rollback
-            echo "🔄 Rolling back to \$PREV_COMMIT..."
-            cd ~/backend
-            git reset --hard \$PREV_COMMIT
-
-            cd ~/backend/backend
-            pkill -f uvicorn || true
-            sleep 2
-            nohup venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8010 > jarvis.log 2>&1 &
-            sleep 8
-
-            echo "❌ Deployment failed - rolled back"
-            exit 1
-          fi
-          EOF
-
-      - name: Post-Deployment Validation
+      - name: Verify Deployment Accessibility
         run: |
-          echo "🔍 Running post-deployment validation..."
-          RESPONSE=$(curl -s http://34.10.137.70:8010/health || echo "FAILED")
+          DEPLOYMENT_BUCKET="gs://jarvis-473803-deployments"
+          BRANCH="${{ github.ref_name }}"
+          COMMIT="${{ github.sha }}"
 
-          if [ "$RESPONSE" = "FAILED" ]; then
-            echo "⚠️  Backend not responding from external IP"
-          else
-            echo "✅ Health endpoint responsive"
-            echo "$RESPONSE"
-          fi
+          echo "✅ Deployment package is now available at:"
+          echo "   ${DEPLOYMENT_BUCKET}/jarvis-${COMMIT}.tar.gz"
+          echo ""
+          echo "📝 Spot VMs will automatically pull this code on creation"
+          echo "   via the startup script embedded in start_system.py"
+          echo ""
+          echo "ℹ️  To deploy:"
+          echo "   1. Start JARVIS locally: python start_system.py"
+          echo "   2. When RAM > 85%, Spot VM auto-creates"
+          echo "   3. Spot VM pulls latest code from Cloud Storage"
+          echo "   4. JARVIS runs with latest changes"
 
       - name: Deployment Summary
         if: always()
         run: |
-          echo "## 🚀 Deployment Report" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 Deployment Report (Spot VM Architecture)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Status:** ${{ job.status == 'success' && '✅ Success' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **URL:** http://34.10.137.70:8010" >> $GITHUB_STEP_SUMMARY
+          echo "- **Artifact:** gs://jarvis-473803-deployments/jarvis-${{ github.sha }}.tar.gz" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Features Deployed" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployment Model" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ **On-Demand Spot VMs** (created when RAM > 85%)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ **Cloud Storage Deployment** (VMs pull latest code automatically)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ **Auto-Cleanup** (VMs deleted on shutdown)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ **Cost Optimized** (~$11-15/month vs $180/month)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Features Available" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Hybrid Architecture (Local + GCP)" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Intelligence Systems (UAE/SAI/CAI)" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Learning Database" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Learning Database (Cloud SQL)" >> $GITHUB_STEP_SUMMARY
           echo "- ✅ Intelligent Routing" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### How to Deploy" >> $GITHUB_STEP_SUMMARY
+          echo "1. Run JARVIS locally: \`python start_system.py\`" >> $GITHUB_STEP_SUMMARY
+          echo "2. System auto-scales to GCP when RAM > 85%" >> $GITHUB_STEP_SUMMARY
+          echo "3. Spot VMs auto-pull latest code from Cloud Storage" >> $GITHUB_STEP_SUMMARY
+          echo "4. VMs auto-delete when JARVIS stops (Ctrl+C)" >> $GITHUB_STEP_SUMMARY
 
-  post-deployment-tests:
-    name: Post-Deployment Tests
+  verify-deployment-package:
+    name: Verify Deployment Package
     runs-on: ubuntu-latest
     needs: deploy
     if: success()
 
     steps:
-      - name: Test Backend Health
-        run: |
-          echo "🏥 Testing backend..."
-          HEALTH=$(curl -s http://34.10.137.70:8010/health || echo "FAILED")
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-          if [ "$HEALTH" = "FAILED" ]; then
-            echo "❌ Backend not responding"
-            exit 1
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Verify Package Exists
+        run: |
+          DEPLOYMENT_BUCKET="gs://jarvis-473803-deployments"
+          COMMIT="${{ github.sha }}"
+          BRANCH="${{ github.ref_name }}"
+
+          echo "🔍 Verifying deployment package..."
+
+          # Check if artifact exists
+          if gsutil ls ${DEPLOYMENT_BUCKET}/jarvis-${COMMIT}.tar.gz > /dev/null 2>&1; then
+            echo "✅ Deployment artifact found"
           else
-            echo "✅ Backend is healthy"
+            echo "❌ Deployment artifact not found"
+            exit 1
+          fi
+
+          # Check if metadata exists
+          if gsutil ls ${DEPLOYMENT_BUCKET}/metadata-${COMMIT}.json > /dev/null 2>&1; then
+            echo "✅ Deployment metadata found"
+            gsutil cat ${DEPLOYMENT_BUCKET}/metadata-${COMMIT}.json
+          else
+            echo "⚠️  Deployment metadata not found"
+          fi
+
+          # Check latest pointer
+          if gsutil ls ${DEPLOYMENT_BUCKET}/latest-${BRANCH}.txt > /dev/null 2>&1; then
+            LATEST_COMMIT=$(gsutil cat ${DEPLOYMENT_BUCKET}/latest-${BRANCH}.txt)
+            echo "✅ Latest ${BRANCH} commit: ${LATEST_COMMIT}"
+          else
+            echo "⚠️  Latest ${BRANCH} pointer not found"
           fi
 
       - name: Summary
         run: |
-          echo "## ✅ Post-Deployment Tests" >> $GITHUB_STEP_SUMMARY
-          echo "All tests passed!" >> $GITHUB_STEP_SUMMARY
+          echo "## ✅ Deployment Package Verified" >> $GITHUB_STEP_SUMMARY
+          echo "Spot VMs will pull this code on creation!" >> $GITHUB_STEP_SUMMARY
