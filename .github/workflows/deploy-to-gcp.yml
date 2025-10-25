@@ -87,13 +87,13 @@ jobs:
 
           # Create deployment archive
           tar -czf jarvis-${COMMIT}.tar.gz \
-            backend/ \
-            start_system.py \
-            scripts/ \
             --exclude='backend/__pycache__' \
             --exclude='backend/*.pyc' \
             --exclude='backend/logs/*' \
-            --exclude='backend/.env'
+            --exclude='backend/.env' \
+            backend/ \
+            start_system.py \
+            scripts/
 
           # Upload to Cloud Storage
           echo "☁️  Uploading to Cloud Storage..."
