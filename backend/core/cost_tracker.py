@@ -912,6 +912,12 @@ class CostTracker:
             if self.config.enable_desktop_notifications:
                 await self._send_desktop_notification(f"{level.value.upper()}: {message}")
 
+            # Send email alerts for medium/high severity
+            if level in [AlertLevel.MEDIUM, AlertLevel.HIGH]:
+                await self._send_email_alert(
+                    subject=f"{level.value.upper()} Alert: {alert_type}", message=message
+                )
+
             # Trigger callbacks
             await self._notify_event(
                 "alert", {"level": level.value, "type": alert_type, "message": message}
@@ -932,6 +938,75 @@ class CostTracker:
                 await asyncio.create_subprocess_exec(*cmd)
         except Exception as e:
             logger.debug(f"Desktop notification failed: {e}")
+
+    async def _send_email_alert(self, subject: str, message: str):
+        """Send email alert notification (async)"""
+        if not self.config.enable_email_alerts or not self.config.alert_email:
+            return
+
+        try:
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+
+            import aiosmtplib
+
+            # Email configuration from environment
+            smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+            smtp_port = int(os.getenv("SMTP_PORT", "587"))
+            smtp_user = os.getenv("SMTP_USER", self.config.alert_email)
+            smtp_password = os.getenv("SMTP_PASSWORD", "")
+
+            if not smtp_password:
+                logger.debug("SMTP password not configured - skipping email")
+                return
+
+            # Create email message
+            msg = MIMEMultipart("alternative")
+            msg["From"] = smtp_user
+            msg["To"] = self.config.alert_email
+            msg["Subject"] = f"🤖 JARVIS: {subject}"
+
+            # HTML email content
+            html = f"""
+            <html>
+              <head></head>
+              <body style="font-family: Arial, sans-serif; padding: 20px;">
+                <h2 style="color: #2196F3;">🤖 JARVIS Cost Alert</h2>
+                <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px;">
+                  <h3>{subject}</h3>
+                  <p style="white-space: pre-wrap;">{message}</p>
+                </div>
+                <hr style="margin: 20px 0;">
+                <p style="color: #666; font-size: 12px;">
+                  This is an automated alert from JARVIS Hybrid Cloud Intelligence.<br>
+                  <a href="http://localhost:8010/hybrid/status">View Cost Dashboard</a>
+                </p>
+              </body>
+            </html>
+            """
+
+            # Plain text fallback
+            text = f"JARVIS Cost Alert\n\n{subject}\n\n{message}"
+
+            msg.attach(MIMEText(text, "plain"))
+            msg.attach(MIMEText(html, "html"))
+
+            # Send email asynchronously
+            await aiosmtplib.send(
+                msg,
+                hostname=smtp_server,
+                port=smtp_port,
+                username=smtp_user,
+                password=smtp_password,
+                start_tls=True,
+            )
+
+            logger.info(f"📧 Email alert sent to {self.config.alert_email}")
+
+        except ImportError:
+            logger.warning("aiosmtplib not installed - install via: pip install aiosmtplib")
+        except Exception as e:
+            logger.error(f"Failed to send email alert: {e}")
 
     async def get_orphaned_vms_report(self) -> Dict[str, Any]:
         """Get comprehensive orphaned VMs report"""
