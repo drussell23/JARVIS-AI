@@ -630,12 +630,17 @@ gcloud billing budgets create \
 
 ---
 
-## 📚 Additional Resources
+## 📚 Related Documentation
 
+### **JARVIS Documentation**
+- [HYBRID_ARCHITECTURE.md](./HYBRID_ARCHITECTURE.md) - Complete hybrid architecture with UAE/SAI/CAI integration
+- [README.md](./README.md) - Main project documentation and setup guide
+- [start_system.py](./start_system.py) - Implementation code for hybrid system
+
+### **GCP Resources**
 - [GCP Spot VMs Documentation](https://cloud.google.com/compute/docs/instances/spot)
 - [GCP Pricing Calculator](https://cloud.google.com/products/calculator)
 - [Billing Alerts Setup](https://cloud.google.com/billing/docs/how-to/budgets)
-- [start_system.py Implementation](./start_system.py)
 
 ---
 

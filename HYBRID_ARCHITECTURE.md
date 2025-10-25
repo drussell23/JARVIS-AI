@@ -6347,3 +6347,19 @@ models = {
 9. **Reliable** - Database failover between local and cloud
 
 **This is enterprise-grade, production-ready AI architecture!** 🚀
+
+---
+
+## 📚 Related Documentation
+
+### **JARVIS Documentation**
+- [HYBRID_COST_OPTIMIZATION.md](./HYBRID_COST_OPTIMIZATION.md) - 94% cost reduction guide (Spot VMs, auto-cleanup)
+- [README.md](./README.md) - Main project documentation and quick start guide
+- [start_system.py](./start_system.py) - Hybrid system implementation code
+
+### **Key Topics**
+- **Cost Optimization**: See [HYBRID_COST_OPTIMIZATION.md](./HYBRID_COST_OPTIMIZATION.md) for details on $180/month → $11-15/month savings
+- **Architecture Details**: This document (HYBRID_ARCHITECTURE.md)
+- **Setup & Usage**: [README.md](./README.md)
+- **Testing**: Property-based testing with Hypothesis (Section 11)
+- **Database Schema**: 17 tables for persistent learning (Section 10)
