@@ -705,12 +705,15 @@ class HybridWorkloadRouter:
             # Step 2: Deploy via GitHub Actions (if available)
             deployment = await self._trigger_github_deployment(components, gcp_config)
 
+            # CRITICAL: Track instance immediately for cleanup, even if health check fails
+            self.gcp_instance_id = deployment["instance_id"]
+            self.gcp_active = True  # Set now so cleanup runs even if ready check fails
+            logger.info(f"📝 Tracking GCP instance for cleanup: {self.gcp_instance_id}")
+
             # Step 3: Wait for deployment to be ready
             ready = await self._wait_for_gcp_ready(deployment["instance_id"], timeout=300)
 
             if ready:
-                self.gcp_active = True
-                self.gcp_instance_id = deployment["instance_id"]
                 self.gcp_ip = deployment["ip"]
 
                 # Update component locations
@@ -735,6 +738,10 @@ class HybridWorkloadRouter:
                     "migration_time": migration_time,
                 }
             else:
+                # Even though ready check failed, instance exists and needs cleanup
+                logger.warning(
+                    f"⚠️  GCP instance created but health check timeout - will cleanup on shutdown"
+                )
                 raise Exception("GCP deployment timeout")
 
         except Exception as e:
@@ -1224,6 +1231,10 @@ class HybridIntelligenceCoordinator:
                 pass
 
         # Cleanup GCP instance if active
+        logger.info(
+            f"🔍 Checking for GCP cleanup: gcp_active={self.workload_router.gcp_active}, instance_id={self.workload_router.gcp_instance_id}"
+        )
+
         if self.workload_router.gcp_active and self.workload_router.gcp_instance_id:
             try:
                 logger.info(f"🧹 Cleaning up GCP instance: {self.workload_router.gcp_instance_id}")
@@ -1232,7 +1243,12 @@ class HybridIntelligenceCoordinator:
                 )
                 logger.info(f"✅ GCP instance {self.workload_router.gcp_instance_id} deleted")
             except Exception as e:
-                logger.error(f"Failed to cleanup GCP instance: {e}")
+                logger.error(f"❌ Failed to cleanup GCP instance: {e}")
+                import traceback
+
+                logger.error(traceback.format_exc())
+        else:
+            logger.info("ℹ️  No active GCP instance to cleanup")
 
         logger.info("🛑 Hybrid coordination stopped")
 
