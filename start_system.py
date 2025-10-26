@@ -422,6 +422,7 @@ class DynamicRAMMonitor:
         # System configuration (auto-detected, no hardcoding)
         self.local_ram_total = psutil.virtual_memory().total
         self.local_ram_gb = self.local_ram_total / (1024**3)
+        self.is_macos = platform.system() == "Darwin"
 
         # Dynamic thresholds (adapt based on system behavior)
         self.warning_threshold = 0.75  # 75% - Start preparing for shift
@@ -429,8 +430,15 @@ class DynamicRAMMonitor:
         self.optimal_threshold = 0.60  # 60% - Shift back to local
         self.emergency_threshold = 0.95  # 95% - Immediate action required
 
+        # macOS-specific memory pressure thresholds
+        # Memory pressure levels: 1 (normal), 2 (warn), 4 (critical)
+        self.pressure_warn_level = 2  # macOS reports pressure level 2+
+        self.pressure_critical_level = 4  # macOS reports pressure level 4
+
         # Monitoring state
         self.current_usage = 0.0
+        self.current_pressure = 0  # macOS memory pressure level
+        self.pressure_history = []
         self.usage_history = []
         self.max_history = 100
         self.prediction_window = 10  # Predict 10 seconds ahead
@@ -455,6 +463,101 @@ class DynamicRAMMonitor:
             f"Critical={self.critical_threshold*100:.0f}%, "
             f"Emergency={self.emergency_threshold*100:.0f}%"
         )
+        if self.is_macos:
+            logger.info("   macOS memory pressure detection enabled")
+
+    async def get_macos_memory_pressure(self) -> dict:
+        """
+        Get macOS memory pressure using vm_stat and memory_pressure command.
+
+        Returns dict with:
+        - pressure_level: 1 (normal), 2 (warn), 4 (critical)
+        - pressure_status: "normal", "warn", "critical"
+        - page_ins: Number of pages swapped in (indicator of pressure)
+        - page_outs: Number of pages swapped out (indicator of pressure)
+        - is_under_pressure: Boolean indicating actual memory stress
+        """
+        if not self.is_macos:
+            return {
+                "pressure_level": 1,
+                "pressure_status": "normal",
+                "page_ins": 0,
+                "page_outs": 0,
+                "is_under_pressure": False,
+            }
+
+        try:
+            # Method 1: Try memory_pressure command (most accurate)
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "memory_pressure",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=2.0)
+                output = stdout.decode()
+
+                # Parse memory_pressure output
+                # Looks for: "System-wide memory free percentage: XX%"
+                # And: "The system has experienced memory pressure XX times"
+                pressure_level = 1  # Default: normal
+                if "critical" in output.lower():
+                    pressure_level = 4
+                elif "warn" in output.lower():
+                    pressure_level = 2
+
+            except (FileNotFoundError, asyncio.TimeoutError):
+                # memory_pressure command not available, fall back to vm_stat
+                pressure_level = 1
+
+            # Method 2: Use vm_stat for page in/out rates (always check this)
+            proc = await asyncio.create_subprocess_exec(
+                "vm_stat",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=2.0)
+            output = stdout.decode()
+
+            # Parse vm_stat output for page activity
+            page_ins = 0
+            page_outs = 0
+            for line in output.split("\n"):
+                if "Pages paged in:" in line:
+                    page_ins = int(line.split(":")[1].strip().replace(".", ""))
+                elif "Pages paged out:" in line:
+                    page_outs = int(line.split(":")[1].strip().replace(".", ""))
+
+            # Calculate if under pressure based on page activity
+            # High page-outs indicate actual memory pressure (swapping)
+            is_under_pressure = page_outs > 1000  # More than 1000 pages swapped out
+
+            # Upgrade pressure level if we see high swap activity
+            if page_outs > 10000:
+                pressure_level = max(pressure_level, 4)  # Critical
+            elif page_outs > 5000:
+                pressure_level = max(pressure_level, 2)  # Warn
+
+            # Map pressure level to status
+            pressure_status = {1: "normal", 2: "warn", 4: "critical"}.get(pressure_level, "unknown")
+
+            return {
+                "pressure_level": pressure_level,
+                "pressure_status": pressure_status,
+                "page_ins": page_ins,
+                "page_outs": page_outs,
+                "is_under_pressure": is_under_pressure or pressure_level >= 2,
+            }
+
+        except Exception as e:
+            logger.debug(f"Failed to get macOS memory pressure: {e}")
+            return {
+                "pressure_level": 1,
+                "pressure_status": "normal",
+                "page_ins": 0,
+                "page_outs": 0,
+                "is_under_pressure": False,
+            }
 
     async def get_current_state(self) -> dict:
         """Get comprehensive current memory state"""
@@ -462,6 +565,9 @@ class DynamicRAMMonitor:
 
         mem = psutil.virtual_memory()
         swap = psutil.swap_memory()
+
+        # Get macOS memory pressure if on macOS
+        pressure_info = await self.get_macos_memory_pressure()
 
         state = {
             "timestamp": datetime.now().isoformat(),
@@ -472,29 +578,96 @@ class DynamicRAMMonitor:
             "swap_percent": swap.percent / 100.0,
             "trend": self.trend_direction,
             "predicted": self.predicted_usage,
-            "status": self._get_status(mem.percent / 100.0),
-            "shift_recommended": mem.percent / 100.0 >= self.warning_threshold,
-            "emergency": mem.percent / 100.0 >= self.emergency_threshold,
+            "status": self._get_status(mem.percent / 100.0, pressure_info),
+            "shift_recommended": self._should_shift(mem.percent / 100.0, pressure_info),
+            "emergency": self._is_emergency(mem.percent / 100.0, pressure_info),
+            # macOS-specific fields
+            "pressure_level": pressure_info["pressure_level"],
+            "pressure_status": pressure_info["pressure_status"],
+            "is_under_pressure": pressure_info["is_under_pressure"],
+            "page_outs": pressure_info["page_outs"],
         }
 
         # Update metrics
         self.current_usage = state["percent"]
+        self.current_pressure = state["pressure_level"]
         self.monitoring_overhead = time.time() - start_time
 
         return state
 
-    def _get_status(self, usage: float) -> str:
-        """Get human-readable status"""
-        if usage >= self.emergency_threshold:
-            return "EMERGENCY"
-        elif usage >= self.critical_threshold:
-            return "CRITICAL"
-        elif usage >= self.warning_threshold:
-            return "WARNING"
-        elif usage >= self.optimal_threshold:
-            return "ELEVATED"
+    def _get_status(self, usage: float, pressure_info: dict) -> str:
+        """
+        Get human-readable status based on both percentage and memory pressure.
+
+        On macOS: Considers actual memory pressure (swapping) not just percentage.
+        On Linux: Uses percentage thresholds.
+        """
+        # macOS: Prioritize memory pressure over percentage
+        if self.is_macos:
+            pressure_level = pressure_info.get("pressure_level", 1)
+            is_under_pressure = pressure_info.get("is_under_pressure", False)
+
+            # Critical pressure overrides percentage
+            if pressure_level >= 4 or is_under_pressure and usage >= 0.90:
+                return "CRITICAL"
+            # Warn pressure + high percentage
+            elif pressure_level >= 2 and usage >= self.critical_threshold:
+                return "WARNING"
+            # Warn pressure alone (high usage is OK if not swapping)
+            elif is_under_pressure:
+                return "ELEVATED"
+            # High percentage but no pressure = OK on macOS (normal caching)
+            elif usage >= self.warning_threshold:
+                return "ELEVATED"  # Downgrade from WARNING
+            elif usage >= self.optimal_threshold:
+                return "OPTIMAL"
+            else:
+                return "OPTIMAL"
         else:
-            return "OPTIMAL"
+            # Linux: Use percentage thresholds
+            if usage >= self.emergency_threshold:
+                return "EMERGENCY"
+            elif usage >= self.critical_threshold:
+                return "CRITICAL"
+            elif usage >= self.warning_threshold:
+                return "WARNING"
+            elif usage >= self.optimal_threshold:
+                return "ELEVATED"
+            else:
+                return "OPTIMAL"
+
+    def _should_shift(self, usage: float, pressure_info: dict) -> bool:
+        """
+        Determine if workload should shift to GCP.
+
+        macOS: Shift when under actual memory pressure + high usage
+        Linux: Shift when exceeding warning threshold
+        """
+        if self.is_macos:
+            # Only shift if BOTH conditions met:
+            # 1. High memory pressure (swapping happening)
+            # 2. High percentage (>= critical threshold 85%)
+            is_under_pressure = pressure_info.get("is_under_pressure", False)
+            pressure_level = pressure_info.get("pressure_level", 1)
+
+            return (is_under_pressure and usage >= self.critical_threshold) or pressure_level >= 4
+        else:
+            # Linux: Use percentage threshold
+            return usage >= self.warning_threshold
+
+    def _is_emergency(self, usage: float, pressure_info: dict) -> bool:
+        """
+        Determine if this is an emergency requiring immediate action.
+
+        macOS: Critical pressure level + very high usage
+        Linux: Emergency threshold exceeded
+        """
+        if self.is_macos:
+            pressure_level = pressure_info.get("pressure_level", 1)
+            # Emergency if critical pressure + usage above 90%
+            return pressure_level >= 4 and usage >= 0.90
+        else:
+            return usage >= self.emergency_threshold
 
     async def update_usage_history(self):
         """Update usage history and calculate trends"""
@@ -1162,7 +1335,10 @@ exit 1
 
             try:
                 # Create GCP instance with appropriate machine type
-                machine_type = "e2-highmem-4"  # 4 vCPUs, 32GB RAM
+                # For 16GB local RAM, use 4x capacity for meaningful offloading
+                # e2-highmem-8: 8 vCPUs, 64GB RAM (~$0.058/hr Spot)
+                machine_type = os.getenv("GCP_VM_TYPE", "e2-highmem-8")
+                logger.info(f"🖥️  Creating GCP VM: {machine_type} (64GB RAM, 4x local capacity)")
 
                 cmd = [
                     "gcloud",
@@ -1557,9 +1733,19 @@ class HybridIntelligenceCoordinator:
 
                 # Log significant changes
                 if ram_state["status"] in ["WARNING", "CRITICAL", "EMERGENCY"]:
-                    logger.warning(
-                        f"⚠️  RAM {ram_state['status']}: {ram_state['percent']*100:.1f}% used"
-                    )
+                    # Include memory pressure info on macOS
+                    if self.ram_monitor.is_macos:
+                        pressure_status = ram_state.get("pressure_status", "unknown")
+                        is_under_pressure = ram_state.get("is_under_pressure", False)
+                        pressure_indicator = "🔴" if is_under_pressure else "🟢"
+                        logger.warning(
+                            f"⚠️  RAM {ram_state['status']}: {ram_state['percent']*100:.1f}% used "
+                            f"| Pressure: {pressure_indicator} {pressure_status}"
+                        )
+                    else:
+                        logger.warning(
+                            f"⚠️  RAM {ram_state['status']}: {ram_state['percent']*100:.1f}% used"
+                        )
 
                 # Handle emergency
                 if ram_state["emergency"] and not self.emergency_mode:
@@ -2398,7 +2584,7 @@ class AsyncSystemManager:
             print(f"\n{Colors.BOLD}🌐 HYBRID CLOUD INTELLIGENCE:{Colors.ENDC}")
             ram_gb = self.hybrid_coordinator.ram_monitor.local_ram_gb
             print(f"   • {Colors.GREEN}✓ Local RAM:{Colors.ENDC} {ram_gb:.1f}GB (macOS)")
-            print(f"   • {Colors.CYAN}✓ Cloud RAM:{Colors.ENDC} 32GB (GCP e2-highmem-4)")
+            print(f"   • {Colors.CYAN}✓ Cloud RAM:{Colors.ENDC} 64GB (GCP e2-highmem-8, 4x local)")
             print(f"   • {Colors.GREEN}✓ Auto-Routing:{Colors.ENDC} Intelligent workload placement")
             print(
                 f"   • {Colors.PURPLE}✓ Crash Prevention:{Colors.ENDC} Emergency GCP shift at {self.hybrid_coordinator.ram_monitor.critical_threshold*100:.0f}% RAM"
