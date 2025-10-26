@@ -1321,6 +1321,69 @@ exit 1
     async def _direct_gcp_deployment(self, components: list, gcp_config: dict) -> dict:
         """Direct GCP deployment using gcloud CLI with embedded startup script"""
         try:
+            # CRITICAL: VM creation guard - only master instance can create VMs
+            vm_creation_lock = Path("/tmp/jarvis_vm_creation.lock")  # nosec B108
+
+            # Check if another instance is already creating a VM
+            if vm_creation_lock.exists():
+                try:
+                    with open(vm_creation_lock, "r") as f:
+                        lock_data = f.read().strip().split(":")
+                        if len(lock_data) >= 2:
+                            lock_pid = int(lock_data[0])
+                            lock_time = float(lock_data[1])
+
+                            # Check if lock is still valid (process still running)
+                            if psutil.pid_exists(lock_pid):
+                                age = time.time() - lock_time
+                                logger.error(
+                                    f"⛔ VM creation already in progress by PID {lock_pid} "
+                                    f"({age:.0f}s ago). Aborting to prevent duplicate VMs!"
+                                )
+                                return {
+                                    "success": False,
+                                    "error": f"VM creation locked by PID {lock_pid}",
+                                    "reason": "duplicate_prevention",
+                                }
+                            else:
+                                # Stale lock - remove it
+                                logger.warning(
+                                    f"Removing stale VM creation lock from PID {lock_pid}"
+                                )
+                                vm_creation_lock.unlink()
+                except Exception as e:
+                    logger.warning(f"Failed to read VM creation lock: {e}, removing it")
+                    vm_creation_lock.unlink()
+
+            # Acquire VM creation lock
+            try:
+                with open(vm_creation_lock, "w") as f:
+                    f.write(f"{os.getpid()}:{time.time()}")
+                logger.debug(f"VM creation lock acquired by PID {os.getpid()}")
+            except Exception as e:
+                logger.error(f"Failed to acquire VM creation lock: {e}")
+                return {
+                    "success": False,
+                    "error": "Failed to acquire VM creation lock",
+                    "reason": "lock_failure",
+                }
+
+            # Clean up lock on exit (successful or failed)
+            def cleanup_vm_lock():
+                if vm_creation_lock.exists():
+                    try:
+                        with open(vm_creation_lock, "r") as f:
+                            lock_pid = int(f.read().strip().split(":")[0])
+                            if lock_pid == os.getpid():
+                                vm_creation_lock.unlink()
+                                logger.debug("VM creation lock released")
+                    except Exception as e:
+                        logger.warning(f"Failed to clean up VM creation lock: {e}")
+
+            import atexit
+
+            atexit.register(cleanup_vm_lock)
+
             instance_name = f"jarvis-auto-{int(time.time())}"
 
             # Generate startup script and write to temp file
@@ -1377,8 +1440,6 @@ exit 1
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
             finally:
                 # Clean up temp file
-                import os
-
                 try:
                     os.unlink(startup_script_path)
                 except:
@@ -1389,6 +1450,9 @@ exit 1
 
                 logger.info("✅ gcloud command succeeded")
                 instance_data = json.loads(result.stdout)
+
+                # Release VM creation lock immediately after success
+                cleanup_vm_lock()
 
                 return {
                     "method": "gcloud_direct",
@@ -1402,6 +1466,10 @@ exit 1
                 logger.error(f"❌ gcloud command failed with return code {result.returncode}")
                 logger.error(f"   stdout: {result.stdout}")
                 logger.error(f"   stderr: {result.stderr}")
+
+                # Release VM creation lock on failure too
+                cleanup_vm_lock()
+
                 raise Exception(f"gcloud failed: {result.stderr}")
 
         except subprocess.TimeoutExpired:
@@ -5317,9 +5385,74 @@ async def main():
         os.environ["JARVIS_GOAL_AUTOMATION"] = "false"
         print(f"{Colors.YELLOW}⚠️ Goal Inference Automation: DISABLED{Colors.ENDC}")
 
+    # PID file locking to prevent multiple instances
+    pid_file = Path("/tmp/jarvis_master.pid")  # nosec B108
+    pid_lock_acquired = False
+
+    def cleanup_pid_file():
+        """Clean up PID file on exit"""
+        if pid_lock_acquired and pid_file.exists():
+            try:
+                # Verify it's our PID before deleting
+                with open(pid_file, "r") as f:
+                    stored_pid = int(f.read().strip())
+                    if stored_pid == os.getpid():
+                        pid_file.unlink()
+                        logger.debug("PID lock released")
+            except Exception as e:
+                logger.warning(f"Failed to clean up PID file: {e}")
+
+    # Register cleanup
+    import atexit
+
+    atexit.register(cleanup_pid_file)
+
     # Early check for multiple instances (before creating manager)
     # Skip check if --restart or --force-start is used
     if not args.force_start and not args.restart:
+        # Check PID file first (faster and more reliable than ps)
+        if pid_file.exists():
+            try:
+                with open(pid_file, "r") as f:
+                    existing_pid = int(f.read().strip())
+
+                # Verify process is actually running
+                if psutil.pid_exists(existing_pid):
+                    try:
+                        proc = psutil.Process(existing_pid)
+                        cmdline = " ".join(proc.cmdline()).lower()
+                        if "start_system.py" in cmdline or "main.py" in cmdline:
+                            print(f"\n{Colors.FAIL}❌ JARVIS is already running!{Colors.ENDC}")
+                            print(
+                                f"{Colors.WARNING}Master instance PID: {existing_pid}{Colors.ENDC}\n"
+                            )
+                            print(f"{Colors.CYAN}💡 To prevent runaway GCP costs:{Colors.ENDC}")
+                            print(f"   1. Stop existing instance: kill -INT {existing_pid}")
+                            print(f"   2. Or use: python start_system.py --restart")
+                            print(
+                                f"   3. Or force start (risky): python start_system.py --force-start"
+                            )
+                            print(
+                                f"\n{Colors.YELLOW}⚠️  Multiple instances = Multiple VMs = Higher costs!{Colors.ENDC}"
+                            )
+                            return 1
+                    except psutil.NoSuchProcess:
+                        # PID exists but not JARVIS - stale lock file
+                        print(
+                            f"{Colors.YELLOW}⚠️ Removing stale PID lock from process {existing_pid}{Colors.ENDC}"
+                        )
+                        pid_file.unlink()
+                else:
+                    # PID doesn't exist - stale lock file
+                    print(
+                        f"{Colors.YELLOW}⚠️ Removing stale PID lock (PID {existing_pid} not running){Colors.ENDC}"
+                    )
+                    pid_file.unlink()
+            except Exception as e:
+                print(f"{Colors.YELLOW}⚠️ Failed to read PID file: {e}, removing it{Colors.ENDC}")
+                pid_file.unlink()
+
+        # Secondary check: ps command (catches cases where PID file is missing)
         try:
             # Simple instance check using process listing (macOS compatible)
             # Note: subprocess is already imported at module level (line 163)
@@ -5362,10 +5495,21 @@ async def main():
         except Exception as e:
             print(f"{Colors.WARNING}⚠️ Instance check failed: {e} - proceeding anyway{Colors.ENDC}")
     else:
-        print(f"\n{Colors.WARNING}⚠️ Skipping instance check (--force-start){Colors.ENDC}")
+        print(
+            f"\n{Colors.WARNING}⚠️ Skipping instance check (--force-start or --restart){Colors.ENDC}"
+        )
         print(
             f"{Colors.WARNING}⚠️ WARNING: Multiple instances may create multiple VMs!{Colors.ENDC}"
         )
+
+    # Acquire PID lock (after instance check passes or for --restart)
+    try:
+        with open(pid_file, "w") as f:
+            f.write(str(os.getpid()))
+        pid_lock_acquired = True
+        print(f"{Colors.GREEN}✓ PID lock acquired ({os.getpid()}){Colors.ENDC}")
+    except Exception as e:
+        print(f"{Colors.WARNING}⚠️ Failed to create PID lock file: {e}{Colors.ENDC}")
 
     # Set up logging
     logging.basicConfig(
@@ -5530,11 +5674,13 @@ async def main():
             if str(backend_dir) not in sys.path:
                 sys.path.insert(0, str(backend_dir))
 
-            # Step 1: Find and kill old JARVIS processes (both start_system.py and backend/main.py)
-            print(f"{Colors.YELLOW}1️⃣ Finding old JARVIS instances...{Colors.ENDC}")
+            # Step 1: Advanced JARVIS process detection with multiple strategies
+            print(f"{Colors.YELLOW}1️⃣ Advanced JARVIS instance detection...{Colors.ENDC}")
             current_pid = os.getpid()
             jarvis_processes = []
 
+            # Strategy 1: psutil with robust matching
+            print(f"  → Strategy 1: psutil enumeration...")
             for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
                 try:
                     pid = proc.info["pid"]
@@ -5545,48 +5691,146 @@ async def main():
                     if not cmdline:
                         continue
 
-                    cmdline_str = " ".join(cmdline)
+                    cmdline_str = " ".join(cmdline).lower()
 
-                    # Look for both start_system.py and backend/main.py
-                    is_jarvis = (
-                        "start_system.py" in cmdline_str and "JARVIS-AI-Agent" in cmdline_str
-                    ) or ("main.py" in cmdline_str and "JARVIS-AI-Agent/backend" in cmdline_str)
+                    # Enhanced matching: catch all variants
+                    is_start_system = "python" in cmdline_str and "start_system.py" in cmdline_str
+                    is_backend = (
+                        "python" in cmdline_str
+                        and "main.py" in cmdline_str
+                        and "backend" in cmdline_str
+                    )
 
-                    if is_jarvis:
+                    # Also check if process is in JARVIS directory
+                    is_jarvis_dir = "jarvis" in cmdline_str.lower()
+
+                    if (is_start_system or is_backend) and is_jarvis_dir:
                         jarvis_processes.append(
                             {
                                 "pid": pid,
                                 "age_hours": (time.time() - proc.info["create_time"]) / 3600,
                                 "type": (
-                                    "start_system.py"
-                                    if "start_system.py" in cmdline_str
-                                    else "backend/main.py"
+                                    "start_system.py" if is_start_system else "backend/main.py"
                                 ),
+                                "cmdline": " ".join(cmdline),
                             }
                         )
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
 
+            # Strategy 2: Direct ps command as backup (catches edge cases)
+            print(f"  → Strategy 2: ps command verification...")
+            try:
+                ps_result = subprocess.run(["ps", "aux"], capture_output=True, text=True, timeout=5)
+
+                for line in ps_result.stdout.split("\n"):
+                    if not line.strip():
+                        continue
+
+                    # Look for python processes running start_system.py or backend/main.py
+                    if "python" in line.lower() and (
+                        "start_system.py" in line or "backend/main.py" in line
+                    ):
+                        # Extract PID (second column in ps aux output)
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            try:
+                                pid = int(parts[1])
+                                if pid == current_pid:
+                                    continue
+
+                                # Check if we already found this PID
+                                if not any(p["pid"] == pid for p in jarvis_processes):
+                                    jarvis_processes.append(
+                                        {
+                                            "pid": pid,
+                                            "age_hours": 0.0,  # Unknown age from ps
+                                            "type": (
+                                                "start_system.py"
+                                                if "start_system.py" in line
+                                                else "backend/main.py"
+                                            ),
+                                            "cmdline": line,
+                                        }
+                                    )
+                            except (ValueError, IndexError):
+                                continue
+            except Exception as e:
+                print(f"  {Colors.YELLOW}⚠ ps command failed (non-critical): {e}{Colors.ENDC}")
+
+            # Remove duplicates (same PID from both strategies)
+            seen_pids = set()
+            unique_processes = []
+            for proc in jarvis_processes:
+                if proc["pid"] not in seen_pids:
+                    seen_pids.add(proc["pid"])
+                    unique_processes.append(proc)
+            jarvis_processes = unique_processes
+
             if jarvis_processes:
-                print(f"Found {len(jarvis_processes)} JARVIS process(es)")
-                for proc in jarvis_processes:
-                    print(
-                        f"  Killing PID {proc['pid']} ({proc['type']}, running {proc['age_hours']:.1f}h)..."
+                print(
+                    f"\n{Colors.YELLOW}Found {len(jarvis_processes)} JARVIS process(es):{Colors.ENDC}"
+                )
+                for idx, proc in enumerate(jarvis_processes, 1):
+                    age_str = (
+                        f"{proc['age_hours']:.1f}h" if proc["age_hours"] > 0 else "unknown age"
                     )
+                    print(f"  {idx}. PID {proc['pid']} ({proc['type']}, {age_str})")
+
+                print(f"\n{Colors.YELLOW}⚔️  Killing all instances...{Colors.ENDC}")
+
+                killed_count = 0
+                failed_count = 0
+
+                for proc in jarvis_processes:
                     try:
+                        # Try SIGTERM first (graceful)
+                        print(f"  → Terminating PID {proc['pid']}...", end="", flush=True)
                         os.kill(proc["pid"], signal.SIGTERM)
-                        time.sleep(1)
+                        time.sleep(0.5)
+
+                        # Check if still alive, use SIGKILL if needed
                         if psutil.pid_exists(proc["pid"]):
+                            print(f" forcing...", end="", flush=True)
                             os.kill(proc["pid"], signal.SIGKILL)
-                        print(f"  {Colors.GREEN}✓{Colors.ENDC} Killed PID {proc['pid']}")
+                            time.sleep(0.3)
+
+                        # Verify it's actually dead
+                        if psutil.pid_exists(proc["pid"]):
+                            print(f" {Colors.FAIL}✗ Still alive{Colors.ENDC}")
+                            failed_count += 1
+                        else:
+                            print(f" {Colors.GREEN}✓{Colors.ENDC}")
+                            killed_count += 1
+
+                    except ProcessLookupError:
+                        # Already dead
+                        print(f" {Colors.GREEN}✓ (already dead){Colors.ENDC}")
+                        killed_count += 1
+                    except PermissionError:
+                        print(f" {Colors.FAIL}✗ Permission denied{Colors.ENDC}")
+                        failed_count += 1
                     except Exception as e:
-                        print(
-                            f"  {Colors.FAIL}✗{Colors.ENDC} Failed to kill PID {proc['pid']}: {e}"
-                        )
+                        print(f" {Colors.FAIL}✗ {str(e)[:50]}{Colors.ENDC}")
+                        failed_count += 1
 
                 print(f"\n{Colors.YELLOW}⏳ Waiting for processes to terminate...{Colors.ENDC}")
                 time.sleep(2)
-                print(f"{Colors.GREEN}✓ All old processes terminated{Colors.ENDC}")
+
+                # Final verification
+                still_alive = []
+                for proc in jarvis_processes:
+                    if psutil.pid_exists(proc["pid"]):
+                        still_alive.append(proc["pid"])
+
+                if still_alive:
+                    print(
+                        f"{Colors.FAIL}⚠️  WARNING: {len(still_alive)} process(es) still alive: {still_alive}{Colors.ENDC}"
+                    )
+                else:
+                    print(
+                        f"{Colors.GREEN}✓ All {killed_count} process(es) terminated successfully{Colors.ENDC}"
+                    )
             else:
                 print(f"{Colors.GREEN}No old JARVIS processes found{Colors.ENDC}")
 
