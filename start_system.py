@@ -5137,8 +5137,7 @@ async def main():
     if not args.force_start and not args.restart:
         try:
             # Simple instance check using process listing (macOS compatible)
-            import subprocess
-
+            # Note: subprocess is already imported at module level (line 163)
             result = subprocess.run(["ps", "aux"], capture_output=True, text=True, timeout=5)
             jarvis_processes = [
                 line
