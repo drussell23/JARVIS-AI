@@ -5057,22 +5057,52 @@ async def main():
     # Early check for multiple instances (before creating manager)
     if not args.force_start:
         try:
-            backend_dir = Path(__file__).parent / "backend"
-            if str(backend_dir) not in sys.path:
-                sys.path.insert(0, str(backend_dir))
+            # Simple instance check using process listing (macOS compatible)
+            import subprocess
 
-            # DISABLED: prevent_multiple_jarvis_instances uses network checks that hang on macOS
+            result = subprocess.run(["ps", "aux"], capture_output=True, text=True, timeout=5)
+            jarvis_processes = [
+                line
+                for line in result.stdout.split("\n")
+                if "python" in line.lower()
+                and "start_system.py" in line
+                and str(os.getpid()) not in line  # Exclude ourselves
+            ]
+
+            if jarvis_processes:
+                print(f"\n{Colors.FAIL}❌ JARVIS is already running!{Colors.ENDC}")
+                print(
+                    f"{Colors.WARNING}Found {len(jarvis_processes)} existing instance(s):{Colors.ENDC}\n"
+                )
+
+                for proc_line in jarvis_processes:
+                    # Extract PID (second column in ps aux output)
+                    parts = proc_line.split()
+                    if len(parts) >= 2:
+                        pid = parts[1]
+                        print(f"  • PID {pid}: {' '.join(parts[10:])}")
+
+                print(f"\n{Colors.CYAN}💡 To prevent runaway GCP costs:{Colors.ENDC}")
+                print(f"   1. Stop existing instance: kill -INT {parts[1]}")
+                print(f"   2. Or use: python start_system.py --restart")
+                print(f"   3. Or force start (risky): python start_system.py --force-start")
+                print(
+                    f"\n{Colors.YELLOW}⚠️  Multiple instances = Multiple VMs = Higher costs!{Colors.ENDC}"
+                )
+                return 1
+
             print(
-                f"\n{Colors.GREEN}✓ Skipping instance check (macOS compatibility mode){Colors.ENDC}"
+                f"\n{Colors.GREEN}✓ No existing JARVIS instances found - safe to start{Colors.ENDC}"
             )
-        except ImportError:
-            print(
-                f"{Colors.WARNING}⚠️ Process cleanup manager not available - skipping startup check{Colors.ENDC}"
-            )
+        except subprocess.TimeoutExpired:
+            print(f"{Colors.WARNING}⚠️ Instance check timed out - proceeding anyway{Colors.ENDC}")
         except Exception as e:
-            print(f"{Colors.WARNING}⚠️ Startup check failed: {e}{Colors.ENDC}")
+            print(f"{Colors.WARNING}⚠️ Instance check failed: {e} - proceeding anyway{Colors.ENDC}")
     else:
-        print(f"\n{Colors.WARNING}⚠️ Skipping multiple instance check (--force-start){Colors.ENDC}")
+        print(f"\n{Colors.WARNING}⚠️ Skipping instance check (--force-start){Colors.ENDC}")
+        print(
+            f"{Colors.WARNING}⚠️ WARNING: Multiple instances may create multiple VMs!{Colors.ENDC}"
+        )
 
     # Set up logging
     logging.basicConfig(
