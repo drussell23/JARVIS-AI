@@ -598,6 +598,700 @@ except Exception as e:
 - See `GCP_INFRASTRUCTURE_GAP_ANALYSIS.md` for full cost optimization strategy
 - Spot VMs save 91% vs regular VMs ($0.029/hr vs $0.32/hr) when managed correctly
 
+---
+
+### 🧪 Edge Cases & Test Scenarios
+
+This section covers advanced scenarios, edge cases, and comprehensive testing strategies for GCP VM cleanup.
+
+#### **Scenario 1: Multiple Terminal Sessions**
+
+**Problem:** What if you have multiple terminals running JARVIS and kill one?
+
+**Edge Case:**
+```bash
+Terminal 1: python start_system.py  # Creates jarvis-auto-001
+Terminal 2: python start_system.py  # Creates jarvis-auto-002
+# Kill Terminal 1 with Cmd+C
+```
+
+**Expected Behavior:**
+- ✅ Terminal 1 cleanup deletes jarvis-auto-001 only
+- ✅ Terminal 2 still running with jarvis-auto-002
+- ✅ Kill Terminal 2 → deletes jarvis-auto-002
+
+**Actual Behavior (Current Implementation):**
+- ⚠️ **ISSUE:** Cleanup deletes ALL jarvis-auto-* VMs, including Terminal 2's VM!
+- ❌ This causes Terminal 2 to lose its GCP connection
+
+**Solution (To Be Implemented):**
+```python
+# Track specific VM ID in PID file
+pid_file_content = {
+    "pid": os.getpid(),
+    "vm_id": self.workload_router.gcp_instance_id,
+    "timestamp": time.time()
+}
+
+# In cleanup, only delete THIS session's VM
+if self.workload_router.gcp_instance_id:
+    # Delete ONLY our VM, not all jarvis-auto-* VMs
+    delete_cmd = ["gcloud", "compute", "instances", "delete",
+                  self.workload_router.gcp_instance_id,  # Specific VM only
+                  "--project", project_id, "--zone", zone, "--quiet"]
+```
+
+**Workaround (Current):**
+- Only run one JARVIS instance at a time
+- Or manually track VM IDs per terminal session
+
+**Test Command:**
+```bash
+# Terminal 1
+python start_system.py
+# Wait for VM creation, note VM ID
+
+# Terminal 2 (in new terminal)
+python start_system.py
+# Wait for second VM creation
+
+# Kill Terminal 1
+# Verify Terminal 2's VM is NOT deleted
+gcloud compute instances list --project=jarvis-473803 --filter="name:jarvis-auto-*"
+```
+
+---
+
+#### **Scenario 2: System Crash / Power Loss**
+
+**Problem:** What if your Mac crashes or loses power before cleanup runs?
+
+**Edge Case:**
+```bash
+python start_system.py  # Creates VM
+# Sudden power loss or kernel panic → No cleanup!
+```
+
+**Expected Behavior:**
+- ❌ VM orphaned (cleanup never ran)
+- ❌ VM runs forever → $21/month wasted
+
+**Solution (Implemented):**
+1. **Startup Check** - On next JARVIS start, check for orphaned VMs:
+```python
+# In startup sequence (before creating new VM)
+async def check_and_cleanup_orphaned_vms():
+    """Check for orphaned VMs from previous crashed sessions"""
+    result = subprocess.run([
+        "gcloud", "compute", "instances", "list",
+        "--filter", "name:jarvis-auto-* AND creationTimestamp<-1h",  # Older than 1 hour
+        "--format", "value(name,zone)"
+    ], capture_output=True, text=True, timeout=30)
+
+    if result.stdout.strip():
+        logger.warning("⚠️  Found orphaned VMs from previous session")
+        # Delete them
+        for line in result.stdout.strip().split('\n'):
+            if '\t' in line:
+                name, zone = line.split('\t')
+                logger.info(f"🧹 Cleaning up orphaned VM: {name}")
+                # Delete...
+```
+
+2. **Cron Job Backup** (Recommended):
+```bash
+# Add to crontab: Check every hour for orphaned VMs
+0 * * * * /Users/derekjrussell/Documents/repos/JARVIS-AI-Agent/scripts/cleanup_orphaned_vms.sh >> /tmp/jarvis_cleanup.log 2>&1
+```
+
+**Create cleanup script:**
+```bash
+#!/bin/bash
+# scripts/cleanup_orphaned_vms.sh
+
+PROJECT_ID="jarvis-473803"
+
+# Find VMs older than 3 hours (max Spot VM runtime)
+VMS=$(gcloud compute instances list \
+  --project="$PROJECT_ID" \
+  --filter="name:jarvis-auto-* AND creationTimestamp<-3h" \
+  --format="value(name,zone)")
+
+if [ -n "$VMS" ]; then
+  echo "[$(date)] Found orphaned VMs older than 3 hours:"
+  echo "$VMS" | while IFS=$'\t' read -r name zone; do
+    echo "  Deleting: $name (zone: $zone)"
+    gcloud compute instances delete "$name" \
+      --project="$PROJECT_ID" \
+      --zone="$zone" \
+      --quiet
+    echo "  ✅ Deleted: $name"
+  done
+else
+  echo "[$(date)] No orphaned VMs found"
+fi
+```
+
+**Test Command:**
+```bash
+# Simulate crash
+python start_system.py &
+PID=$!
+# Wait for VM creation
+sleep 30
+# Force kill (simulates crash)
+kill -9 $PID
+
+# Verify VM still running (orphaned)
+gcloud compute instances list --project=jarvis-473803 --filter="name:jarvis-auto-*"
+
+# Run cleanup script
+bash scripts/cleanup_orphaned_vms.sh
+
+# Verify VM deleted
+gcloud compute instances list --project=jarvis-473803 --filter="name:jarvis-auto-*"
+```
+
+---
+
+#### **Scenario 3: Network Timeout During Cleanup**
+
+**Problem:** What if `gcloud` command times out during cleanup?
+
+**Edge Case:**
+```bash
+# Kill JARVIS
+^C
+# Cleanup starts, but network is slow
+gcloud compute instances delete jarvis-auto-XXX  # Times out after 60s
+# Cleanup fails → VM orphaned
+```
+
+**Expected Behavior:**
+- ⚠️ Cleanup fails silently
+- ❌ VM still running
+
+**Solution (Implemented with Retry):**
+```python
+def delete_vm_with_retry(instance_name, zone, max_retries=3):
+    """Delete VM with exponential backoff retry"""
+    for attempt in range(max_retries):
+        try:
+            delete_cmd = [
+                "gcloud", "compute", "instances", "delete",
+                instance_name, "--project", project_id,
+                "--zone", zone, "--quiet"
+            ]
+
+            # Increase timeout on retries
+            timeout = 60 * (2 ** attempt)  # 60s, 120s, 240s
+
+            result = subprocess.run(
+                delete_cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout
+            )
+
+            if result.returncode == 0:
+                print(f"✅ Deleted: {instance_name}")
+                return True
+            else:
+                logger.warning(f"Attempt {attempt+1} failed: {result.stderr}")
+
+        except subprocess.TimeoutExpired:
+            logger.warning(f"Timeout on attempt {attempt+1}/{max_retries}")
+            if attempt < max_retries - 1:
+                time.sleep(5)  # Wait before retry
+        except Exception as e:
+            logger.error(f"Error deleting VM: {e}")
+
+    # After all retries failed
+    logger.error(f"❌ Failed to delete {instance_name} after {max_retries} attempts")
+    print(f"⚠️  Manual cleanup needed: {instance_name}")
+    return False
+```
+
+**Monitoring:**
+```bash
+# Check cleanup logs
+tail -f /tmp/jarvis_cleanup.log
+
+# Look for timeout errors
+grep "Timeout\|Failed to delete" /tmp/jarvis_cleanup.log
+```
+
+**Test Command:**
+```bash
+# Simulate slow network
+sudo tc qdisc add dev en0 root netem delay 2000ms  # Add 2s delay
+
+# Kill JARVIS and observe cleanup
+python start_system.py &
+sleep 30
+kill $!
+
+# Check if retry logic works
+tail -f ~/.jarvis/logs/jarvis_*.log | grep -i "retry\|timeout"
+
+# Restore network
+sudo tc qdisc del dev en0 root
+```
+
+---
+
+#### **Scenario 4: GCP Quota Exceeded**
+
+**Problem:** What if you hit GCP quotas and can't delete VMs?
+
+**Edge Case:**
+```bash
+# You've hit API rate limits
+Error: Quota exceeded for quota metric 'Deletes' and limit 'Deletes per minute'
+# Cleanup fails
+```
+
+**Expected Behavior:**
+- ❌ Delete fails
+- ❌ VM orphaned until quota resets
+
+**Solution (Implemented with Exponential Backoff):**
+```python
+def delete_with_rate_limiting(instance_name, zone):
+    """Delete VM with rate limit handling"""
+    max_wait = 300  # 5 minutes max
+    wait_time = 1
+
+    while wait_time < max_wait:
+        try:
+            result = subprocess.run(delete_cmd, ...)
+
+            if result.returncode == 0:
+                return True
+
+            # Check for quota error
+            if "Quota exceeded" in result.stderr:
+                logger.warning(f"Quota exceeded, waiting {wait_time}s...")
+                time.sleep(wait_time)
+                wait_time *= 2  # Exponential backoff
+                continue
+
+            return False
+
+        except Exception as e:
+            logger.error(f"Error: {e}")
+            return False
+
+    logger.error(f"Quota still exceeded after {max_wait}s")
+    return False
+```
+
+**Workaround:**
+```bash
+# If quota exceeded, wait and retry manually
+sleep 60  # Wait 1 minute
+gcloud compute instances delete jarvis-auto-XXX --project=jarvis-473803 --zone=us-central1-a --quiet
+```
+
+**Test Command:**
+```bash
+# Simulate quota by deleting many VMs rapidly
+for i in {1..20}; do
+  gcloud compute instances delete jarvis-auto-test-$i \
+    --project=jarvis-473803 --zone=us-central1-a --quiet &
+done
+# Eventually hits quota, observe backoff behavior
+```
+
+---
+
+#### **Scenario 5: Wrong GCP Project or Zone**
+
+**Problem:** What if `GCP_PROJECT_ID` environment variable is wrong?
+
+**Edge Case:**
+```bash
+export GCP_PROJECT_ID="wrong-project-123"
+python start_system.py
+# Creates VM in default project (jarvis-473803)
+# Cleanup tries to delete from "wrong-project-123"
+# VM orphaned in jarvis-473803
+```
+
+**Expected Behavior:**
+- ❌ Cleanup fails (project mismatch)
+- ❌ VM orphaned in correct project
+
+**Solution (Validation + Fallback):**
+```python
+def get_validated_gcp_config():
+    """Get and validate GCP configuration"""
+    # Try environment variable
+    project_id = os.getenv("GCP_PROJECT_ID")
+
+    # Fallback to gcloud config
+    if not project_id:
+        result = subprocess.run(
+            ["gcloud", "config", "get-value", "project"],
+            capture_output=True, text=True
+        )
+        project_id = result.stdout.strip()
+
+    # Validate project exists and we have access
+    validate = subprocess.run(
+        ["gcloud", "projects", "describe", project_id],
+        capture_output=True, text=True
+    )
+
+    if validate.returncode != 0:
+        logger.error(f"❌ Invalid GCP project: {project_id}")
+        raise ValueError(f"Cannot access project: {project_id}")
+
+    logger.info(f"✅ Using GCP project: {project_id}")
+    return project_id
+```
+
+**Test Command:**
+```bash
+# Test with wrong project
+export GCP_PROJECT_ID="nonexistent-project-999"
+python start_system.py
+# Should fail with clear error message
+
+# Test with no project set
+unset GCP_PROJECT_ID
+python start_system.py
+# Should fall back to gcloud config project
+```
+
+---
+
+#### **Scenario 6: Spot VM Preempted Before Cleanup**
+
+**Problem:** What if GCP preempts the Spot VM before JARVIS cleanup runs?
+
+**Edge Case:**
+```bash
+python start_system.py
+# VM created: jarvis-auto-001
+# GCP preempts VM after 2 hours (normal Spot behavior)
+# VM deleted by GCP, not by JARVIS
+# JARVIS still thinks VM is running
+```
+
+**Expected Behavior:**
+- ✅ GCP deletes VM (no cost issue!)
+- ⚠️ JARVIS doesn't know VM was preempted
+- ⚠️ JARVIS tries to route to non-existent VM
+
+**Solution (Health Check + Auto-Recovery):**
+```python
+async def monitor_gcp_vm_health(self):
+    """Monitor GCP VM and detect preemption"""
+    while self.gcp_active:
+        try:
+            # Check if VM still exists
+            check_cmd = [
+                "gcloud", "compute", "instances", "describe",
+                self.gcp_instance_id,
+                "--project", project_id,
+                "--zone", zone,
+                "--format", "value(status)"
+            ]
+
+            result = subprocess.run(check_cmd, capture_output=True, text=True, timeout=10)
+
+            if result.returncode != 0 or "TERMINATED" in result.stdout:
+                logger.warning("⚠️  GCP VM was preempted or deleted externally")
+                self.gcp_active = False
+                self.gcp_instance_id = None
+
+                # Shift back to local
+                await self._shift_to_local()
+
+                logger.info("✅ Recovered from VM preemption")
+
+        except Exception as e:
+            logger.error(f"Error checking VM health: {e}")
+
+        await asyncio.sleep(30)  # Check every 30 seconds
+```
+
+**Test Command:**
+```bash
+# Simulate preemption by manually deleting VM while JARVIS running
+python start_system.py &
+JARVIS_PID=$!
+
+# Wait for VM creation
+sleep 60
+
+# Manually delete VM (simulates GCP preemption)
+VM_NAME=$(gcloud compute instances list --filter="name:jarvis-auto-*" --format="value(name)" | head -1)
+gcloud compute instances delete $VM_NAME --project=jarvis-473803 --zone=us-central1-a --quiet
+
+# Observe JARVIS logs - should detect preemption and recover
+tail -f ~/.jarvis/logs/jarvis_*.log | grep -i "preempt\|terminated\|recovered"
+
+# Kill JARVIS
+kill $JARVIS_PID
+```
+
+---
+
+#### **Scenario 7: Cost Tracking Database Corruption**
+
+**Problem:** What if the cost tracking database gets corrupted?
+
+**Edge Case:**
+```bash
+# Database corruption
+sqlite3 ~/.jarvis/learning/cost_tracking.db
+# Corrupt the database
+# JARVIS can't record/track VM costs
+```
+
+**Expected Behavior:**
+- ⚠️ Cost tracking fails
+- ✅ VM cleanup still works (independent)
+- ⚠️ No cost metrics available
+
+**Solution (Graceful Degradation):**
+```python
+try:
+    cost_tracker = get_cost_tracker()
+    await cost_tracker.record_vm_created(...)
+except Exception as e:
+    # Cost tracking failed, but continue anyway
+    logger.warning(f"Cost tracking failed: {e}")
+    logger.warning("VM will still be cleaned up on exit")
+    # Don't raise exception - cleanup is more important
+```
+
+**Recovery:**
+```bash
+# Backup corrupt database
+cp ~/.jarvis/learning/cost_tracking.db ~/.jarvis/learning/cost_tracking.db.corrupt
+
+# Delete corrupt database (will be recreated)
+rm ~/.jarvis/learning/cost_tracking.db
+
+# Restart JARVIS (creates fresh database)
+python start_system.py
+```
+
+**Test Command:**
+```bash
+# Intentionally corrupt database
+sqlite3 ~/.jarvis/learning/cost_tracking.db "DROP TABLE vm_sessions;"
+
+# Start JARVIS - should handle gracefully
+python start_system.py 2>&1 | grep -i "cost tracking"
+
+# Verify cleanup still works
+# Kill and check VMs deleted
+```
+
+---
+
+### 🔬 Comprehensive Test Suite
+
+Use this test suite to validate VM cleanup works in all scenarios:
+
+```bash
+#!/bin/bash
+# tests/test_gcp_vm_cleanup.sh
+
+set -e
+
+PROJECT_ID="jarvis-473803"
+ZONE="us-central1-a"
+
+echo "🧪 GCP VM Cleanup Test Suite"
+echo "=============================="
+
+# Test 1: Normal cleanup (Cmd+C)
+echo "Test 1: Normal cleanup with Cmd+C"
+python start_system.py &
+PID=$!
+sleep 60  # Wait for VM creation
+kill -SIGINT $PID  # Simulate Cmd+C
+sleep 60  # Wait for cleanup
+VMS=$(gcloud compute instances list --project="$PROJECT_ID" --filter="name:jarvis-auto-*" --format="value(name)")
+if [ -z "$VMS" ]; then
+  echo "✅ Test 1 PASSED: No VMs after cleanup"
+else
+  echo "❌ Test 1 FAILED: VMs still running: $VMS"
+  exit 1
+fi
+
+# Test 2: Force kill (crash simulation)
+echo "Test 2: Force kill (simulated crash)"
+python start_system.py &
+PID=$!
+sleep 60
+kill -9 $PID  # Force kill
+sleep 5
+VMS=$(gcloud compute instances list --project="$PROJECT_ID" --filter="name:jarvis-auto-*" --format="value(name)")
+if [ -n "$VMS" ]; then
+  echo "✅ Test 2 PASSED: VM orphaned as expected (simulated crash)"
+  # Cleanup
+  bash scripts/cleanup_orphaned_vms.sh
+else
+  echo "⚠️  Test 2 UNCLEAR: No VM found (may have cleaned up anyway)"
+fi
+
+# Test 3: Multiple rapid starts/stops
+echo "Test 3: Multiple rapid starts/stops"
+for i in {1..3}; do
+  python start_system.py &
+  PID=$!
+  sleep 30
+  kill -SIGINT $PID
+  sleep 30
+done
+VMS=$(gcloud compute instances list --project="$PROJECT_ID" --filter="name:jarvis-auto-*" --format="value(name)")
+if [ -z "$VMS" ]; then
+  echo "✅ Test 3 PASSED: All VMs cleaned up"
+else
+  echo "❌ Test 3 FAILED: VMs remaining: $VMS"
+  exit 1
+fi
+
+# Test 4: Check cost tracking
+echo "Test 4: Cost tracking integrity"
+if [ -f ~/.jarvis/learning/cost_tracking.db ]; then
+  SESSIONS=$(sqlite3 ~/.jarvis/learning/cost_tracking.db "SELECT COUNT(*) FROM vm_sessions")
+  echo "✅ Test 4 PASSED: Cost tracking working ($SESSIONS sessions recorded)"
+else
+  echo "❌ Test 4 FAILED: Cost tracking database missing"
+  exit 1
+fi
+
+echo ""
+echo "🎉 All tests passed!"
+```
+
+**Run tests:**
+```bash
+chmod +x tests/test_gcp_vm_cleanup.sh
+bash tests/test_gcp_vm_cleanup.sh
+```
+
+---
+
+### 📊 Monitoring & Alerts
+
+Set up proactive monitoring to catch orphaned VMs before they cost money:
+
+**1. Daily Cost Alert (Cloud Scheduler + Cloud Functions):**
+```python
+# cloud_functions/check_orphaned_vms.py
+def check_orphaned_vms(request):
+    """Cloud Function to check for orphaned VMs daily"""
+    from google.cloud import compute_v1
+    import sendgrid
+
+    client = compute_v1.InstancesClient()
+    project = "jarvis-473803"
+    zone = "us-central1-a"
+
+    # List all JARVIS VMs
+    instances = client.list(project=project, zone=zone, filter="name:jarvis-auto-*")
+
+    orphaned = []
+    for instance in instances:
+        # Check if VM older than 4 hours
+        age_hours = (datetime.now() - instance.creation_timestamp).total_seconds() / 3600
+        if age_hours > 4:
+            orphaned.append({
+                'name': instance.name,
+                'age_hours': age_hours,
+                'cost': age_hours * 0.029
+            })
+
+    if orphaned:
+        # Send alert email
+        total_cost = sum(vm['cost'] for vm in orphaned)
+        message = f"⚠️ Found {len(orphaned)} orphaned JARVIS VMs costing ${total_cost:.2f}"
+        # Send email...
+
+    return {'orphaned_count': len(orphaned), 'total_cost': total_cost}
+```
+
+**2. GCP Budget Alert:**
+```bash
+# Set up budget alert for JARVIS project
+gcloud billing budgets create \
+  --billing-account=YOUR_BILLING_ACCOUNT \
+  --display-name="JARVIS Daily Budget" \
+  --budget-amount=5 \
+  --threshold-rule=percent=100 \
+  --notification-channel-ids=YOUR_CHANNEL_ID
+```
+
+**3. Local Monitoring Script:**
+```bash
+# monitor_gcp_costs.sh (run in cron)
+#!/bin/bash
+
+VMS=$(gcloud compute instances list --project=jarvis-473803 --filter="name:jarvis-auto-*" --format="value(name,creationTimestamp)")
+
+if [ -n "$VMS" ]; then
+  echo "[$(date)] ⚠️  JARVIS VMs running:"
+  echo "$VMS"
+
+  # Calculate estimated cost
+  COST=$(echo "$VMS" | wc -l | awk '{print $1 * 0.029}')
+  echo "Estimated hourly cost: \$$COST"
+
+  # Alert if any VM older than 3 hours
+  while IFS=$'\t' read -r name timestamp; do
+    AGE=$(( ($(date +%s) - $(date -j -f "%Y-%m-%dT%H:%M:%S" "$timestamp" +%s)) / 3600 ))
+    if [ $AGE -gt 3 ]; then
+      echo "🚨 ALERT: $name is $AGE hours old (max should be 3)"
+      # Send notification
+      osascript -e 'display notification "Orphaned JARVIS VM detected" with title "GCP Cost Alert"'
+    fi
+  done <<< "$VMS"
+fi
+```
+
+---
+
+### 🛡️ Best Practices
+
+**1. Always Verify After Stopping:**
+```bash
+# After killing JARVIS, ALWAYS check:
+gcloud compute instances list --project=jarvis-473803 --filter="name:jarvis-auto-*"
+# Should see: "Listed 0 items"
+```
+
+**2. Set Up Cron Cleanup:**
+```bash
+# Add to crontab (every hour)
+0 * * * * /path/to/jarvis/scripts/cleanup_orphaned_vms.sh
+```
+
+**3. Monitor Costs Daily:**
+```bash
+# Check GCP billing dashboard daily
+open "https://console.cloud.google.com/billing/jarvis-473803/reports"
+```
+
+**4. Use GCP Budget Alerts:**
+- Set alert at $5/day (expected: $0.15/day max)
+- If you get alert → orphaned VMs likely
+
+**5. Keep Logs:**
+```bash
+# Archive logs weekly
+tar -czf ~/.jarvis/logs/archive-$(date +%Y%m%d).tar.gz ~/.jarvis/logs/*.log
+```
+
+---
+
 ### 🏗️ Architecture Components
 
 **1. DynamicRAMMonitor**
