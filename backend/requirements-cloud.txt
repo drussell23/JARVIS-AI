@@ -10,28 +10,11 @@ python-multipart==0.0.6
 spacy==3.7.2
 en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
 
-# Voice dependencies
-openai-whisper==20231117
-sounddevice==0.4.6
-soundfile==0.12.1
-pydub==0.25.1
-pyaudio==0.2.14
-gtts==2.5.0
-pyttsx3==2.90
-
 # Configuration dependencies
 PyYAML==6.0.1
-edge-tts==6.1.9
 websockets==12.0
 numpy==1.24.3
 scipy==1.11.4
-
-# Audio processing dependencies
-noisereduce==3.0.0
-librosa==0.10.1
-numba==0.58.1  # Required by librosa
-audioread==3.0.1
-resampy==0.4.2
 
 # Automation dependencies
 icalendar==5.0.11
@@ -80,9 +63,6 @@ geocoder>=1.38.0  # For IP-based location detection
 
 # ML Enhancement dependencies
 joblib>=1.3.0  # For model persistence
-torchaudio==2.1.2  # For deep audio processing (must match torch version)
-SpeechRecognition>=3.10.0  # For enhanced speech recognition
-pygame>=2.5.0  # For audio feedback
 # Note: scikit-learn is already included above as version 1.3.2
 
 # Computer Vision dependencies
