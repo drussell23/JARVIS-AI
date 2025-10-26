@@ -5383,8 +5383,72 @@ async def main():
             else:
                 print(f"{Colors.GREEN}No old JARVIS processes found{Colors.ENDC}")
 
+            # Step 1.5: Clean up any GCP VMs (CRITICAL for cost control)
+            print(f"\n{Colors.YELLOW}🌐 Checking for orphaned GCP VMs...{Colors.ENDC}")
+            try:
+                gcp_project = os.getenv("GCP_PROJECT_ID", "jarvis-473803")
+
+                # List all jarvis-auto-* VMs
+                list_cmd = [
+                    "gcloud",
+                    "compute",
+                    "instances",
+                    "list",
+                    "--project",
+                    gcp_project,
+                    "--filter",
+                    "name:jarvis-auto-*",
+                    "--format",
+                    "value(name,zone)",
+                ]
+
+                result = subprocess.run(list_cmd, capture_output=True, text=True, timeout=10)
+
+                if result.returncode == 0 and result.stdout.strip():
+                    vms = result.stdout.strip().split("\n")
+                    print(f"Found {len(vms)} GCP VM(s) to clean up:")
+
+                    for vm_line in vms:
+                        parts = vm_line.split()
+                        if len(parts) >= 2:
+                            vm_id, zone = parts[0], parts[1]
+                            print(f"  Deleting {vm_id} in {zone}...")
+
+                            delete_cmd = [
+                                "gcloud",
+                                "compute",
+                                "instances",
+                                "delete",
+                                vm_id,
+                                "--project",
+                                gcp_project,
+                                "--zone",
+                                zone,
+                                "--quiet",
+                            ]
+
+                            delete_result = subprocess.run(
+                                delete_cmd, capture_output=True, text=True, timeout=60
+                            )
+
+                            if delete_result.returncode == 0:
+                                print(f"  {Colors.GREEN}✓ Deleted {vm_id}{Colors.ENDC}")
+                            else:
+                                print(
+                                    f"  {Colors.YELLOW}⚠ Failed to delete {vm_id}: {delete_result.stderr[:100]}{Colors.ENDC}"
+                                )
+
+                    print(f"{Colors.GREEN}✓ VM cleanup complete{Colors.ENDC}")
+                else:
+                    print(f"{Colors.GREEN}No GCP VMs found{Colors.ENDC}")
+
+            except subprocess.TimeoutExpired:
+                print(f"{Colors.YELLOW}⚠ VM cleanup timed out - proceeding anyway{Colors.ENDC}")
+            except Exception as e:
+                print(f"{Colors.YELLOW}⚠ VM cleanup failed: {e} - proceeding anyway{Colors.ENDC}")
+
             # Step 2: Start new JARVIS instance
-            print(f"\n{Colors.YELLOW}2️⃣ Starting fresh JARVIS instance...{Colors.ENDC}")
+            print(f"\n{Colors.YELLOW}2️⃣  Starting fresh JARVIS instance...{Colors.ENDC}")
             main_py = backend_dir / "main.py"
 
             if not main_py.exists():
@@ -5410,7 +5474,7 @@ async def main():
                 return 1
 
             # Step 3: Verify intelligent routing system
-            print(f"\n{Colors.YELLOW}3️⃣ Verifying intelligent routing system...{Colors.ENDC}")
+            print(f"\n{Colors.YELLOW}3️⃣  Verifying intelligent routing system...{Colors.ENDC}")
             print(f"{Colors.CYAN}Waiting for API to start...{Colors.ENDC}", end="", flush=True)
 
             # Retry API health check with exponential backoff
