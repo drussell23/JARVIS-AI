@@ -5544,6 +5544,7 @@ if __name__ == "__main__":
                     vm_id = my_vm["vm_id"]
                     zone = my_vm["zone"]
 
+                    print(f"🧹 Deleting GCP VM {vm_id}...", end="", flush=True)
                     logger.info(f"🧹 Cleaning up session-owned VM: {vm_id}")
                     logger.info(f"   Session: {session_tracker.session_id[:8]}")
                     logger.info(f"   PID: {session_tracker.pid}")
@@ -5562,16 +5563,17 @@ if __name__ == "__main__":
                     ]
 
                     delete_result = subprocess.run(
-                        delete_cmd, capture_output=True, text=True, timeout=60
+                        delete_cmd, capture_output=True, text=True, timeout=10
                     )
 
                     if delete_result.returncode == 0:
+                        print(f" ✅")
                         logger.info(f"✅ Deleted session VM: {vm_id}")
-                        print(f"💰 Stopped costs: VM {vm_id} deleted")
 
                         # Unregister from session tracker
                         session_tracker.unregister_vm()
                     else:
+                        print(f" ⚠️")
                         logger.warning(f"Failed to delete VM {vm_id}: {delete_result.stderr}")
 
                     # Show other active sessions
@@ -5604,7 +5606,7 @@ if __name__ == "__main__":
                     "value(name,zone)",
                 ]
 
-                result = subprocess.run(list_cmd, capture_output=True, text=True, timeout=30)
+                result = subprocess.run(list_cmd, capture_output=True, text=True, timeout=5)
 
                 if result.returncode == 0 and result.stdout.strip():
                     instances = result.stdout.strip().split("\n")
