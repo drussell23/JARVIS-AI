@@ -5133,7 +5133,8 @@ async def main():
         print(f"{Colors.YELLOW}⚠️ Goal Inference Automation: DISABLED{Colors.ENDC}")
 
     # Early check for multiple instances (before creating manager)
-    if not args.force_start:
+    # Skip check if --restart or --force-start is used
+    if not args.force_start and not args.restart:
         try:
             # Simple instance check using process listing (macOS compatible)
             import subprocess
