@@ -16,6 +16,7 @@ An intelligent voice-activated AI assistant with **Hybrid Cloud Auto-Scaling**, 
    - [Use Cases & Scenarios](#use-cases--scenarios)
    - [Benefits & Impact](#benefits--impact)
    - [Graceful Shutdown with Comprehensive Progress Logging](#graceful-shutdown-with-comprehensive-progress-logging-2025-10-26)
+   - [Smart Restart Flag - Full System Lifecycle](#smart-restart-flag---full-system-lifecycle-2025-10-26)
 3. [🚀 v15.0: Phase 4 - Proactive Communication (Magic)](#-v150-phase-4---proactive-communication-magic)
    - [✨ What's New in Phase 4](#-whats-new-in-phase-4)
 4. [🏗️ Intelligence Evolution: Phase 1-4 Journey](#️-intelligence-evolution-phase-1-4-journey)
@@ -5422,6 +5423,262 @@ except Exception as e:
 
 **Files Modified:**
 - `start_system.py` (+142 lines, -21 lines)
+
+---
+
+### Smart Restart Flag - Full System Lifecycle (2025-10-26)
+
+**Problem Solved:**
+The `--restart` flag would kill old processes and clean up GCP VMs, but then **exit immediately** instead of staying running as a manager process. This left the backend running orphaned without frontend, monitoring, or any services.
+
+**Solution:**
+Implemented intelligent restart fall-through that properly continues to full system startup after cleaning up old instances.
+
+#### What `--restart` Does Now
+
+**Complete Restart Lifecycle:**
+```bash
+python start_system.py --restart
+```
+
+**Step 1: Kill Old Processes**
+```
+🔄 Restarting JARVIS...
+
+Step 1: Finding old JARVIS processes...
+   ├─ Found 2 old JARVIS process(es):
+   │  • PID 29443 (4.2 hours old) - start_system.py
+   │  • PID 29502 (4.1 hours old) - backend/main.py
+   └─ ✓ Will terminate both processes
+```
+- Finds both `start_system.py` wrapper processes AND `backend/main.py` processes
+- Shows process age for context
+- Validates processes are actually JARVIS (checks cmdline for "start_system.py" or "main.py")
+
+**Step 2: Clean Up GCP VMs** (CRITICAL for cost control)
+```
+Step 1.5: Clean up any GCP VMs (CRITICAL for cost control)
+🌐 Checking for orphaned GCP VMs...
+   ├─ Found 2 jarvis-auto-* VMs:
+   │  • jarvis-auto-1234567890 (us-central1-a)
+   │  • jarvis-auto-0987654321 (us-central1-a)
+   ├─ Deleting jarvis-auto-1234567890... ✓ (3.2s)
+   ├─ Deleting jarvis-auto-0987654321... ✓ (2.8s)
+   └─ ✓ All GCP VMs cleaned up (6.0s total)
+```
+- Lists all `jarvis-auto-*` VMs in the project
+- Deletes each VM with 60-second timeout
+- **Prevents double-billing:** VMs deleted BEFORE starting new instance
+- Shows total cleanup time
+
+**Step 3: Start Backend in Background**
+```
+Step 2: Starting new backend process...
+   ├─ Using optimized backend: backend/main.py
+   ├─ Port: 8010
+   ├─ Started with PID: 49187
+   └─ ✓ Backend process started
+
+Step 3: Verifying new backend is healthy...
+   ├─ Waiting for backend to be ready (max 30s)...
+   ├─ Health check: http://localhost:8010/health
+   └─ ✓ Backend is healthy and responding
+```
+- Starts backend using `subprocess.Popen()` for detached execution
+- Waits up to 30 seconds for health check to pass
+- Verifies backend is actually running and responding
+
+**Step 4: Fall Through to Full Startup** (NEW!)
+```
+==================================================
+🎉 Backend restarted - now starting frontend & services...
+==================================================
+
+╔══════════════════════════════════════════════════════════════╗
+║     🤖 JARVIS AI Agent v16.0.0 - Autonomous Edition 🚀      ║
+╚══════════════════════════════════════════════════════════════╝
+✓ Starting in autonomous mode...
+
+Phase 1/3: Starting WebSocket Router (optional)...
+Phase 2/3: Starting Frontend (backend already running)...
+   ✓ Backend already running (from restart), skipping startup
+   ├─ Installing frontend dependencies...
+   └─ ✓ Frontend started on port 3000
+
+Phase 3/3: Running parallel health checks...
+
+✨ Services started in 8.3s
+✓ Backend: http://localhost:8010 (PID 49187)
+✓ Frontend: http://localhost:3000 (PID 49205)
+```
+- Manager process continues running (doesn't exit!)
+- Detects `backend_already_running` flag
+- Skips duplicate backend startup (prevents port conflict)
+- Starts frontend and all other services normally
+- Shows final service URLs and PIDs
+
+#### Technical Implementation
+
+**Key Components:**
+
+**1. Backend Already Running Flag**
+```python
+# start_system.py line 2312
+class AsyncSystemManager:
+    def __init__(self):
+        # ... existing attributes ...
+        self.backend_already_running = False  # Set to True when --restart starts backend
+```
+
+**2. Flag Set in Restart Logic**
+```python
+# start_system.py line 5585
+if args.restart:
+    # ... kill processes, cleanup VMs, start backend ...
+
+    # Set flag to indicate backend is already running
+    args.backend_already_running = True
+    # Fall through to normal startup (no return!)
+```
+
+**3. Flag Passed to Manager**
+```python
+# start_system.py line 5601
+_manager = AsyncSystemManager()
+_manager.backend_already_running = getattr(args, 'backend_already_running', False)
+```
+
+**4. Skip Backend Startup in Backend-Only Mode**
+```python
+# start_system.py lines 4684-4687
+if self.backend_only:
+    await self.start_websocket_router()
+    if not self.backend_already_running:
+        await self.start_backend()
+    else:
+        print(f"✓ Backend already running (from restart), skipping startup")
+```
+
+**5. Skip Backend Startup in Parallel Mode**
+```python
+# start_system.py lines 4704-4717
+if self.backend_already_running:
+    print("Phase 2/3: Starting Frontend (backend already running)...")
+    print("✓ Backend already running (from restart), skipping startup")
+    frontend_result = await self.start_frontend()
+    backend_result = True  # Mock success
+else:
+    print("Phase 2/3: Starting Backend & Frontend in parallel...")
+    backend_task = asyncio.create_task(self.start_backend())
+    frontend_task = asyncio.create_task(self.start_frontend())
+    backend_result, frontend_result = await asyncio.gather(...)
+```
+
+#### Why This Matters
+
+**Before (Broken):**
+```bash
+python start_system.py --restart
+# 1. ✅ Kills old processes
+# 2. ✅ Cleans up GCP VMs
+# 3. ✅ Starts backend on port 8010 (PID 49187)
+# 4. ❌ EXITS (return 0)
+# Result: Backend running orphaned, no manager process, no CTRL+C handling
+```
+
+**After (Fixed):**
+```bash
+python start_system.py --restart
+# 1. ✅ Kills old processes (both start_system.py and backend/main.py)
+# 2. ✅ Cleans up all GCP VMs (prevents double-billing)
+# 3. ✅ Starts backend in background
+# 4. ✅ Falls through to full system startup
+# 5. ✅ Skips duplicate backend startup (detects flag)
+# 6. ✅ Starts frontend and all services
+# 7. ✅ Stays running as manager process
+# Result: Full JARVIS system with proper lifecycle management
+```
+
+#### Benefits
+
+**Cost Control:**
+- ✅ Deletes all GCP VMs BEFORE starting new instance
+- ✅ Prevents 30-60 seconds of double-billing during restart
+- ✅ No orphaned VMs from incomplete restarts
+
+**Process Management:**
+- ✅ Kills both wrapper processes (start_system.py) AND backend processes (main.py)
+- ✅ Manager stays running to handle CTRL+C shutdown
+- ✅ Proper cleanup on exit via signal handlers
+
+**Developer Experience:**
+- ✅ Single command restarts entire system
+- ✅ Clear progress indicators at each step
+- ✅ No manual cleanup required
+- ✅ Behaves like normal startup but faster (backend already running)
+
+**Reliability:**
+- ✅ Health check verifies backend is responding before continuing
+- ✅ Prevents port conflicts (skips backend startup if already running)
+- ✅ Graceful handling of edge cases (no VMs, VMs already deleted, etc.)
+
+#### Edge Cases Handled
+
+**No Old Processes Found:**
+```
+Step 1: Finding old JARVIS processes...
+   └─ No old JARVIS processes found
+```
+- Continues to normal startup
+
+**No GCP VMs to Clean:**
+```
+Step 1.5: Checking for orphaned GCP VMs...
+   └─ No jarvis-auto-* VMs found
+```
+- Skips VM cleanup, continues to backend startup
+
+**Backend Health Check Fails:**
+```
+Step 3: Verifying new backend is healthy...
+   ├─ Health check failed after 30s
+   └─ ✗ Restart failed: Backend not responding
+```
+- Exits with error code 1
+- User can investigate and retry
+
+**VM Deletion Timeout:**
+```
+   ├─ Deleting jarvis-auto-1234567890...
+   └─ ⚠ Timeout after 60s, continuing anyway
+```
+- Logs warning but continues
+- VM will be cleaned up on next startup
+
+#### Commit Details
+
+```
+Commit: 23b0367
+Date: 2025-10-26
+Message: fix: Complete --restart flag to continue to full system startup
+```
+
+**Changes:**
+- `start_system.py` (+45 lines, -16 lines)
+
+**Pre-commit Hooks Passed:**
+- ✅ Black (code formatting)
+- ✅ Isort (import sorting)
+- ✅ Flake8 (linting)
+- ✅ Bandit (security analysis)
+
+**Files Modified:**
+- `start_system.py` - Added `backend_already_running` flag handling
+  - Line 2312: Added attribute to AsyncSystemManager
+  - Line 5585: Set flag in --restart logic
+  - Line 5601: Pass flag to manager instance
+  - Lines 4684-4687: Skip backend in backend-only mode
+  - Lines 4704-4717: Skip backend in parallel startup mode
 
 ---
 
