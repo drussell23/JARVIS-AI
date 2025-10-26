@@ -124,7 +124,7 @@ class AlertSubscription(BaseModel):
     subscribe_cost_alerts: bool = True
     subscribe_orphaned_vm_alerts: bool = True
     subscribe_performance_alerts: bool = True
-    min_alert_level: str = Field("warning", regex="^(info|warning|critical|emergency)$")
+    min_alert_level: str = Field("warning", pattern="^(info|warning|critical|emergency)$")
 
 
 # ============================================================================
