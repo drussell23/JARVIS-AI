@@ -335,11 +335,31 @@ class CostTracker:
                     )
 
                     await db.commit()
+
+                    # Run migrations for existing databases
+                    await self._migrate_database(db)
+
                     logger.info("✅ Advanced cost tracking database initialized")
 
         except Exception as e:
             logger.error(f"Failed to initialize cost tracking database: {e}")
             raise
+
+    async def _migrate_database(self, db):
+        """Migrate existing database schema to add missing columns"""
+        try:
+            # Check if actual_cost column exists in vm_sessions
+            cursor = await db.execute("PRAGMA table_info(vm_sessions)")
+            columns = await cursor.fetchall()
+            column_names = [col[1] for col in columns]
+
+            if "actual_cost" not in column_names:
+                logger.info("🔧 Migrating database: adding actual_cost column")
+                await db.execute("ALTER TABLE vm_sessions ADD COLUMN actual_cost REAL")
+                await db.commit()
+                logger.info("✅ Migration complete: actual_cost column added")
+        except Exception as e:
+            logger.warning(f"Database migration check failed (non-critical): {e}")
 
     async def record_vm_created(
         self,

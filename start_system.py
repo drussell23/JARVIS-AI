@@ -2309,7 +2309,6 @@ class AsyncSystemManager:
         self.no_browser = False
         self.backend_only = False
         self.frontend_only = False
-        self.backend_already_running = False  # Set to True when --restart starts backend
         self.use_optimized = True  # Use optimized backend by default
         self.auto_cleanup = True  # Auto cleanup without prompting (enabled by default)
         self.resource_coordinator = None
@@ -4682,12 +4681,7 @@ except Exception as e:
             print(f"{Colors.CYAN}Starting backend only...{Colors.ENDC}")
             await self.start_websocket_router()
             await asyncio.sleep(2)  # Reduced wait time
-            if not self.backend_already_running:
-                await self.start_backend()
-            else:
-                print(
-                    f"{Colors.GREEN}✓ Backend already running (from restart), skipping startup{Colors.ENDC}"
-                )
+            await self.start_backend()
         elif self.frontend_only:
             print(f"{Colors.CYAN}Starting frontend only...{Colors.ENDC}")
             await self.start_frontend()
@@ -4704,38 +4698,21 @@ except Exception as e:
                 )
 
             # Phase 2: Start backend and frontend in parallel
-            if self.backend_already_running:
-                print(
-                    f"\n{Colors.CYAN}Phase 2/3: Starting Frontend (backend already running)...{Colors.ENDC}"
-                )
-                print(
-                    f"{Colors.GREEN}✓ Backend already running (from restart), skipping startup{Colors.ENDC}"
-                )
+            print(
+                f"\n{Colors.CYAN}Phase 2/3: Starting Backend & Frontend in parallel...{Colors.ENDC}"
+            )
 
-                # Small delay to ensure router is ready
-                await asyncio.sleep(1)
+            # Small delay to ensure router is ready
+            await asyncio.sleep(1)
 
-                # Only start frontend
-                frontend_result = await self.start_frontend()
+            # Start both services in parallel
+            backend_task = asyncio.create_task(self.start_backend())
+            frontend_task = asyncio.create_task(self.start_frontend())
 
-                # Set backend_result to mock success
-                backend_result = True
-            else:
-                print(
-                    f"\n{Colors.CYAN}Phase 2/3: Starting Backend & Frontend in parallel...{Colors.ENDC}"
-                )
-
-                # Small delay to ensure router is ready
-                await asyncio.sleep(1)
-
-                # Start both services in parallel
-                backend_task = asyncio.create_task(self.start_backend())
-                frontend_task = asyncio.create_task(self.start_frontend())
-
-                # Wait for both with proper error handling
-                backend_result, frontend_result = await asyncio.gather(
-                    backend_task, frontend_task, return_exceptions=True
-                )
+            # Wait for both with proper error handling
+            backend_result, frontend_result = await asyncio.gather(
+                backend_task, frontend_task, return_exceptions=True
+            )
 
             # Check backend result (critical)
             if isinstance(backend_result, Exception):
@@ -5492,103 +5469,13 @@ async def main():
             except Exception as e:
                 print(f"{Colors.YELLOW}⚠ VM cleanup failed: {e} - proceeding anyway{Colors.ENDC}")
 
-            # Step 2: Start new JARVIS instance
-            print(f"\n{Colors.YELLOW}2️⃣  Starting fresh JARVIS instance...{Colors.ENDC}")
-            main_py = backend_dir / "main.py"
-
-            if not main_py.exists():
-                print(f"{Colors.FAIL}❌ main.py not found at {main_py}{Colors.ENDC}")
-                return 1
-
-            process = subprocess.Popen(
-                ["python3", str(main_py), "--port", "8010"],
-                cwd=str(backend_dir),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                start_new_session=True,
-            )
-
-            time.sleep(3)
-
-            if process.poll() is None:
-                print(f"{Colors.GREEN}✓ JARVIS started with PID {process.pid}{Colors.ENDC}")
-            else:
-                stdout, stderr = process.communicate()
-                print(f"{Colors.FAIL}❌ JARVIS failed to start{Colors.ENDC}")
-                print(f"Error: {stderr.decode()}")
-                return 1
-
-            # Step 3: Verify intelligent routing system
-            print(f"\n{Colors.YELLOW}3️⃣  Verifying intelligent routing system...{Colors.ENDC}")
-            print(f"{Colors.CYAN}Waiting for API to start...{Colors.ENDC}", end="", flush=True)
-
-            # Retry API health check with exponential backoff
-            import json
-            import urllib.request
-
-            max_retries = 10
-            retry_delay = 2
-            api_ready = False
-
-            for attempt in range(max_retries):
-                try:
-                    print(".", end="", flush=True)
-                    time.sleep(retry_delay)
-
-                    response = urllib.request.urlopen("http://localhost:8010/health", timeout=3)
-                    health_data = json.loads(response.read().decode())
-
-                    if health_data.get("status") == "healthy":
-                        api_ready = True
-                        print(f" {Colors.GREEN}✓{Colors.ENDC}")
-                        break
-
-                except Exception:
-                    if attempt == max_retries - 1:
-                        print(f" {Colors.FAIL}✗{Colors.ENDC}")
-                    continue
-
-            if api_ready:
-                components_loaded = health_data.get("components", {})
-
-                print(f"\n{Colors.CYAN}System Status:{Colors.ENDC}")
-                print(f"  {Colors.GREEN}✓{Colors.ENDC} API is responding")
-                print(f"  {Colors.GREEN}✓{Colors.ENDC} Backend is healthy")
-
-                if components_loaded.get("chatbots"):
-                    print(f"  {Colors.GREEN}✓{Colors.ENDC} Chatbots (Claude Vision)")
-                if components_loaded.get("voice"):
-                    print(f"  {Colors.GREEN}✓{Colors.ENDC} Voice system")
-                if components_loaded.get("memory"):
-                    print(f"  {Colors.GREEN}✓{Colors.ENDC} Memory manager")
-
-                print(f"\n{Colors.GREEN}✨ JARVIS is online and ready!{Colors.ENDC}")
-                print(
-                    f"\n{Colors.CYAN}Test with:{Colors.ENDC} 'What's happening across my desktop spaces?'"
-                )
-                print(
-                    f"{Colors.CYAN}Expected:{Colors.ENDC} Detailed breakdown of all spaces with apps and windows"
-                )
-            else:
-                print(
-                    f"{Colors.YELLOW}⚠️  API not responding after {max_retries * retry_delay}s{Colors.ENDC}"
-                )
-                print(
-                    f"{Colors.CYAN}JARVIS process is running (PID {process.pid}), but API isn't ready yet{Colors.ENDC}"
-                )
-                print(
-                    f"{Colors.CYAN}Wait a moment and try your query in the interface{Colors.ENDC}"
-                )
-
             print(f"\n{'='*50}")
             print(
-                f"{Colors.GREEN}🎉 Backend restarted - now starting frontend & services...{Colors.ENDC}"
+                f"{Colors.GREEN}🎉 Old instances cleaned up - starting fresh JARVIS...{Colors.ENDC}"
             )
             print(f"{'='*50}\n")
 
-            # Set flag to indicate backend is already running
-            # Fall through to normal startup but skip backend startup
-            args.backend_already_running = True
+            # Fall through to normal startup - backend will start fresh
 
         except Exception as e:
             print(f"{Colors.FAIL}Restart failed: {e}{Colors.ENDC}")
@@ -5604,7 +5491,6 @@ async def main():
     _manager.frontend_only = args.frontend_only
     _manager.use_optimized = not args.standard
     _manager.auto_cleanup = not args.no_auto_cleanup
-    _manager.backend_already_running = getattr(args, "backend_already_running", False)
 
     # Always use autonomous mode unless explicitly disabled
     if args.no_autonomous:
