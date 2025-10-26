@@ -1292,6 +1292,1042 @@ tar -czf ~/.jarvis/logs/archive-$(date +%Y%m%d).tar.gz ~/.jarvis/logs/*.log
 
 ---
 
+### 🎯 Advanced & Nuanced Edge Cases
+
+This section covers complex, subtle scenarios that can cause orphaned VMs in production environments.
+
+#### **Scenario 8: Race Condition - VM Created During Cleanup**
+
+**Problem:** What if RAM spikes AGAIN during cleanup, creating a new VM while deleting the old one?
+
+**Edge Case:**
+```bash
+# Timeline:
+00:00 - JARVIS running, RAM at 80%
+00:01 - RAM hits 85% → Creates jarvis-auto-001
+00:05 - User kills JARVIS (Cmd+C)
+00:05 - Cleanup starts, begins deleting jarvis-auto-001
+00:05.5 - BUT: Async RAM monitor still running, sees 90% RAM!
+00:05.5 - Creates jarvis-auto-002 DURING cleanup
+00:06 - Cleanup finishes, deletes jarvis-auto-001
+00:06 - Process exits
+RESULT: jarvis-auto-002 orphaned (created AFTER cleanup started)
+```
+
+**Expected Behavior:**
+- ❌ New VM created during cleanup window
+- ❌ VM orphaned forever (not tracked by cleanup)
+
+**Root Cause:**
+```python
+# In cleanup():
+self._shutting_down = True  # Flag set
+
+# But monitoring_task still running in background!
+async def _monitoring_loop(self):
+    while self.running:  # Checks self.running, not self._shutting_down
+        if ram > 85%:
+            await self._shift_to_gcp()  # Creates VM!
+```
+
+**Solution (Critical Fix Needed):**
+```python
+class HybridIntelligenceCoordinator:
+    def __init__(self):
+        self.running = False
+        self._shutting_down = False
+        self._cleanup_lock = asyncio.Lock()
+        self._vm_creation_lock = asyncio.Lock()
+
+    async def _monitoring_loop(self):
+        """Monitor with shutdown awareness"""
+        while self.running and not self._shutting_down:  # Check both flags
+            try:
+                ram_state = await self.ram_monitor.get_current_state()
+
+                # CRITICAL: Check shutdown flag BEFORE creating VM
+                if self._shutting_down:
+                    logger.info("Shutdown in progress, skipping VM creation")
+                    break
+
+                if ram_state['percent'] > self.critical_threshold:
+                    # Acquire lock to prevent race with cleanup
+                    async with self._vm_creation_lock:
+                        if self._shutting_down:  # Double-check after acquiring lock
+                            break
+                        await self._perform_shift_to_gcp(...)
+
+            except asyncio.CancelledError:
+                logger.info("Monitoring cancelled")
+                break
+
+    async def stop(self):
+        """Enhanced stop with race condition prevention"""
+        async with self._cleanup_lock:  # Prevent concurrent cleanup
+            self._shutting_down = True  # Set flag FIRST
+            self.running = False
+
+            # Cancel monitoring task BEFORE cleanup
+            if self.monitoring_task:
+                self.monitoring_task.cancel()
+                try:
+                    await asyncio.wait_for(self.monitoring_task, timeout=5.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+
+            # Wait for any in-progress VM creation to finish
+            async with self._vm_creation_lock:
+                # Now safe to cleanup VMs
+                if self.workload_router.gcp_active:
+                    await self.workload_router._cleanup_gcp_instance(...)
+```
+
+**Test Command:**
+```bash
+# Stress test with rapid RAM changes
+python -c "
+import subprocess
+import time
+
+# Start JARVIS
+proc = subprocess.Popen(['python', 'start_system.py'])
+
+# Wait for startup
+time.sleep(30)
+
+# Simulate RAM spike during cleanup
+# (Use memory_pressure tool or similar)
+for i in range(10):
+    # Send SIGINT to trigger cleanup
+    proc.send_signal(2)  # SIGINT
+    time.sleep(0.1)  # Brief delay
+    # Spike RAM (create memory pressure)
+    subprocess.run(['python', '-c', 'a = [0] * 10**8'])
+
+# Verify no orphaned VMs
+subprocess.run(['gcloud', 'compute', 'instances', 'list', '--filter=name:jarvis-auto-*'])
+"
+```
+
+**Validation:**
+```bash
+# Check logs for race condition indicators
+grep "VM created during shutdown\|Shutdown in progress" ~/.jarvis/logs/jarvis_*.log
+```
+
+---
+
+#### **Scenario 9: Partial Cleanup - VM Deletion Hangs Indefinitely**
+
+**Problem:** What if `gcloud delete` command hangs forever and never returns?
+
+**Edge Case:**
+```bash
+# Cleanup starts
+gcloud compute instances delete jarvis-auto-001 --quiet
+
+# Command hangs (GCP API issue, network problem, etc.)
+# Process stuck forever, never exits
+# User force-kills terminal → VM never deleted
+```
+
+**Expected Behavior:**
+- ❌ Cleanup hangs indefinitely
+- ❌ User must force-kill terminal
+- ❌ VM orphaned
+
+**Solution (Timeout + Background Cleanup):**
+```python
+def cleanup_with_timeout_and_background(instance_name, zone, max_wait=90):
+    """
+    Delete VM with timeout, fall back to background cleanup if needed
+    """
+    import threading
+    import queue
+
+    result_queue = queue.Queue()
+
+    def delete_vm_thread():
+        """Run deletion in separate thread"""
+        try:
+            delete_cmd = [
+                "gcloud", "compute", "instances", "delete",
+                instance_name, "--project", project_id,
+                "--zone", zone, "--quiet"
+            ]
+
+            result = subprocess.run(
+                delete_cmd,
+                capture_output=True,
+                text=True,
+                timeout=max_wait  # 90 second timeout
+            )
+
+            result_queue.put(("success" if result.returncode == 0 else "failed", result))
+
+        except subprocess.TimeoutExpired:
+            result_queue.put(("timeout", None))
+        except Exception as e:
+            result_queue.put(("error", str(e)))
+
+    # Start deletion in background thread
+    thread = threading.Thread(target=delete_vm_thread, daemon=True)
+    thread.start()
+
+    # Wait for result with timeout
+    try:
+        status, data = result_queue.get(timeout=max_wait + 5)
+
+        if status == "success":
+            print(f"✅ Deleted: {instance_name}")
+            return True
+        elif status == "timeout":
+            # Deletion timed out - schedule background cleanup
+            logger.warning(f"⚠️  Deletion timeout for {instance_name}")
+            schedule_background_cleanup(instance_name, zone)
+            return False
+        else:
+            logger.error(f"❌ Deletion failed: {data}")
+            return False
+
+    except queue.Empty:
+        # Thread didn't finish in time
+        logger.error(f"⚠️  Deletion hung for {instance_name}, scheduling background cleanup")
+        schedule_background_cleanup(instance_name, zone)
+        return False
+
+def schedule_background_cleanup(instance_name, zone):
+    """
+    Schedule VM cleanup to run in background (survives process exit)
+    """
+    cleanup_script = f"""#!/bin/bash
+# Auto-generated cleanup script
+INSTANCE="{instance_name}"
+ZONE="{zone}"
+PROJECT="jarvis-473803"
+
+echo "[$(date)] Attempting background cleanup: $INSTANCE"
+
+# Retry deletion up to 10 times with exponential backoff
+for i in {{1..10}}; do
+    gcloud compute instances delete "$INSTANCE" \\
+        --project="$PROJECT" \\
+        --zone="$ZONE" \\
+        --quiet \\
+        && echo "✅ Deleted: $INSTANCE" \\
+        && exit 0
+
+    WAIT=$((2 ** i))
+    echo "Attempt $i failed, waiting ${{WAIT}}s..."
+    sleep $WAIT
+done
+
+echo "❌ Background cleanup failed after 10 attempts"
+exit 1
+"""
+
+    # Write cleanup script
+    cleanup_file = f"/tmp/jarvis_cleanup_{instance_name}_{int(time.time())}.sh"
+    with open(cleanup_file, 'w') as f:
+        f.write(cleanup_script)
+    os.chmod(cleanup_file, 0o755)
+
+    # Schedule via at command (runs after process exits)
+    try:
+        subprocess.run(
+            ["at", "now + 2 minutes", "-f", cleanup_file],
+            check=True,
+            timeout=5
+        )
+        logger.info(f"📅 Scheduled background cleanup for {instance_name}")
+        print(f"⏰ VM cleanup scheduled via 'at' command (runs in 2 minutes)")
+    except Exception as e:
+        logger.error(f"Failed to schedule background cleanup: {e}")
+        print(f"⚠️  Manual cleanup required: {instance_name}")
+```
+
+**Alternative: Use `timeout` command (macOS/Linux):**
+```bash
+#!/bin/bash
+# Wrapper with system-level timeout
+
+INSTANCE="jarvis-auto-001"
+ZONE="us-central1-a"
+PROJECT="jarvis-473803"
+
+# Use GNU timeout (install via: brew install coreutils)
+gtimeout 60s gcloud compute instances delete "$INSTANCE" \
+    --project="$PROJECT" \
+    --zone="$ZONE" \
+    --quiet \
+    || {
+        echo "⚠️  Deletion timed out, logging for manual cleanup"
+        echo "[$(date)] $INSTANCE" >> /tmp/jarvis_failed_cleanups.log
+
+        # Send notification
+        osascript -e "display notification 'VM cleanup failed: $INSTANCE' with title 'JARVIS Alert'"
+    }
+```
+
+**Test Command:**
+```bash
+# Simulate hung gcloud command
+python -c "
+import subprocess
+import signal
+import time
+
+# Mock gcloud that hangs
+mock_gcloud = '''#!/bin/bash
+echo \"Mocking hung gcloud command...\"
+sleep 300  # Hang for 5 minutes
+'''
+
+with open('/tmp/mock_gcloud.sh', 'w') as f:
+    f.write(mock_gcloud)
+subprocess.run(['chmod', '+x', '/tmp/mock_gcloud.sh'])
+
+# Test cleanup with hung command
+# (Modify PATH to use mock gcloud)
+import os
+os.environ['PATH'] = '/tmp:' + os.environ['PATH']
+
+# Run cleanup - should timeout and schedule background
+# ... test cleanup logic here
+"
+```
+
+---
+
+#### **Scenario 10: Cascading Failure - Multiple VMs Created in Rapid Succession**
+
+**Problem:** What if RAM keeps spiking, creating 5+ VMs in 30 seconds before cleanup can react?
+
+**Edge Case:**
+```bash
+# Pathological scenario:
+00:00 - RAM 85% → Creates jarvis-auto-001
+00:05 - RAM 90% → Creates jarvis-auto-002 (first VM not helping yet)
+00:10 - RAM 92% → Creates jarvis-auto-003 (panic mode)
+00:15 - RAM 95% → Creates jarvis-auto-004 (emergency)
+00:20 - User kills JARVIS (Cmd+C)
+00:21 - Cleanup runs, deletes ALL 4 VMs
+RESULT: Cost: 4 VMs × $0.029/hr = $0.116/hour (4x normal!)
+```
+
+**Expected Behavior:**
+- ⚠️ Multiple VMs created (wasteful)
+- ✅ All cleaned up on exit
+- ⚠️ Cost spike during incident
+
+**Root Cause:**
+```python
+# No rate limiting on VM creation
+async def _perform_shift_to_gcp(self, reason: str, ram_state: dict):
+    # Creates VM immediately, no cooldown period
+    result = await self.workload_router.trigger_gcp_deployment(...)
+```
+
+**Solution (Rate Limiting + Circuit Breaker):**
+```python
+class VMCreationRateLimiter:
+    """Prevent cascading VM creation"""
+    def __init__(self):
+        self.last_vm_created = 0
+        self.vm_creation_count = 0
+        self.window_start = time.time()
+        self.window_duration = 300  # 5 minutes
+        self.max_vms_per_window = 2  # Max 2 VMs per 5 minutes
+        self.cooldown_period = 120  # 2 minutes between VMs
+
+    def can_create_vm(self) -> tuple[bool, str]:
+        """Check if VM creation is allowed"""
+        now = time.time()
+
+        # Reset window if expired
+        if now - self.window_start > self.window_duration:
+            self.window_start = now
+            self.vm_creation_count = 0
+
+        # Check cooldown period
+        if now - self.last_vm_created < self.cooldown_period:
+            remaining = int(self.cooldown_period - (now - self.last_vm_created))
+            return False, f"Cooldown: {remaining}s remaining"
+
+        # Check rate limit
+        if self.vm_creation_count >= self.max_vms_per_window:
+            return False, f"Rate limit: {self.max_vms_per_window} VMs per {self.window_duration}s"
+
+        return True, "OK"
+
+    def record_vm_created(self):
+        """Record VM creation"""
+        self.last_vm_created = time.time()
+        self.vm_creation_count += 1
+
+class HybridIntelligenceCoordinator:
+    def __init__(self):
+        self.rate_limiter = VMCreationRateLimiter()
+        self.circuit_breaker_open = False
+        self.circuit_breaker_failures = 0
+
+    async def _perform_shift_to_gcp(self, reason: str, ram_state: dict):
+        """Enhanced shift with rate limiting"""
+
+        # Check rate limiter
+        can_create, reason_msg = self.rate_limiter.can_create_vm()
+        if not can_create:
+            logger.warning(f"⚠️  VM creation blocked: {reason_msg}")
+
+            # Try emergency local cleanup instead
+            await self._emergency_local_cleanup()
+            return
+
+        # Check circuit breaker
+        if self.circuit_breaker_open:
+            logger.error("❌ Circuit breaker open - too many VM failures")
+            await self._emergency_local_cleanup()
+            return
+
+        # Proceed with VM creation
+        try:
+            result = await self.workload_router.trigger_gcp_deployment(...)
+
+            if result["success"]:
+                self.rate_limiter.record_vm_created()
+                self.circuit_breaker_failures = 0  # Reset on success
+            else:
+                self.circuit_breaker_failures += 1
+                if self.circuit_breaker_failures >= 3:
+                    self.circuit_breaker_open = True
+                    logger.error("🚨 Circuit breaker opened after 3 failures")
+
+        except Exception as e:
+            self.circuit_breaker_failures += 1
+            logger.error(f"VM creation failed: {e}")
+
+    async def _emergency_local_cleanup(self):
+        """Aggressive local memory cleanup when VM creation blocked"""
+        logger.warning("🧹 Emergency local cleanup (VM creation rate-limited)")
+
+        # Unload heavy components
+        if hasattr(self, 'vision_system'):
+            await self.vision_system.unload_models()
+
+        # Clear caches
+        import gc
+        gc.collect()
+
+        # Log warning
+        logger.warning("⚠️  System under extreme memory pressure but VM rate-limited")
+        print("🚨 WARNING: Extreme RAM usage, but VM creation blocked by rate limiter")
+        print("   Consider: 1) Closing apps, 2) Restarting JARVIS, 3) Increasing rate limits")
+```
+
+**Monitoring:**
+```python
+# Add metrics
+class VMCreationMetrics:
+    def __init__(self):
+        self.total_vm_requests = 0
+        self.blocked_by_cooldown = 0
+        self.blocked_by_rate_limit = 0
+        self.blocked_by_circuit_breaker = 0
+        self.successful_creations = 0
+
+    def report(self):
+        """Print metrics"""
+        print(f"""
+VM Creation Metrics:
+  Total Requests: {self.total_vm_requests}
+  Successful: {self.successful_creations}
+  Blocked (Cooldown): {self.blocked_by_cooldown}
+  Blocked (Rate Limit): {self.blocked_by_rate_limit}
+  Blocked (Circuit Breaker): {self.blocked_by_circuit_breaker}
+  Success Rate: {self.successful_creations / self.total_vm_requests * 100:.1f}%
+""")
+```
+
+**Test Command:**
+```bash
+# Simulate cascading RAM spikes
+python -c "
+import subprocess
+import time
+
+proc = subprocess.Popen(['python', 'start_system.py'])
+time.sleep(30)  # Wait for startup
+
+# Trigger rapid RAM spikes (simulated)
+for i in range(10):
+    # Allocate 2GB memory chunks rapidly
+    subprocess.Popen(['python', '-c', 'a = [0] * (250 * 10**6)'])
+    time.sleep(5)  # 5 seconds apart
+
+time.sleep(60)  # Let system react
+
+# Check how many VMs were created
+result = subprocess.run([
+    'gcloud', 'compute', 'instances', 'list',
+    '--filter=name:jarvis-auto-*',
+    '--format=value(name)'
+], capture_output=True, text=True)
+
+vm_count = len(result.stdout.strip().split('\n')) if result.stdout.strip() else 0
+print(f'VMs created: {vm_count} (should be ≤2 due to rate limiting)')
+
+proc.terminate()
+"
+```
+
+---
+
+#### **Scenario 11: Zombie VM - GCP API Says Deleted But VM Still Billing**
+
+**Problem:** What if GCP API returns success but VM continues running and billing?
+
+**Edge Case:**
+```bash
+# Cleanup runs
+gcloud compute instances delete jarvis-auto-001 --quiet
+# Returns: Operation completed successfully (exit code 0)
+
+# But GCP has internal issue - VM not actually deleted!
+# VM continues running and billing
+
+# Days later: $42+ in unexpected charges
+```
+
+**Expected Behavior:**
+- ❌ False positive - cleanup thinks it succeeded
+- ❌ VM actually still running
+- ❌ No alerts (system thinks all is well)
+
+**Detection Strategy:**
+```python
+async def verify_vm_actually_deleted(instance_name, zone, max_attempts=5):
+    """
+    Verify VM is ACTUALLY deleted, not just GCP API claiming it is
+    """
+    for attempt in range(max_attempts):
+        await asyncio.sleep(10)  # Wait 10 seconds between checks
+
+        try:
+            # Try to DESCRIBE the VM
+            check_cmd = [
+                "gcloud", "compute", "instances", "describe",
+                instance_name,
+                "--project", project_id,
+                "--zone", zone,
+                "--format", "value(status)"
+            ]
+
+            result = subprocess.run(
+                check_cmd,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+            if result.returncode == 0:
+                status = result.stdout.strip()
+
+                if status == "TERMINATED":
+                    logger.info(f"✅ VM confirmed TERMINATED: {instance_name}")
+                    return True
+                elif status in ["RUNNING", "STOPPING"]:
+                    logger.warning(f"⚠️  VM still {status} after deletion! (attempt {attempt+1})")
+
+                    # Try deleting again
+                    await force_delete_vm(instance_name, zone)
+                else:
+                    logger.warning(f"Unknown status: {status}")
+
+            else:
+                # VM not found - good!
+                logger.info(f"✅ VM confirmed deleted (not found): {instance_name}")
+                return True
+
+        except Exception as e:
+            logger.error(f"Error verifying deletion: {e}")
+
+    # After all attempts, VM still exists
+    logger.error(f"🚨 CRITICAL: VM {instance_name} NOT deleted after {max_attempts} attempts")
+
+    # Create alert
+    alert_zombie_vm(instance_name, zone)
+
+    return False
+
+async def force_delete_vm(instance_name, zone):
+    """Force delete with --delete-disks and --delete-boot-disk"""
+    force_cmd = [
+        "gcloud", "compute", "instances", "delete",
+        instance_name,
+        "--project", project_id,
+        "--zone", zone,
+        "--delete-disks", "all",  # Delete attached disks too
+        "--quiet"
+    ]
+
+    result = subprocess.run(force_cmd, capture_output=True, text=True, timeout=120)
+
+    if result.returncode == 0:
+        logger.info(f"✅ Force deletion succeeded: {instance_name}")
+    else:
+        logger.error(f"❌ Force deletion failed: {result.stderr}")
+
+def alert_zombie_vm(instance_name, zone):
+    """Alert user about zombie VM"""
+    alert_message = f"""
+🚨 CRITICAL ALERT: Zombie VM Detected 🚨
+
+Instance: {instance_name}
+Zone: {zone}
+Status: VM reported as deleted but still running
+Cost Impact: $0.029/hour ($21/month) until manually resolved
+
+Action Required:
+1. Verify VM status in GCP Console
+2. Force delete via console if still running
+3. Open GCP support ticket if issue persists
+
+Check now: https://console.cloud.google.com/compute/instances?project=jarvis-473803
+"""
+
+    logger.critical(alert_message)
+    print(alert_message)
+
+    # Send macOS notification
+    try:
+        subprocess.run([
+            "osascript", "-e",
+            f'display notification "{instance_name} is a zombie VM!" '
+            'with title "JARVIS CRITICAL ALERT" sound name "Sosumi"'
+        ])
+    except:
+        pass
+
+    # Log to special zombie file
+    with open("/tmp/jarvis_zombie_vms.log", "a") as f:
+        f.write(f"[{datetime.now()}] ZOMBIE: {instance_name} in {zone}\n")
+```
+
+**Enhanced Cleanup Flow:**
+```python
+async def enhanced_cleanup_with_verification(self):
+    """Cleanup with verification"""
+    if self.workload_router.gcp_instance_id:
+        instance_id = self.workload_router.gcp_instance_id
+        zone = self.workload_router.gcp_zone
+
+        logger.info(f"🧹 Cleaning up VM: {instance_id}")
+
+        # Step 1: Standard deletion
+        await self.workload_router._cleanup_gcp_instance(instance_id)
+
+        # Step 2: Verify it's ACTUALLY deleted (critical!)
+        is_deleted = await verify_vm_actually_deleted(instance_id, zone)
+
+        if is_deleted:
+            logger.info("✅ VM deletion verified")
+        else:
+            logger.error("❌ VM deletion failed verification - ZOMBIE VM!")
+            # Alert and log for manual intervention
+```
+
+**Test Command:**
+```bash
+# Mock GCP API to return success but not actually delete
+python -c "
+import subprocess
+
+# Create actual VM
+vm_name = 'jarvis-test-zombie'
+subprocess.run([
+    'gcloud', 'compute', 'instances', 'create', vm_name,
+    '--project=jarvis-473803', '--zone=us-central1-a',
+    '--machine-type=e2-micro', '--provisioning-model=SPOT'
+])
+
+# Try to delete
+subprocess.run([
+    'gcloud', 'compute', 'instances', 'delete', vm_name,
+    '--project=jarvis-473803', '--zone=us-central1-a', '--quiet'
+])
+
+# Wait 30 seconds
+import time
+time.sleep(30)
+
+# Verify it's actually gone
+result = subprocess.run([
+    'gcloud', 'compute', 'instances', 'describe', vm_name,
+    '--project=jarvis-473803', '--zone=us-central1-a'
+], capture_output=True)
+
+if result.returncode == 0:
+    print('🚨 ZOMBIE VM DETECTED! VM still exists after deletion')
+else:
+    print('✅ VM properly deleted')
+"
+```
+
+---
+
+#### **Scenario 12: Stale PID File - Cleanup Runs Against Wrong Instance**
+
+**Problem:** What if PID file references old VM ID from previous crash?
+
+**Edge Case:**
+```bash
+# Day 1:
+python start_system.py  # Creates jarvis-auto-001
+# Mac crashes (power loss) → PID file remains with VM ID
+
+# Day 2:
+python start_system.py  # Creates jarvis-auto-002
+# Kill JARVIS
+# Cleanup reads STALE PID file, tries to delete jarvis-auto-001 (doesn't exist)
+# jarvis-auto-002 orphaned!
+```
+
+**Expected Behavior:**
+- ❌ Cleanup targets wrong VM (stale PID file)
+- ❌ Current VM orphaned
+
+**Solution (PID File with Timestamp Validation):**
+```python
+class VMTracker:
+    """Track VMs with validated PID file"""
+    def __init__(self):
+        self.pid_file = Path(tempfile.gettempdir()) / "jarvis_vm_tracker.json"
+        self.max_age_hours = 6  # PID file expires after 6 hours
+
+    def record_vm_created(self, vm_id: str, pid: int):
+        """Record VM creation with timestamp"""
+        data = {
+            "vm_id": vm_id,
+            "pid": pid,
+            "created_at": time.time(),
+            "hostname": socket.gethostname()
+        }
+
+        with self.pid_file.open('w') as f:
+            json.dump(data, f)
+
+        logger.info(f"📝 Tracked VM: {vm_id} (PID: {pid})")
+
+    def get_tracked_vm(self) -> Optional[dict]:
+        """Get tracked VM with validation"""
+        if not self.pid_file.exists():
+            return None
+
+        try:
+            with self.pid_file.open('r') as f:
+                data = json.load(f)
+
+            # Validation 1: Check age
+            age_hours = (time.time() - data['created_at']) / 3600
+            if age_hours > self.max_age_hours:
+                logger.warning(f"⚠️  Stale PID file ({age_hours:.1f}h old), ignoring")
+                self.pid_file.unlink()  # Delete stale file
+                return None
+
+            # Validation 2: Check PID still running
+            pid = data['pid']
+            if not self._is_pid_running(pid):
+                logger.warning(f"⚠️  PID {pid} not running, file is stale")
+                self.pid_file.unlink()
+                return None
+
+            # Validation 3: Check hostname (multi-machine safety)
+            if data.get('hostname') != socket.gethostname():
+                logger.warning(f"⚠️  PID file from different machine, ignoring")
+                return None
+
+            # All validations passed
+            return data
+
+        except Exception as e:
+            logger.error(f"Error reading PID file: {e}")
+            return None
+
+    def _is_pid_running(self, pid: int) -> bool:
+        """Check if PID is still running"""
+        try:
+            import psutil
+            return psutil.pid_exists(pid)
+        except:
+            # Fallback: try to send signal 0
+            try:
+                os.kill(pid, 0)
+                return True
+            except OSError:
+                return False
+
+    def clear_tracked_vm(self):
+        """Clear tracked VM"""
+        if self.pid_file.exists():
+            self.pid_file.unlink()
+        logger.info("✅ Cleared VM tracking")
+
+# Usage in cleanup:
+async def enhanced_cleanup_with_validation(self):
+    """Cleanup with PID file validation"""
+    tracker = VMTracker()
+
+    # Get validated VM from PID file
+    tracked = tracker.get_tracked_vm()
+
+    if tracked:
+        vm_id = tracked['vm_id']
+        logger.info(f"🧹 Cleaning up tracked VM: {vm_id}")
+
+        # Verify VM actually exists before trying to delete
+        if await self._vm_exists(vm_id):
+            await self._cleanup_gcp_instance(vm_id)
+        else:
+            logger.warning(f"⚠️  Tracked VM {vm_id} doesn't exist (already deleted?)")
+
+    # Also scan for ANY jarvis-auto-* VMs as failsafe
+    await self._cleanup_all_jarvis_vms()
+
+    # Clear tracking
+    tracker.clear_tracked_vm()
+
+async def _vm_exists(self, vm_id: str) -> bool:
+    """Check if VM actually exists"""
+    check_cmd = [
+        "gcloud", "compute", "instances", "describe",
+        vm_id, "--project", project_id,
+        "--zone", zone, "--format", "value(status)"
+    ]
+
+    result = subprocess.run(check_cmd, capture_output=True, text=True, timeout=10)
+    return result.returncode == 0
+```
+
+**Test Command:**
+```bash
+# Test stale PID file handling
+python -c "
+import json
+import time
+from pathlib import Path
+import tempfile
+
+# Create stale PID file (8 hours old)
+pid_file = Path(tempfile.gettempdir()) / 'jarvis_vm_tracker.json'
+stale_data = {
+    'vm_id': 'jarvis-auto-OLD',
+    'pid': 99999,  # Non-existent PID
+    'created_at': time.time() - (8 * 3600),  # 8 hours ago
+    'hostname': 'old-machine'
+}
+
+with pid_file.open('w') as f:
+    json.dump(stale_data, f)
+
+print('Created stale PID file')
+
+# Now start JARVIS - should ignore stale file and create new VM
+# Test that cleanup works correctly
+"
+```
+
+---
+
+#### **Scenario 13: Split Brain - Two JARVIS Instances Think They Own Same VM**
+
+**Problem:** What if two JARVIS instances both think they created the same VM?
+
+**Edge Case:**
+```bash
+# Terminal 1:
+python start_system.py
+# Creates jarvis-auto-1234567890
+# VM creation succeeds
+
+# Terminal 2 (started simultaneously):
+python start_system.py
+# Tries to create VM with SAME timestamp-based name!
+# VM already exists, but continues anyway
+# Both instances track same VM ID
+
+# Kill Terminal 1 → Deletes VM
+# Terminal 2 still thinks it has the VM → Routes requests to non-existent VM
+```
+
+**Expected Behavior:**
+- ❌ Both instances claim ownership of same VM
+- ❌ First cleanup deletes VM, breaking second instance
+- ❌ Second instance doesn't know VM was deleted
+
+**Solution (Unique Instance ID + Ownership Tags):**
+```python
+import uuid
+
+class VMOwnership:
+    """Ensure unique VM ownership"""
+    def __init__(self):
+        self.session_id = str(uuid.uuid4())  # Unique per JARVIS instance
+        self.owned_vm_id = None
+
+    async def create_vm_with_ownership(self, components: list, reason: str):
+        """Create VM with ownership tags"""
+
+        # Generate unique VM name using UUID
+        timestamp = int(time.time())
+        unique_id = uuid.uuid4().hex[:8]
+        vm_name = f"jarvis-auto-{timestamp}-{unique_id}"
+
+        # Create VM with ownership labels
+        create_cmd = [
+            "gcloud", "compute", "instances", "create", vm_name,
+            "--project", project_id,
+            "--zone", zone,
+            "--machine-type", "e2-highmem-4",
+            "--provisioning-model", "SPOT",
+            f"--labels=jarvis-session={self.session_id.replace('-', '_')},"
+            f"owner-pid={os.getpid()},"
+            f"created-by=jarvis-auto,"
+            f"reason={reason.lower().replace('_', '-')}"
+        ]
+
+        result = subprocess.run(create_cmd, capture_output=True, text=True, timeout=180)
+
+        if result.returncode == 0:
+            self.owned_vm_id = vm_name
+            logger.info(f"✅ Created VM with ownership: {vm_name} (session: {self.session_id})")
+            return vm_name
+        else:
+            logger.error(f"Failed to create VM: {result.stderr}")
+            return None
+
+    async def cleanup_owned_vm_only(self):
+        """Cleanup ONLY VMs owned by this session"""
+        if not self.owned_vm_id:
+            logger.info("No owned VM to cleanup")
+            return
+
+        # Verify ownership before deleting
+        is_owner = await self._verify_ownership(self.owned_vm_id)
+
+        if is_owner:
+            logger.info(f"🧹 Cleaning up owned VM: {self.owned_vm_id}")
+            await self._delete_vm(self.owned_vm_id)
+        else:
+            logger.warning(f"⚠️  VM {self.owned_vm_id} ownership mismatch, skipping deletion")
+
+    async def _verify_ownership(self, vm_id: str) -> bool:
+        """Verify this session owns the VM"""
+        try:
+            describe_cmd = [
+                "gcloud", "compute", "instances", "describe", vm_id,
+                "--project", project_id,
+                "--zone", zone,
+                "--format", "json"
+            ]
+
+            result = subprocess.run(describe_cmd, capture_output=True, text=True, timeout=30)
+
+            if result.returncode == 0:
+                import json
+                vm_data = json.loads(result.stdout)
+                labels = vm_data.get('labels', {})
+
+                # Check session ID match
+                vm_session = labels.get('jarvis-session', '').replace('_', '-')
+
+                if vm_session == self.session_id:
+                    logger.info(f"✅ Ownership verified: {vm_id}")
+                    return True
+                else:
+                    logger.warning(f"⚠️  Ownership mismatch: expected {self.session_id}, got {vm_session}")
+                    return False
+            else:
+                logger.error(f"VM {vm_id} not found")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error verifying ownership: {e}")
+            return False
+
+# Usage:
+class HybridWorkloadRouter:
+    def __init__(self):
+        self.ownership = VMOwnership()
+
+    async def trigger_gcp_deployment(self, components: list, reason: str):
+        """Create VM with ownership tracking"""
+        vm_id = await self.ownership.create_vm_with_ownership(components, reason)
+
+        if vm_id:
+            self.gcp_instance_id = vm_id
+            self.gcp_active = True
+            logger.info(f"📝 Tracking owned VM: {vm_id}")
+
+        return {"success": bool(vm_id), "instance_id": vm_id}
+
+    async def cleanup(self):
+        """Cleanup only owned VMs"""
+        await self.ownership.cleanup_owned_vm_only()
+```
+
+**Test Command:**
+```bash
+# Test split brain scenario
+python -c "
+import subprocess
+import time
+
+# Start two instances simultaneously
+proc1 = subprocess.Popen(['python', 'start_system.py'])
+proc2 = subprocess.Popen(['python', 'start_system.py'])
+
+# Wait for both to create VMs
+time.sleep(60)
+
+# List VMs - should see 2 different VMs (unique names)
+subprocess.run([
+    'gcloud', 'compute', 'instances', 'list',
+    '--filter=name:jarvis-auto-*'
+])
+
+# Kill proc1
+proc1.terminate()
+time.sleep(30)
+
+# Verify proc1's VM deleted, proc2's VM still running
+result = subprocess.run([
+    'gcloud', 'compute', 'instances', 'list',
+    '--filter=name:jarvis-auto-*',
+    '--format=value(name)'
+], capture_output=True, text=True)
+
+vm_count = len(result.stdout.strip().split('\n')) if result.stdout.strip() else 0
+print(f'VMs remaining: {vm_count} (should be 1)')
+
+# Kill proc2
+proc2.terminate()
+time.sleep(30)
+
+# Verify all VMs deleted
+result = subprocess.run([
+    'gcloud', 'compute', 'instances', 'list',
+    '--filter=name:jarvis-auto-*'
+], capture_output=True, text=True)
+
+if 'Listed 0 items' in result.stdout or not result.stdout.strip():
+    print('✅ Both VMs cleaned up correctly')
+else:
+    print('❌ VMs still running')
+"
+```
+
+---
+
 ### 🏗️ Architecture Components
 
 **1. DynamicRAMMonitor**
