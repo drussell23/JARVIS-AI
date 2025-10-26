@@ -692,12 +692,13 @@ class HybridWorkloadRouter:
 
         return endpoint
 
-    async def trigger_gcp_deployment(self, components: list) -> dict:
+    async def trigger_gcp_deployment(self, components: list, reason: str = "HIGH_RAM") -> dict:
         """
         Trigger GCP deployment for specified components.
 
         Args:
             components: List of components to deploy
+            reason: Reason for GCP deployment (for cost tracking)
 
         Returns:
             Deployment result
@@ -1408,7 +1409,9 @@ class HybridIntelligenceCoordinator:
             logger.info(f"   Shifting heavy components: {', '.join(components_to_shift)}")
 
             # Trigger emergency GCP deployment
-            result = await self.workload_router.trigger_gcp_deployment(components_to_shift)
+            result = await self.workload_router.trigger_gcp_deployment(
+                components_to_shift, reason="EMERGENCY"
+            )
 
             if result["success"]:
                 logger.info("✅ Emergency shift successful")
@@ -1455,7 +1458,9 @@ class HybridIntelligenceCoordinator:
 
             logger.info(f"🚀 Shifting to GCP: {', '.join(components_to_shift)}")
 
-            result = await self.workload_router.trigger_gcp_deployment(components_to_shift)
+            result = await self.workload_router.trigger_gcp_deployment(
+                components_to_shift, reason=reason
+            )
 
             success = result["success"]
 
@@ -5275,6 +5280,64 @@ if __name__ == "__main__":
                     logger.info("🧹 PID file cleaned up on exit")
         except Exception as e:
             logger.warning(f"Could not cleanup PID file: {e}")
+
+        # CRITICAL: Cleanup GCP VMs synchronously (works even if asyncio is dead)
+        try:
+            import subprocess
+
+            project_id = os.getenv("GCP_PROJECT_ID", "jarvis-473803")
+
+            # List all JARVIS auto VMs
+            list_cmd = [
+                "gcloud",
+                "compute",
+                "instances",
+                "list",
+                "--project",
+                project_id,
+                "--filter",
+                "name:jarvis-auto-*",
+                "--format",
+                "value(name,zone)",
+            ]
+
+            result = subprocess.run(list_cmd, capture_output=True, text=True, timeout=30)
+
+            if result.returncode == 0 and result.stdout.strip():
+                instances = result.stdout.strip().split("\n")
+                for line in instances:
+                    if "\t" in line:
+                        instance_name, zone = line.split("\t")
+                        logger.info(f"🧹 Cleaning up orphaned GCP VM: {instance_name}")
+
+                        delete_cmd = [
+                            "gcloud",
+                            "compute",
+                            "instances",
+                            "delete",
+                            instance_name,
+                            "--project",
+                            project_id,
+                            "--zone",
+                            zone,
+                            "--quiet",
+                        ]
+
+                        delete_result = subprocess.run(
+                            delete_cmd, capture_output=True, text=True, timeout=60
+                        )
+
+                        if delete_result.returncode == 0:
+                            logger.info(f"✅ Deleted orphaned VM: {instance_name}")
+                            print(f"💰 Stopped costs: VM {instance_name} deleted")
+                        else:
+                            logger.warning(
+                                f"Failed to delete VM {instance_name}: {delete_result.stderr}"
+                            )
+            else:
+                logger.info("ℹ️  No orphaned GCP VMs found")
+        except Exception as e:
+            logger.warning(f"Could not cleanup GCP VMs on exit: {e}")
 
         # Clean up any orphaned start_system.py processes (except ourselves)
         try:
