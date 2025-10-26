@@ -4215,7 +4215,15 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
 
     async def cleanup(self):
         """Clean up all processes"""
-        print(f"\n{Colors.BLUE}Shutting down services...{Colors.ENDC}")
+        print(
+            f"\n{Colors.BLUE}╔══════════════════════════════════════════════════════════════╗{Colors.ENDC}"
+        )
+        print(
+            f"{Colors.BLUE}║         Shutting down JARVIS gracefully...                  ║{Colors.ENDC}"
+        )
+        print(
+            f"{Colors.BLUE}╚══════════════════════════════════════════════════════════════╝{Colors.ENDC}\n"
+        )
 
         # Set a flag to suppress exit warnings
         self._shutting_down = True
@@ -4223,28 +4231,44 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
         # Stop hybrid coordinator first
         if self.hybrid_enabled and self.hybrid_coordinator:
             try:
-                print(f"{Colors.CYAN}Stopping Hybrid Cloud Intelligence...{Colors.ENDC}")
+                print(f"{Colors.CYAN}🌐 [1/6] Stopping Hybrid Cloud Intelligence...{Colors.ENDC}")
+                print(f"   ├─ Canceling health check tasks...")
                 await self.hybrid_coordinator.stop()
+                print(f"   ├─ Closing HTTP client connections...")
 
                 # Print final stats
                 status = await self.hybrid_coordinator.get_status()
                 metrics = status["metrics"]
                 if metrics["total_migrations"] > 0:
-                    print(f"   • Total GCP migrations: {metrics['total_migrations']}")
-                    print(f"   • Prevented crashes: {metrics['prevented_crashes']}")
-                    print(f"   • Avg migration time: {metrics['avg_migration_time']:.1f}s")
+                    print(f"   ├─ Session stats:")
+                    print(f"   │  • Total GCP migrations: {metrics['total_migrations']}")
+                    print(f"   │  • Prevented crashes: {metrics['prevented_crashes']}")
+                    print(f"   │  • Avg migration time: {metrics['avg_migration_time']:.1f}s")
+                print(f"   └─ {Colors.GREEN}✓ Hybrid coordinator stopped{Colors.ENDC}")
             except Exception as e:
+                print(
+                    f"   └─ {Colors.YELLOW}⚠ Hybrid coordinator cleanup warning: {e}{Colors.ENDC}"
+                )
                 logger.warning(f"Hybrid coordinator cleanup failed: {e}")
+        else:
+            print(f"{Colors.CYAN}🌐 [1/6] Hybrid Cloud Intelligence not active{Colors.ENDC}")
 
         # Close all open file handles first
+        print(f"\n{Colors.CYAN}📁 [2/6] Closing file handles...{Colors.ENDC}")
+        file_count = len(self.open_files)
         for file_handle in self.open_files:
             try:
                 file_handle.close()
             except Exception:
                 pass
         self.open_files.clear()
+        print(f"   └─ {Colors.GREEN}✓ Closed {file_count} file handles{Colors.ENDC}")
 
         # First try graceful termination
+        print(f"\n{Colors.CYAN}🔌 [3/6] Terminating processes gracefully...{Colors.ENDC}")
+        active_processes = [p for p in self.processes if p and p.returncode is None]
+        print(f"   ├─ Found {len(active_processes)} active processes")
+
         tasks = []
         for proc in self.processes:
             if proc and proc.returncode is None:
@@ -4259,32 +4283,46 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
 
         if tasks:
             # Wait for processes to terminate with a timeout
+            print(f"   ├─ Waiting for graceful termination (3s timeout)...")
             try:
                 await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=3.0)
+                print(f"   └─ {Colors.GREEN}✓ All processes terminated gracefully{Colors.ENDC}")
             except asyncio.TimeoutError:
                 print(
-                    f"{Colors.YELLOW}Some processes not responding, force killing...{Colors.ENDC}"
+                    f"   ├─ {Colors.YELLOW}⚠ Timeout - force killing remaining processes...{Colors.ENDC}"
                 )
+                killed_count = 0
                 # Force kill any remaining processes
                 for proc in self.processes:
                     if proc and proc.returncode is None:
                         try:
                             proc.kill()
+                            killed_count += 1
                         except ProcessLookupError:
                             pass
+                print(f"   └─ {Colors.GREEN}✓ Force killed {killed_count} processes{Colors.ENDC}")
+        else:
+            print(f"   └─ {Colors.GREEN}✓ No active processes to terminate{Colors.ENDC}")
 
         # Double-check by killing processes on known ports
-        print(f"{Colors.BLUE}Cleaning up port processes...{Colors.ENDC}")
+        print(f"\n{Colors.CYAN}🔌 [4/6] Cleaning up port processes...{Colors.ENDC}")
+        port_list = ", ".join([f"{name}:{port}" for name, port in self.ports.items()])
+        print(f"   ├─ Checking ports: {port_list}")
         cleanup_tasks = []
         for service_name, port in self.ports.items():
             cleanup_tasks.append(self.kill_process_on_port(port))
 
         if cleanup_tasks:
             await asyncio.gather(*cleanup_tasks, return_exceptions=True)
+            print(f"   └─ {Colors.GREEN}✓ Freed {len(cleanup_tasks)} ports{Colors.ENDC}")
+        else:
+            print(f"   └─ {Colors.GREEN}✓ No ports to clean{Colors.ENDC}")
 
-        # Clean up any lingering Node.js processes
+        # Clean up any lingering Node.js and Python processes
+        print(f"\n{Colors.CYAN}🧹 [5/6] Cleaning up JARVIS-related processes...{Colors.ENDC}")
         try:
             # Kill npm processes
+            print(f"   ├─ Killing npm processes...")
             npm_kill = await asyncio.create_subprocess_shell(
                 "pkill -f 'npm.*start' || true",
                 stdout=asyncio.subprocess.DEVNULL,
@@ -4293,6 +4331,7 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
             await npm_kill.wait()
 
             # Kill node processes running our apps
+            print(f"   ├─ Killing Node.js processes (websocket, frontend)...")
             node_kill = await asyncio.create_subprocess_shell(
                 "pkill -f 'node.*websocket|node.*3000' || true",
                 stdout=asyncio.subprocess.DEVNULL,
@@ -4301,7 +4340,9 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
             await node_kill.wait()
 
             # Kill python processes running our backend (but not IDE-related processes)
+            print(f"   ├─ Killing Python backend processes (skipping IDE extensions)...")
             # First get all matching PIDs
+            python_killed = 0
             try:
                 result = subprocess.run(
                     "pgrep -f 'python.*main.py|python.*jarvis'",
@@ -4342,18 +4383,32 @@ ANTHROPIC_API_KEY=your_claude_api_key_here
 
                         # Kill the process
                         subprocess.run(f"kill {pid}", shell=True, capture_output=True)
+                        python_killed += 1
                     except:
                         pass
             except:
                 pass
 
-        except Exception:
-            pass  # Ignore errors in cleanup
+            print(f"   └─ {Colors.GREEN}✓ Cleaned up {python_killed} Python processes{Colors.ENDC}")
+
+        except Exception as e:
+            print(f"   └─ {Colors.YELLOW}⚠ Cleanup warning: {e}{Colors.ENDC}")
 
         # Give a moment for processes to die
+        print(f"\n{Colors.CYAN}⏳ [6/6] Finalizing shutdown...{Colors.ENDC}")
+        print(f"   ├─ Waiting for process cleanup (0.5s)...")
         await asyncio.sleep(0.5)
+        print(f"   └─ {Colors.GREEN}✓ Shutdown complete{Colors.ENDC}")
 
-        print(f"{Colors.GREEN}✓ All services stopped{Colors.ENDC}")
+        print(
+            f"\n{Colors.GREEN}╔══════════════════════════════════════════════════════════════╗{Colors.ENDC}"
+        )
+        print(
+            f"{Colors.GREEN}║         ✓ All JARVIS services stopped                       ║{Colors.ENDC}"
+        )
+        print(
+            f"{Colors.GREEN}╚══════════════════════════════════════════════════════════════╝{Colors.ENDC}"
+        )
 
         # Flush output to ensure all messages are printed
         sys.stdout.flush()
@@ -5523,6 +5578,16 @@ if __name__ == "__main__":
         # CRITICAL: Cleanup GCP VMs synchronously (works even if asyncio is dead)
         # MULTI-TERMINAL SAFE: Only deletes VMs owned by THIS session
         # ONLY RUN IF JARVIS FULLY INITIALIZED (skip on early exit)
+        print(
+            f"\n{Colors.CYAN}╔══════════════════════════════════════════════════════════════╗{Colors.ENDC}"
+        )
+        print(
+            f"{Colors.CYAN}║         GCP VM Cleanup (Post-Shutdown)                       ║{Colors.ENDC}"
+        )
+        print(
+            f"{Colors.CYAN}╚══════════════════════════════════════════════════════════════╝{Colors.ENDC}\n"
+        )
+
         try:
             import subprocess
 
@@ -5544,10 +5609,21 @@ if __name__ == "__main__":
                     vm_id = my_vm["vm_id"]
                     zone = my_vm["zone"]
 
-                    print(f"🧹 Deleting GCP VM {vm_id}...", end="", flush=True)
+                    print(f"{Colors.CYAN}🌐 Deleting session-owned GCP VM...{Colors.ENDC}")
+                    print(f"   ├─ VM ID: {Colors.YELLOW}{vm_id}{Colors.ENDC}")
+                    print(f"   ├─ Zone: {zone}")
+                    print(f"   ├─ Project: {project_id}")
+                    print(f"   ├─ Session: {session_tracker.session_id[:8]}...")
+                    print(f"   ├─ PID: {session_tracker.pid}")
+                    print(f"   ├─ Executing: gcloud compute instances delete...")
+
                     logger.info(f"🧹 Cleaning up session-owned VM: {vm_id}")
                     logger.info(f"   Session: {session_tracker.session_id[:8]}")
                     logger.info(f"   PID: {session_tracker.pid}")
+
+                    import time
+
+                    start_time = time.time()
 
                     delete_cmd = [
                         "gcloud",
@@ -5566,31 +5642,62 @@ if __name__ == "__main__":
                         delete_cmd, capture_output=True, text=True, timeout=10
                     )
 
+                    elapsed = time.time() - start_time
+
                     if delete_result.returncode == 0:
-                        print(f" ✅")
+                        print(
+                            f"   ├─ {Colors.GREEN}✓ VM deleted successfully ({elapsed:.1f}s){Colors.ENDC}"
+                        )
+                        print(f"   └─ {Colors.GREEN}💰 Stopped billing for {vm_id}{Colors.ENDC}")
                         logger.info(f"✅ Deleted session VM: {vm_id}")
 
                         # Unregister from session tracker
                         session_tracker.unregister_vm()
                     else:
-                        print(f" ⚠️")
+                        error_msg = delete_result.stderr.strip()
+                        if "was not found" in error_msg or "Not Found" in error_msg:
+                            print(
+                                f"   └─ {Colors.YELLOW}⚠ VM already deleted (not found in GCP){Colors.ENDC}"
+                            )
+                        else:
+                            print(
+                                f"   ├─ {Colors.RED}✗ Failed to delete VM ({elapsed:.1f}s){Colors.ENDC}"
+                            )
+                            print(f"   └─ {Colors.RED}Error: {error_msg[:100]}{Colors.ENDC}")
                         logger.warning(f"Failed to delete VM {vm_id}: {delete_result.stderr}")
 
                     # Show other active sessions
+                    print(f"\n{Colors.CYAN}📊 Other active JARVIS sessions:{Colors.ENDC}")
                     active_sessions = session_tracker.get_all_active_sessions()
-                    if active_sessions:
-                        logger.info(
-                            f"ℹ️  {len(active_sessions)} other JARVIS session(s) still running"
+                    other_sessions = {
+                        sid: data
+                        for sid, data in active_sessions.items()
+                        if sid != session_tracker.session_id
+                    }
+
+                    if other_sessions:
+                        print(f"   ├─ {len(other_sessions)} other session(s) still running:")
+                        for sid, data in other_sessions.items():
+                            vm_status = (
+                                f"VM: {data.get('vm_id', 'none')}" if data.get("vm_id") else "No VM"
+                            )
+                            print(f"   │  • Session {sid[:8]}: PID {data.get('pid')}, {vm_status}")
+                        print(
+                            f"   └─ {Colors.YELLOW}Note: Other sessions remain active{Colors.ENDC}"
                         )
-                        for sid, data in active_sessions.items():
-                            if sid != session_tracker.session_id:
-                                logger.info(
-                                    f"   - Session {sid[:8]}: PID {data.get('pid')}, VM {data.get('vm_id')}"
-                                )
+                        logger.info(
+                            f"ℹ️  {len(other_sessions)} other JARVIS session(s) still running"
+                        )
+                    else:
+                        print(f"   └─ No other active JARVIS sessions")
                 else:
+                    print(f"{Colors.CYAN}ℹ️  No VM registered to this session{Colors.ENDC}")
+                    print(f"   └─ Session ran locally only (no cloud migration)")
                     logger.info("ℹ️  No VM registered to this session")
             else:
                 # Fallback: Old behavior if session tracker not initialized
+                print(f"{Colors.YELLOW}⚠️  Session tracker not initialized{Colors.ENDC}")
+                print(f"   ├─ Falling back to legacy VM detection...")
                 logger.warning("⚠️  Session tracker not available, falling back to legacy cleanup")
 
                 list_cmd = [
@@ -5610,6 +5717,14 @@ if __name__ == "__main__":
 
                 if result.returncode == 0 and result.stdout.strip():
                     instances = result.stdout.strip().split("\n")
+                    print(
+                        f"   ├─ {Colors.YELLOW}Found {len(instances)} jarvis-auto-* VMs{Colors.ENDC}"
+                    )
+                    print(
+                        f"   ├─ {Colors.YELLOW}⚠ Cannot determine ownership without session tracker{Colors.ENDC}"
+                    )
+                    print(f"   └─ {Colors.YELLOW}Manual cleanup may be required:{Colors.ENDC}")
+                    print(f"      gcloud compute instances list --filter='name:jarvis-auto-*'")
                     logger.warning(
                         f"⚠️  Found {len(instances)} jarvis-auto-* VMs (cannot determine ownership)"
                     )
@@ -5617,9 +5732,15 @@ if __name__ == "__main__":
                         "   Manual cleanup may be required: gcloud compute instances list"
                     )
                 else:
+                    print(f"   └─ {Colors.GREEN}✓ No orphaned GCP VMs found{Colors.ENDC}")
                     logger.info("ℹ️  No orphaned GCP VMs found")
 
+        except subprocess.TimeoutExpired:
+            print(f"\n{Colors.RED}✗ GCP VM cleanup timed out{Colors.ENDC}")
+            print(f"   └─ Network may be slow or gcloud not responding")
+            logger.warning("GCP VM cleanup timed out")
         except Exception as e:
+            print(f"\n{Colors.RED}✗ Error during GCP VM cleanup: {e}{Colors.ENDC}")
             logger.warning(f"Could not cleanup GCP VMs on exit: {e}")
 
         # NOTE: Removed automatic cleanup of other start_system.py processes
