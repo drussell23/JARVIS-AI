@@ -495,6 +495,109 @@ After learning:       vision: 35%, ml_models: 18%
 - ✅ Pattern sharing across sessions
 - ✅ Continuous improvement with each migration
 
+**Automatic VM Cleanup (Fixed: 2025-10-26):**
+- ✅ **Synchronous cleanup on exit** - Deletes GCP VMs even when terminal killed (Cmd+C)
+- ✅ **No runaway costs** - VMs automatically deleted when JARVIS stops
+- ✅ **Works with asyncio dead** - Uses subprocess.run() for reliability
+- ✅ **Safety verified** - Scans for all `jarvis-auto-*` VMs and deletes them
+- ✅ **Cost impact** - Prevents $42/month wasted on orphaned VMs
+- ✅ **Real-time feedback** - Prints "💰 Stopped costs: VM {name} deleted"
+
+### 🛠️ Troubleshooting: GCP VM Cleanup
+
+**Problem:** GCP Spot VMs not deleting when JARVIS stops, causing runaway costs.
+
+**Symptoms:**
+```bash
+# Check for orphaned VMs
+gcloud compute instances list --project=jarvis-473803 --filter="name:jarvis-auto-*"
+
+# If you see VMs listed → They're still running and charging you!
+NAME                    ZONE           STATUS
+jarvis-auto-1761498381  us-central1-a  RUNNING  ← BAD! Costing $0.029/hour
+```
+
+**Root Causes (Fixed in v16.0.1):**
+1. ❌ **Async cleanup failed** - When terminal killed (Cmd+C), asyncio event loop died before cleanup could run
+2. ❌ **Cost tracking bug** - Missing `reason` parameter in `trigger_gcp_deployment()` caused errors
+3. ❌ **No fallback mechanism** - If async cleanup failed, VMs orphaned forever
+
+**Solution (Implemented):**
+1. ✅ **Synchronous cleanup in finally block** - Runs even if asyncio dead (line 5280-5320 in `start_system.py`)
+2. ✅ **Fixed cost tracking** - Added missing `reason` parameter with default value "HIGH_RAM"
+3. ✅ **Terminal kill handling** - Cleanup runs on SIGTERM, SIGINT, SIGHUP, and finally block
+
+**Verification:**
+```bash
+# 1. Kill JARVIS with Cmd+C
+^C
+
+# 2. Wait 30-60 seconds for cleanup to complete
+
+# 3. Verify no VMs running
+gcloud compute instances list --project=jarvis-473803 --filter="name:jarvis-auto-*"
+
+# Expected output (NO VMs):
+WARNING: The following filter keys were not present in any resource : name
+Listed 0 items.
+
+# ✅ Success! No VMs = No costs when JARVIS not running
+```
+
+**Manual Cleanup (If Needed):**
+```bash
+# List all orphaned JARVIS VMs
+gcloud compute instances list --project=jarvis-473803 --filter="name:jarvis-auto-*"
+
+# Delete specific VM
+gcloud compute instances delete jarvis-auto-XXXXXXXXXX --project=jarvis-473803 --zone=us-central1-a --quiet
+
+# Or delete ALL JARVIS VMs at once
+gcloud compute instances list --project=jarvis-473803 \
+  --filter="name:jarvis-auto-*" \
+  --format="value(name,zone)" | \
+  while IFS=$'\t' read -r name zone; do
+    gcloud compute instances delete "$name" --project=jarvis-473803 --zone="$zone" --quiet
+    echo "✅ Deleted: $name"
+  done
+```
+
+**Cost Impact:**
+- **Before fix:** Orphaned VM runs 24/7 = $0.029/hour × 24 hours × 30 days = **$21/month per VM**
+- **After fix:** VM deleted on exit = **$0/hour when JARVIS not running** ✅
+- **Savings:** **$21-42/month** depending on how many orphaned VMs
+
+**How It Works Now:**
+```python
+# In start_system.py finally block (runs on ANY exit):
+try:
+    # List all jarvis-auto-* VMs
+    result = subprocess.run([
+        "gcloud", "compute", "instances", "list",
+        "--filter", "name:jarvis-auto-*",
+        "--format", "value(name,zone)"
+    ], capture_output=True, text=True, timeout=30)
+
+    # Delete each VM found
+    for instance_name, zone in instances:
+        subprocess.run([
+            "gcloud", "compute", "instances", "delete",
+            instance_name, "--zone", zone, "--quiet"
+        ], timeout=60)
+        print(f"💰 Stopped costs: VM {instance_name} deleted")
+except Exception as e:
+    logger.warning(f"Could not cleanup GCP VMs: {e}")
+```
+
+**Why Synchronous?**
+- `subprocess.run()` works even when asyncio event loop is dead
+- `finally` block runs on ANY exit (Cmd+C, Cmd+D, exceptions, normal exit)
+- Guarantees cleanup happens before Python process terminates
+
+**Related Documentation:**
+- See `GCP_INFRASTRUCTURE_GAP_ANALYSIS.md` for full cost optimization strategy
+- Spot VMs save 91% vs regular VMs ($0.029/hr vs $0.32/hr) when managed correctly
+
 ### 🏗️ Architecture Components
 
 **1. DynamicRAMMonitor**
