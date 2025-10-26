@@ -15,6 +15,7 @@ An intelligent voice-activated AI assistant with **Hybrid Cloud Auto-Scaling**, 
    - [Technical Implementation Details](#technical-implementation-details)
    - [Use Cases & Scenarios](#use-cases--scenarios)
    - [Benefits & Impact](#benefits--impact)
+   - [Graceful Shutdown with Comprehensive Progress Logging](#graceful-shutdown-with-comprehensive-progress-logging-2025-10-26)
 3. [🚀 v15.0: Phase 4 - Proactive Communication (Magic)](#-v150-phase-4---proactive-communication-magic)
    - [✨ What's New in Phase 4](#-whats-new-in-phase-4)
 4. [🏗️ Intelligence Evolution: Phase 1-4 Journey](#️-intelligence-evolution-phase-1-4-journey)
@@ -5119,6 +5120,308 @@ Message: feat: Integrate GCP VM session tracking with process cleanup manager
 - ✅ Flake8 (linting)
 - ✅ Bandit (security analysis)
 - ✅ Autoflake (unused code removal)
+
+### Graceful Shutdown with Comprehensive Progress Logging (2025-10-26)
+
+**Problem Solved:**
+When hitting CTRL+C, JARVIS would print "✅ JARVIS stopped gracefully" but then hang for 30-60 seconds before returning to the terminal prompt. Users had no visibility into what was happening during this time, especially GCP VM cleanup operations.
+
+**Solution:**
+Implemented a **6-step shutdown process** with detailed progress indicators and comprehensive GCP VM cleanup logging. Terminal returns to prompt within ~10 seconds max (vs 60s previously).
+
+#### Shutdown Process Overview
+
+**Phase 1: Main Cleanup (Async - 6 Steps)**
+
+**Step 1: Hybrid Cloud Intelligence**
+```
+🌐 [1/6] Stopping Hybrid Cloud Intelligence...
+   ├─ Canceling health check tasks...
+   ├─ Closing HTTP client connections...
+   ├─ Session stats:
+   │  • Total GCP migrations: 3
+   │  • Prevented crashes: 2
+   │  • Avg migration time: 4.2s
+   └─ ✓ Hybrid coordinator stopped
+```
+- Cancels async health check loops
+- Closes HTTP client (httpx) connections
+- Shows migration statistics if any migrations occurred
+
+**Step 2: File Handles**
+```
+📁 [2/6] Closing file handles...
+   └─ ✓ Closed 5 file handles
+```
+- Closes all open file handles
+- Reports count of files closed
+
+**Step 3: Process Termination**
+```
+🔌 [3/6] Terminating processes gracefully...
+   ├─ Found 3 active processes
+   ├─ Waiting for graceful termination (3s timeout)...
+   └─ ✓ All processes terminated gracefully
+```
+- Sends SIGTERM to all tracked processes
+- 3-second timeout for graceful shutdown
+- Falls back to SIGKILL if needed:
+```
+   ├─ ⚠ Timeout - force killing remaining processes...
+   └─ ✓ Force killed 2 processes
+```
+
+**Step 4: Port Cleanup**
+```
+🔌 [4/6] Cleaning up port processes...
+   ├─ Checking ports: backend:8000, frontend:3000, monitoring:8888
+   └─ ✓ Freed 3 ports
+```
+- Kills processes on known ports (8000, 3000, 8888)
+- Ensures no orphaned server processes
+
+**Step 5: JARVIS Process Cleanup**
+```
+🧹 [5/6] Cleaning up JARVIS-related processes...
+   ├─ Killing npm processes...
+   ├─ Killing Node.js processes (websocket, frontend)...
+   ├─ Killing Python backend processes (skipping IDE extensions)...
+   └─ ✓ Cleaned up 2 Python processes
+```
+- Kills npm processes (`npm start`)
+- Kills Node.js processes (websocket, port 3000)
+- Kills Python backend processes (main.py, jarvis)
+- **Smart filtering:** Skips IDE-spawned processes (Cursor, VSCode, PyCharm, etc.)
+
+**Step 6: Finalization**
+```
+⏳ [6/6] Finalizing shutdown...
+   ├─ Waiting for process cleanup (0.5s)...
+   └─ ✓ Shutdown complete
+
+╔══════════════════════════════════════════════════════════════╗
+║         ✓ All JARVIS services stopped                       ║
+╚══════════════════════════════════════════════════════════════╝
+```
+- 0.5s wait for process cleanup to complete
+- Final confirmation with box-drawing UI
+
+**Phase 2: GCP VM Cleanup (Sync - Finally Block)**
+
+**Successful VM Deletion:**
+```
+╔══════════════════════════════════════════════════════════════╗
+║         GCP VM Cleanup (Post-Shutdown)                       ║
+╚══════════════════════════════════════════════════════════════╝
+
+🌐 Deleting session-owned GCP VM...
+   ├─ VM ID: jarvis-auto-1234567890
+   ├─ Zone: us-central1-a
+   ├─ Project: jarvis-473803
+   ├─ Session: abc12345...
+   ├─ PID: 12345
+   ├─ Executing: gcloud compute instances delete...
+   ├─ ✓ VM deleted successfully (2.3s)
+   └─ 💰 Stopped billing for jarvis-auto-1234567890
+```
+
+**VM Already Deleted:**
+```
+   └─ ⚠ VM already deleted (not found in GCP)
+```
+- Gracefully handles VMs deleted manually via GCP Console
+
+**VM Deletion Failed:**
+```
+   ├─ ✗ Failed to delete VM (3.1s)
+   └─ Error: Permission denied or quota exceeded...
+```
+- Shows error details (first 100 characters)
+- Logs full error to file
+
+**Other Active Sessions:**
+```
+📊 Other active JARVIS sessions:
+   ├─ 2 other session(s) still running:
+   │  • Session def67890: PID 67890, VM: jarvis-auto-0987654321
+   │  • Session ghi12345: PID 12345, No VM
+   └─ ⚠ Note: Other sessions remain active
+```
+- Multi-terminal awareness
+- Shows which sessions have VMs
+- Safe concurrent operation
+
+**No VM Registered:**
+```
+ℹ️  No VM registered to this session
+   └─ Session ran locally only (no cloud migration)
+```
+- Indicates session never migrated to GCP
+- All work was local
+
+**Legacy Fallback (Session Tracker Not Available):**
+```
+⚠️  Session tracker not initialized
+   ├─ Falling back to legacy VM detection...
+   ├─ Found 3 jarvis-auto-* VMs
+   ├─ ⚠ Cannot determine ownership without session tracker
+   └─ Manual cleanup may be required:
+      gcloud compute instances list --filter='name:jarvis-auto-*'
+```
+
+#### Key Features
+
+**Performance:**
+- ✅ Reduced VM delete timeout: 60s → 10s (most deletions complete in 2-3s)
+- ✅ Reduced VM list timeout: 30s → 5s
+- ✅ Terminal returns to prompt within ~10 seconds max
+
+**Visibility:**
+- ✅ **6-step progress tracking** - Know exactly what's happening
+- ✅ **Real-time status** - See each operation complete
+- ✅ **Timing information** - VM deletion elapsed time shown
+- ✅ **Cost awareness** - "💰 Stopped billing" confirmation
+- ✅ **Session awareness** - See other active JARVIS instances
+
+**User Experience:**
+- ✅ **Color-coded status** - Green (✓), Yellow (⚠), Red (✗)
+- ✅ **Tree-style UI** - Professional terminal formatting with box-drawing
+- ✅ **Emoji icons** - Visual scanning (🌐, 📁, 🔌, 🧹, ⏳, 💰, 📊)
+- ✅ **Clear hierarchy** - Tree symbols (├─, └─, │)
+- ✅ **Error transparency** - Detailed error messages when failures occur
+
+**Reliability:**
+- ✅ **Graceful degradation** - Continues on individual failures
+- ✅ **Timeout handling** - Won't hang indefinitely
+- ✅ **IDE-aware** - Doesn't kill IDE extension processes
+- ✅ **Multi-terminal safe** - Only deletes VMs from current session
+
+#### Complete Example Output
+
+```
+╔══════════════════════════════════════════════════════════════╗
+║         Shutting down JARVIS gracefully...                  ║
+╚══════════════════════════════════════════════════════════════╝
+
+🌐 [1/6] Stopping Hybrid Cloud Intelligence...
+   ├─ Canceling health check tasks...
+   ├─ Closing HTTP client connections...
+   ├─ Session stats:
+   │  • Total GCP migrations: 3
+   │  • Prevented crashes: 2
+   │  • Avg migration time: 4.2s
+   └─ ✓ Hybrid coordinator stopped
+
+📁 [2/6] Closing file handles...
+   └─ ✓ Closed 5 file handles
+
+🔌 [3/6] Terminating processes gracefully...
+   ├─ Found 3 active processes
+   ├─ Waiting for graceful termination (3s timeout)...
+   └─ ✓ All processes terminated gracefully
+
+🔌 [4/6] Cleaning up port processes...
+   ├─ Checking ports: backend:8000, frontend:3000, monitoring:8888
+   └─ ✓ Freed 3 ports
+
+🧹 [5/6] Cleaning up JARVIS-related processes...
+   ├─ Killing npm processes...
+   ├─ Killing Node.js processes (websocket, frontend)...
+   ├─ Killing Python backend processes (skipping IDE extensions)...
+   └─ ✓ Cleaned up 2 Python processes
+
+⏳ [6/6] Finalizing shutdown...
+   ├─ Waiting for process cleanup (0.5s)...
+   └─ ✓ Shutdown complete
+
+╔══════════════════════════════════════════════════════════════╗
+║         ✓ All JARVIS services stopped                       ║
+╚══════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════╗
+║         GCP VM Cleanup (Post-Shutdown)                       ║
+╚══════════════════════════════════════════════════════════════╝
+
+🌐 Deleting session-owned GCP VM...
+   ├─ VM ID: jarvis-auto-1234567890
+   ├─ Zone: us-central1-a
+   ├─ Project: jarvis-473803
+   ├─ Session: abc12345...
+   ├─ PID: 12345
+   ├─ Executing: gcloud compute instances delete...
+   ├─ ✓ VM deleted successfully (2.3s)
+   └─ 💰 Stopped billing for jarvis-auto-1234567890
+
+📊 Other active JARVIS sessions:
+   └─ No other active JARVIS sessions
+
+$ _
+```
+
+#### Technical Implementation
+
+**Location:** `start_system.py` lines 4216-4399 (cleanup), 5565-5701 (GCP VM cleanup)
+
+**Main Cleanup (async):**
+```python
+async def cleanup(self):
+    # Step 1: Hybrid coordinator
+    if self.hybrid_enabled and self.hybrid_coordinator:
+        await self.hybrid_coordinator.stop()
+
+    # Step 2: File handles
+    for file_handle in self.open_files:
+        file_handle.close()
+
+    # Step 3: Process termination (3s timeout)
+    await asyncio.wait_for(asyncio.gather(*tasks), timeout=3.0)
+
+    # Step 4: Port cleanup
+    await asyncio.gather(*cleanup_tasks)
+
+    # Step 5: JARVIS process cleanup
+    # Kill npm, node, python processes (skip IDE)
+
+    # Step 6: Finalization
+    await asyncio.sleep(0.5)
+```
+
+**GCP VM Cleanup (sync, in finally block):**
+```python
+try:
+    coordinator_ref = globals().get("_hybrid_coordinator")
+    if coordinator_ref:
+        session_tracker = coordinator_ref.workload_router.session_tracker
+        my_vm = session_tracker.get_my_vm()
+
+        if my_vm:
+            # Delete VM with 10s timeout
+            subprocess.run(delete_cmd, timeout=10)
+
+            # Show other active sessions
+            active_sessions = session_tracker.get_all_active_sessions()
+except subprocess.TimeoutExpired:
+    # Handle timeout
+except Exception as e:
+    # Handle errors
+```
+
+#### Commits
+
+**Commit 1: Timeout Reduction (cde6730)**
+- Reduced VM delete timeout: 60s → 10s
+- Reduced VM list timeout: 30s → 5s
+- Added progress indicator for VM deletion
+
+**Commit 2: Comprehensive Logging (d6872db)**
+- Added 6-step shutdown process with tree UI
+- Added detailed GCP VM cleanup logging
+- Added session awareness and statistics
+- Added color-coded status indicators
+- Added box-drawing headers
+
+**Files Modified:**
+- `start_system.py` (+142 lines, -21 lines)
 
 ---
 
