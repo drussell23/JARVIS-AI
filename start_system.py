@@ -1463,7 +1463,7 @@ class HybridIntelligenceCoordinator:
         logger.info(f"   Learning: {'Enabled' if self.learning_enabled else 'Disabled'}")
 
     async def stop(self):
-        """Stop hybrid coordination and cleanup GCP resources"""
+        """Stop hybrid coordination (VM cleanup handled in finally block)"""
         self.running = False
 
         if self.monitoring_task:
@@ -1473,24 +1473,44 @@ class HybridIntelligenceCoordinator:
             except asyncio.CancelledError:
                 pass
 
-        # Cleanup GCP instance if active
+        # Cleanup GCP instance if active (CRITICAL for cost control - do NOT skip!)
+        # With 90s timeout, we have plenty of time for VM deletion
         logger.info(
-            f"🔍 Checking for GCP cleanup: gcp_active={self.workload_router.gcp_active}, instance_id={self.workload_router.gcp_instance_id}"
+            f"🔍 GCP VM status: gcp_active={self.workload_router.gcp_active}, "
+            f"instance_id={self.workload_router.gcp_instance_id or 'none'}"
         )
 
         if self.workload_router.gcp_active and self.workload_router.gcp_instance_id:
+            print(f"   ├─ Deleting GCP VM: {self.workload_router.gcp_instance_id}...")
+            import time
+
+            start_time = time.time()
+
             try:
                 logger.info(f"🧹 Cleaning up GCP instance: {self.workload_router.gcp_instance_id}")
                 await self.workload_router._cleanup_gcp_instance(
                     self.workload_router.gcp_instance_id
                 )
-                logger.info(f"✅ GCP instance {self.workload_router.gcp_instance_id} deleted")
+                elapsed = time.time() - start_time
+                print(
+                    f"   ├─ {Colors.GREEN}✓ VM deleted successfully ({elapsed:.1f}s){Colors.ENDC}"
+                )
+                print(
+                    f"   ├─ {Colors.GREEN}💰 Stopped billing for {self.workload_router.gcp_instance_id}{Colors.ENDC}"
+                )
+                logger.info(
+                    f"✅ GCP instance {self.workload_router.gcp_instance_id} deleted in {elapsed:.1f}s"
+                )
             except Exception as e:
+                elapsed = time.time() - start_time
+                print(f"   ├─ {Colors.RED}✗ VM deletion failed ({elapsed:.1f}s){Colors.ENDC}")
+                print(f"   ├─ {Colors.YELLOW}⚠ VM will be retried in finally block{Colors.ENDC}")
                 logger.error(f"❌ Failed to cleanup GCP instance: {e}")
                 import traceback
 
                 logger.error(traceback.format_exc())
         else:
+            print(f"   ├─ No GCP VM to delete")
             logger.info("ℹ️  No active GCP instance to cleanup")
 
         logger.info("🛑 Hybrid coordination stopped")
@@ -4959,11 +4979,12 @@ async def shutdown_handler():
         logger.info("🧹 Initiating graceful shutdown...")
 
         try:
-            # Give cleanup 10 seconds to complete gracefully
-            await asyncio.wait_for(_manager.cleanup(), timeout=10.0)
+            # Give cleanup 90 seconds to complete gracefully
+            # This allows time for GCP VM deletion which can take 30-60 seconds
+            await asyncio.wait_for(_manager.cleanup(), timeout=90.0)
             logger.info("✅ JARVIS stopped gracefully")
         except asyncio.TimeoutError:
-            logger.warning("⚠️  Cleanup timeout - forcing shutdown...")
+            logger.warning("⚠️  Cleanup timeout (90s exceeded) - forcing shutdown...")
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
 
