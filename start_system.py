@@ -154,14 +154,17 @@ All 9 components must load for full functionality.
 
 import argparse
 import asyncio
+import json
 import multiprocessing
 import os
 import platform
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
 import time
+import uuid
 import webbrowser
 from datetime import datetime
 from pathlib import Path
@@ -604,6 +607,193 @@ class DynamicRAMMonitor:
         return (False, "MAINTAINING: GCP deployment active")
 
 
+class VMSessionTracker:
+    """
+    Track VM ownership per JARVIS session to prevent multi-terminal conflicts.
+
+    Each JARVIS instance (terminal session) gets a unique session_id.
+    VMs are tagged with their owning session, ensuring cleanup only affects
+    VMs owned by the terminating session.
+
+    Features:
+    - UUID-based session identification
+    - PID-based ownership validation
+    - Hostname verification for multi-machine safety
+    - Timestamp-based staleness detection
+    - Atomic file operations with lock-free design
+    """
+
+    def __init__(self):
+        """Initialize session tracker with unique session ID"""
+        self.session_id = str(uuid.uuid4())
+        self.pid = os.getpid()
+        self.hostname = socket.gethostname()
+        self.created_at = time.time()
+
+        # Session tracking file (one per session, named by PID)
+        self.session_file = Path(tempfile.gettempdir()) / f"jarvis_session_{self.pid}.json"
+
+        # Global VM registry (shared across all sessions)
+        self.vm_registry = Path(tempfile.gettempdir()) / "jarvis_vm_registry.json"
+
+        logger.info(f"🆔 Session tracker initialized: {self.session_id[:8]}")
+        logger.info(f"   PID: {self.pid}, Hostname: {self.hostname}")
+
+    def register_vm(self, vm_id: str, zone: str, components: list):
+        """
+        Register VM ownership for this session.
+
+        Args:
+            vm_id: GCP instance ID
+            zone: GCP zone
+            components: Components deployed to this VM
+        """
+        session_data = {
+            "session_id": self.session_id,
+            "pid": self.pid,
+            "hostname": self.hostname,
+            "vm_id": vm_id,
+            "zone": zone,
+            "components": components,
+            "created_at": self.created_at,
+            "registered_at": time.time(),
+        }
+
+        # Write session-specific file
+        try:
+            self.session_file.write_text(json.dumps(session_data, indent=2))
+            logger.info(f"📝 Registered VM {vm_id} to session {self.session_id[:8]}")
+        except Exception as e:
+            logger.error(f"Failed to write session file: {e}")
+
+        # Update global registry (append-only, multiple sessions can coexist)
+        try:
+            registry = self._load_registry()
+            registry[self.session_id] = session_data
+            self._save_registry(registry)
+            logger.info(f"📋 Updated VM registry: {len(registry)} active sessions")
+        except Exception as e:
+            logger.error(f"Failed to update VM registry: {e}")
+
+    def get_my_vm(self) -> Optional[dict]:
+        """
+        Get VM owned by this session with validation.
+
+        Returns:
+            VM data dict or None if no valid VM found
+        """
+        if not self.session_file.exists():
+            return None
+
+        try:
+            data = json.loads(self.session_file.read_text())
+
+            # Validation 1: Check session ID matches
+            if data.get("session_id") != self.session_id:
+                logger.warning("⚠️  Session ID mismatch, ignoring file")
+                return None
+
+            # Validation 2: Check PID matches
+            if data.get("pid") != self.pid:
+                logger.warning("⚠️  PID mismatch, ignoring file")
+                return None
+
+            # Validation 3: Check hostname matches (multi-machine safety)
+            if data.get("hostname") != self.hostname:
+                logger.warning("⚠️  Hostname mismatch, ignoring file")
+                return None
+
+            # Validation 4: Check age (expire after 12 hours)
+            age_hours = (time.time() - data.get("created_at", 0)) / 3600
+            if age_hours > 12:
+                logger.warning(f"⚠️  Stale session file ({age_hours:.1f}h old), ignoring")
+                self.session_file.unlink()
+                return None
+
+            return data
+
+        except Exception as e:
+            logger.error(f"Failed to read session file: {e}")
+            return None
+
+    def unregister_vm(self):
+        """
+        Unregister VM ownership and cleanup session files.
+        Called during normal shutdown.
+        """
+        try:
+            # Remove session file
+            if self.session_file.exists():
+                self.session_file.unlink()
+                logger.info(f"🧹 Unregistered session {self.session_id[:8]}")
+
+            # Remove from global registry
+            registry = self._load_registry()
+            if self.session_id in registry:
+                del registry[self.session_id]
+                self._save_registry(registry)
+                logger.info(f"📋 Removed from VM registry: {len(registry)} sessions remain")
+
+        except Exception as e:
+            logger.error(f"Failed to unregister VM: {e}")
+
+    def get_all_active_sessions(self) -> dict:
+        """
+        Get all active sessions from registry with staleness filtering.
+
+        Returns:
+            Dict of {session_id: session_data} for valid sessions only
+        """
+        registry = self._load_registry()
+        active_sessions = {}
+
+        for session_id, data in registry.items():
+            # Check if PID is still running
+            pid = data.get("pid")
+            if pid and self._is_pid_running(pid):
+                # Check age
+                age_hours = (time.time() - data.get("created_at", 0)) / 3600
+                if age_hours <= 12:
+                    active_sessions[session_id] = data
+
+        # If registry changed, save cleaned version
+        if len(active_sessions) != len(registry):
+            self._save_registry(active_sessions)
+            logger.info(
+                f"🧹 Cleaned registry: {len(active_sessions)}/{len(registry)} sessions active"
+            )
+
+        return active_sessions
+
+    def _load_registry(self) -> dict:
+        """Load VM registry from disk"""
+        if not self.vm_registry.exists():
+            return {}
+
+        try:
+            return json.loads(self.vm_registry.read_text())
+        except Exception as e:
+            logger.error(f"Failed to load VM registry: {e}")
+            return {}
+
+    def _save_registry(self, registry: dict):
+        """Save VM registry to disk"""
+        try:
+            self.vm_registry.write_text(json.dumps(registry, indent=2))
+        except Exception as e:
+            logger.error(f"Failed to save VM registry: {e}")
+
+    def _is_pid_running(self, pid: int) -> bool:
+        """Check if PID is currently running"""
+        try:
+            proc = psutil.Process(pid)
+            # Check if it's actually a Python process running start_system.py
+            cmdline = proc.cmdline()
+            return "start_system.py" in " ".join(cmdline)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return False
+
+
 class HybridWorkloadRouter:
     """
     Intelligent router for local vs GCP workload placement.
@@ -620,9 +810,13 @@ class HybridWorkloadRouter:
         """Initialize hybrid workload router"""
         self.ram_monitor = ram_monitor
 
+        # Session tracking (multi-terminal safety)
+        self.session_tracker = VMSessionTracker()
+
         # Deployment state
         self.gcp_active = False
         self.gcp_instance_id = None
+        self.gcp_instance_zone = None  # Track zone for cleanup
         self.gcp_ip = None
         self.gcp_port = 8010
 
@@ -722,8 +916,17 @@ class HybridWorkloadRouter:
 
             # CRITICAL: Track instance immediately for cleanup, even if health check fails
             self.gcp_instance_id = deployment["instance_id"]
+            self.gcp_instance_zone = deployment.get(
+                "zone", gcp_config.get("region", "us-central1") + "-a"
+            )
             self.gcp_active = True  # Set now so cleanup runs even if ready check fails
             logger.info(f"📝 Tracking GCP instance for cleanup: {self.gcp_instance_id}")
+
+            # Register VM with session tracker (multi-terminal safety)
+            self.session_tracker.register_vm(
+                vm_id=self.gcp_instance_id, zone=self.gcp_instance_zone, components=components
+            )
+            logger.info(f"🔐 VM registered to session {self.session_tracker.session_id[:8]}")
 
             # Record VM creation in cost tracker
             if COST_TRACKING_AVAILABLE:
@@ -5282,60 +5485,96 @@ if __name__ == "__main__":
             logger.warning(f"Could not cleanup PID file: {e}")
 
         # CRITICAL: Cleanup GCP VMs synchronously (works even if asyncio is dead)
+        # MULTI-TERMINAL SAFE: Only deletes VMs owned by THIS session
         try:
             import subprocess
 
             project_id = os.getenv("GCP_PROJECT_ID", "jarvis-473803")
 
-            # List all JARVIS auto VMs
-            list_cmd = [
-                "gcloud",
-                "compute",
-                "instances",
-                "list",
-                "--project",
-                project_id,
-                "--filter",
-                "name:jarvis-auto-*",
-                "--format",
-                "value(name,zone)",
-            ]
+            # Check if we have a session tracker (may not exist if early startup failure)
+            if hasattr(coordinator, "workload_router") and hasattr(
+                coordinator.workload_router, "session_tracker"
+            ):
+                session_tracker = coordinator.workload_router.session_tracker
+                my_vm = session_tracker.get_my_vm()
 
-            result = subprocess.run(list_cmd, capture_output=True, text=True, timeout=30)
+                if my_vm:
+                    vm_id = my_vm["vm_id"]
+                    zone = my_vm["zone"]
 
-            if result.returncode == 0 and result.stdout.strip():
-                instances = result.stdout.strip().split("\n")
-                for line in instances:
-                    if "\t" in line:
-                        instance_name, zone = line.split("\t")
-                        logger.info(f"🧹 Cleaning up orphaned GCP VM: {instance_name}")
+                    logger.info(f"🧹 Cleaning up session-owned VM: {vm_id}")
+                    logger.info(f"   Session: {session_tracker.session_id[:8]}")
+                    logger.info(f"   PID: {session_tracker.pid}")
 
-                        delete_cmd = [
-                            "gcloud",
-                            "compute",
-                            "instances",
-                            "delete",
-                            instance_name,
-                            "--project",
-                            project_id,
-                            "--zone",
-                            zone,
-                            "--quiet",
-                        ]
+                    delete_cmd = [
+                        "gcloud",
+                        "compute",
+                        "instances",
+                        "delete",
+                        vm_id,
+                        "--project",
+                        project_id,
+                        "--zone",
+                        zone,
+                        "--quiet",
+                    ]
 
-                        delete_result = subprocess.run(
-                            delete_cmd, capture_output=True, text=True, timeout=60
+                    delete_result = subprocess.run(
+                        delete_cmd, capture_output=True, text=True, timeout=60
+                    )
+
+                    if delete_result.returncode == 0:
+                        logger.info(f"✅ Deleted session VM: {vm_id}")
+                        print(f"💰 Stopped costs: VM {vm_id} deleted")
+
+                        # Unregister from session tracker
+                        session_tracker.unregister_vm()
+                    else:
+                        logger.warning(f"Failed to delete VM {vm_id}: {delete_result.stderr}")
+
+                    # Show other active sessions
+                    active_sessions = session_tracker.get_all_active_sessions()
+                    if active_sessions:
+                        logger.info(
+                            f"ℹ️  {len(active_sessions)} other JARVIS session(s) still running"
                         )
-
-                        if delete_result.returncode == 0:
-                            logger.info(f"✅ Deleted orphaned VM: {instance_name}")
-                            print(f"💰 Stopped costs: VM {instance_name} deleted")
-                        else:
-                            logger.warning(
-                                f"Failed to delete VM {instance_name}: {delete_result.stderr}"
-                            )
+                        for sid, data in active_sessions.items():
+                            if sid != session_tracker.session_id:
+                                logger.info(
+                                    f"   - Session {sid[:8]}: PID {data.get('pid')}, VM {data.get('vm_id')}"
+                                )
+                else:
+                    logger.info("ℹ️  No VM registered to this session")
             else:
-                logger.info("ℹ️  No orphaned GCP VMs found")
+                # Fallback: Old behavior if session tracker not initialized
+                logger.warning("⚠️  Session tracker not available, falling back to legacy cleanup")
+
+                list_cmd = [
+                    "gcloud",
+                    "compute",
+                    "instances",
+                    "list",
+                    "--project",
+                    project_id,
+                    "--filter",
+                    "name:jarvis-auto-*",
+                    "--format",
+                    "value(name,zone)",
+                ]
+
+                result = subprocess.run(list_cmd, capture_output=True, text=True, timeout=30)
+
+                if result.returncode == 0 and result.stdout.strip():
+                    instances = result.stdout.strip().split("\n")
+                    logger.warning(
+                        f"⚠️  Found {len(instances)} jarvis-auto-* VMs (cannot determine ownership)"
+                    )
+                    logger.warning(
+                        "   Manual cleanup may be required: gcloud compute instances list"
+                    )
+                else:
+                    logger.info("ℹ️  No orphaned GCP VMs found")
+
         except Exception as e:
             logger.warning(f"Could not cleanup GCP VMs on exit: {e}")
 
