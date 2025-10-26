@@ -2309,6 +2309,7 @@ class AsyncSystemManager:
         self.no_browser = False
         self.backend_only = False
         self.frontend_only = False
+        self.backend_already_running = False  # Set to True when --restart starts backend
         self.use_optimized = True  # Use optimized backend by default
         self.auto_cleanup = True  # Auto cleanup without prompting (enabled by default)
         self.resource_coordinator = None
@@ -4681,7 +4682,12 @@ except Exception as e:
             print(f"{Colors.CYAN}Starting backend only...{Colors.ENDC}")
             await self.start_websocket_router()
             await asyncio.sleep(2)  # Reduced wait time
-            await self.start_backend()
+            if not self.backend_already_running:
+                await self.start_backend()
+            else:
+                print(
+                    f"{Colors.GREEN}✓ Backend already running (from restart), skipping startup{Colors.ENDC}"
+                )
         elif self.frontend_only:
             print(f"{Colors.CYAN}Starting frontend only...{Colors.ENDC}")
             await self.start_frontend()
@@ -4698,21 +4704,38 @@ except Exception as e:
                 )
 
             # Phase 2: Start backend and frontend in parallel
-            print(
-                f"\n{Colors.CYAN}Phase 2/3: Starting Backend & Frontend in parallel...{Colors.ENDC}"
-            )
+            if self.backend_already_running:
+                print(
+                    f"\n{Colors.CYAN}Phase 2/3: Starting Frontend (backend already running)...{Colors.ENDC}"
+                )
+                print(
+                    f"{Colors.GREEN}✓ Backend already running (from restart), skipping startup{Colors.ENDC}"
+                )
 
-            # Small delay to ensure router is ready
-            await asyncio.sleep(1)
+                # Small delay to ensure router is ready
+                await asyncio.sleep(1)
 
-            # Start both services in parallel
-            backend_task = asyncio.create_task(self.start_backend())
-            frontend_task = asyncio.create_task(self.start_frontend())
+                # Only start frontend
+                frontend_result = await self.start_frontend()
 
-            # Wait for both with proper error handling
-            backend_result, frontend_result = await asyncio.gather(
-                backend_task, frontend_task, return_exceptions=True
-            )
+                # Set backend_result to mock success
+                backend_result = True
+            else:
+                print(
+                    f"\n{Colors.CYAN}Phase 2/3: Starting Backend & Frontend in parallel...{Colors.ENDC}"
+                )
+
+                # Small delay to ensure router is ready
+                await asyncio.sleep(1)
+
+                # Start both services in parallel
+                backend_task = asyncio.create_task(self.start_backend())
+                frontend_task = asyncio.create_task(self.start_frontend())
+
+                # Wait for both with proper error handling
+                backend_result, frontend_result = await asyncio.gather(
+                    backend_task, frontend_task, return_exceptions=True
+                )
 
             # Check backend result (critical)
             if isinstance(backend_result, Exception):
@@ -5558,9 +5581,14 @@ async def main():
                 )
 
             print(f"\n{'='*50}")
-            print(f"{Colors.GREEN}🎉 JARVIS restart complete!{Colors.ENDC}")
-            print(f"{'='*50}")
-            return 0
+            print(
+                f"{Colors.GREEN}🎉 Backend restarted - now starting frontend & services...{Colors.ENDC}"
+            )
+            print(f"{'='*50}\n")
+
+            # Set flag to indicate backend is already running
+            # Fall through to normal startup but skip backend startup
+            args.backend_already_running = True
 
         except Exception as e:
             print(f"{Colors.FAIL}Restart failed: {e}{Colors.ENDC}")
@@ -5576,6 +5604,7 @@ async def main():
     _manager.frontend_only = args.frontend_only
     _manager.use_optimized = not args.standard
     _manager.auto_cleanup = not args.no_auto_cleanup
+    _manager.backend_already_running = getattr(args, "backend_already_running", False)
 
     # Always use autonomous mode unless explicitly disabled
     if args.no_autonomous:
