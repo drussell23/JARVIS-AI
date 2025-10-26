@@ -1335,10 +1335,9 @@ exit 1
 
             try:
                 # Create GCP instance with appropriate machine type
-                # For 16GB local RAM, use 4x capacity for meaningful offloading
-                # e2-highmem-8: 8 vCPUs, 64GB RAM (~$0.058/hr Spot)
-                machine_type = os.getenv("GCP_VM_TYPE", "e2-highmem-8")
-                logger.info(f"🖥️  Creating GCP VM: {machine_type} (64GB RAM, 4x local capacity)")
+                # e2-highmem-4: 4 vCPUs, 32GB RAM (~$0.029/hr Spot)
+                machine_type = os.getenv("GCP_VM_TYPE", "e2-highmem-4")
+                logger.info(f"🖥️  Creating GCP VM: {machine_type} (32GB RAM)")
 
                 cmd = [
                     "gcloud",
@@ -2584,7 +2583,7 @@ class AsyncSystemManager:
             print(f"\n{Colors.BOLD}🌐 HYBRID CLOUD INTELLIGENCE:{Colors.ENDC}")
             ram_gb = self.hybrid_coordinator.ram_monitor.local_ram_gb
             print(f"   • {Colors.GREEN}✓ Local RAM:{Colors.ENDC} {ram_gb:.1f}GB (macOS)")
-            print(f"   • {Colors.CYAN}✓ Cloud RAM:{Colors.ENDC} 64GB (GCP e2-highmem-8, 4x local)")
+            print(f"   • {Colors.CYAN}✓ Cloud RAM:{Colors.ENDC} 32GB (GCP e2-highmem-4)")
             print(f"   • {Colors.GREEN}✓ Auto-Routing:{Colors.ENDC} Intelligent workload placement")
             print(
                 f"   • {Colors.PURPLE}✓ Crash Prevention:{Colors.ENDC} Emergency GCP shift at {self.hybrid_coordinator.ram_monitor.critical_threshold*100:.0f}% RAM"

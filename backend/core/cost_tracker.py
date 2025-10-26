@@ -70,7 +70,7 @@ class CostTrackerConfig:
     regular_vm_hourly_cost: float = field(
         default_factory=lambda: float(os.getenv("REGULAR_VM_HOURLY_COST", "0.120"))
     )
-    vm_instance_type: str = field(default_factory=lambda: os.getenv("GCP_VM_TYPE", "e2-highmem-8"))
+    vm_instance_type: str = field(default_factory=lambda: os.getenv("GCP_VM_TYPE", "e2-highmem-4"))
 
     # Alert thresholds (configurable via env)
     alert_threshold_daily: float = field(
@@ -144,7 +144,7 @@ class VMSession:
     components: List[str] = field(default_factory=list)
     trigger_reason: str = TriggerReason.HIGH_RAM.value
     is_orphaned: bool = False
-    vm_type: str = "e2-highmem-8"
+    vm_type: str = "e2-highmem-4"
     region: str = "us-central1"
     zone: str = "us-central1-a"
     metadata: Dict[str, Any] = field(default_factory=dict)
