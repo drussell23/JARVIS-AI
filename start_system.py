@@ -2315,6 +2315,8 @@ class AsyncSystemManager:
         if self.hybrid_enabled:
             try:
                 self.hybrid_coordinator = HybridIntelligenceCoordinator()
+                # Set global for cleanup access
+                globals()["_hybrid_coordinator"] = self.hybrid_coordinator
                 logger.info("🌐 Hybrid Cloud Routing enabled")
             except Exception as e:
                 logger.warning(f"Hybrid coordinator initialization failed: {e}")
@@ -5489,6 +5491,10 @@ async def main():
 
 
 if __name__ == "__main__":
+    # Global to track if we successfully initialized (for cleanup)
+    _jarvis_initialized = False
+    _hybrid_coordinator = None
+
     try:
         exit_code = asyncio.run(main())
         sys.exit(exit_code if exit_code else 0)
@@ -5516,16 +5522,22 @@ if __name__ == "__main__":
 
         # CRITICAL: Cleanup GCP VMs synchronously (works even if asyncio is dead)
         # MULTI-TERMINAL SAFE: Only deletes VMs owned by THIS session
+        # ONLY RUN IF JARVIS FULLY INITIALIZED (skip on early exit)
         try:
             import subprocess
 
             project_id = os.getenv("GCP_PROJECT_ID", "jarvis-473803")
 
-            # Check if we have a session tracker (may not exist if early startup failure)
-            if hasattr(coordinator, "workload_router") and hasattr(
-                coordinator.workload_router, "session_tracker"
+            # Check if coordinator exists and has session tracker
+            # Note: 'coordinator' is local to main(), so we check globals
+            coordinator_ref = globals().get("_hybrid_coordinator")
+
+            if (
+                coordinator_ref
+                and hasattr(coordinator_ref, "workload_router")
+                and hasattr(coordinator_ref.workload_router, "session_tracker")
             ):
-                session_tracker = coordinator.workload_router.session_tracker
+                session_tracker = coordinator_ref.workload_router.session_tracker
                 my_vm = session_tracker.get_my_vm()
 
                 if my_vm:
@@ -5608,23 +5620,9 @@ if __name__ == "__main__":
         except Exception as e:
             logger.warning(f"Could not cleanup GCP VMs on exit: {e}")
 
-        # Clean up any orphaned start_system.py processes (except ourselves)
-        try:
-            current_pid = os.getpid()
-            for proc in psutil.process_iter(["pid", "cmdline"]):
-                try:
-                    cmdline = proc.info.get("cmdline")
-                    if cmdline and proc.info["pid"] != current_pid:
-                        cmdline_str = " ".join(cmdline)
-                        if "start_system.py" in cmdline_str and "python" in cmdline_str.lower():
-                            logger.warning(
-                                f"🧹 Cleaning up orphaned start_system.py process (PID {proc.info['pid']})"
-                            )
-                            proc.kill()
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    continue
-        except Exception as e:
-            logger.warning(f"Could not cleanup orphaned processes: {e}")
+        # NOTE: Removed automatic cleanup of other start_system.py processes
+        # Each instance is protected by single-instance check at startup
+        # Users must manually stop other instances if needed
 
         # Ensure terminal is restored
         sys.stdout.flush()
