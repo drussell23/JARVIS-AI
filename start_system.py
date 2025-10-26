@@ -5345,27 +5345,49 @@ async def main():
             if str(backend_dir) not in sys.path:
                 sys.path.insert(0, str(backend_dir))
 
-            # Step 1: Find and kill old JARVIS processes
+            # Step 1: Find and kill old JARVIS processes (both start_system.py and backend/main.py)
             print(f"{Colors.YELLOW}1️⃣ Finding old JARVIS instances...{Colors.ENDC}")
+            current_pid = os.getpid()
             jarvis_processes = []
+
             for proc in psutil.process_iter(["pid", "name", "cmdline", "create_time"]):
                 try:
+                    pid = proc.info["pid"]
+                    if pid == current_pid:
+                        continue  # Skip ourselves
+
                     cmdline = proc.info.get("cmdline")
-                    if cmdline and any("main.py" in arg for arg in cmdline):
-                        if any("JARVIS-AI-Agent/backend" in arg for arg in cmdline):
-                            jarvis_processes.append(
-                                {
-                                    "pid": proc.info["pid"],
-                                    "age_hours": (time.time() - proc.info["create_time"]) / 3600,
-                                }
-                            )
+                    if not cmdline:
+                        continue
+
+                    cmdline_str = " ".join(cmdline)
+
+                    # Look for both start_system.py and backend/main.py
+                    is_jarvis = (
+                        "start_system.py" in cmdline_str and "JARVIS-AI-Agent" in cmdline_str
+                    ) or ("main.py" in cmdline_str and "JARVIS-AI-Agent/backend" in cmdline_str)
+
+                    if is_jarvis:
+                        jarvis_processes.append(
+                            {
+                                "pid": pid,
+                                "age_hours": (time.time() - proc.info["create_time"]) / 3600,
+                                "type": (
+                                    "start_system.py"
+                                    if "start_system.py" in cmdline_str
+                                    else "backend/main.py"
+                                ),
+                            }
+                        )
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
 
             if jarvis_processes:
                 print(f"Found {len(jarvis_processes)} JARVIS process(es)")
                 for proc in jarvis_processes:
-                    print(f"  Killing PID {proc['pid']} (running {proc['age_hours']:.1f}h)...")
+                    print(
+                        f"  Killing PID {proc['pid']} ({proc['type']}, running {proc['age_hours']:.1f}h)..."
+                    )
                     try:
                         os.kill(proc["pid"], signal.SIGTERM)
                         time.sleep(1)
