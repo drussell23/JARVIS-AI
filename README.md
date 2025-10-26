@@ -9,9 +9,15 @@ An intelligent voice-activated AI assistant with **Hybrid Cloud Auto-Scaling**, 
 ### **Latest Updates & Features**
 1. [🌐 NEW in v16.0: Hybrid Cloud Intelligence - Never Crash Again](#-new-in-v160-hybrid-cloud-intelligence---never-crash-again)
    - [🚀 Key Highlights](#-key-highlights)
-2. [🚀 v15.0: Phase 4 - Proactive Communication (Magic)](#-v150-phase-4---proactive-communication-magic)
+2. [🧹 GCP VM Session Tracking & Auto-Cleanup (2025-10-26)](#gcp-vm-session-tracking--auto-cleanup-2025-10-26)
+   - [New GCPVMSessionManager Class](#new-gcpvmsessionmanager-class)
+   - [ProcessCleanupManager Enhancements](#processcleanupmanager-enhancements)
+   - [Technical Implementation Details](#technical-implementation-details)
+   - [Use Cases & Scenarios](#use-cases--scenarios)
+   - [Benefits & Impact](#benefits--impact)
+3. [🚀 v15.0: Phase 4 - Proactive Communication (Magic)](#-v150-phase-4---proactive-communication-magic)
    - [✨ What's New in Phase 4](#-whats-new-in-phase-4)
-3. [🏗️ Intelligence Evolution: Phase 1-4 Journey](#️-intelligence-evolution-phase-1-4-journey)
+4. [🏗️ Intelligence Evolution: Phase 1-4 Journey](#️-intelligence-evolution-phase-1-4-journey)
    - [📍 Phase 1: Environmental Awareness (Foundation)](#-phase-1-environmental-awareness-foundation)
    - [📍 Phase 2: Decision Intelligence (Smart Decisions)](#-phase-2-decision-intelligence-smart-decisions)
    - [📍 Phase 3: Behavioral Learning (Smart)](#-phase-3-behavioral-learning-smart)
@@ -19,13 +25,13 @@ An intelligent voice-activated AI assistant with **Hybrid Cloud Auto-Scaling**, 
    - [🚀 The Complete Intelligence Stack](#-the-complete-intelligence-stack)
 
 ### **Hybrid Cloud Architecture**
-4. [🌐 Hybrid Cloud Architecture - Crash-Proof Intelligence](#-hybrid-cloud-architecture---crash-proof-intelligence)
+5. [🌐 Hybrid Cloud Architecture - Crash-Proof Intelligence](#-hybrid-cloud-architecture---crash-proof-intelligence)
    - [⚡ Zero-Configuration Auto-Scaling](#-zero-configuration-auto-scaling)
    - [🧠 SAI Learning Integration](#-sai-learning-integration)
    - [🚀 Key Features](#-key-features)
    - [🏗️ Architecture Components](#️-architecture-components)
    - [📊 What You See](#-what-you-see)
-5. [🏗️ Deployment Architecture: How Code Flows to Production](#️-deployment-architecture-how-code-flows-to-production)
+6. [🏗️ Deployment Architecture: How Code Flows to Production](#️-deployment-architecture-how-code-flows-to-production)
    - Architecture Overview
    - Scenario 1: Existing VM Deployment (GitHub Actions)
    - Scenario 2: Auto-Created VMs (Hybrid Routing)
@@ -33,10 +39,10 @@ An intelligent voice-activated AI assistant with **Hybrid Cloud Auto-Scaling**, 
    - How Updates Stay in Sync
    - Why This Architecture?
    - Benefits for Ongoing Development
-6. [🎯 Configuration](#-configuration)
-7. [📈 Performance & Storage](#-performance--storage)
-8. [🔄 Complete Flow](#-complete-flow)
-9. [🛠️ Technology Stack: Hybrid Cloud Intelligence](#️-technology-stack-hybrid-cloud-intelligence)
+7. [🎯 Configuration](#-configuration)
+8. [📈 Performance & Storage](#-performance--storage)
+9. [🔄 Complete Flow](#-complete-flow)
+10. [🛠️ Technology Stack: Hybrid Cloud Intelligence](#️-technology-stack-hybrid-cloud-intelligence)
    - Core Technologies (FastAPI, GCP, Databases)
    - Machine Learning & Intelligence (SAI, UAE, CAI)
    - Monitoring & Observability
@@ -46,7 +52,7 @@ An intelligent voice-activated AI assistant with **Hybrid Cloud Auto-Scaling**, 
    - Scalability Path & Future Vision
 
 ### **Intelligent Systems**
-10. [🧠 Intelligent Systems v2.0 (Phase 3: Behavioral Learning)](#-intelligent-systems-v20-phase-3-behavioral-learning)
+11. [🧠 Intelligent Systems v2.0 (Phase 3: Behavioral Learning)](#-intelligent-systems-v20-phase-3-behavioral-learning)
     - [1. TemporalQueryHandler v3.0](#1-temporalqueryhandler-v30)
     - [2. ErrorRecoveryManager v2.0](#2-errorrecoverymanager-v20)
     - [3. StateIntelligence v2.0](#3-stateintelligence-v20)
@@ -54,14 +60,14 @@ An intelligent voice-activated AI assistant with **Hybrid Cloud Auto-Scaling**, 
     - [5. ComplexComplexityHandler v2.0](#5-complexcomplexityhandler-v20)
     - [6. PredictiveQueryHandler v2.0](#6-predictivequeryhandler-v20)
     - [Performance Improvements](#performance-improvements)
-11. [💡 Phase 4 Implementation Details](#-phase-4-implementation-details)
+12. [💡 Phase 4 Implementation Details](#-phase-4-implementation-details)
     - [Proactive Intelligence Engine](#proactive-intelligence-engine)
     - [Frontend Integration](#frontend-integration)
     - [Wake Word Response System](#wake-word-response-system)
     - [Integration with UAE](#integration-with-uae)
 
 ### **Core Features**
-12. [Features](#features)
+13. [Features](#features)
     - [🖥️ Multi-Space Desktop Intelligence](#️-multi-space-desktop-intelligence)
     - [🎯 Key Capabilities](#-key-capabilities)
     - [📺 Intelligent Display Mirroring](#-intelligent-display-mirroring)
@@ -76,11 +82,11 @@ An intelligent voice-activated AI assistant with **Hybrid Cloud Auto-Scaling**, 
     - [📋 Known Limitations](#-known-limitations)
 
 ### **Technical Implementation**
-13. [Technical Implementation](#technical-implementation)
+14. [Technical Implementation](#technical-implementation)
     - [Architecture](#architecture)
     - [Components](#components)
     - [Configuration](#configuration)
-14. [Usage Examples](#usage-examples)
+15. [Usage Examples](#usage-examples)
     - [Basic Queries](#basic-queries)
     - [Follow-Up Queries](#follow-up-queries)
     - [Specific Space Analysis](#specific-space-analysis)
@@ -88,21 +94,21 @@ An intelligent voice-activated AI assistant with **Hybrid Cloud Auto-Scaling**, 
     - [Display Mirroring Commands](#display-mirroring-commands)
 
 ### **Setup & Configuration**
-15. [Requirements](#requirements)
-16. [Installation](#installation)
-17. [System Status](#system-status)
-18. [Implementation Details](#implementation-details)
+16. [Requirements](#requirements)
+17. [Installation](#installation)
+18. [System Status](#system-status)
+19. [Implementation Details](#implementation-details)
     - [Follow-Up Detection](#follow-up-detection)
     - [Context Storage](#context-storage)
     - [Claude Vision Integration](#claude-vision-integration)
-19. [macOS Compatibility](#macos-compatibility)
+20. [macOS Compatibility](#macos-compatibility)
     - [Memory Pressure Detection (Fixed: 2025-10-14)](#memory-pressure-detection-fixed-2025-10-14)
 
 ### **Release Notes & Updates**
-20. [Fixes Applied](#fixes-applied)
-21. [Display Mirroring Features (2025-10-17)](#display-mirroring-features-2025-10-17)
-22. [Contextual Intelligence Features (2025-10-17)](#contextual-intelligence-features-2025-10-17)
-23. [Phase 4 Features (2025-10-23)](#phase-4-features-2025-10-23)
+21. [Fixes Applied](#fixes-applied)
+22. [Display Mirroring Features (2025-10-17)](#display-mirroring-features-2025-10-17)
+23. [Contextual Intelligence Features (2025-10-17)](#contextual-intelligence-features-2025-10-17)
+24. [Phase 4 Features (2025-10-23)](#phase-4-features-2025-10-23)
     - [Backend Enhancements](#backend-enhancements)
     - [Frontend Enhancements](#frontend-enhancements)
     - [Integration & Communication](#integration--communication)
@@ -4763,6 +4769,358 @@ This fix accounts for macOS's memory management where high percentage usage is n
 8. ✅ Zero hardcoding - fully dynamic
 9. ✅ Async/await architecture
 10. ✅ 5-second caching for active space queries
+
+## GCP VM Session Tracking & Auto-Cleanup (2025-10-26)
+
+### Overview
+Integrated comprehensive GCP VM session tracking with `process_cleanup_manager.py` to prevent runaway cloud costs from orphaned VMs after crashes or code changes. The system automatically detects and deletes VMs from dead JARVIS processes, ensuring cloud resources are cleaned up even when SIGKILL bypasses normal cleanup handlers.
+
+### New GCPVMSessionManager Class
+**Advanced async VM lifecycle management with parallel execution:**
+
+**Core Methods:**
+- `get_orphaned_sessions()` - Detects VMs from dead PIDs with hostname validation
+- `get_stale_sessions()` - Finds VMs older than configurable threshold (default: 12 hours)
+- `cleanup_orphaned_vms()` - Async parallel VM deletion with comprehensive error handling
+- `delete_vm_async()` - Asynchronous VM deletion with 60-second timeout
+- `delete_vm_sync()` - Synchronous VM deletion for non-async contexts
+- `cleanup_all_vms_for_user()` - Emergency cleanup of all VMs from current machine
+- `get_active_vm_count()` - Real-time VM status monitoring
+
+**Smart Features:**
+- ✅ **PID Validation** - Verifies processes are actually running JARVIS (checks for `start_system.py` or `main.py` in cmdline)
+- ✅ **Hostname-Aware** - Only cleans VMs from current machine (prevents accidental cross-machine cleanup)
+- ✅ **Registry Management** - Automatic cleanup of orphaned session entries in `/tmp/jarvis_vm_registry.json`
+- ✅ **Environment-Based Config** - Uses `GCP_PROJECT_ID` and `GCP_DEFAULT_ZONE` (no hardcoding)
+- ✅ **Parallel Execution** - Uses `asyncio.gather()` for concurrent VM deletion
+- ✅ **Robust Error Handling** - Continues cleanup even if individual VMs fail (logs errors separately)
+- ✅ **Graceful Degradation** - Handles "VM not found" errors (VM already deleted manually)
+
+### ProcessCleanupManager Enhancements
+
+#### 1. Initialization Enhancement
+```python
+def __init__(self):
+    # ... existing code ...
+    self.vm_manager = GCPVMSessionManager()
+```
+**Impact:** Every ProcessCleanupManager instance now has integrated VM tracking
+
+#### 2. Emergency Cleanup Enhancement
+**Location:** `emergency_cleanup_all_jarvis()` - backend/process_cleanup_manager.py:1659
+
+**New Step 6: GCP VM Cleanup**
+- Deletes ALL VMs from current machine synchronously
+- Reports `vms_deleted` and `vm_errors` in results dict
+- Clears VM registry file after cleanup
+- Logs comprehensive cleanup summary
+
+**Enhanced Results Dictionary:**
+```python
+{
+    "processes_killed": [...],
+    "ports_freed": [...],
+    "ipc_cleaned": {...},
+    "vms_deleted": ["jarvis-auto-1234", "jarvis-auto-5678"],  # NEW
+    "vm_errors": [],  # NEW
+    "errors": []
+}
+```
+
+**Console Output Example:**
+```
+🧹 Emergency cleanup complete:
+  • Killed 3 processes
+  • Freed 2 ports
+  • Cleaned 5 IPC resources
+  • Deleted 2 GCP VMs
+  • 0 VM cleanup errors
+```
+
+#### 3. Code Change Cleanup Enhancement
+**Location:** `cleanup_old_instances_on_code_change()` - backend/process_cleanup_manager.py:566
+
+**New VM Cleanup Flow:**
+1. Detects code changes via hash comparison
+2. Terminates old JARVIS processes (tracks PIDs)
+3. **NEW:** Calls `_cleanup_vms_for_pids_sync()` to delete associated VMs
+4. Logs VM cleanup results
+
+**New Helper Method:**
+```python
+def _cleanup_vms_for_pids_sync(self, pids: List[int]) -> int:
+    """
+    Synchronously cleanup VMs associated with specific PIDs.
+    Used during code change cleanup (non-async context).
+    """
+```
+
+**Impact:** When you update JARVIS code and restart, old VMs are automatically deleted
+
+#### 4. Startup Integration - Async Version
+**Location:** `cleanup_system_for_jarvis()` - backend/process_cleanup_manager.py:1853
+
+**New Async Orphaned VM Cleanup:**
+```python
+async def cleanup_system_for_jarvis(dry_run: bool = False) -> Dict[str, any]:
+    # ... existing code ...
+
+    # Clean up orphaned VMs (async)
+    logger.info("🌐 Checking for orphaned GCP VMs...")
+    vm_report = await manager.vm_manager.cleanup_orphaned_vms()
+    if vm_report["vms_deleted"]:
+        logger.info(f"Cleaned up {len(vm_report['vms_deleted'])} orphaned VMs")
+```
+
+**Impact:** Startup cleanup now includes parallel async VM deletion
+
+#### 5. Startup Integration - Sync Version
+**Location:** `ensure_fresh_jarvis_instance()` - backend/process_cleanup_manager.py:1883
+
+**New Synchronous Orphaned VM Cleanup:**
+```python
+def ensure_fresh_jarvis_instance():
+    # ... existing code ...
+
+    # Clean up orphaned VMs (synchronous version for startup)
+    logger.info("🌐 Checking for orphaned GCP VMs...")
+    orphaned = manager.vm_manager.get_orphaned_sessions()
+    if orphaned:
+        logger.warning(f"Found {len(orphaned)} orphaned VM sessions - cleaning up synchronously")
+        for session in orphaned:
+            vm_id = session.get("vm_id")
+            zone = session.get("zone", manager.vm_manager.default_zone)
+            if vm_id:
+                manager.vm_manager.delete_vm_sync(vm_id, zone)
+        manager.vm_manager._remove_orphaned_from_registry(orphaned)
+```
+
+**Impact:** Fresh instance check now cleans up VMs before ensuring single instance
+
+#### 6. Cleanup Recommendations Enhancement
+**Location:** `get_cleanup_recommendations()` - backend/process_cleanup_manager.py:1469
+
+**New VM Status Recommendations:**
+```python
+# Check for orphaned VMs
+orphaned_vms = self.vm_manager.get_orphaned_sessions()
+if orphaned_vms:
+    recommendations.append(
+        f"🌐 Found {len(orphaned_vms)} orphaned GCP VMs from dead sessions - should be cleaned up!"
+    )
+
+# Check for stale VMs
+stale_vms = self.vm_manager.get_stale_sessions(max_age_hours=12.0)
+if stale_vms:
+    recommendations.append(
+        f"⏰ Found {len(stale_vms)} stale GCP VMs (>12 hours old) - consider cleanup"
+    )
+
+# Report active VM count
+active_vms = self.vm_manager.get_active_vm_count()
+total_vms = self.vm_manager.get_vm_count()
+if total_vms > 0:
+    recommendations.append(
+        f"📊 GCP VM Status: {active_vms} active, {total_vms - active_vms} orphaned/stale"
+    )
+```
+
+**Impact:** System recommendations now include VM health status
+
+#### 7. Emergency Cleanup Convenience Function
+**Location:** `emergency_cleanup()` - backend/process_cleanup_manager.py:1985
+
+**Enhanced Console Output:**
+```python
+if results["vms_deleted"]:
+    print(f"🌐 Deleted {len(results['vms_deleted'])} GCP VMs")
+if results["vm_errors"]:
+    print(f"⚠️  {len(results['vm_errors'])} VM cleanup errors")
+```
+
+**Impact:** Users see VM cleanup results in emergency cleanup console output
+
+### Technical Implementation Details
+
+#### Async/Sync Dual Architecture
+**Why Both?**
+- **Async (`delete_vm_async`)**: Used during startup cleanup for parallel execution
+- **Sync (`delete_vm_sync`)**: Used during emergency cleanup and code change detection (non-async contexts)
+
+**Async Implementation:**
+```python
+async def delete_vm_async(self, vm_id: str, zone: str) -> bool:
+    proc = await asyncio.create_subprocess_exec(
+        "gcloud", "compute", "instances", "delete", vm_id,
+        "--project", self.gcp_project,
+        "--zone", zone,
+        "--quiet",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+    # ... error handling ...
+```
+
+**Sync Implementation:**
+```python
+def delete_vm_sync(self, vm_id: str, zone: str) -> bool:
+    result = subprocess.run(
+        ["gcloud", "compute", "instances", "delete", vm_id,
+         "--project", self.gcp_project,
+         "--zone", zone,
+         "--quiet"],
+        capture_output=True,
+        text=True,
+        timeout=60
+    )
+    # ... error handling ...
+```
+
+#### PID Validation Logic
+```python
+def get_orphaned_sessions(self) -> List[Dict[str, Any]]:
+    for session in self.get_all_sessions():
+        pid = session.get("pid")
+        hostname = session.get("hostname", "")
+        current_hostname = socket.gethostname()
+
+        # Only check sessions from this machine
+        if hostname != current_hostname:
+            continue
+
+        # Validate PID is running JARVIS
+        is_dead = False
+        if not pid or not psutil.pid_exists(pid):
+            is_dead = True
+        else:
+            try:
+                proc = psutil.Process(pid)
+                cmdline = " ".join(proc.cmdline())
+                # Must contain start_system.py or main.py
+                if "start_system.py" not in cmdline and "main.py" not in cmdline:
+                    is_dead = True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                is_dead = True
+
+        if is_dead:
+            orphaned.append(session)
+```
+
+### Configuration
+
+**Environment Variables:**
+```bash
+# Required (or uses defaults)
+export GCP_PROJECT_ID="jarvis-473803"
+export GCP_DEFAULT_ZONE="us-central1-a"
+```
+
+**Defaults (no hardcoding):**
+- Project: `jarvis-473803` (fallback)
+- Zone: `us-central1-a` (fallback)
+- Stale threshold: 12 hours
+- VM deletion timeout: 60 seconds
+
+### Use Cases & Scenarios
+
+#### Scenario 1: Normal Shutdown (SIGINT/SIGTERM)
+**What Happens:**
+1. Signal handler calls VM cleanup
+2. VM deleted gracefully
+3. Session removed from registry
+4. **Result:** ✅ No orphaned VMs
+
+#### Scenario 2: Force Kill (SIGKILL)
+**What Happens:**
+1. Process killed instantly (no cleanup handlers run)
+2. VM left running in GCP
+3. **On Next Startup:**
+   - `ensure_fresh_jarvis_instance()` detects orphaned session
+   - Deletes VM synchronously
+   - Cleans registry
+4. **Result:** ✅ VM cleaned up on next start
+
+#### Scenario 3: Code Change Detected
+**What Happens:**
+1. Hash comparison detects code changes
+2. Old JARVIS processes terminated (PIDs tracked)
+3. `_cleanup_vms_for_pids_sync()` deletes associated VMs
+4. **Result:** ✅ Only current code's VMs remain
+
+#### Scenario 4: Emergency Cleanup
+**What Happens:**
+1. User runs `emergency_cleanup_all_jarvis()`
+2. All JARVIS processes killed
+3. **Step 6:** All VMs from current machine deleted
+4. VM registry cleared
+5. **Result:** ✅ Complete system reset
+
+#### Scenario 5: Stale VM Detection
+**What Happens:**
+1. VM running for >12 hours
+2. `get_cleanup_recommendations()` flags it
+3. User can manually run cleanup or wait for next restart
+4. **Result:** ✅ Cost optimization via proactive alerts
+
+### Benefits & Impact
+
+**Cost Savings:**
+- ✅ Prevents runaway costs from orphaned VMs ($0.10-0.50/hour per VM)
+- ✅ Automatic cleanup on crashes (no manual GCP Console cleanup needed)
+- ✅ Code change detection prevents accumulation of old VMs
+
+**Reliability:**
+- ✅ Works even when SIGKILL bypasses cleanup handlers
+- ✅ Hostname validation prevents cross-machine cleanup
+- ✅ Robust error handling (continues on individual VM failures)
+
+**Developer Experience:**
+- ✅ Zero configuration (environment variables with sensible defaults)
+- ✅ Automatic cleanup on every startup
+- ✅ Clear console output showing VM cleanup status
+- ✅ Comprehensive logging for debugging
+
+**Performance:**
+- ✅ Async parallel VM deletion (faster than sequential)
+- ✅ Non-blocking startup cleanup
+- ✅ 60-second timeout prevents hanging
+
+### Files Modified
+
+**Primary File:**
+- `backend/process_cleanup_manager.py` (+891 lines, -347 lines)
+
+**Changes:**
+1. Added `GCPVMSessionManager` class (lines 37-351)
+2. Updated `ProcessCleanupManager.__init__` (line 361)
+3. Enhanced `cleanup_old_instances_on_code_change()` (lines 566-650)
+4. Enhanced `emergency_cleanup_all_jarvis()` (lines 1659-1795)
+5. Updated `cleanup_system_for_jarvis()` (lines 1853-1856)
+6. Updated `ensure_fresh_jarvis_instance()` (lines 1883-1893)
+7. Enhanced `get_cleanup_recommendations()` (lines 1469-1491)
+8. Enhanced `emergency_cleanup()` convenience function (lines 1985-2012)
+
+**Total Impact:**
+- 891 insertions
+- 347 deletions
+- Net: +544 lines of advanced VM management code
+
+### Commit Details
+```
+Commit: 47b4364
+Date: 2025-10-26
+Message: feat: Integrate GCP VM session tracking with process cleanup manager
+```
+
+**Pre-commit Hooks Passed:**
+- ✅ Black (code formatting)
+- ✅ Isort (import sorting)
+- ✅ Flake8 (linting)
+- ✅ Bandit (security analysis)
+- ✅ Autoflake (unused code removal)
+
+---
 
 ## Phase 4 Features (2025-10-23)
 
