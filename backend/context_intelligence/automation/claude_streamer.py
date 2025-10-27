@@ -12,20 +12,19 @@ Advanced, robust streaming content generation from Claude API with:
 """
 
 import asyncio
+import hashlib
 import logging
-from typing import AsyncIterator, Optional, Callable, Dict, Any, List
 import os
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
-import hashlib
-import json
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 # Try to import anthropic
 try:
     import anthropic
+
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
@@ -36,20 +35,20 @@ try:
     from backend.context_intelligence.managers import (
         get_api_network_manager,
         initialize_api_network_manager,
-        APIStatus,
-        NetworkStatus
     )
+
     API_NETWORK_MANAGER_AVAILABLE = True
 except ImportError:
     API_NETWORK_MANAGER_AVAILABLE = False
-    get_api_network_manager = lambda: None
-    initialize_api_network_manager = lambda **kwargs: None
+    get_api_network_manager = lambda: None  # noqa: E731
+    initialize_api_network_manager = lambda **kwargs: None  # noqa: E731
     logger.warning("APINetworkManager not available - edge case handling disabled")
 
 
 @dataclass
 class StreamingStats:
     """Statistics for streaming session"""
+
     start_time: float = field(default_factory=time.time)
     total_tokens: int = 0
     total_chunks: int = 0
@@ -77,7 +76,7 @@ class StreamingStats:
             "tokens_per_second": self.get_tokens_per_second(),
             "errors": self.errors_encountered,
             "retries": self.retries_attempted,
-            "model": self.model_used
+            "model": self.model_used,
         }
 
 
@@ -88,21 +87,23 @@ class ClaudeContentStreamer:
     MODELS = {
         "primary": "claude-3-5-sonnet-20241022",
         "fallback": "claude-3-5-sonnet-20240620",
-        "budget": "claude-3-haiku-20240307"
+        "budget": "claude-3-haiku-20240307",
     }
 
     # Rate limiting configuration
     MAX_TOKENS_PER_MINUTE = 40000
     MAX_REQUESTS_PER_MINUTE = 50
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, use_intelligent_selection: bool = True):
         """
         Initialize advanced Claude streamer
 
         Args:
             api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
+            use_intelligent_selection: Enable intelligent model selection (recommended)
         """
-        self.api_key = api_key or os.getenv('ANTHROPIC_API_KEY')
+        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+        self.use_intelligent_selection = use_intelligent_selection
         self._client: Optional[anthropic.Anthropic] = None
         self._outline_cache: Dict[str, Dict[str, Any]] = {}
         self._request_times: List[float] = []
@@ -192,7 +193,7 @@ class ClaudeContentStreamer:
 
         # Clean up old entries
         self._request_times = [t for t in self._request_times if t > one_minute_ago]
-        self._token_counts = self._token_counts[-len(self._request_times):]
+        self._token_counts = self._token_counts[-len(self._request_times) :]
 
         # Check request limit
         if len(self._request_times) >= self.MAX_REQUESTS_PER_MINUTE:
@@ -229,12 +230,9 @@ class ClaudeContentStreamer:
         """Generate cache key for a prompt"""
         return hashlib.md5(prompt.encode()).hexdigest()
 
-    async def _retry_with_backoff(self,
-                                  func: Callable,
-                                  max_retries: int = 3,
-                                  base_delay: float = 1.0,
-                                  *args,
-                                  **kwargs) -> Any:
+    async def _retry_with_backoff(
+        self, func: Callable, max_retries: int = 3, base_delay: float = 1.0, *args, **kwargs
+    ) -> Any:
         """
         Execute function with exponential backoff retry
 
@@ -258,16 +256,20 @@ class ClaudeContentStreamer:
             except anthropic.RateLimitError as e:
                 last_exception = e
                 if attempt < max_retries:
-                    delay = base_delay * (2 ** attempt)
-                    logger.warning(f"Rate limited. Retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                    delay = base_delay * (2**attempt)
+                    logger.warning(
+                        f"Rate limited. Retrying in {delay}s (attempt {attempt + 1}/{max_retries})"
+                    )
                     await asyncio.sleep(delay)
                 else:
                     logger.error("Max retries reached for rate limit")
             except anthropic.APIError as e:
                 last_exception = e
                 if attempt < max_retries:
-                    delay = base_delay * (2 ** attempt)
-                    logger.warning(f"API error: {e}. Retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                    delay = base_delay * (2**attempt)
+                    logger.warning(
+                        f"API error: {e}. Retrying in {delay}s (attempt {attempt + 1}/{max_retries})"
+                    )
                     await asyncio.sleep(delay)
                 else:
                     logger.error("Max retries reached for API error")
@@ -278,14 +280,16 @@ class ClaudeContentStreamer:
 
         raise last_exception if last_exception else Exception("Unknown error in retry logic")
 
-    async def stream_content(self,
-                           prompt: str,
-                           max_tokens: int = 4096,
-                           model: Optional[str] = None,
-                           chunk_callback: Optional[Callable[[str], None]] = None,
-                           stats_callback: Optional[Callable[[StreamingStats], None]] = None) -> AsyncIterator[str]:
+    async def stream_content(
+        self,
+        prompt: str,
+        max_tokens: int = 4096,
+        model: Optional[str] = None,
+        chunk_callback: Optional[Callable[[str], None]] = None,
+        stats_callback: Optional[Callable[[StreamingStats], None]] = None,
+    ) -> AsyncIterator[str]:
         """
-        Advanced async streaming with automatic retry, fallback, and statistics
+        Advanced async streaming with intelligent model selection and automatic fallback
 
         Args:
             prompt: The content generation prompt
@@ -305,7 +309,9 @@ class ClaudeContentStreamer:
         # Check API/Network readiness before streaming
         if self._api_network_manager:
             logger.debug("[CLAUDE-STREAMER] Checking API/Network readiness")
-            is_ready, message, status_info = await self._api_network_manager.check_ready_for_api_call()
+            is_ready, message, status_info = (
+                await self._api_network_manager.check_ready_for_api_call()
+            )
 
             if not is_ready:
                 logger.error(f"[CLAUDE-STREAMER] Not ready for API call: {message}")
@@ -320,6 +326,20 @@ class ClaudeContentStreamer:
                 return
 
             logger.info("[CLAUDE-STREAMER] API/Network check passed, proceeding with stream")
+
+        # Try intelligent model selection first
+        if self.use_intelligent_selection:
+            try:
+                async for chunk in self._stream_with_intelligent_selection(
+                    prompt, max_tokens, stats, chunk_callback, stats_callback
+                ):
+                    yield chunk
+                return
+            except Exception as e:
+                logger.warning(
+                    f"Intelligent selection streaming failed, falling back to model chain: {e}"
+                )
+                # Continue to model chain fallback below
 
         if not self._ensure_client():
             logger.warning("⚠️ Using DEMO mode - No valid Claude API key configured")
@@ -343,7 +363,6 @@ class ClaudeContentStreamer:
 
         # Try streaming with model fallback chain
         models_to_try = [model, self.MODELS["fallback"], self.MODELS["budget"]]
-        last_error = None
 
         for attempt, current_model in enumerate(models_to_try):
             try:
@@ -355,12 +374,7 @@ class ClaudeContentStreamer:
 
                 # Stream with current model
                 async for chunk in self._stream_with_model(
-                    current_model,
-                    prompt,
-                    max_tokens,
-                    stats,
-                    chunk_callback,
-                    stats_callback
+                    current_model, prompt, max_tokens, stats, chunk_callback, stats_callback
                 ):
                     yield chunk
 
@@ -371,14 +385,12 @@ class ClaudeContentStreamer:
                 return
 
             except anthropic.RateLimitError as e:
-                last_error = e
                 stats.errors_encountered += 1
                 logger.warning(f"Rate limit with {current_model}, trying next model...")
                 await asyncio.sleep(2)
                 continue
 
             except anthropic.AuthenticationError as e:
-                last_error = e
                 stats.errors_encountered += 1
                 logger.error(f"❌ Authentication failed: Invalid API key")
                 logger.info("Please check your ANTHROPIC_API_KEY environment variable")
@@ -386,7 +398,6 @@ class ClaudeContentStreamer:
                 break  # Don't retry on auth errors
 
             except anthropic.APIError as e:
-                last_error = e
                 stats.errors_encountered += 1
                 if attempt < len(models_to_try) - 1:
                     logger.warning(f"API error with {current_model}: {e}, trying fallback...")
@@ -397,7 +408,6 @@ class ClaudeContentStreamer:
                     break
 
             except Exception as e:
-                last_error = e
                 stats.errors_encountered += 1
                 logger.error(f"Unexpected error with {current_model}: {e}")
                 break
@@ -413,13 +423,108 @@ class ClaudeContentStreamer:
                 stats_callback(stats)
             yield chunk
 
-    async def _stream_with_model(self,
-                                 model: str,
-                                 prompt: str,
-                                 max_tokens: int,
-                                 stats: StreamingStats,
-                                 chunk_callback: Optional[Callable],
-                                 stats_callback: Optional[Callable]) -> AsyncIterator[str]:
+    async def _stream_with_intelligent_selection(
+        self,
+        prompt: str,
+        max_tokens: int,
+        stats: StreamingStats,
+        chunk_callback: Optional[Callable],
+        stats_callback: Optional[Callable],
+    ) -> AsyncIterator[str]:
+        """
+        Stream content using intelligent model selection
+
+        This method:
+        1. Imports the hybrid orchestrator
+        2. Analyzes the prompt to determine best model
+        3. Streams response from selected model
+        4. Updates statistics with model used
+        """
+        try:
+            from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+            # Get or create orchestrator
+            orchestrator = HybridOrchestrator()
+            if not orchestrator.is_running:
+                await orchestrator.start()
+
+            # Build context for streaming
+            context = {
+                "task_type": "content_streaming",
+                "requires_streaming": True,
+                "max_tokens": max_tokens,
+            }
+
+            # Execute with intelligent model selection (non-streaming initially)
+            logger.info("[CLAUDE-STREAMER] Using intelligent model selection for streaming")
+            result = await orchestrator.execute_with_intelligent_model_selection(
+                query=prompt,
+                intent="content_generation",
+                required_capabilities={"conversational_ai", "response_generation", "nlp_analysis"},
+                context=context,
+                max_tokens=max_tokens,
+                temperature=0.7,
+            )
+
+            if not result.get("success"):
+                raise Exception(result.get("error", "Intelligent selection failed"))
+
+            # Extract response and stream it
+            response_text = result.get("text", "").strip()
+            model_used = result.get("model_used", "intelligent_selection")
+            stats.model_used = model_used
+
+            logger.info(f"[CLAUDE-STREAMER] Intelligent selection chose: {model_used}")
+
+            # Stream the response word by word for natural pacing
+            words = response_text.split()
+            for i, word in enumerate(words):
+                # Add space except for first word
+                chunk = word if i == 0 else " " + word
+
+                # Update statistics
+                stats.total_chunks += 1
+                stats.total_chars += len(chunk)
+                stats.total_tokens += self._estimate_tokens(chunk)
+
+                # Execute callbacks
+                if chunk_callback:
+                    try:
+                        chunk_callback(chunk)
+                    except Exception as e:
+                        logger.debug(f"Chunk callback error: {e}")
+
+                if stats_callback and stats.total_chunks % 10 == 0:
+                    try:
+                        stats_callback(stats)
+                    except Exception as e:
+                        logger.debug(f"Stats callback error: {e}")
+
+                yield chunk
+
+                # Natural pacing
+                await asyncio.sleep(0.03 if len(word) < 5 else 0.05)
+
+            logger.info(
+                f"[CLAUDE-STREAMER] Intelligent streaming complete: {stats.total_tokens} tokens, {stats.total_chunks} chunks"
+            )
+
+        except ImportError:
+            logger.warning("Hybrid orchestrator not available for intelligent streaming")
+            raise
+        except Exception as e:
+            logger.error(f"Error in intelligent model selection streaming: {e}")
+            raise
+
+    async def _stream_with_model(
+        self,
+        model: str,
+        prompt: str,
+        max_tokens: int,
+        stats: StreamingStats,
+        chunk_callback: Optional[Callable],
+        stats_callback: Optional[Callable],
+    ) -> AsyncIterator[str]:
         """
         Internal method to stream with a specific model using real Claude API
 
@@ -446,11 +551,8 @@ class ClaudeContentStreamer:
             with self._client.messages.stream(
                 model=model,
                 max_tokens=max_tokens,
-                messages=[{
-                    "role": "user",
-                    "content": prompt
-                }],
-                temperature=0.7
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
             ) as stream:
                 logger.info("✓ Claude API stream opened successfully")
 
@@ -479,18 +581,19 @@ class ClaudeContentStreamer:
                         # Small async delay for natural pacing
                         await asyncio.sleep(0.02)
 
-                logger.info(f"✓ Streaming complete: {stats.total_tokens} tokens, {stats.total_chunks} chunks")
+                logger.info(
+                    f"✓ Streaming complete: {stats.total_tokens} tokens, {stats.total_chunks} chunks"
+                )
 
         except Exception as e:
             logger.error(f"Error in _stream_with_model: {e}", exc_info=True)
             raise
 
-    async def generate_outline(self,
-                              prompt: str,
-                              use_cache: bool = True,
-                              max_retries: int = 3) -> Dict[str, Any]:
+    async def generate_outline(
+        self, prompt: str, use_cache: bool = True, max_retries: int = 3
+    ) -> Dict[str, Any]:
         """
-        Generate a document outline with caching and retry logic
+        Generate a document outline with intelligent model selection and caching
 
         Args:
             prompt: Outline generation prompt
@@ -506,6 +609,24 @@ class ClaudeContentStreamer:
             if cache_key in self._outline_cache:
                 logger.info("✓ Using cached outline")
                 return self._outline_cache[cache_key]
+
+        # Try intelligent model selection first
+        if self.use_intelligent_selection:
+            try:
+                outline = await self._generate_outline_with_intelligent_selection(prompt)
+
+                # Cache it
+                if use_cache:
+                    cache_key = self._get_cache_key(prompt)
+                    self._outline_cache[cache_key] = outline
+                    logger.info("✓ Outline cached for future use")
+
+                return outline
+            except Exception as e:
+                logger.warning(
+                    f"Intelligent selection outline failed, falling back to model chain: {e}"
+                )
+                # Continue to model chain fallback below
 
         if not self._ensure_client():
             return self._mock_outline()
@@ -540,18 +661,18 @@ class ClaudeContentStreamer:
                         lambda: self._client.messages.create(
                             model=model,
                             max_tokens=2048,
-                            messages=[{
-                                "role": "user",
-                                "content": prompt + "\n\nProvide the outline in a clear, structured format with sections and key points."
-                            }]
-                        )
+                            messages=[
+                                {
+                                    "role": "user",
+                                    "content": prompt
+                                    + "\n\nProvide the outline in a clear, structured format with sections and key points.",
+                                }
+                            ],
+                        ),
                     )
                     return response
 
-                response = await self._retry_with_backoff(
-                    _create_outline,
-                    max_retries=max_retries
-                )
+                response = await self._retry_with_backoff(_create_outline, max_retries=max_retries)
 
                 outline_text = response.content[0].text
                 logger.info(f"✓ Outline generated successfully ({len(outline_text)} chars)")
@@ -575,9 +696,71 @@ class ClaudeContentStreamer:
         logger.warning("All outline generation attempts failed, using mock")
         return self._mock_outline()
 
+    async def _generate_outline_with_intelligent_selection(self, prompt: str) -> Dict[str, Any]:
+        """
+        Generate outline using intelligent model selection
+
+        This method:
+        1. Imports the hybrid orchestrator
+        2. Uses intelligent selection to generate outline
+        3. Parses the result into structured format
+        """
+        try:
+            from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+            # Get or create orchestrator
+            orchestrator = HybridOrchestrator()
+            if not orchestrator.is_running:
+                await orchestrator.start()
+
+            # Build enhanced prompt for outline generation
+            enhanced_prompt = (
+                f"{prompt}\n\n"
+                "Provide the outline in a clear, structured format with sections and key points."
+            )
+
+            # Build context
+            context = {
+                "task_type": "outline_generation",
+                "requires_structure": True,
+            }
+
+            # Execute with intelligent model selection
+            logger.info("[CLAUDE-STREAMER] Using intelligent selection for outline generation")
+            result = await orchestrator.execute_with_intelligent_model_selection(
+                query=enhanced_prompt,
+                intent="document_outline",
+                required_capabilities={"conversational_ai", "response_generation", "nlp_analysis"},
+                context=context,
+                max_tokens=2048,
+                temperature=0.7,
+            )
+
+            if not result.get("success"):
+                raise Exception(result.get("error", "Intelligent selection failed"))
+
+            # Extract and parse outline
+            outline_text = result.get("text", "").strip()
+            model_used = result.get("model_used", "intelligent_selection")
+
+            logger.info(
+                f"[CLAUDE-STREAMER] Outline generated using {model_used} ({len(outline_text)} chars)"
+            )
+
+            # Parse the outline
+            outline = self._parse_outline(outline_text)
+            return outline
+
+        except ImportError:
+            logger.warning("Hybrid orchestrator not available for outline generation")
+            raise
+        except Exception as e:
+            logger.error(f"Error in intelligent outline generation: {e}")
+            raise
+
     def _parse_outline(self, outline_text: str) -> Dict[str, Any]:
         """Parse outline text into structured format"""
-        lines = outline_text.strip().split('\n')
+        lines = outline_text.strip().split("\n")
 
         title = ""
         sections = []
@@ -589,55 +772,43 @@ class ClaudeContentStreamer:
                 continue
 
             # Title (usually first line or starts with #)
-            if line.startswith('# ') or (not title and not sections):
-                title = line.lstrip('#').strip()
+            if line.startswith("# ") or (not title and not sections):
+                title = line.lstrip("#").strip()
                 continue
 
             # Section heading (## or numbered)
-            if line.startswith('## ') or (line[0].isdigit() and '.' in line[:3]):
+            if line.startswith("## ") or (line[0].isdigit() and "." in line[:3]):
                 if current_section:
                     sections.append(current_section)
 
-                section_name = line.lstrip('#').lstrip('0123456789. ').strip()
-                current_section = {
-                    "name": section_name,
-                    "points": []
-                }
+                section_name = line.lstrip("#").lstrip("0123456789. ").strip()
+                current_section = {"name": section_name, "points": []}
                 continue
 
             # Section point (- or * or numbered sub-item)
-            if current_section and (line.startswith('- ') or line.startswith('* ') or
-                                   (line[0:2].strip() and line[0:2].strip()[0].isdigit())):
-                point = line.lstrip('-*0123456789. ').strip()
+            if current_section and (
+                line.startswith("- ")
+                or line.startswith("* ")
+                or (line[0:2].strip() and line[0:2].strip()[0].isdigit())
+            ):
+                point = line.lstrip("-*0123456789. ").strip()
                 current_section["points"].append(point)
 
         # Add final section
         if current_section:
             sections.append(current_section)
 
-        return {
-            "title": title or "Untitled Document",
-            "sections": sections
-        }
+        return {"title": title or "Untitled Document", "sections": sections}
 
     def _mock_outline(self) -> Dict[str, Any]:
         """Generate a mock outline for testing"""
         return {
             "title": "Sample Document",
             "sections": [
-                {
-                    "name": "Introduction",
-                    "points": ["Context and background", "Thesis statement"]
-                },
-                {
-                    "name": "Main Content",
-                    "points": ["Key point 1", "Key point 2", "Key point 3"]
-                },
-                {
-                    "name": "Conclusion",
-                    "points": ["Summary", "Final thoughts"]
-                }
-            ]
+                {"name": "Introduction", "points": ["Context and background", "Thesis statement"]},
+                {"name": "Main Content", "points": ["Key point 1", "Key point 2", "Key point 3"]},
+                {"name": "Conclusion", "points": ["Summary", "Final thoughts"]},
+            ],
         }
 
     def get_session_statistics(self) -> Dict[str, Any]:
@@ -654,10 +825,11 @@ class ClaudeContentStreamer:
             "sessions": len(self._session_stats),
             "total_tokens": sum(s.total_tokens for s in self._session_stats),
             "total_duration": sum(s.get_duration() for s in self._session_stats),
-            "average_tokens_per_second": sum(s.get_tokens_per_second() for s in self._session_stats) / len(self._session_stats),
+            "average_tokens_per_second": sum(s.get_tokens_per_second() for s in self._session_stats)
+            / len(self._session_stats),
             "total_errors": sum(s.errors_encountered for s in self._session_stats),
             "total_retries": sum(s.retries_attempted for s in self._session_stats),
-            "models_used": list(set(s.model_used for s in self._session_stats))
+            "models_used": list(set(s.model_used for s in self._session_stats)),
         }
 
     def clear_cache(self):
@@ -778,7 +950,7 @@ Dogs remain invaluable companions in contemporary society, their loyalty and int
         words = mock_content.split()
         for i, word in enumerate(words):
             # Add space except for first word and after newlines
-            chunk = word if i == 0 or words[i-1].endswith('\n') else " " + word
+            chunk = word if i == 0 or words[i - 1].endswith("\n") else " " + word
             yield chunk
             # Variable delay for more natural feel
             await asyncio.sleep(0.03 if len(word) < 5 else 0.05)
@@ -795,7 +967,8 @@ def get_claude_streamer(api_key: Optional[str] = None) -> ClaudeContentStreamer:
         # Try to load from environment if no key provided
         if not api_key:
             import os
-            api_key = os.getenv('ANTHROPIC_API_KEY')
+
+            api_key = os.getenv("ANTHROPIC_API_KEY")
             if api_key:
                 logger.info(f"Loaded API key from environment: {api_key[:20]}...")
         _claude_streamer = ClaudeContentStreamer(api_key)

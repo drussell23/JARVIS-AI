@@ -37,22 +37,20 @@ Author: Derek Russell
 Date: 2025-10-19 (v2.0 REAL implementation completed)
 """
 
-import asyncio
-import logging
 import base64
-from typing import Dict, List, Optional, Any
+import logging
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from collections import defaultdict, Counter
+from typing import Any, Dict, List, Optional
 
 from context_intelligence.analyzers.predictive_analyzer import (
-    PredictiveAnalyzer,
+    AnalysisScope,
     AnalyticsResult,
     PredictiveQueryType,
-    AnalysisScope,
     get_predictive_analyzer,
-    initialize_predictive_analyzer
+    initialize_predictive_analyzer,
 )
 
 logger = logging.getLogger(__name__)
@@ -62,9 +60,10 @@ logger = logging.getLogger(__name__)
 # CLAUDE VISION INTEGRATION
 # ============================================================================
 
+
 class ClaudeVisionAnalyzer:
     """
-    Integrates Claude Vision API for semantic code analysis
+    Integrates Claude Vision API for semantic code analysis with intelligent model selection
 
     Uses Claude to analyze:
     - Code screenshots for understanding
@@ -72,25 +71,26 @@ class ClaudeVisionAnalyzer:
     - IDE views for context understanding
     """
 
-    def __init__(self, api_key: Optional[str] = None):
-        """Initialize Claude Vision analyzer"""
+    def __init__(self, api_key: Optional[str] = None, use_intelligent_selection: bool = True):
+        """Initialize Claude Vision analyzer with intelligent model selection"""
         self.api_key = api_key
+        self.use_intelligent_selection = use_intelligent_selection
         self._claude_available = self._check_claude_availability()
 
     def _check_claude_availability(self) -> bool:
         """Check if Claude API is available"""
         try:
-            import anthropic
+            pass
+
             return True
         except ImportError:
-            logger.warning("[CLAUDE-VISION] Anthropic library not available - install with: pip install anthropic")
+            logger.warning(
+                "[CLAUDE-VISION] Anthropic library not available - install with: pip install anthropic"
+            )
             return False
 
     async def analyze_code_screenshot(
-        self,
-        image_path: str,
-        query: str,
-        context: Optional[Dict[str, Any]] = None
+        self, image_path: str, query: str, context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Analyze a code screenshot using Claude Vision
@@ -107,7 +107,7 @@ class ClaudeVisionAnalyzer:
             return {
                 "success": False,
                 "error": "Claude API not available",
-                "message": "Install anthropic library for Claude Vision support"
+                "message": "Install anthropic library for Claude Vision support",
             }
 
         try:
@@ -124,7 +124,7 @@ class ClaudeVisionAnalyzer:
                 ".jpg": "image/jpeg",
                 ".jpeg": "image/jpeg",
                 ".webp": "image/webp",
-                ".gif": "image/gif"
+                ".gif": "image/gif",
             }.get(suffix, "image/png")
 
             # Create Claude client
@@ -133,8 +133,49 @@ class ClaudeVisionAnalyzer:
             # Build prompt based on query type
             prompt = self._build_vision_prompt(query, context)
 
-            # Call Claude Vision API
-            logger.info(f"[CLAUDE-VISION] Analyzing screenshot: {image_path}")
+            # Try intelligent model selection first
+            if self.use_intelligent_selection:
+                try:
+                    from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+                    orchestrator = HybridOrchestrator()
+                    if not orchestrator.is_running:
+                        await orchestrator.start()
+
+                    # Execute with intelligent selection for vision
+                    result = await orchestrator.execute_with_intelligent_model_selection(
+                        query=prompt,
+                        intent="vision_analysis",
+                        required_capabilities={"vision", "vision_analyze_heavy", "multimodal"},
+                        context={
+                            "image_data": image_data,
+                            "image_format": "base64",
+                            **(context or {}),
+                        },
+                        max_tokens=2048,
+                        temperature=0.7,
+                    )
+
+                    if result.get("success"):
+                        analysis_text = result.get("text", "").strip()
+                        model_used = result.get("model_used", "unknown")
+                        logger.info(
+                            f"[CLAUDE-VISION] Analysis complete using {model_used}, {len(analysis_text)} chars"
+                        )
+
+                        return {
+                            "success": True,
+                            "analysis": analysis_text,
+                            "model": model_used,
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                except Exception as e:
+                    logger.warning(
+                        f"[CLAUDE-VISION] Intelligent selection failed, falling back to direct API: {e}"
+                    )
+
+            # Fallback: Direct Claude Vision API
+            logger.info(f"[CLAUDE-VISION] Analyzing screenshot with direct API: {image_path}")
 
             response = client.messages.create(
                 model="claude-3-5-sonnet-20241022",
@@ -148,36 +189,32 @@ class ClaudeVisionAnalyzer:
                                 "source": {
                                     "type": "base64",
                                     "media_type": media_type,
-                                    "data": image_data
-                                }
+                                    "data": image_data,
+                                },
                             },
-                            {
-                                "type": "text",
-                                "text": prompt
-                            }
-                        ]
+                            {"type": "text", "text": prompt},
+                        ],
                     }
-                ]
+                ],
             )
 
             # Extract response
             analysis_text = response.content[0].text
 
-            logger.info(f"[CLAUDE-VISION] Analysis complete, {len(analysis_text)} chars")
+            logger.info(
+                f"[CLAUDE-VISION] Analysis complete (direct API), {len(analysis_text)} chars"
+            )
 
             return {
                 "success": True,
                 "analysis": analysis_text,
                 "model": "claude-3-5-sonnet-20241022",
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
         except Exception as e:
             logger.error(f"[CLAUDE-VISION] Error analyzing screenshot: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}
 
     def _build_vision_prompt(self, query: str, context: Optional[Dict[str, Any]]) -> str:
         """Build a prompt for Claude Vision based on query type"""
@@ -229,9 +266,7 @@ class ClaudeVisionAnalyzer:
         return base_prompt
 
     async def analyze_terminal_output(
-        self,
-        terminal_text: str,
-        query: str = "analyze this terminal output"
+        self, terminal_text: str, query: str = "analyze this terminal output"
     ) -> Dict[str, Any]:
         """
         Analyze terminal output using Claude (text mode)
@@ -244,10 +279,7 @@ class ClaudeVisionAnalyzer:
             Analysis result
         """
         if not self._claude_available:
-            return {
-                "success": False,
-                "error": "Claude API not available"
-            }
+            return {"success": False, "error": "Claude API not available"}
 
         try:
             import anthropic
@@ -269,15 +301,46 @@ Provide:
 
 Be concise and actionable."""
 
+            # Try intelligent model selection first
+            if self.use_intelligent_selection:
+                try:
+                    from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+                    orchestrator = HybridOrchestrator()
+                    if not orchestrator.is_running:
+                        await orchestrator.start()
+
+                    result = await orchestrator.execute_with_intelligent_model_selection(
+                        query=prompt,
+                        intent="nlp_analysis",
+                        required_capabilities={"nlp_analysis", "response_generation"},
+                        context={"type": "terminal_analysis"},
+                        max_tokens=1024,
+                        temperature=0.7,
+                    )
+
+                    if result.get("success"):
+                        analysis_text = result.get("text", "").strip()
+                        model_used = result.get("model_used", "unknown")
+                        logger.info(
+                            f"[CLAUDE-VISION] Terminal analysis complete using {model_used}"
+                        )
+                        return {
+                            "success": True,
+                            "analysis": analysis_text,
+                            "model": model_used,
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                except Exception as e:
+                    logger.warning(
+                        f"[CLAUDE-VISION] Intelligent selection failed for terminal, falling back: {e}"
+                    )
+
+            # Fallback: Direct API
             response = client.messages.create(
                 model="claude-3-5-sonnet-20241022",
                 max_tokens=1024,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
+                messages=[{"role": "user", "content": prompt}],
             )
 
             analysis_text = response.content[0].text
@@ -285,24 +348,23 @@ Be concise and actionable."""
             return {
                 "success": True,
                 "analysis": analysis_text,
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
             }
 
         except Exception as e:
             logger.error(f"[CLAUDE-VISION] Error analyzing terminal: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}
 
 
 # ============================================================================
 # MAIN PREDICTIVE QUERY HANDLER
 # ============================================================================
 
+
 @dataclass
 class PredictiveQueryRequest:
     """Request for predictive query"""
+
     query: str
     space_id: Optional[int] = None
     capture_screen: bool = False
@@ -314,6 +376,7 @@ class PredictiveQueryRequest:
 @dataclass
 class PredictiveQueryResponse:
     """Response from predictive query (v2.0 Enhanced)"""
+
     success: bool
     query: str
     response_text: str
@@ -324,12 +387,14 @@ class PredictiveQueryResponse:
     metadata: Dict[str, Any] = None
 
     # NEW v2.0: Monitoring-based predictions
-    prediction: Optional[str] = None           # Specific prediction text
-    reasoning: Optional[str] = None            # Why this prediction was made
+    prediction: Optional[str] = None  # Specific prediction text
+    reasoning: Optional[str] = None  # Why this prediction was made
     evidence: List[str] = field(default_factory=list)  # Supporting evidence from monitoring
     recommendations: List[str] = field(default_factory=list)  # Actionable recommendations
-    progress_score: float = 0.0                # 0.0-1.0 progress estimate (NEW v2.0)
-    monitoring_insights: Dict[str, Any] = field(default_factory=dict)  # Insights from monitoring data
+    progress_score: float = 0.0  # 0.0-1.0 progress estimate (NEW v2.0)
+    monitoring_insights: Dict[str, Any] = field(
+        default_factory=dict
+    )  # Insights from monitoring data
 
     def __post_init__(self):
         if self.timestamp is None:
@@ -362,7 +427,7 @@ class PredictiveQueryHandler:
         claude_api_key: Optional[str] = None,
         enable_vision: bool = True,
         hybrid_monitoring_manager=None,  # NEW v2.0
-        implicit_resolver=None  # NEW v2.0
+        implicit_resolver=None,  # NEW v2.0
     ):
         """
         Initialize the predictive query handler v2.0.
@@ -420,21 +485,26 @@ class PredictiveQueryHandler:
             if self.implicit_resolver:
                 try:
                     # Parse query to understand intent and references
-                    from core.nlp.implicit_reference_resolver import QueryIntent
+                    pass
+
                     parsed = await self._parse_query_with_resolver(request.query)
 
                     if parsed:
-                        query_intent = parsed.get('intent')
-                        resolved_query = parsed.get('resolved_query', request.query)
+                        query_intent = parsed.get("intent")
+                        resolved_query = parsed.get("resolved_query", request.query)
                         logger.info(f"[PREDICTIVE-HANDLER] Resolved query intent: {query_intent}")
 
                         # Update space_id if resolver identified a specific space
-                        if 'space_id' in parsed and not request.space_id:
-                            request.space_id = parsed['space_id']
-                            logger.info(f"[PREDICTIVE-HANDLER] Resolved space reference: Space {request.space_id}")
+                        if "space_id" in parsed and not request.space_id:
+                            request.space_id = parsed["space_id"]
+                            logger.info(
+                                f"[PREDICTIVE-HANDLER] Resolved space reference: Space {request.space_id}"
+                            )
 
                 except Exception as e:
-                    logger.warning(f"[PREDICTIVE-HANDLER] Could not resolve query with ImplicitResolver: {e}")
+                    logger.warning(
+                        f"[PREDICTIVE-HANDLER] Could not resolve query with ImplicitResolver: {e}"
+                    )
 
             # NEW v2.0: Check if this is a monitoring-based query
             monitoring_result = await self._check_monitoring_query(resolved_query, request.space_id)
@@ -448,7 +518,7 @@ class PredictiveQueryHandler:
             analytics = await self.analyzer.analyze(
                 query=resolved_query,
                 scope=AnalysisScope.CURRENT_SPACE if request.space_id else AnalysisScope.ALL_SPACES,
-                context=context
+                context=context,
             )
 
             # Run vision analysis if requested
@@ -475,8 +545,8 @@ class PredictiveQueryHandler:
                     "space_id": request.space_id,
                     "used_vision": vision_analysis is not None,
                     "query_type": analytics.query_type.value,
-                    "query_intent": str(query_intent) if query_intent else None
-                }
+                    "query_intent": str(query_intent) if query_intent else None,
+                },
             )
 
         except Exception as e:
@@ -485,7 +555,7 @@ class PredictiveQueryHandler:
                 success=False,
                 query=request.query,
                 response_text=f"Error processing query: {str(e)}",
-                confidence=0.0
+                confidence=0.0,
             )
 
     async def _parse_query_with_resolver(self, query: str) -> Optional[Dict[str, Any]]:
@@ -503,22 +573,24 @@ class PredictiveQueryHandler:
 
         try:
             # Check if resolver has parse method
-            if hasattr(self.implicit_resolver, 'parse_query'):
+            if hasattr(self.implicit_resolver, "parse_query"):
                 parsed = await self.implicit_resolver.parse_query(query)
                 return {
-                    'intent': parsed.intent if hasattr(parsed, 'intent') else None,
-                    'resolved_query': query,  # Resolver may modify query
-                    'references': parsed.references if hasattr(parsed, 'references') else []
+                    "intent": parsed.intent if hasattr(parsed, "intent") else None,
+                    "resolved_query": query,  # Resolver may modify query
+                    "references": parsed.references if hasattr(parsed, "references") else [],
                 }
             else:
                 # Fallback: basic parsing
-                return {'intent': None, 'resolved_query': query}
+                return {"intent": None, "resolved_query": query}
 
         except Exception as e:
             logger.warning(f"[PREDICTIVE-HANDLER] Error parsing query with resolver: {e}")
             return None
 
-    async def _check_monitoring_query(self, query: str, space_id: Optional[int] = None) -> Optional[PredictiveQueryResponse]:
+    async def _check_monitoring_query(
+        self, query: str, space_id: Optional[int] = None
+    ) -> Optional[PredictiveQueryResponse]:
         """
         Check if query is monitoring-based and handle it directly (NEW v2.0).
 
@@ -535,67 +607,84 @@ class PredictiveQueryHandler:
         query_lower = query.lower()
 
         # "Am I making progress?" queries
-        if any(phrase in query_lower for phrase in ['making progress', 'am i progressing', 'progress check', 'how am i doing']):
+        if any(
+            phrase in query_lower
+            for phrase in [
+                "making progress",
+                "am i progressing",
+                "progress check",
+                "how am i doing",
+            ]
+        ):
             result = await self.analyze_progress_from_monitoring()
             return PredictiveQueryResponse(
                 success=True,
                 query=query,
                 response_text=self._format_progress_response(result),
-                confidence=result.get('progress_score', 0.0),
-                prediction=result.get('reasoning'),
-                evidence=result.get('evidence', []),
-                recommendations=[result.get('recommendation', '')],
-                progress_score=result.get('progress_score', 0.0),
-                monitoring_insights=result.get('metrics', {})
+                confidence=result.get("progress_score", 0.0),
+                prediction=result.get("reasoning"),
+                evidence=result.get("evidence", []),
+                recommendations=[result.get("recommendation", "")],
+                progress_score=result.get("progress_score", 0.0),
+                monitoring_insights=result.get("metrics", {}),
             )
 
         # "What should I work on next?" queries
-        elif any(phrase in query_lower for phrase in ['what should i work on', 'next steps', 'what to do next', 'suggestions']):
+        elif any(
+            phrase in query_lower
+            for phrase in ["what should i work on", "next steps", "what to do next", "suggestions"]
+        ):
             result = await self.suggest_next_steps_from_workflow()
             return PredictiveQueryResponse(
                 success=True,
                 query=query,
                 response_text=self._format_next_steps_response(result),
-                confidence=result.get('confidence', 0.0),
-                recommendations=[s['action'] for s in result.get('suggestions', [])],
-                monitoring_insights={'suggestions': result.get('suggestions', [])}
+                confidence=result.get("confidence", 0.0),
+                recommendations=[s["action"] for s in result.get("suggestions", [])],
+                monitoring_insights={"suggestions": result.get("suggestions", [])},
             )
 
         # "Are there any bugs?" queries
-        elif any(phrase in query_lower for phrase in ['potential bugs', 'any bugs', 'bug prediction', 'issues detected']):
+        elif any(
+            phrase in query_lower
+            for phrase in ["potential bugs", "any bugs", "bug prediction", "issues detected"]
+        ):
             result = await self.predict_bugs_from_patterns(space_id)
             return PredictiveQueryResponse(
                 success=True,
                 query=query,
                 response_text=self._format_bug_prediction_response(result),
-                confidence=result.get('confidence', 0.0),
-                prediction=result.get('reasoning'),
+                confidence=result.get("confidence", 0.0),
+                prediction=result.get("reasoning"),
                 evidence=[f"{len(result.get('potential_bugs', []))} patterns detected"],
-                recommendations=[b['recommendation'] for b in result.get('potential_bugs', [])[:3]],
-                monitoring_insights={'bugs': result.get('potential_bugs', [])}
+                recommendations=[b["recommendation"] for b in result.get("potential_bugs", [])[:3]],
+                monitoring_insights={"bugs": result.get("potential_bugs", [])},
             )
 
         # "Workspace changes" / "What's happening?" queries
-        elif any(phrase in query_lower for phrase in ['workspace changes', 'what changed', 'activity', 'what happened']):
+        elif any(
+            phrase in query_lower
+            for phrase in ["workspace changes", "what changed", "activity", "what happened"]
+        ):
             result = await self.track_workspace_changes()
             return PredictiveQueryResponse(
                 success=True,
                 query=query,
                 response_text=self._format_workspace_response(result),
-                confidence=result.get('productivity_score', 0.0),
-                evidence=result.get('patterns', []),
-                recommendations=result.get('recommendations', []),
-                monitoring_insights=result.get('metrics', {})
+                confidence=result.get("productivity_score", 0.0),
+                evidence=result.get("patterns", []),
+                recommendations=result.get("recommendations", []),
+                monitoring_insights=result.get("metrics", {}),
             )
 
         return None
 
     def _format_progress_response(self, result: Dict[str, Any]) -> str:
         """Format progress analysis into readable response"""
-        score = result.get('progress_score', 0.0)
-        evidence = result.get('evidence', [])
-        reasoning = result.get('reasoning', '')
-        recommendation = result.get('recommendation', '')
+        score = result.get("progress_score", 0.0)
+        evidence = result.get("evidence", [])
+        reasoning = result.get("reasoning", "")
+        recommendation = result.get("recommendation", "")
 
         response = f"**Progress Score: {score:.0%}**\n\n"
         response += f"{reasoning}\n\n"
@@ -612,7 +701,7 @@ class PredictiveQueryHandler:
 
     def _format_next_steps_response(self, result: Dict[str, Any]) -> str:
         """Format next steps into readable response"""
-        suggestions = result.get('suggestions', [])
+        suggestions = result.get("suggestions", [])
 
         if not suggestions:
             return "No specific suggestions at this time. Continue current workflow."
@@ -620,10 +709,10 @@ class PredictiveQueryHandler:
         response = "**Suggested Next Steps:**\n\n"
 
         for i, suggestion in enumerate(suggestions[:5], 1):  # Top 5
-            priority = suggestion.get('priority', 'medium').upper()
-            action = suggestion.get('action', '')
-            reasoning = suggestion.get('reasoning', '')
-            confidence = suggestion.get('confidence', 0.0)
+            priority = suggestion.get("priority", "medium").upper()
+            action = suggestion.get("action", "")
+            reasoning = suggestion.get("reasoning", "")
+            confidence = suggestion.get("confidence", 0.0)
 
             response += f"{i}. **[{priority}]** {action}\n"
             response += f"   - {reasoning} (confidence: {confidence:.0%})\n\n"
@@ -632,9 +721,9 @@ class PredictiveQueryHandler:
 
     def _format_bug_prediction_response(self, result: Dict[str, Any]) -> str:
         """Format bug prediction into readable response"""
-        bugs = result.get('potential_bugs', [])
-        confidence = result.get('confidence', 0.0)
-        reasoning = result.get('reasoning', '')
+        bugs = result.get("potential_bugs", [])
+        confidence = result.get("confidence", 0.0)
+        reasoning = result.get("reasoning", "")
 
         if not bugs:
             return "**No bug patterns detected.** ✅\n\nYour code appears clean based on monitoring data."
@@ -644,10 +733,10 @@ class PredictiveQueryHandler:
         response += f"**{len(bugs)} Potential Issue(s) Detected:**\n\n"
 
         for i, bug in enumerate(bugs[:5], 1):  # Top 5
-            desc = bug.get('description', '')
-            occurrences = bug.get('occurrences', 0)
-            bug_confidence = bug.get('confidence', 0.0)
-            recommendation = bug.get('recommendation', '')
+            desc = bug.get("description", "")
+            occurrences = bug.get("occurrences", 0)
+            bug_confidence = bug.get("confidence", 0.0)
+            recommendation = bug.get("recommendation", "")
 
             response += f"{i}. {desc}\n"
             response += f"   - Occurred {occurrences} time(s) (confidence: {bug_confidence:.0%})\n"
@@ -657,10 +746,10 @@ class PredictiveQueryHandler:
 
     def _format_workspace_response(self, result: Dict[str, Any]) -> str:
         """Format workspace changes into readable response"""
-        changes = result.get('changes_detected', 0)
-        productivity = result.get('productivity_score', 0.0)
-        patterns = result.get('patterns', [])
-        recommendations = result.get('recommendations', [])
+        changes = result.get("changes_detected", 0)
+        productivity = result.get("productivity_score", 0.0)
+        patterns = result.get("patterns", [])
+        recommendations = result.get("recommendations", [])
 
         response = f"**Workspace Activity Analysis**\n\n"
         response += f"- Changes Detected: {changes}\n"
@@ -705,10 +794,7 @@ class PredictiveQueryHandler:
         return context
 
     async def _run_vision_analysis(
-        self,
-        request: PredictiveQueryRequest,
-        analytics: AnalyticsResult,
-        context: Dict[str, Any]
+        self, request: PredictiveQueryRequest, analytics: AnalyticsResult, context: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """Run Claude Vision analysis if appropriate"""
         if not self.vision_analyzer:
@@ -719,7 +805,7 @@ class PredictiveQueryHandler:
             PredictiveQueryType.CODE_EXPLANATION,
             PredictiveQueryType.BUG_DETECTION,
             PredictiveQueryType.QUALITY_ASSESSMENT,
-            PredictiveQueryType.PATTERN_ANALYSIS
+            PredictiveQueryType.PATTERN_ANALYSIS,
         ]
 
         if not needs_vision and not request.capture_screen:
@@ -734,9 +820,7 @@ class PredictiveQueryHandler:
 
         # Run vision analysis
         return await self.vision_analyzer.analyze_code_screenshot(
-            image_path=screenshot_path,
-            query=request.query,
-            context=context
+            image_path=screenshot_path, query=request.query, context=context
         )
 
     async def _get_screenshot(self, space_id: Optional[int]) -> Optional[str]:
@@ -752,9 +836,13 @@ class PredictiveQueryHandler:
 
             # Use space_id if provided, otherwise current space
             if space_id:
-                screenshot_path = f"/tmp/jarvis_space_{space_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                screenshot_path = (
+                    f"/tmp/jarvis_space_{space_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                )
             else:
-                screenshot_path = f"/tmp/jarvis_current_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                screenshot_path = (
+                    f"/tmp/jarvis_current_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                )
 
             # Capture screenshot (implementation depends on your vision system)
             # For now, return None as placeholder
@@ -769,7 +857,7 @@ class PredictiveQueryHandler:
         self,
         analytics: AnalyticsResult,
         vision_analysis: Optional[Dict[str, Any]],
-        request: PredictiveQueryRequest
+        request: PredictiveQueryRequest,
     ) -> str:
         """Combine analytics and vision results into unified response"""
         response_parts = []
@@ -790,7 +878,9 @@ class PredictiveQueryHandler:
     # NEW v2.0: MONITORING-BASED PREDICTIONS
     # ========================================
 
-    async def analyze_progress_from_monitoring(self, time_window_minutes: int = 30) -> Dict[str, Any]:
+    async def analyze_progress_from_monitoring(
+        self, time_window_minutes: int = 30
+    ) -> Dict[str, Any]:
         """
         Analyze progress using monitoring data (NEW v2.0).
 
@@ -804,10 +894,12 @@ class PredictiveQueryHandler:
         """
         if not self.is_monitoring_enabled:
             return {
-                'progress_score': 0.0,
-                'evidence': ['Monitoring not enabled - install monitoring for intelligent progress tracking'],
-                'reasoning': 'Cannot analyze progress without monitoring data',
-                'recommendation': 'Enable HybridProactiveMonitoringManager for automatic progress tracking'
+                "progress_score": 0.0,
+                "evidence": [
+                    "Monitoring not enabled - install monitoring for intelligent progress tracking"
+                ],
+                "reasoning": "Cannot analyze progress without monitoring data",
+                "recommendation": "Enable HybridProactiveMonitoringManager for automatic progress tracking",
             }
 
         try:
@@ -818,29 +910,36 @@ class PredictiveQueryHandler:
             alert_history = list(self.hybrid_monitoring._alert_history)
 
             # Filter alerts to time window
-            recent_alerts = [
-                alert for alert in alert_history
-                if alert.timestamp >= cutoff_time
-            ]
+            recent_alerts = [alert for alert in alert_history if alert.timestamp >= cutoff_time]
 
             if not recent_alerts:
                 return {
-                    'progress_score': 0.5,
-                    'evidence': [f'No activity detected in last {time_window_minutes} minutes'],
-                    'reasoning': 'Insufficient data - may be working without triggering monitoring alerts',
-                    'metrics': {
-                        'total_alerts': 0,
-                        'time_window': time_window_minutes
-                    }
+                    "progress_score": 0.5,
+                    "evidence": [f"No activity detected in last {time_window_minutes} minutes"],
+                    "reasoning": "Insufficient data - may be working without triggering monitoring alerts",
+                    "metrics": {"total_alerts": 0, "time_window": time_window_minutes},
                 }
 
             # Categorize alerts by severity and type
-            builds_successful = sum(1 for a in recent_alerts if 'build' in a.message.lower() and 'success' in a.message.lower())
-            builds_failed = sum(1 for a in recent_alerts if 'build' in a.message.lower() and ('fail' in a.message.lower() or 'error' in a.message.lower()))
-            errors_new = sum(1 for a in recent_alerts if a.severity in ['ERROR', 'CRITICAL'])
-            errors_resolved = sum(1 for a in recent_alerts if 'resolved' in a.message.lower() or 'fixed' in a.message.lower())
-            warnings = sum(1 for a in recent_alerts if a.severity == 'WARNING')
-            info_alerts = sum(1 for a in recent_alerts if a.severity == 'INFO')
+            builds_successful = sum(
+                1
+                for a in recent_alerts
+                if "build" in a.message.lower() and "success" in a.message.lower()
+            )
+            builds_failed = sum(
+                1
+                for a in recent_alerts
+                if "build" in a.message.lower()
+                and ("fail" in a.message.lower() or "error" in a.message.lower())
+            )
+            errors_new = sum(1 for a in recent_alerts if a.severity in ["ERROR", "CRITICAL"])
+            errors_resolved = sum(
+                1
+                for a in recent_alerts
+                if "resolved" in a.message.lower() or "fixed" in a.message.lower()
+            )
+            warnings = sum(1 for a in recent_alerts if a.severity == "WARNING")
+            info_alerts = sum(1 for a in recent_alerts if a.severity == "INFO")
 
             # Calculate progress score (0.0 - 1.0)
             positive_signals = builds_successful + errors_resolved + (info_alerts * 0.5)
@@ -853,7 +952,9 @@ class PredictiveQueryHandler:
 
             # Build evidence list
             evidence = []
-            evidence.append(f"Analyzed {len(recent_alerts)} events in last {time_window_minutes} minutes")
+            evidence.append(
+                f"Analyzed {len(recent_alerts)} events in last {time_window_minutes} minutes"
+            )
 
             if builds_successful > 0:
                 evidence.append(f"✅ {builds_successful} successful build(s)")
@@ -877,38 +978,40 @@ class PredictiveQueryHandler:
                 reasoning = "Struggling: high error rate with few successes"
 
             # Get space-specific breakdown
-            space_activity = defaultdict(lambda: {'alerts': 0, 'errors': 0, 'builds': 0})
+            space_activity = defaultdict(lambda: {"alerts": 0, "errors": 0, "builds": 0})
             for alert in recent_alerts:
-                space_activity[alert.space_id]['alerts'] += 1
-                if 'error' in alert.message.lower():
-                    space_activity[alert.space_id]['errors'] += 1
-                if 'build' in alert.message.lower():
-                    space_activity[alert.space_id]['builds'] += 1
+                space_activity[alert.space_id]["alerts"] += 1
+                if "error" in alert.message.lower():
+                    space_activity[alert.space_id]["errors"] += 1
+                if "build" in alert.message.lower():
+                    space_activity[alert.space_id]["builds"] += 1
 
             return {
-                'progress_score': round(progress_score, 2),
-                'evidence': evidence,
-                'reasoning': reasoning,
-                'metrics': {
-                    'builds_successful': builds_successful,
-                    'builds_failed': builds_failed,
-                    'errors_new': errors_new,
-                    'errors_resolved': errors_resolved,
-                    'warnings': warnings,
-                    'total_alerts': len(recent_alerts),
-                    'time_window': time_window_minutes,
-                    'space_breakdown': dict(space_activity)
+                "progress_score": round(progress_score, 2),
+                "evidence": evidence,
+                "reasoning": reasoning,
+                "metrics": {
+                    "builds_successful": builds_successful,
+                    "builds_failed": builds_failed,
+                    "errors_new": errors_new,
+                    "errors_resolved": errors_resolved,
+                    "warnings": warnings,
+                    "total_alerts": len(recent_alerts),
+                    "time_window": time_window_minutes,
+                    "space_breakdown": dict(space_activity),
                 },
-                'recommendation': self._generate_progress_recommendation(progress_score, builds_successful, errors_new)
+                "recommendation": self._generate_progress_recommendation(
+                    progress_score, builds_successful, errors_new
+                ),
             }
 
         except Exception as e:
             logger.error(f"[PREDICTIVE-HANDLER] Error analyzing progress: {e}", exc_info=True)
             return {
-                'progress_score': 0.0,
-                'evidence': [f'Error analyzing progress: {str(e)}'],
-                'reasoning': 'Failed to analyze monitoring data',
-                'error': str(e)
+                "progress_score": 0.0,
+                "evidence": [f"Error analyzing progress: {str(e)}"],
+                "reasoning": "Failed to analyze monitoring data",
+                "error": str(e),
             }
 
     def _generate_progress_recommendation(self, score: float, builds: int, errors: int) -> str:
@@ -922,7 +1025,9 @@ class PredictiveQueryHandler:
                 return "Making progress - consider running tests to verify stability."
         else:
             if errors > 3:
-                return "High error rate detected. Consider debugging systematically or taking a break."
+                return (
+                    "High error rate detected. Consider debugging systematically or taking a break."
+                )
             else:
                 return "Progress is slow. Try breaking down the task or seeking help."
 
@@ -938,9 +1043,9 @@ class PredictiveQueryHandler:
         """
         if not self.is_monitoring_enabled:
             return {
-                'potential_bugs': [],
-                'confidence': 0.0,
-                'reasoning': 'Monitoring not enabled - enable HybridProactiveMonitoring for bug prediction'
+                "potential_bugs": [],
+                "confidence": 0.0,
+                "reasoning": "Monitoring not enabled - enable HybridProactiveMonitoring for bug prediction",
             }
 
         try:
@@ -952,13 +1057,13 @@ class PredictiveQueryHandler:
                 alert_history = [a for a in alert_history if a.space_id == space_id]
 
             # Get error alerts only
-            error_alerts = [a for a in alert_history if a.severity in ['ERROR', 'CRITICAL']]
+            error_alerts = [a for a in alert_history if a.severity in ["ERROR", "CRITICAL"]]
 
             if not error_alerts:
                 return {
-                    'potential_bugs': [],
-                    'confidence': 0.0,
-                    'reasoning': 'No error patterns detected in monitoring history'
+                    "potential_bugs": [],
+                    "confidence": 0.0,
+                    "reasoning": "No error patterns detected in monitoring history",
                 }
 
             # Analyze error patterns
@@ -978,22 +1083,24 @@ class PredictiveQueryHandler:
                     # Extract error type
                     error_type = self._extract_error_type(error_msg)
 
-                    potential_bugs.append({
-                        'description': f'{error_type} pattern detected',
-                        'error_message': error_msg[:100],  # Truncate
-                        'occurrences': count,
-                        'confidence': round(confidence, 2),
-                        'affected_spaces': list(affected_spaces),
-                        'evidence': f'This error occurred {count} times in monitoring history',
-                        'recommendation': self._generate_bug_recommendation(error_type, count)
-                    })
+                    potential_bugs.append(
+                        {
+                            "description": f"{error_type} pattern detected",
+                            "error_message": error_msg[:100],  # Truncate
+                            "occurrences": count,
+                            "confidence": round(confidence, 2),
+                            "affected_spaces": list(affected_spaces),
+                            "evidence": f"This error occurred {count} times in monitoring history",
+                            "recommendation": self._generate_bug_recommendation(error_type, count),
+                        }
+                    )
 
             # Sort by confidence (most likely bugs first)
-            potential_bugs.sort(key=lambda x: x['confidence'], reverse=True)
+            potential_bugs.sort(key=lambda x: x["confidence"], reverse=True)
 
             # Calculate overall confidence
             if potential_bugs:
-                avg_confidence = sum(b['confidence'] for b in potential_bugs) / len(potential_bugs)
+                avg_confidence = sum(b["confidence"] for b in potential_bugs) / len(potential_bugs)
             else:
                 avg_confidence = 0.0
 
@@ -1002,23 +1109,25 @@ class PredictiveQueryHandler:
             pattern_insights = []
             for pattern in learned_patterns:
                 if pattern.confidence >= 0.7:
-                    pattern_insights.append(f"Pattern: {pattern.trigger_type} → leads to issues (confidence: {pattern.confidence:.0%})")
+                    pattern_insights.append(
+                        f"Pattern: {pattern.trigger_type} → leads to issues (confidence: {pattern.confidence:.0%})"
+                    )
 
             return {
-                'potential_bugs': potential_bugs[:10],  # Top 10
-                'confidence': round(avg_confidence, 2),
-                'reasoning': f'Analyzed {len(error_alerts)} error events and {len(learned_patterns)} learned patterns',
-                'error_patterns_analyzed': len(error_counter),
-                'pattern_insights': pattern_insights
+                "potential_bugs": potential_bugs[:10],  # Top 10
+                "confidence": round(avg_confidence, 2),
+                "reasoning": f"Analyzed {len(error_alerts)} error events and {len(learned_patterns)} learned patterns",
+                "error_patterns_analyzed": len(error_counter),
+                "pattern_insights": pattern_insights,
             }
 
         except Exception as e:
             logger.error(f"[PREDICTIVE-HANDLER] Error predicting bugs: {e}", exc_info=True)
             return {
-                'potential_bugs': [],
-                'confidence': 0.0,
-                'reasoning': f'Error analyzing patterns: {str(e)}',
-                'error': str(e)
+                "potential_bugs": [],
+                "confidence": 0.0,
+                "reasoning": f"Error analyzing patterns: {str(e)}",
+                "error": str(e),
             }
 
     def _extract_error_type(self, error_msg: str) -> str:
@@ -1026,51 +1135,55 @@ class PredictiveQueryHandler:
         error_msg_lower = error_msg.lower()
 
         # Common error types
-        if 'typeerror' in error_msg_lower:
-            return 'TypeError'
-        elif 'syntaxerror' in error_msg_lower:
-            return 'SyntaxError'
-        elif 'attributeerror' in error_msg_lower:
-            return 'AttributeError'
-        elif 'nameerror' in error_msg_lower:
-            return 'NameError'
-        elif 'valueerror' in error_msg_lower:
-            return 'ValueError'
-        elif 'importerror' in error_msg_lower or 'modulenotfound' in error_msg_lower:
-            return 'ImportError'
-        elif 'keyerror' in error_msg_lower:
-            return 'KeyError'
-        elif 'indexerror' in error_msg_lower:
-            return 'IndexError'
-        elif 'filenotfound' in error_msg_lower:
-            return 'FileNotFoundError'
-        elif 'build' in error_msg_lower and ('fail' in error_msg_lower or 'error' in error_msg_lower):
-            return 'Build Failure'
-        elif 'test' in error_msg_lower and 'fail' in error_msg_lower:
-            return 'Test Failure'
+        if "typeerror" in error_msg_lower:
+            return "TypeError"
+        elif "syntaxerror" in error_msg_lower:
+            return "SyntaxError"
+        elif "attributeerror" in error_msg_lower:
+            return "AttributeError"
+        elif "nameerror" in error_msg_lower:
+            return "NameError"
+        elif "valueerror" in error_msg_lower:
+            return "ValueError"
+        elif "importerror" in error_msg_lower or "modulenotfound" in error_msg_lower:
+            return "ImportError"
+        elif "keyerror" in error_msg_lower:
+            return "KeyError"
+        elif "indexerror" in error_msg_lower:
+            return "IndexError"
+        elif "filenotfound" in error_msg_lower:
+            return "FileNotFoundError"
+        elif "build" in error_msg_lower and (
+            "fail" in error_msg_lower or "error" in error_msg_lower
+        ):
+            return "Build Failure"
+        elif "test" in error_msg_lower and "fail" in error_msg_lower:
+            return "Test Failure"
         else:
-            return 'Error'
+            return "Error"
 
     def _generate_bug_recommendation(self, error_type: str, occurrences: int) -> str:
         """Generate recommendation based on error type and frequency"""
         recommendations = {
-            'TypeError': 'Add type hints and validation. Consider using mypy for static type checking.',
-            'SyntaxError': 'Review code syntax. Use a linter (pylint/flake8) to catch syntax issues early.',
-            'AttributeError': 'Check object initialization and attribute access. Add None checks.',
-            'NameError': 'Verify variable/function names. Check import statements.',
-            'ValueError': 'Add input validation. Handle edge cases with proper error messages.',
-            'ImportError': 'Check dependencies in requirements.txt. Verify module installation.',
-            'KeyError': 'Add dictionary key checks. Use .get() method with defaults.',
-            'IndexError': 'Add bounds checking for lists/arrays. Validate indices before access.',
-            'FileNotFoundError': 'Verify file paths. Add existence checks before file operations.',
-            'Build Failure': 'Review recent changes. Check build configuration and dependencies.',
-            'Test Failure': 'Debug failing tests. Review test assumptions and data.'
+            "TypeError": "Add type hints and validation. Consider using mypy for static type checking.",
+            "SyntaxError": "Review code syntax. Use a linter (pylint/flake8) to catch syntax issues early.",
+            "AttributeError": "Check object initialization and attribute access. Add None checks.",
+            "NameError": "Verify variable/function names. Check import statements.",
+            "ValueError": "Add input validation. Handle edge cases with proper error messages.",
+            "ImportError": "Check dependencies in requirements.txt. Verify module installation.",
+            "KeyError": "Add dictionary key checks. Use .get() method with defaults.",
+            "IndexError": "Add bounds checking for lists/arrays. Validate indices before access.",
+            "FileNotFoundError": "Verify file paths. Add existence checks before file operations.",
+            "Build Failure": "Review recent changes. Check build configuration and dependencies.",
+            "Test Failure": "Debug failing tests. Review test assumptions and data.",
         }
 
-        base_rec = recommendations.get(error_type, 'Review code and add error handling.')
+        base_rec = recommendations.get(error_type, "Review code and add error handling.")
 
         if occurrences >= 5:
-            return f"⚠️ CRITICAL: {base_rec} (Occurred {occurrences} times - high priority fix needed!)"
+            return (
+                f"⚠️ CRITICAL: {base_rec} (Occurred {occurrences} times - high priority fix needed!)"
+            )
         elif occurrences >= 3:
             return f"⚠️ {base_rec} (Occurred {occurrences} times - should be addressed soon)"
         else:
@@ -1085,35 +1198,45 @@ class PredictiveQueryHandler:
         """
         if not self.is_monitoring_enabled:
             return {
-                'suggestions': [{
-                    'action': 'Enable HybridProactiveMonitoringManager',
-                    'priority': 'low',
-                    'reasoning': 'Required for intelligent workflow analysis',
-                    'confidence': 1.0
-                }],
-                'confidence': 0.0
+                "suggestions": [
+                    {
+                        "action": "Enable HybridProactiveMonitoringManager",
+                        "priority": "low",
+                        "reasoning": "Required for intelligent workflow analysis",
+                        "confidence": 1.0,
+                    }
+                ],
+                "confidence": 0.0,
             }
 
         try:
             # Get recent alerts (last hour)
             cutoff_time = datetime.now().timestamp() - 3600
-            recent_alerts = [a for a in self.hybrid_monitoring._alert_history if a.timestamp >= cutoff_time]
+            recent_alerts = [
+                a for a in self.hybrid_monitoring._alert_history if a.timestamp >= cutoff_time
+            ]
 
             if not recent_alerts:
                 return {
-                    'suggestions': [{
-                        'action': 'Continue working',
-                        'priority': 'low',
-                        'reasoning': 'No recent activity detected in monitoring',
-                        'confidence': 0.3
-                    }],
-                    'confidence': 0.3
+                    "suggestions": [
+                        {
+                            "action": "Continue working",
+                            "priority": "low",
+                            "reasoning": "No recent activity detected in monitoring",
+                            "confidence": 0.3,
+                        }
+                    ],
+                    "confidence": 0.3,
                 }
 
             suggestions = []
 
             # Analyze error patterns
-            unresolved_errors = [a for a in recent_alerts if a.severity in ['ERROR', 'CRITICAL'] and 'resolved' not in a.message.lower()]
+            unresolved_errors = [
+                a
+                for a in recent_alerts
+                if a.severity in ["ERROR", "CRITICAL"] and "resolved" not in a.message.lower()
+            ]
             if unresolved_errors:
                 # Group by space
                 errors_by_space = defaultdict(list)
@@ -1124,47 +1247,63 @@ class PredictiveQueryHandler:
                 top_error_space = max(errors_by_space.items(), key=lambda x: len(x[1]))
                 space_id, errors = top_error_space
 
-                suggestions.append({
-                    'action': f'Fix {len(errors)} error(s) in Space {space_id}',
-                    'priority': 'high',
-                    'reasoning': f'{len(errors)} unresolved errors detected in last hour',
-                    'confidence': 0.9,
-                    'space_id': space_id,
-                    'error_count': len(errors)
-                })
+                suggestions.append(
+                    {
+                        "action": f"Fix {len(errors)} error(s) in Space {space_id}",
+                        "priority": "high",
+                        "reasoning": f"{len(errors)} unresolved errors detected in last hour",
+                        "confidence": 0.9,
+                        "space_id": space_id,
+                        "error_count": len(errors),
+                    }
+                )
 
             # Check build status
-            build_alerts = [a for a in recent_alerts if 'build' in a.message.lower()]
-            failed_builds = [a for a in build_alerts if 'fail' in a.message.lower() or 'error' in a.message.lower()]
-            successful_builds = [a for a in build_alerts if 'success' in a.message.lower() or 'pass' in a.message.lower()]
+            build_alerts = [a for a in recent_alerts if "build" in a.message.lower()]
+            failed_builds = [
+                a
+                for a in build_alerts
+                if "fail" in a.message.lower() or "error" in a.message.lower()
+            ]
+            successful_builds = [
+                a
+                for a in build_alerts
+                if "success" in a.message.lower() or "pass" in a.message.lower()
+            ]
 
             if failed_builds and not successful_builds:
-                suggestions.append({
-                    'action': 'Debug build failures',
-                    'priority': 'high',
-                    'reasoning': f'{len(failed_builds)} build failure(s) detected with no successful builds',
-                    'confidence': 0.85
-                })
+                suggestions.append(
+                    {
+                        "action": "Debug build failures",
+                        "priority": "high",
+                        "reasoning": f"{len(failed_builds)} build failure(s) detected with no successful builds",
+                        "confidence": 0.85,
+                    }
+                )
             elif successful_builds:
                 # Check if tests should be run
-                test_alerts = [a for a in recent_alerts if 'test' in a.message.lower()]
+                test_alerts = [a for a in recent_alerts if "test" in a.message.lower()]
                 if not test_alerts and len(successful_builds) > 0:
-                    suggestions.append({
-                        'action': 'Run tests after successful build',
-                        'priority': 'medium',
-                        'reasoning': f'{len(successful_builds)} successful build(s) without test run',
-                        'confidence': 0.7
-                    })
+                    suggestions.append(
+                        {
+                            "action": "Run tests after successful build",
+                            "priority": "medium",
+                            "reasoning": f"{len(successful_builds)} successful build(s) without test run",
+                            "confidence": 0.7,
+                        }
+                    )
 
             # Check for warnings
-            warnings = [a for a in recent_alerts if a.severity == 'WARNING']
+            warnings = [a for a in recent_alerts if a.severity == "WARNING"]
             if len(warnings) > 3:
-                suggestions.append({
-                    'action': 'Review and address warnings',
-                    'priority': 'medium',
-                    'reasoning': f'{len(warnings)} warnings detected - could indicate code quality issues',
-                    'confidence': 0.65
-                })
+                suggestions.append(
+                    {
+                        "action": "Review and address warnings",
+                        "priority": "medium",
+                        "reasoning": f"{len(warnings)} warnings detected - could indicate code quality issues",
+                        "confidence": 0.65,
+                    }
+                )
 
             # Analyze learned patterns
             learned_patterns = self.hybrid_monitoring._pattern_rules
@@ -1172,48 +1311,58 @@ class PredictiveQueryHandler:
             if high_conf_patterns:
                 # Suggest based on patterns
                 for pattern in high_conf_patterns[:2]:  # Top 2 patterns
-                    suggestions.append({
-                        'action': f'Be aware: {pattern.trigger_type} often leads to issues',
-                        'priority': 'low',
-                        'reasoning': f'Learned pattern with {pattern.confidence:.0%} confidence',
-                        'confidence': pattern.confidence
-                    })
+                    suggestions.append(
+                        {
+                            "action": f"Be aware: {pattern.trigger_type} often leads to issues",
+                            "priority": "low",
+                            "reasoning": f"Learned pattern with {pattern.confidence:.0%} confidence",
+                            "confidence": pattern.confidence,
+                        }
+                    )
 
             # If no specific suggestions, provide general guidance
             if not suggestions:
-                suggestions.append({
-                    'action': 'Continue current workflow',
-                    'priority': 'low',
-                    'reasoning': 'No critical issues detected in recent monitoring data',
-                    'confidence': 0.6
-                })
+                suggestions.append(
+                    {
+                        "action": "Continue current workflow",
+                        "priority": "low",
+                        "reasoning": "No critical issues detected in recent monitoring data",
+                        "confidence": 0.6,
+                    }
+                )
 
             # Sort by priority and confidence
-            priority_order = {'high': 3, 'medium': 2, 'low': 1}
-            suggestions.sort(key=lambda x: (priority_order.get(x['priority'], 0), x['confidence']), reverse=True)
+            priority_order = {"high": 3, "medium": 2, "low": 1}
+            suggestions.sort(
+                key=lambda x: (priority_order.get(x["priority"], 0), x["confidence"]), reverse=True
+            )
 
             # Calculate overall confidence
-            avg_confidence = sum(s['confidence'] for s in suggestions) / len(suggestions) if suggestions else 0.0
+            avg_confidence = (
+                sum(s["confidence"] for s in suggestions) / len(suggestions) if suggestions else 0.0
+            )
 
             return {
-                'suggestions': suggestions,
-                'confidence': round(avg_confidence, 2),
-                'reasoning': f'Analyzed {len(recent_alerts)} events and {len(learned_patterns)} patterns in last hour',
-                'alert_count': len(recent_alerts),
-                'pattern_count': len(high_conf_patterns)
+                "suggestions": suggestions,
+                "confidence": round(avg_confidence, 2),
+                "reasoning": f"Analyzed {len(recent_alerts)} events and {len(learned_patterns)} patterns in last hour",
+                "alert_count": len(recent_alerts),
+                "pattern_count": len(high_conf_patterns),
             }
 
         except Exception as e:
             logger.error(f"[PREDICTIVE-HANDLER] Error suggesting next steps: {e}", exc_info=True)
             return {
-                'suggestions': [{
-                    'action': 'Continue working',
-                    'priority': 'low',
-                    'reasoning': f'Error analyzing workflow: {str(e)}',
-                    'confidence': 0.0
-                }],
-                'confidence': 0.0,
-                'error': str(e)
+                "suggestions": [
+                    {
+                        "action": "Continue working",
+                        "priority": "low",
+                        "reasoning": f"Error analyzing workflow: {str(e)}",
+                        "confidence": 0.0,
+                    }
+                ],
+                "confidence": 0.0,
+                "error": str(e),
             }
 
     async def track_workspace_changes(self, time_window_minutes: int = 60) -> Dict[str, Any]:
@@ -1228,10 +1377,10 @@ class PredictiveQueryHandler:
         """
         if not self.is_monitoring_enabled:
             return {
-                'changes_detected': 0,
-                'productivity_score': 0.0,
-                'patterns': ['Enable monitoring to track workspace changes'],
-                'recommendations': ['Install HybridProactiveMonitoringManager']
+                "changes_detected": 0,
+                "productivity_score": 0.0,
+                "patterns": ["Enable monitoring to track workspace changes"],
+                "recommendations": ["Install HybridProactiveMonitoringManager"],
             }
 
         try:
@@ -1239,55 +1388,71 @@ class PredictiveQueryHandler:
             cutoff_time = datetime.now().timestamp() - (time_window_minutes * 60)
 
             # Get alerts in time window
-            alerts_in_window = [a for a in self.hybrid_monitoring._alert_history if a.timestamp >= cutoff_time]
+            alerts_in_window = [
+                a for a in self.hybrid_monitoring._alert_history if a.timestamp >= cutoff_time
+            ]
 
             if not alerts_in_window:
                 return {
-                    'changes_detected': 0,
-                    'productivity_score': 0.0,
-                    'patterns': [f'No workspace activity detected in last {time_window_minutes} minutes'],
-                    'recommendations': ['Consider taking a break or switching tasks if stuck']
+                    "changes_detected": 0,
+                    "productivity_score": 0.0,
+                    "patterns": [
+                        f"No workspace activity detected in last {time_window_minutes} minutes"
+                    ],
+                    "recommendations": ["Consider taking a break or switching tasks if stuck"],
                 }
 
             # Analyze by space
-            space_activity = defaultdict(lambda: {'alerts': 0, 'errors': 0, 'builds': 0, 'last_activity': 0})
+            space_activity = defaultdict(
+                lambda: {"alerts": 0, "errors": 0, "builds": 0, "last_activity": 0}
+            )
             for alert in alerts_in_window:
-                space_activity[alert.space_id]['alerts'] += 1
-                space_activity[alert.space_id]['last_activity'] = max(space_activity[alert.space_id]['last_activity'], alert.timestamp)
+                space_activity[alert.space_id]["alerts"] += 1
+                space_activity[alert.space_id]["last_activity"] = max(
+                    space_activity[alert.space_id]["last_activity"], alert.timestamp
+                )
 
-                if 'error' in alert.message.lower():
-                    space_activity[alert.space_id]['errors'] += 1
-                if 'build' in alert.message.lower():
-                    space_activity[alert.space_id]['builds'] += 1
+                if "error" in alert.message.lower():
+                    space_activity[alert.space_id]["errors"] += 1
+                if "build" in alert.message.lower():
+                    space_activity[alert.space_id]["builds"] += 1
 
             # Identify patterns
             patterns = []
 
             # Most active space
             if space_activity:
-                most_active = max(space_activity.items(), key=lambda x: x[1]['alerts'])
-                patterns.append(f"High activity in Space {most_active[0]} ({most_active[1]['alerts']} events)")
+                most_active = max(space_activity.items(), key=lambda x: x[1]["alerts"])
+                patterns.append(
+                    f"High activity in Space {most_active[0]} ({most_active[1]['alerts']} events)"
+                )
 
             # Context switching analysis
             unique_spaces = len(space_activity)
             if unique_spaces > 3:
                 patterns.append(f"Frequent context switching across {unique_spaces} spaces")
             elif unique_spaces == 1:
-                patterns.append(f"Focused work in single space (Space {list(space_activity.keys())[0]})")
+                patterns.append(
+                    f"Focused work in single space (Space {list(space_activity.keys())[0]})"
+                )
 
             # Build frequency
-            total_builds = sum(s['builds'] for s in space_activity.values())
+            total_builds = sum(s["builds"] for s in space_activity.values())
             if total_builds > 0:
                 avg_build_interval = time_window_minutes / total_builds
                 if avg_build_interval < 5:
-                    patterns.append(f"Very frequent builds (every {avg_build_interval:.1f} min) - may be too often")
+                    patterns.append(
+                        f"Very frequent builds (every {avg_build_interval:.1f} min) - may be too often"
+                    )
                 elif avg_build_interval < 15:
                     patterns.append(f"Good build cadence (every {avg_build_interval:.1f} min)")
                 else:
-                    patterns.append(f"Infrequent builds (every {avg_build_interval:.1f} min) - consider building more often")
+                    patterns.append(
+                        f"Infrequent builds (every {avg_build_interval:.1f} min) - consider building more often"
+                    )
 
             # Error rate
-            total_errors = sum(s['errors'] for s in space_activity.values())
+            total_errors = sum(s["errors"] for s in space_activity.values())
             error_rate = total_errors / len(alerts_in_window) if alerts_in_window else 0
             if error_rate > 0.5:
                 patterns.append(f"High error rate ({error_rate:.0%}) - debugging heavily")
@@ -1298,9 +1463,17 @@ class PredictiveQueryHandler:
 
             # Calculate productivity score
             # Factors: build success rate, error resolution rate, activity level
-            builds_successful = sum(1 for a in alerts_in_window if 'build' in a.message.lower() and 'success' in a.message.lower())
-            builds_failed = sum(1 for a in alerts_in_window if 'build' in a.message.lower() and 'fail' in a.message.lower())
-            errors_resolved = sum(1 for a in alerts_in_window if 'resolved' in a.message.lower())
+            builds_successful = sum(
+                1
+                for a in alerts_in_window
+                if "build" in a.message.lower() and "success" in a.message.lower()
+            )
+            builds_failed = sum(
+                1
+                for a in alerts_in_window
+                if "build" in a.message.lower() and "fail" in a.message.lower()
+            )
+            errors_resolved = sum(1 for a in alerts_in_window if "resolved" in a.message.lower())
 
             # Base score from activity
             activity_score = min(1.0, len(alerts_in_window) / 50)  # 50 events = max activity
@@ -1318,7 +1491,7 @@ class PredictiveQueryHandler:
                 error_score = 1.0  # No errors is good
 
             # Combined productivity score (weighted average)
-            productivity_score = (activity_score * 0.3 + build_score * 0.4 + error_score * 0.3)
+            productivity_score = activity_score * 0.3 + build_score * 0.4 + error_score * 0.3
 
             # Generate recommendations
             recommendations = []
@@ -1331,7 +1504,9 @@ class PredictiveQueryHandler:
                 recommendations.append("Consider changing approach or taking a break")
 
             if unique_spaces > 4:
-                recommendations.append("⚠️ High context switching detected - try focusing on fewer spaces")
+                recommendations.append(
+                    "⚠️ High context switching detected - try focusing on fewer spaces"
+                )
 
             if error_rate > 0.5:
                 recommendations.append("⚠️ High error rate - consider systematic debugging approach")
@@ -1340,31 +1515,33 @@ class PredictiveQueryHandler:
                 recommendations.append("Consider running builds to verify changes")
 
             return {
-                'changes_detected': len(alerts_in_window),
-                'productivity_score': round(productivity_score, 2),
-                'patterns': patterns,
-                'recommendations': recommendations,
-                'metrics': {
-                    'unique_spaces': unique_spaces,
-                    'total_builds': total_builds,
-                    'builds_successful': builds_successful,
-                    'builds_failed': builds_failed,
-                    'total_errors': total_errors,
-                    'errors_resolved': errors_resolved,
-                    'error_rate': round(error_rate, 2),
-                    'time_window': time_window_minutes
+                "changes_detected": len(alerts_in_window),
+                "productivity_score": round(productivity_score, 2),
+                "patterns": patterns,
+                "recommendations": recommendations,
+                "metrics": {
+                    "unique_spaces": unique_spaces,
+                    "total_builds": total_builds,
+                    "builds_successful": builds_successful,
+                    "builds_failed": builds_failed,
+                    "total_errors": total_errors,
+                    "errors_resolved": errors_resolved,
+                    "error_rate": round(error_rate, 2),
+                    "time_window": time_window_minutes,
                 },
-                'space_breakdown': dict(space_activity)
+                "space_breakdown": dict(space_activity),
             }
 
         except Exception as e:
-            logger.error(f"[PREDICTIVE-HANDLER] Error tracking workspace changes: {e}", exc_info=True)
+            logger.error(
+                f"[PREDICTIVE-HANDLER] Error tracking workspace changes: {e}", exc_info=True
+            )
             return {
-                'changes_detected': 0,
-                'productivity_score': 0.0,
-                'patterns': [f'Error tracking changes: {str(e)}'],
-                'recommendations': [],
-                'error': str(e)
+                "changes_detected": 0,
+                "productivity_score": 0.0,
+                "patterns": [f"Error tracking changes: {str(e)}"],
+                "recommendations": [],
+                "error": str(e),
             }
 
     # ========================================
@@ -1375,39 +1552,51 @@ class PredictiveQueryHandler:
     # CONVENIENCE METHODS
     # ========================================================================
 
-    async def check_progress(self, space_id: Optional[int] = None, repo_path: str = ".") -> PredictiveQueryResponse:
+    async def check_progress(
+        self, space_id: Optional[int] = None, repo_path: str = "."
+    ) -> PredictiveQueryResponse:
         """Convenience method: Check progress"""
-        return await self.handle_query(PredictiveQueryRequest(
-            query="Am I making progress?",
-            space_id=space_id,
-            repo_path=repo_path
-        ))
+        return await self.handle_query(
+            PredictiveQueryRequest(
+                query="Am I making progress?", space_id=space_id, repo_path=repo_path
+            )
+        )
 
-    async def get_next_steps(self, space_id: Optional[int] = None, repo_path: str = ".") -> PredictiveQueryResponse:
+    async def get_next_steps(
+        self, space_id: Optional[int] = None, repo_path: str = "."
+    ) -> PredictiveQueryResponse:
         """Convenience method: Get next steps"""
-        return await self.handle_query(PredictiveQueryRequest(
-            query="What should I work on next?",
-            space_id=space_id,
-            repo_path=repo_path
-        ))
+        return await self.handle_query(
+            PredictiveQueryRequest(
+                query="What should I work on next?", space_id=space_id, repo_path=repo_path
+            )
+        )
 
-    async def detect_bugs(self, space_id: Optional[int] = None, use_vision: bool = False) -> PredictiveQueryResponse:
+    async def detect_bugs(
+        self, space_id: Optional[int] = None, use_vision: bool = False
+    ) -> PredictiveQueryResponse:
         """Convenience method: Detect bugs"""
-        return await self.handle_query(PredictiveQueryRequest(
-            query="Are there any potential bugs?",
-            space_id=space_id,
-            use_vision=use_vision,
-            capture_screen=use_vision
-        ))
+        return await self.handle_query(
+            PredictiveQueryRequest(
+                query="Are there any potential bugs?",
+                space_id=space_id,
+                use_vision=use_vision,
+                capture_screen=use_vision,
+            )
+        )
 
-    async def explain_code(self, space_id: Optional[int] = None, use_vision: bool = True) -> PredictiveQueryResponse:
+    async def explain_code(
+        self, space_id: Optional[int] = None, use_vision: bool = True
+    ) -> PredictiveQueryResponse:
         """Convenience method: Explain code"""
-        return await self.handle_query(PredictiveQueryRequest(
-            query="Explain what this code does",
-            space_id=space_id,
-            use_vision=use_vision,
-            capture_screen=use_vision
-        ))
+        return await self.handle_query(
+            PredictiveQueryRequest(
+                query="Explain what this code does",
+                space_id=space_id,
+                use_vision=use_vision,
+                capture_screen=use_vision,
+            )
+        )
 
 
 # ============================================================================
@@ -1426,7 +1615,7 @@ def initialize_predictive_handler(
     context_graph=None,
     hybrid_monitoring_manager=None,  # NEW v2.0
     implicit_resolver=None,  # NEW v2.0
-    **kwargs
+    **kwargs,
 ) -> PredictiveQueryHandler:
     """
     Initialize the global predictive query handler v2.0.
@@ -1460,7 +1649,7 @@ def initialize_predictive_handler(
         context_graph=context_graph,
         hybrid_monitoring_manager=hybrid_monitoring_manager,  # NEW v2.0
         implicit_resolver=implicit_resolver,  # NEW v2.0
-        **kwargs
+        **kwargs,
     )
     logger.info("[PREDICTIVE-HANDLER] Global instance initialized")
     return _global_handler
@@ -1469,6 +1658,7 @@ def initialize_predictive_handler(
 # ============================================================================
 # CONVENIENCE FUNCTIONS
 # ============================================================================
+
 
 async def handle_predictive_query(query: str, **kwargs) -> PredictiveQueryResponse:
     """Convenience function to handle a predictive query"""
