@@ -49,6 +49,12 @@ Your JARVIS features a **state-of-the-art hybrid architecture** with intelligent
      - Phase 3: Intelligent Component Activation 🔮
      - Phase 4: Advanced RAM Optimization 🎯
    - RAM Optimization Flow Diagram
+   - **Bidirectional RAM-Aware Component Negotiation Protocol** 🔄
+     - Heartbeat Protocol (Local ↔ GCP)
+     - Component Negotiation Scenarios (Offload, Reclaim, Fallback)
+     - Idle Component Management
+     - WebSocket Communication
+     - MCP & Kubernetes Decision (Optional/Not Recommended)
 
 3. [🎯 Intelligent Routing Examples](#-intelligent-routing-examples)
    - Context-Aware Query
@@ -685,7 +691,441 @@ Pre-Loading Strategy:
 
 ---
 
-## 🎯 Intelligent Routing Examples
+## 🔄 Bidirectional RAM-Aware Component Negotiation Protocol
+
+### **Overview: Intelligent Load Balancing with Real-Time Communication**
+
+JARVIS implements a **bidirectional negotiation protocol** where local Mac and GCP Spot VMs continuously communicate about RAM capacity, current workload, and component availability. This enables intelligent workload distribution and dynamic component handoff.
+
+**Key Innovation:** Instead of one-way routing (local → cloud), both systems actively negotiate who should handle each component based on real-time RAM availability.
+
+---
+
+### **How Local & GCP Know Each Other's RAM Status**
+
+#### **1. Heartbeat Protocol (Every 5 seconds)**
+
+Both systems send heartbeat messages containing:
+
+```python
+# Local Mac sends to GCP:
+{
+    "source": "local_mac",
+    "timestamp": 1698765432,
+    "ram": {
+        "total_gb": 16,
+        "available_gb": 8.5,
+        "used_gb": 7.5,
+        "usage_percent": 47,
+        "memory_pressure": "normal",  # from macOS vm_stat
+        "page_outs": 1250  # swapping indicator
+    },
+    "components_loaded": ["wake_word", "display_monitor", "voice_unlock"],
+    "components_active": ["wake_word"],
+    "cpu_usage": 25,
+    "can_accept_workload": true,
+    "priority": "prefer_local"  # or "prefer_cloud" if under pressure
+}
+
+# GCP Spot VM sends to Local:
+{
+    "source": "gcp_spot_vm",
+    "instance_id": "jarvis-auto-1234567890",
+    "timestamp": 1698765432,
+    "ram": {
+        "total_gb": 32,
+        "available_gb": 24.2,
+        "used_gb": 7.8,
+        "usage_percent": 24,
+        "memory_pressure": "low"
+    },
+    "components_loaded": ["vision_full", "uae_full", "sai_full"],
+    "components_active": [],  # idle
+    "cpu_usage": 12,
+    "can_accept_workload": true,
+    "spot_vm_status": "stable",  # or "warning_preemption" if spot notice received
+    "uptime_minutes": 45
+}
+```
+
+**Transport:** WebSocket connection (bidirectional, low latency ~5-20ms)
+
+---
+
+### **2. Component Negotiation Scenarios**
+
+#### **Scenario A: Local RAM Running Low → Offload to GCP**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ LOCAL MAC STATE:                                            │
+│ • RAM: 14.2/16 GB used (89% - HIGH PRESSURE)               │
+│ • Components loaded: wake_word, vision_capture, uae_light  │
+│ • User command: "Analyze my screen and suggest changes"    │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 1: Local detects high memory pressure                 │
+│   • Checks: RAM >85% + page_outs increasing                │
+│   • Decision: Cannot handle vision_full + claude_api       │
+│   • Estimated need: +4GB RAM for this command              │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 2: Local sends negotiation request to GCP             │
+│                                                             │
+│ Message:                                                    │
+│ {                                                           │
+│   "type": "component_negotiation",                         │
+│   "action": "request_offload",                             │
+│   "component": "vision_analysis",                          │
+│   "estimated_ram_gb": 4,                                   │
+│   "estimated_duration_sec": 10,                            │
+│   "priority": "high",                                      │
+│   "reason": "local_memory_pressure"                        │
+│ }                                                           │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 3: GCP evaluates capacity                             │
+│   • Current: 7.8/32 GB used (24%)                          │
+│   • Available: 24.2 GB                                     │
+│   • Requested: 4 GB                                        │
+│   • Decision: ✅ Can accept (plenty of room)               │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 4: GCP sends acceptance + readiness                   │
+│                                                             │
+│ Response:                                                   │
+│ {                                                           │
+│   "type": "component_negotiation_response",                │
+│   "action": "accept_workload",                             │
+│   "component": "vision_analysis",                          │
+│   "status": "ready",                                       │
+│   "allocated_ram_gb": 4,                                   │
+│   "estimated_ready_time_sec": 2                            │
+│ }                                                           │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 5: Component handoff                                  │
+│   • Local: Captures screen (light operation)               │
+│   • Local: Sends screenshot to GCP                         │
+│   • GCP: Activates vision_full + claude_api                │
+│   • GCP: Processes analysis (4GB RAM used)                 │
+│   • GCP: Returns result via WebSocket                      │
+│   • Local: Displays result to user                         │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 6: Post-processing negotiation                        │
+│   • GCP: "Task complete, vision_full now idle"             │
+│   • Local: "Still under memory pressure (88%)"             │
+│   • Decision: Keep vision_full on GCP for next 5 min       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### **Scenario B: Local RAM Recovers → Reclaim Components**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ LOCAL MAC STATE (30 min later):                            │
+│ • RAM: 5.2/16 GB used (32% - LOW PRESSURE)                 │
+│ • Components: Only wake_word active                        │
+│ • User closed heavy apps, RAM freed up                     │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 1: Local detects low memory pressure                  │
+│   • Checks: RAM <40% + no page_outs for 10 min            │
+│   • Decision: Can handle more components locally           │
+│   • Cost optimization: Reduce GCP usage                    │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 2: Local sends reclaim request to GCP                 │
+│                                                             │
+│ Message:                                                    │
+│ {                                                           │
+│   "type": "component_negotiation",                         │
+│   "action": "request_reclaim",                             │
+│   "components": ["vision_capture", "uae_light"],           │
+│   "reason": "local_capacity_available",                    │
+│   "local_ram_available_gb": 10.8,                          │
+│   "cost_optimization": true                                │
+│ }                                                           │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 3: GCP checks if components are idle                  │
+│   • vision_capture: IDLE (not used in 8 min)               │
+│   • uae_light: IDLE (not used in 12 min)                   │
+│   • Decision: ✅ Safe to hand off                          │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 4: GCP sends handoff confirmation                     │
+│                                                             │
+│ Response:                                                   │
+│ {                                                           │
+│   "type": "component_negotiation_response",                │
+│   "action": "handoff_approved",                            │
+│   "components": ["vision_capture", "uae_light"],           │
+│   "state_transfer": {                                      │
+│     "vision_capture": {"last_screenshot": "..."},         │
+│     "uae_light": {"recent_context": "..."}                │
+│   }                                                         │
+│ }                                                           │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 5: Component transfer                                 │
+│   • GCP: Serializes component state                        │
+│   • GCP: Sends state to Local                              │
+│   • Local: Receives state + rehydrates components          │
+│   • GCP: Unloads components (frees RAM)                    │
+│   • Local: Components now active locally                   │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 6: Potential GCP shutdown                             │
+│   • GCP: Now only 2GB used (minimal components)            │
+│   • Check: Has it been idle for >10 min?                   │
+│   • Decision: Shutdown Spot VM to save costs               │
+│   • Cost saved: $0.029/hr = $0.70/day                      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### **Scenario C: GCP Cannot Accept → Negotiate Alternative**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ GCP SPOT VM STATE:                                          │
+│ • RAM: 28.5/32 GB used (89% - HIGH USAGE)                  │
+│ • Components: All 9 components active (heavy workload)     │
+│ • Local sends request to offload vision_analysis           │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 1: GCP evaluates capacity                             │
+│   • Available: 3.5 GB                                      │
+│   • Requested: 4 GB                                        │
+│   • Decision: ❌ Cannot accept (insufficient RAM)          │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 2: GCP proposes alternatives                          │
+│                                                             │
+│ Response:                                                   │
+│ {                                                           │
+│   "type": "component_negotiation_response",                │
+│   "action": "reject_workload",                             │
+│   "reason": "insufficient_ram",                            │
+│   "alternatives": [                                        │
+│     {                                                       │
+│       "option": "wait_for_capacity",                       │
+│       "estimated_available_sec": 120,                      │
+│       "likelihood": "high"                                 │
+│     },                                                      │
+│     {                                                       │
+│       "option": "process_locally_degraded",                │
+│       "description": "Use lightweight vision mode",        │
+│       "quality_tradeoff": "medium"                         │
+│     },                                                      │
+│     {                                                       │
+│       "option": "create_second_vm",                        │
+│       "cost_impact": "+$0.029/hr",                         │
+│       "eta_sec": 90                                        │
+│     }                                                       │
+│   ]                                                         │
+│ }                                                           │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 3: Local decides fallback strategy                    │
+│   • Option 1: Wait 2 min (if not urgent)                   │
+│   • Option 2: Use lightweight mode (faster, lower quality) │
+│   • Option 3: Create 2nd Spot VM (doubles cost, rare)      │
+│   • Decision: Use lightweight mode (user waiting)          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### **3. Idle Component Management**
+
+Components not actively used sit idle in **swap/virtual memory** on both local and GCP:
+
+```python
+# Component Idle States
+States = {
+    "UNLOADED": {
+        "ram_usage_mb": 0,
+        "location": "none",
+        "activation_time_sec": 5
+    },
+    "IDLE_LOCAL": {
+        "ram_usage_mb": 10,  # minimal stub in swap
+        "location": "local",
+        "activation_time_sec": 1
+    },
+    "IDLE_GCP": {
+        "ram_usage_mb": 10,
+        "location": "gcp",
+        "activation_time_sec": 2  # includes network latency
+    },
+    "ACTIVE_LOCAL": {
+        "ram_usage_mb": "varies (150MB - 4GB)",
+        "location": "local",
+        "activation_time_sec": 0
+    },
+    "ACTIVE_GCP": {
+        "ram_usage_mb": "varies (200MB - 6GB)",
+        "location": "gcp",
+        "activation_time_sec": 0
+    }
+}
+
+# Transition Rules
+Transitions = {
+    "User gives command": {
+        "trigger": "CAI analyzes intent",
+        "action": "Activate only needed components",
+        "location_decision": "Negotiate with local & GCP based on RAM"
+    },
+    "Component idle for 5 min": {
+        "trigger": "No usage detected",
+        "action": "Transition to IDLE state",
+        "ram_freed": "90-95%"
+    },
+    "Component idle for 30 min": {
+        "trigger": "Extended inactivity",
+        "action": "Transition to UNLOADED state",
+        "ram_freed": "100%"
+    }
+}
+```
+
+---
+
+### **4. Negotiation Protocol Implementation**
+
+**File:** `backend/core/component_negotiator.py` (to be created)
+
+```python
+class ComponentNegotiator:
+    """
+    Manages bidirectional component negotiation between local and GCP
+    """
+
+    async def negotiate_component_placement(
+        self,
+        component: str,
+        estimated_ram_gb: float,
+        current_location: str,  # "local" or "gcp"
+        reason: str
+    ) -> Dict[str, Any]:
+        """
+        Negotiate where component should run based on RAM availability
+
+        Returns:
+            {
+                "target_location": "local" or "gcp",
+                "action": "keep" | "migrate" | "activate",
+                "estimated_time_sec": float,
+                "confidence": float
+            }
+        """
+
+        # Get real-time RAM status from both systems
+        local_status = await self._get_local_ram_status()
+        gcp_status = await self._get_gcp_ram_status()
+
+        # Decision matrix
+        if local_status["available_gb"] >= estimated_ram_gb:
+            if local_status["memory_pressure"] == "low":
+                # Local has room - prefer local (lower latency)
+                return {
+                    "target_location": "local",
+                    "action": "migrate_to_local" if current_location == "gcp" else "activate_local",
+                    "reason": "local_capacity_available",
+                    "cost_savings": "+$0.029/hr if GCP shuts down"
+                }
+
+        if gcp_status["available_gb"] >= estimated_ram_gb:
+            if gcp_status["status"] == "healthy":
+                # GCP has room - offload there
+                return {
+                    "target_location": "gcp",
+                    "action": "migrate_to_gcp" if current_location == "local" else "activate_gcp",
+                    "reason": "gcp_capacity_available",
+                    "note": "Local under pressure or component too heavy"
+                }
+
+        # Neither has room - negotiate alternatives
+        return await self._negotiate_alternatives(component, estimated_ram_gb)
+```
+
+---
+
+### **5. Benefits of Bidirectional Negotiation**
+
+| Benefit | Description | Impact |
+|---------|-------------|--------|
+| **Dynamic Load Balancing** | Components move to where RAM is available | Prevents OOM crashes |
+| **Cost Optimization** | Reclaim to local when possible → shut down GCP | Save $0.029/hr |
+| **Performance** | Run locally when possible (lower latency <1ms vs 5-20ms) | Faster responses |
+| **Resilience** | If one system fails, other takes over | High availability |
+| **Idle Efficiency** | Unused components in swap (near-zero RAM) | Max RAM for active work |
+| **Spot VM Handling** | If VM preempted, gracefully migrate back to local | No service interruption |
+
+---
+
+### **6. Communication Transport: WebSocket**
+
+**Why WebSocket over HTTP:**
+- **Bidirectional:** Both can send/receive without polling
+- **Low Latency:** 5-20ms vs 50-100ms HTTP
+- **Connection Reuse:** Single persistent connection
+- **Heartbeat Built-in:** Detect disconnections immediately
+
+**Connection Management:**
+```python
+# Local establishes WebSocket to GCP on VM creation
+ws = WebSocket("ws://GCP_VM_IP:8010/component-negotiation")
+
+# GCP establishes reverse WebSocket to local for push notifications
+reverse_ws = WebSocket("ws://LOCAL_MAC_IP:8011/component-updates")
+
+# Both maintain heartbeat every 5 seconds
+# If heartbeat fails, assume other side unavailable
+```
+
+---
+
+## 🤖 Do You Need MCP or Kubernetes?
+
+### **MCP (Model Context Protocol):**
+- **Purpose:** Share context between external tools (VS Code, browser) and LLMs
+- **For JARVIS:** **Optional, not required now**
+- **Reason:** You already have internal context sharing via UAE/SAI/CAI
+- **When to add:** If you want external tools to feed context to Claude Vision
+
+### **Kubernetes:**
+- **Purpose:** Orchestrate 10s-100s of containers across many VMs
+- **For JARVIS:** **NOT recommended - overkill**
+- **Reason:** You have 1-2 Spot VMs max, simple auto-create/destroy is better
+- **Your solution is simpler:** Single Spot VM + negotiation protocol
+- **K8s adds complexity:** Learning curve, management overhead, cost
+
+**Verdict:** Stick with your current architecture (Spot VM + WebSocket negotiation). It's simpler, cheaper, and perfectly suited for JARVIS.
+
+---
 
 ### **Example 1: Context-Aware Query**
 ```python
