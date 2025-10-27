@@ -1,14 +1,32 @@
-# 🚀 JARVIS Hybrid Architecture - UAE/SAI/CAI Integrated
+# 🚀 JARVIS Hybrid Architecture - Intelligent Component Lifecycle with GCP Spot VMs
 
-## **World-Class Intelligent Hybrid System**
+## **World-Class Intelligent Hybrid System with Context-Aware Resource Management**
 
-Your JARVIS now has a **state-of-the-art hybrid architecture** that combines:
-- **Local Mac** (16GB RAM) - Low-latency, real-time operations
-- **GCP Cloud** (32GB RAM) - Heavy ML/AI processing
-- **UAE** (Unified Awareness Engine) - Real-time context aggregation
-- **SAI** (Self-Aware Intelligence) - Self-healing & optimization
-- **CAI** (Context Awareness Intelligence) - Intent prediction
-- **learning_database** - Persistent memory & pattern learning
+Your JARVIS features a **state-of-the-art hybrid architecture** with intelligent component lifecycle management that dynamically routes processing between local and cloud based on memory pressure, command complexity, and context:
+
+### **💻 Hybrid Infrastructure**
+- **Local Mac (16GB RAM)** - Always-on components (~730MB idle) + context-aware activation
+  - Low-latency operations (screen unlock, wake word, display monitoring)
+  - Intelligent routing when RAM >70% → shifts to GCP
+  - Idle components sit in swap/virtual memory (near-zero RAM)
+
+- **GCP Spot VMs (32GB RAM, ~$0.029/hr)** - Heavy processing with 60-91% cost savings
+  - Auto-created when memory pressure >80% or NLP-heavy commands
+  - Auto-shutdown when local RAM <60% for >10 minutes
+  - Heavy ML/AI processing (Vision, NLP, Goal Inference)
+  - Typical usage: 2-4 hours/day = **$2-4/month** vs $15-30 regular VMs
+
+### **🧠 Unified Intelligence Systems**
+- **UAE** (Unified Awareness Engine) - Real-time context capture (local) + deep analysis (cloud)
+- **SAI** (Self-Aware Intelligence) - Self-healing, pattern learning, predictive optimization
+- **CAI** (Context Awareness Intelligence) - Intent prediction, component activation decisions
+- **learning_database** - Persistent memory, user patterns, component usage analytics
+
+### **⚡ Performance & Cost Optimization**
+- **Response Times:** 5-15s (local under pressure) → **1-3s (GCP Spot VM)**
+- **RAM Usage:** Idle state ~730MB → Active state varies by command (2-20GB)
+- **Cost Efficiency:** 60-91% savings with Spot VMs + intelligent auto-scaling
+- **Component Activation:** Context-based (only load what's needed for each command)
 
 ---
 
