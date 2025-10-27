@@ -21,9 +21,16 @@ Your JARVIS now has a **state-of-the-art hybrid architecture** that combines:
    - CAI (Context Awareness Intelligence)
    - learning_database
 
-2. [📊 Component Distribution](#-component-distribution)
-   - Local (macOS - 16GB RAM)
-   - Cloud (GCP - 32GB RAM)
+2. [📊 Component Distribution & Intelligent Resource Management](#-component-distribution--intelligent-resource-management)
+   - Overview: 9+ Core Components & RAM Management
+   - Local (macOS - 16GB RAM) - Always-On & On-Demand Components
+   - Cloud (GCP Spot VMs - 32GB RAM, ~$0.029/hr) - Heavy Processing Components
+   - **Strategic Implementation Roadmap** 🚀
+     - Phase 1: Intelligent Component Lifecycle Management ✅
+     - Phase 2: Context-Based Command Routing 🚧
+     - Phase 3: Intelligent Component Activation 🔮
+     - Phase 4: Advanced RAM Optimization 🎯
+   - RAM Optimization Flow Diagram
 
 3. [🎯 Intelligent Routing Examples](#-intelligent-routing-examples)
    - Context-Aware Query
@@ -228,34 +235,434 @@ intent = cai.predict_intent(command)
 
 ---
 
-## 📊 Component Distribution
+## 📊 Component Distribution & Intelligent Resource Management
+
+> **Key Innovation:** JARVIS uses **GCP Spot VMs (32GB RAM, ~$0.029/hr, 60-91% cheaper)** with intelligent component lifecycle management. Components can be idle, activated on-demand, or routed between local and cloud based on memory pressure and command context.
+
+### **Overview: 9+ Core Components & RAM Management**
+
+JARVIS consists of **9+ core components**, each consuming significant RAM. On a 16GB M1 Mac, running all components simultaneously causes memory pressure, swapping, and slow response times (5-15 seconds).
+
+**The Solution:**
+- **Intelligent Component Lifecycle** - Components can be idle (in swap/virtual memory) when unused
+- **Context-Based Activation** - Commands trigger only needed components
+- **Hybrid Routing** - Heavy processing routes to GCP Spot VM (32GB RAM)
+- **Memory-Aware Scaling** - Automatic routing when local RAM >70%
+
+---
 
 ### **LOCAL (macOS - 16GB RAM)**
 ```
-✅ VISION              - Screen capture, desktop monitoring
-✅ VOICE               - Wake word detection, voice commands
-✅ VOICE_UNLOCK        - Instant screen unlock
-✅ WAKE_WORD           - "Hey JARVIS" detection
-✅ DISPLAY_MONITOR     - External display management
+🎯 ALWAYS-ON Components (Low RAM, High Priority):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ WAKE_WORD           - CoreML (Neural Engine, ~50MB RAM)
+                       - "Hey JARVIS" detection
+                       - Zero CPU, runs on Apple Neural Engine
 
-🧠 Intelligence (Local Part):
-   • UAE - Real-time context capture
-   • CAI - Immediate intent detection
-   • learning_db - Recent history cache
+✅ VOICE_UNLOCK        - Biometric authentication (~80MB RAM)
+                       - Screen unlock with voice
+                       - Local-only for security
+
+✅ DISPLAY_MONITOR     - Multi-monitor detection (~100MB RAM)
+                       - Real-time display changes
+                       - macOS-specific (cannot run on GCP)
+
+🔄 ON-DEMAND Components (Activated by Context):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ VISION (Capture)    - Screen capture only (~150MB RAM)
+                       - Activated on: "show me", "analyze screen"
+                       - Heavy analysis routes to GCP
+
+✅ VOICE (Commands)    - Basic voice processing (~200MB RAM)
+                       - Activated on: voice input detected
+                       - NLP-heavy → routes to GCP
+
+🧠 Intelligence (Local - Minimal Footprint):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   • UAE (Light)       - Real-time context capture (~150MB)
+   • CAI (Light)       - Quick intent detection (~100MB)
+   • learning_db       - Recent history cache (SQLite, ~50MB)
+
+📊 Total Local RAM (Idle State):     ~730MB  (5% of 16GB)
+📊 Total Local RAM (Active State):   ~2-4GB  (15-25% of 16GB)
 ```
 
-### **CLOUD (GCP - 32GB RAM)**
+### **CLOUD (GCP Spot VMs - 32GB RAM, ~$0.029/hr)**
 ```
-✅ CHATBOTS            - Claude Vision AI (memory intensive)
-✅ ML_MODELS           - NLP, sentiment, transformers
-✅ MEMORY              - Advanced memory management
-✅ MONITORING          - Long-term trend analysis
+🚀 HEAVY PROCESSING Components (Auto-Routed When Needed):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ VISION (Full)       - Claude Vision API + Multi-space analysis
+                       - Activated on: Complex vision queries
+                       - RAM Usage: ~2-4GB (multiple Claude contexts)
 
-🧠 Intelligence (Cloud Part):
-   • UAE - Deep context processing
-   • SAI - Pattern learning & self-healing
-   • CAI - Complex intent prediction
-   • learning_db - Full historical analysis
+✅ VOICE (NLP Full)    - Transformers, sentiment, NLU models
+                       - Activated on: Complex commands, conversations
+                       - RAM Usage: ~3-5GB (BERT, GPT-style models)
+
+✅ GOAL_INFERENCE      - Proactive intelligence + autonomous engine
+                       - Activated on: Background monitoring, predictions
+                       - RAM Usage: ~1-2GB (ML models + context)
+
+✅ CHATBOTS (Full)     - Claude API, conversation memory
+                       - Activated on: Chat mode, extended conversations
+                       - RAM Usage: ~2-3GB (conversation history)
+
+✅ ML_MODELS (Full)    - All NLP/ML transformers loaded
+                       - Activated on: ML-heavy analysis
+                       - RAM Usage: ~4-6GB (multiple models)
+
+🧠 Intelligence (Cloud - Full Power):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   • UAE (Full)        - Deep context processing (~800MB)
+   • SAI (Full)        - Self-healing, pattern learning (~600MB)
+   • CAI (Full)        - Complex intent prediction (~500MB)
+   • learning_db       - PostgreSQL, full history (~200MB + data)
+
+📊 Total Cloud RAM (Idle State):      ~2GB   (6% of 32GB)
+📊 Total Cloud RAM (Active State):    ~8-15GB (25-47% of 32GB)
+📊 Maximum Cloud RAM (All Active):    ~20GB  (62% of 32GB)
+
+💰 Cost Optimization:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   • Spot VMs:         $0.029/hr (60-91% cheaper than regular VMs)
+   • Auto-shutdown:    When local RAM <60% for >10 minutes
+   • Auto-create:      When local RAM >80% or NLP-heavy command
+   • Typical daily:    2-4 hours = $0.06-$0.12/day
+   • Monthly estimate: ~$2-4/month (vs $15-30 regular VMs)
+```
+
+---
+
+## 🧠 Strategic Implementation Roadmap
+
+### **Phase 1: Intelligent Component Lifecycle Management** ✅ (Current State)
+
+**Goal:** Enable components to idle in virtual memory when unused, activate on-demand based on command context.
+
+**Current Implementation:**
+- ✅ Dynamic Component Manager (`backend/core/dynamic_component_manager.py`)
+- ✅ Lazy loading for UAE, SAI, CAI intelligence systems
+- ✅ Memory manager with M1 optimization
+- ✅ Component priorities (CORE, HIGH, MEDIUM, LOW)
+
+**What This Means:**
+```python
+# Example: Vision component lifecycle
+State 1: Idle (not loaded)              RAM: 0 MB
+    ↓ User: "analyze my screen"
+State 2: Loading (importing modules)    RAM: 50 MB
+    ↓
+State 3: Active (processing)            RAM: 2-4 GB (on GCP)
+    ↓ Command complete + 5 min idle
+State 4: Unloaded (back to swap)        RAM: 0 MB
+```
+
+---
+
+### **Phase 2: Context-Based Command Routing** 🚧 (Implementation Needed)
+
+**Goal:** Route voice/text commands to GCP Spot VM automatically based on memory pressure and command complexity.
+
+#### **2.1: WebSocket → Hybrid Orchestrator Integration**
+
+**File:** `backend/api/unified_websocket.py`
+**Change:** Lines 903-945 (_handle_voice_command)
+
+**Before (Current - All Local Processing):**
+```python
+# All commands processed locally on 16GB Mac
+from api.unified_command_processor import get_unified_processor
+processor = get_unified_processor()
+result = await processor.process_command(command_text)
+# Result: 5-15 second response times under memory pressure
+```
+
+**After (Intelligent Hybrid Routing):**
+```python
+# Commands automatically route to GCP when needed
+from core.hybrid_orchestrator import get_orchestrator
+
+orchestrator = get_orchestrator()
+result = await orchestrator.execute_command(
+    command=command_text,
+    command_type="voice_command",  # Signals NLP-heavy
+    metadata={
+        "client_id": client_id,
+        "context": "user_initiated"
+    }
+)
+# Result: 1-3 second response times (GCP 32GB RAM)
+```
+
+**Routing Logic (Automatic):**
+```python
+# orchestrator.router.route() decides based on:
+1. Memory Pressure (macOS vm_stat):
+   - Local RAM <70%  → Process locally
+   - Local RAM >70%  → Route to GCP
+   - Local RAM >85%  → MUST use GCP (emergency mode)
+
+2. Command Type:
+   - "vision_capture"  → Local (screen capture)
+   - "screen_unlock"   → Local (security, instant)
+   - "voice_command"   → GCP if complex NLP
+   - "vision_analyze"  → GCP (Claude Vision API)
+   - "chat"            → GCP (conversation memory)
+
+3. Component State:
+   - Component already loaded locally → Use local
+   - Component idle → Activate on GCP
+   - Component failed locally → Failover to GCP
+```
+
+---
+
+#### **2.2: Routing Configuration**
+
+**File:** `backend/core/hybrid_config.yaml`
+
+**Add New Rules:**
+```yaml
+routing:
+  rules:
+    # ============== VOICE/TEXT COMMANDS ==============
+    - name: voice_command_routing
+      priority: 100
+      conditions:
+        - type: command_type
+          value: voice_command
+        - type: memory_pressure
+          threshold: 70
+      route_to: cloud
+      use_uae: true
+      use_cai: true
+      capabilities: ["nlp_analysis", "chatbot_inference"]
+
+    - name: text_command_routing
+      priority: 95
+      conditions:
+        - type: command_type
+          value: text_command
+        - type: memory_pressure
+          threshold: 70
+      route_to: cloud
+      use_cai: true
+      capabilities: ["nlp_analysis"]
+
+    # ============== VISION COMMANDS ==============
+    - name: vision_analysis_routing
+      priority: 90
+      conditions:
+        - type: command_type
+          value: vision_analyze
+      route_to: cloud  # Always use GCP for heavy vision
+      use_uae: true
+      use_sai: true
+      capabilities: ["vision_processing", "ml_processing"]
+
+    # ============== EMERGENCY ROUTING ==============
+    - name: emergency_memory_pressure
+      priority: 200  # Highest priority
+      conditions:
+        - type: memory_pressure
+          threshold: 85
+      route_to: cloud
+      force: true  # Override all other rules
+      reason: "Critical memory pressure - mandatory GCP routing"
+
+    # ============== LOCAL-ONLY COMMANDS ==============
+    - name: screen_unlock_local
+      priority: 150
+      conditions:
+        - type: keywords
+          values: ["unlock", "lock", "screen"]
+      route_to: local
+      force: true  # Security - never route to cloud
+      capabilities: ["screen_unlock"]
+```
+
+---
+
+### **Phase 3: Intelligent Component Activation** 🔮 (Future Enhancement)
+
+**Goal:** Components "wake up" only when needed based on command context, reducing idle RAM to near-zero.
+
+#### **3.1: Context-Based Activation System**
+
+**Example User Flow:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│ User: "Hey JARVIS, analyze my screen and suggest"          │
+│       "improvements to my code layout"                      │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ Step 1: Wake Word Detection (Always-On, 50MB RAM)          │
+│   • CoreML on Neural Engine detected "Hey JARVIS"          │
+│   • Activates voice input listener                         │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ Step 2: Command Parsing (CAI Light - Local, 100MB)         │
+│   • Intent: vision_analysis                                │
+│   • Context: code_improvement                              │
+│   • Complexity: HIGH                                       │
+│   • Decision: Route to GCP + Activate Vision + UAE + SAI  │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ Step 3: Component Activation (GCP 32GB)                    │
+│   ✅ Vision System (Full)     - Loading... (2 sec)         │
+│   ✅ UAE (Full)                - Loading... (1 sec)         │
+│   ✅ SAI (Full)                - Loading... (1 sec)         │
+│   ✅ Claude Vision API         - Ready                      │
+│   ❌ Voice NLP                 - Not needed, stays idle     │
+│   ❌ Chatbot Memory            - Not needed, stays idle     │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ Step 4: Processing (GCP 32GB, ~6GB RAM Active)             │
+│   • Screen capture (local) → Send to GCP                   │
+│   • Vision analysis with Claude                            │
+│   • UAE context: IDE detected, Python project              │
+│   • SAI learns: User improves code layouts                 │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ Step 5: Response (1-3 seconds total)                       │
+│   "I notice your code spans 3 monitors. I suggest..."      │
+└─────────────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────────────┐
+│ Step 6: Component Deactivation (After 5 min idle)          │
+│   • Vision System → Unloaded                               │
+│   • UAE → Idle (swap memory)                               │
+│   • SAI → Idle (swap memory)                               │
+│   • GCP RAM: 6GB → 2GB                                     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### **3.2: Component Activation Matrix**
+
+| User Command | Components Activated | RAM Usage | Route | Response Time |
+|--------------|---------------------|-----------|-------|---------------|
+| "Hey JARVIS, what time is it?" | CAI (Light) | ~200MB | Local | <1s |
+| "Unlock my screen" | Voice Unlock | ~300MB | Local | <0.5s |
+| "Analyze my screen" | Vision + UAE + Claude | ~4GB | GCP | 2-3s |
+| "What am I working on?" | UAE + Vision + learning_db | ~3GB | GCP | 2-4s |
+| "Help me write an email" | Chatbot + learning_db | ~3GB | GCP | 2-3s |
+| "Predict what I'll do next" | Goal Inference + UAE + SAI | ~4GB | GCP | 3-5s |
+| "Continuous monitoring" | All components | ~15GB | GCP | Ongoing |
+
+---
+
+### **Phase 4: Advanced RAM Optimization** 🎯 (Future Vision)
+
+**Goal:** Near-zero idle RAM, instant activation, seamless local ↔ cloud hand-off.
+
+#### **4.1: Component State Machine**
+
+```
+States:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. UNLOADED     → RAM: 0 MB    (not in memory at all)
+2. IDLE         → RAM: ~10 MB  (minimal stub in swap)
+3. WARMING_UP   → RAM: 50%     (loading dependencies)
+4. ACTIVE       → RAM: 100%    (fully loaded, processing)
+5. COOLING_DOWN → RAM: 50%     (finishing tasks)
+6. HIBERNATING  → RAM: ~5 MB   (persistent state only)
+
+Transitions:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+UNLOADED → WARMING_UP:   Command requires component
+WARMING_UP → ACTIVE:     Dependencies loaded
+ACTIVE → COOLING_DOWN:   Task complete, no new requests
+COOLING_DOWN → IDLE:     5 min idle timer expires
+IDLE → HIBERNATING:      30 min idle timer expires
+HIBERNATING → UNLOADED:  Manual cleanup or restart
+```
+
+#### **4.2: Predictive Pre-Loading**
+
+**Using CAI + Learning Database:**
+```python
+# User patterns learned over time
+Patterns:
+  Morning (8am-10am):  Vision + Display Monitor (multi-monitor setup)
+  Midday (12pm-2pm):   Chatbot (email responses, research)
+  Evening (6pm-8pm):   Goal Inference (planning next day)
+
+Pre-Loading Strategy:
+  8:00am → Pre-load Vision to WARMING_UP state
+  8:05am → User: "Analyze screen" → Instant (already warm)
+
+  12:00pm → Pre-load Chatbot to WARMING_UP state
+  12:15pm → User: "Help write email" → Instant (already warm)
+```
+
+---
+
+## 🎛️ RAM Optimization Flow Diagram
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                   USER GIVES COMMAND                           │
+└────────────────────────────────────────────────────────────────┘
+                             ↓
+            ┌────────────────────────────────┐
+            │   CAI: Parse Intent + Context  │
+            │   (Always-On, 100MB RAM)       │
+            └────────────────────────────────┘
+                             ↓
+        ┌────────────────────────────────────────┐
+        │   Check Local RAM Pressure (macOS)     │
+        │   • vm_stat page outs                  │
+        │   • Memory percentage                  │
+        └────────────────────────────────────────┘
+                   ↓                    ↓
+         ┌─────────────┐      ┌─────────────────┐
+         │ RAM < 70%   │      │   RAM > 70%     │
+         │ Low Pressure│      │ High Pressure   │
+         └─────────────┘      └─────────────────┘
+                   ↓                    ↓
+    ┌──────────────────────┐    ┌──────────────────────┐
+    │  Check Component     │    │  ROUTE TO GCP        │
+    │  State Locally       │    │  (32GB Spot VM)      │
+    └──────────────────────┘    └──────────────────────┘
+             ↓                             ↓
+    ┌─────────────────┐         ┌────────────────────┐
+    │ Already Loaded? │         │ Activate Components│
+    │ YES → Use Local │         │ on GCP:            │
+    │ NO → Activate   │         │ • Vision (if needed│
+    └─────────────────┘         │ • UAE (if needed)  │
+                                │ • SAI (if needed)  │
+                                │ • Chatbot (if...)  │
+                                └────────────────────┘
+                                          ↓
+                               ┌────────────────────┐
+                               │ Process on GCP     │
+                               │ (1-3 seconds)      │
+                               └────────────────────┘
+             ↓                            ↓
+    ┌─────────────────┐         ┌────────────────────┐
+    │ Process Locally │         │ Return Response    │
+    │ (if possible)   │         │ via WebSocket      │
+    └─────────────────┘         └────────────────────┘
+             ↓                            ↓
+             └────────────────┬───────────┘
+                              ↓
+                   ┌────────────────────┐
+                   │  Response to User  │
+                   │  • Speak (TTS)     │
+                   │  • UI Update       │
+                   └────────────────────┘
+                              ↓
+                   ┌────────────────────┐
+                   │ Component Lifecycle│
+                   │ • Active → Idle    │
+                   │ • Start 5min timer │
+                   │ • Unload if unused │
+                   └────────────────────┘
 ```
 
 ---
