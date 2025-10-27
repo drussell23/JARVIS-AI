@@ -9,9 +9,19 @@ Advanced Browser Automation + v2.0 ML-Powered Intelligence Systems
 The JARVIS backend loads 9 critical components + 6 intelligent systems:
 
 1. CHATBOTS - Claude Vision AI for conversation and screen understanding
-2. VISION - Real-time screen capture with Multi-Space Desktop Monitoring
+2. VISION - Real-time screen capture with Multi-Space Desktop Monitoring + YOLOv8
    • Multi-Space Vision: Monitors all macOS desktop spaces simultaneously
    • Smart Space Detection: "Where is Cursor IDE?", "What's on Desktop 2?"
+   • YOLOv8 UI Detection: 10-20x faster than Claude Vision for UI elements
+     - Detects buttons, icons, menus, Control Center, TV UI (6GB RAM max)
+     - Real-time capability (10-20 FPS), free after model download
+     - 5 model sizes: nano (3MB, 0.6GB) to xlarge (68MB, 6GB)
+   • Hybrid YOLO-Claude Vision: Intelligent routing based on task complexity
+     - YOLO-first for UI detection (fast, accurate, free)
+     - Claude for text extraction and complex analysis
+     - Hybrid mode: YOLO finds regions → Claude analyzes content
+   • Enhanced Window Detection: UI element tracking in windows
+   • Multi-Monitor Layout Detection: Vision-based monitor awareness
    • 9-stage processing pipeline with intelligent orchestration
    • Dynamic memory allocation (1.2GB budget)
    • Cross-language optimization (Python, Rust, Swift)

@@ -9,10 +9,20 @@ This backend loads 10 critical components that power the JARVIS AI system:
    - Enables screen analysis and vision capabilities
    - Handles all natural language understanding and generation
 
-2. VISION (Screen Capture & Multi-Space Analysis)
+2. VISION (Screen Capture & Multi-Space Analysis + YOLOv8)
    - Real-time screen monitoring with Swift-based capture
    - Video streaming at 30 FPS with purple recording indicator
    - Multi-Space Desktop Vision: Monitors all macOS desktop spaces
+   - YOLOv8 Integration: Real-time UI element detection (10-20x faster than Claude)
+     * 5 model sizes from nano (3MB) to xlarge (68MB)
+     * Detects 20+ UI types: buttons, icons, Control Center, TV UI, monitors
+     * Free after download, real-time capable (10-20 FPS)
+   - Hybrid YOLO-Claude Vision: Intelligent task routing
+     * YOLO-first for UI detection (fast, accurate, free)
+     * Claude for OCR and complex semantic analysis
+     * Hybrid mode for comprehensive understanding
+   - Enhanced Window Detection with UI element tracking
+   - Multi-Monitor Layout Detection with vision-based awareness
    - Computer vision analysis for understanding screen content
    - Integration Architecture: 9-stage processing pipeline with dynamic memory management
    - Bloom Filter Network: Hierarchical duplicate detection system
