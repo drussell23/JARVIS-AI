@@ -7,3 +7,9 @@
 # Alternative for PyAutoGUI on macOS with miniforge:
 # Use the native macOS screen capture APIs through PyObjC directly
 # or implement Swift-based capture solutions
+
+# YOLOv8 - Real-time object detection for UI elements
+# Enables fast local vision detection (10-20x faster than Claude Vision)
+# Models: nano (3MB, 0.6GB RAM) to xlarge (68MB, 6GB RAM)
+# Install: pip install ultralytics
+ultralytics>=8.0.0

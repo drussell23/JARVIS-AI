@@ -1,33 +1,92 @@
 """
 Optimized Claude Vision Analyzer - Faster response times through image optimization
+Includes YOLO hybrid integration for fast UI detection
 """
 
 import base64
 import io
-from typing import Dict, Any, Optional
-from PIL import Image
+import logging
+import time
+from typing import Any, Dict, Optional
+
 import numpy as np
 from anthropic import Anthropic
-import json
-import time
-import logging
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
 
 class OptimizedClaudeVisionAnalyzer:
-    """Optimized Claude vision analyzer with faster response times"""
+    """Optimized Claude vision analyzer with faster response times and YOLO integration"""
 
-    def __init__(self, api_key: str, use_intelligent_selection: bool = True):
-        """Initialize Claude vision analyzer"""
+    def __init__(
+        self,
+        api_key: str,
+        use_intelligent_selection: bool = True,
+        use_yolo_hybrid: bool = True,
+    ):
+        """Initialize Claude vision analyzer with optional YOLO integration"""
         self.client = Anthropic(api_key=api_key)
         self.model = "claude-3-5-sonnet-20241022"
         self.use_intelligent_selection = use_intelligent_selection
+        self.use_yolo_hybrid = use_yolo_hybrid
 
         # Optimization settings
         self.max_image_size = (1280, 720)  # Reduced from full resolution
         self.jpeg_quality = 60  # Lower quality for faster upload
         self.max_file_size = 500 * 1024  # 500KB max
+
+        # Lazy-loaded YOLO hybrid vision (only if requested)
+        self._yolo_hybrid = None
+
+    def _get_yolo_hybrid(self):
+        """Lazy load YOLO hybrid vision system"""
+        if self._yolo_hybrid is None and self.use_yolo_hybrid:
+            try:
+                from backend.vision.yolo_claude_hybrid import YOLOClaudeHybridVision
+
+                self._yolo_hybrid = YOLOClaudeHybridVision()
+                logger.info("✅ YOLO-Claude hybrid vision loaded")
+            except Exception as e:
+                logger.warning(f"YOLO hybrid vision not available: {e}")
+        return self._yolo_hybrid
+
+    def _determine_vision_task_type(self, prompt: str):
+        """Determine the best vision task type based on prompt"""
+        prompt_lower = prompt.lower()
+
+        # Import task types
+        try:
+            from backend.vision.yolo_claude_hybrid import VisionTaskType
+
+            # UI detection keywords
+            if any(
+                kw in prompt_lower
+                for kw in ["ui", "button", "icon", "menu", "window", "control", "interface"]
+            ):
+                return VisionTaskType.UI_DETECTION
+
+            # Control Center keywords
+            if "control center" in prompt_lower:
+                return VisionTaskType.CONTROL_CENTER
+
+            # TV connection keywords
+            if any(kw in prompt_lower for kw in ["tv", "television", "connection", "remote"]):
+                return VisionTaskType.TV_CONNECTION
+
+            # Multi-monitor keywords
+            if any(kw in prompt_lower for kw in ["monitor", "display", "screen layout"]):
+                return VisionTaskType.MULTI_MONITOR
+
+            # Text extraction keywords
+            if any(kw in prompt_lower for kw in ["text", "read", "ocr", "content"]):
+                return VisionTaskType.TEXT_EXTRACTION
+
+            # Default to comprehensive
+            return VisionTaskType.COMPREHENSIVE
+
+        except ImportError:
+            return None
 
     async def _analyze_screenshot_fast_with_intelligent_selection(
         self, image_base64: str, image_data: bytes, optimized_prompt: str, start_time: float
@@ -95,7 +154,7 @@ class OptimizedClaudeVisionAnalyzer:
             prompt: What to analyze in the image
 
         Returns:
-            Analysis results from Claude
+            Analysis results from Claude or YOLO
         """
         start_time = time.time()
 
@@ -109,23 +168,47 @@ class OptimizedClaudeVisionAnalyzer:
         else:
             raise ValueError(f"Unsupported image type: {type(image)}")
 
+        # Try YOLO hybrid first for eligible tasks
+        if self.use_yolo_hybrid:
+            task_type = self._determine_vision_task_type(prompt)
+            if task_type:
+                try:
+                    yolo_hybrid = self._get_yolo_hybrid()
+                    if yolo_hybrid:
+                        logger.info(
+                            f"🎯 Attempting YOLO hybrid analysis for task type: {task_type.value}"
+                        )
+                        result = await yolo_hybrid.analyze_screen(
+                            image=pil_image,
+                            task_type=task_type,
+                            prompt=prompt,
+                            claude_analyzer=self,
+                        )
+
+                        # Add timing info
+                        result["response_time"] = time.time() - start_time
+                        result["method"] = "yolo_hybrid"
+
+                        logger.info(
+                            f"✅ YOLO hybrid analysis completed in {result['response_time']:.2f}s"
+                        )
+                        return result
+                except Exception as e:
+                    logger.warning(f"YOLO hybrid failed, falling back to Claude: {e}")
+
         # Optimize image
         optimized_image = self._optimize_image(pil_image)
 
         # Convert to base64
         buffer = io.BytesIO()
-        optimized_image.save(
-            buffer, format="JPEG", quality=self.jpeg_quality, optimize=True
-        )
+        optimized_image.save(buffer, format="JPEG", quality=self.jpeg_quality, optimize=True)
         image_data = buffer.getvalue()
 
         # Further compress if needed
         while len(image_data) > self.max_file_size and self.jpeg_quality > 30:
             self.jpeg_quality -= 10
             buffer = io.BytesIO()
-            optimized_image.save(
-                buffer, format="JPEG", quality=self.jpeg_quality, optimize=True
-            )
+            optimized_image.save(buffer, format="JPEG", quality=self.jpeg_quality, optimize=True)
             image_data = buffer.getvalue()
 
         image_base64 = base64.b64encode(image_data).decode()
@@ -192,10 +275,7 @@ class OptimizedClaudeVisionAnalyzer:
             image = image.convert("RGB")
 
         # Resize if larger than max size
-        if (
-            image.size[0] > self.max_image_size[0]
-            or image.size[1] > self.max_image_size[1]
-        ):
+        if image.size[0] > self.max_image_size[0] or image.size[1] > self.max_image_size[1]:
             image.thumbnail(self.max_image_size, Image.Resampling.LANCZOS)
 
         return image
@@ -214,3 +294,45 @@ class OptimizedClaudeVisionAnalyzer:
     async def analyze_screenshot(self, image: Any, prompt: str) -> Dict[str, Any]:
         """Backward compatible method that uses optimized version"""
         return await self.analyze_screenshot_fast(image, prompt)
+
+    async def detect_control_center(self, screenshot: Any) -> Optional[Dict[str, Any]]:
+        """Detect macOS Control Center using YOLO"""
+        yolo_hybrid = self._get_yolo_hybrid()
+        if not yolo_hybrid:
+            logger.warning("YOLO hybrid not available for Control Center detection")
+            return None
+
+        try:
+            result = await yolo_hybrid.detect_control_center(screenshot)
+            return result
+        except Exception as e:
+            logger.error(f"Control Center detection failed: {e}")
+            return None
+
+    async def detect_monitors(self, screenshot: Any) -> Optional[Dict[str, Any]]:
+        """Detect multiple monitors using YOLO"""
+        yolo_hybrid = self._get_yolo_hybrid()
+        if not yolo_hybrid:
+            logger.warning("YOLO hybrid not available for monitor detection")
+            return None
+
+        try:
+            result = await yolo_hybrid.detect_monitors(screenshot)
+            return result
+        except Exception as e:
+            logger.error(f"Monitor detection failed: {e}")
+            return None
+
+    async def detect_tv_connection_ui(self, screenshot: Any) -> Optional[Dict[str, Any]]:
+        """Detect Living Room TV connection UI using YOLO"""
+        yolo_hybrid = self._get_yolo_hybrid()
+        if not yolo_hybrid:
+            logger.warning("YOLO hybrid not available for TV connection UI detection")
+            return None
+
+        try:
+            result = await yolo_hybrid.detect_tv_connection_ui(screenshot)
+            return result
+        except Exception as e:
+            logger.error(f"TV connection UI detection failed: {e}")
+            return None

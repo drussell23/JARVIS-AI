@@ -572,11 +572,75 @@ class HybridOrchestrator:
 
         elif model_def.model_type == "vision":
             # Vision model execution
-            result = {
-                "success": True,
-                "text": f"[Vision model {model_def.name} would process the query]",
-                "model": model_def.name,
-            }
+            # Check if this is a YOLO model
+            if model_def.name.startswith("yolov8"):
+                try:
+                    from backend.vision.yolo_vision_detector import get_yolo_detector
+
+                    yolo_detector = get_yolo_detector()
+
+                    # Extract image from query if it's multimodal content
+                    image_data = kwargs.get("image_data")
+                    if not image_data and isinstance(query, list):
+                        # Extract image from multimodal content
+                        for content in query:
+                            if isinstance(content, dict) and content.get("type") == "image":
+                                image_data = content.get("source", {}).get("data")
+                                break
+
+                    if not image_data:
+                        return {
+                            "success": False,
+                            "error": "No image data provided for YOLO detection",
+                        }
+
+                    # Decode base64 image if needed
+                    if isinstance(image_data, str):
+                        import base64
+                        from io import BytesIO
+
+                        from PIL import Image
+
+                        image_bytes = base64.b64decode(image_data)
+                        image = Image.open(BytesIO(image_bytes))
+                    else:
+                        image = image_data
+
+                    # Perform detection
+                    detection_result = await yolo_detector.detect_ui_elements(image)
+
+                    # Format result
+                    detections_list = [
+                        {
+                            "class": det.class_name,
+                            "confidence": det.confidence,
+                            "bbox": {
+                                "x": det.bbox.x,
+                                "y": det.bbox.y,
+                                "width": det.bbox.width,
+                                "height": det.bbox.height,
+                            },
+                        }
+                        for det in detection_result.detections
+                    ]
+
+                    result = {
+                        "success": True,
+                        "text": f"Detected {len(detections_list)} objects",
+                        "detections": detections_list,
+                        "model": model_def.name,
+                    }
+
+                except Exception as e:
+                    logger.error(f"YOLO detection failed: {e}")
+                    result = {"success": False, "error": f"YOLO detection failed: {e}"}
+            else:
+                # Other vision models (Claude Vision)
+                result = {
+                    "success": True,
+                    "text": f"[Vision model {model_def.name} would process the query]",
+                    "model": model_def.name,
+                }
 
         elif model_def.model_type == "embedding":
             # Semantic search
