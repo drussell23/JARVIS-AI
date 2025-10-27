@@ -80,6 +80,17 @@ class HybridRouter:
         self.routing_history = []
         self.max_history = 1000
 
+        # ============== GCP Activity Tracking (Phase 2.5) ==============
+        # Track last activity time for each backend
+        self._backend_activity = {}
+        self._activity_threshold_minutes = 10  # Config-driven
+
+        # Backend capabilities cache (from discovery)
+        self._backend_capabilities = {}
+        self._capabilities_cache_ttl = 60  # seconds
+        self._capabilities_last_updated = {}
+        # ================================================================
+
         logger.info(f"🎯 HybridRouter initialized with {len(self.rules)} rules")
 
     def _compile_patterns(self):
@@ -131,10 +142,15 @@ class HybridRouter:
         if match_config.get("all"):
             return True
 
-        # Check capabilities
+        # ============== CAPABILITIES MATCHING (Phase 2.5) ==============
+        # Check capabilities - match against available backends
         if "capabilities" in match_config:
-            match_config["capabilities"]
-            # This will be matched against backend capabilities later
+            required_capabilities = match_config["capabilities"]
+            if not self._backend_has_capabilities(required_capabilities, context):
+                logger.debug(
+                    f"Rule '{rule['name']}' skipped: No backend with capabilities {required_capabilities}"
+                )
+                return False
 
         # ============== NEW: RAM-Aware Routing (Phase 2) ==============
         # Check memory pressure conditions
@@ -145,11 +161,22 @@ class HybridRouter:
             if not self._matches_memory_pressure(current_pressure, required_pressure):
                 return False
 
+        # ============== GCP IDLE TIME TRACKING (Phase 2.5) ==============
         # Check GCP idle time (for cost optimization)
         if "gcp_idle_minutes" in match_config:
-            match_config["gcp_idle_minutes"]
-            # TODO: Track GCP idle time
-            # For now, skip this check
+            required_idle_str = match_config["gcp_idle_minutes"]
+            gcp_idle_minutes = self._get_backend_idle_minutes("gcp")
+
+            if not self._matches_idle_time(gcp_idle_minutes, required_idle_str):
+                logger.debug(
+                    f"Rule '{rule['name']}' skipped: GCP idle {gcp_idle_minutes:.1f}min "
+                    f"doesn't match requirement '{required_idle_str}'"
+                )
+                return False
+
+            logger.info(
+                f"✅ Cost optimization: GCP idle for {gcp_idle_minutes:.1f}min (threshold: {required_idle_str})"
+            )
         # ===============================================================
 
         # Check memory requirements
@@ -387,4 +414,175 @@ class HybridRouter:
                 if total > 0
                 else 0
             ),
+            "backend_activity": self._get_activity_summary(),
         }
+
+    # ============== GCP IDLE TIME TRACKING IMPLEMENTATION (Phase 2.5) ==============
+
+    def record_backend_activity(self, backend_name: str):
+        """
+        Record activity for a backend (called after successful execution)
+
+        Args:
+            backend_name: Name of backend ("local", "gcp", etc.)
+        """
+        import time
+
+        self._backend_activity[backend_name] = time.time()
+        logger.debug(f"📝 Recorded activity for backend '{backend_name}'")
+
+    def _get_backend_idle_minutes(self, backend_name: str) -> float:
+        """
+        Get idle time in minutes for a backend
+
+        Args:
+            backend_name: Name of backend
+
+        Returns:
+            Minutes since last activity (0.0 if never used)
+        """
+        import time
+
+        if backend_name not in self._backend_activity:
+            # Never been used - return 0 idle time
+            return 0.0
+
+        last_activity = self._backend_activity[backend_name]
+        idle_seconds = time.time() - last_activity
+        idle_minutes = idle_seconds / 60.0
+
+        return idle_minutes
+
+    def _matches_idle_time(self, actual_minutes: float, required: str) -> bool:
+        """
+        Check if idle time matches requirement
+
+        Args:
+            actual_minutes: Actual idle time in minutes
+            required: Requirement string like ">10", "<5", ">=15"
+
+        Returns:
+            True if matches, False otherwise
+        """
+        # Parse conditions like ">10", "<5", ">=15"
+        if required.startswith(">="):
+            threshold = float(required[2:])
+            return actual_minutes >= threshold
+        elif required.startswith("<="):
+            threshold = float(required[2:])
+            return actual_minutes <= threshold
+        elif required.startswith(">"):
+            threshold = float(required[1:])
+            return actual_minutes > threshold
+        elif required.startswith("<"):
+            threshold = float(required[1:])
+            return actual_minutes < threshold
+        else:
+            # Exact match with tolerance
+            try:
+                threshold = float(required)
+                return abs(actual_minutes - threshold) < 1.0  # Within 1 minute
+            except ValueError:
+                return False
+
+    def _get_activity_summary(self) -> Dict[str, Any]:
+        """Get summary of backend activity for analytics"""
+        import time
+
+        summary = {}
+        for backend_name, last_activity_time in self._backend_activity.items():
+            idle_minutes = (time.time() - last_activity_time) / 60.0
+            summary[backend_name] = {
+                "last_activity": last_activity_time,
+                "idle_minutes": round(idle_minutes, 2),
+                "is_idle": idle_minutes > self._activity_threshold_minutes,
+            }
+
+        return summary
+
+    # ============== CAPABILITIES MATCHING IMPLEMENTATION (Phase 2.5) ==============
+
+    def register_backend_capabilities(self, backend_name: str, capabilities: List[str]):
+        """
+        Register capabilities for a backend (from service discovery)
+
+        Args:
+            backend_name: Name of backend
+            capabilities: List of capability strings
+        """
+        import time
+
+        self._backend_capabilities[backend_name] = capabilities
+        self._capabilities_last_updated[backend_name] = time.time()
+        logger.info(f"✅ Registered {len(capabilities)} capabilities for '{backend_name}'")
+
+    def _backend_has_capabilities(
+        self, required_capabilities: List[str], context: RoutingContext
+    ) -> bool:
+        """
+        Check if any backend has the required capabilities
+
+        Args:
+            required_capabilities: List of required capability strings
+            context: Routing context (for potential backend hints)
+
+        Returns:
+            True if at least one backend has all required capabilities
+        """
+        # If no backends registered yet, check config
+        if not self._backend_capabilities:
+            self._load_capabilities_from_config()
+
+        # Check if any backend has ALL required capabilities
+        for backend_name, backend_caps in self._backend_capabilities.items():
+            if all(cap in backend_caps for cap in required_capabilities):
+                logger.debug(
+                    f"✅ Backend '{backend_name}' has required capabilities: {required_capabilities}"
+                )
+                return True
+
+        logger.warning(
+            f"⚠️  No backend has all required capabilities: {required_capabilities}. "
+            f"Available backends: {list(self._backend_capabilities.keys())}"
+        )
+        return False
+
+    def _load_capabilities_from_config(self):
+        """Load backend capabilities from config (fallback)"""
+        backends_config = self.config.get("hybrid", {}).get("backends", {})
+
+        for backend_name, backend_config in backends_config.items():
+            if backend_config.get("enabled", True):
+                capabilities = backend_config.get("capabilities", [])
+                self.register_backend_capabilities(backend_name, capabilities)
+
+    def get_backends_for_capability(self, capability: str) -> List[str]:
+        """
+        Get list of backends that support a capability
+
+        Args:
+            capability: Capability string (e.g., "vision_capture")
+
+        Returns:
+            List of backend names
+        """
+        if not self._backend_capabilities:
+            self._load_capabilities_from_config()
+
+        matching_backends = [
+            backend_name
+            for backend_name, caps in self._backend_capabilities.items()
+            if capability in caps
+        ]
+
+        return matching_backends
+
+    def is_capability_cache_stale(self, backend_name: str) -> bool:
+        """Check if capability cache for a backend is stale"""
+        import time
+
+        if backend_name not in self._capabilities_last_updated:
+            return True
+
+        age = time.time() - self._capabilities_last_updated[backend_name]
+        return age > self._capabilities_cache_ttl
