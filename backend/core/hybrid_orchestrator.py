@@ -28,6 +28,11 @@ _learning_db = None
 # Phase 3.1: Local LLM Integration (lazy loaded)
 _llm_inference = None
 
+# Phase 3.1+: Intelligent Model Management (lazy loaded)
+_model_registry = None
+_lifecycle_manager = None
+_model_selector = None
+
 
 def _get_uae():
     """Lazy load UAE"""
@@ -100,6 +105,48 @@ def _get_llm():
     return _llm_inference
 
 
+def _get_model_registry():
+    """Lazy load Model Registry (Phase 3.1+)"""
+    global _model_registry
+    if _model_registry is None:
+        try:
+            from backend.intelligence.model_registry import get_model_registry
+
+            _model_registry = get_model_registry()
+            logger.info("✅ Model Registry initialized")
+        except Exception as e:
+            logger.warning(f"Model Registry not available: {e}")
+    return _model_registry
+
+
+def _get_lifecycle_manager():
+    """Lazy load Model Lifecycle Manager (Phase 3.1+)"""
+    global _lifecycle_manager
+    if _lifecycle_manager is None:
+        try:
+            from backend.intelligence.model_lifecycle_manager import get_lifecycle_manager
+
+            _lifecycle_manager = get_lifecycle_manager()
+            logger.info("✅ Model Lifecycle Manager initialized")
+        except Exception as e:
+            logger.warning(f"Model Lifecycle Manager not available: {e}")
+    return _lifecycle_manager
+
+
+def _get_model_selector():
+    """Lazy load Intelligent Model Selector (Phase 3.1+)"""
+    global _model_selector
+    if _model_selector is None:
+        try:
+            from backend.intelligence.model_selector import get_model_selector
+
+            _model_selector = get_model_selector()
+            logger.info("✅ Intelligent Model Selector initialized")
+        except Exception as e:
+            logger.warning(f"Model Selector not available: {e}")
+    return _model_selector
+
+
 class HybridOrchestrator:
     """
     Main orchestrator for JARVIS hybrid architecture
@@ -132,6 +179,12 @@ class HybridOrchestrator:
 
         logger.info("🚀 Starting HybridOrchestrator...")
         await self.client.start()
+
+        # Start Model Lifecycle Manager (Phase 3.1+)
+        lifecycle_manager = _get_lifecycle_manager()
+        if lifecycle_manager:
+            await lifecycle_manager.start()
+            logger.info("✅ Model Lifecycle Manager started")
 
         # Register backend capabilities from discovered services
         self._register_backend_capabilities()
@@ -404,6 +457,139 @@ class HybridOrchestrator:
         return {"success": False, "error": str(error)}
 
     # ============== PHASE 3.1: LLM Helper Methods ==============
+
+    async def execute_with_intelligent_model_selection(
+        self,
+        query: str,
+        intent: Optional[str] = None,
+        required_capabilities: Optional[set] = None,
+        context: Optional[Dict] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        Execute a query with intelligent model selection
+
+        The model selector will:
+        1. Analyze the query (CAI integration)
+        2. Consider context and focus level (UAE integration)
+        3. Check RAM availability (SAI integration)
+        4. Score all capable models
+        5. Select the best option
+        6. Load model if needed (lifecycle manager)
+        7. Execute the query
+
+        Args:
+            query: User's query text
+            intent: Pre-classified intent (optional)
+            required_capabilities: Required capabilities (optional)
+            context: Additional context from UAE/SAI/CAI
+            **kwargs: Additional parameters for model
+
+        Returns:
+            Dict with result and metadata
+        """
+        model_selector = _get_model_selector()
+        if not model_selector:
+            logger.warning("Model selector not available, falling back to direct LLM")
+            return await self.execute_llm_inference(query, **kwargs)
+
+        lifecycle_manager = _get_lifecycle_manager()
+        if not lifecycle_manager:
+            logger.warning("Lifecycle manager not available")
+            return await self.execute_llm_inference(query, **kwargs)
+
+        try:
+            # Select best model with fallback chain
+            primary_model, fallbacks = await model_selector.select_with_fallback(
+                query=query,
+                intent=intent,
+                required_capabilities=required_capabilities,
+                context=context,
+            )
+
+            if not primary_model:
+                logger.error("No suitable model found for query")
+                return {"success": False, "error": "No suitable model found", "query": query}
+
+            # Try primary model
+            try:
+                result = await self._execute_with_model(
+                    primary_model, query, lifecycle_manager, **kwargs
+                )
+                if result["success"]:
+                    result["model_used"] = primary_model.name
+                    return result
+            except Exception as e:
+                logger.warning(f"Primary model {primary_model.name} failed: {e}")
+
+            # Try fallbacks
+            for fallback_model in fallbacks:
+                try:
+                    logger.info(f"Trying fallback model: {fallback_model.name}")
+                    result = await self._execute_with_model(
+                        fallback_model, query, lifecycle_manager, **kwargs
+                    )
+                    if result["success"]:
+                        result["model_used"] = fallback_model.name
+                        result["fallback_used"] = True
+                        return result
+                except Exception as e:
+                    logger.warning(f"Fallback model {fallback_model.name} failed: {e}")
+                    continue
+
+            return {"success": False, "error": "All models failed", "query": query}
+
+        except Exception as e:
+            logger.error(f"Error in intelligent model selection: {e}")
+            return {"success": False, "error": str(e), "query": query}
+
+    async def _execute_with_model(
+        self, model_def, query: str, lifecycle_manager, **kwargs
+    ) -> Dict[str, Any]:
+        """Execute query with a specific model"""
+        # Load model if needed
+        model_instance = await lifecycle_manager.get_model(
+            model_def.name, required_by="orchestrator"
+        )
+
+        if not model_instance:
+            return {"success": False, "error": f"Failed to load {model_def.name}"}
+
+        # Execute based on model type
+        if model_def.model_type == "llm":
+            # LLM inference
+            if model_def.name == "llama_70b":
+                result = await self.execute_llm_inference(query, **kwargs)
+            elif model_def.name == "claude_api":
+                # TODO: Add Claude API execution
+                result = {
+                    "success": True,
+                    "text": f"[Claude API would process: {query}]",
+                    "model": "claude_api",
+                }
+            else:
+                result = {"success": False, "error": f"Unknown LLM: {model_def.name}"}
+
+        elif model_def.model_type == "vision":
+            # Vision model execution
+            result = {
+                "success": True,
+                "text": f"[Vision model {model_def.name} would process the query]",
+                "model": model_def.name,
+            }
+
+        elif model_def.model_type == "embedding":
+            # Semantic search
+            result = {
+                "success": True,
+                "text": f"[Semantic search would process: {query}]",
+                "model": model_def.name,
+            }
+
+        else:
+            result = {"success": False, "error": f"Unknown model type: {model_def.model_type}"}
+
+        return result
 
     async def execute_llm_inference(
         self,

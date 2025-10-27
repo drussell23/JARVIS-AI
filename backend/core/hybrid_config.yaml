@@ -535,3 +535,72 @@ hybrid:
     queue_enabled: true
     queue_max_size: 1000
     queue_timeout: 300  # seconds
+
+  # ============== MODEL LIFECYCLE MANAGEMENT (Phase 3.1+) ==============
+  # Adaptive 3-tier model state management: RAM → Disk → Cloud Storage
+  model_lifecycle:
+    enabled: true
+
+    # State Transition Policies
+    unload_after_idle_seconds: 1800      # 30 min - Unload from RAM to disk if idle
+    archive_after_idle_seconds: 86400    # 24 hrs - Archive to cloud storage if rarely used
+    min_keep_loaded_models: 1            # Always keep at least N models loaded
+    max_loaded_models: 3                 # Max models in RAM simultaneously
+
+    # Background Optimization
+    optimizer_interval: 600              # seconds - Run optimizer every 10 min
+    ram_monitor_interval: 30             # seconds - Check RAM every 30s
+
+    # Load Queue Configuration
+    max_queue_size: 50                   # Max pending load requests
+    load_timeout: 120                    # seconds - Max time to wait for model load
+    priority_boost_for_urgent: 20        # Priority boost for urgent requests
+
+    # RAM Pressure Response
+    aggressive_unload_threshold: 85      # % - Aggressive unloading above this
+    panic_unload_threshold: 95           # % - Emergency unloading (keep only critical)
+
+  # Model Selector Configuration
+  model_selector:
+    enabled: true
+
+    # Scoring Weights (must sum to 1.0)
+    weights:
+      quality: 0.35                      # Model quality/accuracy
+      latency: 0.25                      # Inference + load time
+      cost: 0.25                         # $ per query
+      ram_efficiency: 0.15               # RAM impact
+
+    # User Preferences
+    preferences:
+      prefer_local_models: true          # Prefer $0 cost local models
+      max_wait_seconds: 30.0             # Max acceptable latency
+      quality_threshold: 0.7             # Minimum quality score
+      max_cost_per_query: 0.10           # Max $ per query
+
+    # Intent Classification (simple keyword-based for now)
+    # TODO: Integrate with CAI for advanced classification
+    intent_keywords:
+      vision_analysis:
+        - screen
+        - see
+        - look
+        - show
+        - "what's on"
+        - display
+      code_explanation:
+        - code
+        - function
+        - explain
+        - debug
+        - fix
+      conversational_ai:
+        - chat
+        - talk
+        - discuss
+        - "tell me about"
+      semantic_search:
+        - find
+        - search
+        - when did
+        - what did i
