@@ -18,15 +18,74 @@ logger = logging.getLogger(__name__)
 class OptimizedClaudeVisionAnalyzer:
     """Optimized Claude vision analyzer with faster response times"""
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, use_intelligent_selection: bool = True):
         """Initialize Claude vision analyzer"""
         self.client = Anthropic(api_key=api_key)
         self.model = "claude-3-5-sonnet-20241022"
+        self.use_intelligent_selection = use_intelligent_selection
 
         # Optimization settings
         self.max_image_size = (1280, 720)  # Reduced from full resolution
         self.jpeg_quality = 60  # Lower quality for faster upload
         self.max_file_size = 500 * 1024  # 500KB max
+
+    async def _analyze_screenshot_fast_with_intelligent_selection(
+        self, image_base64: str, image_data: bytes, optimized_prompt: str, start_time: float
+    ) -> Dict[str, Any]:
+        """Analyze screenshot using intelligent model selection"""
+        try:
+            from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+            orchestrator = HybridOrchestrator()
+            if not orchestrator.is_running:
+                await orchestrator.start()
+
+            # Build rich context
+            context = {
+                "task_type": "vision_analysis",
+                "image_size_kb": len(image_data) / 1024,
+                "optimization_level": "fast",
+                "compression_quality": self.jpeg_quality,
+                "max_image_size": self.max_image_size,
+                "performance_target": "low_latency",
+            }
+
+            # Execute with intelligent selection
+            # Note: Vision requires special handling - we pass image data separately
+            api_start = time.time()
+
+            result = await orchestrator.execute_with_intelligent_model_selection(
+                query=optimized_prompt,
+                intent="vision_analysis",
+                required_capabilities={"vision", "vision_analyze_heavy", "multimodal"},
+                context=context,
+                max_tokens=512,
+                temperature=0.3,
+                image_data=image_base64,  # Pass image data
+            )
+
+            if not result.get("success"):
+                raise Exception(result.get("error", "Unknown error"))
+
+            response_text = result.get("text", "").strip()
+            model_used = result.get("model_used", "intelligent_selection")
+
+            logger.info(f"✨ Vision analysis using {model_used}")
+            logger.info(f"Claude API call took {time.time() - api_start:.2f}s")
+
+            return {
+                "description": response_text,
+                "response_time": time.time() - start_time,
+                "image_size_kb": len(image_data) / 1024,
+                "model_used": model_used,
+            }
+
+        except ImportError:
+            logger.warning("Hybrid orchestrator not available, falling back to direct API")
+            raise
+        except Exception as e:
+            logger.error(f"Error in intelligent selection: {e}")
+            raise
 
     async def analyze_screenshot_fast(self, image: Any, prompt: str) -> Dict[str, Any]:
         """Fast screenshot analysis with optimizations
@@ -78,6 +137,16 @@ class OptimizedClaudeVisionAnalyzer:
         # Use shorter, more focused prompt for faster response
         optimized_prompt = self._optimize_prompt(prompt)
 
+        # Try intelligent selection first
+        if self.use_intelligent_selection:
+            try:
+                return await self._analyze_screenshot_fast_with_intelligent_selection(
+                    image_base64, image_data, optimized_prompt, start_time
+                )
+            except Exception as e:
+                logger.warning(f"Intelligent selection failed, falling back to direct API: {e}")
+
+        # Fallback to direct API
         # Send to Claude with optimized settings
         api_start = time.time()
         message = self.client.messages.create(

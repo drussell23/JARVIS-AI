@@ -92,32 +92,33 @@ class ContextualUnderstandingEngine:
     Advanced contextual understanding with emotional intelligence
     """
     
-    def __init__(self, anthropic_api_key: str):
+    def __init__(self, anthropic_api_key: str, use_intelligent_selection: bool = True):
         self.claude = anthropic.Anthropic(api_key=anthropic_api_key)
-        
+        self.use_intelligent_selection = use_intelligent_selection
+
         # Emotional understanding
         self.emotional_history = deque(maxlen=1000)
         self.emotional_profile = EmotionalProfile()
         self.emotion_transitions = defaultdict(lambda: defaultdict(int))
-        
+
         # Behavioral analysis
         self.behavior_signals = deque(maxlen=5000)
         self.behavior_patterns = {}
         self.anomaly_detector = None
-        
+
         # Context understanding
         self.context_history = deque(maxlen=2000)
         self.context_embeddings = {}
         self.context_clusters = []
-        
+
         # Personality adaptation
         self.personality_model = self._initialize_personality_model()
         self.interaction_styles = {}
-        
+
         # Learning components
         self.understanding_accuracy = 0.7
         self.adaptation_rate = 0.1
-        
+
         # Initialize ML components
         self._initialize_ml_models()
     
@@ -266,11 +267,125 @@ class ContextualUnderstandingEngine:
         
         return signals
     
+    async def _detect_emotional_state_with_intelligent_selection(self, signals: List[UserBehaviorSignal]) -> EmotionalState:
+        """Detect user's emotional state using intelligent model selection"""
+        try:
+            from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+            orchestrator = HybridOrchestrator()
+            if not orchestrator.is_running:
+                await orchestrator.start()
+
+            # Create signal vector
+            signal_vector = self._create_signal_vector(signals)
+
+            # Build signal summary
+            signal_summary = {
+                sig.signal_type: {
+                    'value': sig.value,
+                    'context': sig.context
+                }
+                for sig in signals
+            }
+
+            # Build rich context for intelligent selection
+            intelligent_context = {
+                "task_type": "emotional_analysis",
+                "user_state": {
+                    "behavioral_signals": signal_summary,
+                    "signal_patterns": {
+                        "window_switching": next((s.value for s in signals if s.signal_type == 'window_switching'), 0),
+                        "typing_consistency": next((s.value for s in signals if s.signal_type == 'typing_pattern'), 0),
+                        "error_rate": next((s.value for s in signals if s.signal_type == 'error_pattern'), 0)
+                    }
+                },
+                "cognitive_load_indicators": {
+                    "high_switching": any(s.value > 0.7 for s in signals if s.signal_type == 'window_switching'),
+                    "high_errors": any(s.value > 0.5 for s in signals if s.signal_type == 'error_pattern')
+                },
+                "analysis_target": "emotional_state_classification"
+            }
+
+            prompt = f"""Analyze these behavioral signals to determine the user's emotional state:
+
+Signals:
+{json.dumps(signal_summary, indent=2)}
+
+Consider:
+1. Window switching: High = stressed/overwhelmed, Low = focused
+2. Typing patterns: Fast+consistent = flow state, Fast+erratic = stressed
+3. Click patterns: Rapid = frustrated/stressed, Measured = focused
+4. App diversity: High = scattered, Low = focused
+5. Idle time: High = tired/contemplative, Low = engaged
+6. Error rate: High = frustrated/tired, Low = confident
+
+Based on these patterns, what is the user's most likely emotional state?
+Options: focused, deep_flow, stressed, overwhelmed, relaxed, energetic,
+tired, frustrated, creative, collaborative, contemplative, neutral
+
+Provide your analysis with:
+- Primary emotion (one of the above)
+- Confidence (0-1)
+- Supporting evidence (which signals support this)
+- Secondary emotions if present"""
+
+            result = await orchestrator.execute_with_intelligent_model_selection(
+                query=prompt,
+                intent="emotional_analysis",
+                required_capabilities={"nlp_analysis", "emotional_intelligence", "context_understanding"},
+                context=intelligent_context,
+                max_tokens=500,
+                temperature=0.7,
+            )
+
+            if not result.get("success"):
+                raise Exception(result.get("error", "Unknown error"))
+
+            analysis = result.get("text", "").strip()
+            model_used = result.get("model_used", "intelligent_selection")
+
+            logger.info(f"✨ Emotional state analysis generated using {model_used}")
+
+            # Parse emotional state
+            for state in EmotionalState:
+                if state.value in analysis.lower():
+                    # Update emotional history
+                    self.emotional_history.append({
+                        'state': state,
+                        'timestamp': datetime.now(),
+                        'signals': signal_vector.tolist(),
+                        'confidence': self._extract_confidence(analysis)
+                    })
+
+                    # Update transitions
+                    if len(self.emotional_history) > 1:
+                        prev_state = self.emotional_history[-2]['state']
+                        self.emotion_transitions[prev_state.value][state.value] += 1
+
+                    return state
+
+            # If no match found, return neutral
+            return EmotionalState.NEUTRAL
+
+        except ImportError:
+            logger.warning("Hybrid orchestrator not available for emotional state detection")
+            raise
+        except Exception as e:
+            logger.error(f"Error in intelligent emotional detection: {e}")
+            raise
+
     async def _detect_emotional_state(self, signals: List[UserBehaviorSignal]) -> EmotionalState:
         """Detect user's emotional state from behavioral signals"""
-        # Create signal vector
+        # Use intelligent selection first with fallback
+        if self.use_intelligent_selection:
+            try:
+                return await self._detect_emotional_state_with_intelligent_selection(signals)
+            except Exception as e:
+                logger.warning(f"Intelligent selection failed for emotional state, falling back to direct Claude: {e}")
+
+        # Fallback: Create signal vector
         signal_vector = self._create_signal_vector(signals)
-        
+
         # Use Claude for nuanced emotional analysis
         signal_summary = {
             sig.signal_type: {
@@ -279,7 +394,7 @@ class ContextualUnderstandingEngine:
             }
             for sig in signals
         }
-        
+
         try:
             response = await asyncio.to_thread(
                 self.claude.messages.create,
@@ -701,15 +816,99 @@ Provide your analysis with:
                 0.95
             )
     
+    async def _generate_empathetic_response_with_intelligent_selection(self, user_input: str,
+                                                                        current_state: Dict[str, Any]) -> str:
+        """Generate empathetic response using intelligent model selection"""
+        try:
+            from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+            orchestrator = HybridOrchestrator()
+            if not orchestrator.is_running:
+                await orchestrator.start()
+
+            emotional_state = current_state.get('emotional_state', EmotionalState.NEUTRAL)
+            personality_traits = current_state.get('personality_adaptation', self.personality_model['base_traits'])
+
+            # Build personality context
+            personality_context = self._build_personality_context(personality_traits, emotional_state)
+
+            # Build rich context for intelligent selection
+            intelligent_context = {
+                "task_type": "context_analysis",
+                "user_state": {
+                    "emotional_state": emotional_state.value if hasattr(emotional_state, 'value') else str(emotional_state),
+                    "personality_traits": personality_traits,
+                    "work_context": current_state.get('work_context', 'unknown')
+                },
+                "communication_requirements": {
+                    "empathy_level": personality_traits.get('empathy', 0.8),
+                    "formality_level": personality_traits.get('formality', 0.5),
+                    "warmth_level": personality_traits.get('warmth', 0.7)
+                },
+                "response_guidelines": personality_context
+            }
+
+            prompt = f"""As JARVIS with the following personality traits and understanding of the user's state:
+
+Personality Traits:
+{json.dumps(personality_traits, indent=2)}
+
+User's Emotional State: {emotional_state.value if hasattr(emotional_state, 'value') else str(emotional_state)}
+Context: {personality_context}
+
+User said: "{user_input}"
+
+Respond in a way that:
+1. Matches the adapted personality traits
+2. Shows understanding of their emotional state
+3. Is helpful and appropriate to the situation
+4. Maintains JARVIS's identity while being emotionally intelligent
+
+Keep the response concise and natural."""
+
+            result = await orchestrator.execute_with_intelligent_model_selection(
+                query=prompt,
+                intent="context_analysis",
+                required_capabilities={"nlp_analysis", "emotional_intelligence", "context_understanding"},
+                context=intelligent_context,
+                max_tokens=300,
+                temperature=0.8,
+            )
+
+            if not result.get("success"):
+                raise Exception(result.get("error", "Unknown error"))
+
+            response = result.get("text", "").strip()
+            model_used = result.get("model_used", "intelligent_selection")
+
+            logger.info(f"✨ Empathetic response generated using {model_used}")
+
+            return response
+
+        except ImportError:
+            logger.warning("Hybrid orchestrator not available for empathetic response")
+            raise
+        except Exception as e:
+            logger.error(f"Error in intelligent empathetic response: {e}")
+            raise
+
     async def generate_empathetic_response(self, user_input: str,
                                          current_state: Dict[str, Any]) -> str:
         """Generate empathetic response based on user state"""
+        # Use intelligent selection first with fallback
+        if self.use_intelligent_selection:
+            try:
+                return await self._generate_empathetic_response_with_intelligent_selection(user_input, current_state)
+            except Exception as e:
+                logger.warning(f"Intelligent selection failed for empathetic response, falling back: {e}")
+
+        # Fallback: original implementation
         emotional_state = current_state.get('emotional_state', EmotionalState.NEUTRAL)
         personality_traits = current_state.get('personality_adaptation', self.personality_model['base_traits'])
-        
+
         # Build personality context
         personality_context = self._build_personality_context(personality_traits, emotional_state)
-        
+
         try:
             response = await asyncio.to_thread(
                 self.claude.messages.create,

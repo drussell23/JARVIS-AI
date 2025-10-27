@@ -112,10 +112,11 @@ class VoiceAnnouncementSystem:
     Intelligent voice announcement system with dynamic content generation
     Handles notifications, system alerts, and proactive suggestions
     """
-    
-    def __init__(self, claude_api_key: str, voice_engine: VoiceAssistant):
+
+    def __init__(self, claude_api_key: str, voice_engine: VoiceAssistant, use_intelligent_selection: bool = True):
         self.claude = anthropic.Anthropic(api_key=claude_api_key)
         self.voice_engine = voice_engine
+        self.use_intelligent_selection = use_intelligent_selection
         
         # Announcement queue and management
         self.announcement_queue = asyncio.Queue()
@@ -261,12 +262,90 @@ class VoiceAnnouncementSystem:
                     
         return True
         
+    async def _generate_dynamic_announcement_with_intelligent_selection(self, announcement: VoiceAnnouncement) -> str:
+        """Generate announcement using intelligent model selection"""
+        try:
+            from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+            orchestrator = HybridOrchestrator()
+            if not orchestrator.is_running:
+                await orchestrator.start()
+
+            # Build context for announcement
+            context_info = await self._build_announcement_context(announcement)
+
+            # Build rich context for model selection
+            context = {
+                "task_type": "voice_announcement",
+                "urgency": announcement.urgency,
+                "announcement_context": announcement.context,
+                "voice_confidence": 1.0,
+                "time_of_day": context_info,
+                "requires_natural_language": True,
+            }
+
+            # Create prompt
+            prompt = f"""You are JARVIS, Tony Stark's AI assistant. Generate a natural voice announcement.
+
+Context: {announcement.context}
+Original content: {announcement.content}
+Urgency level: {announcement.urgency}
+Current context: {context_info}
+
+Requirements:
+1. Be concise and natural (1-2 sentences)
+2. Match the urgency level in tone
+3. Use "Sir" appropriately but not excessively
+4. Make it sound conversational, not robotic
+5. Include relevant context if it helps
+
+Examples:
+- High urgency: "Sir, urgent notification from Slack. The deployment is failing and requires immediate attention."
+- Medium urgency: "You have a meeting reminder. The team sync starts in 10 minutes."
+- Low urgency: "New message in the general channel when you have a moment."
+
+Generate the announcement:"""
+
+            # Execute with intelligent model selection
+            result = await orchestrator.execute_with_intelligent_model_selection(
+                query=prompt,
+                intent="voice_processing",
+                required_capabilities={"nlp_analysis", "voice_understanding", "conversational_ai"},
+                context=context,
+                max_tokens=150,
+                temperature=0.3,
+            )
+
+            if not result.get("success"):
+                raise Exception(result.get("error", "Unknown error"))
+
+            response = result.get("text", "").strip()
+            model_used = result.get("model_used", "intelligent_selection")
+
+            logger.info(f"✨ Announcement generated using {model_used}")
+            return response
+
+        except ImportError:
+            logger.warning("Hybrid orchestrator not available, falling back to direct API")
+            raise
+        except Exception as e:
+            logger.error(f"Error in intelligent selection: {e}")
+            raise
+
     async def _generate_dynamic_announcement(self, announcement: VoiceAnnouncement) -> str:
         """Generate dynamic announcement content using Claude"""
-        
+
+        # Try intelligent selection first
+        if self.use_intelligent_selection:
+            try:
+                return await self._generate_dynamic_announcement_with_intelligent_selection(announcement)
+            except Exception as e:
+                logger.warning(f"Intelligent selection failed, falling back to direct API: {e}")
+
+        # Fallback to direct API
         # Build context for Claude
         context_info = await self._build_announcement_context(announcement)
-        
+
         # Create prompt for natural announcement generation
         prompt = f"""You are JARVIS, Tony Stark's AI assistant. Generate a natural voice announcement.
 
@@ -297,9 +376,9 @@ Generate the announcement:"""
                 temperature=0.3,
                 messages=[{"role": "user", "content": prompt}]
             )
-            
+
             return message.content[0].text.strip()
-            
+
         except Exception as e:
             logger.error(f"Error generating dynamic announcement: {e}")
             # Fallback to original content
@@ -360,10 +439,11 @@ class NaturalVoiceCommunication:
     Handles ongoing voice conversations and voice-based approvals
     """
     
-    def __init__(self, claude_api_key: str, voice_engine: VoiceAssistant):
+    def __init__(self, claude_api_key: str, voice_engine: VoiceAssistant, use_intelligent_selection: bool = True):
         self.claude = anthropic.Anthropic(api_key=claude_api_key)
         self.voice_engine = voice_engine
-        
+        self.use_intelligent_selection = use_intelligent_selection
+
         # Conversation management
         self.conversation_state = ConversationState()
         self.context_engine = ContextualUnderstandingEngine(claude_api_key)
@@ -422,13 +502,91 @@ class NaturalVoiceCommunication:
             logger.error(f"Error processing voice command: {e}")
             return "I apologize, sir. I encountered an error processing your request."
             
+    async def _generate_natural_response_with_intelligent_selection(self, command: str, confidence: float) -> str:
+        """Generate natural response using intelligent model selection"""
+        try:
+            from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+            orchestrator = HybridOrchestrator()
+            if not orchestrator.is_running:
+                await orchestrator.start()
+
+            # Build context
+            context_info = await self._build_conversation_context()
+            recent_history = self.conversation_state.context_history[-5:]
+
+            # Rich context for model selection
+            context = {
+                "task_type": "conversational_response",
+                "voice_confidence": confidence,
+                "conversation_active": self.conversation_state.active,
+                "conversation_length": len(self.conversation_state.context_history),
+                "user_patterns": recent_history,
+                "requires_natural_language": True,
+            }
+
+            # Create prompt
+            prompt = f"""You are JARVIS, Tony Stark's AI assistant, engaged in natural conversation.
+
+Current context: {context_info}
+Voice confidence: {confidence:.2f}
+User command: "{command}"
+
+Recent conversation:
+{self._format_conversation_history(recent_history)}
+
+Guidelines:
+1. Respond naturally and conversationally
+2. Be helpful and proactive
+3. Ask clarifying questions if needed (especially if confidence is low)
+4. Vary your responses - don't be repetitive
+5. Use appropriate formality level
+6. If the user seems frustrated or confused, be extra patient
+7. Offer relevant suggestions when appropriate
+
+Generate a natural response:"""
+
+            # Execute
+            result = await orchestrator.execute_with_intelligent_model_selection(
+                query=prompt,
+                intent="voice_processing",
+                required_capabilities={"nlp_analysis", "voice_understanding", "conversational_ai"},
+                context=context,
+                max_tokens=300,
+                temperature=0.7,
+            )
+
+            if not result.get("success"):
+                raise Exception(result.get("error", "Unknown error"))
+
+            response = result.get("text", "").strip()
+            model_used = result.get("model_used", "intelligent_selection")
+
+            logger.info(f"✨ Response generated using {model_used}")
+            return response
+
+        except ImportError:
+            logger.warning("Hybrid orchestrator not available, falling back to direct API")
+            raise
+        except Exception as e:
+            logger.error(f"Error in intelligent selection: {e}")
+            raise
+
     async def _generate_natural_response(self, command: str, confidence: float) -> str:
         """Generate natural conversational response"""
-        
+
+        # Try intelligent selection first
+        if self.use_intelligent_selection:
+            try:
+                return await self._generate_natural_response_with_intelligent_selection(command, confidence)
+            except Exception as e:
+                logger.warning(f"Intelligent selection failed, falling back to direct API: {e}")
+
+        # Fallback to direct API
         # Build context for Claude
         context_info = await self._build_conversation_context()
         recent_history = self.conversation_state.context_history[-5:]
-        
+
         # Create conversational prompt
         prompt = f"""You are JARVIS, Tony Stark's AI assistant, engaged in natural conversation.
 
@@ -458,9 +616,9 @@ Generate a natural response:"""
                 temperature=0.7,  # Higher temperature for more natural responses
                 messages=[{"role": "user", "content": prompt}]
             )
-            
+
             return message.content[0].text.strip()
-            
+
         except Exception as e:
             logger.error(f"Error generating natural response: {e}")
             return self._generate_fallback_response(command, confidence)
@@ -569,12 +727,14 @@ class VoiceIntegrationSystem:
     Provides the unified interface for JARVIS voice capabilities
     """
     
-    def __init__(self, claude_api_key: Optional[str] = None):
+    def __init__(self, claude_api_key: Optional[str] = None, use_intelligent_selection: bool = True):
         # API setup
         self.claude_api_key = claude_api_key or os.getenv("ANTHROPIC_API_KEY")
         if not self.claude_api_key:
             raise ValueError("Claude API key required for Voice Integration System")
-            
+
+        self.use_intelligent_selection = use_intelligent_selection
+
         # Voice engine setup
         voice_config = VoiceConfig(
             tts_engine=TTSEngine.EDGE_TTS,
@@ -583,10 +743,14 @@ class VoiceIntegrationSystem:
             volume=0.9
         )
         self.voice_engine = VoiceAssistant(voice_config)
-        
-        # Core systems
-        self.announcement_system = VoiceAnnouncementSystem(self.claude_api_key, self.voice_engine)
-        self.communication_system = NaturalVoiceCommunication(self.claude_api_key, self.voice_engine)
+
+        # Core systems with intelligent selection
+        self.announcement_system = VoiceAnnouncementSystem(
+            self.claude_api_key, self.voice_engine, use_intelligent_selection
+        )
+        self.communication_system = NaturalVoiceCommunication(
+            self.claude_api_key, self.voice_engine, use_intelligent_selection
+        )
         
         # Integration components
         self.notification_intelligence = NotificationIntelligence()

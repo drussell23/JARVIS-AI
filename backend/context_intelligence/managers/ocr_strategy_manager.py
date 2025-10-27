@@ -470,7 +470,8 @@ class OCRStrategyManager:
         api_client: Any = None,
         cache_ttl: float = 300.0,  # 5 minutes
         max_cache_entries: int = 200,
-        enable_error_matrix: bool = True
+        enable_error_matrix: bool = True,
+        use_intelligent_selection: bool = True
     ):
         """
         Initialize OCR strategy manager
@@ -480,10 +481,12 @@ class OCRStrategyManager:
             cache_ttl: Cache time-to-live in seconds (default 5 minutes)
             max_cache_entries: Maximum cache entries
             enable_error_matrix: Use Error Handling Matrix
+            use_intelligent_selection: Use intelligent model selection (default: True)
         """
         self.cache = OCRCache(default_ttl=cache_ttl, max_entries=max_cache_entries)
         self.image_hasher = ImageHasher()
         self.metadata_extractor = ImageMetadataExtractor()
+        self.use_intelligent_selection = use_intelligent_selection
 
         # Initialize OCR engines
         self.claude_vision = ClaudeVisionOCR(api_client=api_client) if api_client else None
@@ -505,6 +508,122 @@ class OCRStrategyManager:
                 logger.warning(f"Failed to initialize Error Handling Matrix: {e}")
 
         logger.info(f"[OCR-STRATEGY] Initialized (cache_ttl={cache_ttl}s, matrix_enabled={self.error_matrix is not None})")
+
+    async def _extract_with_intelligent_selection(
+        self,
+        image_path: str,
+        image_hash: str,
+        prompt: Optional[str] = None
+    ) -> Tuple[str, float, str]:
+        """
+        Extract text using intelligent model selection
+
+        Args:
+            image_path: Path to image file
+            image_hash: MD5 hash of image
+            prompt: Optional custom prompt for OCR
+
+        Returns:
+            Tuple of (extracted_text, confidence, method)
+        """
+        try:
+            from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+            orchestrator = HybridOrchestrator()
+            if not orchestrator.is_running:
+                await orchestrator.start()
+
+            # Build OCR prompt
+            default_prompt = (
+                "Extract all text from this image. "
+                "Return ONLY the extracted text, preserving formatting and structure. "
+                "If there is no text, return 'NO_TEXT_FOUND'."
+            )
+            ocr_prompt = prompt or default_prompt
+
+            # Build rich context for intelligent selection
+            rich_context = {
+                "task": "ocr_extraction",
+                "image_hash": image_hash[:8],
+                "image_path": Path(image_path).name,
+                "cache_available": self.cache.get(image_hash) is not None,
+                "tesseract_available": self.tesseract.is_available,
+            }
+
+            # Add image metadata to context
+            metadata = await self.metadata_extractor.extract_metadata(image_path)
+            rich_context.update({
+                "image_width": metadata.get("width"),
+                "image_height": metadata.get("height"),
+                "image_format": metadata.get("format"),
+                "image_size_bytes": metadata.get("size_bytes"),
+            })
+
+            # Read and encode image
+            import base64
+            with open(image_path, 'rb') as f:
+                image_data = base64.standard_b64encode(f.read()).decode('utf-8')
+
+            # Get image format
+            img_format = Image.open(image_path).format.lower()
+            media_type = f"image/{img_format}"
+
+            # Build multimodal content
+            content = [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": media_type,
+                        "data": image_data
+                    }
+                },
+                {
+                    "type": "text",
+                    "text": ocr_prompt
+                }
+            ]
+
+            # Execute with intelligent model selection
+            result = await orchestrator.execute_with_intelligent_model_selection(
+                query=content,  # Pass multimodal content
+                intent="vision_analysis",
+                required_capabilities={"vision", "ocr", "text_extraction"},
+                context=rich_context,
+                max_tokens=2000,
+                temperature=0,
+            )
+
+            if not result.get("success"):
+                raise Exception(result.get("error", "Unknown error"))
+
+            extracted_text = result.get("text", "").strip()
+            model_used = result.get("model_used", "intelligent_selection")
+
+            # Confidence is high for vision models
+            confidence = 0.95 if extracted_text and extracted_text != "NO_TEXT_FOUND" else 0.0
+
+            logger.info(f"[OCR-STRATEGY] OCR completed using {model_used} (extracted {len(extracted_text)} chars)")
+
+            # Cache the result
+            cached = CachedOCR(
+                text=extracted_text,
+                image_hash=image_hash,
+                timestamp=datetime.now(),
+                method=f"intelligent_{model_used}",
+                confidence=confidence,
+                metadata={"model_used": model_used}
+            )
+            self.cache.store(cached)
+
+            return extracted_text, confidence, f"intelligent_{model_used}"
+
+        except ImportError:
+            logger.warning("[OCR-STRATEGY] Hybrid orchestrator not available, using fallback")
+            raise
+        except Exception as e:
+            logger.error(f"[OCR-STRATEGY] Error in intelligent selection: {e}")
+            raise
 
     async def extract_text_with_fallbacks(
         self,
@@ -533,6 +652,31 @@ class OCRStrategyManager:
         image_hash = self.image_hasher.compute_hash(image_path)
 
         cache_max_age = cache_max_age or self.cache.default_ttl
+
+        # Try intelligent selection first if enabled
+        if self.use_intelligent_selection and not skip_cache:
+            try:
+                text, confidence, method = await self._extract_with_intelligent_selection(
+                    image_path, image_hash, prompt
+                )
+
+                result = OCRResult(
+                    success=True,
+                    text=text,
+                    confidence=confidence,
+                    method=method,
+                    image_hash=image_hash,
+                    execution_time=time.time() - start_time
+                )
+
+                logger.info(
+                    f"[OCR-STRATEGY] Intelligent selection completed in {result.execution_time:.2f}s "
+                    f"(method={method}, {len(text)} chars)"
+                )
+
+                return result
+            except Exception as e:
+                logger.warning(f"[OCR-STRATEGY] Intelligent selection failed, falling back to standard methods: {e}")
 
         # Use Error Handling Matrix if available
         if self.error_matrix:

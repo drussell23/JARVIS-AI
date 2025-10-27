@@ -46,16 +46,18 @@ class IntelligentQueryClassifier:
     Zero hardcoded patterns - all intelligence from Claude API.
     """
 
-    def __init__(self, claude_client=None, enable_cache: bool = True):
+    def __init__(self, claude_client=None, enable_cache: bool = True, use_intelligent_selection: bool = True):
         """
         Initialize the intelligent classifier
 
         Args:
             claude_client: Claude API client for classification
             enable_cache: Whether to use classification cache
+            use_intelligent_selection: Use intelligent model selection (default: True)
         """
         self.claude = claude_client
         self.enable_cache = enable_cache
+        self.use_intelligent_selection = use_intelligent_selection
 
         # Classification cache (30 second TTL)
         self._classification_cache: Dict[str, ClassificationResult] = {}
@@ -68,6 +70,80 @@ class IntelligentQueryClassifier:
         self._cache_hits = 0
 
         logger.info("[CLASSIFIER] Intelligent query classifier initialized")
+
+    async def _classify_with_intelligent_selection(
+        self, query: str, features: Dict[str, Any], context: Optional[Dict[str, Any]] = None
+    ) -> ClassificationResult:
+        """
+        Classify query using intelligent model selection
+
+        Args:
+            query: User's query text
+            features: Extracted features from query
+            context: Optional context
+
+        Returns:
+            ClassificationResult with intent, confidence, and reasoning
+        """
+        try:
+            from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+            orchestrator = HybridOrchestrator()
+            if not orchestrator.is_running:
+                await orchestrator.start()
+
+            # Build classification prompt
+            classification_prompt = self._build_classification_prompt(query, features, context)
+
+            # Build rich context for intelligent selection
+            rich_context = {
+                "query": query,
+                "query_length": features.get("query_length", 0),
+                "has_space_reference": features.get("has_space_reference", False),
+                "has_visual_keywords": features.get("has_visual_keywords", False),
+                "has_metadata_keywords": features.get("has_metadata_keywords", False),
+                "classification_count": self._classification_count,
+                "cache_hit_rate": self._cache_hits / max(1, self._classification_count + self._cache_hits),
+            }
+
+            if context:
+                rich_context.update({
+                    "active_space": context.get("active_space"),
+                    "total_spaces": context.get("total_spaces", 0),
+                    "recent_intent": context.get("recent_intent"),
+                })
+
+            # Execute with intelligent model selection
+            result = await orchestrator.execute_with_intelligent_model_selection(
+                query=classification_prompt,
+                intent="query_classification",
+                required_capabilities={"intent_classification", "nlp_analysis"},
+                context=rich_context,
+                max_tokens=500,
+                temperature=0,
+            )
+
+            if not result.get("success"):
+                raise Exception(result.get("error", "Unknown error"))
+
+            response = result.get("text", "").strip()
+            model_used = result.get("model_used", "intelligent_selection")
+
+            logger.info(f"[CLASSIFIER] Classification response generated using {model_used}")
+
+            # Parse the classification from the response
+            classification_result = self._parse_claude_classification(
+                {"response": response}, features
+            )
+
+            return classification_result
+
+        except ImportError:
+            logger.warning("[CLASSIFIER] Hybrid orchestrator not available, using fallback")
+            raise
+        except Exception as e:
+            logger.error(f"[CLASSIFIER] Error in intelligent selection: {e}")
+            raise
 
     async def classify_query(
         self, query: str, context: Optional[Dict[str, Any]] = None
@@ -95,12 +171,35 @@ class IntelligentQueryClassifier:
         # Extract features from query and context
         features = self._extract_features(query, context)
 
+        # Try intelligent selection first if enabled
+        if self.use_intelligent_selection:
+            try:
+                result = await self._classify_with_intelligent_selection(query, features, context)
+                result.latency_ms = (time.time() - start_time) * 1000
+
+                # Update stats
+                self._classification_count += 1
+                self._total_latency_ms += result.latency_ms
+
+                # Cache the result
+                if self.enable_cache:
+                    self._cache_result(query, result)
+
+                logger.info(
+                    f"[CLASSIFIER] Query classified via intelligent selection as {result.intent.value} "
+                    f"(confidence: {result.confidence:.2f}, latency: {result.latency_ms:.1f}ms)"
+                )
+
+                return result
+            except Exception as e:
+                logger.warning(f"[CLASSIFIER] Intelligent selection failed, falling back to direct API: {e}")
+
         # Build classification prompt for Claude
         classification_prompt = self._build_classification_prompt(
             query, features, context
         )
 
-        # Get classification from Claude
+        # Get classification from Claude (fallback)
         try:
             logger.info(f"[CLASSIFIER] Attempting Claude classification for: {query[:60]}...")
             logger.info(f"[CLASSIFIER] Claude client available: {self.claude is not None}")

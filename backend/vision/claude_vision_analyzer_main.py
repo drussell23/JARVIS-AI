@@ -906,6 +906,7 @@ class ClaudeVisionAnalyzer:
         config: Optional[VisionConfig] = None,
         config_path: Optional[str] = None,
         enable_realtime: bool = True,
+        use_intelligent_selection: bool = True,
     ):
         """Initialize enhanced Claude vision analyzer
 
@@ -914,6 +915,7 @@ class ClaudeVisionAnalyzer:
             config: VisionConfig instance (optional)
             config_path: Path to JSON config file (optional)
             enable_realtime: Enable real-time monitoring capabilities (default: True)
+            use_intelligent_selection: Use intelligent model selection (default: True)
         """
         # Load configuration
         if config:
@@ -926,6 +928,7 @@ class ClaudeVisionAnalyzer:
         # Initialize real-time capabilities
         self.enable_realtime = enable_realtime
         self._realtime_callbacks = []
+        self.use_intelligent_selection = use_intelligent_selection
 
         # Initialize API client
         if not api_key:
@@ -4380,13 +4383,28 @@ class ClaudeVisionAnalyzer:
                 f"[CLAUDE API] Model: {self.config.model_name}, Max tokens: {self.config.max_tokens}"
             )
 
+            # Try intelligent selection first if enabled
+            if self.use_intelligent_selection:
+                try:
+                    response = await self._call_claude_with_intelligent_selection(
+                        image_base64=image_base64,
+                        prompt=enhanced_prompt,
+                        max_tokens=self.config.max_tokens,
+                        temperature=0,
+                        analysis_type="screen_analysis"
+                    )
+                    logger.info("[CLAUDE API] Intelligent selection successful")
+                    return response
+                except Exception as e:
+                    logger.warning(f"[CLAUDE API] Intelligent selection failed, falling back to direct API: {e}")
+
             # Ensure we have a client
             if not hasattr(self, "client") or self.client is None:
                 raise Exception(
                     "ANTHROPIC_API_KEY not configured. Please set the API key to use vision analysis."
                 )
 
-            # Create a future for the API call
+            # Create a future for the API call (fallback)
             api_future = asyncio.get_event_loop().run_in_executor(
                 self.executor,
                 lambda: self.client.messages.create(
@@ -4432,6 +4450,160 @@ class ClaudeVisionAnalyzer:
             logger.error(f"Claude API call failed: {e}", exc_info=True)
             # Re-raise with more context
             raise Exception(f"Claude API error: {str(e)}")
+
+    async def _call_claude_with_intelligent_selection(
+        self,
+        image_base64: str,
+        prompt: str,
+        max_tokens: Optional[int] = None,
+        temperature: float = 0,
+        analysis_type: str = "screen_analysis"
+    ) -> str:
+        """
+        Call Claude API using intelligent model selection
+
+        Args:
+            image_base64: Base64-encoded image
+            prompt: Analysis prompt
+            max_tokens: Maximum tokens for response
+            temperature: Temperature for generation
+            analysis_type: Type of analysis being performed
+
+        Returns:
+            Claude's response text
+        """
+        try:
+            from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+            orchestrator = HybridOrchestrator()
+            if not orchestrator.is_running:
+                await orchestrator.start()
+
+            # Build rich context for intelligent selection
+            rich_context = {
+                "task": "vision_analysis",
+                "analysis_type": analysis_type,
+                "prompt_length": len(prompt),
+                "has_image": bool(image_base64),
+                "image_size_bytes": len(image_base64) if image_base64 else 0,
+                "max_tokens": max_tokens or self.config.max_tokens,
+                "temperature": temperature,
+            }
+
+            # Add memory stats if available
+            if hasattr(self, "memory_monitor"):
+                try:
+                    memory_status = self.memory_monitor.get_memory_status()
+                    rich_context["memory_pressure"] = memory_status.get("system_pressure", "normal")
+                    rich_context["process_memory_mb"] = memory_status.get("process_memory_mb", 0)
+                except:
+                    pass
+
+            # Build multimodal content
+            content = [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg" if self.config.compression_enabled else "image/png",
+                        "data": image_base64
+                    }
+                },
+                {
+                    "type": "text",
+                    "text": prompt
+                }
+            ]
+
+            # Execute with intelligent model selection
+            result = await orchestrator.execute_with_intelligent_model_selection(
+                query=content,
+                intent="vision_analysis",
+                required_capabilities={"vision", "vision_analyze_heavy", "multimodal"},
+                context=rich_context,
+                max_tokens=max_tokens or self.config.max_tokens,
+                temperature=temperature,
+            )
+
+            if not result.get("success"):
+                raise Exception(result.get("error", "Unknown error"))
+
+            response_text = result.get("text", "").strip()
+            model_used = result.get("model_used", "intelligent_selection")
+
+            logger.info(f"[VISION] Analysis completed using {model_used}")
+
+            return response_text
+
+        except ImportError:
+            logger.warning("[VISION] Hybrid orchestrator not available, using fallback")
+            raise
+        except Exception as e:
+            logger.error(f"[VISION] Error in intelligent selection: {e}")
+            raise
+
+    async def _call_claude_multi_image_with_intelligent_selection(
+        self,
+        message_content: List[Dict[str, Any]],
+        max_tokens: int,
+        temperature: float = 0
+    ) -> str:
+        """
+        Call Claude API for multi-image analysis using intelligent model selection
+
+        Args:
+            message_content: List of message content items (images + text)
+            max_tokens: Maximum tokens for response
+            temperature: Temperature for generation
+
+        Returns:
+            Claude's response text
+        """
+        try:
+            from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+            orchestrator = HybridOrchestrator()
+            if not orchestrator.is_running:
+                await orchestrator.start()
+
+            # Count images in content
+            image_count = sum(1 for item in message_content if item.get("type") == "image")
+
+            # Build rich context for intelligent selection
+            rich_context = {
+                "task": "multi_space_vision_analysis",
+                "analysis_type": "multi_space",
+                "image_count": image_count,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            }
+
+            # Execute with intelligent model selection
+            result = await orchestrator.execute_with_intelligent_model_selection(
+                query=message_content,  # Pass multimodal content
+                intent="vision_analysis",
+                required_capabilities={"vision", "vision_analyze_heavy", "multimodal"},
+                context=rich_context,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+
+            if not result.get("success"):
+                raise Exception(result.get("error", "Unknown error"))
+
+            response_text = result.get("text", "").strip()
+            model_used = result.get("model_used", "intelligent_selection")
+
+            logger.info(f"[VISION] Multi-image analysis completed using {model_used}")
+
+            return response_text
+
+        except ImportError:
+            logger.warning("[VISION] Hybrid orchestrator not available, using fallback")
+            raise
+        except Exception as e:
+            logger.error(f"[VISION] Error in multi-image intelligent selection: {e}")
+            raise
 
     def _generate_prompt_embedding_sync(self, prompt: str) -> Optional[np.ndarray]:
         """Generate embedding for prompt (simplified for now)"""
@@ -4902,19 +5074,42 @@ class ClaudeVisionAnalyzer:
             # Add the main prompt
             message_content.append({"type": "text", "text": f"\n\n{enhanced_prompt}"})
 
-            # Call Claude API
-            message = await asyncio.get_event_loop().run_in_executor(
-                self.executor,
-                lambda: self.client.messages.create(
-                    model=self.config.model_name,
-                    max_tokens=max_tokens,
-                    messages=[{"role": "user", "content": message_content}],
-                    temperature=0,
-                ),
-            )
+            # Try intelligent selection first if enabled
+            if self.use_intelligent_selection:
+                try:
+                    response_text = await self._call_claude_multi_image_with_intelligent_selection(
+                        message_content=message_content,
+                        max_tokens=max_tokens,
+                        temperature=0
+                    )
+                    logger.info("[VISION] Multi-image intelligent selection successful")
+                except Exception as e:
+                    logger.warning(f"[VISION] Multi-image intelligent selection failed, falling back: {e}")
+                    # Fall through to direct API call
+                    message = await asyncio.get_event_loop().run_in_executor(
+                        self.executor,
+                        lambda: self.client.messages.create(
+                            model=self.config.model_name,
+                            max_tokens=max_tokens,
+                            messages=[{"role": "user", "content": message_content}],
+                            temperature=0,
+                        ),
+                    )
+                    response_text = message.content[0].text if message.content else ""
+            else:
+                # Call Claude API directly (fallback)
+                message = await asyncio.get_event_loop().run_in_executor(
+                    self.executor,
+                    lambda: self.client.messages.create(
+                        model=self.config.model_name,
+                        max_tokens=max_tokens,
+                        messages=[{"role": "user", "content": message_content}],
+                        temperature=0,
+                    ),
+                )
 
-            # Extract response
-            response_text = message.content[0].text if message.content else ""
+                # Extract response
+                response_text = message.content[0].text if message.content else ""
 
             return {
                 "content": response_text,

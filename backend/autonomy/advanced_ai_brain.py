@@ -64,23 +64,24 @@ class AdvancedAIBrain:
     - Fully autonomous learning and adaptation
     """
     
-    def __init__(self, anthropic_api_key: Optional[str] = None):
+    def __init__(self, anthropic_api_key: Optional[str] = None, use_intelligent_selection: bool = True):
         # Initialize Claude client
         self.claude_api_key = anthropic_api_key or os.getenv("ANTHROPIC_API_KEY")
         if not self.claude_api_key:
             raise ValueError("Anthropic API key required for Advanced AI Brain")
-            
+
         self.claude = anthropic.Anthropic(api_key=self.claude_api_key)
-        
+        self.use_intelligent_selection = use_intelligent_selection
+
         # CPU throttling settings
         self.cpu_threshold = 25.0  # Max CPU usage
         self.last_cpu_check = 0
         self.cpu_check_interval = 5.0  # Check every 5 seconds
-        
-        # Initialize enhanced intelligence modules
-        self.predictive_engine = PredictiveIntelligenceEngine(self.claude_api_key)
-        self.contextual_engine = ContextualUnderstandingEngine(self.claude_api_key)
-        self.creative_solver = CreativeProblemSolver(self.claude_api_key)
+
+        # Initialize enhanced intelligence modules with intelligent selection
+        self.predictive_engine = PredictiveIntelligenceEngine(self.claude_api_key, use_intelligent_selection)
+        self.contextual_engine = ContextualUnderstandingEngine(self.claude_api_key, use_intelligent_selection)
+        self.creative_solver = CreativeProblemSolver(self.claude_api_key, use_intelligent_selection)
         
         # Initialize voice and system integration if available
         self.voice_system = None
@@ -749,7 +750,54 @@ class AdvancedAIBrain:
         }]
                 
     # Main interface methods
-    async def get_personality_response(self, user_input: str, 
+    async def _get_personality_response_with_intelligent_selection(self, user_input: str,
+                                                                    context: Optional[Dict[str, Any]] = None) -> str:
+        """Generate personality response using intelligent model selection"""
+        try:
+            from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+            orchestrator = HybridOrchestrator()
+            if not orchestrator.is_running:
+                await orchestrator.start()
+
+            # Get current user state
+            user_state = {
+                'emotional_state': self.current_state['emotional'],
+                'work_context': self.current_state['work_context'],
+                'personality_adaptation': await self._get_current_personality_traits()
+            }
+
+            # Build rich context for intelligent selection
+            intelligent_context = {
+                "task_type": "context_analysis",
+                "user_state": {
+                    "emotional": user_state['emotional_state'].value,
+                    "work_context": user_state['work_context'].value,
+                    "personality_traits": user_state['personality_adaptation']
+                },
+                "conversation_context": context or {},
+                "response_requirements": {
+                    "empathetic": True,
+                    "personality_adapted": True,
+                    "contextually_aware": True
+                }
+            }
+
+            # Use contextual engine's method which has intelligent selection built in
+            response = await self.contextual_engine.generate_empathetic_response(
+                user_input, user_state
+            )
+
+            return response
+
+        except ImportError:
+            logger.warning("Hybrid orchestrator not available for personality response")
+            raise
+        except Exception as e:
+            logger.error(f"Error in intelligent personality response: {e}")
+            raise
+
+    async def get_personality_response(self, user_input: str,
                                      context: Optional[Dict[str, Any]] = None,
                                      voice_output: bool = True) -> str:
         """Generate personality-adapted response using enhanced understanding"""
@@ -759,8 +807,8 @@ class AdvancedAIBrain:
             'work_context': self.current_state['work_context'],
             'personality_adaptation': await self._get_current_personality_traits()
         }
-        
-        # Generate empathetic response
+
+        # Generate empathetic response (contextual engine already has intelligent selection)
         response = await self.contextual_engine.generate_empathetic_response(
             user_input, user_state
         )
@@ -775,16 +823,118 @@ class AdvancedAIBrain:
         
         return response
     
+    async def _process_command_with_intelligent_selection(self, command: str) -> Dict[str, Any]:
+        """Process command using intelligent model selection"""
+        try:
+            from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+            orchestrator = HybridOrchestrator()
+            if not orchestrator.is_running:
+                await orchestrator.start()
+
+            # Build comprehensive context
+            context = await self._build_command_context(command)
+
+            # Build rich context for intelligent selection
+            intelligent_context = {
+                "task_type": "general_ai",
+                "command_context": {
+                    "user_emotional_state": self.current_state['emotional'].value,
+                    "work_context": self.current_state['work_context'].value,
+                    "active_predictions": len(self.current_state['predictions']),
+                    "active_solutions": len(self.current_state['active_solutions']),
+                    "recent_performance": self.performance_metrics
+                },
+                "capabilities_required": {
+                    "predictive_intelligence": True,
+                    "contextual_understanding": True,
+                    "creative_problem_solving": True,
+                    "autonomous_action": True
+                },
+                "command_analysis": {
+                    "requires_planning": "how" in command.lower() or "plan" in command.lower(),
+                    "requires_prediction": "will" in command.lower() or "predict" in command.lower(),
+                    "requires_creativity": "optimize" in command.lower() or "improve" in command.lower()
+                }
+            }
+
+            prompt = f"""As JARVIS with full autonomous AI capabilities, process this command:
+
+Command: "{command}"
+
+Current State:
+- Emotional: {self.current_state['emotional'].value}
+- Work Context: {self.current_state['work_context'].value}
+- Active Predictions: {len(self.current_state['predictions'])}
+- Active Solutions: {len(self.current_state['active_solutions'])}
+
+Capabilities:
+1. Predictive Intelligence - Anticipate needs
+2. Contextual Understanding - Deep emotional/cognitive awareness
+3. Creative Problem Solving - Innovative solutions
+4. Autonomous Action - Self-directed execution
+
+Provide:
+1. Intent analysis
+2. Execution plan with specific actions
+3. Predicted outcomes
+4. Proactive suggestions"""
+
+            result = await orchestrator.execute_with_intelligent_model_selection(
+                query=prompt,
+                intent="general_ai",
+                required_capabilities={"nlp_analysis", "planning", "reasoning"},
+                context=intelligent_context,
+                max_tokens=512,
+                temperature=0.7,
+            )
+
+            if not result.get("success"):
+                raise Exception(result.get("error", "Unknown error"))
+
+            response_text = result.get("text", "").strip()
+            model_used = result.get("model_used", "intelligent_selection")
+
+            logger.info(f"✨ Command processed using {model_used}")
+
+            # Parse and execute
+            plan = self._parse_command_response(response_text)
+
+            # Execute autonomously if confidence is high
+            if plan.get('confidence', 0) > 0.8:
+                await self._execute_command_plan(plan)
+
+            return {
+                'understood': True,
+                'plan': plan,
+                'executed': plan.get('confidence', 0) > 0.8,
+                'model_used': model_used
+            }
+
+        except ImportError:
+            logger.warning("Hybrid orchestrator not available for command processing")
+            raise
+        except Exception as e:
+            logger.error(f"Error in intelligent command processing: {e}")
+            raise
+
     async def process_natural_language_command(self, command: str) -> Dict[str, Any]:
         """Process complex commands with full AI capabilities"""
         try:
-            # Build comprehensive context
-            context = await self._build_command_context(command)
-            
-            # Check CPU before using Claude
+            # Check CPU before using AI
             if not await self._check_cpu_before_ai_processing():
                 return self._lightweight_command_response(command)
-            
+
+            # Use intelligent selection first with fallback
+            if self.use_intelligent_selection:
+                try:
+                    return await self._process_command_with_intelligent_selection(command)
+                except Exception as e:
+                    logger.warning(f"Intelligent selection failed for command processing, falling back: {e}")
+
+            # Fallback: Build comprehensive context
+            context = await self._build_command_context(command)
+
             # Use Claude for deep understanding (with faster model)
             response = await asyncio.to_thread(
                 self.claude.messages.create,
@@ -1087,11 +1237,11 @@ Return only one of: focused, stressed, relaxed, frustrated, energetic, tired, ne
 # Singleton instance manager
 _brain_instance: Optional[AdvancedAIBrain] = None
 
-def get_ai_brain(api_key: Optional[str] = None) -> AdvancedAIBrain:
+def get_ai_brain(api_key: Optional[str] = None, use_intelligent_selection: bool = True) -> AdvancedAIBrain:
     """Get or create the AI brain instance"""
     global _brain_instance
     if _brain_instance is None:
-        _brain_instance = AdvancedAIBrain(api_key)
+        _brain_instance = AdvancedAIBrain(api_key, use_intelligent_selection)
     return _brain_instance
 
 async def test_ai_brain():

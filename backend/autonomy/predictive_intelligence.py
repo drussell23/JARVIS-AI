@@ -14,6 +14,7 @@ from enum import Enum
 import json
 import numpy as np
 from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestClassifier
 import anthropic
 import hashlib
 
@@ -91,23 +92,24 @@ class PredictiveIntelligenceEngine:
     Advanced predictive intelligence that learns and adapts dynamically
     """
     
-    def __init__(self, anthropic_api_key: str):
+    def __init__(self, anthropic_api_key: str, use_intelligent_selection: bool = True):
         self.claude = anthropic.Anthropic(api_key=anthropic_api_key)
-        
+        self.use_intelligent_selection = use_intelligent_selection
+
         # Dynamic learning components
         self.pattern_memory = deque(maxlen=10000)
         self.prediction_models: Dict[PredictionType, Any] = {}
         self.feature_importance: Dict[str, float] = defaultdict(float)
-        
+
         # Real-time learning
         self.active_predictions: Dict[str, DynamicPrediction] = {}
         self.prediction_outcomes: List[Dict[str, Any]] = []
         self.learning_rate = 0.1
-        
+
         # Context understanding
         self.context_embeddings: Dict[str, np.ndarray] = {}
         self.context_clusters = []
-        
+
         # Initialize ML models
         self._initialize_models()
         
@@ -124,9 +126,16 @@ class PredictiveIntelligenceEngine:
     async def generate_predictions(self, context: PredictionContext) -> List[DynamicPrediction]:
         """Generate intelligent predictions based on current context"""
         predictions = []
-        
-        # Use Claude for intelligent analysis
-        context_analysis = await self._analyze_context_with_claude(context)
+
+        # Use intelligent selection or fallback to direct Claude
+        if self.use_intelligent_selection:
+            try:
+                context_analysis = await self._analyze_context_with_intelligent_selection(context)
+            except Exception as e:
+                logger.warning(f"Intelligent selection failed for context analysis, falling back to direct Claude: {e}")
+                context_analysis = await self._analyze_context_with_claude(context)
+        else:
+            context_analysis = await self._analyze_context_with_claude(context)
         
         # Generate predictions for each type
         for pred_type in PredictionType:
@@ -144,6 +153,92 @@ class PredictiveIntelligenceEngine:
         
         return predictions[:10]  # Top 10 predictions
     
+    async def _analyze_context_with_intelligent_selection(self, context: PredictionContext) -> Dict[str, Any]:
+        """Use intelligent model selection for context analysis"""
+        try:
+            from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+            orchestrator = HybridOrchestrator()
+            if not orchestrator.is_running:
+                await orchestrator.start()
+
+            # Prepare context summary
+            context_summary = {
+                'time': context.timestamp.isoformat(),
+                'workspace': {
+                    'window_count': len(context.workspace_state.get('windows', [])),
+                    'active_apps': [w['app_name'] for w in context.workspace_state.get('windows', [])[:5]],
+                    'notifications': len(context.workspace_state.get('notifications', {}).get('badges', []))
+                },
+                'user_activity': context.user_activity,
+                'patterns': list(context.historical_patterns.keys())[:10]
+            }
+
+            # Build rich context for intelligent selection
+            intelligent_context = {
+                "task_type": "behavior_prediction",
+                "user_behavior_history": context.historical_patterns,
+                "current_patterns": {
+                    "window_count": len(context.workspace_state.get('windows', [])),
+                    "activity_level": context.user_activity.get('click_rate', 0) / 60.0,
+                    "temporal_data": {
+                        "hour": context.timestamp.hour,
+                        "day_of_week": context.timestamp.weekday()
+                    }
+                },
+                "prediction_targets": ["user_goal", "upcoming_needs", "friction_points", "assistance_opportunities", "user_state"]
+            }
+
+            prompt = f"""As JARVIS's predictive intelligence, analyze this context and identify:
+1. What the user is likely trying to accomplish
+2. What they'll need in the next 5-30 minutes
+3. Potential friction points or interruptions
+4. Opportunities for proactive assistance
+5. Signs of stress, fatigue, or flow state
+
+Context:
+{json.dumps(context_summary, indent=2, default=str)}
+
+Provide analysis as JSON with these keys:
+- current_goal: what user is working on
+- predicted_needs: array of likely upcoming needs
+- risk_factors: potential issues
+- optimization_opportunities: ways to help
+- user_state: emotional/cognitive state
+- confidence_scores: confidence for each prediction"""
+
+            result = await orchestrator.execute_with_intelligent_model_selection(
+                query=prompt,
+                intent="behavior_prediction",
+                required_capabilities={"nlp_analysis", "prediction", "pattern_recognition"},
+                context=intelligent_context,
+                max_tokens=1000,
+                temperature=0.7,
+            )
+
+            if not result.get("success"):
+                raise Exception(result.get("error", "Unknown error"))
+
+            analysis_text = result.get("text", "").strip()
+            model_used = result.get("model_used", "intelligent_selection")
+
+            logger.info(f"✨ Context analysis generated using {model_used}")
+
+            # Extract JSON
+            import re
+            json_match = re.search(r'\{.*\}', analysis_text, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group())
+            else:
+                return {'error': 'Could not parse analysis'}
+
+        except ImportError:
+            logger.warning("Hybrid orchestrator not available for intelligent selection")
+            raise
+        except Exception as e:
+            logger.error(f"Error in intelligent context analysis: {e}")
+            raise
+
     async def _analyze_context_with_claude(self, context: PredictionContext) -> Dict[str, Any]:
         """Use Claude to deeply understand the current context"""
         try:
@@ -451,17 +546,97 @@ Provide analysis as JSON with these keys:
             }
         )
     
+    async def _predict_task_completion_with_intelligent_selection(self, context: PredictionContext,
+                                                                   analysis: Dict[str, Any]) -> Optional[DynamicPrediction]:
+        """Use intelligent model selection for task completion prediction"""
+        try:
+            from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+            current_goal = analysis.get('current_goal', '')
+            if not current_goal:
+                return None
+
+            orchestrator = HybridOrchestrator()
+            if not orchestrator.is_running:
+                await orchestrator.start()
+
+            # Estimate completion based on activity patterns
+            activity = context.user_activity
+            productivity_score = self._calculate_productivity_score(activity)
+
+            # Build context for intelligent selection
+            intelligent_context = {
+                "task_type": "prediction",
+                "current_task": current_goal,
+                "productivity_metrics": {
+                    "score": productivity_score,
+                    "actions_per_minute": activity.get('actions_per_minute', 0),
+                    "focus_duration": activity.get('continuous_work_minutes', 0)
+                },
+                "prediction_target": "task_completion_time"
+            }
+
+            prompt = f"""Estimate task completion for:
+Task: {current_goal}
+Productivity level: {productivity_score:.1f}/10
+Current pace: {activity.get('actions_per_minute', 0)} actions/min
+
+Provide: estimated_minutes, bottlenecks[], next_steps[]"""
+
+            result = await orchestrator.execute_with_intelligent_model_selection(
+                query=prompt,
+                intent="prediction",
+                required_capabilities={"prediction", "analysis"},
+                context=intelligent_context,
+                max_tokens=200,
+                temperature=0.5,
+            )
+
+            if not result.get("success"):
+                raise Exception(result.get("error", "Unknown error"))
+
+            response_text = result.get("text", "").strip()
+            model_used = result.get("model_used", "intelligent_selection")
+
+            logger.info(f"✨ Task completion prediction generated using {model_used}")
+
+            # Parse response (simplified)
+            estimate = 30  # Default estimate
+            try:
+                import re
+                minutes_match = re.search(r'(\d+)\s*minutes?', response_text, re.IGNORECASE)
+                if minutes_match:
+                    estimate = int(minutes_match.group(1))
+            except:
+                pass
+
+            return self._build_task_completion_prediction(context, current_goal, activity, productivity_score, estimate)
+
+        except ImportError:
+            logger.warning("Hybrid orchestrator not available for task completion prediction")
+            raise
+        except Exception as e:
+            logger.error(f"Error in intelligent task completion prediction: {e}")
+            raise
+
     async def _predict_task_completion(self, context: PredictionContext,
                                      analysis: Dict[str, Any]) -> Optional[DynamicPrediction]:
         """Predict task completion time and needs"""
         current_goal = analysis.get('current_goal', '')
         if not current_goal:
             return None
-        
-        # Estimate completion based on activity patterns
+
+        # Use intelligent selection first with fallback
+        if self.use_intelligent_selection:
+            try:
+                return await self._predict_task_completion_with_intelligent_selection(context, analysis)
+            except Exception as e:
+                logger.warning(f"Intelligent selection failed for task completion, falling back: {e}")
+
+        # Fallback: Estimate completion based on activity patterns
         activity = context.user_activity
         productivity_score = self._calculate_productivity_score(activity)
-        
+
         # Use Claude to estimate task completion
         try:
             response = await asyncio.to_thread(
@@ -478,10 +653,10 @@ Current pace: {activity.get('actions_per_minute', 0)} actions/min
 Provide: estimated_minutes, bottlenecks[], next_steps[]"""
                 }]
             )
-            
+
             # Parse response (simplified)
             estimate = 30  # Default estimate
-            
+
         except:
             estimate = 30
         
@@ -631,6 +806,31 @@ Provide: estimated_minutes, bottlenecks[], next_steps[]"""
             }
         )
     
+    def _build_task_completion_prediction(self, context: PredictionContext, current_goal: str,
+                                          activity: Dict[str, Any], productivity_score: float,
+                                          estimate: int) -> DynamicPrediction:
+        """Build task completion prediction"""
+        return DynamicPrediction(
+            prediction_id=self._generate_prediction_id(context, PredictionType.TASK_COMPLETION),
+            type=PredictionType.TASK_COMPLETION,
+            confidence=0.7,
+            urgency=0.6,
+            action_items=[{
+                'action': 'track_progress',
+                'estimated_completion': estimate,
+                'optimization_tips': [
+                    'Minimize context switches',
+                    'Use keyboard shortcuts',
+                    'Batch similar actions'
+                ]
+            }],
+            reasoning=f"At current pace, '{current_goal}' should complete in ~{estimate} minutes",
+            context_factors={
+                'productivity': productivity_score / 10,
+                'task_complexity': 0.5
+            }
+        )
+
     def _suggest_apps_for_need(self, need: str, current_apps: List[str]) -> List[str]:
         """Suggest apps based on predicted need"""
         app_suggestions = {

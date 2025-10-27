@@ -133,11 +133,122 @@ class SemanticMatcher:
         similarity_threshold: float = 0.65,
         recency_weight: float = 0.2,
         keyword_weight: float = 0.15,
+        use_intelligent_selection: bool = True,
     ):
         self._embedder = embedding_provider
         self._similarity_threshold = similarity_threshold
         self._recency_weight = recency_weight
         self._keyword_weight = keyword_weight
+        self.use_intelligent_selection = use_intelligent_selection
+
+    async def _match_with_intelligent_selection(
+        self,
+        user_input: str,
+        candidates: list[ContextEnvelope],
+        top_k: int = 5,
+    ) -> list[MatchScore]:
+        """
+        Match using intelligent model selection for embedding generation.
+        Note: This primarily helps if we add alternative embedding models.
+        Currently uses OpenAI embeddings, so benefit is limited.
+        """
+        try:
+            from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+            orchestrator = HybridOrchestrator()
+            if not orchestrator.is_running:
+                await orchestrator.start()
+
+            # Build rich context
+            context = {
+                "task_type": "semantic_matching",
+                "embedding_provider": type(self._embedder).__name__ if self._embedder else None,
+                "cache_enabled": isinstance(self._embedder, CachedEmbeddingProvider),
+                "similarity_threshold": self._similarity_threshold,
+                "candidate_count": len(candidates),
+                "input_length": len(user_input),
+            }
+
+            logger.info(f"Semantic matching with intelligent selection (note: limited benefit with OpenAI embeddings)")
+
+            # For now, we still use the standard embedding provider
+            # In the future, intelligent selection could choose between:
+            # - OpenAI text-embedding-3-small (fast, good quality)
+            # - OpenAI text-embedding-3-large (slower, better quality)
+            # - Local sentence-transformers (no API cost, faster for small batches)
+            # - Cohere embeddings (alternative API)
+
+            # Generate input embedding (standard approach for now)
+            input_embedding = None
+            if self._embedder:
+                try:
+                    input_embedding = await self._embedder.embed(user_input)
+                except Exception as e:
+                    logger.error(f"Embedding generation failed: {e}", exc_info=True)
+
+            # Score each candidate
+            scores: list[MatchScore] = []
+
+            for ctx in candidates:
+                # Skip invalid contexts
+                if not ctx.is_valid():
+                    continue
+
+                # Extract searchable text from context
+                search_text = self._extract_searchable_text(ctx)
+
+                # Calculate component scores
+                semantic_score = 0.0
+                if input_embedding is not None:
+                    semantic_score = await self._semantic_similarity(
+                        input_embedding, search_text
+                    )
+
+                keyword_score = self._keyword_similarity(user_input, search_text)
+                recency_score = self._recency_score(ctx)
+
+                # Weighted combination
+                if input_embedding is not None:
+                    final_score = (
+                        0.65 * semantic_score
+                        + self._keyword_weight * keyword_score
+                        + self._recency_weight * recency_score
+                    )
+                    method = "semantic+keyword+recency+intelligent"
+                else:
+                    # Fallback without embeddings
+                    final_score = (
+                        0.7 * keyword_score + 0.3 * recency_score
+                    )
+                    method = "keyword+recency+intelligent"
+
+                # Only include if above threshold
+                if final_score >= self._similarity_threshold:
+                    scores.append(
+                        MatchScore(
+                            context_id=ctx.metadata.id,
+                            score=final_score,
+                            method=method,
+                            features={
+                                "semantic": semantic_score,
+                                "keyword": keyword_score,
+                                "recency": recency_score,
+                                "category": ctx.metadata.category.name,
+                            },
+                        )
+                    )
+
+            # Sort by score descending
+            scores.sort(key=lambda s: s.score, reverse=True)
+
+            return scores[:top_k]
+
+        except ImportError:
+            logger.warning("Hybrid orchestrator not available, falling back to standard matching")
+            raise
+        except Exception as e:
+            logger.error(f"Error in intelligent selection: {e}")
+            raise
 
     async def match(
         self,
@@ -156,6 +267,14 @@ class SemanticMatcher:
         if not candidates:
             return []
 
+        # Try intelligent selection first (limited benefit for embeddings)
+        if self.use_intelligent_selection:
+            try:
+                return await self._match_with_intelligent_selection(user_input, candidates, top_k)
+            except Exception as e:
+                logger.warning(f"Intelligent selection failed, falling back to standard matching: {e}")
+
+        # Standard matching approach
         # Generate input embedding
         input_embedding = None
         if self._embedder:

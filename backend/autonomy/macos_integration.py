@@ -71,9 +71,10 @@ class AdvancedMacOSIntegration:
     Deep macOS integration with AI-powered control
     """
     
-    def __init__(self, anthropic_api_key: str):
+    def __init__(self, anthropic_api_key: str, use_intelligent_selection: bool = True):
         self.claude = anthropic.Anthropic(api_key=anthropic_api_key)
-        
+        self.use_intelligent_selection = use_intelligent_selection
+
         # System monitoring
         self.system_state = None
         self.monitoring_active = False
@@ -467,6 +468,81 @@ class AdvancedMacOSIntegration:
             # This would adjust display brightness/settings
             logger.info("Display optimization requested")
     
+    async def _control_application_with_intelligent_selection(self, app_name: str, action: str) -> bool:
+        """Control application using intelligent model selection"""
+        try:
+            from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+            orchestrator = HybridOrchestrator()
+            if not orchestrator.is_running:
+                await orchestrator.start()
+
+            # Build rich context
+            context = {
+                "task_type": "app_control_safety_check",
+                "app_name": app_name,
+                "action": action,
+                "system_state": {
+                    "cpu_usage": self.system_state.cpu_usage if self.system_state else None,
+                    "memory_usage": self.system_state.memory_usage if self.system_state else None,
+                    "active_apps": self.system_state.active_apps if self.system_state else [],
+                },
+                "protected_apps": self.safety_limits['protected_apps'],
+            }
+
+            prompt = f"""Is it safe to {action} the application "{app_name}"?
+Consider:
+- System stability
+- User workflow disruption
+- Data loss risk
+
+Respond with: SAFE or UNSAFE and brief reason."""
+
+            # Execute with intelligent selection
+            result = await orchestrator.execute_with_intelligent_model_selection(
+                query=prompt,
+                intent="system_integration",
+                required_capabilities={"nlp_analysis", "system_understanding", "automation"},
+                context=context,
+                max_tokens=200,
+                temperature=0.1,
+            )
+
+            if not result.get("success"):
+                raise Exception(result.get("error", "Unknown error"))
+
+            response_text = result.get("text", "").strip()
+            model_used = result.get("model_used", "intelligent_selection")
+
+            logger.info(f"✨ App control safety check using {model_used}")
+
+            if 'SAFE' in response_text:
+                # Execute action
+                if action == 'quit':
+                    script = f'tell application "{app_name}" to quit'
+                elif action == 'hide':
+                    script = f'tell application "System Events" to set visible of process "{app_name}" to false'
+                elif action == 'activate':
+                    script = f'tell application "{app_name}" to activate'
+                else:
+                    return False
+
+                result = subprocess.run(
+                    ['osascript', '-e', script],
+                    capture_output=True
+                )
+
+                return result.returncode == 0
+
+            return False
+
+        except ImportError:
+            logger.warning("Hybrid orchestrator not available, falling back to direct API")
+            raise
+        except Exception as e:
+            logger.error(f"Error in intelligent selection: {e}")
+            raise
+
     async def control_application(self, app_name: str, action: str) -> bool:
         """Control a specific application"""
         try:
@@ -474,7 +550,15 @@ class AdvancedMacOSIntegration:
             if app_name in self.safety_limits['protected_apps']:
                 logger.warning(f"Cannot control protected app: {app_name}")
                 return False
-            
+
+            # Try intelligent selection first
+            if self.use_intelligent_selection:
+                try:
+                    return await self._control_application_with_intelligent_selection(app_name, action)
+                except Exception as e:
+                    logger.warning(f"Intelligent selection failed, falling back to direct API: {e}")
+
+            # Fallback to direct API
             # Use Claude to determine safe action
             response = await asyncio.to_thread(
                 self.claude.messages.create,
@@ -491,7 +575,7 @@ Consider:
 Respond with: SAFE or UNSAFE and brief reason."""
                 }]
             )
-            
+
             if 'SAFE' in response.content[0].text:
                 # Execute action
                 if action == 'quit':
@@ -502,25 +586,114 @@ Respond with: SAFE or UNSAFE and brief reason."""
                     script = f'tell application "{app_name}" to activate'
                 else:
                     return False
-                
+
                 result = subprocess.run(
                     ['osascript', '-e', script],
                     capture_output=True
                 )
-                
+
                 return result.returncode == 0
-            
+
         except Exception as e:
             logger.error(f"Error controlling application: {e}")
-        
+
         return False
     
+    async def _optimize_for_context_with_intelligent_selection(self, context: str, state: SystemState) -> Dict[str, Any]:
+        """Optimize for context using intelligent model selection"""
+        try:
+            from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+            orchestrator = HybridOrchestrator()
+            if not orchestrator.is_running:
+                await orchestrator.start()
+
+            # Build rich context
+            rich_context = {
+                "task_type": "system_optimization",
+                "optimization_context": context,
+                "cpu_usage": state.cpu_usage,
+                "memory_usage": state.memory_usage,
+                "on_battery": state.power_status.get('on_battery', False),
+                "active_apps_count": len(state.active_apps),
+                "macos_version": platform.mac_ver()[0],
+            }
+
+            prompt = f"""Optimize macOS for context: {context}
+
+Current System State:
+- CPU Usage: {state.cpu_usage}%
+- Memory Usage: {state.memory_usage}%
+- Active Apps: {', '.join(state.active_apps[:5])}
+- On Battery: {state.power_status.get('on_battery', False)}
+
+Provide specific optimization actions for:
+1. Application management (which to close/minimize)
+2. System settings (power, display, etc)
+3. Network configuration
+4. Resource allocation
+
+Be specific and safe."""
+
+            # Execute with intelligent selection
+            result = await orchestrator.execute_with_intelligent_model_selection(
+                query=prompt,
+                intent="macos_control",
+                required_capabilities={"nlp_analysis", "system_understanding", "automation"},
+                context=rich_context,
+                max_tokens=800,
+                temperature=0.2,
+            )
+
+            if not result.get("success"):
+                raise Exception(result.get("error", "Unknown error"))
+
+            response_text = result.get("text", "").strip()
+            model_used = result.get("model_used", "intelligent_selection")
+
+            logger.info(f"✨ Context optimization using {model_used}")
+
+            # Parse and execute optimizations
+            optimizations = self._parse_context_optimizations(response_text)
+
+            results = {
+                'context': context,
+                'optimizations_applied': [],
+                'state_before': state,
+                'success': True,
+                'model_used': model_used,
+            }
+
+            for opt in optimizations:
+                try:
+                    await self._apply_context_optimization(opt)
+                    results['optimizations_applied'].append(opt)
+                except Exception as e:
+                    logger.error(f"Failed to apply optimization: {e}")
+
+            return results
+
+        except ImportError:
+            logger.warning("Hybrid orchestrator not available, falling back to direct API")
+            raise
+        except Exception as e:
+            logger.error(f"Error in intelligent selection: {e}")
+            raise
+
     async def optimize_for_context(self, context: str) -> Dict[str, Any]:
         """Optimize system for specific context (meeting, focus, gaming, etc)"""
         try:
             # Get current state
             state = await self._gather_system_state()
-            
+
+            # Try intelligent selection first
+            if self.use_intelligent_selection:
+                try:
+                    return await self._optimize_for_context_with_intelligent_selection(context, state)
+                except Exception as e:
+                    logger.warning(f"Intelligent selection failed, falling back to direct API: {e}")
+
+            # Fallback to direct API
             # Use Claude to determine optimal settings
             response = await asyncio.to_thread(
                 self.claude.messages.create,
@@ -545,26 +718,26 @@ Provide specific optimization actions for:
 Be specific and safe."""
                 }]
             )
-            
+
             # Parse and execute optimizations
             optimizations = self._parse_context_optimizations(response.content[0].text)
-            
+
             results = {
                 'context': context,
                 'optimizations_applied': [],
                 'state_before': state,
                 'success': True
             }
-            
+
             for opt in optimizations:
                 try:
                     await self._apply_context_optimization(opt)
                     results['optimizations_applied'].append(opt)
                 except Exception as e:
                     logger.error(f"Failed to apply optimization: {e}")
-            
+
             return results
-            
+
         except Exception as e:
             logger.error(f"Error optimizing for context: {e}")
             return {'success': False, 'error': str(e)}

@@ -58,6 +58,7 @@ class Problem:
     priority: float
     deadline: Optional[datetime] = None
     stakeholders: List[str] = field(default_factory=list)
+    success_criteria: List[str] = field(default_factory=list)
     
     def to_prompt_context(self) -> str:
         """Convert problem to context for AI prompt"""
@@ -108,24 +109,25 @@ class CreativeProblemSolver:
     Advanced creative problem solving engine using AI and innovative techniques
     """
     
-    def __init__(self, anthropic_api_key: str):
-        # Anthropic API Client to work with Claude 
+    def __init__(self, anthropic_api_key: str, use_intelligent_selection: bool = True):
+        # Anthropic API Client to work with Claude
         self.claude = anthropic.Anthropic(api_key=anthropic_api_key)
-        
+        self.use_intelligent_selection = use_intelligent_selection
+
         # Problem solving components
         self.active_problems: Dict[str, Problem] = {}
         self.solution_history: List[CreativeSolution] = []
         self.idea_graph: Dict[str, IdeaNode] = {}
-        
+
         # Learning components
         self.solution_patterns = defaultdict(list)
         self.success_metrics = defaultdict(float)
         self.approach_effectiveness = defaultdict(lambda: 0.5)
-        
+
         # Creative techniques
         self.creative_techniques = self._initialize_creative_techniques()
         self.analogy_database = self._load_analogy_database()
-        
+
         # Innovation tracking
         self.innovation_metrics = {
             'solutions_generated': 0,
@@ -351,13 +353,100 @@ class CreativeProblemSolver:
         
         return await technique(problem, analysis)
     
-    async def _lateral_thinking_approach(self, problem: Problem, 
+    async def _lateral_thinking_with_intelligent_selection(self, problem: Problem,
+                                                           analysis: Dict[str, Any]) -> Optional[CreativeSolution]:
+        """Generate solution using lateral thinking with intelligent model selection"""
+        try:
+            from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+            orchestrator = HybridOrchestrator()
+            if not orchestrator.is_running:
+                await orchestrator.start()
+
+            # Challenge assumptions
+            assumptions = analysis.get('assumptions', [])
+
+            # Build rich context for intelligent selection
+            intelligent_context = {
+                "task_type": "creative_thinking",
+                "problem_details": {
+                    "type": problem.problem_type.value,
+                    "description": problem.description,
+                    "constraints": problem.constraints,
+                    "objectives": problem.objectives
+                },
+                "creative_approach": "lateral_thinking",
+                "innovation_requirements": {
+                    "break_conventions": True,
+                    "challenge_assumptions": assumptions,
+                    "find_unexpected_connections": True
+                }
+            }
+
+            prompt = f"""Use lateral thinking to solve this problem:
+
+{problem.to_prompt_context()}
+
+Assumptions to challenge: {', '.join(assumptions)}
+
+Apply lateral thinking techniques:
+1. Random entry: Start from an unrelated concept
+2. Provocation: Make deliberately unreasonable statements
+3. Movement: Extract useful ideas from provocations
+4. Concept extraction: Find underlying principles
+5. Challenge boundaries: Question all constraints
+
+Generate an innovative solution that:
+- Breaks conventional thinking
+- Finds unexpected connections
+- Simplifies radically
+- Changes the problem definition if needed
+
+Provide: solution description, implementation steps, innovation reasoning"""
+
+            result = await orchestrator.execute_with_intelligent_model_selection(
+                query=prompt,
+                intent="creative_thinking",
+                required_capabilities={"creative_reasoning", "problem_solving", "innovation"},
+                context=intelligent_context,
+                max_tokens=1500,
+                temperature=0.9,
+            )
+
+            if not result.get("success"):
+                raise Exception(result.get("error", "Unknown error"))
+
+            solution_text = result.get("text", "").strip()
+            model_used = result.get("model_used", "intelligent_selection")
+
+            logger.info(f"✨ Lateral thinking solution generated using {model_used}")
+
+            return self._parse_solution(
+                solution_text, problem, SolutionApproach.LATERAL_THINKING
+            )
+
+        except ImportError:
+            logger.warning("Hybrid orchestrator not available for lateral thinking")
+            raise
+        except Exception as e:
+            logger.error(f"Error in intelligent lateral thinking: {e}")
+            raise
+
+    async def _lateral_thinking_approach(self, problem: Problem,
                                        analysis: Dict[str, Any]) -> Optional[CreativeSolution]:
         """Generate solution using lateral thinking"""
+        # Use intelligent selection first with fallback
+        if self.use_intelligent_selection:
+            try:
+                return await self._lateral_thinking_with_intelligent_selection(problem, analysis)
+            except Exception as e:
+                logger.warning(f"Intelligent selection failed for lateral thinking, falling back: {e}")
+
+        # Fallback: original implementation
         try:
             # Challenge assumptions
             assumptions = analysis.get('assumptions', [])
-            
+
             response = await asyncio.to_thread(
                 self.claude.messages.create,
                 model="claude-3-opus-20240229",

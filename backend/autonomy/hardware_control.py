@@ -63,9 +63,10 @@ class HardwareControlSystem:
     Advanced hardware control with AI decision making
     """
     
-    def __init__(self, anthropic_api_key: str):
+    def __init__(self, anthropic_api_key: str, use_intelligent_selection: bool = True):
         self.claude = anthropic.Anthropic(api_key=anthropic_api_key)
-        
+        self.use_intelligent_selection = use_intelligent_selection
+
         # Hardware states
         self.hardware_states: Dict[HardwareComponent, HardwareState] = {}
         self.control_mode = ControlMode.CONTEXT_AWARE
@@ -210,13 +211,107 @@ class HardwareControlSystem:
             logger.error(f"Error controlling display: {e}")
             return {'success': False, 'error': str(e)}
     
-    async def _optimize_display_settings(self, requested_settings: Dict[str, Any]) -> Dict[str, Any]:
-        """Use AI to optimize display settings"""
+    async def _optimize_display_settings_with_intelligent_selection(self, requested_settings: Dict[str, Any]) -> Dict[str, Any]:
+        """Optimize display settings using intelligent model selection"""
         try:
+            from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+            orchestrator = HybridOrchestrator()
+            if not orchestrator.is_running:
+                await orchestrator.start()
+
             # Get current context
             current_time = datetime.now()
             is_night = current_time.hour >= 20 or current_time.hour < 6
-            
+
+            # Build rich context
+            context = {
+                "task_type": "display_optimization",
+                "current_time": current_time.isoformat(),
+                "is_night": is_night,
+                "requested_settings": requested_settings,
+                "policies": self.policies,
+                "hardware_state": {
+                    "enabled": self.hardware_states[HardwareComponent.DISPLAY].enabled,
+                    "current_settings": self.hardware_states[HardwareComponent.DISPLAY].settings,
+                },
+            }
+
+            prompt = f"""Optimize display settings for user comfort and health:
+
+Requested Settings: {json.dumps(requested_settings, indent=2)}
+Current Time: {current_time.strftime('%H:%M')}
+Is Night Time: {is_night}
+Current Policies: {json.dumps(self.policies, indent=2)}
+
+Provide optimal settings for:
+1. Brightness (0-100)
+2. Night Shift (enabled/disabled, temperature)
+3. True Tone (enabled/disabled)
+
+Consider:
+- Eye strain reduction
+- Circadian rhythm
+- Current activity context
+- Power consumption
+
+Return settings with reasoning."""
+
+            # Execute with intelligent selection
+            result = await orchestrator.execute_with_intelligent_model_selection(
+                query=prompt,
+                intent="hardware_control",
+                required_capabilities={"nlp_analysis", "hardware_understanding", "control_logic"},
+                context=context,
+                max_tokens=500,
+                temperature=0.2,
+            )
+
+            if not result.get("success"):
+                raise Exception(result.get("error", "Unknown error"))
+
+            settings_text = result.get("text", "").strip()
+            model_used = result.get("model_used", "intelligent_selection")
+
+            logger.info(f"✨ Display optimization using {model_used}")
+
+            # Extract settings (simplified parsing)
+            settings = requested_settings.copy()
+
+            if 'brightness' in settings_text.lower():
+                brightness_match = re.search(r'brightness[:\s]+(\d+)', settings_text.lower())
+                if brightness_match:
+                    settings['brightness'] = int(brightness_match.group(1))
+
+            if is_night and 'night shift' in settings_text.lower():
+                settings['night_shift'] = {'enabled': True, 'temperature': 'warm'}
+
+            settings['reasoning'] = "AI-optimized for current context"
+
+            return settings
+
+        except ImportError:
+            logger.warning("Hybrid orchestrator not available, falling back to direct API")
+            raise
+        except Exception as e:
+            logger.error(f"Error in intelligent selection: {e}")
+            raise
+
+    async def _optimize_display_settings(self, requested_settings: Dict[str, Any]) -> Dict[str, Any]:
+        """Use AI to optimize display settings"""
+        try:
+            # Try intelligent selection first
+            if self.use_intelligent_selection:
+                try:
+                    return await self._optimize_display_settings_with_intelligent_selection(requested_settings)
+                except Exception as e:
+                    logger.warning(f"Intelligent selection failed, falling back to direct API: {e}")
+
+            # Fallback to direct API
+            # Get current context
+            current_time = datetime.now()
+            is_night = current_time.hour >= 20 or current_time.hour < 6
+
             response = await asyncio.to_thread(
                 self.claude.messages.create,
                 model="claude-3-haiku-20240307",
@@ -244,27 +339,26 @@ Consider:
 Return settings with reasoning."""
                 }]
             )
-            
+
             # Parse response
             settings_text = response.content[0].text
-            
+
             # Extract settings (simplified parsing)
             settings = requested_settings.copy()
-            
+
             if 'brightness' in settings_text.lower():
                 # Extract brightness value
-                import re
                 brightness_match = re.search(r'brightness[:\s]+(\d+)', settings_text.lower())
                 if brightness_match:
                     settings['brightness'] = int(brightness_match.group(1))
-            
+
             if is_night and 'night shift' in settings_text.lower():
                 settings['night_shift'] = {'enabled': True, 'temperature': 'warm'}
-            
+
             settings['reasoning'] = "AI-optimized for current context"
-            
+
             return settings
-            
+
         except Exception as e:
             logger.error(f"Error optimizing display settings: {e}")
             return requested_settings
@@ -639,10 +733,94 @@ Include reasoning."""
             logger.error(f"Error optimizing for presentation: {e}")
             return {'success': False, 'error': str(e)}
     
-    async def _validate_hardware_action(self, component: HardwareComponent, 
+    async def _validate_hardware_action_with_intelligent_selection(self, component: HardwareComponent,
+                                                                   action: str, reason: Optional[str]) -> Dict[str, Any]:
+        """Validate hardware action using intelligent model selection"""
+        try:
+            from backend.core.hybrid_orchestrator import HybridOrchestrator
+
+            orchestrator = HybridOrchestrator()
+            if not orchestrator.is_running:
+                await orchestrator.start()
+
+            # Build rich context
+            context = {
+                "task_type": "hardware_validation",
+                "component": component.value,
+                "action": action,
+                "reason": reason,
+                "policies": self.policies,
+                "hardware_state": {
+                    "enabled": self.hardware_states[component].enabled,
+                    "controlled_by_jarvis": self.hardware_states[component].controlled_by_jarvis,
+                },
+                "safety_constraints": True,
+            }
+
+            prompt = f"""Validate hardware control action:
+
+Component: {component.value}
+Action: {action}
+Reason: {reason or "Not specified"}
+Current Policies: {json.dumps(self.policies, indent=2)}
+
+Should this action be allowed? Consider:
+- User privacy
+- Security implications
+- Current context
+- Reversibility
+
+Respond with:
+- Approved: yes/no
+- Reason for decision
+- Alternative suggestion if not approved"""
+
+            # Execute with intelligent selection
+            result = await orchestrator.execute_with_intelligent_model_selection(
+                query=prompt,
+                intent="system_control",
+                required_capabilities={"nlp_analysis", "hardware_understanding", "control_logic"},
+                context=context,
+                max_tokens=300,
+                temperature=0.1,
+            )
+
+            if not result.get("success"):
+                raise Exception(result.get("error", "Unknown error"))
+
+            response_text = result.get("text", "").strip()
+            model_used = result.get("model_used", "intelligent_selection")
+
+            logger.info(f"✨ Hardware validation using {model_used}")
+
+            # Parse response
+            response_lower = response_text.lower()
+
+            return {
+                'approved': 'yes' in response_lower or 'approved' in response_lower,
+                'reason': response_text,
+                'alternative': None  # Would parse from response
+            }
+
+        except ImportError:
+            logger.warning("Hybrid orchestrator not available, falling back to direct API")
+            raise
+        except Exception as e:
+            logger.error(f"Error in intelligent selection: {e}")
+            raise
+
+    async def _validate_hardware_action(self, component: HardwareComponent,
                                       action: str, reason: Optional[str]) -> Dict[str, Any]:
         """Validate hardware action with AI"""
         try:
+            # Try intelligent selection first
+            if self.use_intelligent_selection:
+                try:
+                    return await self._validate_hardware_action_with_intelligent_selection(component, action, reason)
+                except Exception as e:
+                    logger.warning(f"Intelligent selection failed, falling back to direct API: {e}")
+
+            # Fallback to direct API
             response = await asyncio.to_thread(
                 self.claude.messages.create,
                 model="claude-3-haiku-20240307",
@@ -668,16 +846,16 @@ Respond with:
 - Alternative suggestion if not approved"""
                 }]
             )
-            
+
             # Parse response
             response_text = response.content[0].text.lower()
-            
+
             return {
                 'approved': 'yes' in response_text or 'approved' in response_text,
                 'reason': response.content[0].text,
                 'alternative': None  # Would parse from response
             }
-            
+
         except Exception as e:
             logger.error(f"Error validating hardware action: {e}")
             # Default to safe action
