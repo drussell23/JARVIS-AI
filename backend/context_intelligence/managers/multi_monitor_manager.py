@@ -23,20 +23,20 @@ Strategy:
 """
 
 import asyncio
-import subprocess
 import json
+import logging
 import re
-from enum import Enum
-from typing import Dict, List, Optional, Any, Tuple, Set
 from dataclasses import dataclass, field
 from datetime import datetime
-import logging
+from enum import Enum
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
 
 class MonitorPosition(Enum):
     """Relative position of monitor"""
+
     LEFT = "left"
     RIGHT = "right"
     TOP = "top"
@@ -48,6 +48,7 @@ class MonitorPosition(Enum):
 @dataclass
 class MonitorInfo:
     """Information about a physical monitor"""
+
     id: int
     uuid: str
     name: str
@@ -62,6 +63,7 @@ class MonitorInfo:
 @dataclass
 class MonitorLayout:
     """Overall monitor layout"""
+
     monitors: List[MonitorInfo]
     main_monitor: Optional[MonitorInfo]
     total_resolution: Tuple[int, int]
@@ -72,6 +74,7 @@ class MonitorLayout:
 @dataclass
 class SpaceMonitorMapping:
     """Mapping of space to monitor"""
+
     space_id: int
     monitor_id: int
     monitor_uuid: str
@@ -85,15 +88,42 @@ class MonitorDetector:
     Detects connected monitors and their configurations.
 
     Uses system_profiler and other macOS tools to get monitor information.
+    Enhanced with YOLO vision for visual monitor layout detection.
     """
 
-    def __init__(self):
-        """Initialize monitor detector"""
+    def __init__(self, enable_vision: bool = True):
+        """Initialize monitor detector
+
+        Args:
+            enable_vision: Enable YOLO vision for visual monitor detection
+        """
         self.cache_ttl = 10.0  # Cache for 10 seconds
         self._cache: Optional[List[MonitorInfo]] = None
         self._cache_time: Optional[float] = None
+        self.enable_vision = enable_vision
+        self._vision_analyzer = None
 
-    async def detect_monitors(self, use_cache: bool = True, use_core_graphics: bool = True) -> List[MonitorInfo]:
+    def _get_vision_analyzer(self):
+        """Lazy load vision analyzer for monitor detection"""
+        if self._vision_analyzer is None and self.enable_vision:
+            try:
+                import os
+
+                from backend.vision.optimized_claude_vision import OptimizedClaudeVisionAnalyzer
+
+                api_key = os.getenv("ANTHROPIC_API_KEY")
+                if api_key:
+                    self._vision_analyzer = OptimizedClaudeVisionAnalyzer(
+                        api_key=api_key, use_intelligent_selection=True, use_yolo_hybrid=True
+                    )
+                    logger.info("[MONITOR-DETECTOR] Vision analyzer loaded for monitor detection")
+            except Exception as e:
+                logger.warning(f"[MONITOR-DETECTOR] Vision analyzer not available: {e}")
+        return self._vision_analyzer
+
+    async def detect_monitors(
+        self, use_cache: bool = True, use_core_graphics: bool = True
+    ) -> List[MonitorInfo]:
         """
         Detect all connected monitors using Core Graphics or system_profiler.
 
@@ -107,6 +137,7 @@ class MonitorDetector:
         # Check cache
         if use_cache and self._cache and self._cache_time:
             import time
+
             age = time.time() - self._cache_time
             if age < self.cache_ttl:
                 return self._cache
@@ -130,17 +161,19 @@ class MonitorDetector:
             # Combine information
             for i, display in enumerate(displays):
                 # Use position from Core Graphics if available, otherwise from arrangement
-                position = display.get('position', arrangement.get(i, {}).get('position', (0, 0)))
+                position = display.get("position", arrangement.get(i, {}).get("position", (0, 0)))
 
                 monitor = MonitorInfo(
-                    id=display.get('display_id', i + 1),  # Use Core Graphics display_id if available
-                    uuid=display.get('uuid', f'display_{i}'),
-                    name=display.get('name', f'Display {i+1}'),
-                    resolution=(display.get('width', 1920), display.get('height', 1080)),
+                    id=display.get(
+                        "display_id", i + 1
+                    ),  # Use Core Graphics display_id if available
+                    uuid=display.get("uuid", f"display_{i}"),
+                    name=display.get("name", f"Display {i+1}"),
+                    resolution=(display.get("width", 1920), display.get("height", 1080)),
                     position=position,
-                    is_main=display.get('main', i == 0),
+                    is_main=display.get("main", i == 0),
                     spaces=[],
-                    relative_positions=set()
+                    relative_positions=set(),
                 )
                 monitors.append(monitor)
 
@@ -150,6 +183,7 @@ class MonitorDetector:
 
             # Update cache
             import time
+
             self._cache = monitors
             self._cache_time = time.time()
 
@@ -158,25 +192,29 @@ class MonitorDetector:
         except Exception as e:
             logger.error(f"Failed to detect monitors: {e}")
             # Fallback: assume single monitor
-            return [MonitorInfo(
-                id=1,
-                uuid='default',
-                name='Main Display',
-                resolution=(1920, 1080),
-                position=(0, 0),
-                is_main=True,
-                spaces=[],
-                relative_positions={MonitorPosition.MAIN}
-            )]
+            return [
+                MonitorInfo(
+                    id=1,
+                    uuid="default",
+                    name="Main Display",
+                    resolution=(1920, 1080),
+                    position=(0, 0),
+                    is_main=True,
+                    spaces=[],
+                    relative_positions={MonitorPosition.MAIN},
+                )
+            ]
 
     async def _get_display_info(self) -> List[Dict[str, Any]]:
         """Get display information from system_profiler"""
         try:
             # Run system_profiler
             result = await asyncio.create_subprocess_exec(
-                'system_profiler', 'SPDisplaysDataType', '-json',
+                "system_profiler",
+                "SPDisplaysDataType",
+                "-json",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await result.communicate()
 
@@ -187,27 +225,53 @@ class MonitorDetector:
             data = json.loads(stdout.decode())
 
             displays = []
-            for item in data.get('SPDisplaysDataType', []):
+            for item in data.get("SPDisplaysDataType", []):
                 # Extract displays from the structure
                 for display_key, display_info in item.items():
-                    if isinstance(display_info, dict) and 'spdisplays_ndrvs' in display_info:
-                        for display in display_info['spdisplays_ndrvs']:
-                            resolution_str = display.get('_spdisplays_resolution', '1920 x 1080')
+                    if isinstance(display_info, dict) and "spdisplays_ndrvs" in display_info:
+                        for display in display_info["spdisplays_ndrvs"]:
+                            resolution_str = display.get("_spdisplays_resolution", "1920 x 1080")
                             width, height = self._parse_resolution(resolution_str)
 
-                            displays.append({
-                                'uuid': display.get('_spdisplays_display-serial-number', f'display_{len(displays)}'),
-                                'name': display.get('_name', f'Display {len(displays)+1}'),
-                                'width': width,
-                                'height': height,
-                                'main': display.get('spdisplays_main', 'spdisplays_no') == 'spdisplays_yes'
-                            })
+                            displays.append(
+                                {
+                                    "uuid": display.get(
+                                        "_spdisplays_display-serial-number",
+                                        f"display_{len(displays)}",
+                                    ),
+                                    "name": display.get("_name", f"Display {len(displays)+1}"),
+                                    "width": width,
+                                    "height": height,
+                                    "main": display.get("spdisplays_main", "spdisplays_no")
+                                    == "spdisplays_yes",
+                                }
+                            )
 
-            return displays if displays else [{'uuid': 'default', 'name': 'Main Display', 'width': 1920, 'height': 1080, 'main': True}]
+            return (
+                displays
+                if displays
+                else [
+                    {
+                        "uuid": "default",
+                        "name": "Main Display",
+                        "width": 1920,
+                        "height": 1080,
+                        "main": True,
+                    }
+                ]
+            )
 
         except Exception as e:
             logger.warning(f"Failed to get display info: {e}")
-            return [{'uuid': 'default', 'name': 'Main Display', 'width': 1920, 'height': 1080, 'main': True}]
+            return [
+                {
+                    "uuid": "default",
+                    "name": "Main Display",
+                    "width": 1920,
+                    "height": 1080,
+                    "main": True,
+                }
+            ]
 
     async def _get_displays_via_core_graphics(self) -> List[Dict[str, Any]]:
         """
@@ -216,7 +280,7 @@ class MonitorDetector:
         """
         try:
             # Try importing Quartz for Core Graphics access
-            script = '''
+            script = """
 import sys
 try:
     from Quartz import CGGetActiveDisplayList, CGDisplayBounds, CGMainDisplayID
@@ -253,13 +317,15 @@ except ImportError:
     print(json.dumps([]))
 except Exception as e:
     print(json.dumps([]), file=sys.stderr)
-'''
+"""
 
             # Execute Python script
             result = await asyncio.create_subprocess_exec(
-                'python3', '-c', script,
+                "python3",
+                "-c",
+                script,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await result.communicate()
 
@@ -275,15 +341,17 @@ except Exception as e:
             # Convert to standard format
             displays = []
             for display in displays_data:
-                displays.append({
-                    'uuid': display['uuid'],
-                    'name': display['name'],
-                    'width': display['width'],
-                    'height': display['height'],
-                    'position': (display['x'], display['y']),
-                    'main': display['main'],
-                    'display_id': display['display_id']
-                })
+                displays.append(
+                    {
+                        "uuid": display["uuid"],
+                        "name": display["name"],
+                        "width": display["width"],
+                        "height": display["height"],
+                        "position": (display["x"], display["y"]),
+                        "main": display["main"],
+                        "display_id": display["display_id"],
+                    }
+                )
 
             logger.info(f"[MONITOR-DETECTOR] Detected {len(displays)} displays via Core Graphics")
             return displays
@@ -294,7 +362,7 @@ except Exception as e:
 
     def _parse_resolution(self, resolution_str: str) -> Tuple[int, int]:
         """Parse resolution string like '1920 x 1080'"""
-        match = re.search(r'(\d+)\s*x\s*(\d+)', resolution_str)
+        match = re.search(r"(\d+)\s*x\s*(\d+)", resolution_str)
         if match:
             return int(match.group(1)), int(match.group(2))
         return 1920, 1080
@@ -305,9 +373,12 @@ except Exception as e:
         # In a real implementation, you'd use a Swift/ObjC bridge
         try:
             result = await asyncio.create_subprocess_exec(
-                'defaults', 'read', '/Library/Preferences/com.apple.windowserver', 'DisplaySets',
+                "defaults",
+                "read",
+                "/Library/Preferences/com.apple.windowserver",
+                "DisplaySets",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await result.communicate()
 
@@ -356,6 +427,94 @@ except Exception as e:
                     monitor.relative_positions.add(MonitorPosition.TOP)
                     main.relative_positions.add(MonitorPosition.BOTTOM)
 
+    async def detect_monitors_with_vision(self, screenshot=None) -> Optional[Dict[str, Any]]:
+        """
+        Detect monitors using YOLO vision for visual layout detection
+
+        Args:
+            screenshot: Optional screenshot for detection
+
+        Returns:
+            Dictionary with monitor detections or None
+        """
+        if not self.enable_vision or screenshot is None:
+            return None
+
+        vision_analyzer = self._get_vision_analyzer()
+        if not vision_analyzer:
+            return None
+
+        try:
+            # Use YOLO to detect monitors visually
+            result = await vision_analyzer.detect_monitors(screenshot)
+
+            if result:
+                logger.info(
+                    f"[MONITOR-DETECTOR] Detected monitors via YOLO vision: {result.get('monitor_count', 0)}"
+                )
+                return result
+
+            return None
+
+        except Exception as e:
+            logger.error(f"[MONITOR-DETECTOR] Error detecting monitors with vision: {e}")
+            return None
+
+    async def get_enhanced_monitor_info(
+        self, use_cache: bool = True, screenshot=None
+    ) -> Dict[str, Any]:
+        """
+        Get monitor information enhanced with vision analysis
+
+        Args:
+            use_cache: Use cached monitor info
+            screenshot: Optional screenshot for vision analysis
+
+        Returns:
+            Enhanced monitor information with vision data
+        """
+        # Get base monitor info
+        monitors = await self.detect_monitors(use_cache=use_cache)
+
+        result = {
+            "monitors": monitors,
+            "monitor_count": len(monitors),
+            "layout_type": self._determine_layout_type(monitors) if len(monitors) > 1 else "single",
+        }
+
+        # Add vision enhancements if available
+        if self.enable_vision and screenshot is not None:
+            vision_analyzer = self._get_vision_analyzer()
+            if vision_analyzer:
+                try:
+                    # Detect monitors visually
+                    vision_result = await self.detect_monitors_with_vision(screenshot)
+                    if vision_result:
+                        result["vision_detection"] = vision_result
+
+                        # Compare Core Graphics vs YOLO detection
+                        cg_count = len(monitors)
+                        yolo_count = vision_result.get("monitor_count", 0)
+
+                        if cg_count != yolo_count:
+                            logger.warning(
+                                f"[MONITOR-DETECTOR] Monitor count mismatch: "
+                                f"Core Graphics={cg_count}, YOLO={yolo_count}"
+                            )
+                            result["detection_discrepancy"] = {
+                                "core_graphics": cg_count,
+                                "yolo": yolo_count,
+                            }
+
+                    logger.info("[MONITOR-DETECTOR] Enhanced monitor info with vision analysis")
+
+                except Exception as e:
+                    logger.error(
+                        f"[MONITOR-DETECTOR] Error enhancing monitor info with vision: {e}"
+                    )
+
+        return result
+
 
 class MonitorSpaceMapper:
     """
@@ -366,11 +525,8 @@ class MonitorSpaceMapper:
 
     def __init__(self):
         """Initialize monitor space mapper"""
-        pass
 
-    async def map_spaces_to_monitors(
-        self, monitors: List[MonitorInfo]
-    ) -> List[MonitorInfo]:
+    async def map_spaces_to_monitors(self, monitors: List[MonitorInfo]) -> List[MonitorInfo]:
         """
         Map yabai spaces to monitors.
 
@@ -382,7 +538,7 @@ class MonitorSpaceMapper:
         """
         try:
             # Get yabai display information
-            displays = await self._query_yabai_displays()
+            await self._query_yabai_displays()
 
             # Get yabai space information
             spaces = await self._query_yabai_spaces()
@@ -390,8 +546,8 @@ class MonitorSpaceMapper:
             # Map spaces to displays
             display_spaces: Dict[int, List[int]] = {}
             for space in spaces:
-                display_id = space.get('display', 1)
-                space_id = space.get('index', space.get('id', 0))
+                display_id = space.get("display", 1)
+                space_id = space.get("index", space.get("id", 0))
 
                 if display_id not in display_spaces:
                     display_spaces[display_id] = []
@@ -411,7 +567,9 @@ class MonitorSpaceMapper:
             if monitors:
                 try:
                     spaces = await self._query_yabai_spaces()
-                    monitors[0].spaces = [s.get('index', s.get('id', i+1)) for i, s in enumerate(spaces)]
+                    monitors[0].spaces = [
+                        s.get("index", s.get("id", i + 1)) for i, s in enumerate(spaces)
+                    ]
                 except:
                     pass
             return monitors
@@ -420,9 +578,12 @@ class MonitorSpaceMapper:
         """Query yabai for display information"""
         try:
             result = await asyncio.create_subprocess_exec(
-                'yabai', '-m', 'query', '--displays',
+                "yabai",
+                "-m",
+                "query",
+                "--displays",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await result.communicate()
 
@@ -440,9 +601,12 @@ class MonitorSpaceMapper:
         """Query yabai for space information"""
         try:
             result = await asyncio.create_subprocess_exec(
-                'yabai', '-m', 'query', '--spaces',
+                "yabai",
+                "-m",
+                "query",
+                "--spaces",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await result.communicate()
 
@@ -471,9 +635,7 @@ class MonitorReferenceResolver:
     """
 
     def __init__(
-        self,
-        implicit_resolver: Optional[Any] = None,
-        conversation_tracker: Optional[Any] = None
+        self, implicit_resolver: Optional[Any] = None, conversation_tracker: Optional[Any] = None
     ):
         """
         Initialize monitor reference resolver.
@@ -487,19 +649,16 @@ class MonitorReferenceResolver:
 
         # Common monitor references
         self.reference_patterns = {
-            'main': ['main', 'primary', 'first'],
-            'secondary': ['secondary', 'second', 'other'],
-            'left': ['left'],
-            'right': ['right'],
-            'top': ['top', 'upper'],
-            'bottom': ['bottom', 'lower'],
+            "main": ["main", "primary", "first"],
+            "secondary": ["secondary", "second", "other"],
+            "left": ["left"],
+            "right": ["right"],
+            "top": ["top", "upper"],
+            "bottom": ["bottom", "lower"],
         }
 
     async def resolve_monitor_reference(
-        self,
-        query: str,
-        monitors: List[MonitorInfo],
-        context: Optional[Dict[str, Any]] = None
+        self, query: str, monitors: List[MonitorInfo], context: Optional[Dict[str, Any]] = None
     ) -> Optional[MonitorInfo]:
         """
         Resolve monitor reference from query.
@@ -523,10 +682,10 @@ class MonitorReferenceResolver:
                         return monitor
 
         # Check for "that monitor", "this display", etc.
-        if any(word in query_lower for word in ['that', 'this', 'the']):
+        if any(word in query_lower for word in ["that", "this", "the"]):
             # Use conversation context
             if self.conversation_tracker:
-                conv_context = self.conversation_tracker.get_recent_context()
+                self.conversation_tracker.get_recent_context()
                 # Get last mentioned monitor (would need to track monitor entities)
                 # For now, return None and let caller handle
 
@@ -543,23 +702,27 @@ class MonitorReferenceResolver:
         self, pattern_type: str, monitors: List[MonitorInfo]
     ) -> Optional[MonitorInfo]:
         """Resolve monitor by pattern type"""
-        if pattern_type == 'main':
+        if pattern_type == "main":
             return next((m for m in monitors if m.is_main), None)
 
-        if pattern_type == 'secondary':
+        if pattern_type == "secondary":
             return next((m for m in monitors if not m.is_main), None)
 
-        if pattern_type == 'left':
+        if pattern_type == "left":
             return next((m for m in monitors if MonitorPosition.LEFT in m.relative_positions), None)
 
-        if pattern_type == 'right':
-            return next((m for m in monitors if MonitorPosition.RIGHT in m.relative_positions), None)
+        if pattern_type == "right":
+            return next(
+                (m for m in monitors if MonitorPosition.RIGHT in m.relative_positions), None
+            )
 
-        if pattern_type == 'top':
+        if pattern_type == "top":
             return next((m for m in monitors if MonitorPosition.TOP in m.relative_positions), None)
 
-        if pattern_type == 'bottom':
-            return next((m for m in monitors if MonitorPosition.BOTTOM in m.relative_positions), None)
+        if pattern_type == "bottom":
+            return next(
+                (m for m in monitors if MonitorPosition.BOTTOM in m.relative_positions), None
+            )
 
         return None
 
@@ -575,7 +738,8 @@ class MultiMonitorManager:
         self,
         implicit_resolver: Optional[Any] = None,
         conversation_tracker: Optional[Any] = None,
-        auto_refresh_interval: float = 30.0
+        auto_refresh_interval: float = 30.0,
+        enable_vision: bool = True,
     ):
         """
         Initialize Multi-Monitor Manager.
@@ -584,11 +748,13 @@ class MultiMonitorManager:
             implicit_resolver: ImplicitReferenceResolver instance
             conversation_tracker: ConversationTracker instance
             auto_refresh_interval: How often to refresh monitor info (seconds)
+            enable_vision: Enable YOLO vision for visual monitor detection
         """
-        self.detector = MonitorDetector()
+        self.detector = MonitorDetector(enable_vision=enable_vision)
         self.mapper = MonitorSpaceMapper()
         self.resolver = MonitorReferenceResolver(implicit_resolver, conversation_tracker)
         self.auto_refresh_interval = auto_refresh_interval
+        self.enable_vision = enable_vision
 
         self._current_layout: Optional[MonitorLayout] = None
         self._refresh_task: Optional[asyncio.Task] = None
@@ -627,7 +793,7 @@ class MultiMonitorManager:
             monitors=monitors,
             main_monitor=main_monitor,
             total_resolution=total_resolution,
-            layout_type=layout_type
+            layout_type=layout_type,
         )
 
         self._current_layout = layout
@@ -748,6 +914,32 @@ class MultiMonitorManager:
         """Get current monitor layout"""
         return self._current_layout
 
+    async def get_enhanced_monitor_layout(self, screenshot=None) -> Dict[str, Any]:
+        """
+        Get monitor layout enhanced with vision analysis
+
+        Args:
+            screenshot: Optional screenshot for vision analysis
+
+        Returns:
+            Enhanced monitor layout with vision data
+        """
+        if not self._current_layout:
+            await self.refresh_monitor_layout()
+
+        # Get enhanced monitor info from detector
+        enhanced_info = await self.detector.get_enhanced_monitor_info(
+            use_cache=True, screenshot=screenshot
+        )
+
+        result = {
+            "layout": self._current_layout,
+            "enhanced_monitors": enhanced_info,
+            "vision_enabled": self.enable_vision,
+        }
+
+        return result
+
     async def _auto_refresh_loop(self):
         """Auto-refresh loop"""
         while True:
@@ -781,7 +973,8 @@ def get_multi_monitor_manager() -> Optional[MultiMonitorManager]:
 def initialize_multi_monitor_manager(
     implicit_resolver: Optional[Any] = None,
     conversation_tracker: Optional[Any] = None,
-    auto_refresh_interval: float = 30.0
+    auto_refresh_interval: float = 30.0,
+    enable_vision: bool = True,
 ) -> MultiMonitorManager:
     """
     Initialize the global MultiMonitorManager instance.
@@ -793,6 +986,7 @@ def initialize_multi_monitor_manager(
         implicit_resolver: ImplicitReferenceResolver instance
         conversation_tracker: ConversationTracker instance
         auto_refresh_interval: How often to refresh (seconds)
+        enable_vision: Enable YOLO vision for visual monitor detection
 
     Returns:
         MultiMonitorManager instance
@@ -802,7 +996,8 @@ def initialize_multi_monitor_manager(
     _multi_monitor_manager = MultiMonitorManager(
         implicit_resolver=implicit_resolver,
         conversation_tracker=conversation_tracker,
-        auto_refresh_interval=auto_refresh_interval
+        auto_refresh_interval=auto_refresh_interval,
+        enable_vision=enable_vision,
     )
 
     return _multi_monitor_manager
