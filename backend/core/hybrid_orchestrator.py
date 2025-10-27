@@ -25,6 +25,9 @@ _sai_system = None
 _cai_system = None
 _learning_db = None
 
+# Phase 3.1: Local LLM Integration (lazy loaded)
+_llm_inference = None
+
 
 def _get_uae():
     """Lazy load UAE"""
@@ -81,6 +84,20 @@ async def _get_learning_db():
         except Exception as e:
             logger.warning(f"learning_database not available: {e}")
     return _learning_db
+
+
+def _get_llm():
+    """Lazy load Local LLM (Phase 3.1)"""
+    global _llm_inference
+    if _llm_inference is None:
+        try:
+            from backend.intelligence.local_llm_inference import get_llm_inference
+
+            _llm_inference = get_llm_inference()
+            logger.info("✅ Local LLM (LLaMA 3.1 70B) ready for lazy loading")
+        except Exception as e:
+            logger.warning(f"Local LLM not available: {e}")
+    return _llm_inference
 
 
 class HybridOrchestrator:
@@ -306,6 +323,32 @@ class HybridOrchestrator:
                 except Exception as e:
                     logger.warning(f"learning_db query failed: {e}")
 
+        # ============== PHASE 3.1: Local LLM Integration ==============
+        # LLM: Local Language Model (LLaMA 3.1 70B on GCP)
+        if rule.get("use_llm"):
+            llm = _get_llm()
+            if llm:
+                try:
+                    # Check if LLM is available and started
+                    if not llm.is_running:
+                        await llm.start()
+
+                    # Get LLM status for routing decisions
+                    llm_status = llm.get_status()
+                    context["llm"] = {
+                        "available": llm_status["model_state"] == "loaded",
+                        "model_name": llm_status.get("model_name"),
+                        "health": llm_status.get("health", {}),
+                        "avg_inference_time": llm_status["health"].get("avg_inference_time", 0),
+                    }
+                    logger.debug(
+                        f"🤖 LLM context: {llm_status['model_state']} "
+                        f"({llm_status['health'].get('success_rate', 0):.1%} success rate)"
+                    )
+                except Exception as e:
+                    logger.warning(f"LLM context failed: {e}")
+        # ===============================================================
+
         return context
 
     async def _sai_learn_from_execution(self, command: str, result: Dict):
@@ -359,6 +402,118 @@ class HybridOrchestrator:
                 logger.error(f"SAI self-heal failed: {e}")
 
         return {"success": False, "error": str(error)}
+
+    # ============== PHASE 3.1: LLM Helper Methods ==============
+
+    async def execute_llm_inference(
+        self,
+        prompt: str,
+        max_tokens: Optional[int] = None,
+        temperature: Optional[float] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        Execute LLM inference with LLaMA 3.1 70B
+
+        Args:
+            prompt: Text prompt for generation
+            max_tokens: Max tokens to generate
+            temperature: Sampling temperature
+            **kwargs: Additional generation parameters
+
+        Returns:
+            Dict with generated text and metadata
+        """
+        llm = _get_llm()
+        if not llm:
+            return {
+                "success": False,
+                "error": "Local LLM not available",
+                "text": "",
+            }
+
+        try:
+            # Start LLM if not running
+            if not llm.is_running:
+                await llm.start()
+
+            # Generate text
+            generated_text = await llm.generate(
+                prompt, max_tokens=max_tokens, temperature=temperature, **kwargs
+            )
+
+            return {
+                "success": True,
+                "text": generated_text,
+                "model": "llama-3.1-70b",
+                "backend": "gcp",
+            }
+
+        except Exception as e:
+            logger.error(f"LLM inference failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "text": "",
+            }
+
+    async def classify_intent_with_llm(self, command: str) -> Dict[str, Any]:
+        """Use LLM to classify user intent"""
+        prompt = f"""Classify the intent of this command. Respond with JSON format:
+{{"intent": "...", "confidence": 0.0-1.0, "entities": [...], "action": "..."}}
+
+Command: "{command}"
+
+Classification:"""
+
+        result = await self.execute_llm_inference(prompt, max_tokens=100, temperature=0.3)
+
+        if result["success"]:
+            try:
+                import json
+
+                # Parse JSON from response
+                text = result["text"].strip()
+                # Extract JSON if wrapped in other text
+                if "{" in text:
+                    json_start = text.index("{")
+                    json_end = text.rindex("}") + 1
+                    text = text[json_start:json_end]
+
+                classification = json.loads(text)
+                return {
+                    "success": True,
+                    "intent": classification.get("intent"),
+                    "confidence": classification.get("confidence", 0.8),
+                    "entities": classification.get("entities", []),
+                    "action": classification.get("action"),
+                }
+            except Exception as e:
+                logger.warning(f"Failed to parse LLM classification: {e}")
+                return {"success": False, "error": str(e)}
+
+        return result
+
+    async def generate_response_with_llm(
+        self, command: str, context: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        """Generate response using LLM with context"""
+        # Build prompt with context
+        prompt = f"User command: {command}\n\n"
+
+        if context:
+            if "uae" in context:
+                prompt += f"Context: {context['uae']}\n"
+            if "cai" in context:
+                prompt += f"Intent: {context['cai'].get('predicted_intent')}\n"
+
+        prompt += "\nRespond naturally and helpfully:\n"
+
+        result = await self.execute_llm_inference(prompt, max_tokens=256, temperature=0.7)
+
+        return result
+
+    # ===============================================================
 
     async def execute_query(self, query: str, **kwargs) -> Dict[str, Any]:
         """Execute a natural language query"""

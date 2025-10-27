@@ -71,11 +71,21 @@ hybrid:
         - sai_learning
         - cai_prediction
         - deep_learning
+        # Phase 3.1: Local LLM capabilities
+        - llm_inference
+        - intent_classification
+        - query_expansion
+        - response_generation
+        - conversational_ai
+        - code_explanation
+        - text_summarization
+        - question_answering
       components:
         - CHATBOTS
         - ML_MODELS
         - MEMORY
         - MONITORING
+        - LOCAL_LLM  # Phase 3.1: LLaMA 3.1 70B
       discovery:
         method: dns
         hostname: jarvis-backend.gcp.internal
@@ -264,6 +274,78 @@ hybrid:
         reason: "Cost optimization - reclaim to local"
         trigger_gcp_shutdown: true  # Shutdown GCP if possible
 
+      # ============== LLM INFERENCE ROUTING (Phase 3.1) ==============
+      - name: llm_intent_classification
+        priority: 90
+        match:
+          command_type: intent_classification
+          keywords: [classify, intent, parse, understand command]
+        route_to: gcp  # Use LLaMA 70B on GCP
+        fallback: local
+        use_llm: true  # Use local LLM inference
+        estimated_ram_gb: 24.0
+        max_latency_ms: 1000
+
+      - name: llm_query_expansion
+        priority: 92
+        match:
+          command_type: query_expansion
+          keywords: [expand, rewrite, rephrase, clarify]
+        route_to: gcp
+        fallback: local
+        use_llm: true
+        estimated_ram_gb: 24.0
+        max_latency_ms: 1500
+
+      - name: llm_response_generation
+        priority: 95
+        match:
+          command_type: response_generation
+          keywords: [generate, respond, answer, explain, write]
+        route_to: gcp
+        fallback: local
+        use_llm: true
+        use_uae: true  # Add context
+        use_cai: true  # Intent awareness
+        estimated_ram_gb: 24.0
+        max_latency_ms: 3000
+
+      - name: llm_conversational_ai
+        priority: 100
+        match:
+          command_type: conversational_ai
+          keywords: [chat, conversation, talk, discuss]
+        route_to: gcp
+        fallback: local
+        use_llm: true
+        use_uae: true
+        use_cai: true
+        use_learning_db: true  # Remember conversations
+        estimated_ram_gb: 24.0
+        max_latency_ms: 3000
+
+      - name: llm_code_explanation
+        priority: 105
+        match:
+          command_type: code_explanation
+          keywords: [code, function, explain code, how does this work]
+        route_to: gcp
+        fallback: none  # Only GCP has LLaMA
+        use_llm: true
+        estimated_ram_gb: 24.0
+        max_latency_ms: 5000
+
+      - name: llm_text_summarization
+        priority: 98
+        match:
+          command_type: text_summarization
+          keywords: [summarize, summary, tldr, key points]
+        route_to: gcp
+        fallback: local
+        use_llm: true
+        estimated_ram_gb: 24.0
+        max_latency_ms: 4000
+
       - name: default
         match:
           all: true
@@ -303,6 +385,86 @@ hybrid:
     goal_inference: 1.5  # GB
     ml_models: 5.0  # GB
     learning_db_cache: 0.05  # GB
+    llama_70b_4bit: 24.0  # GB (LLaMA 3.1 70B 4-bit quantized)
+    llm_inference: 24.0  # GB (Alias for llama_70b_4bit)
+
+  # ============== LOCAL LLM CONFIGURATION (Phase 3.1) ==============
+  # LLaMA 3.1 70B deployment on GCP 32GB Spot VM
+  local_llm:
+    enabled: true  # Enable local LLM inference
+    backend: "gcp"  # Only deploy on GCP (requires 32GB RAM)
+
+    # Model Configuration
+    model:
+      name: "meta-llama/Meta-Llama-3.1-70B-Instruct"
+      type: "llama"
+      version: "3.1"
+      parameters: "70B"
+      quantization: "4bit"  # 4-bit quantization (70B → 24GB)
+
+    # Quantization Config (BitsAndBytes)
+    quantization_config:
+      load_in_4bit: true
+      bnb_4bit_compute_dtype: "float16"  # float16, bfloat16
+      bnb_4bit_quant_type: "nf4"  # nf4, fp4
+      bnb_4bit_use_double_quant: true
+
+    # Generation Config
+    generation:
+      max_new_tokens: 512
+      temperature: 0.7
+      top_p: 0.9
+      top_k: 50
+      do_sample: true
+      repetition_penalty: 1.1
+      num_beams: 1  # 1 for faster generation, >1 for better quality
+
+    # Resource Management
+    resources:
+      ram_required_gb: 24
+      ram_buffer_gb: 2  # Keep 2GB buffer (24 + 2 = 26GB < 32GB)
+      device_map: "auto"  # Auto-distribute across GPUs
+      max_memory: null  # Let transformers decide
+      offload_folder: "/tmp/llm_offload"  # For CPU offloading if needed
+
+    # Performance Optimization
+    optimization:
+      use_cache: true  # KV cache for faster generation
+      use_flash_attention: true  # Flash attention if available
+      torch_compile: false  # PyTorch 2.0 compilation (experimental)
+      gradient_checkpointing: false  # Not needed for inference
+
+    # Caching & Batching
+    inference:
+      cache_enabled: true
+      cache_ttl: 3600  # seconds (1 hour)
+      max_batch_size: 4  # Process up to 4 requests in parallel
+      timeout: 30  # seconds
+      retry_attempts: 2
+
+    # Model Loading
+    loading:
+      lazy_load: true  # Load on first request
+      preload: false  # Don't load on startup (save RAM)
+      download_if_missing: true
+      cache_dir: "/tmp/huggingface_cache"  # Model cache directory
+
+    # Health Checks
+    health:
+      enabled: true
+      check_interval: 60  # seconds
+      warmup_prompt: "Hello, how are you?"
+      max_warmup_time: 10  # seconds
+
+    # Use Cases (routing)
+    use_cases:
+      - intent_classification
+      - query_expansion
+      - response_generation
+      - conversational_ai
+      - code_explanation
+      - text_summarization
+      - question_answering
 
   # Circuit Breaker Configuration
   circuit_breaker:
