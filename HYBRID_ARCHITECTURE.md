@@ -101,63 +101,67 @@ Your JARVIS features a **state-of-the-art hybrid architecture** with intelligent
     - Complete System Integration
     - Local Environment (Mac - 16GB RAM)
     - GitHub Actions (CI/CD Pipeline)
-    - GCP Cloud (32GB RAM)
-    - Intelligence System Integration
-    - Real-Time RAM-Based Routing
-    - Data Synchronization: Local ↔ Cloud
-    - CI/CD Pipeline Integration
-    - Real-Time Information Sharing
+    - **GCP Spot VMs (32GB RAM, ~$0.029/hr)** - 60-91% cost savings
+    - Intelligence System Integration (UAE/SAI/CAI)
+    - **Real-Time RAM-Based Routing** with Bidirectional Negotiation
+    - Data Synchronization: Local ↔ Cloud (SQLite ↔ PostgreSQL)
+    - CI/CD Pipeline Integration (Automated Deployments)
+    - Real-Time Information Sharing (WebSocket Heartbeats)
+    - Component Lifecycle Management (Load/Unload/Migrate)
     - Complete System Example
     - Architecture Benefits
 
 ### **Deployment & Operations**
 13. [🏗️ Deployment Architecture: Code Flow to Production](#️-deployment-architecture-code-flow-to-production)
-    - Dual-Deployment Strategy
+    - Dual-Deployment Strategy (Long-lived vs Auto-created VMs)
     - Scenario 1: Existing VM Deployment (GitHub Actions)
-    - Scenario 2: Auto-Created VMs (Hybrid Routing)
-    - Scenario 3: Manual Testing
-    - How Updates Stay in Sync
-    - Why This Architecture?
+    - Scenario 2: **Auto-Created Spot VMs** (Hybrid Routing + Memory Pressure)
+    - Scenario 3: Manual Testing & Development
+    - How Updates Stay in Sync (Code sync + Database sync)
+    - Why This Architecture? (Flexibility + Cost optimization)
     - Benefits for Ongoing Development
 
 14. [🛠️ Complete Technology Stack](#️-complete-technology-stack)
-    - Core Technologies (FastAPI, GCP, Databases)
-    - Machine Learning & Intelligence (SAI, UAE, CAI)
-    - Monitoring & Observability
-    - Development Tools & CI/CD
-    - Why This Stack? (5 Critical Problems Solved)
+    - **Core Technologies** (FastAPI, GCP Spot VMs, Databases)
+    - **Machine Learning & Intelligence** (SAI, UAE, CAI, learning_db)
+    - **Monitoring & Observability** (RAM pressure, component lifecycle)
+    - **Development Tools & CI/CD** (pytest, pre-commit, GitHub Actions)
+    - **Why This Stack?** (5 Critical Problems Solved)
+    - **Cost Optimization** (Spot VMs 60-91% savings)
     - How This Enables Future Development
     - Scalability Path & Future Vision
 
 ### **Advanced Features**
 15. [🧠 Dynamic RAM-Aware Auto-Scaling](#-dynamic-ram-aware-auto-scaling)
-    - Intelligent Real-Time Workload Shifting
-    - RAM Monitoring Implementation
-    - Automatic Shift Triggers
-    - Shift Back to Local
-    - SAI Predictive Optimization
+    - **Intelligent Real-Time Workload Shifting** (Local ↔ GCP)
+    - **RAM Monitoring Implementation** (macOS vm_stat + page outs)
+    - **Automatic Shift Triggers** (>70% warning, >85% critical)
+    - **Shift Back to Local** (Cost optimization when <60%)
+    - **SAI Predictive Optimization** (Learn patterns, pre-load components)
+    - **Component Negotiation Protocol** (Bidirectional communication)
 
 16. [🖥️ macOS-to-Linux Translation Layer](#️-macos-to-linux-translation-layer)
-    - Platform-Specific Feature Handling
-    - The Challenge
-    - Architecture Overview
-    - Translation Strategies (4 strategies)
-    - Feature Compatibility Matrix
-    - Local Mac Proxy Service
+    - Platform-Specific Feature Handling (Yabai, AppleScript, etc.)
+    - The Challenge (macOS-only features on Linux GCP)
+    - Architecture Overview (Remote command execution)
+    - Translation Strategies (4 strategies: remote proxy, equivalent, API, skip)
+    - Feature Compatibility Matrix (✅ Remote, 🔄 Translate, ⚠️ Degrade, ❌ Skip)
+    - **Local Mac Proxy Service** (WebSocket server for macOS commands)
     - Intelligent Routing with Platform Awareness
-    - Performance Impact
-    - Fallback Chain
-    - Key Benefits
+    - Performance Impact (<100ms overhead)
+    - Fallback Chain (Try → Fallback → Graceful degrade)
+    - Key Benefits (Full feature parity + cloud scale)
 
-17. [🚀 Benefits of 32GB GCP Cloud RAM](#-benefits-of-32gb-gcp-cloud-ram)
-    - Advanced AI & ML Models
-    - Large-Scale Data Processing
-    - Real-Time Video & Vision Processing
-    - Advanced Memory & Context Management
-    - Parallel Processing & Batch Operations
-    - Advanced JARVIS Features
-    - Future Possibilities
-    - RAM Usage Comparison
+17. [🚀 Benefits of 32GB GCP Spot VM RAM](#-benefits-of-32gb-gcp-spot-vm-ram)
+    - **Advanced AI & ML Models** (Multiple models loaded simultaneously)
+    - **Large-Scale Data Processing** (Vision + NLP + Context analysis)
+    - **Real-Time Video & Vision Processing** (Claude Vision API heavy)
+    - **Advanced Memory & Context Management** (UAE + SAI + CAI full power)
+    - **Parallel Processing & Batch Operations** (9+ components active)
+    - **Advanced JARVIS Features** (Continuous monitoring, predictions)
+    - **Cost Optimization** (Spot VMs 60-91% cheaper: $0.029/hr vs $0.15-0.30/hr)
+    - **Future Possibilities** (Second VM, larger models, more components)
+    - **RAM Usage Comparison** (16GB local vs 32GB cloud capacity)
 
 18. [🗄️ Advanced Database Cursor Implementation](#️-advanced-database-cursor-implementation)
     - Enterprise-Grade DB-API 2.0 Compliant Cursor
