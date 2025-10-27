@@ -2779,6 +2779,19 @@ def mount_routers():
     except ImportError as e:
         logger.warning(f"Hybrid Cloud API not available: {e}")
 
+    # Model Lifecycle Management API (Phase 3.1+)
+    try:
+        from api.model_routes import router as model_router
+
+        app.include_router(model_router)
+        logger.info("✅ Model Lifecycle Management API mounted at /models")
+        logger.info("   Endpoints: /models/registry, /models/select, /models/execute")
+        logger.info("   Monitoring: /models/metrics, /models/health")
+        logger.info("   Lifecycle: /models/lifecycle/status, /models/lifecycle/ram")
+
+    except ImportError as e:
+        logger.warning(f"Model Lifecycle Management API not available: {e}")
+
     # Mount static files for auto-config script
     try:
         import os
