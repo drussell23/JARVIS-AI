@@ -1,6 +1,31 @@
 {
   "venvPath": "./backend",
   "venv": "venv",
-  "exclude": ["**/venv/**", "**/.venv/**", "**/__pycache__/**"],
+  "exclude": [
+    "**/venv/**",
+    "**/.venv/**",
+    "**/__pycache__/**",
+    "**/node_modules/**",
+    "**/build/**",
+    "**/dist/**",
+    "**/.build/**",
+    "**/target/**",
+    "**/.pytest_cache/**",
+    "**/.mypy_cache/**",
+    "**/.ruff_cache/**",
+    "**/.hypothesis/**",
+    "**/.jarvis/**",
+    "backend/data/**",
+    "backend/logs/**",
+    "backend/checkpoints/**",
+    "backend/faiss_index/**",
+    "backend/chroma_db/**",
+    "backend/knowledge_base/**",
+    "backend/swift_bridge/.build/**",
+    "backend/vision/jarvis-rust-core/target/**",
+    "backend/rust_performance/target/**",
+    "models/**",
+    ".git/**"
+  ],
   "typeCheckingMode": "basic"
 }
