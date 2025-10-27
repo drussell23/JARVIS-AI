@@ -6313,13 +6313,185 @@ With **GCP 32GB RAM Spot VMs** and the **hybrid architecture** foundation in pla
 
 ---
 
-### **Phase 3: ML Model Deployment & Component Activation (Current Priority)**
+### **Phase 3: ML Model Deployment & Component Activation (Current Priority)** 🚧
 
-#### **Goal:** Leverage 32GB GCP RAM for advanced ML models and activate dormant intelligence agents
+#### **Executive Summary: What to Implement Next**
+
+**Goal:** Leverage your 32GB GCP Spot VM RAM (currently only using ~4-8GB)
 
 **Timeline:** Weeks 1-8 (2 months)
-**RAM Target:** Use 20-28GB of available 32GB on GCP
-**Focus:** Deploy large language models, vision models, and activate inactive agents
+**RAM Target:** Use 28-30GB of available 32GB on GCP (88% utilization)
+
+---
+
+#### **🎯 Implementation Priorities**
+
+**Priority 3.1: Deploy LLaMA 3.1 70B on GCP (Weeks 1-2)** ⭐ **HIGHEST PRIORITY**
+
+**Why This First?**
+- You have 32GB RAM sitting mostly idle (only 25% utilized)
+- Save $20-50/month in Claude API costs
+- 70B parameters >> current models
+- Perfect fit: 24GB model in 32GB VM
+
+**Quick Start Implementation:**
+```python
+# backend/intelligence/local_llm_inference.py
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+import torch
+
+class LocalLLMInference:
+    def __init__(self):
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_quant_type="nf4",
+        )
+
+        self.model = AutoModelForCausalLM.from_pretrained(
+            "meta-llama/Meta-Llama-3.1-70B-Instruct",
+            quantization_config=quantization_config,
+            device_map="auto"
+        )
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            "meta-llama/Meta-Llama-3.1-70B-Instruct"
+        )
+
+    async def generate(self, prompt: str, max_tokens: int = 512) -> str:
+        inputs = self.tokenizer(prompt, return_tensors="pt").to("cuda")
+        outputs = self.model.generate(
+            inputs.input_ids,
+            max_new_tokens=max_tokens,
+            temperature=0.7,
+            top_p=0.9,
+            do_sample=True
+        )
+        return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+```
+
+**Benefits:**
+- ✅ $0 API costs (vs $0.01-0.03/query)
+- ✅ <1s inference latency
+- ✅ Privacy (data stays in your GCP)
+- ✅ 70B parameters for complex reasoning
+
+---
+
+**Priority 3.2: Deploy YOLOv8 for UI Detection (Weeks 3-4)**
+
+**Why?**
+- Faster than Claude Vision for UI elements
+- 6GB RAM (fits easily with LLaMA)
+- Real-time icon/button detection
+
+**Use Cases:**
+- Control Center icon detection
+- Living Room TV connection UI
+- Multi-monitor layout detection
+
+**Implementation:**
+```python
+from ultralytics import YOLO
+
+class YOLOVisionDetector:
+    def __init__(self):
+        self.model = YOLO('yolov8x.pt')  # 6GB
+
+    async def detect_ui_elements(self, screenshot):
+        results = self.model(screenshot)
+        icons = [r for r in results if r.cls == 'icon']
+        buttons = [r for r in results if r.cls == 'button']
+        return {"icons": icons, "buttons": buttons}
+```
+
+---
+
+**Priority 3.3: Activate Goal Inference System (Weeks 5-6)**
+
+**Why?**
+- Enable predictive automation
+- "I think you're about to connect to TV, shall I?"
+- Learn user patterns
+
+**Files:**
+- `backend/vision/intelligence/goal_inference_system.py` (currently inactive)
+
+---
+
+**Priority 3.4: Add Semantic Search (Weeks 7-8)**
+
+**Why?**
+- "What did I do earlier?" queries
+- Fuzzy conversation history search
+- 2GB RAM (embedding models)
+
+**Implementation:**
+```python
+from sentence_transformers import SentenceTransformer
+
+class SemanticSearchEngine:
+    def __init__(self):
+        self.model = SentenceTransformer('BAAI/bge-large-en-v1.5')  # 1.3GB
+
+    async def search_conversation_history(self, query: str):
+        query_embedding = self.model.encode(query)
+        # Search against stored embeddings
+        return top_10_results
+```
+
+---
+
+#### **💰 Expected Impact of Phase 3**
+
+**Cost Savings:**
+- LLaMA 3.1 70B: **-$20-50/month** (eliminate Claude API costs)
+- Spot VM: Already saving **60-91%** vs regular VMs ($0.029/hr vs $0.15-0.30/hr)
+- **Total monthly cost: $2-4** (Spot VM only)
+
+**Performance Improvements:**
+- LLM Inference: <1s (local) vs 1-3s (Claude API)
+- UI Detection: 30 FPS (YOLOv8) vs 2-5s (Claude Vision)
+- Intent Classification: <100ms (local LLM) vs 500-1000ms (API)
+
+**RAM Utilization:**
+- **Current:** 4-8GB / 32GB (25% utilized) ⚠️
+- **After Phase 3:** 28-30GB / 32GB (88% utilized) ✅
+
+**Component Breakdown:**
+- LLaMA 3.1 70B: 24GB
+- YOLOv8: 6GB
+- Semantic Search: 2GB
+- Existing components: 4GB
+- **Total: ~30GB / 32GB**
+
+---
+
+#### **📊 Updated Roadmap Status**
+
+- ✅ **Phase 1:** Component Lifecycle Management (Complete)
+- ✅ **Phase 2:** Advanced RAM-Aware Routing (Complete Jan 2025)
+- ✅ **Phase 2.5:** GCP Idle Tracking & Capabilities (Complete Jan 2025)
+- 🚧 **Phase 3:** ML Model Deployment (CURRENT - Start with LLaMA 3.1 70B)
+- 🔮 **Phase 4:** Multi-Agent Coordination (Planned)
+- 🎯 **Phase 5:** Full Autonomous Operation (Future)
+
+---
+
+#### **🚀 Next Step: Start Priority 3.1**
+
+**Action:** Deploy LLaMA 3.1 70B (4-bit quantized) on your GCP Spot VM
+
+**Requirements:**
+- GPU: NVIDIA T4 or better (already on GCP Spot VM)
+- RAM: 32GB (you have this!)
+- Disk: 40GB for model weights
+- Libraries: transformers, torch, bitsandbytes
+
+**Estimated Time:** 1-2 hours for initial deployment + testing
+
+---
+
+#### **Detailed Implementation Guide**
 
 **Priority 3.1: Deploy Large Language Models on GCP (Weeks 1-4)**
 
