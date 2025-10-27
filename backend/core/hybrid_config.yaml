@@ -182,11 +182,127 @@ hybrid:
         use_cai: true
         use_learning_db: true
 
+      # ============== VOICE/TEXT COMMANDS (NEW - Phase 2) ==============
+      - name: voice_command_simple
+        priority: 80
+        match:
+          command_type: voice_command
+          keywords: [time, date, weather, simple, quick]
+        route_to: local
+        fallback: gcp
+        use_cai: true  # Quick intent detection
+        estimated_ram_gb: 0.2
+        max_latency_ms: 500
+
+      - name: voice_command_complex
+        priority: 100
+        match:
+          command_type: voice_command
+          memory_pressure: ">70"  # If local RAM >70%
+        route_to: gcp
+        fallback: local
+        use_uae: true
+        use_cai: true
+        use_learning_db: true
+        estimated_ram_gb: 3.5
+        max_latency_ms: 3000
+
+      - name: voice_command_nlp_heavy
+        priority: 110
+        match:
+          command_type: voice_command
+          keywords: [analyze, summarize, explain, understand, write, compose]
+        route_to: gcp
+        fallback: local
+        use_uae: true
+        use_cai: true
+        use_sai: true
+        estimated_ram_gb: 4.5
+        max_latency_ms: 5000
+
+      - name: text_command_routing
+        priority: 95
+        match:
+          command_type: text_command
+          memory_pressure: ">70"
+        route_to: gcp
+        fallback: local
+        use_cai: true
+        use_learning_db: true
+        estimated_ram_gb: 2.5
+        max_latency_ms: 3000
+
+      - name: vision_analyze_heavy
+        priority: 120
+        match:
+          command_type: vision_analyze
+        route_to: gcp  # Always use GCP for heavy vision
+        fallback: none
+        use_uae: true
+        use_sai: true
+        estimated_ram_gb: 5.0
+        max_latency_ms: 10000
+
+      - name: emergency_memory_pressure
+        priority: 200  # Highest priority
+        match:
+          memory_pressure: ">85"  # Critical memory pressure
+        route_to: gcp
+        force: true  # Override all other rules
+        fallback: none
+        use_sai: true  # Learn from emergency situations
+        reason: "Critical memory pressure - mandatory GCP routing"
+        estimated_ram_gb: "auto"  # Calculate dynamically
+
+      - name: cost_optimization_reclaim
+        priority: 50  # Low priority
+        match:
+          memory_pressure: "<40"  # Lots of free local RAM
+          gcp_idle_minutes: ">10"  # GCP been idle
+        route_to: local
+        fallback: none
+        reason: "Cost optimization - reclaim to local"
+        trigger_gcp_shutdown: true  # Shutdown GCP if possible
+
       - name: default
         match:
           all: true
         route_to: auto  # Let system decide
         use_uae: true  # Always capture context
+        estimated_ram_gb: 1.0
+
+  # RAM-Aware Routing Configuration (NEW - Phase 2)
+  ram_awareness:
+    enabled: true
+    local_thresholds:
+      warning: 70  # % - Start preferring GCP
+      critical: 85  # % - Force GCP routing
+      recovery: 60  # % - Can shift back to local
+      optimization: 40  # % - Actively reclaim from GCP
+    gcp_thresholds:
+      warning: 75  # % - Start load balancing
+      critical: 90  # % - Reject new workloads
+      healthy: 60  # % - Can accept new work
+    monitoring_interval: 5  # seconds - Check RAM every 5s
+    decision_window: 30  # seconds - Consider last 30s of data
+    page_outs_threshold: 5000  # macOS - swapping indicator
+
+  # Component RAM Estimates (Dynamic, learned over time)
+  component_ram_estimates:
+    vision_capture: 0.15  # GB
+    vision_full: 3.5  # GB (Claude Vision API)
+    voice_command_basic: 0.2  # GB
+    voice_nlp_full: 4.0  # GB (Transformers)
+    uae_light: 0.15  # GB
+    uae_full: 0.8  # GB
+    sai_light: 0.1  # GB
+    sai_full: 0.6  # GB
+    cai_light: 0.1  # GB
+    cai_full: 0.5  # GB
+    chatbot: 2.5  # GB
+    goal_inference: 1.5  # GB
+    ml_models: 5.0  # GB
+    learning_db_cache: 0.05  # GB
 
   # Circuit Breaker Configuration
   circuit_breaker:

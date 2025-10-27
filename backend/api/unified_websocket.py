@@ -12,18 +12,17 @@ Features:
 - Advanced async operations with robust error handling
 """
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-import logging
-import json
 import asyncio
+import logging
 import time
-from typing import Dict, Any, Optional, Set, List
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Set
 
 # Import async pipeline for non-blocking WebSocket operations
-from core.async_pipeline import get_async_pipeline, AdvancedAsyncPipeline
+from core.async_pipeline import get_async_pipeline
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +37,10 @@ connection_capabilities: Dict[str, Set[str]] = {}
 # ADVANCED CONNECTION HEALTH & SELF-HEALING SYSTEM
 # ============================================================================
 
+
 class ConnectionState(Enum):
     """WebSocket connection states"""
+
     HEALTHY = "healthy"
     DEGRADED = "degraded"
     RECOVERING = "recovering"
@@ -49,6 +50,7 @@ class ConnectionState(Enum):
 @dataclass
 class ConnectionHealth:
     """Real-time health metrics for a WebSocket connection"""
+
     client_id: str
     websocket: WebSocket
     state: ConnectionState = ConnectionState.HEALTHY
@@ -104,7 +106,7 @@ class UnifiedWebSocketManager:
             "circuit_breaker_threshold": 3,
             "circuit_breaker_timeout": 60.0,
             "predictive_healing_enabled": True,
-            "auto_learning_enabled": True
+            "auto_learning_enabled": True,
         }
 
         # Circuit breaker state
@@ -126,21 +128,17 @@ class UnifiedWebSocketManager:
             "command": self._handle_voice_command,
             "voice_command": self._handle_voice_command,
             "jarvis_command": self._handle_voice_command,
-
             # Vision handlers
             "vision_analyze": self._handle_vision_analyze,
             "vision_monitor": self._handle_vision_monitor,
             "workspace_analysis": self._handle_workspace_analysis,
-
             # Audio/ML handlers
             "ml_audio_stream": self._handle_ml_audio,
             "audio_error": self._handle_audio_error,
-
             # System handlers
             "model_status": self._handle_model_status,
             "network_status": self._handle_network_status,
             "notification": self._handle_notification,
-
             # General handlers
             "ping": self._handle_ping,
             "pong": self._handle_pong,
@@ -158,7 +156,9 @@ class UnifiedWebSocketManager:
         self.sai_engine = sai
         self.learning_db = learning_db
 
-        logger.info(f"[UNIFIED-WS] Intelligence engines set: UAE={'✅' if uae else '❌'}, SAI={'✅' if sai else '❌'}, Learning DB={'✅' if learning_db else '❌'}")
+        logger.info(
+            f"[UNIFIED-WS] Intelligence engines set: UAE={'✅' if uae else '❌'}, SAI={'✅' if sai else '❌'}, Learning DB={'✅' if learning_db else '❌'}"
+        )
 
     async def start_health_monitoring(self):
         """Start intelligent health monitoring"""
@@ -193,7 +193,9 @@ class UnifiedWebSocketManager:
                         if health.state == ConnectionState.HEALTHY:
                             health.state = ConnectionState.DEGRADED
                             health.health_score = max(0, health.health_score - 20)
-                            logger.warning(f"[UNIFIED-WS] Connection {client_id} degraded (no messages for {time_since_message:.1f}s)")
+                            logger.warning(
+                                f"[UNIFIED-WS] Connection {client_id} degraded (no messages for {time_since_message:.1f}s)"
+                            )
 
                             # Notify SAI of degradation
                             await self._notify_sai("connection_degraded", health)
@@ -220,10 +222,7 @@ class UnifiedWebSocketManager:
         """Send ping to check connection health"""
         try:
             ping_time = time.time()
-            await health.websocket.send_json({
-                "type": "ping",
-                "timestamp": ping_time
-            })
+            await health.websocket.send_json({"type": "ping", "timestamp": ping_time})
             health.last_ping_time = ping_time
             logger.debug(f"[UNIFIED-WS] Sent ping to {health.client_id}")
         except Exception as e:
@@ -242,18 +241,22 @@ class UnifiedWebSocketManager:
             health.state = ConnectionState.RECOVERING
             health.recovery_attempts += 1
 
-            logger.info(f"[UNIFIED-WS] Attempting preventive recovery for {health.client_id} (attempt {health.recovery_attempts})")
+            logger.info(
+                f"[UNIFIED-WS] Attempting preventive recovery for {health.client_id} (attempt {health.recovery_attempts})"
+            )
 
             # Strategy 1: Send wake-up ping
             await self._send_ping(health)
 
             # Strategy 2: Notify client of degradation
-            await health.websocket.send_json({
-                "type": "connection_health",
-                "state": "degraded",
-                "health_score": health.health_score,
-                "message": "Connection health degraded, attempting recovery"
-            })
+            await health.websocket.send_json(
+                {
+                    "type": "connection_health",
+                    "state": "degraded",
+                    "health_score": health.health_score,
+                    "message": "Connection health degraded, attempting recovery",
+                }
+            )
 
             # Strategy 3: Log pattern to learning database
             if self.config["auto_learning_enabled"] and self.learning_db:
@@ -297,14 +300,16 @@ class UnifiedWebSocketManager:
                 "errors": health.errors,
                 "reconnections": health.reconnections,
                 "connection_duration": time.time() - health.connection_time,
-                "time_since_message": time.time() - health.last_message_time
+                "time_since_message": time.time() - health.last_message_time,
             }
 
             # Ask UAE to predict disconnection risk
             prediction = await self._ask_uae_prediction(metrics)
 
             if prediction and prediction.get("risk_level", "low") in ["high", "critical"]:
-                logger.warning(f"[UNIFIED-WS] 🔮 UAE predicts disconnection risk: {prediction.get('risk_level')} for {health.client_id}")
+                logger.warning(
+                    f"[UNIFIED-WS] 🔮 UAE predicts disconnection risk: {prediction.get('risk_level')} for {health.client_id}"
+                )
 
                 # Apply UAE-suggested recovery strategy
                 strategy = prediction.get("suggested_strategy", "ping")
@@ -312,22 +317,28 @@ class UnifiedWebSocketManager:
                 if strategy == "immediate_reconnect":
                     await self._notify_uae("immediate_reconnect_needed", health)
                     # Notify client to prepare for reconnection
-                    await health.websocket.send_json({
-                        "type": "reconnection_advisory",
-                        "reason": "predictive_healing",
-                        "message": "Connection instability detected, please standby"
-                    })
+                    await health.websocket.send_json(
+                        {
+                            "type": "reconnection_advisory",
+                            "reason": "predictive_healing",
+                            "message": "Connection instability detected, please standby",
+                        }
+                    )
                 elif strategy == "increase_pings":
                     # Temporarily increase ping frequency
                     self.config["ping_interval"] = max(5.0, self.config["ping_interval"] / 2)
-                    logger.info(f"[UNIFIED-WS] Increased ping frequency to {self.config['ping_interval']}s")
+                    logger.info(
+                        f"[UNIFIED-WS] Increased ping frequency to {self.config['ping_interval']}s"
+                    )
                 elif strategy == "reduce_load":
                     # Notify client to reduce message frequency
-                    await health.websocket.send_json({
-                        "type": "connection_optimization",
-                        "action": "reduce_load",
-                        "message": "Optimizing connection performance"
-                    })
+                    await health.websocket.send_json(
+                        {
+                            "type": "connection_optimization",
+                            "action": "reduce_load",
+                            "message": "Optimizing connection performance",
+                        }
+                    )
 
                 # Log prediction to learning database
                 if self.learning_db:
@@ -342,7 +353,10 @@ class UnifiedWebSocketManager:
 
         if self.circuit_open:
             # Check if timeout has passed
-            if self.circuit_open_time and (current_time - self.circuit_open_time) > self.config["circuit_breaker_timeout"]:
+            if (
+                self.circuit_open_time
+                and (current_time - self.circuit_open_time) > self.config["circuit_breaker_timeout"]
+            ):
                 # Try half-open state
                 logger.info("[UNIFIED-WS] Circuit breaker entering half-open state")
                 self.circuit_open = False
@@ -354,16 +368,20 @@ class UnifiedWebSocketManager:
         else:
             # Check if we should open the circuit
             if self.circuit_failures >= self.config["circuit_breaker_threshold"]:
-                logger.error(f"[UNIFIED-WS] 🔴 Circuit breaker OPEN (failures: {self.circuit_failures})")
+                logger.error(
+                    f"[UNIFIED-WS] 🔴 Circuit breaker OPEN (failures: {self.circuit_failures})"
+                )
                 self.circuit_open = True
                 self.circuit_open_time = current_time
 
                 # Notify all clients
-                await self.broadcast({
-                    "type": "system_status",
-                    "status": "degraded",
-                    "message": "System experiencing high failure rate, entering protective mode"
-                })
+                await self.broadcast(
+                    {
+                        "type": "system_status",
+                        "status": "degraded",
+                        "message": "System experiencing high failure rate, entering protective mode",
+                    }
+                )
 
                 # Notify SAI
                 await self._notify_sai("circuit_breaker_open", None)
@@ -374,11 +392,7 @@ class UnifiedWebSocketManager:
             return
 
         try:
-            event_data = {
-                "event": event,
-                "timestamp": time.time(),
-                "source": "unified_websocket"
-            }
+            event_data = {"event": event, "timestamp": time.time(), "source": "unified_websocket"}
 
             if health:
                 event_data["client_id"] = health.client_id
@@ -408,8 +422,8 @@ class UnifiedWebSocketManager:
                     "score": health.health_score,
                     "latency": health.latency_ms,
                     "errors": health.errors,
-                    "state": health.state.value
-                }
+                    "state": health.state.value,
+                },
             }
 
             # Call UAE's notification method
@@ -441,11 +455,17 @@ class UnifiedWebSocketManager:
                 health.state = ConnectionState.HEALTHY
                 logger.info(f"[UNIFIED-WS] Connection {client_id} restored to healthy state")
 
-            logger.debug(f"[UNIFIED-WS] Pong from {client_id}: latency={health.latency_ms:.1f}ms, health={health.health_score:.1f}")
+            logger.debug(
+                f"[UNIFIED-WS] Pong from {client_id}: latency={health.latency_ms:.1f}ms, health={health.health_score:.1f}"
+            )
 
         return {
             "type": "pong_ack",
-            "latency_ms": self.connection_health[client_id].latency_ms if client_id in self.connection_health else 0
+            "latency_ms": (
+                self.connection_health[client_id].latency_ms
+                if client_id in self.connection_health
+                else 0
+            ),
         }
 
     async def _handle_health_check(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
@@ -462,13 +482,10 @@ class UnifiedWebSocketManager:
                 "connection_duration": time.time() - health.connection_time,
                 "messages_sent": health.messages_sent,
                 "messages_received": health.messages_received,
-                "errors": health.errors
+                "errors": health.errors,
             }
 
-        return {
-            "type": "health_status",
-            "error": "Client health data not found"
-        }
+        return {"type": "health_status", "error": "Client health data not found"}
 
     async def _ask_uae_prediction(self, metrics: Dict) -> Optional[Dict]:
         """Ask UAE to predict disconnection risk"""
@@ -496,7 +513,7 @@ class UnifiedWebSocketManager:
                 "latency_ms": health.latency_ms,
                 "state": health.state.value,
                 "errors": health.errors,
-                "recovery_attempts": health.recovery_attempts
+                "recovery_attempts": health.recovery_attempts,
             }
 
             # Store in learning database
@@ -518,7 +535,7 @@ class UnifiedWebSocketManager:
                 "client_id": health.client_id,
                 "prediction": prediction,
                 "actual_state": health.state.value,
-                "health_score": health.health_score
+                "health_score": health.health_score,
             }
 
             if hasattr(self.learning_db, "log_uae_prediction"):
@@ -536,7 +553,7 @@ class UnifiedWebSocketManager:
             self._process_message_async,
             timeout=60.0,  # Increased from 30s for multi-space vision queries
             retry_count=1,
-            required=True
+            required=True,
         )
 
         # Command execution stage
@@ -545,7 +562,7 @@ class UnifiedWebSocketManager:
             self._execute_command_async,
             timeout=90.0,  # Increased from 45s for complex vision processing
             retry_count=2,
-            required=True
+            required=True,
         )
 
         # Response streaming stage
@@ -554,14 +571,14 @@ class UnifiedWebSocketManager:
             self._stream_response_async,
             timeout=60.0,
             retry_count=0,
-            required=False  # Optional for non-streaming responses
+            required=False,  # Optional for non-streaming responses
         )
 
     async def _process_message_async(self, context):
         """Non-blocking message processing via async pipeline"""
         try:
             message = context.metadata.get("message", {})
-            client_id = context.metadata.get("client_id", "")
+            context.metadata.get("client_id", "")
 
             # Parse message type
             msg_type = message.get("type", "")
@@ -584,13 +601,14 @@ class UnifiedWebSocketManager:
         try:
             message = context.metadata.get("message", {})
             msg_type = context.metadata.get("msg_type", "")
-            client_id = context.metadata.get("client_id", "")
+            context.metadata.get("client_id", "")
 
             # Route to appropriate handler
             if msg_type == "command" or msg_type == "voice_command":
                 # Execute voice command
-                from .jarvis_voice_api import jarvis_api
                 from pydantic import BaseModel
+
+                from .jarvis_voice_api import jarvis_api
 
                 class VoiceCommand(BaseModel):
                     text: str
@@ -605,7 +623,7 @@ class UnifiedWebSocketManager:
                     "text": result.get("response", ""),
                     "status": result.get("status", "success"),
                     "command_type": result.get("command_type", "unknown"),
-                    "speak": True
+                    "speak": True,
                 }
 
             elif msg_type == "vision_analyze":
@@ -615,16 +633,13 @@ class UnifiedWebSocketManager:
             else:
                 context.metadata["response"] = {
                     "type": "error",
-                    "error": f"Unknown message type: {msg_type}"
+                    "error": f"Unknown message type: {msg_type}",
                 }
 
         except Exception as e:
             logger.error(f"Command execution error: {e}")
             context.metadata["error"] = str(e)
-            context.metadata["response"] = {
-                "type": "error",
-                "error": str(e)
-            }
+            context.metadata["response"] = {"type": "error", "error": str(e)}
 
     async def _stream_response_async(self, context):
         """Non-blocking response streaming via async pipeline"""
@@ -639,19 +654,20 @@ class UnifiedWebSocketManager:
                 chunk_size = 50
 
                 for i in range(0, len(response_text), chunk_size):
-                    chunk = response_text[i:i + chunk_size]
-                    await websocket.send_json({
-                        "type": "stream_chunk",
-                        "chunk": chunk,
-                        "progress": (i + chunk_size) / len(response_text)
-                    })
+                    chunk = response_text[i : i + chunk_size]
+                    await websocket.send_json(
+                        {
+                            "type": "stream_chunk",
+                            "chunk": chunk,
+                            "progress": (i + chunk_size) / len(response_text),
+                        }
+                    )
                     await asyncio.sleep(0.05)
 
                 # Send completion
-                await websocket.send_json({
-                    "type": "stream_complete",
-                    "message": "Streaming complete"
-                })
+                await websocket.send_json(
+                    {"type": "stream_complete", "message": "Streaming complete"}
+                )
             else:
                 # Send complete response
                 if websocket and response:
@@ -668,34 +684,32 @@ class UnifiedWebSocketManager:
         try:
             from ..main import app
 
-            if hasattr(app.state, 'vision_analyzer'):
+            if hasattr(app.state, "vision_analyzer"):
                 analyzer = app.state.vision_analyzer
 
                 screenshot = await analyzer.capture_screen()
                 if screenshot:
                     query = message.get("query", "Describe what you see on screen")
-                    result = await analyzer.describe_screen({"screenshot": screenshot, "query": query})
+                    result = await analyzer.describe_screen(
+                        {"screenshot": screenshot, "query": query}
+                    )
 
                     return {
                         "type": "vision_result",
                         "success": result.get("success", False),
                         "description": result.get("description", ""),
-                        "timestamp": datetime.now().isoformat()
+                        "timestamp": datetime.now().isoformat(),
                     }
 
             return {
                 "type": "vision_result",
                 "success": False,
-                "error": "Vision analyzer not available"
+                "error": "Vision analyzer not available",
             }
 
         except Exception as e:
             logger.error(f"Vision analysis error: {e}")
-            return {
-                "type": "vision_result",
-                "success": False,
-                "error": str(e)
-            }
+            return {"type": "vision_result", "success": False, "error": str(e)}
 
     async def connect(self, websocket: WebSocket, client_id: str):
         """Accept new WebSocket connection with health monitoring"""
@@ -704,10 +718,7 @@ class UnifiedWebSocketManager:
         connection_capabilities[client_id] = set()
 
         # Create health monitoring for this connection
-        health = ConnectionHealth(
-            client_id=client_id,
-            websocket=websocket
-        )
+        health = ConnectionHealth(client_id=client_id, websocket=websocket)
         self.connection_health[client_id] = health
 
         logger.info(f"[UNIFIED-WS] ✅ Client {client_id} connected (health monitoring: active)")
@@ -724,37 +735,43 @@ class UnifiedWebSocketManager:
             await self._log_connection_pattern(health, "connection_established")
 
         # Send welcome message with health features
-        await websocket.send_json({
-            "type": "connection_established",
-            "client_id": client_id,
-            "timestamp": datetime.now().isoformat(),
-            "available_handlers": list(self.handlers.keys()),
-            "features": {
-                "self_healing": True,
-                "predictive_healing": self.config["predictive_healing_enabled"],
-                "health_monitoring": True,
-                "circuit_breaker": True
+        await websocket.send_json(
+            {
+                "type": "connection_established",
+                "client_id": client_id,
+                "timestamp": datetime.now().isoformat(),
+                "available_handlers": list(self.handlers.keys()),
+                "features": {
+                    "self_healing": True,
+                    "predictive_healing": self.config["predictive_healing_enabled"],
+                    "health_monitoring": True,
+                    "circuit_breaker": True,
+                },
             }
-        })
+        )
 
         # Send current display status if display monitor is available
         if self.display_monitor:
             try:
                 available_displays = self.display_monitor.get_available_display_details()
                 if available_displays:
-                    logger.info(f"[WS] Sending {len(available_displays)} available displays to new client")
+                    logger.info(
+                        f"[WS] Sending {len(available_displays)} available displays to new client"
+                    )
                     for display in available_displays:
-                        await websocket.send_json({
-                            "type": "display_detected",
-                            "display_name": display["display_name"],
-                            "display_id": display["display_id"],
-                            "message": display["message"],
-                            "timestamp": datetime.now().isoformat(),
-                            "on_connect": True  # Flag to indicate this is initial status
-                        })
+                        await websocket.send_json(
+                            {
+                                "type": "display_detected",
+                                "display_name": display["display_name"],
+                                "display_id": display["display_id"],
+                                "message": display["message"],
+                                "timestamp": datetime.now().isoformat(),
+                                "on_connect": True,  # Flag to indicate this is initial status
+                            }
+                        )
             except Exception as e:
                 logger.warning(f"[WS] Failed to send display status to new client: {e}")
-        
+
     async def disconnect(self, client_id: str):
         """Remove WebSocket connection with learning and SAI notification"""
         # Gather final health metrics before removal
@@ -774,7 +791,7 @@ class UnifiedWebSocketManager:
                     "reconnections": health.reconnections,
                     "final_health_score": health.health_score,
                     "avg_latency_ms": health.latency_ms,
-                    "learned_patterns": health.learned_patterns
+                    "learned_patterns": health.learned_patterns,
                 }
 
                 if hasattr(self.learning_db, "log_session_summary"):
@@ -783,7 +800,9 @@ class UnifiedWebSocketManager:
             # Notify SAI of disconnection
             await self._notify_sai("connection_disconnected", health)
 
-            logger.info(f"[UNIFIED-WS] Client {client_id} disconnected (duration: {time.time() - health.connection_time:.1f}s, health: {health.health_score:.1f})")
+            logger.info(
+                f"[UNIFIED-WS] Client {client_id} disconnected (duration: {time.time() - health.connection_time:.1f}s, health: {health.health_score:.1f})"
+            )
 
         # Clean up
         if client_id in self.connections:
@@ -796,7 +815,7 @@ class UnifiedWebSocketManager:
             # Cancel any ongoing recovery tasks
             self.recovery_tasks[client_id].cancel()
             del self.recovery_tasks[client_id]
-        
+
     async def handle_message(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
         """
         Route message to appropriate handler via async pipeline
@@ -811,7 +830,13 @@ class UnifiedWebSocketManager:
         msg_type = message.get("type", "")
 
         # Check if message type should use pipeline processing
-        pipeline_types = {"command", "voice_command", "jarvis_command", "vision_analyze", "vision_monitor"}
+        pipeline_types = {
+            "command",
+            "voice_command",
+            "jarvis_command",
+            "vision_analyze",
+            "vision_monitor",
+        }
 
         if msg_type in pipeline_types:
             try:
@@ -824,8 +849,8 @@ class UnifiedWebSocketManager:
                         "message": message,
                         "client_id": client_id,
                         "websocket": websocket,
-                        "stream_mode": message.get("stream", False)
-                    }
+                        "stream_mode": message.get("stream", False),
+                    },
                 )
 
                 # Return response from pipeline
@@ -836,7 +861,7 @@ class UnifiedWebSocketManager:
                         "type": "command_response",
                         "response": result.get("response"),
                         "success": result.get("success", True),
-                        "speak": True  # Enable text-to-speech for all responses
+                        "speak": True,  # Enable text-to-speech for all responses
                     }
 
                     # Add additional metadata for lock/unlock commands
@@ -848,18 +873,13 @@ class UnifiedWebSocketManager:
                     return response_dict
 
                 # Fall back to metadata response
-                return result.get("metadata", {}).get("response", {
-                    "type": "error",
-                    "error": "No response generated"
-                })
+                return result.get("metadata", {}).get(
+                    "response", {"type": "error", "error": "No response generated"}
+                )
 
             except Exception as e:
                 logger.error(f"Pipeline processing error for {msg_type}: {e}")
-                return {
-                    "type": "error",
-                    "error": str(e),
-                    "original_type": msg_type
-                }
+                return {"type": "error", "error": str(e), "original_type": msg_type}
 
         # Fall back to legacy handlers for other message types
         elif msg_type in self.handlers:
@@ -867,82 +887,157 @@ class UnifiedWebSocketManager:
                 return await self.handlers[msg_type](client_id, message)
             except Exception as e:
                 logger.error(f"Error handling {msg_type}: {e}")
-                return {
-                    "type": "error",
-                    "error": str(e),
-                    "original_type": msg_type
-                }
+                return {"type": "error", "error": str(e), "original_type": msg_type}
         else:
             return {
                 "type": "error",
                 "error": f"Unknown message type: {msg_type}",
-                "available_types": list(self.handlers.keys())
+                "available_types": list(self.handlers.keys()),
             }
-    
+
     async def broadcast(self, message: Dict[str, Any], capability: Optional[str] = None):
         """Broadcast message to all connected clients or those with specific capability"""
         disconnected = []
-        
+
         for client_id, websocket in self.connections.items():
             # Skip if capability filter is set and client doesn't have it
             if capability and capability not in connection_capabilities.get(client_id, set()):
                 continue
-                
+
             try:
                 await websocket.send_json(message)
             except Exception as e:
                 logger.error(f"Failed to send to {client_id}: {e}")
                 disconnected.append(client_id)
-        
+
         # Clean up disconnected clients
         for client_id in disconnected:
             self.disconnect(client_id)
-    
+
     # Handler implementations
-    
-    async def _handle_voice_command(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
+
+    async def _handle_voice_command(
+        self, client_id: str, message: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle voice/JARVIS commands"""
         try:
             command_text = message.get("command", message.get("text", ""))
 
             logger.info(f"[WS] Processing voice command: {command_text}")
 
-            # Use unified command processor for full command classification and handling
-            # This includes display commands, system commands, vision, etc.
+            # ============== PHASE 2: Hybrid Orchestrator Integration ==============
+            # Route commands through hybrid orchestrator for intelligent local/GCP routing
+            # based on memory pressure, command complexity, and available resources
             try:
-                from api.unified_command_processor import get_unified_processor
-                processor = get_unified_processor()
-                result = await processor.process_command(command_text, websocket=None)
+                from backend.core.hybrid_orchestrator import get_orchestrator
 
-                response_text = result.get("response", "Command processed, Sir.")
+                orchestrator = get_orchestrator()
+
+                logger.info(f"[WS] Routing command through hybrid orchestrator...")
+
+                # Execute command with intelligent routing
+                result = await orchestrator.execute_command(
+                    command=command_text,
+                    command_type="voice_command",  # Signals NLP-heavy processing
+                    metadata={
+                        "client_id": client_id,
+                        "source": "websocket",
+                        "context": "user_initiated",
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                )
+
+                # Extract response from hybrid orchestrator result
+                response_text = result.get(
+                    "response", result.get("result", "Command processed, Sir.")
+                )
                 success = result.get("success", False)
-                command_type = result.get("command_type", "unknown")
+                command_type = result.get("command_type", "voice_command")
 
-                logger.info(f"[WS] Unified processor result: {response_text[:100]}")
+                # Log routing decision for monitoring and analytics
+                if "routing" in result:
+                    routing_info = result["routing"]
+                    backend = routing_info.get("backend", "unknown")
+                    rule = routing_info.get("rule", "unknown")
+                    confidence = routing_info.get("confidence", 0)
+
+                    logger.info(
+                        f"[WS] ✅ Routed to {backend.upper()} "
+                        f"(rule: {rule}, confidence: {confidence:.2f})"
+                    )
+
+                    # Add routing info to response for debugging
+                    response_metadata = {
+                        "routed_to": backend,
+                        "rule": rule,
+                        "confidence": confidence,
+                    }
+                else:
+                    response_metadata = {}
+
+                logger.info(f"[WS] Hybrid orchestrator result: {response_text[:100]}")
 
                 return {
                     "type": "response",
                     "text": response_text,
                     "status": "success" if success else "error",
                     "command_type": command_type,
-                    "speak": True
+                    "speak": True,
+                    "routing": response_metadata,  # Include routing info
                 }
-            except ImportError:
-                # Fallback to async pipeline if unified processor not available
-                logger.warning("[WS] Unified processor not available, falling back to async pipeline")
-                result = await self.pipeline.execute(command_text)
 
-                response_text = result.response or "Command processed, Sir."
+            except ImportError as e:
+                # Fallback 1: Try unified command processor
+                logger.warning(
+                    f"[WS] Hybrid orchestrator not available ({e}), trying unified processor..."
+                )
 
-                logger.info(f"[WS] Pipeline result: {response_text[:100]}")
+                try:
+                    from api.unified_command_processor import get_unified_processor
 
-                return {
-                    "type": "response",
-                    "text": response_text,
-                    "status": "success" if result.success else "error",
-                    "command_type": result.metadata.get("intent", "unknown"),
-                    "speak": True
-                }
+                    processor = get_unified_processor()
+                    result = await processor.process_command(command_text, websocket=None)
+
+                    response_text = result.get("response", "Command processed, Sir.")
+                    success = result.get("success", False)
+                    command_type = result.get("command_type", "unknown")
+
+                    logger.info(f"[WS] Unified processor result: {response_text[:100]}")
+
+                    return {
+                        "type": "response",
+                        "text": response_text,
+                        "status": "success" if success else "error",
+                        "command_type": command_type,
+                        "speak": True,
+                        "routing": {
+                            "routed_to": "local_fallback",
+                            "reason": "orchestrator_unavailable",
+                        },
+                    }
+                except ImportError:
+                    # Fallback 2: Use async pipeline
+                    logger.warning(
+                        "[WS] Unified processor not available, falling back to async pipeline"
+                    )
+                    result = await self.pipeline.execute(command_text)
+
+                    response_text = result.response or "Command processed, Sir."
+
+                    logger.info(f"[WS] Pipeline result: {response_text[:100]}")
+
+                    return {
+                        "type": "response",
+                        "text": response_text,
+                        "status": "success" if result.success else "error",
+                        "command_type": result.metadata.get("intent", "unknown"),
+                        "speak": True,
+                        "routing": {
+                            "routed_to": "pipeline_fallback",
+                            "reason": "all_processors_unavailable",
+                        },
+                    }
+            # ======================================================================
 
         except Exception as e:
             logger.error(f"Error processing voice command: {e}", exc_info=True)
@@ -950,71 +1045,67 @@ class UnifiedWebSocketManager:
                 "type": "response",
                 "text": f"I encountered an error: {str(e)}",
                 "status": "error",
-                "speak": True
+                "speak": True,
             }
-    
-    async def _handle_vision_analyze(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
+
+    async def _handle_vision_analyze(
+        self, client_id: str, message: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle vision analysis requests"""
         try:
             # Get vision analyzer from app state
             from ..main import app
-            
-            if hasattr(app.state, 'vision_analyzer'):
+
+            if hasattr(app.state, "vision_analyzer"):
                 analyzer = app.state.vision_analyzer
-                
+
                 # Perform analysis
                 screenshot = await analyzer.capture_screen()
                 if screenshot:
                     query = message.get("query", "Describe what you see on screen")
-                    result = await analyzer.describe_screen({"screenshot": screenshot, "query": query})
-                    
+                    result = await analyzer.describe_screen(
+                        {"screenshot": screenshot, "query": query}
+                    )
+
                     return {
                         "type": "vision_result",
                         "success": result.get("success", False),
                         "description": result.get("description", ""),
-                        "timestamp": datetime.now().isoformat()
+                        "timestamp": datetime.now().isoformat(),
                     }
-            
+
             return {
                 "type": "vision_result",
                 "success": False,
-                "error": "Vision analyzer not available"
+                "error": "Vision analyzer not available",
             }
-            
+
         except Exception as e:
             logger.error(f"Vision analysis error: {e}")
-            return {
-                "type": "vision_result",
-                "success": False,
-                "error": str(e)
-            }
-    
-    async def _handle_vision_monitor(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
+            return {"type": "vision_result", "success": False, "error": str(e)}
+
+    async def _handle_vision_monitor(
+        self, client_id: str, message: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle continuous vision monitoring"""
         action = message.get("action", "start")
-        
+
         if action == "start":
             connection_capabilities[client_id].add("vision_monitoring")
-            
+
             # Start monitoring loop for this client
             asyncio.create_task(self._vision_monitoring_loop(client_id))
-            
-            return {
-                "type": "monitor_status",
-                "status": "started",
-                "client_id": client_id
-            }
+
+            return {"type": "monitor_status", "status": "started", "client_id": client_id}
         elif action == "stop":
             connection_capabilities[client_id].discard("vision_monitoring")
-            return {
-                "type": "monitor_status",
-                "status": "stopped",
-                "client_id": client_id
-            }
-    
+            return {"type": "monitor_status", "status": "stopped", "client_id": client_id}
+
     async def _vision_monitoring_loop(self, client_id: str):
         """Continuous vision monitoring loop"""
-        while client_id in self.connections and "vision_monitoring" in connection_capabilities.get(client_id, set()):
+        while client_id in self.connections and "vision_monitoring" in connection_capabilities.get(
+            client_id, set()
+        ):
             try:
                 # Analyze screen periodically
                 await self._handle_vision_analyze(client_id, {"type": "vision_analyze"})
@@ -1022,37 +1113,39 @@ class UnifiedWebSocketManager:
             except Exception as e:
                 logger.error(f"Monitoring error for {client_id}: {e}")
                 break
-    
-    async def _handle_workspace_analysis(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
+
+    async def _handle_workspace_analysis(
+        self, client_id: str, message: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle workspace analysis requests"""
         # This would integrate with workspace analyzer
         return {
             "type": "workspace_result",
             "analysis": "Workspace analysis placeholder",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
-    
+
     async def _handle_ml_audio(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
         """Handle ML audio streaming"""
         audio_data = message.get("audio_data", "")
-        
+
         return {
             "type": "ml_audio_result",
             "status": "processed",
             "has_speech": len(audio_data) > 0,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
-    
+
     async def _handle_audio_error(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
         """Handle audio error recovery"""
         error_type = message.get("error_type", "unknown")
-        
+
         return {
             "type": "audio_recovery",
             "strategy": "reconnect" if error_type == "connection" else "retry",
-            "delay_ms": 1000
+            "delay_ms": 1000,
         }
-    
+
     async def _handle_model_status(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
         """Handle ML model status requests"""
         # This would integrate with ML model loader
@@ -1060,58 +1153,57 @@ class UnifiedWebSocketManager:
             "type": "model_status",
             "models_loaded": True,
             "status": "ready",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
-    
-    async def _handle_network_status(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
+
+    async def _handle_network_status(
+        self, client_id: str, message: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle network status checks"""
         return {
             "type": "network_status",
             "status": "connected",
             "latency_ms": 50,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
-    
+
     async def _handle_notification(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
         """Handle notification detection"""
         # This would integrate with notification detection
         return {
             "type": "notification_result",
             "notifications": [],
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
-    
+
     async def _handle_ping(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
         """Handle ping/pong for connection keep-alive"""
-        return {
-            "type": "pong",
-            "timestamp": message.get("timestamp", datetime.now().isoformat())
-        }
-    
+        return {"type": "pong", "timestamp": message.get("timestamp", datetime.now().isoformat())}
+
     async def _handle_subscribe(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
         """Handle capability subscription"""
         capabilities = message.get("capabilities", [])
-        
+
         for cap in capabilities:
             connection_capabilities[client_id].add(cap)
-        
+
         return {
             "type": "subscription_result",
             "subscribed": capabilities,
-            "current_capabilities": list(connection_capabilities[client_id])
+            "current_capabilities": list(connection_capabilities[client_id]),
         }
-    
+
     async def _handle_unsubscribe(self, client_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
         """Handle capability unsubscription"""
         capabilities = message.get("capabilities", [])
-        
+
         for cap in capabilities:
             connection_capabilities[client_id].discard(cap)
-        
+
         return {
             "type": "unsubscription_result",
             "unsubscribed": capabilities,
-            "current_capabilities": list(connection_capabilities[client_id])
+            "current_capabilities": list(connection_capabilities[client_id]),
         }
 
 
@@ -1154,7 +1246,9 @@ async def unified_websocket_endpoint(websocket: WebSocket):
 
             # Log incoming command for debugging
             if data.get("type") == "command" or data.get("type") == "voice_command":
-                logger.info(f"[WS] Received command: {data.get('text', data.get('command', 'unknown'))}")
+                logger.info(
+                    f"[WS] Received command: {data.get('text', data.get('command', 'unknown'))}"
+                )
 
             # Handle message
             response = await ws_manager.handle_message(client_id, data)
