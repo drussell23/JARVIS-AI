@@ -6012,7 +6012,20 @@ if __name__ == "__main__":
     _hybrid_coordinator = None
 
     try:
-        exit_code = asyncio.run(main())
+        # Use custom asyncio runner to ensure all tasks are cancelled on exit
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            exit_code = loop.run_until_complete(main())
+        finally:
+            # Cancel all pending tasks
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            # Wait for all tasks to be cancelled
+            if pending:
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            loop.close()
         sys.exit(exit_code if exit_code else 0)
     except KeyboardInterrupt:
         # Don't print anything extra - cleanup() already handles the shutdown message
