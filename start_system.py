@@ -1763,6 +1763,14 @@ class HybridIntelligenceCoordinator:
                 logger.info(
                     f"✅ GCP instance {self.workload_router.gcp_instance_id} deleted in {elapsed:.1f}s"
                 )
+
+                # Unregister from session tracker to prevent duplicate deletion in post-shutdown
+                if hasattr(self.workload_router, "session_tracker"):
+                    self.workload_router.session_tracker.unregister_vm()
+                    logger.info(
+                        "🔓 VM unregistered from session tracker (prevents duplicate deletion)"
+                    )
+
             except Exception as e:
                 elapsed = time.time() - start_time
                 print(f"   ├─ {Colors.RED}✗ VM deletion failed ({elapsed:.1f}s){Colors.ENDC}")
@@ -6159,14 +6167,17 @@ if __name__ == "__main__":
                         error_msg = delete_result.stderr.strip()
                         if "was not found" in error_msg or "Not Found" in error_msg:
                             print(
-                                f"   └─ {Colors.YELLOW}⚠ VM already deleted (not found in GCP){Colors.ENDC}"
+                                f"   └─ {Colors.GREEN}✓ VM already deleted during shutdown (cleanup not needed){Colors.ENDC}"
+                            )
+                            logger.info(
+                                f"✅ VM {vm_id} already deleted (expected - cleaned up during main shutdown)"
                             )
                         else:
                             print(
                                 f"   ├─ {Colors.RED}✗ Failed to delete VM ({elapsed:.1f}s){Colors.ENDC}"
                             )
                             print(f"   └─ {Colors.RED}Error: {error_msg[:100]}{Colors.ENDC}")
-                        logger.warning(f"Failed to delete VM {vm_id}: {delete_result.stderr}")
+                            logger.warning(f"Failed to delete VM {vm_id}: {delete_result.stderr}")
 
                     # Show other active sessions
                     print(f"\n{Colors.CYAN}📊 Other active JARVIS sessions:{Colors.ENDC}")
