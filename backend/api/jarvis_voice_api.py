@@ -451,6 +451,10 @@ class JARVISVoiceAPI:
         # Hybrid STT Router (lazy initialization)
         self._hybrid_stt_router = None
 
+        # Store last audio and speaker for voice verification
+        self.last_audio_data = None
+        self.last_speaker_name = None
+
         # Check if we have API key
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
         # For now, enable basic JARVIS functionality even without full imports
@@ -2578,6 +2582,21 @@ class JARVISVoiceAPI:
                             strategy=strategy,
                             speaker_name=None,  # Auto-detect speaker via voice recognition
                         )
+
+                        # Store audio data and speaker for voice verification
+                        # This enables "unlock my screen" to verify speaker identity
+                        self.last_audio_data = audio_bytes
+                        self.last_speaker_name = result.speaker_identified
+
+                        # Also store in jarvis instance for unlock handler access
+                        if self._jarvis:
+                            self._jarvis.last_audio_data = audio_bytes
+                            self._jarvis.last_speaker_name = result.speaker_identified
+
+                        if result.speaker_identified:
+                            logger.info(
+                                f"🔐 Stored audio and speaker for verification: {result.speaker_identified}"
+                            )
 
                         # Send transcription result
                         await websocket.send_json(
