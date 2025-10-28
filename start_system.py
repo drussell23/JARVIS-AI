@@ -5754,12 +5754,32 @@ async def main():
         except Exception as e:
             print(f"{Colors.WARNING}⚠️ Instance check failed: {e} - proceeding anyway{Colors.ENDC}")
     else:
-        print(
-            f"\n{Colors.WARNING}⚠️ Skipping instance check (--force-start or --restart){Colors.ENDC}"
-        )
-        print(
-            f"{Colors.WARNING}⚠️ WARNING: Multiple instances may create multiple VMs!{Colors.ENDC}"
-        )
+        if args.force_start:
+            print(f"\n{Colors.WARNING}⚠️ Skipping instance check (--force-start){Colors.ENDC}")
+            print(
+                f"{Colors.WARNING}⚠️ WARNING: Multiple instances may create multiple VMs!{Colors.ENDC}"
+            )
+
+            # Check VM creation lock file to see if another instance is managing VMs
+            vm_lock_file = Path.home() / ".jarvis" / "gcp_optimizer" / "vm_creation.lock"
+            if vm_lock_file.exists():
+                try:
+                    with open(vm_lock_file, "r") as f:
+                        lock_info = f.read()
+                        print(
+                            f"{Colors.FAIL}⚠️  DANGER: Another JARVIS instance has the VM creation lock!{Colors.ENDC}"
+                        )
+                        print(f"   Lock info: {lock_info.strip()}")
+                        print(
+                            f"\n{Colors.YELLOW}   This could lead to duplicate VMs and double billing!{Colors.ENDC}"
+                        )
+                except Exception:
+                    pass
+        else:
+            # --restart mode: This is safe because it kills existing instances first
+            print(
+                f"\n{Colors.CYAN}🔄 Restart mode: Will kill existing instances before starting{Colors.ENDC}"
+            )
 
     # Acquire PID lock (after instance check passes or for --restart)
     try:
@@ -6093,7 +6113,34 @@ async def main():
             else:
                 print(f"{Colors.GREEN}No old JARVIS processes found{Colors.ENDC}")
 
-            # Step 1.5: Clean up any GCP VMs (CRITICAL for cost control)
+            # Step 1.5: Clean up VM creation lock file (prevent lock conflicts)
+            print(f"\n{Colors.YELLOW}🔒 Checking VM creation lock file...{Colors.ENDC}")
+            vm_lock_file = Path.home() / ".jarvis" / "gcp_optimizer" / "vm_creation.lock"
+            if vm_lock_file.exists():
+                try:
+                    # Read lock info to show what we're cleaning
+                    with open(vm_lock_file, "r") as f:
+                        lock_info = f.read().strip()
+
+                    # Remove the lock file
+                    vm_lock_file.unlink()
+                    print(f"{Colors.GREEN}✓ Removed stale VM creation lock{Colors.ENDC}")
+                    if lock_info:
+                        import json
+
+                        try:
+                            lock_data = json.loads(lock_info)
+                            print(
+                                f"  Previous lock: PID {lock_data.get('pid', 'unknown')}, {lock_data.get('timestamp', 'unknown')}"
+                            )
+                        except:
+                            pass
+                except Exception as e:
+                    print(f"{Colors.WARNING}⚠️  Failed to clean VM lock file: {e}{Colors.ENDC}")
+            else:
+                print(f"{Colors.GREEN}✓ No VM creation lock file found{Colors.ENDC}")
+
+            # Step 1.6: Clean up any GCP VMs (CRITICAL for cost control)
             print(f"\n{Colors.YELLOW}🌐 Checking for orphaned GCP VMs...{Colors.ENDC}")
             try:
                 gcp_project = os.getenv("GCP_PROJECT_ID", "jarvis-473803")
