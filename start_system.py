@@ -6270,7 +6270,15 @@ if __name__ == "__main__":
         try:
             import asyncio
 
-            loop = asyncio.get_event_loop()
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                # No running loop, try to get the event loop
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = None
+
             if loop and not loop.is_closed():
                 all_tasks = asyncio.all_tasks(loop)
                 if all_tasks:
