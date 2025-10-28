@@ -418,6 +418,10 @@ class JARVISVoiceAPI:
         self._startup_announced = False
         self._startup_announcement_lock = asyncio.Lock()
 
+        # Session tracking for conversation history
+        self._session_id = None
+        self._learning_db = None
+
         # Initialize async pipeline for all commands
         self._pipeline = None
 
@@ -489,6 +493,136 @@ class JARVISVoiceAPI:
 
         logger.debug(f"[INIT ORDER] Returning JARVIS instance: {self._jarvis is not None}")
         return self._jarvis
+
+    def _get_or_create_session_id(self) -> str:
+        """Get or create session ID for conversation tracking"""
+        if not self._session_id:
+            import uuid
+
+            self._session_id = str(uuid.uuid4())
+            logger.info(f"📝 Created new session ID: {self._session_id[:8]}...")
+        return self._session_id
+
+    async def _get_learning_db(self):
+        """Get or create learning database instance"""
+        if not self._learning_db:
+            try:
+                from intelligence.learning_database import LearningDatabase
+
+                self._learning_db = LearningDatabase()
+                await self._learning_db.initialize()
+                logger.info("📚 Learning database connected for conversation tracking")
+            except Exception as e:
+                logger.error(f"Failed to initialize learning database: {e}")
+                self._learning_db = None
+        return self._learning_db
+
+    async def _record_interaction(
+        self,
+        user_query: str,
+        jarvis_response: str,
+        response_type: str = "unknown",
+        confidence_score: Optional[float] = None,
+        execution_time_ms: Optional[float] = None,
+        success: bool = True,
+    ) -> int:
+        """
+        Record interaction to learning database for AI/ML learning.
+
+        Returns interaction_id for feedback/correction tracking.
+        """
+        try:
+            learning_db = await self._get_learning_db()
+            if not learning_db:
+                return -1
+
+            # Get session ID
+            session_id = self._get_or_create_session_id()
+
+            # Capture current context
+            context = await self._capture_context()
+
+            # Record to database
+            interaction_id = await learning_db.record_interaction(
+                user_query=user_query,
+                jarvis_response=jarvis_response,
+                response_type=response_type,
+                confidence_score=confidence_score,
+                execution_time_ms=execution_time_ms,
+                success=success,
+                session_id=session_id,
+                context=context,
+            )
+
+            if interaction_id > 0:
+                logger.debug(
+                    f"📝 Recorded interaction {interaction_id}: '{user_query[:30]}...' -> '{jarvis_response[:30]}...'"
+                )
+
+            return interaction_id
+
+        except Exception as e:
+            logger.error(f"Failed to record interaction: {e}")
+            import traceback
+
+            logger.debug(traceback.format_exc())
+            return -1
+
+    async def _capture_context(self) -> Dict[str, Any]:
+        """Capture full system context for learning"""
+        try:
+            context = {
+                "timestamp": datetime.now().isoformat(),
+                "active_apps": [],
+                "current_space": None,
+                "system_state": {},
+            }
+
+            # Try to get active apps from display monitor
+            try:
+                from display import get_display_monitor
+
+                monitor = get_display_monitor()
+                if monitor and hasattr(monitor, "get_active_applications"):
+                    context["active_apps"] = await monitor.get_active_applications()
+            except:
+                pass
+
+            # Try to get current Space
+            try:
+                import subprocess
+
+                result = subprocess.run(
+                    [
+                        "osascript",
+                        "-e",
+                        'tell application "System Events" to tell process "Dock" to get value of attribute "AXSelectedChildren"',
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=1,
+                )
+                if result.returncode == 0:
+                    context["current_space"] = result.stdout.strip()
+            except:
+                pass
+
+            # Get system state from JARVIS if available
+            if self.jarvis and hasattr(self.jarvis, "personality"):
+                try:
+                    personality = self.jarvis.personality
+                    if hasattr(personality, "user_preferences"):
+                        context["system_state"]["user_preferences"] = personality.user_preferences
+                    if hasattr(personality, "context"):
+                        context["system_state"]["conversation_context"] = personality.context[-5:]
+                except:
+                    pass
+
+            return context
+
+        except Exception as e:
+            logger.error(f"Failed to capture context: {e}")
+            return {}
 
     def _register_routes(self):
         """Register JARVIS-specific routes"""
@@ -1151,6 +1285,21 @@ class JARVISVoiceAPI:
                         or {}
                     )
 
+            # 📝 LEARNING: Record interaction to database for AI/ML learning
+            await self._record_interaction(
+                user_query=command.text,
+                jarvis_response=response,
+                response_type=(
+                    pipeline_result.get("type", "rest_api")
+                    if isinstance(pipeline_result, dict)
+                    else "rest_api"
+                ),
+                confidence_score=(
+                    pipeline_result.get("confidence") if isinstance(pipeline_result, dict) else None
+                ),
+                success=True,
+            )
+
             return {
                 "command": command.text,
                 "response": response,
@@ -1681,9 +1830,10 @@ class JARVISVoiceAPI:
                             )
 
                             # Send the response with enhanced context info
+                            response_text = result.get("response", "I processed your command.")
                             response_data = {
                                 "type": "response",
-                                "text": result.get("response", "I processed your command."),
+                                "text": response_text,
                                 "command_type": result.get("command_type", "context_aware"),
                                 "success": result.get("success", True),
                                 "context_handled": result.get("context_handled", False),
@@ -1707,6 +1857,16 @@ class JARVISVoiceAPI:
                             await websocket.send_json(response_data)
                             logger.info(
                                 f"[JARVIS API] Sent ENHANCED context-aware response: {response_data['text'][:100]}..."
+                            )
+
+                            # 📝 LEARNING: Record interaction to database
+                            await self._record_interaction(
+                                user_query=command_text,
+                                jarvis_response=response_text,
+                                response_type=result.get("command_type", "context_aware"),
+                                confidence_score=result.get("confidence"),
+                                execution_time_ms=result.get("execution_time_ms"),
+                                success=result.get("success", True),
                             )
                             continue
 
