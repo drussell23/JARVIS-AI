@@ -1724,6 +1724,64 @@ class HybridIntelligenceCoordinator:
         logger.info(f"   RAM: {self.ram_monitor.local_ram_gb:.1f}GB total")
         logger.info(f"   Learning: {'Enabled' if self.learning_enabled else 'Disabled'}")
 
+    async def _get_session_cost_info(self, instance_id: str) -> Optional[dict]:
+        """Get comprehensive cost information for the current session"""
+        try:
+            from datetime import datetime
+
+            from core.cost_tracker import get_cost_tracker
+
+            cost_tracker = get_cost_tracker()
+
+            # Get session info from active sessions or database
+            session = cost_tracker.active_sessions.get(instance_id)
+            if not session:
+                session = await cost_tracker._load_session_from_db(instance_id)
+
+            if not session:
+                logger.warning(f"No cost tracking data found for {instance_id}")
+                return None
+
+            # Calculate session cost
+            runtime_hours = (datetime.utcnow() - session.created_at).total_seconds() / 3600
+            session_cost = runtime_hours * cost_tracker.config.spot_vm_hourly_cost
+            regular_cost = runtime_hours * cost_tracker.config.regular_vm_hourly_cost
+            savings = regular_cost - session_cost
+            savings_percent = (savings / regular_cost * 100) if regular_cost > 0 else 0
+
+            # Get monthly summary
+            month_summary = await cost_tracker.get_cost_summary("month")
+            month_total = month_summary.get("total_estimated_cost", 0.0)
+
+            # Calculate monthly projection (based on this month's usage pattern)
+            days_in_month = 30
+            current_day = datetime.now().day
+            if current_day > 0:
+                daily_average = month_total / current_day
+                month_projection = daily_average * days_in_month
+            else:
+                month_projection = month_total
+
+            return {
+                "instance_id": instance_id,
+                "session_cost": session_cost,
+                "runtime_hours": runtime_hours,
+                "hourly_rate": cost_tracker.config.spot_vm_hourly_cost,
+                "savings": savings,
+                "savings_percent": savings_percent,
+                "month_total": month_total,
+                "month_projection": month_projection,
+                "vm_type": session.vm_type,
+                "region": session.region,
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get session cost info: {e}")
+            import traceback
+
+            logger.debug(traceback.format_exc())
+            return None
+
     async def stop(self):
         """Stop hybrid coordination (VM cleanup handled in finally block)"""
         self.running = False
@@ -1757,9 +1815,26 @@ class HybridIntelligenceCoordinator:
                 print(
                     f"   ├─ {Colors.GREEN}✓ VM deleted successfully ({elapsed:.1f}s){Colors.ENDC}"
                 )
-                print(
-                    f"   ├─ {Colors.GREEN}💰 Stopped billing for {self.workload_router.gcp_instance_id}{Colors.ENDC}"
+
+                # Get cost information from cost tracker
+                session_cost_info = await self._get_session_cost_info(
+                    self.workload_router.gcp_instance_id
                 )
+                if session_cost_info:
+                    print(
+                        f"   ├─ {Colors.GREEN}💰 Session Cost: ${session_cost_info['session_cost']:.4f} ({session_cost_info['runtime_hours']:.2f}h @ ${session_cost_info['hourly_rate']:.3f}/hr){Colors.ENDC}"
+                    )
+                    print(
+                        f"   ├─ {Colors.GREEN}💵 Savings vs Regular VM: ${session_cost_info['savings']:.4f} ({session_cost_info['savings_percent']:.1f}%){Colors.ENDC}"
+                    )
+                    print(
+                        f"   └─ {Colors.CYAN}📊 Monthly Total: ${session_cost_info['month_total']:.2f} | Projected: ${session_cost_info['month_projection']:.2f}{Colors.ENDC}"
+                    )
+                else:
+                    print(
+                        f"   └─ {Colors.GREEN}💰 Stopped billing for {self.workload_router.gcp_instance_id}{Colors.ENDC}"
+                    )
+
                 logger.info(
                     f"✅ GCP instance {self.workload_router.gcp_instance_id} deleted in {elapsed:.1f}s"
                 )
