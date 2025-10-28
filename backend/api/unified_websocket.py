@@ -1244,6 +1244,18 @@ async def unified_websocket_endpoint(websocket: WebSocket):
                     health.state = ConnectionState.HEALTHY
                     logger.info(f"[UNIFIED-WS] Connection {client_id} recovered to healthy state")
 
+            # Handle ping/pong for health monitoring
+            if data.get("type") == "ping":
+                # Respond with pong immediately
+                await websocket.send_json(
+                    {
+                        "type": "pong",
+                        "timestamp": data.get("timestamp"),
+                        "server_time": datetime.now().isoformat(),
+                    }
+                )
+                continue
+
             # Log incoming command for debugging
             if data.get("type") == "command" or data.get("type") == "voice_command":
                 logger.info(
