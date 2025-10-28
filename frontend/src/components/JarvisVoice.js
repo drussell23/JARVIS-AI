@@ -857,7 +857,7 @@ const JarvisVoice = () => {
       await configPromise;
     }
 
-    try:
+    try {
       const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8000';
       console.log('JarvisVoice: Checking JARVIS status at:', apiUrl);
       const response = await fetch(`${apiUrl}/voice/jarvis/status`);
