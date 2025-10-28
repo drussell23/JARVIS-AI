@@ -858,6 +858,15 @@ class AdvancedDisplayMonitor:
         if not self.config["voice_integration"]["enabled"]:
             return
 
+        # IMPORTANT: Don't speak detection prompts during initial scan - only the startup announcement should speak
+        # The initial scan happens right after startup, so we use the coordinator for that
+        # Only speak detection prompts for displays that appear AFTER startup (hot-plug events)
+        if not self.initial_scan_complete:
+            logger.warning(
+                f"[STARTUP VOICE] ⏭️  Display detection prompt skipped during initial scan - startup announcement handles this"
+            )
+            return
+
         # Get time-aware greeting
         template = self._get_time_aware_greeting()
         message = (
@@ -866,7 +875,7 @@ class AdvancedDisplayMonitor:
             else template
         )
 
-        logger.info(f"[DISPLAY MONITOR] Voice: {message}")
+        logger.warning(f"[DISPLAY VOICE] 🎤 Display detection prompt: {message}")
 
         # Note: pending_prompt_display is already set in _handle_display_detected
         logger.info(
