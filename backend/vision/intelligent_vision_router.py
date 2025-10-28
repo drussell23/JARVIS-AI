@@ -373,7 +373,14 @@ class IntelligentVisionRouter:
         )
 
         # Yabai can handle multi-space queries without screenshots
-        if analysis.is_multi_space and self.yabai_detector:
+        # BUT: If query requires UI detection (icon, button, visible, etc.), need screenshot
+        ui_element_keywords = {
+            "icon", "button", "element", "control", "ui", "visible",
+            "hidden", "showing", "displayed", "find", "locate"
+        }
+        requires_ui_detection = any(kw in query_lower for kw in ui_element_keywords)
+
+        if analysis.is_multi_space and self.yabai_detector and not requires_ui_detection:
             analysis.requires_screenshot = False
 
         # Estimate complexity
@@ -396,7 +403,8 @@ class IntelligentVisionRouter:
         logger.info(
             f"[ROUTER] Query analysis: complexity={analysis.estimated_complexity.value}, "
             f"ui={analysis.requires_ui_detection}, text={analysis.requires_text_reading}, "
-            f"reasoning={analysis.requires_reasoning}, multi_space={analysis.is_multi_space}"
+            f"reasoning={analysis.requires_reasoning}, multi_space={analysis.is_multi_space}, "
+            f"requires_screenshot={analysis.requires_screenshot}"
         )
 
         return analysis
