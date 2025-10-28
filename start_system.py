@@ -1124,39 +1124,48 @@ class HybridWorkloadRouter:
                 except Exception as e:
                     logger.warning(f"Failed to record VM creation in cost tracker: {e}")
 
-            # Step 3: Wait for deployment to be ready
-            ready = await self._wait_for_gcp_ready(deployment["instance_id"], timeout=300)
+            # Step 3: Wait for deployment to be ready (with reduced timeout)
+            ready = await self._wait_for_gcp_ready(deployment["instance_id"], timeout=120)
+
+            # Get IP even if health check fails
+            if not self.gcp_ip:
+                self.gcp_ip = await self._get_instance_ip(
+                    deployment["instance_id"]
+                ) or deployment.get("ip")
+
+            # Update component locations
+            for comp in components:
+                self.component_locations[comp] = "gcp"
+
+            migration_time = time.time() - self.migration_start_time
+            self.total_migrations += 1
+            self.avg_migration_time = (
+                self.avg_migration_time * (self.total_migrations - 1) + migration_time
+            ) / self.total_migrations
 
             if ready:
-                self.gcp_ip = deployment["ip"]
-
-                # Update component locations
-                for comp in components:
-                    self.component_locations[comp] = "gcp"
-
-                migration_time = time.time() - self.migration_start_time
-                self.total_migrations += 1
-                self.avg_migration_time = (
-                    self.avg_migration_time * (self.total_migrations - 1) + migration_time
-                ) / self.total_migrations
-
                 logger.info(f"✅ GCP deployment successful in {migration_time:.1f}s")
                 logger.info(f"   Instance: {self.gcp_instance_id}")
                 logger.info(f"   IP: {self.gcp_ip}")
-
-                return {
-                    "success": True,
-                    "instance_id": self.gcp_instance_id,
-                    "ip": self.gcp_ip,
-                    "components": components,
-                    "migration_time": migration_time,
-                }
             else:
-                # Even though ready check failed, instance exists and needs cleanup
+                # VM created but health check timeout - continue anyway
                 logger.warning(
-                    f"⚠️  GCP instance created but health check timeout - will cleanup on shutdown"
+                    f"⚠️  GCP instance created but health check timeout ({migration_time:.1f}s)"
                 )
-                raise Exception("GCP deployment timeout")
+                logger.warning(f"   Instance: {self.gcp_instance_id}")
+                logger.warning(f"   IP: {self.gcp_ip or 'pending'}")
+                logger.warning(
+                    f"   Startup script may still be running - VM will be available soon"
+                )
+
+            return {
+                "success": True,
+                "instance_id": self.gcp_instance_id,
+                "ip": self.gcp_ip,
+                "components": components,
+                "migration_time": migration_time,
+                "health_check_passed": ready,
+            }
 
         except Exception as e:
             logger.error(f"❌ GCP deployment failed: {e}")

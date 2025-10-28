@@ -1709,13 +1709,28 @@ class JARVISVoiceAPI:
 
                         processor = get_unified_processor(self.api_key)
 
-                        await websocket.send_json(
-                            {
-                                "type": "debug_log",
-                                "message": f"Processing command through unified processor: '{command_text}'",
-                                "timestamp": datetime.now().isoformat(),
-                            }
-                        )
+                        # Send immediate acknowledgment for vision commands (they take 2-8 seconds)
+                        vision_keywords = ["see", "screen", "monitor", "vision", "looking", "watching", "show me"]
+                        is_vision_cmd = any(kw in command_text.lower() for kw in vision_keywords)
+
+                        if is_vision_cmd:
+                            await websocket.send_json(
+                                {
+                                    "type": "processing",
+                                    "message": "Analyzing your screen...",
+                                    "command_type": "vision",
+                                    "timestamp": datetime.now().isoformat(),
+                                }
+                            )
+                            logger.info("[JARVIS API] Sent vision processing acknowledgment")
+                        else:
+                            await websocket.send_json(
+                                {
+                                    "type": "debug_log",
+                                    "message": f"Processing command through unified processor: '{command_text}'",
+                                    "timestamp": datetime.now().isoformat(),
+                                }
+                            )
 
                         # Process through unified system
                         result = await processor.process_command(

@@ -1280,6 +1280,19 @@ const JarvisVoice = () => {
         }
         break;
 
+      case 'processing':
+        // Handle processing acknowledgment (vision commands take 2-8 seconds)
+        console.log('WebSocket processing acknowledgment:', data);
+        const processingMessage = data.message || 'Processing...';
+        setResponse(processingMessage);
+        setIsProcessing(true);
+
+        // Optionally speak the acknowledgment
+        if (data.speak !== false && processingMessage) {
+          speakResponse(processingMessage, false);
+        }
+        break;
+
       case 'response':
         console.log('WebSocket response received:', data);
 
