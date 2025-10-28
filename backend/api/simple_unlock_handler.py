@@ -572,6 +572,14 @@ async def _try_unlock_methods(context: Dict[str, Any]) -> Dict[str, Any]:
             context["speaker_name"] = jarvis_instance.last_speaker_name
             logger.debug(f"✅ Speaker name extracted: {jarvis_instance.last_speaker_name}")
 
+    # If no audio data (text command), bypass voice verification
+    # User is already authenticated by being logged into the system
+    if not context.get("audio_data"):
+        context["bypass_voice_verification"] = True
+        logger.info(
+            "📝 Text-based unlock command - bypassing voice verification (user already authenticated)"
+        )
+
     methods = [
         ("keychain_direct", _try_keychain_unlock),
         ("manual_unlock", _try_manual_unlock_fallback),
