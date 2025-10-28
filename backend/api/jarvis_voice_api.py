@@ -740,47 +740,39 @@ class JARVISVoiceAPI:
 
         if not should_announce:
             logger.info("[STARTUP] Another system already announced startup, skipping")
-            self._startup_announced = True  # Mark as announced so we don't try again
             return
 
-        async with self._startup_announcement_lock:
-            if self._startup_announced:
-                logger.debug("[STARTUP] Startup already announced, skipping")
-                return
+        # Flag is already set in status endpoint - no need for lock here
+        try:
+            # Generate time-based greeting using coordinator
+            greeting = coordinator.generate_greeting()
 
-            try:
-                # Mark as announced immediately to prevent race conditions
-                self._startup_announced = True
+            # Send greeting via WebSocket to frontend (will show in transcript AND speak)
+            logger.info(f"[STARTUP] Announcing: {greeting}")
 
-                # Generate time-based greeting using coordinator
-                greeting = coordinator.generate_greeting()
+            # Get WebSocket manager from pipeline if available
+            from core.async_pipeline import get_async_pipeline
 
-                # Send greeting via WebSocket to frontend (will show in transcript AND speak)
-                logger.info(f"[STARTUP] Announcing: {greeting}")
+            if self._jarvis_initialized and self.jarvis:
+                pipeline = get_async_pipeline(self.jarvis)
+                if pipeline and hasattr(pipeline, "websocket_manager"):
+                    # Send via WebSocket to show in transcript
+                    await pipeline.websocket_manager.broadcast(
+                        {
+                            "type": "command_response",
+                            "response": greeting,
+                            "command": "system_startup",
+                            "speak": True,  # Tell frontend to speak this
+                            "metadata": {"is_startup_greeting": True, "priority": "high"},
+                        }
+                    )
+                elif hasattr(self.jarvis, "voice"):
+                    # Fallback to direct voice if WebSocket not available
+                    await self.jarvis.voice.speak(greeting, priority=1)
 
-                # Get WebSocket manager from pipeline if available
-                from core.async_pipeline import get_async_pipeline
-
-                if self._jarvis_initialized and self.jarvis:
-                    pipeline = get_async_pipeline(self.jarvis)
-                    if pipeline and hasattr(pipeline, "websocket_manager"):
-                        # Send via WebSocket to show in transcript
-                        await pipeline.websocket_manager.broadcast(
-                            {
-                                "type": "command_response",
-                                "response": greeting,
-                                "command": "system_startup",
-                                "speak": True,  # Tell frontend to speak this
-                                "metadata": {"is_startup_greeting": True, "priority": "high"},
-                            }
-                        )
-                    elif hasattr(self.jarvis, "voice"):
-                        # Fallback to direct voice if WebSocket not available
-                        await self.jarvis.voice.speak(greeting, priority=1)
-
-            except Exception as e:
-                logger.error(f"[STARTUP] Error announcing startup: {e}")
-                # Don't reset the flag - better to skip announcement than have multiple
+        except Exception as e:
+            logger.error(f"[STARTUP] Error announcing startup: {e}")
+            # Don't reset the flag - better to skip announcement than have multiple
 
     async def get_status(self) -> Dict:
         """Get JARVIS system status"""
@@ -840,8 +832,13 @@ class JARVISVoiceAPI:
             )
 
             # Trigger startup announcement once when system becomes ready
-            if running and not self._startup_announced:
-                asyncio.create_task(self._announce_startup_once())
+            # Use lock to prevent race condition from multiple status checks
+            if running:
+                async with self._startup_announcement_lock:
+                    if not self._startup_announced:
+                        # Set flag immediately to prevent other status calls from triggering
+                        self._startup_announced = True
+                        asyncio.create_task(self._announce_startup_once())
 
             return {
                 "status": "online" if running else "standby",
@@ -867,9 +864,14 @@ class JARVISVoiceAPI:
             }
         else:
             # Trigger startup announcement once when system becomes ready
-            if self.api_key and not self._startup_announced:
-                # Schedule announcement asynchronously (don't await to avoid blocking status check)
-                asyncio.create_task(self._announce_startup_once())
+            # Use lock to prevent race condition from multiple status checks
+            if self.api_key:
+                async with self._startup_announcement_lock:
+                    if not self._startup_announced:
+                        # Set flag immediately to prevent other status calls from triggering
+                        self._startup_announced = True
+                        # Schedule announcement asynchronously (don't await to avoid blocking status check)
+                        asyncio.create_task(self._announce_startup_once())
 
             # Return status without triggering JARVIS initialization
             return {
