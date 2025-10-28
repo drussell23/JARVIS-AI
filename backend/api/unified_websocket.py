@@ -845,6 +845,8 @@ class UnifiedWebSocketManager:
 
                 result = await self.pipeline.process_async(
                     text=message.get("text", message.get("command", "")),
+                    audio_data=message.get("audio_data"),
+                    speaker_name=message.get("speaker_name"),
                     metadata={
                         "message": message,
                         "client_id": client_id,
