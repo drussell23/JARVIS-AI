@@ -757,14 +757,27 @@ class AdvancedAsyncPipeline:
 
         context.metrics["total_pipeline_duration"] = time.time() - pipeline_start
 
-        # Return dictionary containing both response and metadata
-        return {
+        # Build response dictionary
+        response_dict = {
             "response": context.response or "Task completed successfully.",
             "metadata": context.metadata,
             "success": True,
             "command_id": context.command_id,
             "metrics": context.metrics,
         }
+
+        # Add unlock message if screen was locked (for frontend TTS)
+        # The backend already spoke the message via `say` command, but we also
+        # send it to the frontend so browser-based clients can speak it too
+        if context.metadata.get("unlock_message"):
+            response_dict["speak_immediately"] = context.metadata["unlock_message"]
+            response_dict["requires_unlock"] = True
+            logger.info(
+                f"[PIPELINE] Added unlock message to response for frontend TTS: "
+                f"'{context.metadata['unlock_message'][:50]}...'"
+            )
+
+        return response_dict
 
     async def _validate_command(self, context: PipelineContext):
         """Validate command input"""
