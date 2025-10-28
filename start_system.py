@@ -6234,13 +6234,26 @@ if __name__ == "__main__":
         sys.stdout.flush()
         sys.stderr.flush()
 
-        # Force exit any remaining threads
+        # Debug: Check for remaining threads
         import threading
         remaining_threads = [t for t in threading.enumerate() if t != threading.main_thread()]
         if remaining_threads:
-            logger.warning(f"⚠️  {len(remaining_threads)} threads still running at exit")
+            print(f"\n{Colors.YELLOW}⚠️  {len(remaining_threads)} threads still running:{Colors.ENDC}")
             for thread in remaining_threads:
-                logger.warning(f"   - {thread.name} (daemon={thread.daemon})")
+                daemon_str = "daemon" if thread.daemon else "non-daemon"
+                print(f"   - {thread.name} ({daemon_str})")
+                logger.warning(f"Thread still running: {thread.name} (daemon={thread.daemon})")
 
-        # Force immediate exit to prevent hanging
-        os._exit(0)
+        # Debug: Check for remaining async tasks
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop and not loop.is_closed():
+                all_tasks = asyncio.all_tasks(loop)
+                if all_tasks:
+                    print(f"\n{Colors.YELLOW}⚠️  {len(all_tasks)} async tasks still pending:{Colors.ENDC}")
+                    for task in all_tasks:
+                        print(f"   - {task.get_name()}: {task}")
+                        logger.warning(f"Async task still pending: {task.get_name()}")
+        except Exception as e:
+            logger.debug(f"Could not check async tasks: {e}")
