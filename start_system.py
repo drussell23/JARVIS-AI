@@ -750,10 +750,130 @@ class DynamicRAMMonitor:
 
     async def should_shift_to_gcp(self) -> tuple[bool, str, dict]:
         """
-        Determine if workload should shift to GCP.
+        Determine if workload should shift to GCP using intelligent cost-aware optimization.
 
         Returns:
             (should_shift, reason, details)
+        """
+        # Try intelligent optimizer first (cost-aware, multi-factor)
+        try:
+            from backend.core.intelligent_gcp_optimizer import get_gcp_optimizer
+            from backend.core.platform_memory_monitor import get_memory_monitor
+
+            # Get accurate memory pressure
+            monitor = get_memory_monitor()
+            snapshot = await monitor.get_memory_pressure()
+
+            # Use intelligent optimizer (considers cost, workload, trends, etc.)
+            optimizer = get_gcp_optimizer(
+                {
+                    "cost": {
+                        "daily_budget_limit": 1.00,  # $1/day limit
+                        "cost_optimization_mode": "aggressive",  # Minimize costs
+                    }
+                }
+            )
+
+            should_create, reason, pressure_score = await optimizer.should_create_vm(snapshot)
+
+            if should_create:
+                # Build state dict with comprehensive metrics
+                state = {
+                    "percent": snapshot.usage_percent,
+                    "status": snapshot.pressure_level.upper(),
+                    "emergency": pressure_score.gcp_urgent,
+                    "predicted": pressure_score.predicted_pressure_60s,
+                    "platform": snapshot.platform,
+                    "pressure_level": snapshot.pressure_level,
+                    "reasoning": reason,
+                    # Platform-specific
+                    "macos_pressure": (
+                        snapshot.macos_pressure_level if snapshot.platform == "darwin" else None
+                    ),
+                    "linux_psi_some": (
+                        snapshot.linux_psi_some_avg10 if snapshot.platform == "linux" else None
+                    ),
+                    "linux_psi_full": (
+                        snapshot.linux_psi_full_avg10 if snapshot.platform == "linux" else None
+                    ),
+                    "linux_reclaimable_gb": (
+                        snapshot.linux_reclaimable_gb if snapshot.platform == "linux" else None
+                    ),
+                    # Optimizer metrics
+                    "composite_score": pressure_score.composite_score,
+                    "workload_type": pressure_score.workload_type,
+                    "confidence": pressure_score.confidence,
+                }
+
+                logger.info(
+                    f"🚨 Intelligent GCP shift (score: {pressure_score.composite_score:.1f}/100)"
+                )
+                logger.info(
+                    f"   Platform: {snapshot.platform}, Pressure: {snapshot.pressure_level}"
+                )
+                logger.info(f"   Workload: {pressure_score.workload_type}")
+                logger.info(f"   {reason}")
+
+                return (True, reason, state)
+            else:
+                # No shift needed
+                state = {
+                    "percent": snapshot.usage_percent,
+                    "status": "NORMAL",
+                    "emergency": False,
+                    "predicted": pressure_score.predicted_pressure_60s,
+                    "platform": snapshot.platform,
+                    "pressure_level": snapshot.pressure_level,
+                    "reasoning": reason,
+                    "composite_score": pressure_score.composite_score,
+                }
+
+                logger.debug(
+                    f"✅ No GCP needed (score: {pressure_score.composite_score:.1f}/100): {reason}"
+                )
+                return (False, reason, state)
+
+        except ImportError as e:
+            logger.warning(f"Intelligent optimizer not available, trying platform monitor: {e}")
+            # Try platform monitor fallback
+            try:
+                from backend.core.platform_memory_monitor import get_memory_monitor
+
+                monitor = get_memory_monitor()
+                snapshot = await monitor.get_memory_pressure()
+                should_create, reason = monitor.should_create_gcp_vm(snapshot)
+
+                if should_create:
+                    state = {
+                        "percent": snapshot.usage_percent,
+                        "status": snapshot.pressure_level.upper(),
+                        "emergency": snapshot.gcp_shift_urgent,
+                        "predicted": snapshot.usage_percent,
+                        "platform": snapshot.platform,
+                        "reasoning": reason,
+                    }
+                    return (True, reason, state)
+                else:
+                    state = {
+                        "percent": snapshot.usage_percent,
+                        "status": "NORMAL",
+                        "reasoning": reason,
+                    }
+                    return (False, reason, state)
+
+            except Exception as e2:
+                logger.warning(f"Platform monitor also failed: {e2}, using legacy method")
+                return await self._legacy_should_shift_to_gcp()
+
+        except Exception as e:
+            logger.error(f"Error in intelligent optimization: {e}", exc_info=True)
+            # Final fallback to legacy method
+            return await self._legacy_should_shift_to_gcp()
+
+    async def _legacy_should_shift_to_gcp(self) -> tuple[bool, str, dict]:
+        """
+        Legacy GCP shift detection (fallback only)
+        Uses simple percentage thresholds - less accurate than platform-aware monitoring
         """
         state = await self.get_current_state()
 
