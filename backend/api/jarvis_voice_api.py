@@ -57,19 +57,19 @@ Technical Implementation:
 - See COREML_SETUP_STATUS.md for full integration details
 """
 
+import asyncio
+import base64
+import logging
+import os
+import sys
+import traceback
+from datetime import datetime
+from functools import wraps
+from typing import Dict, Optional
+
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
-import asyncio
-import json
-import base64
-import os
-import logging
-from datetime import datetime
-import sys
-import traceback
-from functools import wraps
 
 # Import response cleaner
 from .clean_vision_response import clean_vision_response
@@ -85,6 +85,7 @@ logger = logging.getLogger(__name__)
 # ASYNC SUBPROCESS HELPERS - Non-blocking subprocess calls
 # ============================================================================
 
+
 async def async_subprocess_run(cmd, timeout: float = 10.0) -> tuple:
     """
     Non-blocking async subprocess execution.
@@ -99,23 +100,19 @@ async def async_subprocess_run(cmd, timeout: float = 10.0) -> tuple:
     # Handle both list and string inputs
     if isinstance(cmd, str):
         import shlex
+
         cmd = shlex.split(cmd)
 
     if not cmd or len(cmd) == 0:
         logger.error("async_subprocess_run: Empty command list")
-        return b'', b'Empty command', -1
+        return b"", b"Empty command", -1
 
     try:
         process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
 
-        stdout, stderr = await asyncio.wait_for(
-            process.communicate(),
-            timeout=timeout
-        )
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
 
         return stdout, stderr, process.returncode
 
@@ -126,11 +123,11 @@ async def async_subprocess_run(cmd, timeout: float = 10.0) -> tuple:
             await process.wait()
         except:
             pass
-        return b'', b'Timeout', -1
+        return b"", b"Timeout", -1
 
     except Exception as e:
         logger.error(f"Subprocess error: {e}")
-        return b'', str(e).encode(), -1
+        return b"", str(e).encode(), -1
 
 
 async def async_open_app(app_name: str) -> bool:
@@ -143,10 +140,7 @@ async def async_open_app(app_name: str) -> bool:
     Returns:
         True if successful, False otherwise
     """
-    stdout, stderr, returncode = await async_subprocess_run(
-        ["open", "-a", app_name],
-        timeout=5.0
-    )
+    stdout, stderr, returncode = await async_subprocess_run(["open", "-a", app_name], timeout=5.0)
 
     if returncode == 0:
         logger.info(f"✅ Launched {app_name} (async)")
@@ -167,10 +161,7 @@ async def async_osascript(script: str, timeout: float = 10.0) -> tuple:
     Returns:
         (stdout, stderr, returncode)
     """
-    return await async_subprocess_run(
-        ["osascript", "-e", script],
-        timeout=timeout
-    )
+    return await async_subprocess_run(["osascript", "-e", script], timeout=timeout)
 
 
 # Try to import graceful handler, but don't fail if it's not available
@@ -185,12 +176,14 @@ except ImportError:
 
 # Import CoreML Voice Engine with error handling
 try:
+    import numpy as np
+
     from backend.voice.coreml.voice_engine_bridge import (
+        CoreMLVoiceEngineBridge,
         create_coreml_engine,
         is_coreml_available,
-        CoreMLVoiceEngineBridge
     )
-    import numpy as np
+
     COREML_AVAILABLE = is_coreml_available()
     logger.info(f"[CoreML] CoreML Voice Engine available: {COREML_AVAILABLE}")
 except ImportError as e:
@@ -202,47 +195,45 @@ except ImportError as e:
 # Import JARVIS voice components with error handling
 try:
     # Try absolute import first
+    from backend.voice.jarvis_agent_voice import JARVISAgentVoice
     from backend.voice.jarvis_voice import (
-        EnhancedJARVISVoiceAssistant,
         EnhancedJARVISPersonality,
+        EnhancedJARVISVoiceAssistant,
         VoiceCommand,
     )
-    from backend.voice.jarvis_agent_voice import JARVISAgentVoice
 
     JARVIS_IMPORTS_AVAILABLE = True
 except ImportError:
     try:
         # Fallback to relative import
+        from ..voice.jarvis_agent_voice import JARVISAgentVoice
         from ..voice.jarvis_voice import (
-            EnhancedJARVISVoiceAssistant,
             EnhancedJARVISPersonality,
+            EnhancedJARVISVoiceAssistant,
             VoiceCommand,
         )
-        from ..voice.jarvis_agent_voice import JARVISAgentVoice
 
         JARVIS_IMPORTS_AVAILABLE = True
     except ImportError:
         try:
             # Try direct import as last resort
-            import sys
             import os
+            import sys
 
             # Add parent directory to path temporarily
             parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             sys.path.insert(0, parent_dir)
+            from voice.jarvis_agent_voice import JARVISAgentVoice
             from voice.jarvis_voice import (
-                EnhancedJARVISVoiceAssistant,
                 EnhancedJARVISPersonality,
+                EnhancedJARVISVoiceAssistant,
                 VoiceCommand,
             )
-            from voice.jarvis_agent_voice import JARVISAgentVoice
 
             sys.path.remove(parent_dir)
             JARVIS_IMPORTS_AVAILABLE = True
         except ImportError as e:
-            logger.warning(
-                f"All import attempts failed for JARVIS voice components: {e}"
-            )
+            logger.warning(f"All import attempts failed for JARVIS voice components: {e}")
             JARVIS_IMPORTS_AVAILABLE = False
 
 if not JARVIS_IMPORTS_AVAILABLE:
@@ -339,9 +330,7 @@ def dynamic_error_handler(func):
                 "suggestion": "Check API compatibility",
             }
         except Exception as e:
-            logger.error(
-                f"Unexpected error in {func.__name__}: {e}\n{traceback.format_exc()}"
-            )
+            logger.error(f"Unexpected error in {func.__name__}: {e}\n{traceback.format_exc()}")
             return {
                 "status": "error",
                 "message": "An unexpected error occurred",
@@ -425,6 +414,10 @@ class JARVISVoiceAPI:
         self._jarvis = None
         self._jarvis_initialized = False
 
+        # Startup announcement guard - prevents multiple voices at startup
+        self._startup_announced = False
+        self._startup_announcement_lock = asyncio.Lock()
+
         # Initialize async pipeline for all commands
         self._pipeline = None
 
@@ -438,9 +431,7 @@ class JARVISVoiceAPI:
 
         # We'll initialize on first use
         if not self.jarvis_available:
-            logger.warning(
-                "JARVIS Voice System not available - ANTHROPIC_API_KEY not set"
-            )
+            logger.warning("JARVIS Voice System not available - ANTHROPIC_API_KEY not set")
 
         self._register_routes()
 
@@ -449,6 +440,7 @@ class JARVISVoiceAPI:
         """Get or create async pipeline instance"""
         if self._pipeline is None:
             from core.async_pipeline import get_async_pipeline
+
             self._pipeline = get_async_pipeline(self.jarvis)
             logger.info("[JARVIS API] Async pipeline initialized for voice commands")
         return self._pipeline
@@ -464,10 +456,7 @@ class JARVISVoiceAPI:
             try:
                 # Try to use factory for proper dependency injection
                 try:
-                    from api.jarvis_factory import (
-                        create_jarvis_agent,
-                        get_vision_analyzer,
-                    )
+                    from api.jarvis_factory import create_jarvis_agent, get_vision_analyzer
 
                     # Check if vision analyzer is available before creating JARVIS
                     vision_analyzer = get_vision_analyzer()
@@ -485,9 +474,7 @@ class JARVISVoiceAPI:
                         "[INIT ORDER] Factory not available, falling back to direct creation"
                     )
                     self._jarvis = JARVISAgentVoice()
-                    logger.info(
-                        "JARVIS Agent created directly (no shared vision analyzer)"
-                    )
+                    logger.info("JARVIS Agent created directly (no shared vision analyzer)")
 
                 self.system_control_enabled = (
                     self._jarvis.system_control_enabled if self._jarvis else False
@@ -500,9 +487,7 @@ class JARVISVoiceAPI:
             finally:
                 self._jarvis_initialized = True
 
-        logger.debug(
-            f"[INIT ORDER] Returning JARVIS instance: {self._jarvis is not None}"
-        )
+        logger.debug(f"[INIT ORDER] Returning JARVIS instance: {self._jarvis is not None}")
         return self._jarvis
 
     def _register_routes(self):
@@ -531,6 +516,59 @@ class JARVISVoiceAPI:
             await self.jarvis_stream(websocket)
 
     @dynamic_error_handler
+    async def _announce_startup_once(self):
+        """Announce startup ONCE using lock to prevent multiple voices"""
+        async with self._startup_announcement_lock:
+            if self._startup_announced:
+                logger.debug("[STARTUP] Startup already announced, skipping")
+                return
+
+            try:
+                # Mark as announced immediately to prevent race conditions
+                self._startup_announced = True
+
+                # Generate time-based greeting
+                from datetime import datetime
+
+                hour = datetime.now().hour
+                if 5 <= hour < 12:
+                    greeting = (
+                        "Good morning, Sir. JARVIS systems initialized and ready for your command."
+                    )
+                elif 12 <= hour < 17:
+                    greeting = "Good afternoon, Sir. JARVIS at your disposal."
+                elif 17 <= hour < 22:
+                    greeting = "Good evening, Sir. JARVIS at your service."
+                else:
+                    greeting = "Welcome back, Sir. JARVIS systems online despite the late hour."
+
+                # Send greeting via WebSocket to frontend (will show in transcript AND speak)
+                logger.info(f"[STARTUP] Announcing: {greeting}")
+
+                # Get WebSocket manager from pipeline if available
+                from core.async_pipeline import get_async_pipeline
+
+                if self._jarvis_initialized and self.jarvis:
+                    pipeline = get_async_pipeline(self.jarvis)
+                    if pipeline and hasattr(pipeline, "websocket_manager"):
+                        # Send via WebSocket to show in transcript
+                        await pipeline.websocket_manager.broadcast(
+                            {
+                                "type": "command_response",
+                                "response": greeting,
+                                "command": "system_startup",
+                                "speak": True,  # Tell frontend to speak this
+                                "metadata": {"is_startup_greeting": True, "priority": "high"},
+                            }
+                        )
+                    elif hasattr(self.jarvis, "voice"):
+                        # Fallback to direct voice if WebSocket not available
+                        await self.jarvis.voice.speak(greeting, priority=1)
+
+            except Exception as e:
+                logger.error(f"[STARTUP] Error announcing startup: {e}")
+                # Don't reset the flag - better to skip announcement than have multiple
+
     async def get_status(self) -> Dict:
         """Get JARVIS system status"""
         logger.debug("[INIT ORDER] get_status called")
@@ -580,9 +618,7 @@ class JARVISVoiceAPI:
             if hasattr(jarvis_instance, "running"):
                 running = jarvis_instance.running
             user_name = (
-                jarvis_instance.user_name
-                if hasattr(jarvis_instance, "user_name")
-                else "Sir"
+                jarvis_instance.user_name if hasattr(jarvis_instance, "user_name") else "Sir"
             )
             wake_words = (
                 jarvis_instance.wake_words
@@ -590,12 +626,14 @@ class JARVISVoiceAPI:
                 else ["hey jarvis", "jarvis"]
             )
 
+            # Trigger startup announcement once when system becomes ready
+            if running and not self._startup_announced:
+                asyncio.create_task(self._announce_startup_once())
+
             return {
                 "status": "online" if running else "standby",
                 "message": (
-                    "JARVIS Agent at your service"
-                    if running
-                    else "JARVIS in standby mode"
+                    "JARVIS Agent at your service" if running else "JARVIS in standby mode"
                 ),
                 "user_name": user_name,
                 "features": features,
@@ -612,8 +650,14 @@ class JARVISVoiceAPI:
                     "enabled": getattr(self, "system_control_enabled", False),
                     "mode": getattr(jarvis_instance, "command_mode", "conversation"),
                 },
+                "startup_announced": self._startup_announced,  # Tell frontend if announcement was made
             }
         else:
+            # Trigger startup announcement once when system becomes ready
+            if self.api_key and not self._startup_announced:
+                # Schedule announcement asynchronously (don't await to avoid blocking status check)
+                asyncio.create_task(self._announce_startup_once())
+
             # Return status without triggering JARVIS initialization
             return {
                 "status": "standby",
@@ -630,6 +674,7 @@ class JARVISVoiceAPI:
                     "enabled": getattr(self, "system_control_enabled", False),
                     "mode": "conversation",
                 },
+                "startup_announced": self._startup_announced,  # Tell frontend if announcement was made
             }
 
     async def activate(self) -> Dict:
@@ -709,42 +754,54 @@ class JARVISVoiceAPI:
         # CRITICAL: Check for TV/display prompt responses FIRST (highest priority)
         try:
             from display import get_display_monitor
+
             monitor = get_display_monitor()
 
             # Debug logging
-            logger.info(f"[JARVIS CMD] Display check - pending_prompt: {getattr(monitor, 'pending_prompt_display', None)}, has_pending: {monitor.has_pending_prompt()}")
+            logger.info(
+                f"[JARVIS CMD] Display check - pending_prompt: {getattr(monitor, 'pending_prompt_display', None)}, has_pending: {monitor.has_pending_prompt()}"
+            )
 
             # ALWAYS check for yes/no if it looks like a response
             response_lower = command.text.lower().strip()
-            is_yes_no = any(word in response_lower for word in ["yes", "yeah", "yep", "no", "nope", "sure", "okay", "connect", "skip"])
+            is_yes_no = any(
+                word in response_lower
+                for word in ["yes", "yeah", "yep", "no", "nope", "sure", "okay", "connect", "skip"]
+            )
 
             if is_yes_no:
                 logger.info(f"[JARVIS CMD] Detected yes/no response: '{command.text}'")
 
                 # If there's a pending prompt OR if Living Room TV is available, handle it
                 has_pending = monitor.has_pending_prompt()
-                available_displays = list(getattr(monitor, 'available_displays', set()))
-                living_room_available = 'living_room_tv' in available_displays
+                available_displays = list(getattr(monitor, "available_displays", set()))
+                living_room_available = "living_room_tv" in available_displays
 
-                logger.info(f"[JARVIS CMD] Has pending: {has_pending}, Living Room TV available: {living_room_available}, All available: {available_displays}")
+                logger.info(
+                    f"[JARVIS CMD] Has pending: {has_pending}, Living Room TV available: {living_room_available}, All available: {available_displays}"
+                )
 
                 if has_pending or living_room_available:
-                    logger.info(f"[JARVIS CMD] Handling display response (pending={has_pending}, tv_available={living_room_available})")
+                    logger.info(
+                        f"[JARVIS CMD] Handling display response (pending={has_pending}, tv_available={living_room_available})"
+                    )
 
                     # If no pending prompt but TV is available, set it now
                     if not has_pending and living_room_available:
-                        monitor.pending_prompt_display = 'living_room_tv'
+                        monitor.pending_prompt_display = "living_room_tv"
                         logger.info(f"[JARVIS CMD] Set pending prompt for Living Room TV")
 
                     display_result = await monitor.handle_user_response(command.text)
 
                     if display_result.get("handled"):
-                        logger.info(f"[JARVIS CMD] Display handler processed the response successfully")
+                        logger.info(
+                            f"[JARVIS CMD] Display handler processed the response successfully"
+                        )
                         return {
                             "response": display_result.get("response", "Understood."),
                             "status": "success" if display_result.get("success", True) else "error",
                             "command_type": "display_response",
-                            "success": display_result.get("success", True)
+                            "success": display_result.get("success", True),
                         }
         except Exception as e:
             logger.error(f"[JARVIS CMD] Error checking display prompt: {e}")
@@ -753,11 +810,18 @@ class JARVISVoiceAPI:
         # DYNAMIC COMPONENT LOADING - Load required components based on command intent
         try:
             from api.jarvis_factory import get_app_state
+
             app_state = get_app_state()
 
-            if app_state and hasattr(app_state, 'component_manager') and app_state.component_manager:
+            if (
+                app_state
+                and hasattr(app_state, "component_manager")
+                and app_state.component_manager
+            ):
                 manager = app_state.component_manager
-                logger.info(f"[DYNAMIC] Analyzing command for required components: '{command.text}'")
+                logger.info(
+                    f"[DYNAMIC] Analyzing command for required components: '{command.text}'"
+                )
 
                 # Analyze intent and load required components
                 required_components = await manager.intent_analyzer.analyze(command.text)
@@ -769,7 +833,7 @@ class JARVISVoiceAPI:
                     for comp_name in required_components:
                         if comp_name in manager.components:
                             comp = manager.components[comp_name]
-                            if comp.state.value != 'loaded':
+                            if comp.state.value != "loaded":
                                 logger.info(f"[DYNAMIC] Loading {comp_name}...")
                                 success = await manager.load_component(comp_name)
                                 if success:
@@ -798,15 +862,26 @@ class JARVISVoiceAPI:
             logger.error(f"Workflow processor error: {e}")
 
         # IMPORTANT: Check for document commands BEFORE vision to avoid misclassification
-        document_keywords = ['write', 'create', 'draft', 'compose', 'generate']
-        document_types = ['essay', 'report', 'paper', 'article', 'document', 'blog', 'letter', 'story']
+        document_keywords = ["write", "create", "draft", "compose", "generate"]
+        document_types = [
+            "essay",
+            "report",
+            "paper",
+            "article",
+            "document",
+            "blog",
+            "letter",
+            "story",
+        ]
         words = command.text.lower().split()
 
         has_document_keyword = any(kw in words for kw in document_keywords)
         has_document_type = any(dtype in words for dtype in document_types)
 
         if has_document_keyword and has_document_type:
-            logger.info(f"[JARVIS API] Document creation command detected - skipping vision handler: '{command.text}'")
+            logger.info(
+                f"[JARVIS API] Document creation command detected - skipping vision handler: '{command.text}'"
+            )
             # Skip vision handler entirely - will go to unified processor below
         else:
             # Check if this is a vision command
@@ -919,9 +994,7 @@ class JARVISVoiceAPI:
 
                     # Fallback to get_weather_system
                     if not weather_system:
-                        from system_control.weather_system_config import (
-                            get_weather_system,
-                        )
+                        from system_control.weather_system_config import get_weather_system
 
                         weather_system = get_weather_system()
 
@@ -961,7 +1034,8 @@ class JARVISVoiceAPI:
                     await asyncio.sleep(1.5)
 
                     # ✅ ASYNC FIX: Non-blocking AppleScript
-                    await async_osascript("""
+                    await async_osascript(
+                        """
                         tell application "System Events"
                             key code 126
                             delay 0.2
@@ -971,7 +1045,8 @@ class JARVISVoiceAPI:
                             delay 0.2
                             key code 36
                         end tell
-                    """)
+                    """
+                    )
 
                     return {
                         "response": "I'm operating in limited mode without vision analysis. I've opened the Weather app and navigated to your location. For automatic weather reading, please ensure the vision system is initialized with your ANTHROPIC_API_KEY.",
@@ -1025,11 +1100,10 @@ class JARVISVoiceAPI:
                 pipeline_result = await asyncio.wait_for(
                     self.pipeline.process_async(
                         command.text,
-                        user_name=getattr(self.jarvis, "user_name", "Sir") if self.jarvis else "Sir",
-                        metadata={
-                            "source": "voice_api",
-                            "jarvis_instance": self.jarvis
-                        }
+                        user_name=(
+                            getattr(self.jarvis, "user_name", "Sir") if self.jarvis else "Sir"
+                        ),
+                        metadata={"source": "voice_api", "jarvis_instance": self.jarvis},
                     ),
                     timeout=35.0,  # 35 second timeout for API calls (to accommodate weather)
                 )
@@ -1038,7 +1112,11 @@ class JARVISVoiceAPI:
                 if isinstance(pipeline_result, dict):
                     response = pipeline_result.get("response", "I processed your command, Sir.")
                     # If we got a lock/unlock response, use it directly
-                    if pipeline_result.get("type") in ["voice_unlock", "screen_lock", "screen_unlock"]:
+                    if pipeline_result.get("type") in [
+                        "voice_unlock",
+                        "screen_lock",
+                        "screen_unlock",
+                    ]:
                         response = pipeline_result.get("response", response)
                 else:
                     response = str(pipeline_result)
@@ -1064,9 +1142,7 @@ class JARVISVoiceAPI:
             # Get contextual info if available
             context = {}
             if self.jarvis and hasattr(self.jarvis, "personality"):
-                personality = self.error_handler.safe_getattr(
-                    self.jarvis, "personality"
-                )
+                personality = self.error_handler.safe_getattr(self.jarvis, "personality")
                 if personality:
                     context = (
                         self.error_handler.safe_call(
@@ -1101,14 +1177,14 @@ class JARVISVoiceAPI:
         # Try async TTS handler first for better performance
         try:
             from .async_tts_handler import generate_speech_async
-            
+
             # Generate speech with caching and async processing
             audio_path, content_type = await generate_speech_async(text, voice="Daniel")
-            
+
             # Read the audio file
             with open(audio_path, "rb") as f:
                 audio_data = f.read()
-            
+
             return Response(
                 content=audio_data,
                 media_type=content_type,
@@ -1118,15 +1194,14 @@ class JARVISVoiceAPI:
                     "Access-Control-Allow-Origin": "*",
                 },
             )
-            
+
         except ImportError:
             logger.info("Async TTS handler not available, falling back to synchronous method")
-            
+
         # Fallback to synchronous method
         try:
             import subprocess
             import tempfile
-            import asyncio
 
             # Use the full text for audio generation
             audio_text = text
@@ -1141,12 +1216,13 @@ class JARVISVoiceAPI:
                     "say",
                     "-v",
                     "Daniel",  # British voice for JARVIS
-                    "-r", "160",  # Much slower speech rate for natural delivery (words per minute)
+                    "-r",
+                    "160",  # Much slower speech rate for natural delivery (words per minute)
                     "-o",
                     tmp_path,
                     audio_text,
                 ],
-                timeout=30.0
+                timeout=30.0,
             )
             if returncode != 0:
                 raise subprocess.CalledProcessError(returncode, "say", stderr=stderr)
@@ -1171,7 +1247,7 @@ class JARVISVoiceAPI:
                         mp3_path,
                         "-y",
                     ],
-                    timeout=30.0
+                    timeout=30.0,
                 )
                 if returncode != 0:
                     raise subprocess.CalledProcessError(returncode, "ffmpeg", stderr=stderr)
@@ -1179,8 +1255,7 @@ class JARVISVoiceAPI:
                 # If ffmpeg not available, use lame
                 try:
                     stdout, stderr, returncode = await async_subprocess_run(
-                        ["lame", "-b", "96", "-m", "m", tmp_path, mp3_path],
-                        timeout=30.0
+                        ["lame", "-b", "96", "-m", "m", tmp_path, mp3_path], timeout=30.0
                     )
                     if returncode != 0:
                         raise subprocess.CalledProcessError(returncode, "lame", stderr=stderr)
@@ -1198,7 +1273,7 @@ class JARVISVoiceAPI:
                                 tmp_path,
                                 wav_path,
                             ],
-                            timeout=30.0
+                            timeout=30.0,
                         )
                         if returncode == 0:
                             mp3_path = wav_path
@@ -1295,23 +1370,17 @@ class JARVISVoiceAPI:
         if jarvis_instance:
             return {
                 "preferences": (
-                    getattr(
-                        jarvis_instance.personality, "user_preferences", {"name": "Sir"}
-                    )
+                    getattr(jarvis_instance.personality, "user_preferences", {"name": "Sir"})
                     if hasattr(jarvis_instance, "personality")
                     else {"name": "Sir"}
                 ),
-                "wake_words": getattr(
-                    jarvis_instance, "wake_words", ["hey jarvis", "jarvis"]
-                ),
+                "wake_words": getattr(jarvis_instance, "wake_words", ["hey jarvis", "jarvis"]),
                 "context_history_size": (
                     len(getattr(jarvis_instance.personality, "context", []))
                     if hasattr(jarvis_instance, "personality")
                     else 0
                 ),
-                "special_commands": list(
-                    getattr(jarvis_instance, "special_commands", {}).keys()
-                ),
+                "special_commands": list(getattr(jarvis_instance, "special_commands", {}).keys()),
             }
         else:
             # Return default config without initializing JARVIS
@@ -1353,17 +1422,11 @@ class JARVISVoiceAPI:
 
         if config.work_hours:
             self.jarvis.personality.user_preferences["work_hours"] = config.work_hours
-            updates.append(
-                f"Work hours updated to {config.work_hours[0]}-{config.work_hours[1]}"
-            )
+            updates.append(f"Work hours updated to {config.work_hours[0]}-{config.work_hours[1]}")
 
         if config.break_reminder is not None:
-            self.jarvis.personality.user_preferences["break_reminder"] = (
-                config.break_reminder
-            )
-            updates.append(
-                f"Break reminders {'enabled' if config.break_reminder else 'disabled'}"
-            )
+            self.jarvis.personality.user_preferences["break_reminder"] = config.break_reminder
+            updates.append(f"Break reminders {'enabled' if config.break_reminder else 'disabled'}")
 
         user_name = self.jarvis.personality.user_preferences.get("name", "Sir")
         return {
@@ -1431,9 +1494,7 @@ class JARVISVoiceAPI:
     async def jarvis_stream(self, websocket: WebSocket):
         """WebSocket endpoint for real-time JARVIS interaction"""
         logger.info("[JARVIS WS] ========= NEW WEBSOCKET CONNECTION =========")
-        logger.info(
-            "[JARVIS WS] Accepting WebSocket connection from JARVIS endpoint..."
-        )
+        logger.info("[JARVIS WS] Accepting WebSocket connection from JARVIS endpoint...")
         await websocket.accept()
         logger.info("[JARVIS WS] WebSocket connection accepted successfully")
 
@@ -1458,12 +1519,13 @@ class JARVISVoiceAPI:
             # Generate dynamic startup greeting
             try:
                 from voice.dynamic_response_generator import get_response_generator
+
                 generator = get_response_generator(user_name)
                 startup_greeting = generator.generate_startup_greeting()
             except:
                 # Fallback if generator not available
                 startup_greeting = f"JARVIS online. How may I assist you, {user_name}?"
-            
+
             await websocket.send_json(
                 {
                     "type": "connected",
@@ -1494,8 +1556,12 @@ class JARVISVoiceAPI:
                     # Import the setting from main.py
                     try:
                         import sys
-                        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+                        sys.path.insert(
+                            0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                        )
                         from main import USE_ENHANCED_CONTEXT
+
                         USE_CONTEXT_HANDLER = True
                     except ImportError:
                         # Default to using context handler
@@ -1508,56 +1574,94 @@ class JARVISVoiceAPI:
                             # This must happen BEFORE any classification or processing
                             try:
                                 from display import get_display_monitor
+
                                 monitor = get_display_monitor()
 
                                 # Debug logging
-                                logger.info(f"[JARVIS WS] Display check - pending_prompt: {getattr(monitor, 'pending_prompt_display', None)}, has_pending: {monitor.has_pending_prompt()}")
+                                logger.info(
+                                    f"[JARVIS WS] Display check - pending_prompt: {getattr(monitor, 'pending_prompt_display', None)}, has_pending: {monitor.has_pending_prompt()}"
+                                )
 
                                 # ALWAYS check for yes/no if it looks like a response
                                 response_lower = command_text.lower().strip()
-                                is_yes_no = any(word in response_lower for word in ["yes", "yeah", "yep", "no", "nope", "sure", "okay", "connect", "skip"])
+                                is_yes_no = any(
+                                    word in response_lower
+                                    for word in [
+                                        "yes",
+                                        "yeah",
+                                        "yep",
+                                        "no",
+                                        "nope",
+                                        "sure",
+                                        "okay",
+                                        "connect",
+                                        "skip",
+                                    ]
+                                )
 
                                 if is_yes_no:
-                                    logger.info(f"[JARVIS WS] Detected yes/no response: '{command_text}'")
+                                    logger.info(
+                                        f"[JARVIS WS] Detected yes/no response: '{command_text}'"
+                                    )
 
                                     # If there's a pending prompt OR if Living Room TV is available, handle it
                                     has_pending = monitor.has_pending_prompt()
-                                    available_displays = list(getattr(monitor, 'available_displays', set()))
-                                    living_room_available = 'living_room_tv' in available_displays
+                                    available_displays = list(
+                                        getattr(monitor, "available_displays", set())
+                                    )
+                                    living_room_available = "living_room_tv" in available_displays
 
-                                    logger.info(f"[JARVIS WS] Has pending: {has_pending}, Living Room TV available: {living_room_available}, All available: {available_displays}")
+                                    logger.info(
+                                        f"[JARVIS WS] Has pending: {has_pending}, Living Room TV available: {living_room_available}, All available: {available_displays}"
+                                    )
 
                                     if has_pending or living_room_available:
-                                        logger.info(f"[JARVIS WS] Handling display response (pending={has_pending}, tv_available={living_room_available})")
+                                        logger.info(
+                                            f"[JARVIS WS] Handling display response (pending={has_pending}, tv_available={living_room_available})"
+                                        )
 
                                         # If no pending prompt but TV is available, set it now
                                         if not has_pending and living_room_available:
-                                            monitor.pending_prompt_display = 'living_room_tv'
-                                            logger.info(f"[JARVIS WS] Set pending prompt for Living Room TV")
+                                            monitor.pending_prompt_display = "living_room_tv"
+                                            logger.info(
+                                                f"[JARVIS WS] Set pending prompt for Living Room TV"
+                                            )
 
-                                        display_result = await monitor.handle_user_response(command_text)
+                                        display_result = await monitor.handle_user_response(
+                                            command_text
+                                        )
 
                                         if display_result.get("handled"):
-                                            logger.info(f"[JARVIS WS] Display handler processed the response successfully")
-                                            await websocket.send_json({
-                                                "type": "response",
-                                                "text": display_result.get("response", "Understood."),
-                                                "command_type": "display_response",
-                                                "success": display_result.get("success", True),
-                                                "timestamp": datetime.now().isoformat(),
-                                                "speak": True
-                                            })
+                                            logger.info(
+                                                f"[JARVIS WS] Display handler processed the response successfully"
+                                            )
+                                            await websocket.send_json(
+                                                {
+                                                    "type": "response",
+                                                    "text": display_result.get(
+                                                        "response", "Understood."
+                                                    ),
+                                                    "command_type": "display_response",
+                                                    "success": display_result.get("success", True),
+                                                    "timestamp": datetime.now().isoformat(),
+                                                    "speak": True,
+                                                }
+                                            )
                                             continue
                             except Exception as e:
                                 logger.error(f"[JARVIS WS] Error checking display prompt: {e}")
                                 # Continue to normal processing if this fails
 
                             from .unified_command_processor import get_unified_processor
+
                             processor = get_unified_processor(self.api_key)
 
                             if USE_ENHANCED_CONTEXT:
                                 # Use enhanced simple context handler for proper feedback
-                                from .simple_context_handler_enhanced import wrap_with_enhanced_context
+                                from .simple_context_handler_enhanced import (
+                                    wrap_with_enhanced_context,
+                                )
+
                                 context_handler = wrap_with_enhanced_context(processor)
                                 logger.info(
                                     f"[JARVIS WS] Processing with ENHANCED context awareness: '{command_text}'"
@@ -1565,6 +1669,7 @@ class JARVISVoiceAPI:
                             else:
                                 # Use simple context handler
                                 from .simple_context_handler import wrap_with_simple_context
+
                                 context_handler = wrap_with_simple_context(processor)
                                 logger.info(
                                     f"[JARVIS WS] Processing with SIMPLE context awareness: '{command_text}'"
@@ -1578,12 +1683,8 @@ class JARVISVoiceAPI:
                             # Send the response with enhanced context info
                             response_data = {
                                 "type": "response",
-                                "text": result.get(
-                                    "response", "I processed your command."
-                                ),
-                                "command_type": result.get(
-                                    "command_type", "context_aware"
-                                ),
+                                "text": result.get("response", "I processed your command."),
+                                "command_type": result.get("command_type", "context_aware"),
                                 "success": result.get("success", True),
                                 "context_handled": result.get("context_handled", False),
                                 "screen_unlocked": result.get("screen_unlocked", False),
@@ -1632,9 +1733,7 @@ class JARVISVoiceAPI:
                                     "type": "response",
                                     "text": workflow_result.get("response"),
                                     "command_type": "workflow",
-                                    "workflow_result": workflow_result.get(
-                                        "workflow_result"
-                                    ),
+                                    "workflow_result": workflow_result.get("workflow_result"),
                                     "success": workflow_result.get("success"),
                                     "timestamp": datetime.now().isoformat(),
                                     "speak": True,
@@ -1654,9 +1753,7 @@ class JARVISVoiceAPI:
 
                     # Check for autonomy commands
                     if autonomy_handler:
-                        autonomy_action = autonomy_handler.process_autonomy_command(
-                            command_text
-                        )
+                        autonomy_action = autonomy_handler.process_autonomy_command(command_text)
                         if autonomy_action == "activate":
                             # Activate full autonomy
                             result = await autonomy_handler.activate_full_autonomy()
@@ -1710,7 +1807,15 @@ class JARVISVoiceAPI:
                         processor = get_unified_processor(self.api_key)
 
                         # Send immediate acknowledgment for vision commands (they take 2-8 seconds)
-                        vision_keywords = ["see", "screen", "monitor", "vision", "looking", "watching", "show me"]
+                        vision_keywords = [
+                            "see",
+                            "screen",
+                            "monitor",
+                            "vision",
+                            "looking",
+                            "watching",
+                            "show me",
+                        ]
                         is_vision_cmd = any(kw in command_text.lower() for kw in vision_keywords)
 
                         if is_vision_cmd:
@@ -1733,9 +1838,7 @@ class JARVISVoiceAPI:
                             )
 
                         # Process through unified system
-                        result = await processor.process_command(
-                            command_text, websocket
-                        )
+                        result = await processor.process_command(command_text, websocket)
 
                         logger.info(f"[JARVIS API] Command result: {result}")
 
@@ -1755,9 +1858,7 @@ class JARVISVoiceAPI:
                         }
 
                         await websocket.send_json(response_data)
-                        logger.info(
-                            f"[JARVIS API] Sent response: {response_data['text'][:100]}..."
-                        )
+                        logger.info(f"[JARVIS API] Sent response: {response_data['text'][:100]}...")
                         continue
 
                     except Exception as e:
@@ -1778,9 +1879,7 @@ class JARVISVoiceAPI:
                         word in command_text.lower() for word in vision_keywords
                     )
 
-                    if (
-                        is_vision_command and False
-                    ):  # Disabled - using unified processor
+                    if is_vision_command and False:  # Disabled - using unified processor
                         try:
                             # Send debug log to frontend
                             await websocket.send_json(
@@ -1814,9 +1913,7 @@ class JARVISVoiceAPI:
                                     }
                                 )
                             except ImportError as ie:
-                                logger.error(
-                                    f"Failed to import vision_command_handler: {ie}"
-                                )
+                                logger.error(f"Failed to import vision_command_handler: {ie}")
                                 await websocket.send_json(
                                     {
                                         "type": "debug_log",
@@ -1863,27 +1960,21 @@ class JARVISVoiceAPI:
                                 )
 
                                 # Clean the vision response before sending
-                                cleaned_text = clean_vision_response(
-                                    vision_result["response"]
-                                )
+                                cleaned_text = clean_vision_response(vision_result["response"])
 
                                 await websocket.send_json(
                                     {
                                         "type": "response",
                                         "text": cleaned_text,
                                         "command_type": "vision",
-                                        "monitoring_active": vision_result.get(
-                                            "monitoring_active"
-                                        ),
+                                        "monitoring_active": vision_result.get("monitoring_active"),
                                         "timestamp": datetime.now().isoformat(),
                                         "speak": True,  # Explicitly tell frontend to speak this
                                     }
                                 )
                                 continue
                         except Exception as e:
-                            logger.error(
-                                f"Vision command check error: {e}", exc_info=True
-                            )
+                            logger.error(f"Vision command check error: {e}", exc_info=True)
 
                             await websocket.send_json(
                                 {
@@ -1952,7 +2043,9 @@ class JARVISVoiceAPI:
                         "I'm in limited mode right now. How may I assist?",
                         "Some of my systems are still coming online. What do you need?",
                     ]
-                    response = random.choice(limited_responses)
+                    response = random.choice(
+                        limited_responses
+                    )  # nosec B311 - UI responses, not cryptographic
                     context = {}
 
                     if self.jarvis and hasattr(self.jarvis, "personality"):
@@ -1961,29 +2054,19 @@ class JARVISVoiceAPI:
                             personality = self.error_handler.safe_getattr(
                                 self.jarvis, "personality"
                             )
-                            if personality and hasattr(
-                                personality, "process_voice_command"
-                            ):
-                                response = await personality.process_voice_command(
-                                    voice_command
-                                )
+                            if personality and hasattr(personality, "process_voice_command"):
+                                response = await personality.process_voice_command(voice_command)
                                 context = (
                                     self.error_handler.safe_call(
-                                        getattr(
-                                            personality, "_get_context_info", lambda: {}
-                                        )
+                                        getattr(personality, "_get_context_info", lambda: {})
                                     )
                                     or {}
                                 )
                             else:
-                                logger.warning(
-                                    "Personality missing process_voice_command method"
-                                )
+                                logger.warning("Personality missing process_voice_command method")
                         except Exception as e:
                             logger.error(f"Error processing voice command: {e}")
-                            response = (
-                                f"I encountered an error: {str(e)}. Please try again."
-                            )
+                            response = f"I encountered an error: {str(e)}. Please try again."
                     else:
                         # Provide basic response without full personality
                         if "weather" in data["text"].lower():
@@ -1998,13 +2081,9 @@ class JARVISVoiceAPI:
                                     from api.jarvis_factory import get_app_state
 
                                     app_state = get_app_state()
-                                    if app_state and hasattr(
-                                        app_state, "weather_system"
-                                    ):
+                                    if app_state and hasattr(app_state, "weather_system"):
                                         weather_system = app_state.weather_system
-                                        vision_available = hasattr(
-                                            app_state, "vision_analyzer"
-                                        )
+                                        vision_available = hasattr(app_state, "vision_analyzer")
                                         logger.info(
                                             f"[JARVIS WS] Got weather system from app state, vision: {vision_available}"
                                         )
@@ -2018,9 +2097,7 @@ class JARVISVoiceAPI:
                                     )
 
                                     weather_system = get_weather_system()
-                                    logger.info(
-                                        "[JARVIS WS] Using fallback weather system"
-                                    )
+                                    logger.info("[JARVIS WS] Using fallback weather system")
 
                                 if weather_system and vision_available:
                                     # Full mode with vision
@@ -2041,13 +2118,9 @@ class JARVISVoiceAPI:
                                     )
 
                                     # Get weather with vision
-                                    result = await weather_system.get_weather(
-                                        data["text"]
-                                    )
+                                    result = await weather_system.get_weather(data["text"])
 
-                                    if result.get("success") and result.get(
-                                        "formatted_response"
-                                    ):
+                                    if result.get("success") and result.get("formatted_response"):
                                         response = result["formatted_response"]
                                         logger.info(
                                             "[JARVIS WS] Weather vision analysis successful"
@@ -2085,9 +2158,7 @@ class JARVISVoiceAPI:
 
                                 else:
                                     # No weather system at all
-                                    logger.info(
-                                        "[JARVIS WS] NO WEATHER SYSTEM: Basic fallback"
-                                    )
+                                    logger.info("[JARVIS WS] NO WEATHER SYSTEM: Basic fallback")
 
                                     await async_open_app("Weather")
                                     response = "I'm in basic mode. I've opened the Weather app for you. For automatic weather analysis, please ensure the weather system is properly initialized."
@@ -2112,7 +2183,9 @@ class JARVISVoiceAPI:
                                 f"Got it - '{data['text']}'. My intelligence systems are warming up.",
                                 f"I registered '{data['text']}'. Give me a moment to bring all systems online.",
                             ]
-                            response = random.choice(fallback_responses)
+                            response = random.choice(
+                                fallback_responses
+                            )  # nosec B311 - UI responses, not cryptographic
                     logger.info(f"[JARVIS WS] Response: {response[:100]}...")
 
                     # Send response immediately
@@ -2210,16 +2283,17 @@ if COREML_AVAILABLE:
             vad_model_path=vad_model_path,
             speaker_model_path=speaker_model_path,
             config={
-                'vad_threshold': 0.5,           # Adapts 0.2-0.9
-                'speaker_threshold': 0.7,        # Adapts 0.4-0.95
-                'enable_adaptive': True,
-                'learning_rate': 0.01,
-                'adaptation_window': 100
-            }
+                "vad_threshold": 0.5,  # Adapts 0.2-0.9
+                "speaker_threshold": 0.7,  # Adapts 0.4-0.95
+                "enable_adaptive": True,
+                "learning_rate": 0.01,
+                "adaptation_window": 100,
+            },
         )
 
         # Start background queue worker
         import asyncio
+
         asyncio.create_task(coreml_engine.process_voice_queue_worker())
 
         logger.info("[CoreML] CoreML Voice Engine initialized successfully")
@@ -2241,10 +2315,11 @@ else:
 # CoreML Voice Detection Endpoints
 # ========================================
 
+
 @router.post("/voice/detect-coreml")
 async def detect_voice_coreml(
     audio_data: str,  # Base64-encoded float32 audio
-    priority: int = 0  # 0=normal, 1=high, 2=critical
+    priority: int = 0,  # 0=normal, 1=high, 2=critical
 ):
     """
     Async voice detection using CoreML with circuit breaker protection.
@@ -2260,27 +2335,26 @@ async def detect_voice_coreml(
     """
     if not coreml_engine:
         raise HTTPException(
-            status_code=503,
-            detail="CoreML engine not available - models not loaded"
+            status_code=503, detail="CoreML engine not available - models not loaded"
         )
 
     try:
         # Decode base64 audio
         import base64
+
         audio_bytes = base64.b64decode(audio_data)
         audio = np.frombuffer(audio_bytes, dtype=np.float32)
 
         # Async detection with circuit breaker
         is_user, vad_conf, speaker_conf = await coreml_engine.detect_user_voice_async(
-            audio,
-            priority=priority
+            audio, priority=priority
         )
 
         return {
             "is_user_voice": is_user,
             "vad_confidence": float(vad_conf),
             "speaker_confidence": float(speaker_conf),
-            "metrics": coreml_engine.get_metrics()
+            "metrics": coreml_engine.get_metrics(),
         }
 
     except Exception as e:
@@ -2289,10 +2363,7 @@ async def detect_voice_coreml(
 
 
 @router.post("/voice/detect-vad-coreml")
-async def detect_vad_coreml(
-    audio_data: str,
-    priority: int = 0
-):
+async def detect_vad_coreml(audio_data: str, priority: int = 0):
     """
     Voice Activity Detection only (faster, no speaker recognition).
 
@@ -2304,26 +2375,20 @@ async def detect_vad_coreml(
     - **confidence**: VAD confidence (0-1)
     """
     if not coreml_engine:
-        raise HTTPException(
-            status_code=503,
-            detail="CoreML engine not available"
-        )
+        raise HTTPException(status_code=503, detail="CoreML engine not available")
 
     try:
         import base64
+
         audio_bytes = base64.b64decode(audio_data)
         audio = np.frombuffer(audio_bytes, dtype=np.float32)
 
         # Async VAD with circuit breaker
         voice_detected, confidence = await coreml_engine.detect_voice_activity_async(
-            audio,
-            priority=priority
+            audio, priority=priority
         )
 
-        return {
-            "voice_detected": voice_detected,
-            "confidence": float(confidence)
-        }
+        return {"voice_detected": voice_detected, "confidence": float(confidence)}
 
     except Exception as e:
         logger.error(f"[CoreML] VAD error: {e}")
@@ -2331,10 +2396,7 @@ async def detect_vad_coreml(
 
 
 @router.post("/voice/train-speaker-coreml")
-async def train_speaker_coreml(
-    audio_data: str,
-    is_user: bool = True
-):
+async def train_speaker_coreml(audio_data: str, is_user: bool = True):
     """
     Train speaker recognition model with new audio samples.
 
@@ -2345,13 +2407,11 @@ async def train_speaker_coreml(
     - **samples_collected**: Total samples collected (user/non-user)
     """
     if not coreml_engine:
-        raise HTTPException(
-            status_code=503,
-            detail="CoreML engine not available"
-        )
+        raise HTTPException(status_code=503, detail="CoreML engine not available")
 
     try:
         import base64
+
         audio_bytes = base64.b64decode(audio_data)
         audio = np.frombuffer(audio_bytes, dtype=np.float32)
 
@@ -2360,11 +2420,7 @@ async def train_speaker_coreml(
 
         metrics = coreml_engine.get_metrics()
 
-        return {
-            "success": True,
-            "is_user_sample": is_user,
-            "metrics": metrics
-        }
+        return {"success": True, "is_user_sample": is_user, "metrics": metrics}
 
     except Exception as e:
         logger.error(f"[CoreML] Speaker training error: {e}")
@@ -2386,10 +2442,7 @@ async def get_coreml_metrics():
     - **queue_size**: Current voice task queue size
     """
     if not coreml_engine:
-        raise HTTPException(
-            status_code=503,
-            detail="CoreML engine not available"
-        )
+        raise HTTPException(status_code=503, detail="CoreML engine not available")
 
     try:
         metrics = coreml_engine.get_metrics()
@@ -2420,6 +2473,6 @@ async def get_coreml_status():
             "speaker_recognition": coreml_engine is not None,
             "adaptive_thresholds": coreml_engine is not None,
             "circuit_breaker": coreml_engine is not None,
-            "async_queue": coreml_engine is not None
-        }
+            "async_queue": coreml_engine is not None,
+        },
     }

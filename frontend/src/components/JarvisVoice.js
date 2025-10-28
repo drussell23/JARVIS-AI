@@ -857,7 +857,7 @@ const JarvisVoice = () => {
       await configPromise;
     }
 
-    try {
+    try:
       const apiUrl = API_URL || configService.getApiUrl() || 'http://localhost:8000';
       console.log('JarvisVoice: Checking JARVIS status at:', apiUrl);
       const response = await fetch(`${apiUrl}/voice/jarvis/status`);
@@ -865,6 +865,33 @@ const JarvisVoice = () => {
 
       // Enhanced logging for mode detection
       const previousMode = systemMode;
+      const previousStatus = jarvisStatus;
+
+      // Auto-refresh when JARVIS becomes fully ready and startup announcement is complete
+      // This ensures the UI is fully synced with backend state
+      if (previousStatus !== 'online' &&
+          (data.status === 'online' || data.status === 'ready' || data.status === 'available') &&
+          data.startup_announced === true &&
+          data.mode !== 'minimal') {
+
+        console.log('🔄 JARVIS is fully ready with announcement complete! Auto-refreshing page...');
+
+        // Show countdown notification before refresh
+        setResponse('✅ JARVIS is fully operational! Refreshing page in 3...');
+
+        setTimeout(() => {
+          setResponse('Refreshing in 2...');
+          setTimeout(() => {
+            setResponse('Refreshing in 1...');
+            setTimeout(() => {
+              console.log('🔄 Hard refresh triggered');
+              window.location.reload(true); // Hard refresh to ensure all components load properly
+            }, 1000);
+          }, 1000);
+        }, 1000);
+
+        return; // Exit early to prevent further processing during countdown
+      }
 
       if (data.mode === 'minimal') {
         console.log('🔄 JARVIS Status: Running in MINIMAL MODE');
