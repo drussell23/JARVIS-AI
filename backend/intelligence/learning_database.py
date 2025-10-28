@@ -4613,6 +4613,98 @@ class JARVISLearningDatabase:
             logger.error(f"Error getting behavioral insights: {e}", exc_info=True)
             return insights
 
+    async def get_all_speaker_profiles(self) -> List[Dict]:
+        """
+        Get all speaker profiles from database for speaker recognition.
+
+        Returns list of profile dicts with embeddings and metadata.
+        """
+        try:
+            async with self.db.execute(
+                """
+                SELECT speaker_id, speaker_name, voiceprint_embedding,
+                       total_samples, average_pitch_hz, recognition_confidence,
+                       is_primary_user, security_level, created_at, last_updated
+                FROM speaker_profiles
+            """
+            ) as cursor:
+                rows = await cursor.fetchall()
+
+                profiles = []
+                for row in rows:
+                    profiles.append(
+                        {
+                            "speaker_id": row[0],
+                            "speaker_name": row[1],
+                            "voiceprint_embedding": row[2],
+                            "total_samples": row[3],
+                            "average_pitch_hz": row[4],
+                            "recognition_confidence": row[5],
+                            "is_primary_user": bool(row[6]),
+                            "security_level": row[7] or "standard",
+                            "created_at": row[8],
+                            "last_updated": row[9],
+                        }
+                    )
+
+                return profiles
+
+        except Exception as e:
+            logger.error(f"Failed to get speaker profiles: {e}")
+            return []
+
+    async def update_speaker_embedding(
+        self,
+        speaker_id: int,
+        embedding: bytes,
+        confidence: float,
+        is_primary_user: bool = False,
+    ) -> bool:
+        """
+        Update speaker profile with voice embedding.
+
+        Args:
+            speaker_id: Speaker profile ID
+            embedding: Voice embedding bytes (numpy array serialized)
+            confidence: Recognition confidence (0.0-1.0)
+            is_primary_user: Mark as device owner (Derek J. Russell)
+
+        Returns:
+            True if successful
+        """
+        try:
+            async with self.db.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    UPDATE speaker_profiles
+                    SET voiceprint_embedding = ?,
+                        recognition_confidence = ?,
+                        is_primary_user = ?,
+                        security_level = ?,
+                        last_updated = CURRENT_TIMESTAMP
+                    WHERE speaker_id = ?
+                """,
+                    (
+                        embedding,
+                        confidence,
+                        1 if is_primary_user else 0,
+                        "admin" if is_primary_user else "standard",
+                        speaker_id,
+                    ),
+                )
+
+                await self.db.commit()
+
+                logger.info(
+                    f"✅ Updated speaker embedding (ID: {speaker_id}, confidence: {confidence:.2f}, owner: {is_primary_user})"
+                )
+
+                return True
+
+        except Exception as e:
+            logger.error(f"Failed to update speaker embedding: {e}")
+            return False
+
     async def close(self):
         """Close database connections gracefully"""
         # Flush pending batches

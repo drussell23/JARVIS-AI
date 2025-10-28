@@ -14,7 +14,7 @@ class HybridSTTClient {
     this.ws = websocket;
     this.options = {
       strategy: options.strategy || 'balanced', // speed, accuracy, balanced, cost, adaptive
-      speakerName: options.speakerName || 'Derek J. Russell',
+      speakerName: options.speakerName || null, // Let backend auto-detect speaker
       confidenceThreshold: options.confidenceThreshold || 0.6,
       retryOnLowConfidence: options.retryOnLowConfidence !== false,
       continuous: options.continuous !== false,

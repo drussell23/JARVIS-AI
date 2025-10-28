@@ -273,25 +273,39 @@ class HybridSTTRouter:
             return None
 
     async def _identify_speaker(self, audio_data: bytes) -> Optional[str]:
-        """Identify speaker from voice (Derek J. Russell detection)"""
+        """
+        Identify speaker from voice using advanced speaker recognition.
+
+        Returns speaker name if recognized, None if unknown.
+        """
         try:
-            learning_db = await self._get_learning_db()
-            if not learning_db:
+            from voice.speaker_recognition import get_speaker_recognition_engine
+
+            speaker_engine = get_speaker_recognition_engine()
+            await speaker_engine.initialize()
+
+            # Identify speaker from audio
+            speaker_name, confidence = await speaker_engine.identify_speaker(audio_data)
+
+            if speaker_name:
+                logger.info(f"🎭 Speaker identified: {speaker_name} (confidence: {confidence:.2f})")
+
+                # Check if this is the owner
+                if speaker_engine.is_owner(speaker_name):
+                    logger.info(f"👑 Owner detected: {speaker_name}")
+
+                return speaker_name
+            else:
+                logger.info(
+                    f"🎭 Unknown speaker (best confidence: {confidence:.2f}, threshold: {speaker_engine.recognition_threshold})"
+                )
                 return None
-
-            # TODO: Implement actual speaker recognition
-            # For now, assume Derek if audio quality is good
-            import hashlib
-
-            audio_hash = hashlib.sha256(audio_data).hexdigest()[:16]
-
-            # Check if we have voice samples for speaker matching
-            # This will be fully implemented with Resemblyzer later
-
-            return None  # Unknown speaker for now
 
         except Exception as e:
             logger.error(f"Speaker identification failed: {e}")
+            import traceback
+
+            traceback.print_exc()
             return None
 
     async def _record_transcription(

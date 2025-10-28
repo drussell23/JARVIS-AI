@@ -2572,11 +2572,11 @@ class JARVISVoiceAPI:
                         except ValueError:
                             strategy = RoutingStrategy.BALANCED
 
-                        # Transcribe using hybrid router
+                        # Transcribe using hybrid router (speaker auto-detected)
                         result = await self.hybrid_stt_router.transcribe(
                             audio_data=audio_bytes,
                             strategy=strategy,
-                            speaker_name="Derek J. Russell",  # Default to Derek
+                            speaker_name=None,  # Auto-detect speaker via voice recognition
                         )
 
                         # Send transcription result

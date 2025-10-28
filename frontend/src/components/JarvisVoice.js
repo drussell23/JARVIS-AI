@@ -1072,12 +1072,12 @@ const JarvisVoice = () => {
           try {
             hybridSTTClientRef.current = new HybridSTTClient(wsRef.current, {
               strategy: 'balanced',
-              speakerName: 'Derek J. Russell',
+              speakerName: null, // Auto-detect speaker via voice recognition
               confidenceThreshold: 0.6,
               continuous: true,
               interimResults: true
             });
-            console.log('🎤 [HybridSTT] Client initialized and ready');
+            console.log('🎤 [HybridSTT] Client initialized with auto speaker detection');
           } catch (error) {
             console.error('🎤 [HybridSTT] Failed to initialize:', error);
           }
