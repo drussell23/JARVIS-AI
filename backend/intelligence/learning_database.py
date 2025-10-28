@@ -1580,6 +1580,140 @@ class JARVISLearningDatabase:
             """
             )
 
+            # Voice transcription accuracy tracking
+            await cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS voice_transcriptions (
+                    transcription_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    interaction_id INTEGER,
+                    raw_audio_hash TEXT NOT NULL,
+                    transcribed_text TEXT NOT NULL,
+                    corrected_text TEXT,
+                    confidence_score REAL,
+                    audio_duration_ms REAL,
+                    language_code TEXT DEFAULT 'en-US',
+                    accent_detected TEXT,
+                    background_noise_level REAL,
+                    retry_count INTEGER DEFAULT 0,
+                    was_misheard BOOLEAN DEFAULT 0,
+                    transcription_engine TEXT DEFAULT 'browser_api',
+                    audio_quality_score REAL,
+                    timestamp TIMESTAMP NOT NULL,
+                    FOREIGN KEY (interaction_id) REFERENCES conversation_history(interaction_id),
+                    INDEX idx_was_misheard (was_misheard),
+                    INDEX idx_confidence (confidence_score),
+                    INDEX idx_retry_count (retry_count)
+                )
+            """
+            )
+
+            # Speaker/Voiceprint recognition (Derek J. Russell)
+            await cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS speaker_profiles (
+                    speaker_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    speaker_name TEXT NOT NULL UNIQUE,
+                    voiceprint_embedding BLOB,
+                    total_samples INTEGER DEFAULT 0,
+                    average_pitch_hz REAL,
+                    speech_rate_wpm REAL,
+                    accent_profile TEXT,
+                    common_phrases JSON,
+                    vocabulary_preferences JSON,
+                    pronunciation_patterns JSON,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_speaker_name (speaker_name)
+                )
+            """
+            )
+
+            # Voice samples for speaker training (Derek's voice patterns)
+            await cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS voice_samples (
+                    sample_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    speaker_id INTEGER NOT NULL,
+                    audio_hash TEXT NOT NULL,
+                    audio_fingerprint BLOB,
+                    mfcc_features BLOB,
+                    duration_ms REAL NOT NULL,
+                    transcription TEXT,
+                    pitch_mean REAL,
+                    pitch_std REAL,
+                    energy_mean REAL,
+                    recording_timestamp TIMESTAMP NOT NULL,
+                    quality_score REAL,
+                    background_noise REAL,
+                    used_for_training BOOLEAN DEFAULT 1,
+                    FOREIGN KEY (speaker_id) REFERENCES speaker_profiles(speaker_id),
+                    INDEX idx_speaker (speaker_id),
+                    INDEX idx_quality (quality_score)
+                )
+            """
+            )
+
+            # Acoustic adaptation (learning Derek's accent/pronunciation)
+            await cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS acoustic_adaptations (
+                    adaptation_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    speaker_id INTEGER NOT NULL,
+                    phoneme_pattern TEXT NOT NULL,
+                    expected_pronunciation TEXT NOT NULL,
+                    actual_pronunciation TEXT NOT NULL,
+                    frequency_count INTEGER DEFAULT 1,
+                    confidence REAL,
+                    context_words JSON,
+                    learned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_observed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (speaker_id) REFERENCES speaker_profiles(speaker_id),
+                    INDEX idx_speaker_phoneme (speaker_id, phoneme_pattern)
+                )
+            """
+            )
+
+            # Misheard queries (for learning what went wrong)
+            await cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS misheard_queries (
+                    misheard_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    transcription_id INTEGER NOT NULL,
+                    what_jarvis_heard TEXT NOT NULL,
+                    what_user_meant TEXT NOT NULL,
+                    correction_method TEXT,
+                    acoustic_similarity_score REAL,
+                    phonetic_distance INTEGER,
+                    context_clues JSON,
+                    learned_pattern TEXT,
+                    occurred_at TIMESTAMP NOT NULL,
+                    FOREIGN KEY (transcription_id) REFERENCES voice_transcriptions(transcription_id),
+                    INDEX idx_similarity (acoustic_similarity_score),
+                    INDEX idx_occurred (occurred_at)
+                )
+            """
+            )
+
+            # Retry patterns (when user has to repeat)
+            await cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS query_retries (
+                    retry_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    original_transcription_id INTEGER NOT NULL,
+                    retry_transcription_id INTEGER NOT NULL,
+                    retry_number INTEGER NOT NULL,
+                    time_between_retries_ms REAL,
+                    confidence_improved REAL,
+                    retry_reason TEXT,
+                    eventually_succeeded BOOLEAN,
+                    timestamp TIMESTAMP NOT NULL,
+                    FOREIGN KEY (original_transcription_id) REFERENCES voice_transcriptions(transcription_id),
+                    FOREIGN KEY (retry_transcription_id) REFERENCES voice_transcriptions(transcription_id),
+                    INDEX idx_retry_number (retry_number)
+                )
+            """
+            )
+
             # Performance indexes
             await cursor.execute("CREATE INDEX IF NOT EXISTS idx_goals_type ON goals(goal_type)")
             await cursor.execute(
@@ -2242,6 +2376,415 @@ class JARVISLearningDatabase:
         except Exception as e:
             logger.error(f"Failed to search conversations: {e}")
             return []
+
+    # ==================== Voice Recognition & Speaker Learning ====================
+
+    async def record_voice_transcription(
+        self,
+        audio_data: bytes,
+        transcribed_text: str,
+        confidence_score: float,
+        audio_duration_ms: float,
+        interaction_id: Optional[int] = None,
+    ) -> int:
+        """
+        Record voice transcription for accuracy tracking and learning.
+        Tracks misheards, retries, and acoustic patterns for continuous improvement.
+        """
+        try:
+            import hashlib
+
+            audio_hash = hashlib.sha256(audio_data).hexdigest()[:16]
+
+            async with self.db.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    INSERT INTO voice_transcriptions
+                    (interaction_id, raw_audio_hash, transcribed_text, confidence_score,
+                     audio_duration_ms, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        interaction_id,
+                        audio_hash,
+                        transcribed_text,
+                        confidence_score,
+                        audio_duration_ms,
+                        datetime.now(),
+                    ),
+                )
+
+                await self.db.commit()
+                transcription_id = cursor.lastrowid
+
+                logger.debug(
+                    f"🎤 Recorded voice transcription {transcription_id}: '{transcribed_text[:50]}...'"
+                )
+
+                return transcription_id
+
+        except Exception as e:
+            logger.error(f"Failed to record voice transcription: {e}")
+            return -1
+
+    async def record_misheard_query(
+        self,
+        transcription_id: int,
+        what_jarvis_heard: str,
+        what_user_meant: str,
+        correction_method: str = "user_correction",
+    ) -> int:
+        """
+        Record when JARVIS mishears - critical for learning!
+        This trains the acoustic model to handle Derek's accent better.
+        """
+        try:
+            async with self.db.cursor() as cursor:
+                # Mark original transcription as misheard
+                await cursor.execute(
+                    """
+                    UPDATE voice_transcriptions
+                    SET was_misheard = 1, corrected_text = ?
+                    WHERE transcription_id = ?
+                """,
+                    (what_user_meant, transcription_id),
+                )
+
+                # Calculate phonetic distance
+                phonetic_distance = self._calculate_phonetic_distance(
+                    what_jarvis_heard, what_user_meant
+                )
+
+                # Insert misheard record
+                await cursor.execute(
+                    """
+                    INSERT INTO misheard_queries
+                    (transcription_id, what_jarvis_heard, what_user_meant,
+                     correction_method, phonetic_distance, occurred_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        transcription_id,
+                        what_jarvis_heard,
+                        what_user_meant,
+                        correction_method,
+                        phonetic_distance,
+                        datetime.now(),
+                    ),
+                )
+
+                await self.db.commit()
+                misheard_id = cursor.lastrowid
+
+                logger.info(
+                    f"🎤 MISHEARD: Heard '{what_jarvis_heard}' but user meant '{what_user_meant}' (distance={phonetic_distance})"
+                )
+
+                # Trigger acoustic adaptation learning
+                asyncio.create_task(self._learn_acoustic_pattern(misheard_id))
+
+                return misheard_id
+
+        except Exception as e:
+            logger.error(f"Failed to record misheard query: {e}")
+            return -1
+
+    async def get_or_create_speaker_profile(self, speaker_name: str = "Derek J. Russell") -> int:
+        """
+        Get or create speaker profile for voice recognition.
+        Derek J. Russell is the primary user.
+        """
+        try:
+            async with self.db.cursor() as cursor:
+                # Check if profile exists
+                await cursor.execute(
+                    "SELECT speaker_id FROM speaker_profiles WHERE speaker_name = ?",
+                    (speaker_name,),
+                )
+                row = await cursor.fetchone()
+
+                if row:
+                    return row["speaker_id"]
+
+                # Create new profile
+                await cursor.execute(
+                    """
+                    INSERT INTO speaker_profiles (speaker_name)
+                    VALUES (?)
+                """,
+                    (speaker_name,),
+                )
+
+                await self.db.commit()
+                speaker_id = cursor.lastrowid
+
+                logger.info(f"👤 Created speaker profile for {speaker_name} (ID: {speaker_id})")
+
+                return speaker_id
+
+        except Exception as e:
+            logger.error(f"Failed to get/create speaker profile: {e}")
+            return -1
+
+    async def record_voice_sample(
+        self,
+        speaker_name: str,
+        audio_data: bytes,
+        transcription: str,
+        audio_duration_ms: float,
+        quality_score: float = 1.0,
+    ) -> int:
+        """
+        Record voice sample for speaker training (Derek's voiceprint).
+        Collects acoustic features for voice recognition and adaptation.
+        """
+        try:
+            import hashlib
+
+            speaker_id = await self.get_or_create_speaker_profile(speaker_name)
+            audio_hash = hashlib.sha256(audio_data).hexdigest()[:16]
+
+            # Extract acoustic features (if librosa available)
+            mfcc_features = None
+            pitch_mean = None
+            pitch_std = None
+            energy_mean = None
+
+            try:
+                import io
+
+                import librosa
+                import numpy as np
+
+                # Convert bytes to audio
+                audio_array, sr = librosa.load(io.BytesIO(audio_data), sr=16000)
+
+                # Extract MFCC features (13 coefficients)
+                mfccs = librosa.feature.mfcc(y=audio_array, sr=sr, n_mfcc=13)
+                mfcc_features = np.mean(mfccs, axis=1).tobytes()
+
+                # Extract pitch
+                pitches, magnitudes = librosa.piptrack(y=audio_array, sr=sr)
+                pitch_values = pitches[pitches > 0]
+                if len(pitch_values) > 0:
+                    pitch_mean = float(np.mean(pitch_values))
+                    pitch_std = float(np.std(pitch_values))
+
+                # Extract energy
+                energy = librosa.feature.rms(y=audio_array)
+                energy_mean = float(np.mean(energy))
+
+                logger.debug(
+                    f"🎵 Extracted acoustic features: pitch={pitch_mean:.1f}Hz, energy={energy_mean:.3f}"
+                )
+
+            except ImportError:
+                logger.debug("librosa not available - storing audio hash only")
+            except Exception as e:
+                logger.warning(f"Failed to extract acoustic features: {e}")
+
+            async with self.db.cursor() as cursor:
+                await cursor.execute(
+                    """
+                    INSERT INTO voice_samples
+                    (speaker_id, audio_hash, mfcc_features, duration_ms, transcription,
+                     pitch_mean, pitch_std, energy_mean, recording_timestamp, quality_score)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        speaker_id,
+                        audio_hash,
+                        mfcc_features,
+                        audio_duration_ms,
+                        transcription,
+                        pitch_mean,
+                        pitch_std,
+                        energy_mean,
+                        datetime.now(),
+                        quality_score,
+                    ),
+                )
+
+                # Update speaker profile stats
+                await cursor.execute(
+                    """
+                    UPDATE speaker_profiles
+                    SET total_samples = total_samples + 1,
+                        average_pitch_hz = COALESCE(
+                            (average_pitch_hz * total_samples + ?) / (total_samples + 1),
+                            ?
+                        ),
+                        last_updated = ?
+                    WHERE speaker_id = ?
+                """,
+                    (pitch_mean, pitch_mean, datetime.now(), speaker_id),
+                )
+
+                await self.db.commit()
+                sample_id = cursor.lastrowid
+
+                logger.debug(f"🎤 Recorded voice sample {sample_id} for {speaker_name}")
+
+                return sample_id
+
+        except Exception as e:
+            logger.error(f"Failed to record voice sample: {e}")
+            return -1
+
+    async def record_query_retry(
+        self,
+        original_transcription_id: int,
+        retry_transcription_id: int,
+        retry_number: int,
+        time_between_ms: float,
+    ) -> int:
+        """
+        Record when user has to repeat a query.
+        Critical for identifying problematic words/phrases that need acoustic tuning.
+        """
+        try:
+            async with self.db.cursor() as cursor:
+                # Update retry count on both transcriptions
+                await cursor.execute(
+                    """
+                    UPDATE voice_transcriptions
+                    SET retry_count = retry_count + 1
+                    WHERE transcription_id IN (?, ?)
+                """,
+                    (original_transcription_id, retry_transcription_id),
+                )
+
+                # Insert retry record
+                await cursor.execute(
+                    """
+                    INSERT INTO query_retries
+                    (original_transcription_id, retry_transcription_id, retry_number,
+                     time_between_retries_ms, timestamp)
+                    VALUES (?, ?, ?, ?, ?)
+                """,
+                    (
+                        original_transcription_id,
+                        retry_transcription_id,
+                        retry_number,
+                        time_between_ms,
+                        datetime.now(),
+                    ),
+                )
+
+                await self.db.commit()
+                retry_id = cursor.lastrowid
+
+                logger.warning(f"🔁 Query retry #{retry_number} detected (gap={time_between_ms}ms)")
+
+                return retry_id
+
+        except Exception as e:
+            logger.error(f"Failed to record query retry: {e}")
+            return -1
+
+    async def _learn_acoustic_pattern(self, misheard_id: int):
+        """
+        Extract acoustic learning pattern from misheard query.
+        Adapts to Derek's pronunciation patterns and accent.
+        """
+        try:
+            async with self.db.cursor() as cursor:
+                # Get misheard details
+                await cursor.execute(
+                    """
+                    SELECT mq.*, vt.confidence_score, vt.audio_duration_ms
+                    FROM misheard_queries mq
+                    JOIN voice_transcriptions vt ON mq.transcription_id = vt.transcription_id
+                    WHERE mq.misheard_id = ?
+                """,
+                    (misheard_id,),
+                )
+
+                row = await cursor.fetchone()
+                if not row:
+                    return
+
+                # Extract phoneme patterns
+                what_heard = row["what_jarvis_heard"]
+                what_meant = row["what_user_meant"]
+
+                # Simple pattern: identify word-level differences
+                heard_words = what_heard.lower().split()
+                meant_words = what_meant.lower().split()
+
+                # Find mismatched words
+                for i, (heard, meant) in enumerate(zip(heard_words, meant_words)):
+                    if heard != meant:
+                        # Store acoustic adaptation
+                        speaker_id = await self.get_or_create_speaker_profile("Derek J. Russell")
+
+                        await cursor.execute(
+                            """
+                            INSERT INTO acoustic_adaptations
+                            (speaker_id, phoneme_pattern, expected_pronunciation, actual_pronunciation, context_words)
+                            VALUES (?, ?, ?, ?, ?)
+                            ON CONFLICT (speaker_id, phoneme_pattern) DO UPDATE
+                            SET frequency_count = frequency_count + 1,
+                                last_observed = ?
+                        """,
+                            (
+                                speaker_id,
+                                heard,
+                                heard,
+                                meant,
+                                json.dumps({"position": i, "full_query": what_meant}),
+                                datetime.now(),
+                            ),
+                        )
+
+                # Update misheard query with learned pattern
+                pattern_text = f"'{what_heard}' -> '{what_meant}'"
+                await cursor.execute(
+                    """
+                    UPDATE misheard_queries
+                    SET learned_pattern = ?
+                    WHERE misheard_id = ?
+                """,
+                    (pattern_text, misheard_id),
+                )
+
+                await self.db.commit()
+
+                logger.info(f"🧠 Learned acoustic pattern from misheard query: {pattern_text}")
+
+        except Exception as e:
+            logger.error(f"Failed to learn acoustic pattern: {e}")
+
+    def _calculate_phonetic_distance(self, str1: str, str2: str) -> int:
+        """Calculate Levenshtein distance for phonetic similarity"""
+        if str1 == str2:
+            return 0
+
+        if len(str1) == 0:
+            return len(str2)
+        if len(str2) == 0:
+            return len(str1)
+
+        # Create distance matrix
+        matrix = [[0] * (len(str2) + 1) for _ in range(len(str1) + 1)]
+
+        # Initialize first row and column
+        for i in range(len(str1) + 1):
+            matrix[i][0] = i
+        for j in range(len(str2) + 1):
+            matrix[0][j] = j
+
+        # Calculate distances
+        for i in range(1, len(str1) + 1):
+            for j in range(1, len(str2) + 1):
+                cost = 0 if str1[i - 1] == str2[j - 1] else 1
+                matrix[i][j] = min(
+                    matrix[i - 1][j] + 1,  # deletion
+                    matrix[i][j - 1] + 1,  # insertion
+                    matrix[i - 1][j - 1] + cost,  # substitution
+                )
+
+        return matrix[len(str1)][len(str2)]
 
     # ==================== Pattern Learning (ML-Powered) ====================
 
