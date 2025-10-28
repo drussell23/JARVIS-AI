@@ -99,8 +99,10 @@ class ContextAwareCommandHandler:
                     f"[CONTEXT AWARE] ⚠️  SCREEN IS LOCKED - Command requires unlocked screen"
                 )
 
-                # Check if command requires unlocked screen
-                screen_context = await self.screen_lock_detector.check_screen_context(command)
+                # Check if command requires unlocked screen (pass speaker for personalization)
+                screen_context = await self.screen_lock_detector.check_screen_context(
+                    command, speaker_name=speaker_name
+                )
 
                 if screen_context["requires_unlock"]:
                     # IMPORTANT: Speak to user FIRST about screen being locked

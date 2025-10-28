@@ -77,12 +77,13 @@ class ScreenLockContextDetector:
             logger.debug(f"Could not check screen lock status: {e}")
             return False
 
-    async def check_screen_context(self, command: str) -> Dict[str, Any]:
+    async def check_screen_context(self, command: str, speaker_name: str = None) -> Dict[str, Any]:
         """
         Check screen lock context for a command
 
         Args:
             command: The command to execute
+            speaker_name: Identified speaker name (for personalization)
 
         Returns:
             Context dict with screen state and recommendations
@@ -107,9 +108,11 @@ class ScreenLockContextDetector:
         # If screen is locked and command requires screen access
         if is_locked and context["command_requires_screen"]:
             context["requires_unlock"] = True
-            context["unlock_message"] = await self._generate_unlock_message(command)
+            context["unlock_message"] = await self._generate_unlock_message(command, speaker_name)
             logger.warning(f"[SCREEN LOCK DETECTOR] ✅ UNLOCK REQUIRED")
             logger.warning(f"[SCREEN LOCK DETECTOR] 📢 Message: {context['unlock_message']}")
+            if speaker_name:
+                logger.warning(f"[SCREEN LOCK DETECTOR] 👤 Speaker: {speaker_name}")
         else:
             logger.warning(f"[SCREEN LOCK DETECTOR] ❌ NO UNLOCK NEEDED")
             if not is_locked:
@@ -203,13 +206,14 @@ class ScreenLockContextDetector:
         logger.debug(f"Command does not require screen access: {command}")
         return False
 
-    async def _generate_unlock_message(self, command: str) -> str:
+    async def _generate_unlock_message(self, command: str, speaker_name: str = None) -> str:
         """
         Generate dynamic, contextual unlock message based on command analysis.
         Advanced, robust, and completely dynamic with no hardcoding.
 
         Args:
             command: The command that requires unlock
+            speaker_name: Identified speaker name (for personalization)
 
         Returns:
             Contextual message to speak to user
@@ -221,7 +225,9 @@ class ScreenLockContextDetector:
         command_context = await self._analyze_command_context(command)
 
         # Generate contextual message based on detected actions and context
-        return await self._generate_contextual_message(command, actions, command_context)
+        return await self._generate_contextual_message(
+            command, actions, command_context, speaker_name
+        )
 
     async def _extract_actions_dynamic(self, command: str) -> List[str]:
         """Extract all actions from command using CompoundActionParser"""
@@ -309,36 +315,47 @@ class ScreenLockContextDetector:
         return context
 
     async def _generate_contextual_message(
-        self, command: str, actions: List[str], context: Dict[str, Any]
+        self, command: str, actions: List[str], context: Dict[str, Any], speaker_name: str = None
     ) -> str:
-        """Generate contextual unlock message based on analysis"""
+        """Generate contextual unlock message based on analysis with speaker recognition"""
         import random  # nosec B311 # UI message selection, not cryptographic
+
+        # Determine greeting based on speaker
+        if speaker_name:
+            # First time greeting with name recognition
+            greetings = [
+                f"Good to see you, {speaker_name}.",
+                f"Hello, {speaker_name}.",
+                f"Welcome back, {speaker_name}.",
+            ]
+            greeting = random.choice(greetings)  # nosec B311 # UI message selection
+        else:
+            greeting = "Sir,"
 
         # Document creation messages
         if context["is_document_creation"] and context["topic"]:
             templates = [
-                f"Your screen is locked, Sir. Let me unlock it so I can create that {context['topic']}.",
-                f"I notice your screen is locked. Unlocking it now to write your {context['topic']}.",
-                f"Screen is locked. I'll unlock it to work on your {context['topic']}.",
-                f"Let me unlock your screen to create that {context['topic']} for you, Sir.",
+                f"{greeting} Your screen is locked. Let me unlock it to create that {context['topic']}.",
+                f"I notice your screen is locked, {speaker_name if speaker_name else 'Sir'}. Unlocking it now to write your {context['topic']}.",
+                f"{greeting} Screen is locked. I'll unlock it to work on your {context['topic']}.",
             ]
             return random.choice(templates)  # nosec B311 # UI message selection
 
         # Web search messages
         if context["is_web_search"] and context["search_query"]:
             templates = [
-                f"Your screen is locked, Sir. Let me unlock it so I can search for {context['search_query']}.",
-                f"I'll unlock your screen to search for {context['search_query']}.",
-                f"Unlocking screen to search for {context['search_query']}, Sir.",
+                f"{greeting} Your screen is locked. Let me unlock it to search for {context['search_query']}.",
+                f"I'll unlock your screen to search for {context['search_query']}, {speaker_name if speaker_name else 'Sir'}.",
+                f"{greeting} Unlocking screen to search for {context['search_query']}.",
             ]
             return random.choice(templates)  # nosec B311 # UI message selection
 
         # App opening messages
         if context["is_app_opening"] and context["app_name"]:
             templates = [
-                f"Your screen is locked, Sir. Let me unlock it so I can open {context['app_name']}.",
-                f"I'll unlock your screen to open {context['app_name']}.",
-                f"Unlocking screen to open {context['app_name']}, Sir.",
+                f"{greeting} Your screen is locked. Let me unlock it to open {context['app_name']}.",
+                f"I'll unlock your screen to open {context['app_name']}, {speaker_name if speaker_name else 'Sir'}.",
+                f"{greeting} Unlocking screen to open {context['app_name']}.",
             ]
             return random.choice(templates)  # nosec B311 # UI message selection
 
@@ -346,24 +363,24 @@ class ScreenLockContextDetector:
         if context["is_compound"] and len(actions) > 1:
             action_text = " and ".join(actions[:2])  # Limit to first two actions
             templates = [
-                f"Your screen is locked, Sir. Let me unlock it so I can {action_text}.",
-                f"I'll unlock your screen to {action_text}.",
-                f"Unlocking screen to {action_text}, Sir.",
+                f"{greeting} Your screen is locked. Let me unlock it to {action_text}.",
+                f"I'll unlock your screen to {action_text}, {speaker_name if speaker_name else 'Sir'}.",
+                f"{greeting} Unlocking screen to {action_text}.",
             ]
             return random.choice(templates)  # nosec B311 # UI message selection
 
         # Generic messages based on urgency
         if context["urgency"] == "urgent":
             templates = [
-                "Your screen is locked, Sir. Unlocking it immediately to complete your urgent request.",
-                "I'll unlock your screen right away for your urgent task.",
-                "Unlocking screen immediately, Sir.",
+                f"{greeting} Your screen is locked. Unlocking it immediately for your urgent request.",
+                f"I'll unlock your screen right away, {speaker_name if speaker_name else 'Sir'}.",
+                f"{greeting} Unlocking screen immediately.",
             ]
         else:
             templates = [
-                "Your screen is locked, Sir. Let me unlock it to complete your request.",
-                "I'll unlock your screen to proceed with your command.",
-                "Unlocking screen to continue, Sir.",
+                f"{greeting} Your screen is locked. Let me unlock it to complete your request.",
+                f"I'll unlock your screen to proceed with your command, {speaker_name if speaker_name else 'Sir'}.",
+                f"{greeting} Unlocking screen to continue.",
             ]
 
         return random.choice(templates)  # nosec B311 # UI message selection
