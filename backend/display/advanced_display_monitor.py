@@ -654,10 +654,15 @@ class AdvancedDisplayMonitor:
                 # Announce if displays were found on startup
                 # Use global coordinator to prevent overlapping with Voice API announcement
                 if current_available and self.config["voice_integration"]["speak_on_detection"]:
-                    from core.startup_announcement_coordinator import get_startup_coordinator
+                    from core.startup_announcement_coordinator import (
+                        AnnouncementPriority,
+                        get_startup_coordinator,
+                    )
 
                     coordinator = get_startup_coordinator()
-                    should_announce = await coordinator.announce_if_first("display_monitor")
+                    should_announce = await coordinator.announce_if_first(
+                        "display_monitor", priority=AnnouncementPriority.NORMAL
+                    )
 
                     if should_announce:
                         # We won - make the announcement

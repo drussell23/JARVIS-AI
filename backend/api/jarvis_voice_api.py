@@ -726,12 +726,17 @@ class JARVISVoiceAPI:
         """Announce startup ONCE using global coordinator to prevent multiple voices"""
         # Use global coordinator to prevent display monitor, voice API, and other
         # systems from all speaking at once
-        from core.startup_announcement_coordinator import get_startup_coordinator
+        from core.startup_announcement_coordinator import (
+            AnnouncementPriority,
+            get_startup_coordinator,
+        )
 
         coordinator = get_startup_coordinator()
 
-        # Check if we should announce (first system wins)
-        should_announce = await coordinator.announce_if_first("jarvis_voice_api")
+        # Check if we should announce (HIGH priority - core voice system)
+        should_announce = await coordinator.announce_if_first(
+            "jarvis_voice_api", priority=AnnouncementPriority.HIGH
+        )
 
         if not should_announce:
             logger.info("[STARTUP] Another system already announced startup, skipping")
