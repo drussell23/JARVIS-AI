@@ -3957,9 +3957,9 @@ class AsyncSystemManager:
             while True:
                 await asyncio.sleep(5)
 
-                # Skip process checking if we're shutting down
+                # Exit monitoring loop if we're shutting down
                 if self._shutting_down:
-                    continue
+                    break
 
                 # Check if processes are still running
                 for i, proc in enumerate(self.processes):
