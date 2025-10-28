@@ -4814,6 +4814,61 @@ uae = await initialize_uae(
 
 ## Features
 
+### ⚡ Advanced Component Warmup System
+
+JARVIS v17.3+ includes an advanced component pre-initialization system that **eliminates first-command latency** through priority-based, async, health-checked component loading.
+
+**Performance Impact:**
+```
+Before Warmup:
+  First Command: 8-10 seconds (lazy initialization)
+  User Experience: "⚙️ Processing..." wait time
+
+After Warmup:
+  Startup: +5-8 seconds (one-time cost)
+  First Command: <500ms ⚡
+  User Experience: Instant response!
+```
+
+**Key Features:**
+- ✅ **Priority-Based Loading**: CRITICAL → HIGH → MEDIUM → LOW → DEFERRED
+- ✅ **Parallel Initialization**: Up to 10 components load simultaneously
+- ✅ **Health-Checked**: Components verify they're actually working
+- ✅ **Graceful Degradation**: Non-critical failures don't block startup
+- ✅ **Zero Hardcoding**: Dynamic component discovery and registration
+- ✅ **Comprehensive Metrics**: Detailed load times, health scores, and diagnostics
+
+**Architecture:**
+```
+JARVIS Startup
+    ↓
+[Priority 0] CRITICAL (2-3s)
+  ✅ Screen lock detector
+  ✅ Voice authentication
+    ↓
+[Priority 1] HIGH (3-4s)
+  ✅ Context-aware handler
+  ✅ NLP resolvers
+  ✅ Compound action parser
+  ✅ System control
+    ↓
+[Priority 2] MEDIUM (2-3s)
+  ✅ Vision systems
+  ✅ Learning database
+  ✅ Query complexity
+    ↓
+[Priority 3] LOW (background)
+  ✅ Intelligence handlers
+    ↓
+Total: ~8s warmup → 🎉 JARVIS READY
+```
+
+**Documentation:**
+- 📖 [Quick Start Guide](./WARMUP_SYSTEM.md) - Basic usage and configuration
+- 📚 [Deep Dive](./docs/architecture/ADVANCED_WARMUP_DEEP_DIVE.md) - Architecture, edge cases, and enhancements
+- 🔧 [API Reference](./docs/architecture/ADVANCED_WARMUP_DEEP_DIVE.md#implementation-details) - Complete technical reference
+- 🐛 [Troubleshooting](./docs/architecture/ADVANCED_WARMUP_DEEP_DIVE.md#troubleshooting-guide) - Common issues and solutions
+
 ### 🖥️ Multi-Space Desktop Intelligence
 
 JARVIS provides comprehensive awareness of all your desktop spaces (Mission Control) with detailed analysis:
