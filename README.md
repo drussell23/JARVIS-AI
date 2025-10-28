@@ -1,6 +1,76 @@
-# JARVIS AI Assistant v17.1.0 - Cost-Optimized Intelligent Edition
+# JARVIS AI Assistant v17.2.0 - Self-Aware Edition
 
-An intelligent voice-activated AI assistant with **Advanced GCP Cost Optimization**, **Intelligent Voice-Authenticated Screen Unlock**, **SAI-Powered Security Analysis**, **Platform-Aware Memory Monitoring**, **Hybrid STT System (Wav2Vec, Vosk, Whisper)**, **Dynamic Speaker Recognition**, **Hybrid Cloud Auto-Scaling**, **Phase 4 Proactive Communication**, advanced multi-space desktop awareness, Claude Vision integration, and **continuous learning from every interaction**.
+An intelligent voice-activated AI assistant with **Backend Self-Awareness**, **Progressive Startup UX**, **Advanced GCP Cost Optimization**, **Intelligent Voice-Authenticated Screen Unlock**, **SAI-Powered Security Analysis**, **Platform-Aware Memory Monitoring**, **Hybrid STT System (Wav2Vec, Vosk, Whisper)**, **Dynamic Speaker Recognition**, **Hybrid Cloud Auto-Scaling**, **Phase 4 Proactive Communication**, advanced multi-space desktop awareness, Claude Vision integration, and **continuous learning from every interaction**.
+
+---
+
+## 🧠 NEW in v17.2: Backend Self-Awareness & Startup UX
+
+JARVIS v17.2 introduces **true backend self-awareness** with intelligent online/offline detection and **progressive startup states** that eliminate user confusion during system initialization.
+
+### 🎯 Key Highlights - Self-Awareness
+
+**Progressive Connection States:**
+```
+✅ INITIALIZING...     → Page loads before backend ready
+✅ CONNECTING...       → WebSocket retry attempts (exponential backoff)
+✅ SYSTEM READY       → Successfully connected
+✅ SYSTEM OFFLINE      → Max retries reached or graceful shutdown
+```
+
+**Backend Self-Awareness:**
+```
+✅ Ping/Pong heartbeat every 15 seconds
+✅ Latency tracking and health score calculation
+✅ Connection quality monitoring (0-100% health)
+✅ Graceful shutdown notifications to all clients
+✅ Backend announces when going offline
+✅ Distinguishes shutdown vs connection failure
+```
+
+**Backend Readiness Check:**
+```
+✅ Waits for /health endpoint before opening browser (15s timeout)
+✅ Prevents "offline" status from premature browser launch
+✅ Shows progress: "⏳ Waiting for backend to be ready..."
+✅ Confirms: "✓ Backend is ready!" before launching browser
+```
+
+**Real-World Example:**
+```
+Before v17.2:
+Page loads → "SYSTEM OFFLINE - START BACKEND" (confusing!)
+User: "Is it broken? Why is it offline?"
+
+After v17.2:
+Page loads → "INITIALIZING..."
+            → "CONNECTING TO BACKEND..."
+            → "✓ Backend is ready!" (in terminal)
+            → "SYSTEM READY" (in UI)
+
+On shutdown:
+Backend: Sends shutdown notification to all clients
+Frontend: "Backend shutting down. Will reconnect automatically..."
+User: Clear understanding of system state
+```
+
+**What You Get:**
+- ✅ **Zero confusion** during startup
+- ✅ **True self-awareness**: JARVIS knows when it's online/offline
+- ✅ **Health monitoring**: Real-time latency and connection quality
+- ✅ **Graceful shutdown**: Backend notifies clients before going offline
+- ✅ **Smart reconnection**: Automatic reconnect with progressive states
+- ✅ **Backend readiness**: Browser only opens when backend is ready
+- ✅ **Clear messaging**: Users understand exactly what's happening
+
+**Technical Implementation:**
+- Progressive states: `initializing` → `connecting` → `online`/`offline`
+- WebSocket connection tracking: Global `active_websockets` set
+- Ping/pong heartbeat: 15-second intervals with latency calculation
+- Health score: Dynamic 0-100% based on latency and message success
+- Shutdown broadcast: Notifies all clients via `system_shutdown` message
+- Backend readiness: Health check loop before browser launch
+- Max retry logic: 10 attempts before marking offline
 
 ---
 
