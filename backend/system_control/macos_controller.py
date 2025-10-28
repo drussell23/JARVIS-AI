@@ -4,24 +4,26 @@ macOS System Controller for JARVIS AI Agent
 Provides voice-activated control of macOS environment through natural language commands
 """
 
-import os
-import subprocess
-import json
-import logging
-from typing import Dict, List, Optional, Union, Tuple, Any
-from pathlib import Path
-import psutil
 import asyncio
-from enum import Enum
+import logging
+import os
 import re
+import subprocess
+from enum import Enum
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import psutil
 
 # Import async pipeline for non-blocking operations
-from core.async_pipeline import get_async_pipeline, AdvancedAsyncPipeline
+from core.async_pipeline import get_async_pipeline
 
 logger = logging.getLogger(__name__)
 
+
 class CommandCategory(Enum):
     """Categories of system commands"""
+
     APPLICATION = "application"
     FILE = "file"
     SYSTEM = "system"
@@ -31,12 +33,15 @@ class CommandCategory(Enum):
     DANGEROUS = "dangerous"
     UNKNOWN = "unknown"
 
+
 class SafetyLevel(Enum):
     """Safety levels for commands"""
+
     SAFE = "safe"
     CAUTION = "caution"
     DANGEROUS = "dangerous"
     FORBIDDEN = "forbidden"
+
 
 class MacOSController:
     """Controls macOS system operations with safety checks"""
@@ -49,15 +54,20 @@ class MacOSController:
             self.home_dir / "Downloads",
             self.home_dir / "Pictures",
             self.home_dir / "Music",
-            self.home_dir / "Movies"
+            self.home_dir / "Movies",
         ]
         self._screen_lock_checked = False
         self._is_locked = False
 
         # Blocked applications for safety
         self.blocked_apps = {
-            "System Preferences", "System Settings", "Activity Monitor",
-            "Terminal", "Console", "Disk Utility", "Keychain Access"
+            "System Preferences",
+            "System Settings",
+            "Activity Monitor",
+            "Terminal",
+            "Console",
+            "Disk Utility",
+            "Keychain Access",
         }
 
         # Common application mappings
@@ -83,7 +93,7 @@ class MacOSController:
             "photos": "Photos",
             "pages": "Pages",
             "numbers": "Numbers",
-            "keynote": "Keynote"
+            "keynote": "Keynote",
         }
 
         # Initialize async pipeline for non-blocking operations
@@ -99,25 +109,17 @@ class MacOSController:
             self._execute_applescript_async,
             timeout=5.0,
             retry_count=2,
-            required=True
+            required=True,
         )
 
         # Shell command execution stage
         self.pipeline.register_stage(
-            "shell_execution",
-            self._execute_shell_async,
-            timeout=30.0,
-            retry_count=1,
-            required=True
+            "shell_execution", self._execute_shell_async, timeout=30.0, retry_count=1, required=True
         )
 
         # Application control stage
         self.pipeline.register_stage(
-            "app_control",
-            self._app_control_async,
-            timeout=15.0,
-            retry_count=2,
-            required=True
+            "app_control", self._app_control_async, timeout=15.0, retry_count=2, required=True
         )
 
         # Screen unlock WebSocket stage
@@ -126,7 +128,7 @@ class MacOSController:
             self._screen_unlock_ws_async,
             timeout=20.0,
             retry_count=1,
-            required=False
+            required=False,
         )
 
         # Screen unlock AppleScript stage (fallback)
@@ -135,7 +137,7 @@ class MacOSController:
             self._screen_unlock_applescript_async,
             timeout=15.0,
             retry_count=1,
-            required=False
+            required=False,
         )
 
     async def _execute_applescript_async(self, context):
@@ -155,6 +157,7 @@ class MacOSController:
     async def _execute_shell_async(self, context):
         """Non-blocking shell command execution via async pipeline"""
         import shlex
+
         from api.jarvis_voice_api import async_subprocess_run
 
         command = context.metadata.get("command", "")
@@ -164,8 +167,15 @@ class MacOSController:
         # Safety checks if safe_mode is enabled
         if safe_mode:
             dangerous_patterns = [
-                r'rm\s+-rf', r'sudo', r'dd\s+', r'mkfs', r'format',
-                r'>\s*/dev/', r'chmod\s+777', r'pkill', r'killall'
+                r"rm\s+-rf",
+                r"sudo",
+                r"dd\s+",
+                r"mkfs",
+                r"format",
+                r">\s*/dev/",
+                r"chmod\s+777",
+                r"pkill",
+                r"killall",
             ]
             for pattern in dangerous_patterns:
                 if re.search(pattern, command, re.IGNORECASE):
@@ -198,7 +208,9 @@ class MacOSController:
         elif action == "close":
             script = f'tell application "{app_name}" to quit'
         elif action == "switch":
-            script = f'tell application "System Events" to set frontmost of process "{app_name}" to true'
+            script = (
+                f'tell application "System Events" to set frontmost of process "{app_name}" to true'
+            )
         else:
             context.metadata["success"] = False
             context.metadata["error"] = f"Unknown action: {action}"
@@ -210,17 +222,15 @@ class MacOSController:
     async def _screen_unlock_ws_async(self, context):
         """Non-blocking screen unlock via WebSocket to voice unlock daemon"""
         try:
-            import websockets
             import json
+
+            import websockets
 
             VOICE_UNLOCK_WS_URL = "ws://localhost:8765/voice-unlock"
 
             async with websockets.connect(VOICE_UNLOCK_WS_URL, ping_interval=20) as websocket:
                 # Send unlock command using the daemon's expected format
-                unlock_command = {
-                    "type": "command",
-                    "command": "unlock_screen"
-                }
+                unlock_command = {"type": "command", "command": "unlock_screen"}
 
                 await websocket.send(json.dumps(unlock_command))
                 logger.info("[Pipeline] Sent unlock command to voice unlock daemon")
@@ -229,11 +239,16 @@ class MacOSController:
                 response = await asyncio.wait_for(websocket.recv(), timeout=15.0)
                 result = json.loads(response)
 
-                if result.get("type") == "command_response" or result.get("type") == "unlock_result":
+                if (
+                    result.get("type") == "command_response"
+                    or result.get("type") == "unlock_result"
+                ):
                     if result.get("success"):
                         context.metadata["success"] = True
                         context.metadata["message"] = "Screen unlocked successfully via daemon"
-                        logger.info("[Pipeline] Screen unlocked successfully via voice unlock daemon")
+                        logger.info(
+                            "[Pipeline] Screen unlocked successfully via voice unlock daemon"
+                        )
                     else:
                         context.metadata["success"] = False
                         context.metadata["error"] = result.get("message", "Unable to unlock screen")
@@ -262,9 +277,18 @@ class MacOSController:
             # Try to retrieve from keychain
             try:
                 from api.jarvis_voice_api import async_subprocess_run
+
                 stdout, stderr, returncode = await async_subprocess_run(
-                    ['security', 'find-generic-password', '-s', 'com.jarvis.voiceunlock', '-a', 'unlock_token', '-w'],
-                    timeout=5.0
+                    [
+                        "security",
+                        "find-generic-password",
+                        "-s",
+                        "com.jarvis.voiceunlock",
+                        "-a",
+                        "unlock_token",
+                        "-w",
+                    ],
+                    timeout=5.0,
                 )
                 if returncode == 0 and stdout:
                     password = stdout.decode().strip()
@@ -280,6 +304,7 @@ class MacOSController:
         # Use simple_unlock_handler's direct unlock method
         try:
             from api.simple_unlock_handler import _perform_direct_unlock
+
             success = await _perform_direct_unlock(password)
 
             if success:
@@ -301,6 +326,7 @@ class MacOSController:
         """
         try:
             from voice_unlock.objc.server.screen_lock_detector import is_screen_locked
+
             self._is_locked = is_screen_locked()
             self._screen_lock_checked = True
             return self._is_locked
@@ -319,29 +345,25 @@ class MacOSController:
             Tuple of (should_proceed, message)
         """
         # Commands that should work when locked
-        allowed_when_locked = {
-            'unlock_screen',
-            'lock_screen',
-            'get_status',
-            'check_time'
-        }
+        allowed_when_locked = {"unlock_screen", "lock_screen", "get_status", "check_time"}
 
         if command_type in allowed_when_locked:
             return True, ""
 
         # For other commands, inform user and suggest unlock
-        return False, f"Your screen is locked, Sir. I cannot execute {command_type} commands while locked. Would you like me to unlock your screen first?"
-        
-    async def execute_applescript_pipeline(self, script: str, timeout: float = 10.0) -> Tuple[bool, str]:
+        return (
+            False,
+            f"Your screen is locked, Sir. I cannot execute {command_type} commands while locked. Would you like me to unlock your screen first?",
+        )
+
+    async def execute_applescript_pipeline(
+        self, script: str, timeout: float = 10.0
+    ) -> Tuple[bool, str]:
         """Execute AppleScript through async pipeline (NEW METHOD)"""
         try:
             result = await self.pipeline.process_async(
                 text=f"Execute AppleScript",
-                metadata={
-                    "script": script,
-                    "timeout": timeout,
-                    "stage": "applescript_execution"
-                }
+                metadata={"script": script, "timeout": timeout, "stage": "applescript_execution"},
             )
 
             metadata = result.get("metadata", {})
@@ -359,12 +381,10 @@ class MacOSController:
         """Execute AppleScript (LEGACY - synchronous fallback without pipeline)"""
         # Direct execution without pipeline to avoid timeouts
         import subprocess
+
         try:
             result = subprocess.run(
-                ['osascript', '-e', script],
-                capture_output=True,
-                text=True,
-                timeout=10
+                ["osascript", "-e", script], capture_output=True, text=True, timeout=10
             )
             if result.returncode == 0:
                 return True, result.stdout.strip()
@@ -374,8 +394,10 @@ class MacOSController:
             return False, "AppleScript execution timed out"
         except Exception as e:
             return False, str(e)
-            
-    async def execute_shell_pipeline(self, command: str, safe_mode: bool = True, timeout: float = 30.0) -> Tuple[bool, str]:
+
+    async def execute_shell_pipeline(
+        self, command: str, safe_mode: bool = True, timeout: float = 30.0
+    ) -> Tuple[bool, str]:
         """Execute shell command through async pipeline (NEW METHOD)"""
         try:
             result = await self.pipeline.process_async(
@@ -384,8 +406,8 @@ class MacOSController:
                     "command": command,
                     "safe_mode": safe_mode,
                     "timeout": timeout,
-                    "stage": "shell_execution"
-                }
+                    "stage": "shell_execution",
+                },
             )
 
             metadata = result.get("metadata", {})
@@ -404,24 +426,18 @@ class MacOSController:
             logger.error(f"Pipeline shell execution failed: {e}")
             return False, str(e)
 
-    def execute_shell(self, command: str, safe_mode: bool = True) -> Tuple[bool, str]:
-        """Execute shell command (LEGACY - synchronous fallback)"""
-        # Run async version in sync context
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+    async def execute_shell(self, command: str, safe_mode: bool = True) -> Tuple[bool, str]:
+        """Execute shell command (async)"""
+        # Directly call async pipeline - no need for run_until_complete
+        return await self.execute_shell_pipeline(command, safe_mode)
 
-        return loop.run_until_complete(self.execute_shell_pipeline(command, safe_mode))
-            
     # Application Control Methods
 
     async def open_application_pipeline(self, app_name: str) -> Tuple[bool, str]:
         """Open application through async pipeline (NEW METHOD)"""
         # Check if screen is locked
         if self._check_screen_lock_status():
-            should_proceed, message = self._handle_locked_screen_command('open_application')
+            should_proceed, message = self._handle_locked_screen_command("open_application")
             if not should_proceed:
                 return False, message
 
@@ -436,11 +452,7 @@ class MacOSController:
             # Use async pipeline for app control
             result = await self.pipeline.process_async(
                 text=f"Open application {app_name}",
-                metadata={
-                    "action": "open",
-                    "app_name": app_name,
-                    "stage": "app_control"
-                }
+                metadata={"action": "open", "app_name": app_name, "stage": "app_control"},
             )
 
             metadata = result.get("metadata", {})
@@ -474,12 +486,10 @@ class MacOSController:
         else:
             # Fallback: try with 'open' command
             import subprocess
+
             try:
                 result = subprocess.run(
-                    ['open', '-a', app_name],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
+                    ["open", "-a", app_name], capture_output=True, text=True, timeout=5
                 )
                 if result.returncode == 0:
                     return True, f"Opening {app_name}, Sir"
@@ -487,26 +497,26 @@ class MacOSController:
                     return False, f"Couldn't find application: {app_name}"
             except Exception as e:
                 return False, f"Error opening {app_name}: {str(e)}"
-            
+
     def close_application(self, app_name: str) -> Tuple[bool, str]:
         """Close an application gracefully"""
         # Check if screen is locked
         if self._check_screen_lock_status():
-            should_proceed, message = self._handle_locked_screen_command('close_application')
+            should_proceed, message = self._handle_locked_screen_command("close_application")
             if not should_proceed:
                 return False, message
 
         app_name = self.app_aliases.get(app_name.lower(), app_name)
-        
+
         # First try the standard quit command
         script = f'tell application "{app_name}" to quit'
         success, message = self.execute_applescript(script)
-        
+
         if success:
             return True, f"Closing {app_name}"
-        
+
         # If that fails, try using System Events
-        script = f'''
+        script = f"""
         tell application "System Events"
             if exists process "{app_name}" then
                 tell process "{app_name}"
@@ -518,146 +528,146 @@ class MacOSController:
                 return "Application not running"
             end if
         end tell
-        '''
+        """
         success, message = self.execute_applescript(script)
-        
+
         if success:
             return True, f"Closing {app_name}"
-        
+
         # Final attempt: Force quit if necessary
         # But only for non-system apps
         if app_name not in ["Finder", "System Preferences", "System Settings"]:
             success, message = self.execute_shell(f"pkill -x '{app_name}'", safe_mode=False)
             if success:
                 return True, f"Force closed {app_name}"
-        
+
         return False, f"Failed to close {app_name}: {message}"
-        
+
     def switch_to_application(self, app_name: str) -> Tuple[bool, str]:
         """Switch to an already open application"""
         # Check if screen is locked
         if self._check_screen_lock_status():
-            should_proceed, message = self._handle_locked_screen_command('switch_to_application')
+            should_proceed, message = self._handle_locked_screen_command("switch_to_application")
             if not should_proceed:
                 return False, message
 
         app_name = self.app_aliases.get(app_name.lower(), app_name)
-        
-        script = f'''
+
+        script = f"""
         tell application "System Events"
             set frontmost of process "{app_name}" to true
         end tell
-        '''
+        """
         success, message = self.execute_applescript(script)
-        
+
         if success:
             return True, f"Switched to {app_name}"
         return False, f"Failed to switch to {app_name}: {message}"
-        
+
     def list_open_applications(self) -> List[str]:
         """Get list of currently open applications"""
-        script = '''
+        script = """
         tell application "System Events"
             get name of (every process whose background only is false)
         end tell
-        '''
+        """
         success, output = self.execute_applescript(script)
-        
+
         if success:
             apps = output.split(", ")
             return [app.strip() for app in apps if app.strip()]
         return []
-        
+
     def minimize_all_windows(self) -> Tuple[bool, str]:
         """Minimize all windows"""
-        script = '''
+        script = """
         tell application "System Events"
             set visible of every process to false
         end tell
-        '''
+        """
         return self.execute_applescript(script)
-        
+
     def activate_mission_control(self) -> Tuple[bool, str]:
         """Activate Mission Control"""
-        script = '''
+        script = """
         tell application "Mission Control" to launch
-        '''
+        """
         return self.execute_applescript(script)
-        
+
     # File Operations
-    
+
     def is_safe_path(self, path: Path) -> bool:
         """Check if a path is in a safe directory"""
         path = path.resolve()
         return any(path.is_relative_to(safe_dir) for safe_dir in self.safe_directories)
-        
+
     def open_file(self, file_path: str) -> Tuple[bool, str]:
         """Open a file with its default application"""
         # Check if screen is locked
         if self._check_screen_lock_status():
-            should_proceed, message = self._handle_locked_screen_command('open_file')
+            should_proceed, message = self._handle_locked_screen_command("open_file")
             if not should_proceed:
                 return False, message
 
         path = Path(file_path).expanduser()
-        
+
         if not path.exists():
             return False, f"File not found: {file_path}"
-            
+
         if not self.is_safe_path(path):
             return False, f"Access to {file_path} is restricted for safety"
-            
+
         success, message = self.execute_shell(f"open '{path}'")
         if success:
             return True, f"Opened {path.name}"
         return False, f"Failed to open file: {message}"
-        
+
     def create_file(self, file_path: str, content: str = "") -> Tuple[bool, str]:
         """Create a new file"""
         # Check if screen is locked
         if self._check_screen_lock_status():
-            should_proceed, message = self._handle_locked_screen_command('create_file')
+            should_proceed, message = self._handle_locked_screen_command("create_file")
             if not should_proceed:
                 return False, message
 
         path = Path(file_path).expanduser()
-        
+
         if not self.is_safe_path(path):
             return False, f"Cannot create file in restricted directory"
-            
+
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content)
             return True, f"Created file: {path.name}"
         except Exception as e:
             return False, f"Failed to create file: {str(e)}"
-            
+
     def delete_file(self, file_path: str, confirm: bool = True) -> Tuple[bool, str]:
         """Delete a file (requires confirmation)"""
         # Check if screen is locked
         if self._check_screen_lock_status():
-            should_proceed, message = self._handle_locked_screen_command('delete_file')
+            should_proceed, message = self._handle_locked_screen_command("delete_file")
             if not should_proceed:
                 return False, message
 
         path = Path(file_path).expanduser()
-        
+
         if not path.exists():
             return False, f"File not found: {file_path}"
-            
+
         if not self.is_safe_path(path):
             return False, f"Cannot delete file in restricted directory"
-            
+
         if confirm:
             # In real implementation, this would trigger a confirmation dialog
             return False, "File deletion requires user confirmation"
-            
+
         try:
             path.unlink()
             return True, f"Deleted file: {path.name}"
         except Exception as e:
             return False, f"Failed to delete file: {str(e)}"
-            
+
     def search_files(self, query: str, directory: Optional[str] = None) -> List[str]:
         """Search for files using Spotlight"""
         if directory:
@@ -667,17 +677,17 @@ class MacOSController:
             search_cmd = f"mdfind -onlyin '{path}' '{query}'"
         else:
             search_cmd = f"mdfind '{query}'"
-            
+
         success, output = self.execute_shell(search_cmd)
-        
+
         if success:
-            files = output.strip().split('\n')
+            files = output.strip().split("\n")
             # Filter to only safe paths
             return [f for f in files if f and self.is_safe_path(Path(f))]
         return []
-        
+
     # System Settings Control
-    
+
     async def set_volume_async(self, level: int) -> Tuple[bool, str]:
         """Set system volume (0-100) - ASYNC VERSION for better performance"""
         from api.jarvis_voice_api import async_osascript
@@ -721,21 +731,21 @@ class MacOSController:
             state = "muted" if mute else "unmuted"
             return True, f"Volume {state}"
         return False, "Failed to change mute state"
-        
+
     def adjust_brightness(self, level: float) -> Tuple[bool, str]:
         """Adjust screen brightness (0.0-1.0)"""
         # This requires additional setup with brightness control tools
         return False, "Brightness control requires additional setup"
-        
+
     def toggle_wifi(self, enable: bool) -> Tuple[bool, str]:
         """Toggle WiFi on/off"""
         action = "on" if enable else "off"
         success, message = self.execute_shell(f"networksetup -setairportpower airport {action}")
-        
+
         if success:
             return True, f"WiFi turned {action}"
         return False, f"Failed to toggle WiFi: {message}"
-        
+
     def take_screenshot(self, save_path: Optional[str] = None) -> Tuple[bool, str]:
         """Take a screenshot"""
         if save_path:
@@ -746,39 +756,40 @@ class MacOSController:
         else:
             # Save to desktop with timestamp
             from datetime import datetime
+
             filename = f"Screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
             path = self.home_dir / "Desktop" / filename
             cmd = f"screencapture '{path}'"
-            
+
         success, message = self.execute_shell(cmd)
-        
+
         if success:
             return True, f"Screenshot saved to {path.name}"
         return False, f"Failed to take screenshot: {message}"
-        
+
     def sleep_display(self) -> Tuple[bool, str]:
         """Put display to sleep"""
         success, message = self.execute_shell("pmset displaysleepnow")
-        
+
         if success:
             return True, "Display sleeping"
         return False, f"Failed to sleep display: {message}"
-    
+
     async def click_at(self, x: int, y: int) -> Tuple[bool, str]:
         """Click at specific coordinates"""
         # Check if screen is locked
         if self._check_screen_lock_status():
-            should_proceed, message = self._handle_locked_screen_command('click_at')
+            should_proceed, message = self._handle_locked_screen_command("click_at")
             if not should_proceed:
                 return False, message
 
         try:
             # Use AppleScript to click at coordinates
-            script = f'''
+            script = f"""
             tell application "System Events"
                 click at {{{x}, {y}}}
             end tell
-            '''
+            """
             success, result = self.execute_applescript(script)
             if success:
                 return True, f"Clicked at ({x}, {y})"
@@ -791,12 +802,12 @@ class MacOSController:
                     return False, f"Failed to click: {result}"
         except Exception as e:
             return False, f"Click error: {str(e)}"
-    
+
     async def click_and_hold(self, x: int, y: int, hold_duration: float = 0.2) -> Tuple[bool, str]:
         """Click and hold at specific coordinates (simulates human press-and-hold)"""
         # Check if screen is locked
         if self._check_screen_lock_status():
-            should_proceed, message = self._handle_locked_screen_command('click_and_hold')
+            should_proceed, message = self._handle_locked_screen_command("click_and_hold")
             if not should_proceed:
                 return False, message
 
@@ -812,7 +823,7 @@ class MacOSController:
                 return True, f"Click and hold at ({x}, {y}) for {hold_duration}s"
             except (subprocess.CalledProcessError, FileNotFoundError):
                 # Fallback to AppleScript
-                script = f'''
+                script = f"""
                 tell application "System Events"
                     -- First click
                     click at {{{x}, {y}}}
@@ -820,7 +831,7 @@ class MacOSController:
                     -- Click again to ensure selection
                     click at {{{x}, {y}}}
                 end tell
-                '''
+                """
                 success, result = self.execute_applescript(script)
                 if success:
                     return True, f"Click and hold at ({x}, {y})"
@@ -829,112 +840,118 @@ class MacOSController:
         except Exception as e:
             logger.error(f"Click and hold at {x},{y} failed: {e}")
             return False, str(e)
-    
+
     async def key_press(self, key: str) -> Tuple[bool, str]:
         """Press a keyboard key"""
         try:
             # Map key names to AppleScript key codes
             key_map = {
-                'up': 'key code 126',
-                'down': 'key code 125',
-                'left': 'key code 123',
-                'right': 'key code 124',
-                'return': 'key code 36',
-                'enter': 'key code 36',
-                'space': 'key code 49',
-                'tab': 'key code 48',
-                'delete': 'key code 51',
-                'escape': 'key code 53'
+                "up": "key code 126",
+                "down": "key code 125",
+                "left": "key code 123",
+                "right": "key code 124",
+                "return": "key code 36",
+                "enter": "key code 36",
+                "space": "key code 49",
+                "tab": "key code 48",
+                "delete": "key code 51",
+                "escape": "key code 53",
             }
-            
+
             # Get the key code or use the key directly
             key_action = key_map.get(key.lower(), f'keystroke "{key}"')
-            
-            script = f'''
+
+            script = f"""
             tell application "System Events"
                 {key_action}
             end tell
-            '''
-            
+            """
+
             success, result = self.execute_applescript(script)
             return (True, f"Pressed {key}") if success else (False, result)
-            
+
         except Exception as e:
             return False, f"Key press error: {str(e)}"
-        
+
     # Web Integration
-    
-    def open_new_tab(self, browser: Optional[str] = None, url: Optional[str] = None) -> Tuple[bool, str]:
+
+    def open_new_tab(
+        self, browser: Optional[str] = None, url: Optional[str] = None
+    ) -> Tuple[bool, str]:
         """Open a new tab in browser"""
         # Check if screen is locked
         if self._check_screen_lock_status():
-            should_proceed, message = self._handle_locked_screen_command('open_new_tab')
+            should_proceed, message = self._handle_locked_screen_command("open_new_tab")
             if not should_proceed:
                 return False, message
 
         if not browser:
             browser = "Safari"  # Default browser
         browser = self.app_aliases.get(browser.lower(), browser)
-        
-        script = f'''
+
+        script = f"""
         tell application "{browser}"
             activate
             tell window 1
                 set current tab to (make new tab)
             end tell
-        '''
-        
+        """
+
         if url:
-            script += f'''
+            script += f"""
             set URL of current tab of window 1 to "{url}"
-        '''
-            
-        script += '''
+        """
+
+        script += """
         end tell
-        '''
-        
+        """
+
         success, message = self.execute_applescript(script)
         if success:
             if url:
                 from urllib.parse import urlparse
-                domain = urlparse(url).netloc.replace('www.', '') if '://' in url else url
+
+                domain = urlparse(url).netloc.replace("www.", "") if "://" in url else url
                 return True, f"Opening new tab and navigating to {domain}"
             else:
                 return True, f"Opening new tab in {browser}"
         return False, f"Failed to open new tab: {message}"
-    
-    def type_in_browser(self, text: str, browser: Optional[str] = None, press_enter: bool = False) -> Tuple[bool, str]:
+
+    def type_in_browser(
+        self, text: str, browser: Optional[str] = None, press_enter: bool = False
+    ) -> Tuple[bool, str]:
         """Type text in the active browser element (like search bar)"""
         if not browser:
             browser = "Safari"
         browser = self.app_aliases.get(browser.lower(), browser)
-        
+
         # First ensure browser is active
         activate_script = f'tell application "{browser}" to activate'
         self.execute_applescript(activate_script)
-        
+
         # Small delay to ensure browser is ready
         import time
+
         time.sleep(0.5)
-        
+
         # Use System Events to type
-        script = f'''
+        script = f"""
         tell application "System Events"
             tell process "{browser}"
                 set frontmost to true
                 keystroke "{text}"
-        '''
-        
+        """
+
         if press_enter:
-            script += '''
+            script += """
                 key code 36  -- Enter key
-        '''
-            
-        script += '''
+        """
+
+        script += """
             end tell
         end tell
-        '''
-        
+        """
+
         success, message = self.execute_applescript(script)
         if success:
             if press_enter:
@@ -942,21 +959,21 @@ class MacOSController:
             else:
                 return True, f"Typing '{text}'"
         return False, f"Failed to type: {message}"
-    
+
     def click_search_bar(self, browser: Optional[str] = None) -> Tuple[bool, str]:
         """Click on the browser's search/address bar"""
         # Check if screen is locked
         if self._check_screen_lock_status():
-            should_proceed, message = self._handle_locked_screen_command('click_search_bar')
+            should_proceed, message = self._handle_locked_screen_command("click_search_bar")
             if not should_proceed:
                 return False, message
 
         if not browser:
             browser = "Safari"
         browser = self.app_aliases.get(browser.lower(), browser)
-        
+
         # Use keyboard shortcut to focus address bar (Cmd+L works in most browsers)
-        script = f'''
+        script = f"""
         tell application "{browser}"
             activate
         end tell
@@ -966,25 +983,25 @@ class MacOSController:
                 keystroke "l" using command down
             end tell
         end tell
-        '''
-        
+        """
+
         success, message = self.execute_applescript(script)
         if success:
             return True, f"Focusing on search bar"
         return False, f"Failed to focus search bar: {message}"
-    
-    def open_url(self, url: str, browser: Optional[str] = None) -> Tuple[bool, str]:
-        """Open URL in browser"""
+
+    async def open_url(self, url: str, browser: Optional[str] = None) -> Tuple[bool, str]:
+        """Open URL in browser (async)"""
         # Check if screen is locked
         if self._check_screen_lock_status():
-            should_proceed, message = self._handle_locked_screen_command('open_url')
+            should_proceed, message = self._handle_locked_screen_command("open_url")
             if not should_proceed:
                 return False, message
 
         if browser:
             browser = self.app_aliases.get(browser.lower(), browser)
             # Use AppleScript for better browser control
-            script = f'''
+            script = f"""
             tell application "{browser}"
                 activate
                 if (count of windows) = 0 then
@@ -992,89 +1009,97 @@ class MacOSController:
                 end if
                 set URL of current tab of front window to "{url}"
             end tell
-            '''
+            """
             success, message = self.execute_applescript(script)
             if success:
                 # Make URL response more conversational
-                if 'google.com/search?q=' in url.lower():
+                if "google.com/search?q=" in url.lower():
                     # Extract search query for better response
-                    from urllib.parse import urlparse, parse_qs
+                    from urllib.parse import parse_qs, urlparse
+
                     parsed = urlparse(url)
                     query_params = parse_qs(parsed.query)
-                    search_query = query_params.get('q', [''])[0]
+                    search_query = query_params.get("q", [""])[0]
                     if search_query:
                         return True, f"Searching for {search_query}, Sir"
                     else:
                         return True, f"Opening Google search"
-                elif 'google.com' in url.lower():
+                elif "google.com" in url.lower():
                     return True, f"Opening Google, Sir"
-                elif 'github.com' in url.lower():
+                elif "github.com" in url.lower():
                     return True, f"Opening GitHub for you"
-                elif 'amazon.com' in url.lower():
+                elif "amazon.com" in url.lower():
                     return True, f"Taking you to Amazon"
                 else:
                     # For other URLs, simplify the domain
                     from urllib.parse import urlparse
-                    domain = urlparse(url).netloc.replace('www.', '')
+
+                    domain = urlparse(url).netloc.replace("www.", "")
                     return True, f"Opening {domain} for you"
             else:
                 # Fallback to shell command
                 cmd = f"open -a '{browser}' '{url}'"
-                success, message = self.execute_shell(cmd)
+                success, message = await self.execute_shell(cmd)
                 if success:
                     # Consistent conversational format
-                    if 'google.com/search?q=' in url.lower():
+                    if "google.com/search?q=" in url.lower():
                         # Extract search query for better response
-                        from urllib.parse import urlparse, parse_qs
+                        from urllib.parse import parse_qs, urlparse
+
                         parsed = urlparse(url)
                         query_params = parse_qs(parsed.query)
-                        search_query = query_params.get('q', [''])[0]
+                        search_query = query_params.get("q", [""])[0]
                         if search_query:
                             return True, f"searching for {search_query}"
                         else:
                             return True, f"Opening Google search in {browser.title()}"
-                    elif 'google.com' in url.lower():
+                    elif "google.com" in url.lower():
                         return True, f"opening Google in {browser}"
                     else:
                         from urllib.parse import urlparse
-                        domain = urlparse(url).netloc.replace('www.', '')
+
+                        domain = urlparse(url).netloc.replace("www.", "")
                         return True, f"opening {domain} in {browser}"
                 return False, f"I couldn't open that URL"
         else:
             cmd = f"open '{url}'"
-            success, message = self.execute_shell(cmd)
+            success, message = await self.execute_shell(cmd)
             if success:
                 # More conversational response for default browser
-                if 'google.com/search?q=' in url.lower():
-                    from urllib.parse import urlparse, parse_qs
+                if "google.com/search?q=" in url.lower():
+                    from urllib.parse import parse_qs, urlparse
+
                     parsed = urlparse(url)
                     query_params = parse_qs(parsed.query)
-                    search_query = query_params.get('q', [''])[0]
+                    search_query = query_params.get("q", [""])[0]
                     if search_query:
                         return True, f"Searching for {search_query}, Sir"
                     else:
                         return True, f"Opening Google search"
-                elif 'google.com' in url.lower():
+                elif "google.com" in url.lower():
                     return True, f"Opening Google, Sir"
                 else:
                     from urllib.parse import urlparse
-                    domain = urlparse(url).netloc.replace('www.', '')
+
+                    domain = urlparse(url).netloc.replace("www.", "")
                     return True, f"Navigating to {domain}, Sir"
             return False, f"Failed to open URL: {message}"
-        
-    def web_search(self, query: str, engine: str = "google", browser: Optional[str] = None) -> Tuple[bool, str]:
-        """Perform web search"""
+
+    async def web_search(
+        self, query: str, engine: str = "google", browser: Optional[str] = None
+    ) -> Tuple[bool, str]:
+        """Perform web search (async)"""
         engines = {
             "google": f"https://www.google.com/search?q={query}",
             "bing": f"https://www.bing.com/search?q={query}",
-            "duckduckgo": f"https://duckduckgo.com/?q={query}"
+            "duckduckgo": f"https://duckduckgo.com/?q={query}",
         }
-        
+
         url = engines.get(engine.lower(), engines["google"])
-        return self.open_url(url, browser)
-        
+        return await self.open_url(url, browser)
+
     # Complex Workflows
-    
+
     async def execute_workflow(self, workflow_name: str) -> Tuple[bool, str]:
         """Execute predefined workflows"""
         workflows = {
@@ -1082,25 +1107,25 @@ class MacOSController:
                 ("open_application", "Mail"),
                 ("open_application", "Calendar"),
                 ("web_search", "weather today"),
-                ("open_url", "https://news.google.com")
+                ("open_url", "https://news.google.com"),
             ],
             "development_setup": [
                 ("open_application", "Visual Studio Code"),
                 ("open_application", "Terminal"),
                 ("open_application", "Docker"),
-                ("open_url", "http://localhost:3000")
+                ("open_url", "http://localhost:3000"),
             ],
             "meeting_prep": [
                 ("set_volume", 50),
                 ("close_application", "Spotify"),
                 ("minimize_all_windows", None),
-                ("open_application", "zoom.us")
-            ]
+                ("open_application", "zoom.us"),
+            ],
         }
-        
+
         if workflow_name not in workflows:
             return False, f"Unknown workflow: {workflow_name}"
-            
+
         results = []
         for action, param in workflows[workflow_name]:
             method = getattr(self, action)
@@ -1109,80 +1134,79 @@ class MacOSController:
             else:
                 success, message = method()
             results.append(f"{action}: {message}")
-            
+
             if not success:
                 return False, f"Workflow failed at {action}: {message}"
-                
+
             # Small delay between actions
             await asyncio.sleep(0.5)
-            
+
         return True, f"Completed {workflow_name} workflow"
-        
+
     # Utility Methods
-    
+
     def get_system_info(self) -> Dict[str, Any]:
         """Get system information"""
         info = {
             "cpu_percent": psutil.cpu_percent(interval=1),
             "memory_percent": psutil.virtual_memory().percent,
-            "disk_usage": psutil.disk_usage('/').percent,
-            "battery": None
+            "disk_usage": psutil.disk_usage("/").percent,
+            "battery": None,
         }
-        
+
         if hasattr(psutil, "sensors_battery"):
             battery = psutil.sensors_battery()
             if battery:
-                info["battery"] = {
-                    "percent": battery.percent,
-                    "charging": battery.power_plugged
-                }
-                
+                info["battery"] = {"percent": battery.percent, "charging": battery.power_plugged}
+
         return info
-        
+
     def validate_command(self, command: str, category: CommandCategory) -> SafetyLevel:
         """Validate command safety level"""
         if category == CommandCategory.DANGEROUS:
             return SafetyLevel.DANGEROUS
-            
+
         # Check for dangerous patterns
         dangerous_patterns = [
-            r'delete.*system', r'remove.*all', r'format', r'shutdown',
-            r'restart', r'sudo', r'admin', r'root'
+            r"delete.*system",
+            r"remove.*all",
+            r"format",
+            r"shutdown",
+            r"restart",
+            r"sudo",
+            r"admin",
+            r"root",
         ]
-        
+
         for pattern in dangerous_patterns:
             if re.search(pattern, command, re.IGNORECASE):
                 return SafetyLevel.DANGEROUS
-                
+
         if category in [CommandCategory.APPLICATION, CommandCategory.WEB]:
             return SafetyLevel.SAFE
-            
+
         return SafetyLevel.CAUTION
-    
+
     def find_installed_application(self, partial_name: str) -> Optional[str]:
         """Find installed application by partial name"""
         # Common application directories
-        app_dirs = [
-            "/Applications",
-            "~/Applications",
-            "/System/Applications"
-        ]
-        
+        app_dirs = ["/Applications", "~/Applications", "/System/Applications"]
+
         partial_lower = partial_name.lower()
-        
+
         for app_dir in app_dirs:
             expanded_dir = os.path.expanduser(app_dir)
             if not os.path.exists(expanded_dir):
                 continue
-                
+
             for app in os.listdir(expanded_dir):
-                if app.endswith('.app'):
+                if app.endswith(".app"):
                     app_name = app[:-4]  # Remove .app extension
                     if partial_lower in app_name.lower():
                         return app_name
-        
+
         return None
-    
+
     async def lock_screen(self) -> Tuple[bool, str]:
         """
         Lock the macOS screen - optimized for speed
@@ -1193,6 +1217,7 @@ class MacOSController:
         try:
             # FAST PATH: Go straight to AppleScript (most reliable and fastest)
             from api.jarvis_voice_api import async_osascript
+
             script = 'tell application "System Events" to keystroke "q" using {command down, control down}'
             try:
                 stdout, stderr, returncode = await async_osascript(script, timeout=2.0)
@@ -1204,12 +1229,14 @@ class MacOSController:
 
             # Fallback Method 1: Use CGSession directly (most reliable)
             from api.jarvis_voice_api import async_subprocess_run
-            cgsession_path = '/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession'
+
+            cgsession_path = (
+                "/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession"
+            )
             if os.path.exists(cgsession_path):
                 # Direct async execution
                 stdout, stderr, returncode = await async_subprocess_run(
-                    [cgsession_path, '-suspend'],
-                    timeout=5.0
+                    [cgsession_path, "-suspend"], timeout=5.0
                 )
                 if returncode == 0:
                     logger.info("Screen locked successfully using CGSession")
@@ -1217,19 +1244,18 @@ class MacOSController:
 
             # Fallback Method 2: Use pmset command directly
             stdout, stderr, returncode = await async_subprocess_run(
-                ['pmset', 'displaysleepnow'],
-                timeout=5.0
+                ["pmset", "displaysleepnow"], timeout=5.0
             )
             if returncode == 0:
                 logger.info("Screen locked successfully using pmset")
                 return True, "Screen locked successfully, Sir."
 
             return False, "Unable to lock screen. Please use Control+Command+Q manually."
-            
+
         except Exception as e:
             logger.error(f"Error locking screen: {e}")
             return False, f"Failed to lock screen: {str(e)}"
-    
+
     async def unlock_screen(self, password: Optional[str] = None) -> Tuple[bool, str]:
         """
         Unlock the macOS screen using direct async methods (avoiding full pipeline loops)
@@ -1244,17 +1270,15 @@ class MacOSController:
 
             # Method 1: Try WebSocket unlock directly
             try:
-                import websockets
                 import json
+
+                import websockets
 
                 VOICE_UNLOCK_WS_URL = "ws://localhost:8765/voice-unlock"
 
                 async with websockets.connect(VOICE_UNLOCK_WS_URL, ping_interval=20) as websocket:
                     # Send unlock command using the daemon's expected format
-                    unlock_command = {
-                        "type": "command",
-                        "command": "unlock_screen"
-                    }
+                    unlock_command = {"type": "command", "command": "unlock_screen"}
 
                     await websocket.send(json.dumps(unlock_command))
                     logger.info("[UnlockScreen] Sent unlock command to voice unlock daemon")
@@ -1263,14 +1287,19 @@ class MacOSController:
                     response = await asyncio.wait_for(websocket.recv(), timeout=15.0)
                     result = json.loads(response)
 
-                    if result.get("type") == "command_response" or result.get("type") == "unlock_result":
+                    if (
+                        result.get("type") == "command_response"
+                        or result.get("type") == "unlock_result"
+                    ):
                         if result.get("success"):
                             logger.info("[UnlockScreen] Successfully unlocked via WebSocket daemon")
                             return True, "Screen unlocked successfully, Sir."
                         else:
-                            logger.warning(f"[UnlockScreen] Daemon unlock failed: {result.get('message', 'Unknown error')}")
+                            logger.warning(
+                                f"[UnlockScreen] Daemon unlock failed: {result.get('message', 'Unknown error')}"
+                            )
 
-            except (ConnectionRefusedError, OSError) as e:
+            except (ConnectionRefusedError, OSError):
                 logger.info("[UnlockScreen] Voice unlock daemon not running, trying fallback")
             except asyncio.TimeoutError:
                 logger.warning("[UnlockScreen] Timeout waiting for unlock response from daemon")
@@ -1282,123 +1311,130 @@ class MacOSController:
                 # Try to retrieve from keychain
                 try:
                     from api.jarvis_voice_api import async_subprocess_run
+
                     stdout, stderr, returncode = await async_subprocess_run(
-                        ['security', 'find-generic-password', '-s', 'com.jarvis.voiceunlock', '-a', 'unlock_token', '-w'],
-                        timeout=5.0
+                        [
+                            "security",
+                            "find-generic-password",
+                            "-s",
+                            "com.jarvis.voiceunlock",
+                            "-a",
+                            "unlock_token",
+                            "-w",
+                        ],
+                        timeout=5.0,
                     )
                     if returncode == 0 and stdout:
                         password = stdout.decode().strip()
                     else:
                         logger.info("[UnlockScreen] No password in keychain")
-                        return False, "Unable to unlock screen. The Voice Unlock daemon is not running. Please run './backend/voice_unlock/enable_screen_unlock.sh' to enable it."
+                        return (
+                            False,
+                            "Unable to unlock screen. The Voice Unlock daemon is not running. Please run './backend/voice_unlock/enable_screen_unlock.sh' to enable it.",
+                        )
                 except Exception as e:
                     logger.warning(f"[UnlockScreen] Failed to retrieve password: {e}")
-                    return False, "Unable to unlock screen without password. Please setup Voice Unlock first."
+                    return (
+                        False,
+                        "Unable to unlock screen without password. Please setup Voice Unlock first.",
+                    )
 
             # For now, if no daemon is running and we have a password, report that unlock is not available
             # This prevents infinite loops while we fix the underlying issue
             logger.info("[UnlockScreen] Direct unlock temporarily disabled to prevent loops")
-            return False, "Screen unlock requires Voice Unlock daemon. Please run './backend/voice_unlock/enable_screen_unlock.sh' to enable automatic unlocking."
+            return (
+                False,
+                "Screen unlock requires Voice Unlock daemon. Please run './backend/voice_unlock/enable_screen_unlock.sh' to enable automatic unlocking.",
+            )
 
         except Exception as e:
             logger.error(f"[UnlockScreen] Error unlocking screen: {e}")
             return False, f"Failed to unlock screen: {str(e)}"
-    
+
     async def handle_command(self, command: str) -> Dict[str, Any]:
         """
         Main command handler for system commands
-        
+
         Args:
             command: The command to process
-            
+
         Returns:
             Dict with result and response
         """
         command_lower = command.lower()
-        
+
         # Handle lock/unlock screen commands
-        if 'lock' in command_lower and 'screen' in command_lower:
+        if "lock" in command_lower and "screen" in command_lower:
             success, message = await self.lock_screen()
-            return {
-                "success": success,
-                "response": message,
-                "command_type": "screen_lock"
-            }
-        
-        if 'unlock' in command_lower and 'screen' in command_lower:
+            return {"success": success, "response": message, "command_type": "screen_lock"}
+
+        if "unlock" in command_lower and "screen" in command_lower:
             success, message = await self.unlock_screen()
-            return {
-                "success": success,
-                "response": message,
-                "command_type": "screen_unlock"
-            }
-        
+            return {"success": success, "response": message, "command_type": "screen_unlock"}
+
         # Handle application commands
-        if any(word in command_lower for word in ['open', 'launch', 'start', 'run']):
+        if any(word in command_lower for word in ["open", "launch", "start", "run"]):
             # Extract app name
             words = command_lower.split()
             app_words = []
             start_collecting = False
-            
+
             for word in words:
-                if word in ['open', 'launch', 'start', 'run']:
+                if word in ["open", "launch", "start", "run"]:
                     start_collecting = True
                 elif start_collecting:
                     app_words.append(word)
-            
+
             if app_words:
-                app_name = ' '.join(app_words)
+                app_name = " ".join(app_words)
                 success, message = self.open_application(app_name)
-                return {
-                    "success": success,
-                    "response": message,
-                    "command_type": "application"
-                }
-        
+                return {"success": success, "response": message, "command_type": "application"}
+
         # Handle volume commands (using ASYNC versions for better performance)
-        if 'volume' in command_lower:
-            if 'mute' in command_lower or 'unmute' in command_lower:
-                mute = 'mute' in command_lower
+        if "volume" in command_lower:
+            if "mute" in command_lower or "unmute" in command_lower:
+                mute = "mute" in command_lower
                 success, message = await self.mute_volume_async(mute)
-                return {
-                    "success": success,
-                    "response": message,
-                    "command_type": "volume_control"
-                }
-            elif any(word in command_lower for word in ['set', 'change', 'adjust']):
+                return {"success": success, "response": message, "command_type": "volume_control"}
+            elif any(word in command_lower for word in ["set", "change", "adjust"]):
                 # Extract volume level
                 import re
-                numbers = re.findall(r'\d+', command_lower)
+
+                numbers = re.findall(r"\d+", command_lower)
                 if numbers:
                     level = int(numbers[0])
                     success, message = await self.set_volume_async(level)
                     return {
                         "success": success,
                         "response": message,
-                        "command_type": "volume_control"
+                        "command_type": "volume_control",
                     }
 
         # Handle file operations
-        if any(word in command_lower for word in ['create', 'make', 'new']) and any(word in command_lower for word in ['file', 'folder', 'directory']):
+        if any(word in command_lower for word in ["create", "make", "new"]) and any(
+            word in command_lower for word in ["file", "folder", "directory"]
+        ):
             # Extract file/folder name
-            if 'folder' in command_lower or 'directory' in command_lower:
+            if "folder" in command_lower or "directory" in command_lower:
                 # Create folder logic
-                folder_name = self._extract_name(command_lower, ['folder', 'directory'])
+                folder_name = self._extract_name(command_lower, ["folder", "directory"])
                 if folder_name:
-                    success, message = self.create_folder(str(self.home_dir / 'Desktop' / folder_name))
+                    success, message = self.create_folder(
+                        str(self.home_dir / "Desktop" / folder_name)
+                    )
                     return {
                         "success": success,
                         "response": message,
-                        "command_type": "file_operation"
+                        "command_type": "file_operation",
                     }
 
         # Default response for unhandled commands
         return {
             "success": False,
             "response": f"I'm not sure how to handle that system command: {command}",
-            "command_type": "unknown"
+            "command_type": "unknown",
         }
-    
+
     def _extract_name(self, command: str, keywords: List[str]) -> Optional[str]:
         """Extract name from command after keywords"""
         for keyword in keywords:
@@ -1407,7 +1443,7 @@ class MacOSController:
                 if len(parts) > 1:
                     name = parts[1].strip()
                     # Remove common words
-                    name = name.replace('called', '').replace('named', '').strip()
+                    name = name.replace("called", "").replace("named", "").strip()
                     if name:
                         return name
         return None
