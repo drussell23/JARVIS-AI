@@ -682,16 +682,22 @@ class AdvancedDisplayMonitor:
                         else:
                             message = template
 
-                        logger.info(f"[DISPLAY MONITOR] Initial startup announcement: {message}")
+                        logger.warning(f"[STARTUP VOICE] 🎤 DISPLAY_MONITOR ANNOUNCING: {message}")
 
                         if self.voice_handler:
                             try:
+                                logger.warning(
+                                    "[STARTUP VOICE] 🔊 Display monitor using voice_handler.speak()"
+                                )
                                 await self.voice_handler.speak(message)
-                            except:
+                            except Exception as e:
+                                logger.warning(
+                                    f"[STARTUP VOICE] 🔊 Display monitor fallback to macOS say command (voice_handler failed: {e})"
+                                )
                                 subprocess.Popen(["say", message])
                     else:
-                        logger.info(
-                            "[DISPLAY MONITOR] Another system already announced startup, skipping"
+                        logger.warning(
+                            "[STARTUP VOICE] ❌ DISPLAY_MONITOR skipping - another system already announced"
                         )
 
                 logger.info("[DISPLAY MONITOR] Now monitoring for display changes...")

@@ -748,7 +748,7 @@ class JARVISVoiceAPI:
             greeting = coordinator.generate_greeting()
 
             # Send greeting via WebSocket to frontend (will show in transcript AND speak)
-            logger.info(f"[STARTUP] Announcing: {greeting}")
+            logger.warning(f"[STARTUP VOICE] 🎤 JARVIS_VOICE_API ANNOUNCING: {greeting}")
 
             # Get WebSocket manager from pipeline if available
             from core.async_pipeline import get_async_pipeline
@@ -757,6 +757,7 @@ class JARVISVoiceAPI:
                 pipeline = get_async_pipeline(self.jarvis)
                 if pipeline and hasattr(pipeline, "websocket_manager"):
                     # Send via WebSocket to show in transcript
+                    logger.warning("[STARTUP VOICE] 📡 Sending via WebSocket to frontend")
                     await pipeline.websocket_manager.broadcast(
                         {
                             "type": "command_response",
@@ -768,6 +769,7 @@ class JARVISVoiceAPI:
                     )
                 elif hasattr(self.jarvis, "voice"):
                     # Fallback to direct voice if WebSocket not available
+                    logger.warning("[STARTUP VOICE] 🔊 Using direct voice.speak()")
                     await self.jarvis.voice.speak(greeting, priority=1)
 
         except Exception as e:
@@ -837,8 +839,15 @@ class JARVISVoiceAPI:
                 async with self._startup_announcement_lock:
                     if not self._startup_announced:
                         # Set flag immediately to prevent other status calls from triggering
+                        logger.warning(
+                            "[STARTUP VOICE] 🚀 STATUS ENDPOINT TRIGGERING ANNOUNCEMENT (path 1: running=True)"
+                        )
                         self._startup_announced = True
                         asyncio.create_task(self._announce_startup_once())
+                    else:
+                        logger.debug(
+                            "[STARTUP VOICE] ⏭️  Status endpoint skipping - already announced (path 1)"
+                        )
 
             return {
                 "status": "online" if running else "standby",
@@ -869,9 +878,16 @@ class JARVISVoiceAPI:
                 async with self._startup_announcement_lock:
                     if not self._startup_announced:
                         # Set flag immediately to prevent other status calls from triggering
+                        logger.warning(
+                            "[STARTUP VOICE] 🚀 STATUS ENDPOINT TRIGGERING ANNOUNCEMENT (path 2: no jarvis_instance)"
+                        )
                         self._startup_announced = True
                         # Schedule announcement asynchronously (don't await to avoid blocking status check)
                         asyncio.create_task(self._announce_startup_once())
+                    else:
+                        logger.debug(
+                            "[STARTUP VOICE] ⏭️  Status endpoint skipping - already announced (path 2)"
+                        )
 
             # Return status without triggering JARVIS initialization
             return {
