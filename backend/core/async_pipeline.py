@@ -5,18 +5,15 @@ Ultra-robust, adaptive, zero-hardcoding async processing system
 """
 
 import asyncio
-import re
 import logging
 import os
-from typing import Dict, Any, Optional, Callable, List, Union, Type
-from dataclasses import dataclass, field
-from enum import Enum
-from datetime import datetime
 import time
-import inspect
-from functools import wraps
-import json
 from collections import defaultdict
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from functools import wraps
+from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +51,8 @@ class PipelineContext:
     metrics: Dict[str, float] = field(default_factory=dict)
     retries: int = 0
     priority: int = 0  # 0=normal, 1=high, 2=critical
+    audio_data: Optional[bytes] = None  # Voice audio for authentication
+    speaker_name: Optional[str] = None  # Identified speaker name
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert context to dictionary"""
@@ -140,9 +139,7 @@ class AdaptiveCircuitBreaker:
 
         # Adaptive threshold adjustment
         if self.adaptive:
-            success_rate = self.success_count / (
-                self.success_count + len(self.failure_history)
-            )
+            success_rate = self.success_count / (self.success_count + len(self.failure_history))
             self.success_rate_history.append(success_rate)
 
             # Increase threshold if success rate is high
@@ -159,15 +156,11 @@ class AdaptiveCircuitBreaker:
 
         # Adaptive threshold adjustment
         if self.adaptive and len(self.failure_history) > 10:
-            recent_failures = sum(
-                1 for t in self.failure_history[-10:] if time.time() - t < 60
-            )
+            recent_failures = sum(1 for t in self.failure_history[-10:] if time.time() - t < 60)
 
             if recent_failures > 5 and self.threshold > 3:
                 self.threshold -= 1
-                logger.warning(
-                    f"Decreased circuit breaker threshold to {self.threshold}"
-                )
+                logger.warning(f"Decreased circuit breaker threshold to {self.threshold}")
 
         if self.failure_count >= self.threshold:
             logger.warning(
@@ -382,9 +375,7 @@ class DynamicPipelineStage:
             self.metrics["failures"] += 1
 
         self.metrics["total_duration"] += duration
-        self.metrics["avg_duration"] = (
-            self.metrics["total_duration"] / self.metrics["executions"]
-        )
+        self.metrics["avg_duration"] = self.metrics["total_duration"] / self.metrics["executions"]
 
 
 class AdvancedAsyncPipeline:
@@ -434,9 +425,7 @@ class AdvancedAsyncPipeline:
 
     def _register_default_stages(self):
         """Register default pipeline stages"""
-        self.register_stage(
-            "validation", self._validate_command, timeout=5.0, required=True
-        )
+        self.register_stage("validation", self._validate_command, timeout=5.0, required=True)
 
         self.register_stage(
             "screen_lock_check",
@@ -445,13 +434,9 @@ class AdvancedAsyncPipeline:
             required=True,
         )
 
-        self.register_stage(
-            "preprocessing", self._preprocess_command, timeout=5.0, required=False
-        )
+        self.register_stage("preprocessing", self._preprocess_command, timeout=5.0, required=False)
 
-        self.register_stage(
-            "intent_analysis", self._analyze_intent, timeout=10.0, required=True
-        )
+        self.register_stage("intent_analysis", self._analyze_intent, timeout=10.0, required=True)
 
         self.register_stage(
             "component_loading", self._load_components, timeout=15.0, required=False
@@ -460,7 +445,7 @@ class AdvancedAsyncPipeline:
         self.register_stage(
             "processing",
             self._process_command,
-            timeout=30.0,
+            timeout=60.0,  # Increased for locked screen unlock flow
             retry_count=2,
             required=True,
         )
@@ -476,21 +461,22 @@ class AdvancedAsyncPipeline:
     def _init_followup_system(self):
         """Initialize follow-up handling system components."""
         from pathlib import Path
+
+        from backend.core.context.memory_store import InMemoryContextStore
         from backend.core.intent.adaptive_classifier import (
             AdaptiveIntentEngine,
             LexicalClassifier,
             WeightedVotingStrategy,
         )
         from backend.core.intent.intent_registry import IntentRegistry
-        from backend.core.context.memory_store import InMemoryContextStore
         from backend.core.routing.adaptive_router import (
             AdaptiveRouter,
+            PluginRegistry,
             RouteMatcher,
-            logging_middleware,
             context_validation_middleware,
+            logging_middleware,
         )
         from backend.vision.handlers.follow_up_plugin import VisionFollowUpPlugin
-        from backend.core.routing.adaptive_router import PluginRegistry
 
         # Initialize intent registry and load patterns
         config_path = Path(__file__).parent.parent / "config" / "followup_intents.json"
@@ -498,6 +484,7 @@ class AdvancedAsyncPipeline:
             registry = IntentRegistry(config_path=config_path)
         else:
             from backend.core.intent.intent_registry import create_default_registry
+
             registry = create_default_registry()
 
         patterns = registry.get_all_patterns()
@@ -537,9 +524,7 @@ class AdvancedAsyncPipeline:
         # Register vision follow-up plugin
         self.plugin_registry = PluginRegistry(self.router)
         vision_plugin = VisionFollowUpPlugin()
-        asyncio.create_task(
-            self.plugin_registry.register_plugin("vision_followup", vision_plugin)
-        )
+        asyncio.create_task(self.plugin_registry.register_plugin("vision_followup", vision_plugin))
 
         logger.info(
             f"Follow-up system initialized: "
@@ -586,6 +571,8 @@ class AdvancedAsyncPipeline:
         user_name: str = "Sir",
         priority: int = 0,
         metadata: Optional[Dict[str, Any]] = None,
+        audio_data: Optional[bytes] = None,
+        speaker_name: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Process command through advanced async pipeline"""
 
@@ -612,6 +599,8 @@ class AdvancedAsyncPipeline:
             user_name=user_name,
             priority=priority,
             metadata=metadata or {},
+            audio_data=audio_data,
+            speaker_name=speaker_name,
         )
 
         self.active_commands[command_id] = context
@@ -653,6 +642,7 @@ class AdvancedAsyncPipeline:
     ) -> Dict[str, Any]:
         """Fast path for lock/unlock commands - minimal overhead, maximum speed"""
         import asyncio
+
         from api.simple_unlock_handler import handle_unlock_command
 
         logger.info(f"[FAST PATH] Processing lock/unlock: {text}")
@@ -763,9 +753,7 @@ class AdvancedAsyncPipeline:
                         if stage.required:
                             raise
                         else:
-                            logger.warning(
-                                f"Non-critical stage {stage_name} failed: {e}"
-                            )
+                            logger.warning(f"Non-critical stage {stage_name} failed: {e}")
 
         context.metrics["total_pipeline_duration"] = time.time() - pipeline_start
 
@@ -795,9 +783,7 @@ class AdvancedAsyncPipeline:
         """
         try:
             # Import screen lock detector
-            from context_intelligence.detectors.screen_lock_detector import (
-                get_screen_lock_detector,
-            )
+            from context_intelligence.detectors.screen_lock_detector import get_screen_lock_detector
 
             detector = get_screen_lock_detector()
 
@@ -818,21 +804,13 @@ class AdvancedAsyncPipeline:
                     unlock_message = screen_context["unlock_message"]
 
                     # Log prominently
-                    logger.warning(
-                        f"[UNIVERSAL SCREEN CHECK] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    )
-                    logger.warning(
-                        f"[UNIVERSAL SCREEN CHECK] 🔓 SCREEN LOCKED - UNLOCK REQUIRED"
-                    )
-                    logger.warning(
-                        f"[UNIVERSAL SCREEN CHECK] 📝 Command: {context.text}"
-                    )
+                    logger.warning(f"[UNIVERSAL SCREEN CHECK] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                    logger.warning(f"[UNIVERSAL SCREEN CHECK] 🔓 SCREEN LOCKED - UNLOCK REQUIRED")
+                    logger.warning(f"[UNIVERSAL SCREEN CHECK] 📝 Command: {context.text}")
                     logger.warning(
                         f"[UNIVERSAL SCREEN CHECK] 📢 Unlock Message: '{unlock_message}'"
                     )
-                    logger.warning(
-                        f"[UNIVERSAL SCREEN CHECK] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    )
+                    logger.warning(f"[UNIVERSAL SCREEN CHECK] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
                     # Store unlock information in context
                     context.metadata["requires_unlock"] = True
@@ -844,9 +822,7 @@ class AdvancedAsyncPipeline:
                         f"[UNIVERSAL SCREEN CHECK] 🎤 Speaking unlock notification NOW..."
                     )
                     await self._speak_unlock_message(unlock_message)
-                    logger.warning(
-                        f"[UNIVERSAL SCREEN CHECK] ✅ Unlock notification spoken"
-                    )
+                    logger.warning(f"[UNIVERSAL SCREEN CHECK] ✅ Unlock notification spoken")
 
                     # Wait for user to hear the message
                     logger.info(
@@ -859,15 +835,13 @@ class AdvancedAsyncPipeline:
 
                     # Perform the actual unlock
                     logger.info(f"[UNIVERSAL SCREEN CHECK] 🔓 Now unlocking screen...")
-                    unlock_success, unlock_result = (
-                        await detector.handle_screen_lock_context(context.text)
+                    unlock_success, unlock_result = await detector.handle_screen_lock_context(
+                        context.text
                     )
 
                     if unlock_success:
                         context.metadata["unlock_successful"] = True
-                        logger.info(
-                            f"[UNIVERSAL SCREEN CHECK] ✅ Screen unlocked successfully"
-                        )
+                        logger.info(f"[UNIVERSAL SCREEN CHECK] ✅ Screen unlocked successfully")
                     else:
                         context.metadata["unlock_successful"] = False
                         context.metadata["unlock_error"] = unlock_result
@@ -880,15 +854,11 @@ class AdvancedAsyncPipeline:
                     )
                     context.metadata["requires_unlock"] = False
             else:
-                logger.info(
-                    f"[UNIVERSAL SCREEN CHECK] ✅ Screen is unlocked, proceeding normally"
-                )
+                logger.info(f"[UNIVERSAL SCREEN CHECK] ✅ Screen is unlocked, proceeding normally")
                 context.metadata["requires_unlock"] = False
 
         except Exception as e:
-            logger.error(
-                f"[UNIVERSAL SCREEN CHECK] ❌ Error in screen lock detection: {e}"
-            )
+            logger.error(f"[UNIVERSAL SCREEN CHECK] ❌ Error in screen lock detection: {e}")
             # Don't fail the pipeline, just log the error
             context.metadata["screen_check_error"] = str(e)
             context.metadata["requires_unlock"] = False
@@ -899,16 +869,10 @@ class AdvancedAsyncPipeline:
             from api.jarvis_voice_api import async_subprocess_run
 
             # Use slower speech rate for unlock messages
-            await async_subprocess_run(
-                ["say", "-v", "Daniel", "-r", "160", message], timeout=30.0
-            )
-            logger.info(
-                f"[UNIVERSAL SCREEN CHECK] 📢 Spoke unlock message: {message[:50]}..."
-            )
+            await async_subprocess_run(["say", "-v", "Daniel", "-r", "160", message], timeout=30.0)
+            logger.info(f"[UNIVERSAL SCREEN CHECK] 📢 Spoke unlock message: {message[:50]}...")
         except Exception as e:
-            logger.error(
-                f"[UNIVERSAL SCREEN CHECK] ❌ Failed to speak unlock message: {e}"
-            )
+            logger.error(f"[UNIVERSAL SCREEN CHECK] ❌ Failed to speak unlock message: {e}")
 
     async def _preprocess_command(self, context: PipelineContext):
         """Preprocess command text"""
@@ -1027,7 +991,9 @@ class AdvancedAsyncPipeline:
         for intent, keywords in intent_rules.items():
             if any(kw in text_lower for kw in keywords):
                 detected_intents.append(intent)
-                logger.info(f"[INTENT DEBUG] Detected intent '{intent}' for text: {text_lower[:50]}")
+                logger.info(
+                    f"[INTENT DEBUG] Detected intent '{intent}' for text: {text_lower[:50]}"
+                )
 
         # Intelligently handle multiple intents
         if len(detected_intents) > 1:
@@ -1036,9 +1002,7 @@ class AdvancedAsyncPipeline:
                 context.intent = "system_control"
                 context.metadata["compound_command"] = True
                 context.metadata["all_intents"] = detected_intents
-                logger.info(
-                    f"Compound command detected with intents: {detected_intents}"
-                )
+                logger.info(f"Compound command detected with intents: {detected_intents}")
             else:
                 # Use the most specific intent
                 context.intent = detected_intents[0]
@@ -1051,7 +1015,9 @@ class AdvancedAsyncPipeline:
 
             # Extra logging for vision commands
             if context.intent == "vision":
-                logger.info(f"[VISION DETECTED] Command will be routed to vision handler: {context.text[:50]}")
+                logger.info(
+                    f"[VISION DETECTED] Command will be routed to vision handler: {context.text[:50]}"
+                )
         else:
             # Use ML-based intent detection as fallback
             context.intent = await self._ml_intent_detection(text_lower)
@@ -1065,18 +1031,14 @@ class AdvancedAsyncPipeline:
 
             # Analyzer 1: Context Intelligence Intent Analyzer
             try:
-                from context_intelligence.analyzers.intent_analyzer import (
-                    get_intent_analyzer,
-                )
+                from context_intelligence.analyzers.intent_analyzer import get_intent_analyzer
 
                 analyzer = get_intent_analyzer()
                 intent = await analyzer.analyze(text)
                 if intent:
                     intents_detected.append(intent)
                     confidence_scores[intent] = (
-                        analyzer.get_confidence()
-                        if hasattr(analyzer, "get_confidence")
-                        else 0.8
+                        analyzer.get_confidence() if hasattr(analyzer, "get_confidence") else 0.8
                     )
             except:
                 pass
@@ -1100,9 +1062,7 @@ class AdvancedAsyncPipeline:
 
             text_lower = text.lower()
             for intent_type, patterns in semantic_patterns.items():
-                match_score = sum(1 for p in patterns if p in text_lower) / len(
-                    patterns
-                )
+                match_score = sum(1 for p in patterns if p in text_lower) / len(patterns)
                 if match_score > 0:
                     confidence_scores[intent_type] = match_score
                     if match_score > 0.3:  # Threshold for inclusion
@@ -1148,41 +1108,49 @@ class AdvancedAsyncPipeline:
         # Check if this is a follow-up response to a pending question
         # ═══════════════════════════════════════════════════════════════
         try:
-            if hasattr(self, 'intent_engine') and hasattr(self, 'router'):
+            if hasattr(self, "intent_engine") and hasattr(self, "router"):
                 # Track telemetry start time
                 import time as time_module
+
                 followup_start = time_module.time()
 
                 # Classify intent using adaptive engine
                 intent_result = await self.intent_engine.classify(context.text, {})
 
                 if intent_result.primary_intent == "follow_up" and intent_result.confidence >= 0.75:
-                    logger.info(f"[FOLLOW-UP] Detected follow-up intent (confidence={intent_result.confidence:.2f})")
+                    logger.info(
+                        f"[FOLLOW-UP] Detected follow-up intent (confidence={intent_result.confidence:.2f})"
+                    )
 
                     # Telemetry: Track follow-up detection
                     try:
                         from backend.core.telemetry.events import get_telemetry
+
                         telemetry = get_telemetry()
                         await telemetry.track_event(
                             "follow_up.intent_detected",
                             {
                                 "confidence": intent_result.confidence,
                                 "user_input": context.text[:50],
-                            }
+                            },
                         )
                     except:
                         pass  # Telemetry is optional
 
                     # Retrieve active pending context
-                    if hasattr(self, 'context_store'):
-                        from backend.core.context.store_interface import ContextQuery
+                    if hasattr(self, "context_store"):
+                        pass
 
                         # Get most recent valid context
                         pending_contexts = await self.context_store.get_most_relevant(limit=1)
 
                         if pending_contexts:
                             pending_context = pending_contexts[0]
-                            context_age = int((datetime.utcnow() - pending_context.metadata.created_at).total_seconds())
+                            context_age = int(
+                                (
+                                    datetime.utcnow() - pending_context.metadata.created_at
+                                ).total_seconds()
+                            )
                             logger.info(
                                 f"[FOLLOW-UP] Found pending context: {pending_context.metadata.id} "
                                 f"(category={pending_context.metadata.category.name}, "
@@ -1206,7 +1174,9 @@ class AdvancedAsyncPipeline:
                                 # Set response and metadata
                                 context.response = routing_result.response
                                 context.metadata["handled_by"] = "follow_up_handler"
-                                context.metadata["follow_up_context_id"] = pending_context.metadata.id
+                                context.metadata["follow_up_context_id"] = (
+                                    pending_context.metadata.id
+                                )
                                 context.metadata["routing_metadata"] = routing_result.metadata
                                 context.metadata["latency_ms"] = latency_ms
 
@@ -1219,15 +1189,19 @@ class AdvancedAsyncPipeline:
                                             "context_id": pending_context.metadata.id,
                                             "context_category": pending_context.metadata.category.name,
                                             "context_age_seconds": context_age,
-                                            "window_type": getattr(pending_context.payload, 'window_type', 'unknown'),
+                                            "window_type": getattr(
+                                                pending_context.payload, "window_type", "unknown"
+                                            ),
                                             "latency_ms": latency_ms,
                                             "response_length": len(routing_result.response),
-                                        }
+                                        },
                                     )
                                 except:
                                     pass  # Telemetry is optional
 
-                                logger.info(f"[FOLLOW-UP] Successfully handled: {routing_result.response[:100]}... (latency={latency_ms}ms)")
+                                logger.info(
+                                    f"[FOLLOW-UP] Successfully handled: {routing_result.response[:100]}... (latency={latency_ms}ms)"
+                                )
                                 return
                             else:
                                 # Telemetry: Track failed routing
@@ -1239,12 +1213,14 @@ class AdvancedAsyncPipeline:
                                             "context_id": pending_context.metadata.id,
                                             "error": routing_result.error,
                                             "latency_ms": latency_ms,
-                                        }
+                                        },
                                     )
                                 except:
                                     pass
 
-                                logger.warning(f"[FOLLOW-UP] Handler failed: {routing_result.error}")
+                                logger.warning(
+                                    f"[FOLLOW-UP] Handler failed: {routing_result.error}"
+                                )
                         else:
                             logger.info("[FOLLOW-UP] No active pending context found")
 
@@ -1253,7 +1229,7 @@ class AdvancedAsyncPipeline:
                                 telemetry = get_telemetry()
                                 await telemetry.track_event(
                                     "follow_up.no_pending_context",
-                                    {"user_input": context.text[:50]}
+                                    {"user_input": context.text[:50]},
                                 )
                             except:
                                 pass
@@ -1272,24 +1248,45 @@ class AdvancedAsyncPipeline:
         text_lower = context.text.lower()
 
         # IMPORTANT: Check if this is a desktop space query FIRST
-        is_desktop_space_query = any(phrase in text_lower for phrase in [
-            "desktop space", "desktop spaces",
-            "across my desktop", "across desktop",
-            "happening across", "across my",  # Add more specific patterns
-            "what's happening across", "what is happening across"
-        ])
+        is_desktop_space_query = any(
+            phrase in text_lower
+            for phrase in [
+                "desktop space",
+                "desktop spaces",
+                "across my desktop",
+                "across desktop",
+                "happening across",
+                "across my",  # Add more specific patterns
+                "what's happening across",
+                "what is happening across",
+            ]
+        )
 
         if is_desktop_space_query:
-            logger.info(f"[PIPELINE] Detected desktop space query, skipping context intelligence handler: {text_lower[:50]}")
+            logger.info(
+                f"[PIPELINE] Detected desktop space query, skipping context intelligence handler: {text_lower[:50]}"
+            )
             # Don't process as context query - let it go to vision handler
         else:
             # Only check context patterns if NOT a desktop space query
             context_query_patterns = [
-                "what does it say", "what's the error", "what is the error",
-                "explain that", "explain this", "what's that", "what is that",
-                "what am i working on", "what's happening", "what is happening",
-                "what's related", "what is related", "what's connected",
-                "can you see", "do you see", "are you seeing", "what do you see"
+                "what does it say",
+                "what's the error",
+                "what is the error",
+                "explain that",
+                "explain this",
+                "what's that",
+                "what is that",
+                "what am i working on",
+                "what's happening",
+                "what is happening",
+                "what's related",
+                "what is related",
+                "what's connected",
+                "can you see",
+                "do you see",
+                "are you seeing",
+                "what do you see",
             ]
 
             if any(pattern in text_lower for pattern in context_query_patterns):
@@ -1298,10 +1295,12 @@ class AdvancedAsyncPipeline:
                     context_bridge = self.context_bridge
 
                     # Fallback: try to get from jarvis instance
-                    if not context_bridge and hasattr(self, 'jarvis') and self.jarvis:
-                        if hasattr(self.jarvis, 'context_bridge'):
+                    if not context_bridge and hasattr(self, "jarvis") and self.jarvis:
+                        if hasattr(self.jarvis, "context_bridge"):
                             context_bridge = self.jarvis.context_bridge
-                        elif hasattr(self.jarvis, 'state') and hasattr(self.jarvis.state, 'context_bridge'):
+                        elif hasattr(self.jarvis, "state") and hasattr(
+                            self.jarvis.state, "context_bridge"
+                        ):
                             context_bridge = self.jarvis.state.context_bridge
 
                     if context_bridge:
@@ -1309,8 +1308,7 @@ class AdvancedAsyncPipeline:
 
                         # Query the context intelligence system
                         response = await context_bridge.handle_user_query(
-                            context.text,
-                            current_space_id=context.metadata.get('current_space_id')
+                            context.text, current_space_id=context.metadata.get("current_space_id")
                         )
 
                         if response:
@@ -1322,7 +1320,9 @@ class AdvancedAsyncPipeline:
                         logger.debug("[CONTEXT-INTEL] Context bridge not available")
 
                 except Exception as e:
-                    logger.error(f"[CONTEXT-INTEL] Error processing context query: {e}", exc_info=True)
+                    logger.error(
+                        f"[CONTEXT-INTEL] Error processing context query: {e}", exc_info=True
+                    )
                     # Fall through to normal processing
 
         # ═══════════════════════════════════════════════════════════════
@@ -1332,21 +1332,28 @@ class AdvancedAsyncPipeline:
         # ═══════════════════════════════════════════════════════════════
         try:
             from api.unified_command_processor import get_unified_processor
-            
+
             # Try to get app from JARVIS instance
-            app = getattr(self.jarvis, 'app', None) if hasattr(self, 'jarvis') else None
+            app = getattr(self.jarvis, "app", None) if hasattr(self, "jarvis") else None
             processor = get_unified_processor(app=app)
 
             # Check if unified processor can handle this command
             logger.info(f"[PIPELINE] Attempting unified processor for: {context.text}")
-            result = await processor.process_command(context.text, websocket=None)
+            result = await processor.process_command(
+                context.text,
+                websocket=None,
+                audio_data=context.audio_data,
+                speaker_name=context.speaker_name,
+            )
 
             # If unified processor successfully handled it, use that result
             if result.get("success") or result.get("command_type") != "unknown":
                 response_text = result.get("response", "Command processed, Sir.")
                 command_type = result.get("command_type", "unknown")
 
-                logger.info(f"[PIPELINE] ✅ Unified processor handled command (type={command_type}): {response_text[:100]}")
+                logger.info(
+                    f"[PIPELINE] ✅ Unified processor handled command (type={command_type}): {response_text[:100]}"
+                )
 
                 context.response = response_text
                 context.metadata["handled_by"] = "unified_command_processor"
@@ -1354,7 +1361,9 @@ class AdvancedAsyncPipeline:
                 context.metadata["processor_result"] = result
                 return
             else:
-                logger.debug(f"[PIPELINE] Unified processor didn't handle command, continuing pipeline")
+                logger.debug(
+                    f"[PIPELINE] Unified processor didn't handle command, continuing pipeline"
+                )
 
         except ImportError:
             logger.debug("[PIPELINE] Unified processor not available, continuing pipeline")
@@ -1386,15 +1395,11 @@ class AdvancedAsyncPipeline:
                 )
 
                 if result.get("success"):
-                    context.response = result.get(
-                        "response", "Command executed successfully."
-                    )
+                    context.response = result.get("response", "Command executed successfully.")
                     context.metadata["lock_unlock_result"] = result
                 else:
                     context.response = result.get("response", "Command failed.")
-                    context.metadata["lock_unlock_error"] = result.get(
-                        "error", "Unknown error"
-                    )
+                    context.metadata["lock_unlock_error"] = result.get("error", "Unknown error")
 
                 context.metadata["handled_by"] = "simple_unlock_handler"
                 logger.info(f"[PIPELINE] Lock/unlock response: {context.response}")
@@ -1407,25 +1412,21 @@ class AdvancedAsyncPipeline:
 
         # Handle compound system commands (e.g., "open safari and search for dogs")
         if context.intent == "system_control":
-            logger.info(
-                f"[PIPELINE] Processing compound system command: {context.text}"
-            )
+            logger.info(f"[PIPELINE] Processing compound system command: {context.text}")
             try:
                 # Use ContextAwareCommandHandler for intelligent screen lock handling
-                from context_intelligence.handlers.context_aware_handler import (
-                    ContextAwareCommandHandler,
-                )
                 from context_intelligence.analyzers.compound_action_parser import (
                     get_compound_parser,
+                )
+                from context_intelligence.handlers.context_aware_handler import (
+                    ContextAwareCommandHandler,
                 )
 
                 handler = ContextAwareCommandHandler()
                 parser = get_compound_parser()
 
                 # Define execution callback for compound actions
-                async def execute_compound_command(
-                    command: str, context: Dict[str, Any] = None
-                ):
+                async def execute_compound_command(command: str, context: Dict[str, Any] = None):
                     """Execute compound command after context handling"""
                     # Parse command into atomic actions
                     actions = await parser.parse(command)
@@ -1446,17 +1447,11 @@ class AdvancedAsyncPipeline:
                         result = await self._execute_atomic_action(action)
                         results.append(result)
                         if not result.get("success"):
-                            logger.warning(
-                                f"[COMPOUND] Action failed: {action.type.value}"
-                            )
+                            logger.warning(f"[COMPOUND] Action failed: {action.type.value}")
 
                     # Generate result with detailed feedback
-                    successful_actions = [
-                        i for i, r in enumerate(results) if r.get("success")
-                    ]
-                    failed_actions = [
-                        i for i, r in enumerate(results) if not r.get("success")
-                    ]
+                    [i for i, r in enumerate(results) if r.get("success")]
+                    failed_actions = [i for i, r in enumerate(results) if not r.get("success")]
 
                     if all(r.get("success") for r in results):
                         return {
@@ -1516,9 +1511,7 @@ class AdvancedAsyncPipeline:
 
                 if result.get("result"):
                     context.metadata["execution_plan"] = result["result"].get("plan")
-                    context.metadata["execution_results"] = result["result"].get(
-                        "results"
-                    )
+                    context.metadata["execution_results"] = result["result"].get("results")
 
                 return
 
@@ -1528,9 +1521,7 @@ class AdvancedAsyncPipeline:
 
                 traceback.print_exc()
                 context.metadata["compound_error"] = str(e)
-                context.response = (
-                    f"I encountered an error processing that command, Sir."
-                )
+                context.response = f"I encountered an error processing that command, Sir."
                 return
 
         # ENHANCED: Context-aware handling for ALL commands, not just document creation
@@ -1543,9 +1534,7 @@ class AdvancedAsyncPipeline:
             context_handler = get_context_aware_handler()
             logger.warning(f"[PIPELINE] ✅ Context-aware handler LOADED successfully")
         except ImportError as e:
-            logger.error(
-                f"[PIPELINE] ❌ Context-aware handler NOT available: {e}, using fallback"
-            )
+            logger.error(f"[PIPELINE] ❌ Context-aware handler NOT available: {e}, using fallback")
             context_handler = None
         except Exception as e:
             logger.error(f"[PIPELINE] ❌ Error loading context-aware handler: {e}")
@@ -1612,9 +1601,7 @@ class AdvancedAsyncPipeline:
                     result = await context_handler.handle_command_with_context(
                         context.text, execute_callback=create_document
                     )
-                    logger.warning(
-                        f"[PIPELINE] ✅ Context-aware processing completed successfully"
-                    )
+                    logger.warning(f"[PIPELINE] ✅ Context-aware processing completed successfully")
                 else:
                     # Fallback: call create_document directly (BYPASSES screen lock check!)
                     logger.error(
@@ -1631,16 +1618,16 @@ class AdvancedAsyncPipeline:
                 )
 
             except Exception as handler_error:
-                logger.error(
-                    f"[PIPELINE] Context-aware processing error: {handler_error}"
-                )
+                logger.error(f"[PIPELINE] Context-aware processing error: {handler_error}")
                 result = {
                     "success": False,
                     "messages": [f"Context processing error: {str(handler_error)}"],
                 }
                 context.metadata["document_creation"] = True
                 context.metadata["steps_taken"] = []
-                context.response = f"I encountered an error with document creation: {str(handler_error)}"
+                context.response = (
+                    f"I encountered an error with document creation: {str(handler_error)}"
+                )
                 return
 
             except Exception as e:
@@ -1680,19 +1667,13 @@ class AdvancedAsyncPipeline:
                 result = await vision_command_handler.handle_command(context.text)
 
                 if result.get("handled"):
-                    context.response = result.get(
-                        "response", "I can see your screen, Sir."
-                    )
+                    context.response = result.get("response", "I can see your screen, Sir.")
                     context.metadata["vision_response"] = result.get("response")
                     context.metadata["vision_handled"] = True
-                    logger.info(
-                        f"[PIPELINE] Vision response: {context.response[:100]}..."
-                    )
+                    logger.info(f"[PIPELINE] Vision response: {context.response[:100]}...")
                 else:
                     # Vision handler didn't handle it - log details for debugging
-                    logger.warning(
-                        f"[PIPELINE] Vision command not handled. Result: {result}"
-                    )
+                    logger.warning(f"[PIPELINE] Vision command not handled. Result: {result}")
                     context.response = f"Let me analyze your desktop spaces, {context.user_name}."
                     logger.warning(
                         f"[PIPELINE] Vision handler returned: handled={result.get('handled')}, reason={result.get('reason', 'unknown')}"
@@ -1701,9 +1682,10 @@ class AdvancedAsyncPipeline:
             except Exception as e:
                 logger.error(f"Error in vision command: {e}")
                 import traceback
+
                 traceback.print_exc()
                 context.metadata["vision_error"] = str(e)
-                
+
                 # Provide more helpful error messages based on error type
                 error_msg = str(e)
                 if "ValueError" in str(type(e).__name__):
@@ -1716,9 +1698,7 @@ class AdvancedAsyncPipeline:
                     else:
                         context.response = f"I encountered an error analyzing your screen: {error_msg}. Please try again."
                 else:
-                    context.response = (
-                        f"I encountered an error analyzing your screen: {error_msg}. Please try again."
-                    )
+                    context.response = f"I encountered an error analyzing your screen: {error_msg}. Please try again."
             return
 
         # For other commands, check if JARVIS is available
@@ -1729,17 +1709,13 @@ class AdvancedAsyncPipeline:
         # Handle conversation and system commands (require JARVIS)
         if context.intent == "conversation" and hasattr(self.jarvis, "claude_chatbot"):
             try:
-                response = await self.jarvis.claude_chatbot.generate_response(
-                    context.text
-                )
+                response = await self.jarvis.claude_chatbot.generate_response(context.text)
                 context.metadata["claude_response"] = response
             except Exception as e:
                 logger.error(f"Error in Claude chatbot: {e}")
                 context.metadata["claude_error"] = str(e)
 
-        elif context.intent == "system_control" and hasattr(
-            self.jarvis, "_handle_system_command"
-        ):
+        elif context.intent == "system_control" and hasattr(self.jarvis, "_handle_system_command"):
             try:
                 response = await self.jarvis._handle_system_command(context.text)
                 context.metadata["system_response"] = response
@@ -1767,9 +1743,7 @@ class AdvancedAsyncPipeline:
                 controller = MacOSController()
 
                 app_name = action.params.get("app_name", "")
-                success, message = await asyncio.to_thread(
-                    controller.open_application, app_name
-                )
+                success, message = await asyncio.to_thread(controller.open_application, app_name)
 
                 return {
                     "success": success,
@@ -1785,9 +1759,7 @@ class AdvancedAsyncPipeline:
                 controller = MacOSController()
 
                 app_name = action.params.get("app_name", "")
-                success, message = await asyncio.to_thread(
-                    controller.close_application, app_name
-                )
+                success, message = await asyncio.to_thread(controller.close_application, app_name)
 
                 return {
                     "success": success,
@@ -1812,9 +1784,7 @@ class AdvancedAsyncPipeline:
                     "action": "search_web",
                     "query": query,
                     "message": (
-                        f"Searched for: {query}"
-                        if success
-                        else f"Failed to search for: {query}"
+                        f"Searched for: {query}" if success else f"Failed to search for: {query}"
                     ),
                 }
 
@@ -1834,9 +1804,7 @@ class AdvancedAsyncPipeline:
                     "action": "navigate_url",
                     "url": url,
                     "message": (
-                        f"Navigated to: {url}"
-                        if success
-                        else f"Failed to navigate to: {url}"
+                        f"Navigated to: {url}" if success else f"Failed to navigate to: {url}"
                     ),
                 }
 
@@ -1891,9 +1859,7 @@ class AdvancedAsyncPipeline:
                         f"I've successfully executed the {action.replace('_', ' ')}, Sir.",
                     )
                 else:
-                    context.response = result.get(
-                        "response", "The command was processed."
-                    )
+                    context.response = result.get("response", "The command was processed.")
             logger.info(
                 f"Lock/unlock response finalized: {context.response[:100] if context.response else 'None'}..."
             )
@@ -1934,9 +1900,7 @@ class AdvancedAsyncPipeline:
                 if not context.response:
                     context.response = "Command executed successfully."
         else:
-            context.response = (
-                f"I processed your command: '{context.text}', {context.user_name}."
-            )
+            context.response = f"I processed your command: '{context.text}', {context.user_name}."
 
         # Mark that TTS should be triggered for all responses
         context.metadata["speak_response"] = True
@@ -1959,24 +1923,20 @@ class AdvancedAsyncPipeline:
             # Check if we should skip voice for certain responses
             skip_voice_phrases = ["Warning: No JARVIS instance", "Processing..."]
             if any(phrase in context.response for phrase in skip_voice_phrases):
-                logger.debug(
-                    f"Skipping voice synthesis for: {context.response[:50]}..."
-                )
+                logger.debug(f"Skipping voice synthesis for: {context.response[:50]}...")
                 return
 
             # Check if TTS is available through the WebSocket or API
             if context.metadata.get("websocket"):
                 # If WebSocket is available, the speak flag is already set in metadata
-                logger.info(
-                    f"[VOICE] WebSocket will handle TTS for: {context.response[:50]}..."
-                )
+                logger.info(f"[VOICE] WebSocket will handle TTS for: {context.response[:50]}...")
             else:
                 # Try to use the TTS API directly for non-WebSocket contexts
                 logger.info(f"[VOICE] Triggering TTS for: {context.response[:50]}...")
 
                 # Import TTS handler
                 try:
-                    from api.async_tts_handler import generate_speech_async
+                    pass
 
                     # Generate speech asynchronously (fire and forget)
                     asyncio.create_task(self._speak_response(context.response))
@@ -1994,9 +1954,7 @@ class AdvancedAsyncPipeline:
             from api.jarvis_voice_api import async_subprocess_run
 
             # Use macOS say command for TTS with slower rate for unlock messages
-            speech_rate = (
-                "160" if "unlock" in text.lower() or "locked" in text.lower() else "180"
-            )
+            speech_rate = "160" if "unlock" in text.lower() or "locked" in text.lower() else "180"
             await async_subprocess_run(
                 ["say", "-v", "Daniel", "-r", speech_rate, text], timeout=30.0
             )
@@ -2012,9 +1970,7 @@ class AdvancedAsyncPipeline:
 
             # Try to use Google Docs integration
             try:
-                from context_intelligence.integrations.google_docs_api import (
-                    GoogleDocsWriter,
-                )
+                from context_intelligence.integrations.google_docs_api import GoogleDocsWriter
 
                 writer = GoogleDocsWriter()
                 doc_url = await writer.create_document(topic, command)
@@ -2057,9 +2013,9 @@ class AdvancedAsyncPipeline:
 
             # Use document writer for content generation
             from context_intelligence.executors.document_writer import (
-                DocumentWriterExecutor,
                 DocumentRequest,
                 DocumentType,
+                DocumentWriterExecutor,
             )
 
             # Create document request
@@ -2108,18 +2064,14 @@ class AdvancedAsyncPipeline:
 
                 screen_detector = get_screen_lock_detector()
                 is_locked = await screen_detector.is_screen_locked()
-                logger.warning(
-                    f"[PIPELINE] 🔍 Screen lock check: is_locked={is_locked}"
-                )
+                logger.warning(f"[PIPELINE] 🔍 Screen lock check: is_locked={is_locked}")
             except ImportError as e:
                 logger.error(
                     f"[PIPELINE] ❌ Screen lock detector NOT available: {e}, assuming unlocked"
                 )
                 is_locked = False
             except Exception as e:
-                logger.error(
-                    f"[PIPELINE] ❌ Error checking screen lock: {e}, assuming unlocked"
-                )
+                logger.error(f"[PIPELINE] ❌ Error checking screen lock: {e}, assuming unlocked")
                 is_locked = False
 
             # Get active applications
@@ -2178,17 +2130,11 @@ class AdvancedAsyncPipeline:
         command_lower = command.lower()
 
         # Check for specific document types
-        if any(
-            word in command_lower for word in ["presentation", "slides", "powerpoint"]
-        ):
+        if any(word in command_lower for word in ["presentation", "slides", "powerpoint"]):
             return "presentation"
-        elif any(
-            word in command_lower for word in ["spreadsheet", "excel", "data", "table"]
-        ):
+        elif any(word in command_lower for word in ["spreadsheet", "excel", "data", "table"]):
             return "spreadsheet"
-        elif any(
-            word in command_lower for word in ["diagram", "chart", "graph", "visual"]
-        ):
+        elif any(word in command_lower for word in ["diagram", "chart", "graph", "visual"]):
             return "visual_document"
         elif any(word in command_lower for word in ["essay", "paper", "report"]):
             return "text_document"
@@ -2215,11 +2161,7 @@ class AdvancedAsyncPipeline:
             if match:
                 topic = match.group(1).strip()
                 # Clean up the topic
-                topic = (
-                    topic.replace("essay", "")
-                    .replace("document", "")
-                    .replace("paper", "")
-                )
+                topic = topic.replace("essay", "").replace("document", "").replace("paper", "")
                 topic = topic.replace("about", "").replace("on", "").strip()
                 if topic:
                     return topic
@@ -2279,9 +2221,7 @@ class AdvancedAsyncPipeline:
             "metrics": context.metrics,
         }
 
-    def _get_recovery_suggestions(
-        self, error_type: str, context: PipelineContext
-    ) -> List[str]:
+    def _get_recovery_suggestions(self, error_type: str, context: PipelineContext) -> List[str]:
         """Generate intelligent recovery suggestions based on error type"""
         suggestions = []
 
@@ -2359,9 +2299,7 @@ class AdvancedAsyncPipeline:
             "event_bus": {
                 "listeners": len(self.event_bus.listeners),
                 "queue_size": (
-                    self.event_bus.queue.qsize()
-                    if hasattr(self.event_bus, "queue")
-                    else 0
+                    self.event_bus.queue.qsize() if hasattr(self.event_bus, "queue") else 0
                 ),
             },
             "stages": {
@@ -2417,9 +2355,7 @@ class AdvancedAsyncPipeline:
 
         return {
             "total_commands": len(total_durations),
-            "avg_duration": (
-                sum(total_durations) / len(total_durations) if total_durations else 0
-            ),
+            "avg_duration": (sum(total_durations) / len(total_durations) if total_durations else 0),
             "min_duration": min(total_durations) if total_durations else 0,
             "max_duration": max(total_durations) if total_durations else 0,
             "stages": {name: stage.metrics for name, stage in self.stages.items()},
@@ -2452,9 +2388,7 @@ def get_async_pipeline(
     return _pipeline_instance
 
 
-def async_stage(
-    name: str, timeout: float = 30.0, retry_count: int = 0, required: bool = True
-):
+def async_stage(name: str, timeout: float = 30.0, retry_count: int = 0, required: bool = True):
     """Decorator to register a function as a pipeline stage"""
 
     def decorator(func: Callable):
@@ -2464,9 +2398,7 @@ def async_stage(
 
         # Register with global pipeline
         if _pipeline_instance:
-            _pipeline_instance.register_stage(
-                name, wrapper, timeout, retry_count, required
-            )
+            _pipeline_instance.register_stage(name, wrapper, timeout, retry_count, required)
 
         return wrapper
 
