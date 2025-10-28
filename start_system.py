@@ -6233,3 +6233,14 @@ if __name__ == "__main__":
         # Ensure terminal is restored
         sys.stdout.flush()
         sys.stderr.flush()
+
+        # Force exit any remaining threads
+        import threading
+        remaining_threads = [t for t in threading.enumerate() if t != threading.main_thread()]
+        if remaining_threads:
+            logger.warning(f"⚠️  {len(remaining_threads)} threads still running at exit")
+            for thread in remaining_threads:
+                logger.warning(f"   - {thread.name} (daemon={thread.daemon})")
+
+        # Force immediate exit to prevent hanging
+        os._exit(0)
