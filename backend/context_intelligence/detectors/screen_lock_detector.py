@@ -8,10 +8,10 @@ Integrated with async_pipeline.py for dynamic, robust operation.
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional, Tuple, Set, List
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
-from api.voice_unlock_integration import voice_unlock_connector, initialize_voice_unlock
+from api.voice_unlock_integration import voice_unlock_connector
 
 logger = logging.getLogger(__name__)
 
@@ -94,9 +94,7 @@ class ScreenLockContextDetector:
         logger.warning(f"[SCREEN LOCK DETECTOR] 🔍 Checking screen context")
         logger.warning(f"[SCREEN LOCK DETECTOR] 📝 Command: {command}")
         logger.warning(f"[SCREEN LOCK DETECTOR] 🔒 Screen locked: {is_locked}")
-        logger.warning(
-            f"[SCREEN LOCK DETECTOR] 📺 Requires screen: {command_needs_screen}"
-        )
+        logger.warning(f"[SCREEN LOCK DETECTOR] 📺 Requires screen: {command_needs_screen}")
 
         context = {
             "screen_locked": is_locked,
@@ -111,17 +109,13 @@ class ScreenLockContextDetector:
             context["requires_unlock"] = True
             context["unlock_message"] = await self._generate_unlock_message(command)
             logger.warning(f"[SCREEN LOCK DETECTOR] ✅ UNLOCK REQUIRED")
-            logger.warning(
-                f"[SCREEN LOCK DETECTOR] 📢 Message: {context['unlock_message']}"
-            )
+            logger.warning(f"[SCREEN LOCK DETECTOR] 📢 Message: {context['unlock_message']}")
         else:
             logger.warning(f"[SCREEN LOCK DETECTOR] ❌ NO UNLOCK NEEDED")
             if not is_locked:
                 logger.warning(f"[SCREEN LOCK DETECTOR]    Reason: Screen not locked")
             if not command_needs_screen:
-                logger.warning(
-                    f"[SCREEN LOCK DETECTOR]    Reason: Command doesn't need screen"
-                )
+                logger.warning(f"[SCREEN LOCK DETECTOR]    Reason: Command doesn't need screen")
 
         logger.warning(f"[SCREEN LOCK DETECTOR] ━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
@@ -143,16 +137,14 @@ class ScreenLockContextDetector:
         # First check: Is this a voice-only/exempt command?
         for exempt_pattern in self.screen_exempt_patterns:
             if exempt_pattern in command_lower:
-                logger.debug(
-                    f"Command exempt from screen requirement: {exempt_pattern}"
-                )
+                logger.debug(f"Command exempt from screen requirement: {exempt_pattern}")
                 return False
 
         # Second check: Parse compound actions using CompoundActionParser
         try:
             from context_intelligence.analyzers.compound_action_parser import (
-                get_compound_parser,
                 ActionType,
+                get_compound_parser,
             )
 
             parser = get_compound_parser()
@@ -229,16 +221,12 @@ class ScreenLockContextDetector:
         command_context = await self._analyze_command_context(command)
 
         # Generate contextual message based on detected actions and context
-        return await self._generate_contextual_message(
-            command, actions, command_context
-        )
+        return await self._generate_contextual_message(command, actions, command_context)
 
     async def _extract_actions_dynamic(self, command: str) -> List[str]:
         """Extract all actions from command using CompoundActionParser"""
         try:
-            from context_intelligence.analyzers.compound_action_parser import (
-                get_compound_parser,
-            )
+            from context_intelligence.analyzers.compound_action_parser import get_compound_parser
 
             parser = get_compound_parser()
             actions = await parser.parse(command)
@@ -324,7 +312,7 @@ class ScreenLockContextDetector:
         self, command: str, actions: List[str], context: Dict[str, Any]
     ) -> str:
         """Generate contextual unlock message based on analysis"""
-        import random
+        import random  # nosec B311 # UI message selection, not cryptographic
 
         # Document creation messages
         if context["is_document_creation"] and context["topic"]:
@@ -334,7 +322,7 @@ class ScreenLockContextDetector:
                 f"Screen is locked. I'll unlock it to work on your {context['topic']}.",
                 f"Let me unlock your screen to create that {context['topic']} for you, Sir.",
             ]
-            return random.choice(templates)
+            return random.choice(templates)  # nosec B311 # UI message selection
 
         # Web search messages
         if context["is_web_search"] and context["search_query"]:
@@ -343,7 +331,7 @@ class ScreenLockContextDetector:
                 f"I'll unlock your screen to search for {context['search_query']}.",
                 f"Unlocking screen to search for {context['search_query']}, Sir.",
             ]
-            return random.choice(templates)
+            return random.choice(templates)  # nosec B311 # UI message selection
 
         # App opening messages
         if context["is_app_opening"] and context["app_name"]:
@@ -352,7 +340,7 @@ class ScreenLockContextDetector:
                 f"I'll unlock your screen to open {context['app_name']}.",
                 f"Unlocking screen to open {context['app_name']}, Sir.",
             ]
-            return random.choice(templates)
+            return random.choice(templates)  # nosec B311 # UI message selection
 
         # Compound command messages
         if context["is_compound"] and len(actions) > 1:
@@ -362,7 +350,7 @@ class ScreenLockContextDetector:
                 f"I'll unlock your screen to {action_text}.",
                 f"Unlocking screen to {action_text}, Sir.",
             ]
-            return random.choice(templates)
+            return random.choice(templates)  # nosec B311 # UI message selection
 
         # Generic messages based on urgency
         if context["urgency"] == "urgent":
@@ -378,7 +366,7 @@ class ScreenLockContextDetector:
                 "Unlocking screen to continue, Sir.",
             ]
 
-        return random.choice(templates)
+        return random.choice(templates)  # nosec B311 # UI message selection
 
     def _extract_search_query(self, command: str) -> str:
         """Extract search query from command"""
@@ -430,9 +418,7 @@ class ScreenLockContextDetector:
         Falls back to simple extraction if parser fails.
         """
         try:
-            from context_intelligence.analyzers.compound_action_parser import (
-                get_compound_parser,
-            )
+            from context_intelligence.analyzers.compound_action_parser import get_compound_parser
 
             parser = get_compound_parser()
 
@@ -503,13 +489,15 @@ class ScreenLockContextDetector:
             return "complete your request"
 
     async def handle_screen_lock_context(
-        self, command: str
+        self, command: str, audio_data: bytes = None, speaker_name: str = None
     ) -> Tuple[bool, Optional[str]]:
         """
-        Handle screen lock context and unlock if needed
+        Handle screen lock context and unlock if needed using Intelligent Voice Unlock Service
 
         Args:
             command: The command to execute
+            audio_data: Audio data for voice verification (optional)
+            speaker_name: Known speaker name (optional)
 
         Returns:
             Tuple of (success, message)
@@ -523,15 +511,61 @@ class ScreenLockContextDetector:
         unlock_message = context["unlock_message"]
 
         try:
-            # Try to unlock using the simple unlock handler directly
-            logger.info(f"Attempting to unlock screen for command: {command}")
+            # Try to unlock using the Intelligent Voice Unlock Service first
+            logger.info(f"Attempting intelligent voice-authenticated unlock for command: {command}")
 
-            # Use the simple unlock handler which has direct access to unlock functionality
+            # Try Intelligent Voice Unlock Service with full voice authentication
             try:
-                from api.simple_unlock_handler import handle_unlock_command
+                from voice_unlock.intelligent_voice_unlock_service import (
+                    get_intelligent_unlock_service,
+                )
 
-                # Send unlock command
-                result = await handle_unlock_command("unlock my screen", None)
+                intelligent_service = get_intelligent_unlock_service()
+
+                # If we have audio data, use full intelligent unlock with voice verification
+                if audio_data:
+                    logger.info("Using Intelligent Voice Unlock Service with voice verification")
+
+                    # Create context for the unlock
+                    unlock_context = {
+                        "source": "context_intelligence",
+                        "reason": f"User command: {command}",
+                        "original_command": command,
+                        "screen_locked": True,
+                    }
+
+                    # Process with full intelligence stack (Speaker Recognition, CAI, SAI, etc.)
+                    result = await intelligent_service.process_voice_unlock_command(
+                        audio_data=audio_data, context=unlock_context
+                    )
+
+                    if result and result.get("success"):
+                        logger.info("✅ Intelligent Voice Unlock succeeded with voice verification")
+                        # Wait for unlock to complete
+                        await asyncio.sleep(2.0)
+
+                        # Verify unlock succeeded
+                        is_still_locked = await self.is_screen_locked()
+                        if not is_still_locked:
+                            success_msg = "Now proceeding with your request."
+                            return True, f"{unlock_message} {success_msg}"
+                        else:
+                            return (
+                                False,
+                                "Voice authentication succeeded but screen unlock failed. Please try again.",
+                            )
+                    else:
+                        error_msg = result.get("message", "Voice authentication failed")
+                        logger.warning(f"❌ Intelligent Voice Unlock failed: {error_msg}")
+                        return False, f"I couldn't unlock the screen: {error_msg}"
+
+                else:
+                    # Fallback: Use simple unlock handler when no audio data available
+                    logger.warning("No audio data available, falling back to simple unlock handler")
+                    from api.simple_unlock_handler import handle_unlock_command
+
+                    # Send unlock command
+                    result = await handle_unlock_command("unlock my screen", None)
 
                 if result and result.get("success"):
                     # Wait for unlock to complete

@@ -2169,8 +2169,13 @@ class JARVISVoiceAPI:
                                 }
                             )
 
-                        # Process through unified system
-                        result = await processor.process_command(command_text, websocket)
+                        # Process through unified system with audio data for voice authentication
+                        result = await processor.process_command(
+                            command_text,
+                            websocket,
+                            audio_data=self.last_audio_data,
+                            speaker_name=self.last_speaker_name,
+                        )
 
                         logger.info(f"[JARVIS API] Command result: {result}")
 

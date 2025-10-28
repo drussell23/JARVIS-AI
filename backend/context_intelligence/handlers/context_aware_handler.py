@@ -7,20 +7,19 @@ Handles commands with full context awareness, including screen lock state
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional, Tuple, List
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from context_intelligence.detectors.screen_lock_detector import get_screen_lock_detector
-from context_intelligence.analyzers.intent_analyzer import IntentType
-from context_intelligence.handlers.predictive_query_handler import (
-    get_predictive_handler,
-    initialize_predictive_handler,
-    PredictiveQueryRequest
-)
 from context_intelligence.handlers.action_query_handler import (
+    ActionQueryResponse,
     get_action_query_handler,
     initialize_action_query_handler,
-    ActionQueryResponse
+)
+from context_intelligence.handlers.predictive_query_handler import (
+    PredictiveQueryRequest,
+    get_predictive_handler,
+    initialize_predictive_handler,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,7 +37,12 @@ class ContextAwareCommandHandler:
         self.action_handler = None  # Lazy initialize
 
     async def handle_command_with_context(
-        self, command: str, execute_callback=None, intent_type: Optional[str] = None
+        self,
+        command: str,
+        execute_callback=None,
+        intent_type: Optional[str] = None,
+        audio_data: bytes = None,
+        speaker_name: str = None,
     ) -> Dict[str, Any]:
         """
         Handle a command with full context awareness
@@ -47,6 +51,8 @@ class ContextAwareCommandHandler:
             command: The command to execute
             execute_callback: Callback to execute the actual command
             intent_type: Optional intent type for routing
+            audio_data: Audio data for voice verification (optional)
+            speaker_name: Known speaker name (optional)
 
         Returns:
             Response dict with status and messages
@@ -70,7 +76,9 @@ class ContextAwareCommandHandler:
 
             # Check if this is a predictive query
             if intent_type == "predictive_query" or self._is_predictive_query(command):
-                logger.info("[CONTEXT AWARE] Detected predictive query - routing to predictive handler")
+                logger.info(
+                    "[CONTEXT AWARE] Detected predictive query - routing to predictive handler"
+                )
                 return await self._handle_predictive_query(command)
 
             # Step 1: Get system context
@@ -83,9 +91,7 @@ class ContextAwareCommandHandler:
 
             # Step 2: Check screen lock context
             is_locked = system_context.get("screen_locked", False)
-            logger.info(
-                f"[CONTEXT AWARE] Screen is {'LOCKED' if is_locked else 'UNLOCKED'}"
-            )
+            logger.info(f"[CONTEXT AWARE] Screen is {'LOCKED' if is_locked else 'UNLOCKED'}")
 
             if is_locked:
                 self._add_step("Detected locked screen", {"screen_locked": True})
@@ -94,9 +100,7 @@ class ContextAwareCommandHandler:
                 )
 
                 # Check if command requires unlocked screen
-                screen_context = await self.screen_lock_detector.check_screen_context(
-                    command
-                )
+                screen_context = await self.screen_lock_detector.check_screen_context(command)
 
                 if screen_context["requires_unlock"]:
                     # IMPORTANT: Speak to user FIRST about screen being locked
@@ -105,19 +109,13 @@ class ContextAwareCommandHandler:
 
                     # Log prominently for debugging
                     logger.warning(f"[CONTEXT AWARE] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-                    logger.warning(
-                        f"[CONTEXT AWARE] 🔓 SCREEN LOCKED - UNLOCK REQUIRED"
-                    )
+                    logger.warning(f"[CONTEXT AWARE] 🔓 SCREEN LOCKED - UNLOCK REQUIRED")
                     logger.warning(f"[CONTEXT AWARE] 📝 Command: {command}")
-                    logger.warning(
-                        f"[CONTEXT AWARE] 📢 Unlock Message: '{unlock_notification}'"
-                    )
+                    logger.warning(f"[CONTEXT AWARE] 📢 Unlock Message: '{unlock_notification}'")
                     logger.warning(f"[CONTEXT AWARE] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
                     # Speak the unlock message immediately with emphasis
-                    logger.warning(
-                        f"[CONTEXT AWARE] 🎤 Speaking unlock notification NOW..."
-                    )
+                    logger.warning(f"[CONTEXT AWARE] 🎤 Speaking unlock notification NOW...")
                     await self._speak_message(unlock_notification, priority="high")
                     logger.warning(f"[CONTEXT AWARE] ✅ Unlock notification spoken")
 
@@ -126,35 +124,27 @@ class ContextAwareCommandHandler:
                         f"[CONTEXT AWARE] ⏱️  Waiting 3 seconds for user to hear notification..."
                     )
                     await asyncio.sleep(3.0)
-                    logger.info(
-                        f"[CONTEXT AWARE] ⏱️  Wait complete, proceeding with unlock..."
-                    )
+                    logger.info(f"[CONTEXT AWARE] ⏱️  Wait complete, proceeding with unlock...")
 
-                    # Now perform the actual unlock
-                    logger.info(f"[CONTEXT AWARE] 🔓 Now unlocking screen...")
+                    # Now perform the actual unlock with voice authentication
+                    logger.info(
+                        f"[CONTEXT AWARE] 🔓 Now unlocking screen with voice verification..."
+                    )
                     unlock_success, unlock_message = (
                         await self.screen_lock_detector.handle_screen_lock_context(
-                            command
+                            command, audio_data=audio_data, speaker_name=speaker_name
                         )
                     )
 
                     if unlock_success:
-                        self._add_step(
-                            "Screen unlocked successfully", {"unlocked": True}
-                        )
+                        self._add_step("Screen unlocked successfully", {"unlocked": True})
                         logger.info(f"[CONTEXT AWARE] ✅ Screen unlocked successfully")
                         # Don't add unlock message to response since we already spoke it
                     else:
-                        self._add_step(
-                            "Screen unlock failed", {"error": unlock_message}
-                        )
-                        logger.error(
-                            f"[CONTEXT AWARE] ❌ Screen unlock failed: {unlock_message}"
-                        )
+                        self._add_step("Screen unlock failed", {"error": unlock_message})
+                        logger.error(f"[CONTEXT AWARE] ❌ Screen unlock failed: {unlock_message}")
                         response["success"] = False
-                        response["messages"].append(
-                            unlock_message or "Failed to unlock screen"
-                        )
+                        response["messages"].append(unlock_message or "Failed to unlock screen")
                         return self._finalize_response(response)
 
             # Step 3: Execute the actual command
@@ -163,9 +153,7 @@ class ContextAwareCommandHandler:
 
                 try:
                     # Execute with context
-                    exec_result = await execute_callback(
-                        command, context=system_context
-                    )
+                    exec_result = await execute_callback(command, context=system_context)
 
                     if isinstance(exec_result, dict):
                         if exec_result.get("success", True):
@@ -181,9 +169,7 @@ class ContextAwareCommandHandler:
                                     f"I'm creating an essay about {topic} for you, Sir."
                                 )
                             else:
-                                response["messages"].append(
-                                    "Command completed successfully"
-                                )
+                                response["messages"].append("Command completed successfully")
                             response["result"] = exec_result
                         else:
                             self._add_step("Command execution failed", exec_result)
@@ -193,9 +179,7 @@ class ContextAwareCommandHandler:
                             )
                     else:
                         # Simple success
-                        self._add_step(
-                            "Command completed", {"result": str(exec_result)}
-                        )
+                        self._add_step("Command completed", {"result": str(exec_result)})
                         response["messages"].append("Command completed successfully")
 
                 except Exception as e:
@@ -205,9 +189,7 @@ class ContextAwareCommandHandler:
 
             # Step 4: Provide confirmation
             if response["success"]:
-                confirmation = self._generate_confirmation(
-                    command, self.execution_steps
-                )
+                confirmation = self._generate_confirmation(command, self.execution_steps)
                 response["messages"].append(confirmation)
 
         except Exception as e:
@@ -221,9 +203,21 @@ class ContextAwareCommandHandler:
     def _is_action_query(self, command: str) -> bool:
         """Check if command is an action query"""
         action_keywords = [
-            "switch to space", "close", "fix", "run tests", "run build",
-            "move", "focus", "launch", "quit", "restart", "open http",
-            "fix the", "fix it", "close it", "close that"
+            "switch to space",
+            "close",
+            "fix",
+            "run tests",
+            "run build",
+            "move",
+            "focus",
+            "launch",
+            "quit",
+            "restart",
+            "open http",
+            "fix the",
+            "fix it",
+            "close it",
+            "close that",
         ]
         command_lower = command.lower()
         return any(keyword in command_lower for keyword in action_keywords)
@@ -241,15 +235,14 @@ class ContextAwareCommandHandler:
                     implicit_resolver = get_implicit_resolver()
                     self.action_handler = initialize_action_query_handler(
                         context_graph=None,  # Could integrate context graph here
-                        implicit_resolver=implicit_resolver  # ⭐ KEY INTEGRATION!
+                        implicit_resolver=implicit_resolver,  # ⭐ KEY INTEGRATION!
                     )
 
             logger.info(f"[CONTEXT AWARE] Processing action query: {command}")
 
             # Execute action query
             result: ActionQueryResponse = await self.action_handler.handle_action_query(
-                command,
-                context={}
+                command, context={}
             )
 
             # Format response for JARVIS
@@ -264,24 +257,36 @@ class ContextAwareCommandHandler:
                         "details": {
                             "action_type": result.action_type,
                             "requires_confirmation": result.requires_confirmation,
-                            "execution_status": result.execution_result.status.value if result.execution_result else "none"
+                            "execution_status": (
+                                result.execution_result.status.value
+                                if result.execution_result
+                                else "none"
+                            ),
                         },
-                        "timestamp": datetime.now().isoformat()
+                        "timestamp": datetime.now().isoformat(),
                     }
                 ],
                 "context": {
                     "action_type": result.action_type,
                     "resolved_references": result.metadata.get("resolved_references", {}),
-                    "safety_level": result.metadata.get("safety_level", "unknown")
+                    "safety_level": result.metadata.get("safety_level", "unknown"),
                 },
                 "timestamp": result.timestamp.isoformat(),
                 "result": {
-                    "execution": result.execution_result.__dict__ if result.execution_result else None,
-                    "plan": {
-                        "steps": [s.__dict__ for s in result.plan.steps] if result.plan else [],
-                        "safety_level": result.plan.safety_level.value if result.plan else "unknown"
-                    } if result.plan else None
-                }
+                    "execution": (
+                        result.execution_result.__dict__ if result.execution_result else None
+                    ),
+                    "plan": (
+                        {
+                            "steps": [s.__dict__ for s in result.plan.steps] if result.plan else [],
+                            "safety_level": (
+                                result.plan.safety_level.value if result.plan else "unknown"
+                            ),
+                        }
+                        if result.plan
+                        else None
+                    ),
+                },
             }
 
             if response["success"]:
@@ -302,19 +307,31 @@ class ContextAwareCommandHandler:
                 "steps_taken": [],
                 "context": {},
                 "timestamp": datetime.now().isoformat(),
-                "summary": f"Error: {str(e)}"
+                "summary": f"Error: {str(e)}",
             }
 
     def _is_predictive_query(self, command: str) -> bool:
         """Check if command is a predictive/analytical query"""
         predictive_keywords = [
-            "making progress", "am i doing", "my progress",
-            "what should i", "what to do next", "next steps",
-            "any bugs", "any errors", "any issues", "potential bugs",
-            "explain", "what does", "how does",
-            "what patterns", "analyze patterns",
-            "improve my workflow", "optimize", "work more efficiently",
-            "code quality"
+            "making progress",
+            "am i doing",
+            "my progress",
+            "what should i",
+            "what to do next",
+            "next steps",
+            "any bugs",
+            "any errors",
+            "any issues",
+            "potential bugs",
+            "explain",
+            "what does",
+            "how does",
+            "what patterns",
+            "analyze patterns",
+            "improve my workflow",
+            "optimize",
+            "work more efficiently",
+            "code quality",
         ]
         command_lower = command.lower()
         return any(keyword in command_lower for keyword in predictive_keywords)
@@ -331,7 +348,9 @@ class ContextAwareCommandHandler:
             logger.info(f"[CONTEXT AWARE] Processing predictive query: {command}")
 
             # Determine if visual analysis is needed
-            use_vision = any(keyword in command.lower() for keyword in ["explain", "code", "this", "that"])
+            use_vision = any(
+                keyword in command.lower() for keyword in ["explain", "code", "this", "that"]
+            )
 
             # Create request
             request = PredictiveQueryRequest(
@@ -339,7 +358,7 @@ class ContextAwareCommandHandler:
                 use_vision=use_vision,
                 capture_screen=use_vision,
                 repo_path=".",
-                additional_context={}
+                additional_context={},
             )
 
             # Execute query
@@ -355,35 +374,59 @@ class ContextAwareCommandHandler:
                         "step": 1,
                         "description": "Analyzed query with predictive engine",
                         "details": {
-                            "query_type": result.analytics.query_type.value if result.analytics else "unknown",
+                            "query_type": (
+                                result.analytics.query_type.value if result.analytics else "unknown"
+                            ),
                             "confidence": result.confidence,
-                            "used_vision": result.vision_analysis is not None
+                            "used_vision": result.vision_analysis is not None,
                         },
-                        "timestamp": datetime.now().isoformat()
+                        "timestamp": datetime.now().isoformat(),
                     }
                 ],
                 "context": {
-                    "query_type": result.analytics.query_type.value if result.analytics else "unknown",
+                    "query_type": (
+                        result.analytics.query_type.value if result.analytics else "unknown"
+                    ),
                     "confidence": result.confidence,
-                    "insights": result.analytics.insights if result.analytics else []
+                    "insights": result.analytics.insights if result.analytics else [],
                 },
                 "timestamp": result.timestamp.isoformat(),
                 "result": {
-                    "analytics": {
-                        "metrics": result.analytics.metrics.__dict__ if result.analytics and result.analytics.metrics else None,
-                        "bug_patterns": [bp.__dict__ for bp in result.analytics.bug_patterns] if result.analytics else [],
-                        "recommendations": [rec.__dict__ for rec in result.analytics.recommendations] if result.analytics else []
-                    } if result.analytics else None,
-                    "vision_analysis": result.vision_analysis
-                }
+                    "analytics": (
+                        {
+                            "metrics": (
+                                result.analytics.metrics.__dict__
+                                if result.analytics and result.analytics.metrics
+                                else None
+                            ),
+                            "bug_patterns": (
+                                [bp.__dict__ for bp in result.analytics.bug_patterns]
+                                if result.analytics
+                                else []
+                            ),
+                            "recommendations": (
+                                [rec.__dict__ for rec in result.analytics.recommendations]
+                                if result.analytics
+                                else []
+                            ),
+                        }
+                        if result.analytics
+                        else None
+                    ),
+                    "vision_analysis": result.vision_analysis,
+                },
             }
 
             if response["success"]:
-                response["summary"] = result.response_text if result.response_text else "Analysis complete"
+                response["summary"] = (
+                    result.response_text if result.response_text else "Analysis complete"
+                )
             else:
                 response["summary"] = "Predictive query failed"
 
-            logger.info(f"[CONTEXT AWARE] Predictive query completed: success={result.success}, confidence={result.confidence:.2%}")
+            logger.info(
+                f"[CONTEXT AWARE] Predictive query completed: success={result.success}, confidence={result.confidence:.2%}"
+            )
 
             return response
 
@@ -396,7 +439,7 @@ class ContextAwareCommandHandler:
                 "steps_taken": [],
                 "context": {},
                 "timestamp": datetime.now().isoformat(),
-                "summary": f"Error: {str(e)}"
+                "summary": f"Error: {str(e)}",
             }
 
     async def _get_system_context(self) -> Dict[str, Any]:
@@ -433,21 +476,17 @@ class ContextAwareCommandHandler:
     async def _speak_message(self, message: str, priority: str = "normal"):
         """Speak a message immediately using JARVIS voice through WebSocket and macOS say"""
         try:
-            logger.info(
-                f"[CONTEXT AWARE] 📢 Speaking message (priority={priority}): {message}"
-            )
+            logger.info(f"[CONTEXT AWARE] 📢 Speaking message (priority={priority}): {message}")
 
             # Use macOS say command FIRST (more reliable, especially when screen is locked)
             # This ensures the user hears the message even if WebSocket fails
             say_success = False
             try:
-                import subprocess
+                pass
 
                 # Run say command synchronously for immediate feedback
                 # Use slower speech rate for unlock messages to ensure clarity
-                speech_rate = (
-                    "160" if priority == "high" else "190"
-                )  # Slower for unlock messages
+                speech_rate = "160" if priority == "high" else "190"  # Slower for unlock messages
                 process = await asyncio.create_subprocess_exec(
                     "say",
                     "-v",
@@ -461,9 +500,7 @@ class ContextAwareCommandHandler:
                 returncode = await process.wait()
                 say_success = returncode == 0
                 if say_success:
-                    logger.info(
-                        f"[CONTEXT AWARE] ✅ Spoke via macOS say command successfully"
-                    )
+                    logger.info(f"[CONTEXT AWARE] ✅ Spoke via macOS say command successfully")
                 else:
                     logger.warning(
                         f"[CONTEXT AWARE] ⚠️  Say command returned non-zero: {returncode}"
@@ -476,9 +513,7 @@ class ContextAwareCommandHandler:
                 from api.unified_websocket import broadcast_message
 
                 # Broadcast the notification via WebSocket
-                await broadcast_message(
-                    {"type": "speak", "text": message, "priority": priority}
-                )
+                await broadcast_message({"type": "speak", "text": message, "priority": priority})
                 logger.info(f"[CONTEXT AWARE] 📡 Broadcasted via WebSocket")
             except Exception as e:
                 logger.debug(
@@ -487,9 +522,7 @@ class ContextAwareCommandHandler:
 
             # If both methods failed, log an error
             if not say_success:
-                logger.error(
-                    f"[CONTEXT AWARE] ⚠️  WARNING: Could not speak message reliably!"
-                )
+                logger.error(f"[CONTEXT AWARE] ⚠️  WARNING: Could not speak message reliably!")
 
         except Exception as e:
             logger.error(f"[CONTEXT AWARE] ❌ Failed to speak message: {e}")

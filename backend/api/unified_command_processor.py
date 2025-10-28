@@ -872,9 +872,15 @@ class UnifiedCommandProcessor:
             CommandType.QUERY: "api.query_handler",  # Add basic query handler
         }
 
-    async def process_command(self, command_text: str, websocket=None) -> Dict[str, Any]:
-        """Process any command through unified pipeline with FULL context awareness"""
+    async def process_command(
+        self, command_text: str, websocket=None, audio_data: bytes = None, speaker_name: str = None
+    ) -> Dict[str, Any]:
+        """Process any command through unified pipeline with FULL context awareness including voice authentication"""
         logger.info(f"[UNIFIED] Processing with context awareness: '{command_text}'")
+
+        # Store audio data and speaker for voice authentication (used by context-aware handlers)
+        self.current_audio_data = audio_data
+        self.current_speaker_name = speaker_name
 
         # Ensure resolvers are initialized (lazy init on first use)
         if not self._resolvers_initialized:
@@ -1181,10 +1187,13 @@ class UnifiedCommandProcessor:
             else:
                 return await self._execute_command(command_type, cmd, websocket, context=context)
 
-        # Step 7: Process through context-aware handler
+        # Step 7: Process through context-aware handler with voice authentication
         logger.info(f"[UNIFIED] Processing through context-aware handler...")
         result = await context_handler.handle_command_with_context(
-            resolved_text, execute_callback=execute_with_context
+            resolved_text,
+            execute_callback=execute_with_context,
+            audio_data=audio_data,
+            speaker_name=speaker_name,
         )
 
         # Step 8: Extract actual result from context handler response
@@ -2768,12 +2777,15 @@ class UnifiedCommandProcessor:
                             "message": f"I'm creating an essay about {doc_request.topic} for you, Sir.",
                         }
 
-                    # Use context-aware handler to check screen lock FIRST
+                    # Use context-aware handler to check screen lock FIRST with voice authentication
                     logger.info(
                         f"[DOCUMENT] Checking context (including screen lock) before document creation..."
                     )
                     result = await context_handler.handle_command_with_context(
-                        command_text, execute_callback=create_document_callback
+                        command_text,
+                        execute_callback=create_document_callback,
+                        audio_data=self.current_audio_data,
+                        speaker_name=self.current_speaker_name,
                     )
 
                     # The context handler will handle all messaging including screen lock notifications
@@ -3867,7 +3879,7 @@ class UnifiedCommandProcessor:
         logger.info(f"[DISPLAY] Processing display command: '{command_text}'")
 
         # DEBUG: Log to file
-        with open("/tmp/jarvis_display_command.log", "a") as f:
+        with open("/tmp/jarvis_display_command.log", "a") as f:  # nosec B108 # Debug logging
             f.write(f"\n{'='*80}\n")
             f.write(f"[DISPLAY] _execute_display_command called\n")
             f.write(f"  Command: '{command_text}'\n")
@@ -4120,7 +4132,7 @@ class UnifiedCommandProcessor:
             )
 
             # DEBUG: Log to file
-            with open("/tmp/jarvis_display_command.log", "a") as f:
+            with open("/tmp/jarvis_display_command.log", "a") as f:  # nosec B108 # Debug logging
                 f.write(f"\n{'='*60}\n")
                 f.write(f"[DISPLAY] About to call monitor.connect_display('{display_id}')\n")
                 f.write(f"  Display name: {display_name}\n")
@@ -4130,7 +4142,7 @@ class UnifiedCommandProcessor:
             result = await monitor.connect_display(display_id)
 
             # DEBUG: Log result
-            with open("/tmp/jarvis_display_command.log", "a") as f:
+            with open("/tmp/jarvis_display_command.log", "a") as f:  # nosec B108 # Debug logging
                 f.write(f"[DISPLAY] Result: {result.get('success')}\n")
                 f.write(f"  Message: {result.get('message', 'none')}\n")
 
