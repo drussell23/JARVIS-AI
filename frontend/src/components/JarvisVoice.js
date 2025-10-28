@@ -9,6 +9,7 @@ import { getNetworkRecoveryManager } from '../utils/NetworkRecoveryManager'; // 
 import WakeWordService from './WakeWordService'; // Wake word detection service
 import configService from '../services/DynamicConfigService'; // Dynamic configuration service
 import adaptiveVoiceDetection from '../utils/AdaptiveVoiceDetection'; // Adaptive voice learning system
+import HybridSTTClient from '../utils/HybridSTTClient'; // Hybrid STT client (replaces browser SpeechRecognition)
 import VoiceStatsDisplay from './VoiceStatsDisplay'; // Adaptive voice stats display
 import EnvironmentalStatsDisplay from './EnvironmentalStatsDisplay'; // Environmental stats display
 import AudioQualityStatsDisplay from './AudioQualityStatsDisplay'; // Audio quality stats display
@@ -630,6 +631,8 @@ const JarvisVoice = () => {
   // User interaction state
   const [isTyping, setIsTyping] = useState(false);
   const [lastUserInteraction, setLastUserInteraction] = useState(null);
+  const [showSTTDetails, setShowSTTDetails] = useState(true); // Show hybrid STT engine details
+  const [useHybridSTT, setUseHybridSTT] = useState(true); // Use hybrid STT instead of browser API
   const typingTimeoutRef = useRef(null);
 
   const wsRef = useRef(null);
@@ -640,6 +643,7 @@ const JarvisVoice = () => {
   const commandQueueRef = useRef([]);
   const proxyEndpointRef = useRef(null);
   const recognitionRef = useRef(null);
+  const hybridSTTClientRef = useRef(null); // Hybrid STT client (replaces browser SpeechRecognition)
   const visionConnectionRef = useRef(null);
   const lastSpeechTimeRef = useRef(0);
   const wakeWordServiceRef = useRef(null);
@@ -1063,6 +1067,22 @@ const JarvisVoice = () => {
         reconnectionStateRef.current.connectionHealth = 100;
         reconnectionStateRef.current.reconnecting = false;
 
+        // Initialize Hybrid STT Client (if enabled)
+        if (useHybridSTT && !hybridSTTClientRef.current) {
+          try {
+            hybridSTTClientRef.current = new HybridSTTClient(wsRef.current, {
+              strategy: 'balanced',
+              speakerName: 'Derek J. Russell',
+              confidenceThreshold: 0.6,
+              continuous: true,
+              interimResults: true
+            });
+            console.log('🎤 [HybridSTT] Client initialized and ready');
+          } catch (error) {
+            console.error('🎤 [HybridSTT] Failed to initialize:', error);
+          }
+        }
+
         // Start ping/pong health monitoring
         startHealthMonitoring();
       };
@@ -1286,6 +1306,38 @@ const JarvisVoice = () => {
           }, 1000);
         }
         break;
+      case 'transcription_started':
+        // Handle hybrid STT transcription started
+        console.log('🎤 [HybridSTT] Transcription started:', data);
+        setResponse('🎤 Transcribing...');
+        setIsProcessing(true);
+        break;
+
+      case 'transcription_result':
+        // Handle hybrid STT transcription result
+        console.log('🎤 [HybridSTT] Transcription result:', data);
+        const { text: transcribedText, confidence, engine, model_name, latency_ms, speaker_identified } = data;
+
+        // Display transcription with metadata
+        setTranscript(transcribedText);
+        setResponse(`✅ ${transcribedText}\n\n📊 Confidence: ${(confidence * 100).toFixed(1)}% | Engine: ${engine} (${model_name}) | Latency: ${latency_ms.toFixed(0)}ms${speaker_identified ? ` | Speaker: ${speaker_identified}` : ''}`);
+
+        // Log STT details
+        console.log(`🎤 [HybridSTT] Transcribed: "${transcribedText}" (confidence: ${(confidence * 100).toFixed(1)}%, engine: ${engine}, latency: ${latency_ms.toFixed(0)}ms)`);
+
+        // Note: Command will be auto-processed by backend if confidence >= 0.6
+        // We'll receive a command_response message next
+        setIsProcessing(false);
+        break;
+
+      case 'transcription_error':
+        // Handle hybrid STT transcription error
+        console.error('🎤 [HybridSTT] Transcription error:', data.message);
+        setResponse(`❌ Transcription failed: ${data.message}`);
+        setIsProcessing(false);
+        setError(data.message);
+        break;
+
       case 'command_response':
         // Handle new async pipeline responses
         console.log('WebSocket command_response received:', data);
@@ -1303,6 +1355,11 @@ const JarvisVoice = () => {
           // Log successful command execution
           if (data.action) {
             console.log(`✅ Command executed: ${data.action}`);
+          }
+
+          // Log STT engine info if available (from hybrid STT)
+          if (data.stt_engine) {
+            console.log(`🎤 [HybridSTT] Command processed via ${data.stt_engine} (confidence: ${(data.confidence * 100).toFixed(1)}%)`);
           }
         }
         break;
